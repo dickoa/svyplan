@@ -338,7 +338,7 @@ design_effect.default <- function(
 
   if (is.null(clvar)) {
     list(
-      strata = data.frame(n_h = n, cv2_w = cv2h, deff_w = deff_w),
+      strata = data.frame(n = n, cv2_w = cv2h, deff_w = deff_w),
       overall = deff_w
     )
   } else {
@@ -347,16 +347,16 @@ design_effect.default <- function(
 
     strdeff <- .stratum_cluster_deff(w, y, clvar, sig2, n)
     if (is.na(strdeff)) {
-      rhoh <- 0
+      rho <- 0
     } else {
-      rhoh <- (strdeff - deff_w) / (deff_w * (nh_star - 1))
+      rho <- (strdeff - deff_w) / (deff_w * (nh_star - 1))
     }
-    deff_c <- 1 + (nh_star - 1) * rhoh
+    deff_c <- 1 + (nh_star - 1) * rho
 
     list(
       strata = data.frame(
-        n_h = n,
-        rho_h = rhoh,
+        n = n,
+        rho = rho,
         cv2_w = cv2h,
         deff_w = deff_w,
         deff_c = deff_c

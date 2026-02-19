@@ -126,7 +126,7 @@ test_that("design_effect cr unstratified + clustered", {
 
   result <- design_effect(w, y = y, clvar = clvar, method = "cr")
   expect_true(is.list(result))
-  expect_true("rho_h" %in% names(result$strata))
+  expect_true("rho" %in% names(result$strata))
   expect_equal(result$overall, result$strata$deff_w * result$strata$deff_c)
 })
 
