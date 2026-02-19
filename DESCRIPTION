@@ -1,7 +1,7 @@
 Package: svyplan
 Type: Package
 Title: Survey Sample Size Determination
-Version: 0.3.0
+Version: 0.3.9999
 Authors@R: person(given = "Ahmadou",
                   family = "Dicko",
                   email = "mail@ahmadoudicko.com",

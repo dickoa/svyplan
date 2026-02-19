@@ -137,9 +137,10 @@ design_effect.default <- function(
   Nhat <- sum(w)
   wbar <- weighted.mean(w, w)
   vy <- .wtdvar(y, w)
+  vw <- .wtdvar(w, w)
+  if (vw < .Machine$double.eps) return(1.0)
   vu <- .wtdvar(u, w)
   vu2 <- .wtdvar(u^2, w)
-  vw <- .wtdvar(w, w)
   ubar <- weighted.mean(u, w)
   u2bar <- weighted.mean(u^2, w)
 
@@ -177,10 +178,11 @@ design_effect.default <- function(
   pbar <- weighted.mean(p, w)
   wbar <- weighted.mean(w, w)
   vy <- .wtdvar(y, w)
+  vw <- .wtdvar(w, w)
+  if (vw < .Machine$double.eps) return(1.0)
   vp <- .wtdvar(p, w)
   ve <- .wtdvar(e, w)
   ve2 <- .wtdvar(e^2, w)
-  vw <- .wtdvar(w, w)
   ebar <- weighted.mean(e, w)
   e2bar <- weighted.mean(e^2, w)
 
@@ -281,10 +283,10 @@ design_effect.default <- function(
     out <- list(
       strata = data.frame(
         stratum = strat,
-        nh = nh,
-        cv2wh = cv2h,
-        deff.w = deff_w,
-        deff.s = deff_s
+        n_h = nh,
+        cv2_w = cv2h,
+        deff_w = deff_w,
+        deff_s = deff_s
       ),
       overall = sum(deff_w * deff_s)
     )
@@ -313,12 +315,12 @@ design_effect.default <- function(
     out <- list(
       strata = data.frame(
         stratum = strat,
-        nh = nh,
-        rhoh = rhoh,
-        cv2wh = cv2h,
-        deff.w = deff_w,
-        deff.c = deff_c,
-        deff.s = deff_s
+        n_h = nh,
+        rho_h = rhoh,
+        cv2_w = cv2h,
+        deff_w = deff_w,
+        deff_c = deff_c,
+        deff_s = deff_s
       ),
       overall = sum(deff_w * deff_c * deff_s)
     )
@@ -336,7 +338,7 @@ design_effect.default <- function(
 
   if (is.null(clvar)) {
     list(
-      strata = data.frame(n = n, cv2w = cv2h, deff.w = deff_w),
+      strata = data.frame(n_h = n, cv2_w = cv2h, deff_w = deff_w),
       overall = deff_w
     )
   } else {
@@ -353,11 +355,11 @@ design_effect.default <- function(
 
     list(
       strata = data.frame(
-        n = n,
-        rho = rhoh,
-        cv2w = cv2h,
-        deff.w = deff_w,
-        deff.c = deff_c
+        n_h = n,
+        rho_h = rhoh,
+        cv2_w = cv2h,
+        deff_w = deff_w,
+        deff_c = deff_c
       ),
       overall = deff_w * deff_c
     )

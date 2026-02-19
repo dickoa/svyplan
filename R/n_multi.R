@@ -365,8 +365,7 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   detail <- data.frame(
     name = labels,
     .n = n_vec,
-    .binding = seq_len(nrow(targets)) == idx,
-    stringsAsFactors = FALSE
+    .binding = seq_len(nrow(targets)) == idx
   )
 
   .new_svyplan_n(
@@ -507,8 +506,7 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     name = labels,
     .cv_target = cv_t,
     .cv_achieved = cv_achieved,
-    .binding = seq_len(nr) == binding_idx,
-    stringsAsFactors = FALSE
+    .binding = seq_len(nr) == binding_idx
   )
 
   .new_svyplan_cluster(
@@ -616,8 +614,7 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     name = labels,
     .cv_target = cv_t,
     .cv_achieved = cv_achieved,
-    .binding = seq_len(nr) == binding_idx,
-    stringsAsFactors = FALSE
+    .binding = seq_len(nr) == binding_idx
   )
 
   .new_svyplan_cluster(

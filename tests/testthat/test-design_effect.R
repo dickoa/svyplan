@@ -49,6 +49,26 @@ test_that("design_effect spencer method", {
   expect_equal(length(result), 1L)
 })
 
+test_that("design_effect henry returns 1 for equal weights", {
+  set.seed(42)
+  n <- 100
+  w <- rep(5, n)
+  x_cal <- runif(n, 10, 100)
+  y <- 5 + 0.3 * x_cal + rnorm(n, 0, 2)
+  result <- design_effect(w, y = y, x_cal = x_cal, method = "henry")
+  expect_equal(result, 1.0)
+})
+
+test_that("design_effect spencer returns 1 for equal weights", {
+  set.seed(42)
+  n <- 100
+  w <- rep(5, n)
+  p <- rep(0.1, n)
+  y <- 50 + rnorm(n, 0, 10)
+  result <- design_effect(w, y = y, p = p, method = "spencer")
+  expect_equal(result, 1.0)
+})
+
 test_that("design_effect validates inputs", {
   expect_error(design_effect(delta = 0.05, method = "cluster"),
                "'delta' and 'm' are required")
@@ -79,10 +99,10 @@ test_that("design_effect cr stratified + clustered", {
   expect_true("overall" %in% names(result))
   expect_true(is.numeric(result$overall))
   expect_equal(nrow(result$strata), 5L)
-  expect_true(all(c("deff.w", "deff.c", "deff.s") %in% names(result$strata)))
-  expect_equal(result$overall, sum(result$strata$deff.w *
-                                     result$strata$deff.c *
-                                     result$strata$deff.s))
+  expect_true(all(c("deff_w", "deff_c", "deff_s") %in% names(result$strata)))
+  expect_equal(result$overall, sum(result$strata$deff_w *
+                                     result$strata$deff_c *
+                                     result$strata$deff_s))
 })
 
 test_that("design_effect cr stratified, no clusters", {
@@ -94,7 +114,7 @@ test_that("design_effect cr stratified, no clusters", {
 
   result <- design_effect(w, y = y, strvar = strvar, method = "cr")
   expect_true(is.list(result))
-  expect_equal(result$overall, sum(result$strata$deff.w * result$strata$deff.s))
+  expect_equal(result$overall, sum(result$strata$deff_w * result$strata$deff_s))
 })
 
 test_that("design_effect cr unstratified + clustered", {
@@ -106,8 +126,8 @@ test_that("design_effect cr unstratified + clustered", {
 
   result <- design_effect(w, y = y, clvar = clvar, method = "cr")
   expect_true(is.list(result))
-  expect_true("rho" %in% names(result$strata))
-  expect_equal(result$overall, result$strata$deff.w * result$strata$deff.c)
+  expect_true("rho_h" %in% names(result$strata))
+  expect_equal(result$overall, result$strata$deff_w * result$strata$deff_c)
 })
 
 test_that("design_effect cr mixed stages", {
@@ -121,8 +141,8 @@ test_that("design_effect cr mixed stages", {
 
   result <- design_effect(w, y = y, strvar = strvar, clvar = clvar,
                           stages = stages, method = "cr")
-  expect_equal(result$strata$deff.c[1], 1)
-  expect_equal(result$strata$deff.c[4], 1)
+  expect_equal(result$strata$deff_c[1], 1)
+  expect_equal(result$strata$deff_c[4], 1)
 })
 
 test_that("design_effect cr equal weights gives deff_w near 1", {
@@ -133,7 +153,7 @@ test_that("design_effect cr equal weights gives deff_w near 1", {
   y <- rnorm(n, 50, 10)
 
   result <- design_effect(w, y = y, clvar = clvar, method = "cr")
-  expect_equal(result$strata$deff.w, 1, tolerance = 1e-10)
+  expect_equal(result$strata$deff_w, 1, tolerance = 1e-10)
 })
 
 test_that("design_effect cr agrees with survey package", {

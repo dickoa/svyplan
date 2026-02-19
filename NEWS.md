@@ -1,4 +1,4 @@
-# svyplan 0.3.0
+# svyplan 0.3.9999
 
 ## Power analysis
 
@@ -12,6 +12,28 @@
 
 * New S3 class `svyplan_power` with print, format, summary, as.integer, and
   as.double methods.
+
+## Stratification
+
+* `predict.svyplan_strata()` — apply strata boundaries to a numeric vector,
+  returning a factor with customizable labels. Enables integration with
+  samplyr's `stratify_by()` pipeline.
+
+## Variance components
+
+* `varcomp()` is now an S3 generic with methods for formulas, numeric vectors,
+  and survey design objects.
+
+* `varcomp.survey.design()` — extract cluster structure and outcome from a
+  `survey::svydesign()` object. Requires the survey package.
+
+## Design effects
+
+* Chen-Rust design effect decomposition no longer requires the survey package.
+  Uses a direct linearization (ultimate cluster) variance estimator.
+
+* `design_effect()` with Henry or Spencer method now returns 1.0 for equal
+  weights instead of NaN.
 
 # svyplan 0.2.0
 
