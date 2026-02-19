@@ -205,9 +205,6 @@ design_effect.default <- function(
   if (is.null(y)) {
     stop("'y' is required for the CR method", call. = FALSE)
   }
-  if (!requireNamespace("survey", quietly = TRUE)) {
-    stop("the 'survey' package is required for method = 'cr'", call. = FALSE)
-  }
   if (is.null(strvar) && is.null(clvar)) {
     stop(
       "at least one of 'strvar' or 'clvar' is required for the CR method",
@@ -225,6 +222,24 @@ design_effect.default <- function(
   }
 }
 
+#' Linearization deff for a single stratum with clusters
+#' V_COM / V_SRS using the ultimate cluster (Taylor) estimator.
+#' @keywords internal
+#' @noRd
+.stratum_cluster_deff <- function(w, y, clvar, sig2h, nh) {
+  wsum <- sum(w)
+  ybar <- sum(w * y) / wsum
+
+  cl_idx <- split(seq_along(w), clvar)
+  a <- length(cl_idx)
+  if (a <= 1L) return(NA_real_)
+
+  z <- vapply(cl_idx, function(idx) sum(w[idx] * (y[idx] - ybar)), numeric(1L))
+  v_com <- a / (a - 1) * sum(z^2) / wsum^2
+  v_srs <- sig2h / nh
+  v_com / v_srs
+}
+
 #' CR: stratified path
 #' @keywords internal
 #' @noRd
@@ -234,7 +249,7 @@ design_effect.default <- function(
   str_idx <- match(strvar, strat)
   nh <- tabulate(str_idx, nbins = H)
 
-  if (is.null(stages) || length(stages) != H) {
+  if (!is.null(clvar) && (is.null(stages) || length(stages) != H)) {
     stop(
       "'stages' must have length equal to the number of strata",
       call. = FALSE
@@ -283,60 +298,13 @@ design_effect.default <- function(
       nh_star[i] <- sum(cl_wt_sums^2) / sum(wsub^2)
     }
 
-    # Use survey package for stratum-level design effects
-    df <- data.frame(y = y, strvar = strvar, clvar = clvar)
-    stagesh <- rep(stages, nh)
-
-    strdeff <- numeric(H)
-    for (k_stage in 1:2) {
-      pick <- (stagesh == k_stage)
-      if (!any(pick)) {
-        next
-      }
-      strsub <- strvar[pick]
-      clsub <- clvar[pick]
-      wsub <- w[pick]
-      ysub <- data.frame(y = y[pick])
-
-      if (k_stage == 1L) {
-        sam_dsgn <- survey::svydesign(
-          ids = ~1,
-          strata = ~strsub,
-          data = ysub,
-          weights = wsub
-        )
-      } else {
-        sam_dsgn <- survey::svydesign(
-          ids = ~clsub,
-          strata = ~strsub,
-          data = ysub,
-          weights = wsub
-        )
-      }
-      if (length(unique(strsub)) == 1L) {
-        ysub_vec <- as.numeric(unlist(ysub))
-        mn <- survey::svymean(~ysub_vec, design = sam_dsgn, deff = TRUE)
-        idx <- match(unique(strsub), strat)
-        strdeff[idx] <- as.numeric(survey::deff(mn))
-      } else {
-        res <- survey::svyby(
-          ~y,
-          by = ~strsub,
-          design = sam_dsgn,
-          FUN = survey::svymean,
-          deff = TRUE,
-          survey.lonely.psu = "adjust"
-        )
-        for (row_i in seq_len(nrow(res))) {
-          idx <- match(res$strsub[row_i], strat)
-          strdeff[idx] <- res[["DEff.y"]][row_i]
-        }
-      }
-    }
-
-    for (i in seq_along(strat)) {
-      rhoh[i] <- (strdeff[i] - (1 + cv2h[i])) /
-        ((1 + cv2h[i]) * (nh_star[i] - 1))
+    for (i in seq_len(H)) {
+      if (stages[i] == 1L) next
+      strdeff_i <- .stratum_cluster_deff(
+        w_grp[[i]], y_grp[[i]], cl_grp[[i]], sig2h[i], nh[i]
+      )
+      if (is.na(strdeff_i)) next
+      rhoh[i] <- (strdeff_i - deff_w[i]) / (deff_w[i] * (nh_star[i] - 1))
     }
 
     deff_c <- 1 + (nh_star - 1) * rhoh
@@ -375,17 +343,12 @@ design_effect.default <- function(
     cl_wt_sums <- vapply(split(w, clvar), sum, numeric(1L))
     nh_star <- sum(cl_wt_sums^2) / sum(w^2)
 
-    df <- data.frame(y = y)
-    sam_dsgn <- survey::svydesign(
-      ids = ~clvar,
-      strata = NULL,
-      data = df,
-      weights = w
-    )
-    mn <- survey::svymean(~y, design = sam_dsgn, deff = TRUE)
-    strdeff <- as.numeric(survey::deff(mn))
-
-    rhoh <- (strdeff - (1 + cv2h)) / ((1 + cv2h) * (nh_star - 1))
+    strdeff <- .stratum_cluster_deff(w, y, clvar, sig2, n)
+    if (is.na(strdeff)) {
+      rhoh <- 0
+    } else {
+      rhoh <- (strdeff - deff_w) / (deff_w * (nh_star - 1))
+    }
     deff_c <- 1 + (nh_star - 1) * rhoh
 
     list(

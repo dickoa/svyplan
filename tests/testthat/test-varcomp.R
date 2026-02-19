@@ -96,7 +96,7 @@ test_that("varcomp integrates with n_cluster", {
 })
 
 test_that("varcomp validates inputs", {
-  expect_error(varcomp("not_numeric"), "must be a formula or a numeric")
+  expect_error(varcomp("not_numeric"), "must be a formula")
   expect_error(varcomp(1:10), "'stage_id' must be a list")
   expect_error(varcomp(~ x, data = data.frame(x = 1:10)),
                "must have a response")
@@ -113,4 +113,63 @@ test_that("varcomp handles lonely SSUs", {
   result <- varcomp(y, stage_id = list(psu_id))
   expect_s3_class(result, "svyplan_varcomp")
   expect_false(is.na(result$delta))
+})
+
+test_that("varcomp.survey.design matches formula interface", {
+  skip_if_not_installed("survey")
+  set.seed(42)
+  frame <- data.frame(
+    income = rnorm(200, 50000, 10000),
+    district = rep(1:20, each = 10)
+  )
+  ref <- varcomp(income ~ district, data = frame)
+
+  dsgn <- survey::svydesign(ids = ~district, data = frame, weights = rep(1, 200))
+  result <- varcomp(dsgn, ~income)
+
+  expect_s3_class(result, "svyplan_varcomp")
+  expect_equal(result$var_between, ref$var_between, tolerance = 1e-10)
+  expect_equal(result$var_within, ref$var_within, tolerance = 1e-10)
+  expect_equal(result$delta, ref$delta, tolerance = 1e-10)
+})
+
+test_that("varcomp.survey.design works with strata", {
+  skip_if_not_installed("survey")
+  set.seed(42)
+  frame <- data.frame(
+    y = rnorm(200, 50, 10),
+    cluster = rep(1:20, each = 10),
+    stratum = rep(1:4, each = 50)
+  )
+  dsgn <- survey::svydesign(ids = ~cluster, strata = ~stratum,
+                            data = frame, weights = rep(1, 200), nest = TRUE)
+  result <- varcomp(dsgn, ~y)
+  expect_s3_class(result, "svyplan_varcomp")
+  expect_equal(result$stages, 2L)
+  expect_true(result$delta >= 0 && result$delta <= 1)
+})
+
+test_that("varcomp.survey.design feeds into n_cluster", {
+  skip_if_not_installed("survey")
+  set.seed(42)
+  frame <- data.frame(
+    income = rnorm(200, 50000, 10000),
+    district = rep(1:20, each = 10)
+  )
+  dsgn <- survey::svydesign(ids = ~district, data = frame, weights = rep(1, 200))
+  vc <- varcomp(dsgn, ~income)
+  plan <- n_cluster(cost = c(500, 50), delta = vc, budget = 100000)
+  expect_s3_class(plan, "svyplan_cluster")
+})
+
+test_that("varcomp.survey.design validates inputs", {
+  skip_if_not_installed("survey")
+  frame <- data.frame(y = rnorm(50), cl = rep(1:10, each = 5))
+  dsgn <- survey::svydesign(ids = ~cl, data = frame, weights = rep(1, 50))
+
+  expect_error(varcomp(dsgn), "one-sided formula")
+  expect_error(varcomp(dsgn, ~nonexistent), "not found")
+
+  dsgn_nocl <- survey::svydesign(ids = ~1, data = frame, weights = rep(1, 50))
+  expect_error(varcomp(dsgn_nocl, ~y), "no clusters")
 })

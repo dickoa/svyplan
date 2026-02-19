@@ -1,26 +1,13 @@
 url: https://dickoa.gitlab.io/svyplan
-
 template:
   bootstrap: 5
 
-home:
-  strip_header: true
-
-navbar:
-  structure:
-    left: [intro, reference]
-    right: [search, gitlab]
-  components:
-    gitlab:
-      icon: fa-gitlab
-      href: https://gitlab.com/dickoa/svyplan
-      aria-label: GitLab
+articles:
+  - title: "Getting Started"
+    contents:
+      - svyplan
 
 reference:
-- title: Package
-  contents:
-  - svyplan-package
-
 - title: Sample size determination
   desc: Compute required sample sizes for different designs.
   contents:
@@ -45,6 +32,7 @@ reference:
   desc: Optimal strata boundary determination.
   contents:
   - strata_bound
+  - predict.svyplan_strata
 
 - title: Design effects
   desc: Estimate design effects and effective sample sizes.

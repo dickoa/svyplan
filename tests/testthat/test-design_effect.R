@@ -63,14 +63,13 @@ test_that("design_effect validates inputs", {
                "'strvar' or 'clvar'")
 })
 
-test_that("design_effect cr requires survey package", {
-  skip_if_not_installed("survey")
+test_that("design_effect cr stratified + clustered", {
   set.seed(42)
-  n <- 100
-  w <- rep(50, n)  # Must sum to more than n for CR
+  n <- 200
+  strvar <- rep(1:5, each = 40)
+  clvar <- rep(1:50, each = 4)
+  w <- runif(n, 10, 50)
   y <- rnorm(n, 50, 10)
-  strvar <- rep(1:5, each = 20)
-  clvar <- rep(1:25, each = 4)
   stages <- rep(2L, 5)
 
   result <- design_effect(w, y = y, strvar = strvar, clvar = clvar,
@@ -79,4 +78,82 @@ test_that("design_effect cr requires survey package", {
   expect_true("strata" %in% names(result))
   expect_true("overall" %in% names(result))
   expect_true(is.numeric(result$overall))
+  expect_equal(nrow(result$strata), 5L)
+  expect_true(all(c("deff.w", "deff.c", "deff.s") %in% names(result$strata)))
+  expect_equal(result$overall, sum(result$strata$deff.w *
+                                     result$strata$deff.c *
+                                     result$strata$deff.s))
+})
+
+test_that("design_effect cr stratified, no clusters", {
+  set.seed(42)
+  n <- 100
+  strvar <- rep(1:5, each = 20)
+  w <- runif(n, 10, 50)
+  y <- rnorm(n, 50, 10)
+
+  result <- design_effect(w, y = y, strvar = strvar, method = "cr")
+  expect_true(is.list(result))
+  expect_equal(result$overall, sum(result$strata$deff.w * result$strata$deff.s))
+})
+
+test_that("design_effect cr unstratified + clustered", {
+  set.seed(42)
+  n <- 100
+  clvar <- rep(1:25, each = 4)
+  w <- runif(n, 10, 50)
+  y <- rnorm(n, 50, 10)
+
+  result <- design_effect(w, y = y, clvar = clvar, method = "cr")
+  expect_true(is.list(result))
+  expect_true("rho" %in% names(result$strata))
+  expect_equal(result$overall, result$strata$deff.w * result$strata$deff.c)
+})
+
+test_that("design_effect cr mixed stages", {
+  set.seed(42)
+  n <- 160
+  strvar <- rep(1:4, each = 40)
+  clvar <- rep(1:40, each = 4)
+  w <- runif(n, 10, 50)
+  y <- rnorm(n, 50, 10)
+  stages <- c(1L, 2L, 2L, 1L)
+
+  result <- design_effect(w, y = y, strvar = strvar, clvar = clvar,
+                          stages = stages, method = "cr")
+  expect_equal(result$strata$deff.c[1], 1)
+  expect_equal(result$strata$deff.c[4], 1)
+})
+
+test_that("design_effect cr equal weights gives deff_w near 1", {
+  set.seed(42)
+  n <- 100
+  clvar <- rep(1:25, each = 4)
+  w <- rep(50, n)
+  y <- rnorm(n, 50, 10)
+
+  result <- design_effect(w, y = y, clvar = clvar, method = "cr")
+  expect_equal(result$strata$deff.w, 1, tolerance = 1e-10)
+})
+
+test_that("design_effect cr agrees with survey package", {
+  skip_if_not_installed("survey")
+  set.seed(42)
+  n <- 200
+  strvar <- rep(1:4, each = 50)
+  clvar <- rep(1:50, each = 4)
+  w <- runif(n, 10, 50)
+  y <- rnorm(n, 50, 10)
+  stages <- rep(2L, 4)
+
+  our <- design_effect(w, y = y, strvar = strvar, clvar = clvar,
+                       stages = stages, method = "cr")
+
+  dsgn <- survey::svydesign(ids = ~clvar, strata = ~strvar,
+                            data = data.frame(y = y), weights = w,
+                            nest = TRUE)
+  mn <- survey::svymean(~y, design = dsgn, deff = TRUE)
+  survey_deff <- as.numeric(survey::deff(mn))
+
+  expect_equal(our$overall, survey_deff, tolerance = 0.05)
 })

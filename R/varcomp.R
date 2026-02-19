@@ -1,18 +1,11 @@
 #' Estimate Variance Components
 #'
-#' Estimate between- and within-stage variance components from frame
-#' data using nested ANOVA decomposition. Supports SRS and PPS
-#' first-stage designs with a formula or vector interface.
+#' Estimate between- and within-stage variance components using nested
+#' ANOVA decomposition. Supports SRS and PPS first-stage designs.
 #'
-#' @param x A formula (e.g., `income ~ district`) or a numeric vector
-#'   of the analysis variable.
+#' @param x A formula, numeric vector, or survey design object
+#'   (see Details).
 #' @param ... Additional arguments passed to methods.
-#' @param data A data frame (required for formula interface).
-#' @param stage_id A list of stage-ID vectors (required for vector interface).
-#'   Length determines the number of stage boundaries (stages - 1).
-#' @param prob First-stage selection probabilities. A one-sided formula
-#'   (e.g., `~pp`) when using the formula interface, or a numeric vector
-#'   for the vector interface. `NULL` (default) assumes SRS.
 #'
 #' @return A `svyplan_varcomp` object with components `var_between`,
 #'   `var_within`, `delta`, `k`, `rel_var`, and `stages`.
@@ -23,6 +16,8 @@
 #' - **Formula**: `varcomp(income ~ district, data = frame)`. The LHS is
 #'   the analysis variable, RHS terms are stage IDs (outermost first).
 #' - **Numeric vector**: `varcomp(y, stage_id = list(cluster_ids))`.
+#' - **survey.design**: `varcomp(design, ~y)`. Cluster structure is
+#'   extracted from the design object. Requires the survey package.
 #'
 #' When `prob` is `NULL`, SRS first-stage is assumed. When provided, PPS
 #' variance estimation is used.
@@ -51,14 +46,76 @@
 #' n_cluster(cost = c(500, 50), delta = vc, budget = 100000)
 #'
 #' @export
-varcomp <- function(x, ..., data = NULL, stage_id = NULL, prob = NULL) {
-  if (inherits(x, "formula")) {
-    .varcomp_formula(x, data = data, prob = prob)
-  } else if (is.numeric(x)) {
+varcomp <- function(x, ...) {
+  UseMethod("varcomp")
+}
+
+#' @describeIn varcomp Method for formula interface.
+#'
+#' @param data A data frame (required for formula interface).
+#' @param prob First-stage selection probabilities. A one-sided formula
+#'   (e.g., `~pp`) when using the formula interface, or a numeric vector.
+#'   `NULL` (default) assumes SRS.
+#'
+#' @export
+varcomp.formula <- function(x, ..., data = NULL, prob = NULL) {
+  .varcomp_formula(x, data = data, prob = prob)
+}
+
+#' @describeIn varcomp Default method for numeric vectors.
+#'
+#' @param stage_id A list of stage-ID vectors (required for vector interface).
+#'   Length determines the number of stage boundaries (stages - 1).
+#'
+#' @export
+varcomp.default <- function(x, ..., stage_id = NULL, prob = NULL) {
+  if (is.numeric(x)) {
     .varcomp_vector(x, stage_id = stage_id, prob = prob)
   } else {
-    stop("'x' must be a formula or a numeric vector", call. = FALSE)
+    stop("'x' must be a formula, numeric vector, or survey design object",
+         call. = FALSE)
   }
+}
+
+#' @describeIn varcomp Method for survey design objects. Pass a one-sided
+#'   formula (e.g., `~y`) to specify the outcome variable. Cluster
+#'   structure is extracted from the design.
+#'
+#' @export
+varcomp.survey.design <- function(x, ..., prob = NULL) {
+  formula <- NULL
+  for (a in list(...)) {
+    if (inherits(a, "formula")) {
+      formula <- a
+      break
+    }
+  }
+  if (is.null(formula)) {
+    stop("a one-sided formula specifying the outcome is required (e.g., ~y)",
+         call. = FALSE)
+  }
+
+  y_name <- all.vars(formula)
+  if (length(y_name) != 1L) {
+    stop("formula must reference exactly one variable", call. = FALSE)
+  }
+
+  y <- x$variables[[y_name]]
+  if (is.null(y)) {
+    stop(sprintf("variable '%s' not found in design variables", y_name),
+         call. = FALSE)
+  }
+
+  cl <- x$cluster
+  n_stages <- ncol(cl)
+
+  if (n_stages == 1L && length(unique(cl[[1L]])) == nrow(cl)) {
+    stop("design has no clusters (ids = ~1); varcomp requires a clustered design",
+         call. = FALSE)
+  }
+
+  stage_id <- lapply(seq_len(n_stages), function(j) cl[[j]])
+  .varcomp_dispatch(y, stage_id, prob)
 }
 
 #' Parse formula interface and dispatch

@@ -323,3 +323,43 @@ as.integer.svyplan_strata <- function(x, ...) {
 as.double.svyplan_strata <- function(x, ...) {
   x$boundaries
 }
+
+#' Assign Observations to Strata
+#'
+#' Apply strata boundaries from a [strata_bound()] result to a numeric
+#' vector, returning a factor of stratum assignments.
+#'
+#' @param object A `svyplan_strata` object.
+#' @param newdata Numeric vector to stratify.
+#' @param labels Labels for the resulting factor levels. Default `NULL`
+#'   generates labels from the boundary intervals.
+#' @param ... Additional arguments (currently unused).
+#'
+#' @return A factor of stratum assignments with length equal to
+#'   `length(newdata)`. Observations outside the original range receive
+#'   `NA`.
+#'
+#' @examples
+#' set.seed(42)
+#' x <- rlnorm(500, meanlog = 6, sdlog = 1.5)
+#' sb <- strata_bound(x, n_strata = 4, n = 100)
+#'
+#' # Default interval labels
+#' head(predict(sb, x))
+#'
+#' # Custom labels
+#' predict(sb, x, labels = c("Low", "Mid-Low", "Mid-High", "High"))
+#'
+#' @export
+predict.svyplan_strata <- function(object, newdata, labels = NULL, ...) {
+  if (!is.numeric(newdata)) {
+    stop("'newdata' must be a numeric vector", call. = FALSE)
+  }
+  s <- object$strata
+  breaks <- c(s$lower[1L], object$boundaries, s$upper[object$n_strata])
+  if (!is.null(labels) && length(labels) != object$n_strata) {
+    stop(sprintf("'labels' must have length %d (number of strata)", object$n_strata),
+         call. = FALSE)
+  }
+  cut(newdata, breaks = breaks, include.lowest = TRUE, labels = labels)
+}

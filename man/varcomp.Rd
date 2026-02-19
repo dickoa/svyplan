@@ -2,33 +2,41 @@
 % Please edit documentation in R/varcomp.R
 \name{varcomp}
 \alias{varcomp}
+\alias{varcomp.formula}
+\alias{varcomp.default}
+\alias{varcomp.survey.design}
 \title{Estimate Variance Components}
 \usage{
-varcomp(x, ..., data = NULL, stage_id = NULL, prob = NULL)
+varcomp(x, ...)
+
+\method{varcomp}{formula}(x, ..., data = NULL, prob = NULL)
+
+\method{varcomp}{default}(x, ..., stage_id = NULL, prob = NULL)
+
+\method{varcomp}{survey.design}(x, ..., prob = NULL)
 }
 \arguments{
-\item{x}{A formula (e.g., \code{income ~ district}) or a numeric vector
-of the analysis variable.}
+\item{x}{A formula, numeric vector, or survey design object
+(see Details).}
 
 \item{...}{Additional arguments passed to methods.}
 
 \item{data}{A data frame (required for formula interface).}
 
+\item{prob}{First-stage selection probabilities. A one-sided formula
+(e.g., \code{~pp}) when using the formula interface, or a numeric vector.
+\code{NULL} (default) assumes SRS.}
+
 \item{stage_id}{A list of stage-ID vectors (required for vector interface).
 Length determines the number of stage boundaries (stages - 1).}
-
-\item{prob}{First-stage selection probabilities. A one-sided formula
-(e.g., \code{~pp}) when using the formula interface, or a numeric vector
-for the vector interface. \code{NULL} (default) assumes SRS.}
 }
 \value{
 A \code{svyplan_varcomp} object with components \code{var_between},
 \code{var_within}, \code{delta}, \code{k}, \code{rel_var}, and \code{stages}.
 }
 \description{
-Estimate between- and within-stage variance components from frame
-data using nested ANOVA decomposition. Supports SRS and PPS
-first-stage designs with a formula or vector interface.
+Estimate between- and within-stage variance components using nested
+ANOVA decomposition. Supports SRS and PPS first-stage designs.
 }
 \details{
 The interface is determined by the class of \code{x}:
@@ -36,11 +44,24 @@ The interface is determined by the class of \code{x}:
 \item \strong{Formula}: \code{varcomp(income ~ district, data = frame)}. The LHS is
 the analysis variable, RHS terms are stage IDs (outermost first).
 \item \strong{Numeric vector}: \code{varcomp(y, stage_id = list(cluster_ids))}.
+\item \strong{survey.design}: \code{varcomp(design, ~y)}. Cluster structure is
+extracted from the design object. Requires the survey package.
 }
 
 When \code{prob} is \code{NULL}, SRS first-stage is assumed. When provided, PPS
 variance estimation is used.
 }
+\section{Methods (by class)}{
+\itemize{
+\item \code{varcomp(formula)}: Method for formula interface.
+
+\item \code{varcomp(default)}: Default method for numeric vectors.
+
+\item \code{varcomp(survey.design)}: Method for survey design objects. Pass a one-sided
+formula (e.g., \code{~y}) to specify the outcome variable. Cluster
+structure is extracted from the design.
+
+}}
 \examples{
 # 2-stage SRS using formula
 set.seed(42)
