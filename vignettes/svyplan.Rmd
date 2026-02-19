@@ -1,0 +1,294 @@
+---
+title: "Planning a household survey with svyplan"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Planning a household survey with svyplan}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+library(svyplan)
+```
+
+svyplan computes sample sizes, optimal allocations, strata boundaries,
+and statistical power for survey designs. This vignette walks through
+a realistic household survey planning workflow, from single-indicator
+sizing to multi-indicator optimization and power analysis.
+
+## Simple sample sizes
+
+The most common starting point: how many households do we need to
+estimate a proportion or a mean with a given precision?
+
+### Proportions
+
+Estimate vaccination coverage (expected ~70%) with a 5 percentage
+point margin of error:
+```{r}
+n_prop(p = 0.70, moe = 0.05)
+```
+
+With a design effect of 1.5 (typical for cluster surveys) and a
+finite population of 50,000 households:
+```{r}
+n_prop(p = 0.70, moe = 0.05, deff = 1.5, N = 50000)
+```
+
+Target a coefficient of variation instead of a margin of error:
+```{r}
+n_prop(p = 0.70, cv = 0.05)
+```
+
+### Means
+
+Estimate average household expenditure (variance = 40,000, mean = 800)
+with a margin of error of 30:
+```{r}
+n_mean(var = 40000, moe = 30)
+```
+
+## Design effects
+
+In cluster surveys, units within the same cluster tend to be similar.
+The design effect captures this inflation. For planning, the cluster
+formula `deff = 1 + (m - 1) * delta` links the expected design effect
+to the average cluster size `m` and the intraclass correlation `delta`:
+```{r}
+design_effect(delta = 0.05, m = 20, method = "cluster")
+```
+
+With 20 households per cluster and an ICC of 0.05, the design effect
+is about 2. This means we need roughly twice the SRS sample size.
+
+After a survey is conducted, you can compute the realized design effect
+from the survey weights:
+```{r}
+set.seed(1)
+w <- runif(500, 0.5, 4)
+design_effect(w, method = "kish")
+effective_n(w, method = "kish")
+```
+
+## Multi-indicator surveys
+
+Household surveys like DHS or MICS track many indicators at once.
+Each indicator has its own expected prevalence, precision target, and
+design effect. `n_multi()` finds the sample size that satisfies all
+targets simultaneously.
+
+```{r}
+targets <- data.frame(
+  name = c("stunting", "vaccination", "anemia"),
+  p    = c(0.25, 0.70, 0.12),
+  moe  = c(0.05, 0.05, 0.03),
+  deff = c(2.0, 1.5, 2.5)
+)
+
+n_multi(targets)
+```
+
+The binding indicator (marked with `*`) is the one that drives the
+overall sample size. The other indicators are estimated with better
+precision than requested.
+
+### Per-domain targets
+
+In practice, surveys need adequate precision within domains
+(e.g. urban/rural, regions). Add domain columns to the targets
+data frame and `n_multi()` optimizes each domain separately:
+```{r}
+targets_dom <- data.frame(
+  name       = rep(c("stunting", "vaccination", "anemia"), each = 2),
+  residence  = rep(c("urban", "rural"), 3),
+  p          = c(0.18, 0.32, 0.80, 0.60, 0.08, 0.16),
+  moe        = c(0.05, 0.05, 0.05, 0.05, 0.03, 0.03),
+  deff       = c(1.5, 2.5, 1.2, 1.8, 2.0, 3.0)
+)
+
+n_multi(targets_dom)
+```
+
+Any column not recognized as a standard parameter (like `name`, `p`,
+`moe`, `deff`) is treated as a domain variable.
+
+## Multistage cluster allocation
+
+For two-stage or three-stage designs, the question is not just "how
+many?" but "how many clusters and how many units per cluster?" The
+answer depends on the cost structure and the degree of clustering.
+
+### Variance components from frame data
+
+If you have frame data with cluster identifiers, `varcomp()` estimates
+the between-cluster and within-cluster variance components:
+```{r}
+set.seed(42)
+n_clust <- 80
+n_hh <- 15
+cluster_id <- rep(seq_len(n_clust), each = n_hh)
+cluster_mean <- rnorm(n_clust, mean = 50, sd = 10)
+expenditure <- cluster_mean[cluster_id] + rnorm(n_clust * n_hh, sd = 20)
+frame <- data.frame(cluster = cluster_id, expenditure = expenditure)
+
+vc <- varcomp(expenditure ~ cluster, data = frame)
+vc
+```
+
+The `delta` value is the intraclass correlation. It can be passed
+directly to `n_cluster()` and `design_effect()`.
+
+### Optimal allocation
+
+Given per-stage costs and the variance structure, `n_cluster()` finds
+the allocation that minimizes cost for a target CV, or minimizes CV
+for a given budget:
+```{r}
+# Minimize cost to achieve CV = 0.05
+n_cluster(cost = c(500, 50), delta = vc, cv = 0.05)
+
+# Maximize precision within a budget of 100,000
+n_cluster(cost = c(500, 50), delta = vc, budget = 100000)
+```
+
+The `delta = vc` shorthand passes the variance component object
+directly. `n_cluster()` extracts `delta`, `rel_var`, and `k`
+automatically.
+
+### Three-stage designs
+
+Add a third cost element for three-stage designs:
+```{r}
+n_cluster(
+  cost  = c(1000, 200, 20),
+  delta = c(0.01, 0.05),
+  cv    = 0.05
+)
+```
+
+### Multi-indicator multistage
+
+For surveys with multiple indicators and a cluster design, provide
+per-indicator `delta` columns and a cost vector to `n_multi()`:
+```{r}
+targets_ms <- data.frame(
+  name   = c("stunting", "vaccination"),
+  p      = c(0.25, 0.70),
+  cv     = c(0.10, 0.08),
+  delta1 = c(0.05, 0.02)
+)
+
+n_multi(targets_ms, cost = c(500, 50), budget = 80000)
+```
+
+## Strata boundaries
+
+When a continuous auxiliary variable is available on the frame,
+`strata_bound()` finds the optimal boundaries that minimize the
+sample size (or CV) for a given stratification.
+
+```{r}
+set.seed(1)
+x <- rlnorm(5000, meanlog = 6, sdlog = 1.2)
+
+# Dalenius-Hodges cumulative root frequency
+strata_bound(x, n_strata = 4, n = 300, method = "cumrootf")
+```
+
+Four methods are available:
+
+- `"cumrootf"`: Dalenius-Hodges cumulative root frequency (fast, deterministic)
+- `"geo"`: geometric progression (fast, deterministic)
+- `"lh"`: Lavallee-Hidiroglou iterative algorithm (good for skewed data)
+- `"kozak"`: Kozak random search (global optimizer, slower)
+
+The Kozak method often finds better boundaries for highly skewed
+distributions:
+```{r}
+strata_bound(x, n_strata = 4, cv = 0.05, method = "kozak")
+```
+
+## Power analysis
+
+Sample size calculations based on precision (margin of error) answer
+"how precisely can we estimate this indicator?" Power analysis answers
+a different question: "can we detect a change or a difference?"
+
+### Detecting change over time
+
+A survey measured vaccination coverage at 70%. Can a follow-up survey
+detect a 5 percentage point increase with 80% power?
+```{r}
+power_prop(p1 = 0.70, p2 = 0.75, power = 0.80)
+```
+
+With a design effect of 2:
+```{r}
+power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
+```
+
+### Panel surveys
+
+If the follow-up resamples 50% of the original households and the
+correlation between occasions is 0.6, the required sample size drops:
+```{r}
+power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0,
+           overlap = 0.50, rho = 0.6)
+```
+
+### Solving for power or MDE
+
+Given a fixed sample size, what power do we have?
+```{r}
+power_prop(p1 = 0.70, p2 = 0.75, n = 1500, power = NULL, deff = 2.0)
+```
+
+What is the minimum detectable effect with n = 1500?
+```{r}
+power_prop(p1 = 0.70, n = 1500, deff = 2.0)
+```
+
+### Means
+
+The same three solve modes work for continuous outcomes:
+```{r}
+# Sample size to detect a difference of 5 units (within-group var = 200)
+power_mean(delta = 5, var = 200)
+
+# MDE with n = 400 per group
+power_mean(var = 200, n = 400)
+```
+
+## Putting it together
+
+A typical planning sequence for a national household survey:
+
+1. Define indicators and precision targets per domain
+2. Compute sample sizes with `n_multi()`
+3. If frame data is available, estimate variance components with `varcomp()`
+4. Optimize the multistage allocation with `n_cluster()` or `n_multi()` with costs
+5. Determine strata boundaries with `strata_bound()`
+6. Check that the design has adequate power with `power_prop()` / `power_mean()`
+
+```{r}
+# Step 1-2: multi-indicator sample size
+targets <- data.frame(
+  name = c("stunting", "vaccination", "anemia"),
+  p    = c(0.25, 0.70, 0.12),
+  moe  = c(0.05, 0.05, 0.03),
+  deff = c(2.0, 1.5, 2.5)
+)
+plan <- n_multi(targets)
+plan
+
+# Step 6: can we detect a 5pp change in stunting with this sample?
+power_prop(p1 = 0.25, p2 = 0.20, n = as.integer(plan), power = NULL, deff = 2.0)
+```
+
+All svyplan output objects support `as.integer()` (ceiling of n) and
+`as.double()` (exact n), making it easy to pass results between
+functions or into other tools.

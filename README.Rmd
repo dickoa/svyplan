@@ -1,0 +1,134 @@
+---
+output: github_document
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-"
+)
+```
+
+# svyplan
+
+Survey sample size determination, optimal allocation, stratification,
+and power analysis for R.
+
+## Installation
+
+```r
+# From GitLab
+remotes::install_gitlab("dickoa/svyplan")
+```
+
+## Sample sizes
+
+```{r}
+library(svyplan)
+
+# Proportion with margin of error
+n_prop(p = 0.3, moe = 0.05)
+
+# Mean with finite population and design effect
+n_mean(var = 100, moe = 2, N = 5000, deff = 1.5)
+```
+
+## Multi-indicator surveys
+
+Household surveys track many indicators at once. `n_multi()` finds the
+sample size that satisfies all precision targets simultaneously.
+
+```{r}
+targets <- data.frame(
+  name = c("stunting", "vaccination", "anemia"),
+  p    = c(0.25, 0.70, 0.12),
+  moe  = c(0.05, 0.05, 0.03),
+  deff = c(2.0, 1.5, 2.5)
+)
+
+n_multi(targets)
+```
+
+Per-domain optimization works by adding domain columns to the targets
+data frame.
+
+## Multistage cluster designs
+
+```{r}
+# Optimal 2-stage allocation within a budget
+n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+
+# CV for a given allocation
+cv_cluster(n = c(50, 12), delta = 0.05)
+```
+
+Variance components can be estimated from frame data and passed
+directly to `n_cluster()`:
+
+```{r}
+set.seed(1)
+frame <- data.frame(
+  district = rep(1:40, each = 20),
+  income = rep(rnorm(40, 500, 100), each = 20) + rnorm(800, 0, 50)
+)
+
+vc <- varcomp(income ~ district, data = frame)
+vc
+
+n_cluster(cost = c(500, 50), delta = vc, cv = 0.05)
+```
+
+## Strata boundaries
+
+`strata_bound()` finds optimal boundaries for a continuous
+stratification variable.
+
+```{r}
+set.seed(1)
+x <- rlnorm(5000, meanlog = 6, sdlog = 1.2)
+
+strata_bound(x, n_strata = 4, n = 300, method = "cumrootf")
+```
+
+Four methods are available: Dalenius-Hodges (`"cumrootf"`), geometric
+(`"geo"`), Lavallee-Hidiroglou (`"lh"`), and Kozak (`"kozak"`).
+
+## Power analysis
+
+Solve for sample size, power, or minimum detectable effect. Supports
+design effects, finite population correction, and panel overlap.
+
+```{r}
+# Sample size to detect a 5pp change from 70% with deff = 2
+power_prop(p1 = 0.70, p2 = 0.75, deff = 2.0)
+
+# MDE with n = 1500 per group
+power_prop(p1 = 0.70, n = 1500, deff = 2.0)
+
+# Means
+power_mean(delta = 5, var = 200)
+```
+
+## Design effects
+
+```{r}
+# Planning: expected cluster design effect
+design_effect(delta = 0.05, m = 20, method = "cluster")
+
+# Diagnostic: Kish design effect from weights
+set.seed(1)
+w <- runif(500, 0.5, 4)
+design_effect(w, method = "kish")
+effective_n(w, method = "kish")
+```
+
+## References
+
+Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
+
+Kish, L. (1965). *Survey Sampling*. Wiley.
+
+Valliant, R., Dever, J. A., and Kreuter, F. (2018).
+*Practical Tools for Designing and Weighting Survey Samples*
+(2nd ed.). Springer.

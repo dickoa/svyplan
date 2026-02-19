@@ -1,0 +1,58 @@
+url: https://dickoa.gitlab.io/svyplan
+
+template:
+  bootstrap: 5
+
+home:
+  strip_header: true
+
+navbar:
+  structure:
+    left: [intro, reference]
+    right: [search, gitlab]
+  components:
+    gitlab:
+      icon: fa-gitlab
+      href: https://gitlab.com/dickoa/svyplan
+      aria-label: GitLab
+
+reference:
+- title: Package
+  contents:
+  - svyplan-package
+
+- title: Sample size determination
+  desc: Compute required sample sizes for different designs.
+  contents:
+  - n_prop
+  - n_mean
+  - n_cluster
+  - n_multi
+
+- title: Power analysis
+  desc: Statistical power for two-sample tests.
+  contents:
+  - power_prop
+  - power_mean
+
+- title: Design analysis
+  desc: Evaluate precision and estimate variance components.
+  contents:
+  - cv_cluster
+  - varcomp
+
+- title: Stratification
+  desc: Optimal strata boundary determination.
+  contents:
+  - strata_bound
+
+- title: Design effects
+  desc: Estimate design effects and effective sample sizes.
+  contents:
+  - design_effect
+  - effective_n
+
+- title: Print methods
+  desc: Format and display svyplan objects.
+  contents:
+  - print.svyplan
