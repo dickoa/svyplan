@@ -19,7 +19,7 @@ and power analysis for R.
 
 ```r
 # From GitLab
-remotes::install_gitlab("dickoa/svyplan")
+pak::pkg_install("gitlab::dickoa/svyplan")
 ```
 
 ## Sample sizes

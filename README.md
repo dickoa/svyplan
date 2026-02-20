@@ -8,7 +8,7 @@ and power analysis for R.
 
 ``` r
 # From GitLab
-remotes::install_gitlab("dickoa/svyplan")
+pak::pkg_install("gitlab::dickoa/svyplan")
 ```
 
 ## Sample sizes
@@ -103,13 +103,13 @@ x <- rlnorm(5000, meanlog = 6, sdlog = 1.2)
 strata_bound(x, n_strata = 4, n = 300, method = "cumrootf")
 #> Strata boundaries (Dalenius-Hodges, 4 strata)
 #> Boundaries: 400.0, 1300.0, 3300.0
-#> n = 300, CV = 0.0218
+#> n = 300, CV = 0.0211
 #> ---
 #>  stratum lower      upper    N_h  W_h   S_h    n_h
-#>  1          4.92557   400.00 2523 0.505 107.1   59
-#>  2        400.00000  1300.00 1610 0.322 250.3   72
-#>  3       1300.00000  3300.00  647 0.129 544.0   67
-#>  4       3300.00000 39039.61  220 0.044 3675.1 102
+#>  1          4.92557   400.00 2523 0.505 107.1   44
+#>  2        400.00000  1300.00 1610 0.322 250.3   66
+#>  3       1300.00000  3300.00  647 0.129 544.0   58
+#>  4       3300.00000 39039.61  220 0.044 3675.1 132
 ```
 
 Four methods are available: Dalenius-Hodges (`"cumrootf"`), geometric
