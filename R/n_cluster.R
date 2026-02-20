@@ -66,6 +66,10 @@ n_cluster <- function(cost, delta, rel_var = 1, k = 1,
   stages <- length(cost)
   check_delta(delta, expected_length = stages - 1L)
 
+  if (any(delta == 0) || any(delta == 1))
+    stop("'delta' must be in (0, 1) for n_cluster(); boundary values make cluster optimization degenerate",
+         call. = FALSE)
+
   has_cv <- !is.null(cv)
   has_budget <- !is.null(budget)
   if (has_cv == has_budget) {

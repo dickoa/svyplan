@@ -46,6 +46,27 @@ test_that("var + cv requires mu", {
   expect_error(n_multi(df, cost = c(500, 50)), "'mu' is required")
 })
 
+test_that("n_multi rejects negative cv in multistage", {
+  expect_error(
+    n_multi(data.frame(p = 0.3, cv = -0.1, delta1 = 0.05), cost = c(500, 50)),
+    "positive"
+  )
+})
+
+test_that("n_multi rejects delta1 outside [0, 1]", {
+  expect_error(
+    n_multi(data.frame(p = 0.3, cv = 0.1, delta1 = 1.5), cost = c(500, 50)),
+    "\\[0, 1\\]"
+  )
+})
+
+test_that("n_multi rejects negative moe", {
+  expect_error(
+    n_multi(data.frame(p = 0.3, moe = -0.05)),
+    "positive"
+  )
+})
+
 test_that("single proportion indicator matches n_prop", {
   df <- data.frame(p = 0.3, moe = 0.05)
   res <- n_multi(df)

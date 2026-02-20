@@ -61,7 +61,8 @@ observed at both occasions, following the approach in Kish (1965, Ch. 11).
 \item \strong{Solve power}: Compute SE, then
 \eqn{\text{power} = \Phi(\delta / \text{SE} - z_{\alpha/s})}.
 For two-sided tests both tails are included.
-\item \strong{Solve MDE}: \code{uniroot} search over \code{p2}.
+\item \strong{Solve MDE}: \code{uniroot} search for the smallest \code{p2 > p1} achieving
+the target power. To find the MDE for a decrease, swap \code{p1} and \code{p2}.
 }
 }
 \examples{

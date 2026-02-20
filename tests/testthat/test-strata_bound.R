@@ -57,6 +57,15 @@ test_that("validates certain", {
                "all units")
 })
 
+test_that("certain marks only the last stratum as take-all", {
+  set.seed(1)
+  x <- c(runif(95, 1, 100), runif(5, 200, 300))
+  thr <- as.numeric(quantile(x, 0.95))
+  res <- strata_bound(x, n_strata = 3, n = 30, certain = thr, method = "cumrootf")
+  expect_equal(which(res$strata$certain), 3L)
+  expect_equal(res$strata$n_h[3], res$strata$N_h[3])
+})
+
 test_that("cumrootf: uniform data yields reasonable strata", {
   res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf")
   expect_s3_class(res, "svyplan_strata")
@@ -279,4 +288,12 @@ test_that("2 strata works (single boundary)", {
   res <- strata_bound(x_unif, n_strata = 2, n = 80, method = "cumrootf")
   expect_length(res$boundaries, 1L)
   expect_equal(nrow(res$strata), 2L)
+})
+
+test_that("lh handles skewed data without NA crash", {
+  skip_on_cran()
+  set.seed(5)
+  x_skew <- rlnorm(500, meanlog = 8, sdlog = 3)
+  res <- strata_bound(x_skew, n_strata = 4, n = 100, method = "lh")
+  expect_s3_class(res, "svyplan_strata")
 })

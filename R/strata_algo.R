@@ -249,6 +249,7 @@
   }
 
   best_obj <- obj_fn(bk)
+  if (!is.finite(best_obj)) best_obj <- Inf
   best_bk <- bk
   converged <- FALSE
   tol <- diff(range(x_sort)) * 1e-6
@@ -267,11 +268,12 @@
       bk[h] <- opt$minimum
     }
     new_obj <- obj_fn(bk)
-    if (new_obj < best_obj) {
+    if (is.finite(new_obj) && (is.infinite(best_obj) || new_obj < best_obj)) {
       best_obj <- new_obj
       best_bk <- bk
     }
-    rel_change <- abs(new_obj - best_obj) / (abs(best_obj) + 1e-12)
+    rel_change <- if (is.finite(new_obj) && is.finite(best_obj))
+      abs(new_obj - best_obj) / (abs(best_obj) + 1e-12) else Inf
     if (max(abs(bk - bk_old)) < tol || rel_change < 1e-8) {
       converged <- TRUE
       break

@@ -84,7 +84,7 @@ check_weights <- function(w, name = "x") {
     stop(sprintf("'%s' must not contain NA values", name), call. = FALSE)
   }
   if (any(w <= 0)) {
-    warning(sprintf("some values in '%s' are <= 0", name), call. = FALSE)
+    stop(sprintf("'%s' must contain only positive values", name), call. = FALSE)
   }
   invisible(TRUE)
 }

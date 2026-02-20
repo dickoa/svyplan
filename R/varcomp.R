@@ -214,6 +214,21 @@ varcomp.survey.design <- function(x, ..., prob = NULL) {
   }
 }
 
+#' Impute singleton cluster variances (NA from var() on length-1 groups)
+#' @keywords internal
+#' @noRd
+.impute_singleton_var <- function(x) {
+  lonely <- is.na(x)
+  if (all(lonely)) {
+    warning("all clusters are singletons; within-cluster variance set to 0",
+            call. = FALSE)
+    x[] <- 0
+  } else if (any(lonely)) {
+    x[lonely] <- mean(x[!lonely])
+  }
+  x
+}
+
 #' 2-stage SRS variance components
 #' @keywords internal
 #' @noRd
@@ -227,11 +242,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL) {
   ti <- vapply(grp, sum, numeric(1L))
   S2Ui <- vapply(grp, var, numeric(1L))
 
-  # Handle lonely SSUs (single-element clusters)
-  lonely <- is.na(S2Ui)
-  if (any(lonely)) {
-    S2Ui[lonely] <- mean(S2Ui[!lonely])
-  }
+  S2Ui <- .impute_singleton_var(S2Ui)
 
   tbarU <- mean(ti)
   tU <- M * tbarU
@@ -284,10 +295,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL) {
   cl_tots <- vapply(grp, sum, numeric(1L))
   cl_vars <- vapply(grp, var, numeric(1L))
 
-  lonely <- is.na(cl_vars)
-  if (any(lonely)) {
-    cl_vars[lonely] <- mean(cl_vars[!lonely])
-  }
+  cl_vars <- .impute_singleton_var(cl_vars)
 
   tU <- sum(cl_tots)
   S2U1 <- sum(pp_psu * (cl_tots / pp_psu - tU)^2)
@@ -341,42 +349,34 @@ varcomp.survey.design <- function(x, ..., prob = NULL) {
   S2U1pwr <- sum(pp_psu * (tUi / pp_psu - tU)^2)
   B <- S2U1pwr / tU^2
 
-  # SSU structure: first psu for each ssu, count SSUs per PSU
-  unique_ssu <- unique(ssu_id)
-  first_psu_per_ssu <- psu_id[match(unique_ssu, ssu_id)]
+  # Nest SSU IDs within PSU (handles non-unique SSU IDs across PSUs)
+  ssu_nested <- interaction(psu_id, ssu_id, drop = TRUE)
+  unique_ssu <- unique(ssu_nested)
+  first_psu_per_ssu <- psu_id[match(unique_ssu, ssu_nested)]
   psu_of_ssu_idx <- match(first_psu_per_ssu, unique_psu)
   Ni <- tabulate(psu_of_ssu_idx, nbins = M)
 
   # SSU totals and their variances within PSU
-  ssu_idx <- match(ssu_id, unique_ssu)
+  ssu_idx <- match(ssu_nested, unique_ssu)
   grp_ssu <- split(y, ssu_idx)
   tij <- vapply(grp_ssu, sum, numeric(1L))
   grp_tij <- split(tij, psu_of_ssu_idx)
   S2U2i <- vapply(grp_tij, var, numeric(1L))
 
-  lonely_ssu <- is.na(S2U2i)
-  if (any(lonely_ssu)) {
-    S2U2i[lonely_ssu] <- mean(S2U2i[!lonely_ssu])
-  }
+  S2U2i <- .impute_singleton_var(S2U2i)
   vw2 <- sum(Ni^2 * S2U2i / pp_psu) / tU^2
 
   # Element-level variance within PSU (for delta1 = B/(B+W))
   Qi <- tabulate(psu_idx, nbins = M)
   S2U3i <- vapply(grp_psu, var, numeric(1L))
-  lonely_psu <- is.na(S2U3i)
-  if (any(lonely_psu)) {
-    S2U3i[lonely_psu] <- mean(S2U3i[!lonely_psu])
-  }
+  S2U3i <- .impute_singleton_var(S2U3i)
   W <- sum(Qi^2 * S2U3i / pp_psu) / tU^2
 
   # Element-level variance within SSU
   n_ssu <- length(unique_ssu)
   Qij <- tabulate(ssu_idx, nbins = n_ssu)
   S2U3ij <- vapply(grp_ssu, var, numeric(1L))
-  lonely_tsu <- is.na(S2U3ij)
-  if (any(lonely_tsu)) {
-    S2U3ij[lonely_tsu] <- mean(S2U3ij[!lonely_tsu])
-  }
+  S2U3ij <- .impute_singleton_var(S2U3ij)
 
   # Replicate pp and Ni to SSU level
   pp_ssu <- pp_psu[psu_of_ssu_idx]

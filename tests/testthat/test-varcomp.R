@@ -162,6 +162,34 @@ test_that("varcomp.survey.design feeds into n_cluster", {
   expect_s3_class(plan, "svyplan_cluster")
 })
 
+test_that("3-stage varcomp with non-nested SSU IDs matches nested", {
+  set.seed(42)
+  psu_id <- rep(1:5, each = 10)
+  ssu_id_non_nested <- rep(rep(1:2, each = 5), 5)
+  ssu_id_nested <- interaction(psu_id, ssu_id_non_nested, drop = TRUE)
+  y <- rnorm(50, 100, 20)
+  pp <- rep(0.2, 5)
+
+  res_non <- varcomp(y, stage_id = list(psu_id, ssu_id_non_nested), prob = pp)
+  res_nested <- varcomp(y, stage_id = list(psu_id, ssu_id_nested), prob = pp)
+
+  expect_equal(res_non$delta, res_nested$delta, tolerance = 1e-10)
+  expect_equal(res_non$var_between, res_nested$var_between, tolerance = 1e-10)
+  expect_equal(res_non$var_within, res_nested$var_within, tolerance = 1e-10)
+})
+
+test_that("all-singleton 2-stage returns delta = 1 with warning", {
+  psu_id <- 1:10
+  y <- rnorm(10, 100, 20)
+  expect_warning(
+    res <- varcomp(y, stage_id = list(psu_id)),
+    "all clusters are singletons"
+  )
+  expect_equal(res$delta, 1)
+  expect_false(is.nan(res$delta))
+  expect_true(is.finite(res$k))
+})
+
 test_that("varcomp.survey.design validates inputs", {
   skip_if_not_installed("survey")
   frame <- data.frame(y = rnorm(50), cl = rep(1:10, each = 5))

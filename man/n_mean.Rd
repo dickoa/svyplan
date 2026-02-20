@@ -38,6 +38,10 @@ multiplied by \code{deff}.
 \item \strong{CV mode}: Computes \code{CVpop = sqrt(var) / mu}, then
 \code{n = CVpop^2 / (cv^2 + CVpop^2 / N)}, multiplied by \code{deff}.
 }
+
+The FPC is the standard Cochran (1977) one-step form. Unlike \code{\link[=n_prop]{n_prop()}},
+no \code{N/(N-1)} adjustment is needed because \code{var} is already defined on
+\code{N-1} degrees of freedom.
 }
 \examples{
 # MOE mode

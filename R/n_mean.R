@@ -23,6 +23,10 @@
 #' - **CV mode**: Computes `CVpop = sqrt(var) / mu`, then
 #'   `n = CVpop^2 / (cv^2 + CVpop^2 / N)`, multiplied by `deff`.
 #'
+#' The FPC is the standard Cochran (1977) one-step form. Unlike [n_prop()],
+#' no `N/(N-1)` adjustment is needed because `var` is already defined on
+#' `N-1` degrees of freedom.
+#'
 #' @references
 #' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
 #'

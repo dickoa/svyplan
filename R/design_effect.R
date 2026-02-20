@@ -106,6 +106,7 @@ design_effect.default <- function(
   }
 
   check_scalar(m, "m")
+  check_delta(delta)
 
   1 + (m - 1) * delta
 }
@@ -137,6 +138,7 @@ design_effect.default <- function(
   Nhat <- sum(w)
   wbar <- weighted.mean(w, w)
   vy <- .wtdvar(y, w)
+  if (vy < .Machine$double.eps) return(1.0)
   vw <- .wtdvar(w, w)
   if (vw < .Machine$double.eps) return(1.0)
   vu <- .wtdvar(u, w)
@@ -144,8 +146,13 @@ design_effect.default <- function(
   ubar <- weighted.mean(u, w)
   u2bar <- weighted.mean(u^2, w)
 
-  rho_u2w <- sum(w * (u^2 - u2bar) * (w - wbar)) / Nhat / sqrt(vu2 * vw)
-  rho_uw <- sum(w * (u - ubar) * (w - wbar)) / Nhat / sqrt(vu * vw)
+  if (vu < .Machine$double.eps) {
+    rho_u2w <- 0
+    rho_uw <- 0
+  } else {
+    rho_u2w <- sum(w * (u^2 - u2bar) * (w - wbar)) / Nhat / sqrt(vu2 * vw)
+    rho_uw <- sum(w * (u - ubar) * (w - wbar)) / Nhat / sqrt(vu * vw)
+  }
 
   as.numeric(
     dK *
@@ -178,6 +185,7 @@ design_effect.default <- function(
   pbar <- weighted.mean(p, w)
   wbar <- weighted.mean(w, w)
   vy <- .wtdvar(y, w)
+  if (vy < .Machine$double.eps) return(1.0)
   vw <- .wtdvar(w, w)
   if (vw < .Machine$double.eps) return(1.0)
   vp <- .wtdvar(p, w)
@@ -186,9 +194,16 @@ design_effect.default <- function(
   ebar <- weighted.mean(e, w)
   e2bar <- weighted.mean(e^2, w)
 
-  rho_yp <- sum(w * (y - ybar) * (p - pbar)) / Nhat / sqrt(vy * vp)
-  rho_e2w <- sum(w * (e^2 - e2bar) * (w - wbar)) / Nhat / sqrt(ve2 * vw)
-  rho_ew <- sum(w * (e - ebar) * (w - wbar)) / Nhat / sqrt(ve * vw)
+  rho_yp <- if (vp < .Machine$double.eps) 0 else
+    sum(w * (y - ybar) * (p - pbar)) / Nhat / sqrt(vy * vp)
+
+  if (ve < .Machine$double.eps) {
+    rho_e2w <- 0
+    rho_ew <- 0
+  } else {
+    rho_e2w <- sum(w * (e^2 - e2bar) * (w - wbar)) / Nhat / sqrt(ve2 * vw)
+    rho_ew <- sum(w * (e - ebar) * (w - wbar)) / Nhat / sqrt(ve * vw)
+  }
 
   as.numeric(
     A^2 *

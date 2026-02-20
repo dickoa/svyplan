@@ -65,7 +65,9 @@
 #' Allocation is controlled by the `alloc` parameter via power allocation:
 #' \eqn{n_h \propto N_h^{q_1} S_h^{q_2} / c_h^{q_3}}{n_h ~ N_h^q1 * S_h^q2 / c_h^q3}.
 #' Named shortcuts: `"proportional"` = (1, 0, 0), `"neyman"` = (1, 1, 0),
-#' `"optimal"` = (1, 1, 0.5).
+#' `"optimal"` = (1, 1, 0.5). Stratum allocations `n_h` are rounded to
+#' integers using the ORIC method (Cont and Heidari, 2014), which preserves
+#' `sum(n_h) = n` while minimizing rounding distortion.
 #'
 #' @references
 #' Dalenius, T. and Hodges, J. L. (1959). Minimum variance stratification.
@@ -95,7 +97,7 @@
 #' # Dalenius-Hodges (non-iterative)
 #' strata_bound(x, n_strata = 4, method = "cumrootf", n = 100)
 #'
-#' # Kozak (default, iterative)
+#' # LH (default, iterative)
 #' strata_bound(x, n_strata = 4, n = 100)
 #'
 #' # With take-all stratum
@@ -220,11 +222,7 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     n_total <- length(x) / 2
   }
 
-  certain_strata <- if (!is.null(certain)) {
-    which(c(bk, max(x)) >= certain)
-  } else {
-    NULL
-  }
+  certain_strata <- if (!is.null(certain)) n_strata else NULL
 
   alloc_res <- .strata_alloc(x, bk, n_total, alloc_q, cost_h, certain_strata)
 

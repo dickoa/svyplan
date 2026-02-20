@@ -69,6 +69,55 @@ test_that("design_effect spencer returns 1 for equal weights", {
   expect_equal(result, 1.0)
 })
 
+test_that("design_effect henry returns 1 for constant y", {
+  set.seed(42)
+  n <- 100
+  w <- runif(n, 1, 5)
+  x_cal <- runif(n, 10, 100)
+  y <- rep(50, n)
+  result <- design_effect(w, y = y, x_cal = x_cal, method = "henry")
+  expect_equal(result, 1.0)
+})
+
+test_that("design_effect spencer returns 1 for constant y", {
+  set.seed(42)
+  n <- 100
+  w <- runif(n, 1, 5)
+  p <- runif(n, 0.01, 0.2)
+  y <- rep(50, n)
+  result <- design_effect(w, y = y, p = p, method = "spencer")
+  expect_equal(result, 1.0)
+})
+
+test_that("design_effect spencer handles equal probabilities", {
+  set.seed(42)
+  n <- 100
+  w <- runif(n, 1, 5)
+  p <- rep(0.1, n)
+  y <- 50 + rnorm(n, 0, 10)
+  result <- design_effect(w, y = y, p = p, method = "spencer")
+  expect_true(is.numeric(result))
+  expect_false(is.nan(result))
+})
+
+test_that("design_effect cluster rejects invalid delta", {
+  expect_error(
+    design_effect(delta = -0.2, m = 10, method = "cluster"),
+    "\\[0, 1\\]"
+  )
+  expect_error(
+    design_effect(delta = 1.5, m = 10, method = "cluster"),
+    "\\[0, 1\\]"
+  )
+})
+
+test_that("design_effect rejects zero weights", {
+  expect_error(
+    design_effect(c(1, 0, 2), method = "kish"),
+    "positive"
+  )
+})
+
 test_that("design_effect validates inputs", {
   expect_error(design_effect(delta = 0.05, method = "cluster"),
                "'delta' and 'm' are required")

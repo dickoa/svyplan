@@ -50,9 +50,15 @@ mode, no FPC.
 Only \code{moe} mode, with optional FPC.
 }
 
+For proportions near 0 or 1 (below 0.1 or above 0.9), the Wald interval
+has poor coverage; \code{method = "wilson"} is recommended in those cases.
+
 For the Wilson and log-odds methods, the design effect is applied as a
 multiplicative factor to the final SRS sample size, which is an
 approximation.
+
+The Wald FPC uses the Cochran (1977, Ch. 3) form with an \code{N/(N-1)} factor
+to account for the Bernoulli finite-population variance.
 }
 \examples{
 # Wald, absolute margin of error

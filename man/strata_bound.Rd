@@ -97,7 +97,9 @@ may get trapped in local minima. The non-iterative methods (\code{"cumrootf"},
 Allocation is controlled by the \code{alloc} parameter via power allocation:
 \eqn{n_h \propto N_h^{q_1} S_h^{q_2} / c_h^{q_3}}{n_h ~ N_h^q1 * S_h^q2 / c_h^q3}.
 Named shortcuts: \code{"proportional"} = (1, 0, 0), \code{"neyman"} = (1, 1, 0),
-\code{"optimal"} = (1, 1, 0.5).
+\code{"optimal"} = (1, 1, 0.5). Stratum allocations \code{n_h} are rounded to
+integers using the ORIC method (Cont and Heidari, 2014), which preserves
+\code{sum(n_h) = n} while minimizing rounding distortion.
 }
 \examples{
 set.seed(42)
@@ -106,7 +108,7 @@ x <- rlnorm(500, meanlog = 6, sdlog = 1.5)
 # Dalenius-Hodges (non-iterative)
 strata_bound(x, n_strata = 4, method = "cumrootf", n = 100)
 
-# Kozak (default, iterative)
+# LH (default, iterative)
 strata_bound(x, n_strata = 4, n = 100)
 
 # With take-all stratum

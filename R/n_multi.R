@@ -237,6 +237,13 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     }
   }
 
+  if (has_moe) {
+    moe_vals <- targets$moe[!is.na(targets$moe)]
+    if (any(moe_vals <= 0)) {
+      stop("'moe' values must be positive", call. = FALSE)
+    }
+  }
+
   # Multistage requires cv and delta1
   if (multistage) {
     if (!has_cv) {
@@ -249,6 +256,20 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     }
     if (!"delta1" %in% names(targets)) {
       stop("multistage mode requires 'delta1' column in targets", call. = FALSE)
+    }
+    cv_vals <- targets$cv[!is.na(targets$cv)]
+    if (any(cv_vals <= 0)) {
+      stop("'cv' values must be positive", call. = FALSE)
+    }
+    d1_vals <- targets$delta1[!is.na(targets$delta1)]
+    if (any(d1_vals < 0 | d1_vals > 1)) {
+      stop("'delta1' values must be in [0, 1]", call. = FALSE)
+    }
+    if ("delta2" %in% names(targets)) {
+      d2_vals <- targets$delta2[!is.na(targets$delta2)]
+      if (any(d2_vals < 0 | d2_vals > 1)) {
+        stop("'delta2' values must be in [0, 1]", call. = FALSE)
+      }
     }
   }
 

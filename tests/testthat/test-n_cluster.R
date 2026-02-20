@@ -93,6 +93,17 @@ test_that("n_cluster round-trips with cv_cluster", {
   expect_equal(cv_check, plan$cv, tolerance = 1e-6)
 })
 
+test_that("n_cluster rejects boundary delta values", {
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 0, budget = 1e5),
+    "\\(0, 1\\)"
+  )
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 1, cv = 0.05),
+    "\\(0, 1\\)"
+  )
+})
+
 test_that("n_cluster validates inputs", {
   expect_error(n_cluster(cost = 500, delta = 0.05, budget = 100000),
                "length >= 2")

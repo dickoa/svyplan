@@ -32,7 +32,8 @@
 #' - **Solve power**: Compute SE, then
 #'   \eqn{\text{power} = \Phi(\delta / \text{SE} - z_{\alpha/s})}.
 #'   For two-sided tests both tails are included.
-#' - **Solve MDE**: `uniroot` search over `p2`.
+#' - **Solve MDE**: `uniroot` search for the smallest `p2 > p1` achieving
+#'   the target power. To find the MDE for a decrease, swap `p1` and `p2`.
 #'
 #' @references
 #' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
