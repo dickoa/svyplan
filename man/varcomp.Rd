@@ -31,8 +31,17 @@ varcomp(x, ...)
 Length determines the number of stage boundaries (stages - 1).}
 }
 \value{
-A \code{svyplan_varcomp} object with components \code{var_between},
-\code{var_within}, \code{delta}, \code{k}, \code{rel_var}, and \code{stages}.
+A \code{svyplan_varcomp} object with components:
+\describe{
+\item{\code{var_between}}{Between-cluster variance (scalar).}
+\item{\code{var_within}}{Within-cluster variance. Length 1 for 2-stage,
+length 2 for 3-stage.}
+\item{\code{delta}}{Measure of homogeneity. Length 1 for 2-stage,
+length 2 for 3-stage.}
+\item{\code{k}}{Ratio parameter(s), same length as \code{delta}.}
+\item{\code{rel_var}}{Unit relvariance (scalar).}
+\item{\code{stages}}{Number of stages (2 or 3).}
+}
 }
 \description{
 Estimate between- and within-stage variance components using nested

@@ -16,7 +16,15 @@
 #' @param overlap Panel overlap fraction in \[0, 1\], for repeated surveys.
 #' @param rho Correlation between occasions in \[0, 1\].
 #'
-#' @return A `svyplan_power` object.
+#' @return A `svyplan_power` object with components:
+#' \describe{
+#'   \item{`n`}{Per-group sample size.}
+#'   \item{`power`}{Achieved power.}
+#'   \item{`delta`}{Difference in proportions (`p2 - p1`).}
+#'   \item{`solved`}{Which quantity was solved for
+#'     (`"n"`, `"power"`, or `"mde"`).}
+#'   \item{`params`}{List of input parameters.}
+#' }
 #'
 #' @details
 #' The effective variance for the difference in proportions is:

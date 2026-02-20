@@ -47,7 +47,9 @@ or \code{NULL} (for the \code{"cluster"} planning method).}
 
 \item{stages}{Integer vector of stages per stratum (for \code{"cr"}).}
 
-\item{method}{One of \code{"kish"}, \code{"henry"}, \code{"spencer"}, or \code{"cr"}.}
+\item{method}{For numeric weights: one of \code{"kish"} (default), \code{"henry"},
+\code{"spencer"}, or \code{"cr"}. For planning (no weights): \code{"cluster"}
+(default and only option).}
 
 \item{delta}{ICC / homogeneity measure, scalar or \code{svyplan_varcomp}.}
 

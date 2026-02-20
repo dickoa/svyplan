@@ -7,8 +7,17 @@
 #'   (see Details).
 #' @param ... Additional arguments passed to methods.
 #'
-#' @return A `svyplan_varcomp` object with components `var_between`,
-#'   `var_within`, `delta`, `k`, `rel_var`, and `stages`.
+#' @return A `svyplan_varcomp` object with components:
+#' \describe{
+#'   \item{`var_between`}{Between-cluster variance (scalar).}
+#'   \item{`var_within`}{Within-cluster variance. Length 1 for 2-stage,
+#'     length 2 for 3-stage.}
+#'   \item{`delta`}{Measure of homogeneity. Length 1 for 2-stage,
+#'     length 2 for 3-stage.}
+#'   \item{`k`}{Ratio parameter(s), same length as `delta`.}
+#'   \item{`rel_var`}{Unit relvariance (scalar).}
+#'   \item{`stages`}{Number of stages (2 or 3).}
+#' }
 #'
 #' @details
 #' The interface is determined by the class of `x`:

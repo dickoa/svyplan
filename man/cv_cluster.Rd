@@ -46,5 +46,6 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 (2nd ed.). Springer. Ch. 9.
 }
 \seealso{
-\code{\link[=n_cluster]{n_cluster()}} for the inverse operation.
+\code{\link[=n_cluster]{n_cluster()}} for the inverse operation, \code{\link[=varcomp]{varcomp()}} for
+estimating variance components.
 }

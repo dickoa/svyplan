@@ -37,7 +37,9 @@ effective_n <- function(x = NULL, ...) {
 #' @param strvar Stratum IDs (for `"cr"`).
 #' @param clvar Cluster IDs (for `"cr"`).
 #' @param stages Integer vector of stages per stratum (for `"cr"`).
-#' @param method One of `"kish"`, `"henry"`, `"spencer"`, or `"cr"`.
+#' @param method For numeric weights: one of `"kish"` (default), `"henry"`,
+#'   `"spencer"`, or `"cr"`. For planning (no weights): `"cluster"`
+#'   (default and only option).
 #'
 #' @export
 effective_n.numeric <- function(x, ..., y = NULL, x_cal = NULL, p = NULL,

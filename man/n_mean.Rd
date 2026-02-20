@@ -62,5 +62,6 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 (2nd ed.). Springer.
 }
 \seealso{
-\code{\link[=n_prop]{n_prop()}} for proportions, \code{\link[=n_cluster]{n_cluster()}} for multistage designs.
+\code{\link[=n_prop]{n_prop()}} for proportions, \code{\link[=n_cluster]{n_cluster()}} for multistage designs,
+\code{\link[=n_multi]{n_multi()}} for multiple indicators.
 }

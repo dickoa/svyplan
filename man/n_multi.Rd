@@ -13,8 +13,8 @@ column specifications.}
 \item{cost}{Numeric vector of per-stage costs. \code{NULL} (default) for
 simple mode; length 2 or 3 for multistage mode.}
 
-\item{budget}{Total budget (multistage only). Specify exactly one of
-\code{cv} targets or \code{budget}.}
+\item{budget}{Total budget (multistage only). Provide either \code{cv} values
+in the \code{targets} data frame or a \code{budget} here, not both.}
 
 \item{m}{Fixed stage-1 sample size (multistage only).}
 

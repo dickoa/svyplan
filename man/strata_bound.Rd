@@ -136,3 +136,6 @@ the recursive Neyman allocation.
 Cont, R. and Heidari, M. (2014). Optimal rounding under integer
 constraints. \emph{arXiv preprint} arXiv:1501.00014.
 }
+\seealso{
+\link{predict.svyplan_strata} to assign new data to strata.
+}

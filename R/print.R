@@ -339,6 +339,8 @@ as.double.svyplan_strata <- function(x, ...) {
 #'   `length(newdata)`. Values beyond the original training range are
 #'   assigned to the lowest or highest stratum.
 #'
+#' @seealso [strata_bound()] to compute the boundaries.
+#'
 #' @examples
 #' set.seed(42)
 #' x <- rlnorm(500, meanlog = 6, sdlog = 1.5)

@@ -69,6 +69,8 @@
 #' integers using the ORIC method (Cont and Heidari, 2014), which preserves
 #' `sum(n_h) = n` while minimizing rounding distortion.
 #'
+#' @seealso [predict.svyplan_strata] to assign new data to strata.
+#'
 #' @references
 #' Dalenius, T. and Hodges, J. L. (1959). Minimum variance stratification.
 #' \emph{Journal of the American Statistical Association}, 54(285), 88--101.

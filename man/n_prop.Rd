@@ -83,5 +83,5 @@ Association}, 22(158), 209--212.
 }
 \seealso{
 \code{\link[=n_mean]{n_mean()}} for continuous variables, \code{\link[=n_cluster]{n_cluster()}} for
-multistage designs.
+multistage designs, \code{\link[=n_multi]{n_multi()}} for multiple indicators.
 }

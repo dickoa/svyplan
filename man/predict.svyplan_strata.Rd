@@ -37,3 +37,6 @@ head(predict(sb, x))
 predict(sb, x, labels = c("Low", "Mid-Low", "Mid-High", "High"))
 
 }
+\seealso{
+\code{\link[=strata_bound]{strata_bound()}} to compute the boundaries.
+}

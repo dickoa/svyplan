@@ -44,7 +44,7 @@
 #' Association*, 22(158), 209--212.
 #'
 #' @seealso [n_mean()] for continuous variables, [n_cluster()] for
-#'   multistage designs.
+#'   multistage designs, [n_multi()] for multiple indicators.
 #'
 #' @examples
 #' # Wald, absolute margin of error

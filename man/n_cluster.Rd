@@ -27,7 +27,16 @@ or \code{budget}.}
 stages.}
 }
 \value{
-A \code{svyplan_cluster} object.
+A \code{svyplan_cluster} object with components:
+\describe{
+\item{\code{n}}{Named numeric vector of per-stage sample sizes
+(e.g. \code{c(n1 = 80, n2 = 12)}).}
+\item{\code{stages}}{Number of stages (2 or 3).}
+\item{\code{total_n}}{Total sample size (\code{prod(n)}).}
+\item{\code{cv}}{Achieved coefficient of variation.}
+\item{\code{cost}}{Total cost.}
+\item{\code{params}}{List of input parameters.}
+}
 }
 \description{
 Compute optimal per-stage sample sizes for a multistage cluster

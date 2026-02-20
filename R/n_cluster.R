@@ -17,7 +17,16 @@
 #' @param m Fixed stage-1 sample size. `NULL` (default) means optimize all
 #'   stages.
 #'
-#' @return A `svyplan_cluster` object.
+#' @return A `svyplan_cluster` object with components:
+#' \describe{
+#'   \item{`n`}{Named numeric vector of per-stage sample sizes
+#'     (e.g. `c(n1 = 80, n2 = 12)`).}
+#'   \item{`stages`}{Number of stages (2 or 3).}
+#'   \item{`total_n`}{Total sample size (`prod(n)`).}
+#'   \item{`cv`}{Achieved coefficient of variation.}
+#'   \item{`cost`}{Total cost.}
+#'   \item{`params`}{List of input parameters.}
+#' }
 #'
 #' @details
 #' Stage count is determined by `length(cost)`. Two dispatch dimensions:

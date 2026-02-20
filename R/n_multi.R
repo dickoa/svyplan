@@ -8,8 +8,8 @@
 #'   column specifications.
 #' @param cost Numeric vector of per-stage costs. `NULL` (default) for
 #'   simple mode; length 2 or 3 for multistage mode.
-#' @param budget Total budget (multistage only). Specify exactly one of
-#'   `cv` targets or `budget`.
+#' @param budget Total budget (multistage only). Provide either `cv` values
+#'   in the `targets` data frame or a `budget` here, not both.
 #' @param m Fixed stage-1 sample size (multistage only).
 #' @param joint Logical. If `TRUE`, optimally split a single `budget`
 #'   across domains to minimize the worst-case CV ratio. Only applies

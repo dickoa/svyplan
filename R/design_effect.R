@@ -27,7 +27,8 @@
 #' stratification. *Journal of Survey Statistics and Methodology*,
 #' 5(2), 111--130.
 #'
-#' @seealso [effective_n()] for effective sample size.
+#' @seealso [effective_n()] for effective sample size, [varcomp()] for
+#'   estimating inputs to the `"cluster"` method.
 #'
 #' @examples
 #' # Kish design effect from weights
@@ -55,7 +56,9 @@ design_effect <- function(x = NULL, ...) {
 #' @param strvar Stratum IDs (required for `"cr"`).
 #' @param clvar Cluster IDs (required for `"cr"`).
 #' @param stages Integer vector of stages per stratum (required for `"cr"`).
-#' @param method One of `"kish"`, `"henry"`, `"spencer"`, or `"cr"`.
+#' @param method For numeric weights: one of `"kish"` (default), `"henry"`,
+#'   `"spencer"`, or `"cr"`. For planning (no weights): `"cluster"`
+#'   (default and only option).
 #'
 #' @export
 design_effect.numeric <- function(

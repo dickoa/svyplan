@@ -34,7 +34,8 @@
 #' *Practical Tools for Designing and Weighting Survey Samples*
 #' (2nd ed.). Springer.
 #'
-#' @seealso [n_prop()] for proportions, [n_cluster()] for multistage designs.
+#' @seealso [n_prop()] for proportions, [n_cluster()] for multistage designs,
+#'   [n_multi()] for multiple indicators.
 #'
 #' @examples
 #' # MOE mode

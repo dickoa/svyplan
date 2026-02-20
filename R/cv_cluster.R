@@ -28,7 +28,8 @@
 #' *Practical Tools for Designing and Weighting Survey Samples*
 #' (2nd ed.). Springer. Ch. 9.
 #'
-#' @seealso [n_cluster()] for the inverse operation.
+#' @seealso [n_cluster()] for the inverse operation, [varcomp()] for
+#'   estimating variance components.
 #'
 #' @examples
 #' cv_cluster(n = c(50, 12), delta = 0.05)

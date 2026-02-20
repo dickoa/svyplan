@@ -40,7 +40,15 @@ population correction.}
 \item{rho}{Correlation between occasions in [0, 1].}
 }
 \value{
-A \code{svyplan_power} object.
+A \code{svyplan_power} object with components:
+\describe{
+\item{\code{n}}{Per-group sample size.}
+\item{\code{power}}{Achieved power.}
+\item{\code{delta}}{Difference in proportions (\code{p2 - p1}).}
+\item{\code{solved}}{Which quantity was solved for
+(\code{"n"}, \code{"power"}, or \code{"mde"}).}
+\item{\code{params}}{List of input parameters.}
+}
 }
 \description{
 Compute sample size, power, or minimum detectable effect (MDE) for a
