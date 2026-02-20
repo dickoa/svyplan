@@ -64,8 +64,8 @@
 #'
 #' Allocation is controlled by the `alloc` parameter via power allocation:
 #' \eqn{n_h \propto N_h^{q_1} S_h^{q_2} / c_h^{q_3}}{n_h ~ N_h^q1 * S_h^q2 / c_h^q3}.
-#' Named shortcuts: `"proportional"` = (1, 0, 0), `"neyman"` = (0.5, 0.5, 0),
-#' `"optimal"` = (0.5, 0.5, 0.5).
+#' Named shortcuts: `"proportional"` = (1, 0, 0), `"neyman"` = (1, 1, 0),
+#' `"optimal"` = (1, 1, 0.5).
 #'
 #' @references
 #' Dalenius, T. and Hodges, J. L. (1959). Minimum variance stratification.
@@ -270,8 +270,8 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     alloc <- match.arg(alloc, c("proportional", "neyman", "optimal"))
     switch(alloc,
       proportional = list(q1 = 1, q2 = 0, q3 = 0),
-      neyman       = list(q1 = 0.5, q2 = 0.5, q3 = 0),
-      optimal      = list(q1 = 0.5, q2 = 0.5, q3 = 0.5)
+      neyman       = list(q1 = 1, q2 = 1, q3 = 0),
+      optimal      = list(q1 = 1, q2 = 1, q3 = 0.5)
     )
   } else if (is.list(alloc)) {
     nms <- names(alloc)

@@ -92,7 +92,7 @@
     mean_h[is.nan(mean_h)] <- 0
   }
 
-  a_h <- N_h^alloc_q[[1L]] * S_h^alloc_q[[2L]] * (1 / sqrt(cost_h))^alloc_q[[3L]]
+  a_h <- N_h^alloc_q[[1L]] * S_h^alloc_q[[2L]] / cost_h^alloc_q[[3L]]
   m_h <- pmin(rep(2, L), N_h)
   M_h <- N_h
   if (!is.null(certain_idx)) {
@@ -170,7 +170,7 @@
   ybar <- sum(W_h * mean_h)
   target_V <- (target_cv * abs(ybar))^2
 
-  a_h <- N_h^alloc_q[[1L]] * S_h^alloc_q[[2L]] * (1 / sqrt(cost_h))^alloc_q[[3L]]
+  a_h <- N_h^alloc_q[[1L]] * S_h^alloc_q[[2L]] / cost_h^alloc_q[[3L]]
   m_h <- pmin(rep(2, L), N_h)
   M_h <- N_h
   if (!is.null(certain_idx)) {
@@ -249,6 +249,7 @@
   }
 
   best_obj <- obj_fn(bk)
+  best_bk <- bk
   converged <- FALSE
   tol <- diff(range(x_sort)) * 1e-6
 
@@ -266,13 +267,17 @@
       bk[h] <- opt$minimum
     }
     new_obj <- obj_fn(bk)
-    if (max(abs(bk - bk_old)) < tol) {
+    if (new_obj < best_obj) {
+      best_obj <- new_obj
+      best_bk <- bk
+    }
+    rel_change <- abs(new_obj - best_obj) / (abs(best_obj) + 1e-12)
+    if (max(abs(bk - bk_old)) < tol || rel_change < 1e-8) {
       converged <- TRUE
       break
     }
-    best_obj <- new_obj
   }
-  list(bk = bk, converged = converged)
+  list(bk = best_bk, converged = converged)
 }
 
 #' Kozak random search boundary optimization

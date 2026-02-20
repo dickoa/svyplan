@@ -49,6 +49,10 @@ mode, no FPC.
 \item \strong{Log-odds} (\code{"logodds"}): Log-odds (logit) transform interval.
 Only \code{moe} mode, with optional FPC.
 }
+
+For the Wilson and log-odds methods, the design effect is applied as a
+multiplicative factor to the final SRS sample size, which is an
+approximation.
 }
 \examples{
 # Wald, absolute margin of error

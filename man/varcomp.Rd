@@ -50,6 +50,17 @@ extracted from the design object. Requires the survey package.
 
 When \code{prob} is \code{NULL}, SRS first-stage is assumed. When provided, PPS
 variance estimation is used.
+
+The returned \code{delta} is the measure of homogeneity
+\eqn{\delta = V_b / (V_b + V_w)}{delta = Vb / (Vb + Vw)} following
+Valliant, Dever, and Kreuter (2018, Ch. 9). Unlike the traditional ANOVA
+intraclass correlation coefficient, \code{delta} is constrained to \eqn{[0, 1]}
+and should not be compared directly to mixed-model ICCs (e.g. from lme4)
+which can be negative.
+
+Clusters containing a single observation have undefined within-cluster
+variance. In this case, the within-cluster variance is imputed as the
+mean variance of the remaining clusters.
 }
 \section{Methods (by class)}{
 \itemize{

@@ -26,15 +26,15 @@ test_that("predict accepts custom labels", {
   expect_equal(levels(f), labs)
 })
 
-test_that("predict returns NA for out-of-range values", {
+test_that("predict assigns out-of-range values to extreme strata", {
   set.seed(42)
   x <- rlnorm(200, meanlog = 6, sdlog = 1.5)
   sb <- strata_bound(x, n_strata = 3, n = 60)
   newx <- c(-1, x, max(x) + 1e6)
   f <- predict(sb, newx)
-  expect_true(is.na(f[1L]))
-  expect_true(is.na(f[length(f)]))
-  expect_false(anyNA(f[2L:(length(f) - 1L)]))
+  expect_false(anyNA(f))
+  expect_equal(as.integer(f[1L]), 1L)
+  expect_equal(as.integer(f[length(f)]), 3L)
 })
 
 test_that("predict works with new data of different length", {

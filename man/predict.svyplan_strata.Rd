@@ -18,8 +18,8 @@ generates labels from the boundary intervals.}
 }
 \value{
 A factor of stratum assignments with length equal to
-\code{length(newdata)}. Observations outside the original range receive
-\code{NA}.
+\code{length(newdata)}. Values beyond the original training range are
+assigned to the lowest or highest stratum.
 }
 \description{
 Apply strata boundaries from a \code{\link[=strata_bound]{strata_bound()}} result to a numeric

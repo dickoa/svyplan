@@ -26,6 +26,10 @@
 #' - **Log-odds** (`"logodds"`): Log-odds (logit) transform interval.
 #'   Only `moe` mode, with optional FPC.
 #'
+#' For the Wilson and log-odds methods, the design effect is applied as a
+#' multiplicative factor to the final SRS sample size, which is an
+#' approximation.
+#'
 #' @references
 #' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
 #'
@@ -66,6 +70,9 @@ n_prop <- function(p, moe = NULL, cv = NULL, alpha = 0.05,
   )
 
   n <- n * deff
+
+  if (!is.infinite(N) && n > N)
+    warning("Calculated sample size exceeds population size N.", call. = FALSE)
 
   params <- list(p = p, alpha = alpha, N = N, deff = deff)
   if (!is.null(moe)) params$moe <- moe else params$cv <- cv

@@ -336,8 +336,8 @@ as.double.svyplan_strata <- function(x, ...) {
 #' @param ... Additional arguments (currently unused).
 #'
 #' @return A factor of stratum assignments with length equal to
-#'   `length(newdata)`. Observations outside the original range receive
-#'   `NA`.
+#'   `length(newdata)`. Values beyond the original training range are
+#'   assigned to the lowest or highest stratum.
 #'
 #' @examples
 #' set.seed(42)
@@ -355,8 +355,7 @@ predict.svyplan_strata <- function(object, newdata, labels = NULL, ...) {
   if (!is.numeric(newdata)) {
     stop("'newdata' must be a numeric vector", call. = FALSE)
   }
-  s <- object$strata
-  breaks <- c(s$lower[1L], object$boundaries, s$upper[object$n_strata])
+  breaks <- c(-Inf, object$boundaries, Inf)
   if (!is.null(labels) && length(labels) != object$n_strata) {
     stop(sprintf("'labels' must have length %d (number of strata)", object$n_strata),
          call. = FALSE)

@@ -22,6 +22,17 @@
 #' When `prob` is `NULL`, SRS first-stage is assumed. When provided, PPS
 #' variance estimation is used.
 #'
+#' The returned `delta` is the measure of homogeneity
+#' \eqn{\delta = V_b / (V_b + V_w)}{delta = Vb / (Vb + Vw)} following
+#' Valliant, Dever, and Kreuter (2018, Ch. 9). Unlike the traditional ANOVA
+#' intraclass correlation coefficient, `delta` is constrained to \eqn{[0, 1]}
+#' and should not be compared directly to mixed-model ICCs (e.g. from lme4)
+#' which can be negative.
+#'
+#' Clusters containing a single observation have undefined within-cluster
+#' variance. In this case, the within-cluster variance is imputed as the
+#' mean variance of the remaining clusters.
+#'
 #' @references
 #' Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 #' *Practical Tools for Designing and Weighting Survey Samples*

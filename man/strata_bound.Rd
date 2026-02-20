@@ -96,8 +96,8 @@ may get trapped in local minima. The non-iterative methods (\code{"cumrootf"},
 
 Allocation is controlled by the \code{alloc} parameter via power allocation:
 \eqn{n_h \propto N_h^{q_1} S_h^{q_2} / c_h^{q_3}}{n_h ~ N_h^q1 * S_h^q2 / c_h^q3}.
-Named shortcuts: \code{"proportional"} = (1, 0, 0), \code{"neyman"} = (0.5, 0.5, 0),
-\code{"optimal"} = (0.5, 0.5, 0.5).
+Named shortcuts: \code{"proportional"} = (1, 0, 0), \code{"neyman"} = (1, 1, 0),
+\code{"optimal"} = (1, 1, 0.5).
 }
 \examples{
 set.seed(42)

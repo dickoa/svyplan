@@ -71,6 +71,9 @@ n_mean <- function(var, mu = NULL, moe = NULL, cv = NULL, alpha = 0.05,
 
   n <- n * deff
 
+  if (!is.infinite(N) && n > N)
+    warning("Calculated sample size exceeds population size N.", call. = FALSE)
+
   params <- list(var = var, alpha = alpha, N = N, deff = deff)
   if (!is.null(mu)) params$mu <- mu
   if (!is.null(moe)) params$moe <- moe else params$cv <- cv
