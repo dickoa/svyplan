@@ -605,7 +605,7 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
       fn = cost_fn,
       method = "L-BFGS-B",
       lower = c(1, 1),
-      upper = c(1000, 1000)
+      upper = c(Inf, Inf)
     )
 
     n2_opt <- opt$par[1L]
@@ -980,7 +980,7 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
       fn = obj_fn,
       method = "L-BFGS-B",
       lower = c(1, 1),
-      upper = c(1000, 1000)
+      upper = c(Inf, Inf)
     )
 
     n2_opt <- opt$par[1L]
@@ -1005,7 +1005,7 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
       fn = obj_fn,
       method = "L-BFGS-B",
       lower = c(1, 1),
-      upper = c(1000, 1000)
+      upper = c(Inf, Inf)
     )
 
     n2_opt <- opt$par[1L]

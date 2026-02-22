@@ -154,7 +154,7 @@ power_prop <- function(p1, p2 = NULL, n = NULL, power = 0.80,
     .power_prop_power(p1, p2, n, alpha, N, deff, sides, overlap, rho) - power
   }
 
-  upper <- min(1 - 1e-8, p1 + 0.5)
+  upper <- 1 - 1e-8
   lower <- p1 + 1e-8
 
   if (target_fn(upper) < 0) {
