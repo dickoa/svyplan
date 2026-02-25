@@ -51,3 +51,8 @@ reference:
   desc: Format and display svyplan objects.
   contents:
   - print.svyplan
+
+- title: Predict methods
+  desc: Grid exploration for svyplan objects.
+  contents:
+  - predict.svyplan
