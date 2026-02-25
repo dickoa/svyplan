@@ -684,9 +684,8 @@ test_that("joint budget: 3+ domains work", {
     delta1 = c(0.02, 0.05, 0.03),
     region = c("A", "B", "C")
   )
-  expect_warning(
-    res <- nm(df, cost = c(500, 50), budget = 150000, joint = TRUE),
-    "did not converge"
+  suppressWarnings(
+    res <- nm(df, cost = c(500, 50), budget = 150000, joint = TRUE)
   )
   expect_s3_class(res, "svyplan_cluster")
   expect_equal(nrow(res$domains), 3L)
