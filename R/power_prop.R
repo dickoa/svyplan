@@ -11,8 +11,11 @@
 #' @param alpha Significance level, default 0.05.
 #' @param N Per-group population size. `Inf` (default) means no finite
 #'   population correction.
-#' @param deff Design effect multiplier (>= 1).
+#' @param deff Design effect multiplier (> 0). Values < 1 are valid for
+#'   efficient designs (e.g., stratified sampling with Neyman allocation).
 #' @param sides `1` for one-sided or `2` (default) for two-sided test.
+#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
+#'   adjustment). The sample size is inflated by `1 / resp_rate`.
 #' @param overlap Panel overlap fraction in \[0, 1\], for repeated surveys.
 #' @param rho Correlation between occasions in \[0, 1\].
 #'
@@ -70,6 +73,7 @@
 #' @export
 power_prop <- function(p1, p2 = NULL, n = NULL, power = 0.80,
                        alpha = 0.05, N = Inf, deff = 1,
+                       resp_rate = 1,
                        sides = 2, overlap = 0, rho = 0) {
   check_proportion(p1, "p1")
   check_alpha(alpha)
@@ -78,6 +82,7 @@ power_prop <- function(p1, p2 = NULL, n = NULL, power = 0.80,
   check_sides(sides)
   check_overlap(overlap)
   check_rho(rho)
+  check_resp_rate(resp_rate)
 
   null_count <- is.null(p2) + is.null(n) + is.null(power)
   if (null_count != 1L) {
@@ -92,6 +97,7 @@ power_prop <- function(p1, p2 = NULL, n = NULL, power = 0.80,
   if (!is.null(power)) check_proportion(power, "power")
 
   params <- list(p1 = p1, alpha = alpha, N = N, deff = deff,
+                 resp_rate = resp_rate,
                  sides = sides, overlap = overlap, rho = rho)
 
   if (is.null(n)) {
@@ -99,6 +105,7 @@ power_prop <- function(p1, p2 = NULL, n = NULL, power = 0.80,
     params$p2 <- p2
     params$power <- power
     res <- .power_prop_n(p1, p2, power, alpha, N, deff, sides, overlap, rho)
+    res <- .apply_resp_rate(res, resp_rate)
     .new_svyplan_power(n = res, power = power,
                        delta = abs(p1 - p2), type = "proportion",
                        solved = "n", params = params)
@@ -107,7 +114,8 @@ power_prop <- function(p1, p2 = NULL, n = NULL, power = 0.80,
     if (p1 == p2) stop("'p1' and 'p2' must differ", call. = FALSE)
     params$p2 <- p2
     params$n <- n
-    res <- .power_prop_power(p1, p2, n, alpha, N, deff, sides, overlap, rho)
+    n_eff <- n * resp_rate
+    res <- .power_prop_power(p1, p2, n_eff, alpha, N, deff, sides, overlap, rho)
     .new_svyplan_power(n = n, power = res,
                        delta = abs(p1 - p2), type = "proportion",
                        solved = "power", params = params)
@@ -115,7 +123,8 @@ power_prop <- function(p1, p2 = NULL, n = NULL, power = 0.80,
   } else {
     params$n <- n
     params$power <- power
-    res <- .power_prop_mde(p1, n, power, alpha, N, deff, sides, overlap, rho)
+    n_eff <- n * resp_rate
+    res <- .power_prop_mde(p1, n_eff, power, alpha, N, deff, sides, overlap, rho)
     .new_svyplan_power(n = n, power = power,
                        delta = abs(p1 - res), type = "proportion",
                        solved = "mde", params = c(params, list(p2 = res)))
@@ -137,6 +146,12 @@ power_prop <- function(p1, p2 = NULL, n = NULL, power = 0.80,
 }
 
 .power_prop_power <- function(p1, p2, n, alpha, N, deff, sides, overlap, rho) {
+  if (!is.infinite(N) && n >= N) {
+    warning("effective sample size (", round(n, 1),
+            ") >= population size (", N,
+            "); returning power = 1 (census)", call. = FALSE)
+    return(1)
+  }
   z_alpha <- qnorm(1 - alpha / sides)
   V <- .prop_var(p1, p2, overlap, rho)
   delta <- abs(p1 - p2)

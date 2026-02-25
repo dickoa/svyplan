@@ -12,7 +12,7 @@ test_that("print.svyplan_cluster outputs correctly", {
   expect_match(out[1], "Optimal 2-stage allocation")
   expect_match(out[2], "Stage 1")
   expect_match(out[2], "Stage 2")
-  expect_match(out[3], "CV =")
+  expect_match(out[3], "cv =")
 })
 
 test_that("print.svyplan_varcomp outputs correctly", {

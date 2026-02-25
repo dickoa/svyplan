@@ -12,6 +12,7 @@ power_prop(
   alpha = 0.05,
   N = Inf,
   deff = 1,
+  resp_rate = 1,
   sides = 2,
   overlap = 0,
   rho = 0
@@ -31,7 +32,11 @@ power_prop(
 \item{N}{Per-group population size. \code{Inf} (default) means no finite
 population correction.}
 
-\item{deff}{Design effect multiplier (>= 1).}
+\item{deff}{Design effect multiplier (> 0). Values < 1 are valid for
+efficient designs (e.g., stratified sampling with Neyman allocation).}
+
+\item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
+adjustment). The sample size is inflated by \code{1 / resp_rate}.}
 
 \item{sides}{\code{1} for one-sided or \code{2} (default) for two-sided test.}
 

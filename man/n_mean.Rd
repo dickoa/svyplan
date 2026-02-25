@@ -2,12 +2,31 @@
 % Please edit documentation in R/n_mean.R
 \name{n_mean}
 \alias{n_mean}
+\alias{n_mean.default}
+\alias{n_mean.svyplan_prec}
 \title{Sample Size for a Mean}
 \usage{
-n_mean(var, mu = NULL, moe = NULL, cv = NULL, alpha = 0.05, N = Inf, deff = 1)
+n_mean(var, ...)
+
+\method{n_mean}{default}(
+  var,
+  mu = NULL,
+  moe = NULL,
+  cv = NULL,
+  alpha = 0.05,
+  N = Inf,
+  deff = 1,
+  resp_rate = 1,
+  ...
+)
+
+\method{n_mean}{svyplan_prec}(var, moe = NULL, cv = NULL, ...)
 }
 \arguments{
-\item{var}{Population variance \eqn{S^2} (required).}
+\item{var}{For the default method: population variance \eqn{S^2}.
+For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_mean]{prec_mean()}}.}
+
+\item{...}{Additional arguments passed to methods.}
 
 \item{mu}{Population mean. Required when \code{cv} is specified.}
 
@@ -21,7 +40,11 @@ or \code{cv}.}
 \item{N}{Population size. \code{Inf} (default) means no finite population
 correction.}
 
-\item{deff}{Design effect multiplier (>= 1).}
+\item{deff}{Design effect multiplier (> 0). Values < 1 are valid for
+efficient designs (e.g., stratified sampling with Neyman allocation).}
+
+\item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
+adjustment). The sample size is inflated by \code{1 / resp_rate}.}
 }
 \value{
 A \code{svyplan_n} object.
@@ -42,6 +65,9 @@ multiplied by \code{deff}.
 The FPC is the standard Cochran (1977) one-step form. Unlike \code{\link[=n_prop]{n_prop()}},
 no \code{N/(N-1)} adjustment is needed because \code{var} is already defined on
 \code{N-1} degrees of freedom.
+
+All methods use the normal (z) quantile. This is standard for survey
+sampling where the sample size is large enough for the CLT to apply.
 }
 \examples{
 # MOE mode
@@ -50,8 +76,8 @@ n_mean(var = 100, moe = 2)
 # CV mode
 n_mean(var = 100, mu = 50, cv = 0.05)
 
-# With FPC and design effect
-n_mean(var = 100, moe = 2, N = 5000, deff = 1.5)
+# With FPC, design effect, and response rate
+n_mean(var = 100, moe = 2, N = 5000, deff = 1.5, resp_rate = 0.8)
 
 }
 \references{
@@ -63,5 +89,5 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 }
 \seealso{
 \code{\link[=n_prop]{n_prop()}} for proportions, \code{\link[=n_cluster]{n_cluster()}} for multistage designs,
-\code{\link[=n_multi]{n_multi()}} for multiple indicators.
+\code{\link[=n_multi]{n_multi()}} for multiple indicators, \code{\link[=prec_mean]{prec_mean()}} for the inverse.
 }

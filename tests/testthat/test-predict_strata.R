@@ -1,5 +1,5 @@
 test_that("predict returns factor with correct levels", {
-  set.seed(42)
+  set.seed(1)
   x <- rlnorm(500, meanlog = 6, sdlog = 1.5)
   sb <- strata_bound(x, n_strata = 4, n = 100)
   f <- predict(sb, x)
@@ -10,7 +10,7 @@ test_that("predict returns factor with correct levels", {
 })
 
 test_that("predict assigns all observations", {
-  set.seed(42)
+  set.seed(12)
   x <- rlnorm(500, meanlog = 6, sdlog = 1.5)
   sb <- strata_bound(x, n_strata = 4, n = 100)
   f <- predict(sb, x)
@@ -18,7 +18,7 @@ test_that("predict assigns all observations", {
 })
 
 test_that("predict accepts custom labels", {
-  set.seed(42)
+  set.seed(123)
   x <- rlnorm(200, meanlog = 6, sdlog = 1.5)
   sb <- strata_bound(x, n_strata = 3, n = 60)
   labs <- c("Low", "Mid", "High")
@@ -27,7 +27,7 @@ test_that("predict accepts custom labels", {
 })
 
 test_that("predict assigns out-of-range values to extreme strata", {
-  set.seed(42)
+  set.seed(1920)
   x <- rlnorm(200, meanlog = 6, sdlog = 1.5)
   sb <- strata_bound(x, n_strata = 3, n = 60)
   newx <- c(-1, x, max(x) + 1e6)
@@ -38,7 +38,7 @@ test_that("predict assigns out-of-range values to extreme strata", {
 })
 
 test_that("predict works with new data of different length", {
-  set.seed(42)
+  set.seed(1248)
   x <- rlnorm(500, meanlog = 6, sdlog = 1.5)
   sb <- strata_bound(x, n_strata = 4, n = 100)
   newx <- rlnorm(50, meanlog = 6, sdlog = 1.5)
@@ -48,7 +48,7 @@ test_that("predict works with new data of different length", {
 })
 
 test_that("predict works with certain stratum", {
-  set.seed(42)
+  set.seed(3)
   x <- rlnorm(500, meanlog = 6, sdlog = 1.5)
   sb <- strata_bound(x, n_strata = 3, n = 80, certain = quantile(x, 0.95))
   f <- predict(sb, x)
@@ -57,7 +57,7 @@ test_that("predict works with certain stratum", {
 })
 
 test_that("predict validates inputs", {
-  set.seed(42)
+  set.seed(4)
   x <- rlnorm(200, meanlog = 6, sdlog = 1.5)
   sb <- strata_bound(x, n_strata = 3, n = 60)
   expect_error(predict(sb, "text"), "numeric vector")

@@ -72,8 +72,51 @@ test_that("n_prop validates inputs", {
   expect_error(n_prop(p = 1, moe = 0.05), "must be in \\(0, 1\\)")
   expect_error(n_prop(p = 0.3), "specify exactly one")
   expect_error(n_prop(p = 0.3, moe = 0.05, cv = 0.10), "specify exactly one")
-  expect_error(n_prop(p = 0.3, moe = 0.05, deff = 0.5), "deff.*>= 1")
+  expect_s3_class(n_prop(p = 0.3, moe = 0.05, deff = 0.5), "svyplan_n")
+  expect_error(n_prop(p = 0.3, moe = 0.05, deff = 0), "must be positive")
+  expect_error(n_prop(p = 0.3, moe = 0.05, deff = -1), "must be positive")
   expect_error(n_prop(p = 0.3, moe = 0.05, N = -1), "positive")
   expect_error(n_prop(p = 0.3, cv = 0.10, method = "wilson"), "Wilson.*moe")
   expect_error(n_prop(p = 0.3, cv = 0.10, method = "logodds"), "Log-odds.*moe")
+})
+
+test_that("svyplan_n has se/moe/cv fields for proportion", {
+  res <- n_prop(p = 0.3, moe = 0.05)
+  expect_true(!is.null(res$se))
+  expect_true(!is.null(res$moe))
+  expect_true(!is.null(res$cv))
+  expect_true(is.numeric(res$se))
+  expect_true(res$se > 0)
+  expect_true(res$moe > 0)
+  expect_true(res$cv > 0)
+})
+
+test_that("se/moe/cv use Cochran FPC for proportion (infinite pop)", {
+  res <- n_prop(p = 0.3, moe = 0.05)
+  z <- qnorm(0.975)
+  n_eff <- res$n
+  se_expected <- sqrt(0.3 * 0.7 / n_eff)
+  expect_equal(res$se, se_expected, tolerance = 1e-6)
+  expect_equal(res$moe, z * se_expected, tolerance = 1e-6)
+  expect_equal(res$cv, se_expected / 0.3, tolerance = 1e-6)
+})
+
+test_that("se/moe/cv use Cochran FPC for proportion (finite pop)", {
+  res <- n_prop(p = 0.3, moe = 0.05, N = 500)
+  z <- qnorm(0.975)
+  n_eff <- res$n
+  fpc <- (500 - n_eff) / (500 - 1)
+  se_expected <- sqrt(0.3 * 0.7 * fpc / n_eff)
+  expect_equal(res$se, se_expected, tolerance = 1e-6)
+  expect_equal(res$moe, z * se_expected, tolerance = 1e-6)
+})
+
+test_that("proportion FPC round-trip: moe from n matches target", {
+  res <- n_prop(p = 0.3, moe = 0.05)
+  expect_equal(res$moe, 0.05, tolerance = 1e-6)
+})
+
+test_that("proportion FPC round-trip with finite N", {
+  res <- n_prop(p = 0.3, moe = 0.05, N = 1000)
+  expect_equal(res$moe, 0.05, tolerance = 1e-6)
 })

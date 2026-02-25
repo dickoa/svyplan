@@ -12,8 +12,11 @@
 #' @param alpha Significance level, default 0.05.
 #' @param N Per-group population size. `Inf` (default) means no finite
 #'   population correction.
-#' @param deff Design effect multiplier (>= 1).
+#' @param deff Design effect multiplier (> 0). Values < 1 are valid for
+#'   efficient designs (e.g., stratified sampling with Neyman allocation).
 #' @param sides `1` for one-sided or `2` (default) for two-sided test.
+#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
+#'   adjustment). The sample size is inflated by `1 / resp_rate`.
 #' @param overlap Panel overlap fraction in \[0, 1\], for repeated surveys.
 #' @param rho Correlation between occasions in \[0, 1\].
 #'
@@ -67,6 +70,7 @@
 #' @export
 power_mean <- function(delta = NULL, var, n = NULL, power = 0.80,
                        alpha = 0.05, N = Inf, deff = 1,
+                       resp_rate = 1,
                        sides = 2, overlap = 0, rho = 0) {
   check_scalar(var, "var")
   check_alpha(alpha)
@@ -75,6 +79,7 @@ power_mean <- function(delta = NULL, var, n = NULL, power = 0.80,
   check_sides(sides)
   check_overlap(overlap)
   check_rho(rho)
+  check_resp_rate(resp_rate)
 
   null_count <- is.null(delta) + is.null(n) + is.null(power)
   if (null_count != 1L) {
@@ -93,12 +98,14 @@ power_mean <- function(delta = NULL, var, n = NULL, power = 0.80,
   V <- 2 * var * (1 - overlap * rho)
 
   params <- list(var = var, alpha = alpha, N = N, deff = deff,
+                 resp_rate = resp_rate,
                  sides = sides, overlap = overlap, rho = rho)
 
   if (is.null(n)) {
     params$delta <- delta
     params$power <- power
     res <- .power_mean_n(delta, V, power, alpha, N, deff, sides)
+    res <- .apply_resp_rate(res, resp_rate)
     .new_svyplan_power(n = res, power = power,
                        delta = delta, type = "mean",
                        solved = "n", params = params)
@@ -106,7 +113,8 @@ power_mean <- function(delta = NULL, var, n = NULL, power = 0.80,
   } else if (is.null(power)) {
     params$delta <- delta
     params$n <- n
-    res <- .power_mean_power(delta, V, n, alpha, N, deff, sides)
+    n_eff <- n * resp_rate
+    res <- .power_mean_power(delta, V, n_eff, alpha, N, deff, sides)
     .new_svyplan_power(n = n, power = res,
                        delta = delta, type = "mean",
                        solved = "power", params = params)
@@ -114,7 +122,8 @@ power_mean <- function(delta = NULL, var, n = NULL, power = 0.80,
   } else {
     params$n <- n
     params$power <- power
-    res <- .power_mean_mde(V, n, power, alpha, N, deff, sides)
+    n_eff <- n * resp_rate
+    res <- .power_mean_mde(V, n_eff, power, alpha, N, deff, sides)
     .new_svyplan_power(n = n, power = power,
                        delta = res, type = "mean",
                        solved = "mde", params = params)
@@ -129,6 +138,12 @@ power_mean <- function(delta = NULL, var, n = NULL, power = 0.80,
 }
 
 .power_mean_power <- function(delta, V, n, alpha, N, deff, sides) {
+  if (!is.infinite(N) && n >= N) {
+    warning("effective sample size (", round(n, 1),
+            ") >= population size (", N,
+            "); returning power = 1 (census)", call. = FALSE)
+    return(1)
+  }
   z_alpha <- qnorm(1 - alpha / sides)
   f <- if (is.infinite(N)) 0 else n / N
   se <- sqrt(V * deff * (1 - f) / n)

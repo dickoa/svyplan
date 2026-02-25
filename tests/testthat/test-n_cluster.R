@@ -87,9 +87,9 @@ test_that("n_cluster accepts svyplan_varcomp", {
   expect_equal(result$stages, 2L)
 })
 
-test_that("n_cluster round-trips with cv_cluster", {
+test_that("n_cluster round-trips with prec_cluster", {
   plan <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
-  cv_check <- cv_cluster(n = unname(plan$n), delta = 0.05)
+  cv_check <- prec_cluster(n = unname(plan$n), delta = 0.05)$cv
   expect_equal(cv_check, plan$cv, tolerance = 1e-6)
 })
 
@@ -115,4 +115,56 @@ test_that("n_cluster validates inputs", {
   expect_error(n_cluster(cost = c(500, 50, 20, 10), delta = c(0.01, 0.02, 0.03),
                          budget = 100000),
                "not yet supported")
+})
+
+test_that("n_cluster is an S3 generic", {
+  expect_true(is.function(n_cluster))
+  # UseMethod body check
+  expect_true(grepl("UseMethod", deparse(body(n_cluster))[1]))
+  # Verify dispatch works on numeric (default method)
+  res <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  expect_s3_class(res, "svyplan_cluster")
+})
+
+test_that("n_cluster params store cv in CV mode", {
+  res <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+  expect_equal(res$params$cv, 0.05)
+  expect_null(res$params$budget)
+  expect_null(res$params$m)
+})
+
+test_that("n_cluster params store budget and m", {
+  res <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000, m = 40)
+  expect_equal(res$params$budget, 100000)
+  expect_equal(res$params$m, 40)
+  expect_null(res$params$cv)
+})
+
+test_that("n_cluster params store budget without m", {
+  res <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  expect_equal(res$params$budget, 100000)
+  expect_null(res$params$m)
+})
+
+test_that("n_cluster 3-stage params store cv", {
+  res <- n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+  expect_equal(res$params$cv, 0.05)
+  expect_null(res$params$budget)
+})
+
+test_that("n_cluster 3-stage params store budget and m", {
+  res <- n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05),
+                   budget = 500000, m = 50)
+  expect_equal(res$params$budget, 500000)
+  expect_equal(res$params$m, 50)
+})
+
+test_that("svyplan_cluster has se/moe/cv fields", {
+  res <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  expect_true("se" %in% names(res))
+  expect_true("moe" %in% names(res))
+  expect_true("cv" %in% names(res))
+  expect_true(is.na(res$se))
+  expect_true(is.na(res$moe))
+  expect_true(res$cv > 0)
 })

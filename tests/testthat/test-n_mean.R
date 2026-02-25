@@ -46,5 +46,30 @@ test_that("n_mean validates inputs", {
   expect_error(n_mean(var = 100), "specify exactly one")
   expect_error(n_mean(var = 100, moe = 2, cv = 0.05), "specify exactly one")
   expect_error(n_mean(var = 100, cv = 0.05), "'mu' is required")
-  expect_error(n_mean(var = 100, moe = 2, deff = 0.5), "deff.*>= 1")
+  expect_s3_class(n_mean(var = 100, moe = 2, deff = 0.5), "svyplan_n")
+  expect_error(n_mean(var = 100, moe = 2, deff = 0), "must be positive")
+  expect_error(n_mean(var = 100, moe = 2, deff = -1), "must be positive")
+})
+
+test_that("svyplan_n has se/moe/cv fields for mean", {
+  res <- n_mean(var = 100, moe = 2, mu = 50)
+  expect_true(is.numeric(res$se))
+  expect_true(res$se > 0)
+  expect_true(res$moe > 0)
+  expect_true(res$cv > 0)
+})
+
+test_that("mean moe round-trip: moe from n matches target", {
+  res <- n_mean(var = 100, moe = 2)
+  expect_equal(res$moe, 2, tolerance = 1e-6)
+})
+
+test_that("mean moe round-trip with finite N", {
+  res <- n_mean(var = 100, moe = 2, N = 5000)
+  expect_equal(res$moe, 2, tolerance = 1e-6)
+})
+
+test_that("mean cv is NA when mu not provided", {
+  res <- n_mean(var = 100, moe = 2)
+  expect_true(is.na(res$cv))
 })

@@ -11,6 +11,12 @@
 #'   scalar. For `"cr"`: a list with `$strata` (data frame) and
 #'   `$overall` (numeric scalar).
 #'
+#' @details
+#' The `"kish"` method uses only weights and produces a single survey-wide
+#' DEFF. The `"henry"`, `"spencer"`, and `"cr"` methods are
+#' **outcome-dependent**: they require `y`, and the resulting DEFF varies
+#' by outcome variable.
+#'
 #' @references
 #' Kish, L. (1965). *Survey Sampling*. Wiley.
 #'
@@ -163,7 +169,7 @@ design_effect.default <- function(
       vy +
       n *
         sqrt(vw) *
-        (rho_u2w * sqrt(vu) - 2 * A * rho_uw * sqrt(vu)) /
+        (rho_u2w * sqrt(vu2) - 2 * A * rho_uw * sqrt(vu)) /
         (Nhat * vy)
   )
 }
@@ -283,6 +289,12 @@ design_effect.default <- function(
   cv2h <- sig2h <- deff_s <- numeric(H)
 
   for (i in seq_len(H)) {
+    if (nh[i] <= 1L) {
+      cv2h[i] <- 0
+      sig2h[i] <- 0
+      deff_s[i] <- 0
+      next
+    }
     wsub <- w_grp[[i]]
     ysub <- y_grp[[i]]
     mw <- mean(wsub)
@@ -293,6 +305,16 @@ design_effect.default <- function(
       sum(wsub * (ysub - sum(wsub * ysub) / sw)^2) /
       (sw - 1)
     deff_s[i] <- Wh[i]^2 / nh[i] * n * sig2h[i] / sig2
+  }
+
+  singletons <- which(nh <= 1L)
+  if (length(singletons) > 0L) {
+    warning(
+      "singleton stratum/strata (n_h = 1) at position(s) ",
+      paste(singletons, collapse = ", "),
+      "; contribution set to zero",
+      call. = FALSE
+    )
   }
 
   deff_w <- 1 + cv2h

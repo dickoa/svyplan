@@ -4,19 +4,24 @@
 \alias{print.svyplan}
 \alias{print.svyplan_n}
 \alias{print.svyplan_cluster}
+\alias{print.svyplan_prec}
 \alias{print.svyplan_varcomp}
+\alias{print.svyplan_power}
 \alias{format.svyplan_n}
 \alias{format.svyplan_cluster}
+\alias{format.svyplan_prec}
 \alias{format.svyplan_varcomp}
+\alias{format.svyplan_power}
 \alias{summary.svyplan_n}
 \alias{summary.svyplan_cluster}
+\alias{summary.svyplan_prec}
 \alias{summary.svyplan_varcomp}
+\alias{summary.svyplan_power}
+\alias{confint.svyplan_n}
+\alias{confint.svyplan_prec}
 \alias{as.integer.svyplan_n}
 \alias{as.double.svyplan_n}
 \alias{as.integer.svyplan_cluster}
-\alias{print.svyplan_power}
-\alias{format.svyplan_power}
-\alias{summary.svyplan_power}
 \alias{as.integer.svyplan_power}
 \alias{as.double.svyplan_power}
 \alias{print.svyplan_strata}
@@ -31,31 +36,41 @@
 
 \method{print}{svyplan_cluster}(x, ...)
 
+\method{print}{svyplan_prec}(x, ...)
+
 \method{print}{svyplan_varcomp}(x, ...)
+
+\method{print}{svyplan_power}(x, ...)
 
 \method{format}{svyplan_n}(x, ...)
 
 \method{format}{svyplan_cluster}(x, ...)
 
+\method{format}{svyplan_prec}(x, ...)
+
 \method{format}{svyplan_varcomp}(x, ...)
+
+\method{format}{svyplan_power}(x, ...)
 
 \method{summary}{svyplan_n}(object, ...)
 
 \method{summary}{svyplan_cluster}(object, ...)
 
+\method{summary}{svyplan_prec}(object, ...)
+
 \method{summary}{svyplan_varcomp}(object, ...)
+
+\method{summary}{svyplan_power}(object, ...)
+
+\method{confint}{svyplan_n}(object, parm, level = 0.95, ...)
+
+\method{confint}{svyplan_prec}(object, parm, level = 0.95, ...)
 
 \method{as.integer}{svyplan_n}(x, ...)
 
 \method{as.double}{svyplan_n}(x, ...)
 
 \method{as.integer}{svyplan_cluster}(x, ...)
-
-\method{print}{svyplan_power}(x, ...)
-
-\method{format}{svyplan_power}(x, ...)
-
-\method{summary}{svyplan_power}(object, ...)
 
 \method{as.integer}{svyplan_power}(x, ...)
 
@@ -78,7 +93,11 @@
 
 \item{...}{Additional arguments (currently unused).}
 
-\item{object}{A svyplan object (for \code{summary} methods).}
+\item{object}{A svyplan object (for \code{summary} and \code{confint} methods).}
+
+\item{parm}{Ignored (included for S3 consistency with \code{\link[=confint]{confint()}}).}
+
+\item{level}{Confidence level (default 0.95).}
 }
 \value{
 \code{x} (or \code{object}), invisibly.

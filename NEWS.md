@@ -1,4 +1,72 @@
-# svyplan 0.3.9999
+# svyplan 0.4.9999
+
+## Precision analysis
+
+* `prec_prop()` — sampling precision (se, moe, cv) for a proportion given a
+  sample size. Inverse of `n_prop()`. Uses the Cochran finite-population
+  correction for Bernoulli proportions.
+
+* `prec_mean()` — sampling precision for a mean given a sample size. Inverse
+  of `n_mean()`.
+
+* `prec_cluster()` — sampling precision (cv) for a multistage cluster
+  allocation. Inverse of `n_cluster()`. Accepts `svyplan_cluster` objects
+  directly and carries cost metadata for round-trip.
+
+* `prec_multi()` — per-indicator sampling precision for multi-indicator
+  survey designs. Inverse of `n_multi()`. Supports simple and multistage
+  modes.
+
+* New S3 class `svyplan_prec` with print, format, summary, and confint
+  methods.
+
+## Bidirectional S3 dispatch
+
+* `n_prop()`, `n_mean()`, `n_cluster()`, and `n_multi()` are now S3 generics.
+  Passing a `svyplan_prec` object recovers the sample size that produces the
+  given precision. Passing a `svyplan_n` or `svyplan_cluster` object to the
+  corresponding `prec_*()` function computes the achieved precision.
+
+## Response rate adjustment
+
+* All sample size (`n_prop`, `n_mean`, `n_cluster`, `n_multi`), precision
+  (`prec_prop`, `prec_mean`, `prec_cluster`, `prec_multi`), and power
+  (`power_prop`, `power_mean`) functions accept a `resp_rate` parameter.
+  Sample sizes are inflated by `1 / resp_rate`; precision is computed on the
+  effective sample `n * resp_rate`.
+
+## Sensitivity analysis
+
+* `predict()` methods for `svyplan_n`, `svyplan_cluster`, `svyplan_power`,
+  and `svyplan_prec` objects. Evaluate the result at new parameter
+  combinations (e.g. varying `deff`, `resp_rate`, `budget`) and return a
+  data frame suitable for plotting.
+
+## Confidence intervals
+
+* `confint()` methods for `svyplan_n` and `svyplan_prec` objects. Returns
+  a matrix with the expected confidence interval at the design's alpha level
+  or a user-specified level.
+
+## survey package integration
+
+* When the survey package is installed, `survey::SE()` and `survey::cv()`
+  methods are registered for `svyplan_n`, `svyplan_prec`, and
+  `svyplan_cluster` objects.
+
+## Precision fields on sample size objects
+
+* `svyplan_n` objects now include `$se`, `$moe`, and `$cv` fields, computed
+  automatically from the sample size and design parameters. Multi-indicator
+  results have `NA` for these fields.
+
+* `svyplan_cluster` objects include `$se` (NA) and `$cv` fields.
+
+## Removed
+
+* `cv_cluster()` has been removed. Use `prec_cluster(...)$cv` instead.
+
+# svyplan 0.3.0
 
 ## Power analysis
 
@@ -42,9 +110,13 @@
 * `strata_bound()` — optimal strata boundary determination for a continuous
   stratification variable. Four methods: Dalenius-Hodges cumulative root
   frequency (`"cumrootf"`), geometric progression (`"geo"`),
-  Lavallée-Hidiroglou iterative (`"lh"`), and Kozak random search (`"kozak"`).
+  Lavallee-Hidiroglou iterative (`"lh"`), and Kozak random search (`"kozak"`).
   Supports proportional, Neyman, optimal, and custom power allocation.
   Take-all (certainty) strata via the `certain` argument.
+
+* Kozak random search optimized: inlined prefix-sum evaluation, pre-generated
+  random numbers, and reduced bisection precision during search (full
+  precision for final result). ~3x faster in cv-mode.
 
 * New S3 class `svyplan_strata` with print, format, summary, as.data.frame,
   as.integer, and as.double methods.
@@ -56,17 +128,15 @@ Initial release.
 ## Sample size determination
 
 * `n_prop()` — sample size for a proportion (Wald, Wilson, log-odds methods).
-* `n_mean()` — sample size for a mean (MOE and CV modes).
+* `n_mean()` — sample size for a mean (moe and cv modes).
 * `n_cluster()` — optimal multistage cluster allocation (2- and 3-stage,
-  budget and CV modes).
+  budget and cv modes).
 * `n_multi()` — multi-indicator sample size for surveys with several
   precision targets. Supports simple (single-stage) and multistage modes,
   with automatic per-domain optimization.
 
 ## Design analysis
 
-* `cv_cluster()` — coefficient of variation for a given multistage
-  allocation (inverse of `n_cluster()`).
 * `varcomp()` — variance component estimation from frame data via nested
   ANOVA (SRS and PPS, formula and vector interfaces).
 

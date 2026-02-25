@@ -16,16 +16,23 @@ reference:
   - n_cluster
   - n_multi
 
+- title: Precision analysis
+  desc: Evaluate sampling precision for a given design.
+  contents:
+  - prec_prop
+  - prec_mean
+  - prec_cluster
+  - prec_multi
+
 - title: Power analysis
   desc: Statistical power for two-sample tests.
   contents:
   - power_prop
   - power_mean
 
-- title: Design analysis
-  desc: Evaluate precision and estimate variance components.
+- title: Variance components
+  desc: Estimate variance components from frame data.
   contents:
-  - cv_cluster
   - varcomp
 
 - title: Stratification

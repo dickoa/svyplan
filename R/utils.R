@@ -52,14 +52,11 @@ check_alpha <- function(alpha) {
   check_proportion(alpha, "alpha")
 }
 
-#' Check deff >= 1
+#' Check deff > 0
 #' @keywords internal
 #' @noRd
 check_deff <- function(deff) {
   check_scalar(deff, "deff")
-  if (deff < 1) {
-    stop("'deff' must be >= 1", call. = FALSE)
-  }
   invisible(TRUE)
 }
 
@@ -155,11 +152,79 @@ check_rho <- function(rho) {
   invisible(TRUE)
 }
 
+#' Check response rate in (0, 1]
+#' @keywords internal
+#' @noRd
+check_resp_rate <- function(resp_rate) {
+  if (!is.numeric(resp_rate) || length(resp_rate) != 1L ||
+      anyNA(resp_rate) || resp_rate <= 0 || resp_rate > 1) {
+    stop("'resp_rate' must be a number in (0, 1]", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 #' Apply finite population correction
 #' @keywords internal
 #' @noRd
 .apply_fpc <- function(n0, N) {
   if (is.infinite(N)) n0 else n0 / (1 + n0 / N)
+}
+
+#' Apply response rate adjustment (inflate n)
+#' @keywords internal
+#' @noRd
+.apply_resp_rate <- function(n, resp_rate) {
+  n / resp_rate
+}
+
+#' Null-coalescing operator
+#' @keywords internal
+#' @noRd
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
+#' Clamp FPC to 0 when n_eff >= N (census)
+#' @keywords internal
+#' @noRd
+.clamp_fpc <- function(fpc, n_eff, N) {
+  if (is.infinite(N)) return(fpc)
+  if (n_eff >= N) {
+    warning("effective sample size (", round(n_eff, 1),
+            ") >= population size (", N,
+            "); FPC set to 0 (census)", call. = FALSE)
+    return(0)
+  }
+  fpc
+}
+
+#' Validate common optional columns in multi-indicator targets
+#' @keywords internal
+#' @noRd
+.validate_common_columns <- function(targets) {
+  if ("alpha" %in% names(targets)) {
+    vals <- targets$alpha[!is.na(targets$alpha)]
+    if (any(vals <= 0 | vals >= 1))
+      stop("'alpha' values must be in (0, 1)", call. = FALSE)
+  }
+  if ("deff" %in% names(targets)) {
+    vals <- targets$deff[!is.na(targets$deff)]
+    if (any(vals <= 0))
+      stop("'deff' values must be positive", call. = FALSE)
+  }
+  if ("N" %in% names(targets)) {
+    vals <- targets$N[!is.na(targets$N)]
+    if (any(vals <= 0))
+      stop("'N' values must be positive", call. = FALSE)
+  }
+  if ("resp_rate" %in% names(targets)) {
+    vals <- targets$resp_rate[!is.na(targets$resp_rate)]
+    if (any(vals <= 0 | vals > 1))
+      stop("'resp_rate' values must be in (0, 1]", call. = FALSE)
+  }
+  if ("n" %in% names(targets)) {
+    if (anyNA(targets$n) || any(targets$n <= 0))
+      stop("'n' values must be positive and non-NA", call. = FALSE)
+  }
+  invisible(TRUE)
 }
 
 #' Weighted variance

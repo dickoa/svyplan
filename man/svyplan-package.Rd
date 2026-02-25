@@ -4,9 +4,9 @@
 \name{svyplan-package}
 \alias{svyplan}
 \alias{svyplan-package}
-\title{svyplan: Survey Sample Size Determination}
+\title{svyplan: Survey Sample Size Determination and Precision Analysis}
 \description{
-Tools for survey sample size determination, optimal allocation, stratification, and power analysis. Computes sample sizes for proportions and means, optimal multistage cluster allocations, variance components from frame data, design effects, optimal strata boundaries, and statistical power for two-sample tests. Based on methods from Cochran (1977, ISBN:978-0-471-16240-7), Kish (1965, ISBN:978-0-471-48900-9), and Valliant, Dever, and Kreuter (2018, ISBN:978-3-319-93630-4).
+Tools for survey sample size determination, precision analysis, optimal allocation, stratification, and power analysis. Computes sample sizes for proportions and means, evaluates sampling precision for a given design, optimizes multistage cluster allocations, estimates variance components from frame data, computes design effects, finds optimal strata boundaries, and performs statistical power analysis for two-sample tests. All functions support response rate adjustment and bidirectional round-trip between sample size and precision via S3 dispatch. Sensitivity analysis is available through predict methods. Based on methods from Cochran (1977, ISBN:978-0-471-16240-7), Kish (1965, ISBN:978-0-471-48900-9), and Valliant, Dever, and Kreuter (2018, ISBN:978-3-319-93630-4).
 }
 \seealso{
 Useful links:

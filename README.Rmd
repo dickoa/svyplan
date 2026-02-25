@@ -12,8 +12,8 @@ knitr::opts_chunk$set(
 
 # svyplan
 
-Survey sample size determination, optimal allocation, stratification,
-and power analysis for R.
+Survey sample size determination, precision analysis, optimal allocation,
+stratification, and power analysis for R.
 
 ## Installation
 
@@ -32,6 +32,44 @@ n_prop(p = 0.3, moe = 0.05)
 
 # Mean with finite population and design effect
 n_mean(var = 100, moe = 2, N = 5000, deff = 1.5)
+```
+
+### Response rate adjustment
+
+All functions accept a `resp_rate` parameter. The sample size is inflated
+by `1 / resp_rate` to account for expected non-response:
+
+```{r}
+n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
+```
+
+## Precision analysis
+
+Given a sample size, how precise will your estimates be? The `prec_*()`
+functions are the inverse of `n_*()`:
+
+```{r}
+prec_prop(p = 0.3, n = 400)
+
+prec_mean(var = 100, n = 400, mu = 50)
+```
+
+### Round-trip between size and precision
+
+All `n_*()` and `prec_*()` functions are S3 generics. Pass a precision
+result to `n_*()` to recover the sample size, or pass a sample size result
+to `prec_*()` to compute the achieved precision:
+
+```{r}
+# Start with a precision target
+s <- n_prop(p = 0.3, moe = 0.05, deff = 1.5)
+
+# What precision does this n achieve?
+p <- prec_prop(s)
+p
+
+# Recover the original n
+n_prop(p)
 ```
 
 ## Multi-indicator surveys
@@ -59,8 +97,8 @@ data frame.
 # Optimal 2-stage allocation within a budget
 n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
 
-# CV for a given allocation
-cv_cluster(n = c(50, 12), delta = 0.05)
+# Precision for a given allocation
+prec_cluster(n = c(50, 12), delta = 0.05)
 ```
 
 Variance components can be estimated from frame data and passed
@@ -78,6 +116,21 @@ vc
 
 n_cluster(cost = c(500, 50), delta = vc, cv = 0.05)
 ```
+
+## Sensitivity analysis
+
+`predict()` evaluates a result at new parameter combinations, returning
+a data frame suitable for plotting:
+
+```{r}
+x <- n_prop(p = 0.3, moe = 0.05, deff = 1.5)
+predict(x, expand.grid(
+  deff = c(1, 1.5, 2, 2.5),
+  resp_rate = c(0.7, 0.8, 0.9, 1.0)
+))
+```
+
+Works for all object types: sample size, precision, cluster, and power.
 
 ## Strata boundaries
 
@@ -97,7 +150,8 @@ Four methods are available: Dalenius-Hodges (`"cumrootf"`), geometric
 ## Power analysis
 
 Solve for sample size, power, or minimum detectable effect. Supports
-design effects, finite population correction, and panel overlap.
+design effects, finite population correction, response rate adjustment,
+and panel overlap.
 
 ```{r}
 # Sample size to detect a 5pp change from 70% with deff = 2

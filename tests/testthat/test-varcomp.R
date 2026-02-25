@@ -21,8 +21,16 @@ test_that("varcomp 2-stage SRS vector interface matches formula", {
   result_formula <- varcomp(income ~ district, data = frame)
   result_vector <- varcomp(frame$income, stage_id = list(frame$district))
 
-  expect_equal(result_vector$var_between, result_formula$var_between, tolerance = 1e-10)
-  expect_equal(result_vector$var_within, result_formula$var_within, tolerance = 1e-10)
+  expect_equal(
+    result_vector$var_between,
+    result_formula$var_between,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    result_vector$var_within,
+    result_formula$var_within,
+    tolerance = 1e-10
+  )
   expect_equal(result_vector$delta, result_formula$delta, tolerance = 1e-10)
 })
 
@@ -98,8 +106,7 @@ test_that("varcomp integrates with n_cluster", {
 test_that("varcomp validates inputs", {
   expect_error(varcomp("not_numeric"), "must be a formula")
   expect_error(varcomp(1:10), "'stage_id' must be a list")
-  expect_error(varcomp(~ x, data = data.frame(x = 1:10)),
-               "must have a response")
+  expect_error(varcomp(~x, data = data.frame(x = 1:10)), "must have a response")
   expect_error(
     varcomp(income ~ district, data = data.frame(x = 1:10)),
     "not found"
@@ -124,7 +131,11 @@ test_that("varcomp.survey.design matches formula interface", {
   )
   ref <- varcomp(income ~ district, data = frame)
 
-  dsgn <- survey::svydesign(ids = ~district, data = frame, weights = rep(1, 200))
+  dsgn <- survey::svydesign(
+    ids = ~district,
+    data = frame,
+    weights = rep(1, 200)
+  )
   result <- varcomp(dsgn, ~income)
 
   expect_s3_class(result, "svyplan_varcomp")
@@ -135,14 +146,19 @@ test_that("varcomp.survey.design matches formula interface", {
 
 test_that("varcomp.survey.design works with strata", {
   skip_if_not_installed("survey")
-  set.seed(42)
+  set.seed(1)
   frame <- data.frame(
     y = rnorm(200, 50, 10),
     cluster = rep(1:20, each = 10),
     stratum = rep(1:4, each = 50)
   )
-  dsgn <- survey::svydesign(ids = ~cluster, strata = ~stratum,
-                            data = frame, weights = rep(1, 200), nest = TRUE)
+  dsgn <- survey::svydesign(
+    ids = ~cluster,
+    strata = ~stratum,
+    data = frame,
+    weights = rep(1, 200),
+    nest = TRUE
+  )
   result <- varcomp(dsgn, ~y)
   expect_s3_class(result, "svyplan_varcomp")
   expect_equal(result$stages, 2L)
@@ -151,19 +167,23 @@ test_that("varcomp.survey.design works with strata", {
 
 test_that("varcomp.survey.design feeds into n_cluster", {
   skip_if_not_installed("survey")
-  set.seed(42)
+  set.seed(2)
   frame <- data.frame(
     income = rnorm(200, 50000, 10000),
     district = rep(1:20, each = 10)
   )
-  dsgn <- survey::svydesign(ids = ~district, data = frame, weights = rep(1, 200))
+  dsgn <- survey::svydesign(
+    ids = ~district,
+    data = frame,
+    weights = rep(1, 200)
+  )
   vc <- varcomp(dsgn, ~income)
   plan <- n_cluster(cost = c(500, 50), delta = vc, budget = 100000)
   expect_s3_class(plan, "svyplan_cluster")
 })
 
 test_that("3-stage varcomp with non-nested SSU IDs matches nested", {
-  set.seed(42)
+  set.seed(3)
   psu_id <- rep(1:5, each = 10)
   ssu_id_non_nested <- rep(rep(1:2, each = 5), 5)
   ssu_id_nested <- interaction(psu_id, ssu_id_non_nested, drop = TRUE)

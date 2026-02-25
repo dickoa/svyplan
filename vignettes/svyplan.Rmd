@@ -1,8 +1,8 @@
 ---
-title: "Planning a household survey with svyplan"
+title: "Survey sample size planning with svyplan"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Planning a household survey with svyplan}
+  %\VignetteIndexEntry{Survey sample size planning with svyplan}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -10,78 +10,234 @@ vignette: >
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
-  comment = "#>"
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5,
+  fig.align = "center"
 )
 library(svyplan)
 ```
 
-svyplan computes sample sizes, optimal allocations, strata boundaries,
-and statistical power for survey designs. This vignette walks through
-a realistic household survey planning workflow, from single-indicator
-sizing to multi-indicator optimization and power analysis.
+`svyplan` provides a simple and complete toolkit for survey sample size determination. It covers sample sizes for proportions and means, precision analysis, multistage cluster allocation, multi-indicator optimization, strata boundary optimization, and power analysis. All functions share a consistent interface built around `S3` generics, enabling round-trip conversions between sample size and precision, and sensitivity analysis via `predict()`.
 
-## Simple sample sizes
+## Function ecosystem
 
-The most common starting point: how many households do we need to
-estimate a proportion or a mean with a given precision?
+The package exports 14 functions organized into five families. The diagram below shows how they relate to each other.
+
+```{r ecosystem-diagram, echo = FALSE, fig.height = 5.5, fig.width = 7}
+op <- par(mar = c(0, 0, 0, 0), family = "sans")
+plot.new()
+plot.window(xlim = c(0, 10), ylim = c(0, 8))
+
+draw_box <- function(x, y, w, h, label, sublabel = NULL,
+                     col = "white", border = "black") {
+  rect(x - w / 2, y - h / 2, x + w / 2, y + h / 2,
+       col = col, border = border, lwd = 1.5)
+  text(x, y + if (!is.null(sublabel)) 0.2 else 0,
+       label, cex = 0.85, font = 2)
+  if (!is.null(sublabel))
+    text(x, y - 0.25, sublabel, cex = 0.65, col = "grey30")
+}
+
+draw_arrow <- function(x0, y0, x1, y1, both = FALSE, ...) {
+  arrows(x0, y0, x1, y1, length = 0.10, lwd = 1.5,
+         col = "grey40", code = if (both) 3L else 2L, ...)
+}
+
+draw_box(2.5, 6.5, 3.8, 1.2, "Sample Size",
+         "n_prop \u00b7 n_mean \u00b7 n_cluster \u00b7 n_multi")
+draw_box(7.5, 6.5, 3.8, 1.2, "Precision",
+         "prec_prop \u00b7 prec_mean \u00b7 prec_cluster \u00b7 prec_multi",
+         col = "white", border = "black")
+draw_box(2.5, 3.5, 3.8, 1.2, "Design Components",
+         "varcomp \u00b7 design_effect \u00b7 effective_n",
+         col = "white", border = "black")
+draw_box(7.5, 3.5, 3.8, 1.2, "Power Analysis",
+         "power_prop \u00b7 power_mean",
+         col = "white", border = "black")
+draw_box(5, 1, 3.8, 1.2, "Stratification",
+         "strata_bound",
+         col = "white", border = "black")
+
+draw_arrow(4.4, 6.7, 5.6, 6.7, both = TRUE)
+text(5, 7.05, "round-trip", cex = 0.6, col = "grey40", font = 3)
+
+draw_arrow(2.5, 4.1, 2.5, 5.9)
+draw_arrow(4.5, 3.5, 5.5, 3.5)
+draw_arrow(7.5, 4.1, 7.5, 5.9)
+
+text(1.6, 5.0, "feeds into", cex = 0.55, col = "grey40", font = 3, srt = 90)
+text(5.0, 3.8, "evaluate", cex = 0.55, col = "grey40", font = 3)
+text(8.3, 5.0, "informs", cex = 0.55, col = "grey40", font = 3, srt = 90)
+
+par(op)
+```
+
+| Family      | Functions                                               | Purpose                                |
+|:------------|:--------------------------------------------------------|:---------------------------------------|
+| Sample size | `n_prop`, `n_mean`, `n_cluster`, `n_multi`              | "How many units do I need?"            |
+| Precision   | `prec_prop`, `prec_mean`, `prec_cluster`, `prec_multi`  | "What precision does *n* achieve?"     |
+| Power       | `power_prop`, `power_mean`                              | "Can I detect a change?"               |
+| Design      | `varcomp`, `design_effect`, `effective_n`                | Variance components and design effects |
+| Strata      | `strata_bound`                                          | Optimal stratification boundaries      |
+
+Every function returns an S3 object with `print`, `summary`, `predict`, and (where applicable) `confint` methods.
+
+## The n_\*/prec_\* duality
+
+The most distinctive feature of svyplan is the bidirectional link between sample size and precision functions. Every `n_*` function has a `prec_*` counterpart, and they are exact inverses.
+
+```{r decision-diagram, echo = FALSE, fig.height = 4, fig.width = 7}
+op <- par(mar = c(0, 0, 0, 0), family = "sans")
+plot.new()
+plot.window(xlim = c(0, 10), ylim = c(0, 6))
+
+rrect <- function(x, y, w, h, label, col = "white", border = "black",
+                  cex = 0.75, font = 1) {
+  rect(x - w / 2, y - h / 2, x + w / 2, y + h / 2,
+       col = col, border = border, lwd = 1.5)
+  text(x, y, label, cex = cex, font = font)
+}
+
+rrect(5, 5.2, 4, 0.8, "What is your question?",
+      col = "white", border = "black", cex = 0.9, font = 2)
+
+rrect(1.5, 3.2, 2.5, 0.7, '"How many units?"')
+rrect(5.0, 3.2, 2.8, 0.7, '"What precision at n?"')
+rrect(8.5, 3.2, 2.5, 0.7, '"Can I detect a change?"')
+
+rrect(1.5, 1.5, 2.8, 0.8, "n_prop \u00b7 n_mean\nn_cluster \u00b7 n_multi",
+      col = "white", border = "black", cex = 0.65)
+rrect(5.0, 1.5, 2.8, 0.8, "prec_prop \u00b7 prec_mean\nprec_cluster \u00b7 prec_multi",
+      col = "white", border = "black", cex = 0.65)
+rrect(8.5, 1.5, 2.8, 0.8, "power_prop\npower_mean",
+      col = "white", border = "black", cex = 0.65)
+
+draw_arrow <- function(x0, y0, x1, y1)
+  arrows(x0, y0, x1, y1, length = 0.08, lwd = 1.3, col = "grey40")
+
+draw_arrow(3.5, 4.8, 1.5, 3.6)
+draw_arrow(5.0, 4.8, 5.0, 3.6)
+draw_arrow(6.5, 4.8, 8.5, 3.6)
+
+draw_arrow(1.5, 2.85, 1.5, 1.95)
+draw_arrow(5.0, 2.85, 5.0, 1.95)
+draw_arrow(8.5, 2.85, 8.5, 1.95)
+
+par(op)
+```
+
+Because `n_*` and `prec_*` are S3 generics, you can pass a result object directly to its inverse. All design parameters travel with the object:
+
+```{r round-trip}
+# Compute sample size for a proportion
+s <- n_prop(p = 0.3, moe = 0.05, deff = 1.5)
+s
+
+# What precision does this n achieve?
+p <- prec_prop(s)
+p
+
+# Recover the original sample size
+n_prop(p)
+```
+
+You can also override a parameter on the way back:
+
+```{r round-trip-override}
+n_prop(p, cv = 0.08)
+```
+
+## Sample sizes for proportions and means
 
 ### Proportions
 
-Estimate vaccination coverage (expected ~70%) with a 5 percentage
-point margin of error:
-```{r}
+Estimate vaccination coverage (expected ~70%) with a 5 percentage point margin of error:
+
+```{r n-prop-basic}
 n_prop(p = 0.70, moe = 0.05)
 ```
 
-With a design effect of 1.5 (typical for cluster surveys) and a
-finite population of 50,000 households:
-```{r}
-n_prop(p = 0.70, moe = 0.05, deff = 1.5, N = 50000)
+Three method options control how the margin of error is computed:
+
+- **`"wald"`** (default): the textbook normal approximation
+- **`"wilson"`**: Wilson score interval, better coverage near 0 or 1
+- **`"logodds"`**: log-odds transformation, recommended for rare events
+
+```{r n-prop-methods}
+n_prop(p = 0.05, moe = 0.02, method = "wald")
+n_prop(p = 0.05, moe = 0.02, method = "wilson")
+n_prop(p = 0.05, moe = 0.02, method = "logodds")
 ```
 
 Target a coefficient of variation instead of a margin of error:
-```{r}
+
+```{r n-prop-cv}
 n_prop(p = 0.70, cv = 0.05)
 ```
 
 ### Means
 
-Estimate average household expenditure (variance = 40,000, mean = 800)
-with a margin of error of 30:
-```{r}
+Estimate average household expenditure (variance = 40,000, mean = 800) with a margin of error of 30:
+
+```{r n-mean}
 n_mean(var = 40000, moe = 30)
 ```
 
-## Design effects
+### Common parameters
 
-In cluster surveys, units within the same cluster tend to be similar.
-The design effect captures this inflation. For planning, the cluster
-formula `deff = 1 + (m - 1) * delta` links the expected design effect
-to the average cluster size `m` and the intraclass correlation `delta`:
-```{r}
-design_effect(delta = 0.05, m = 20, method = "cluster")
+All `n_*` and `prec_*` functions accept:
+
+| Parameter | Meaning |
+|:----------|:--------|
+| `deff` | Design effect multiplier (default 1) |
+| `N` | Finite population size (enables FPC correction) |
+| `alpha` | Significance level (default 0.05) |
+| `resp_rate` | Expected response rate (inflates *n* by `1/resp_rate`) |
+
+```{r common-params}
+n_prop(p = 0.70, moe = 0.05, deff = 1.5, N = 50000, resp_rate = 0.85)
 ```
 
-With 20 households per cluster and an ICC of 0.05, the design effect
-is about 2. This means we need roughly twice the SRS sample size.
+The design effect can be less than 1 for efficient designs (e.g. well-stratified or PPS samples). svyplan accepts any `deff > 0`.
 
-After a survey is conducted, you can compute the realized design effect
-from the survey weights:
-```{r}
-set.seed(1)
-w <- runif(500, 0.5, 4)
-design_effect(w, method = "kish")
-effective_n(w, method = "kish")
+## Evaluating precision
+
+The `prec_*()` functions answer the reverse question: given a fixed sample size, what precision can you achieve?
+
+```{r prec-basic}
+prec_prop(p = 0.3, n = 400)
+
+prec_mean(var = 40000, n = 300, mu = 800)
 ```
+
+Design parameters work identically:
+
+```{r prec-design}
+prec_prop(p = 0.3, n = 400, deff = 1.5, resp_rate = 0.85)
+```
+
+### Confidence intervals
+
+`confint()` extracts the expected confidence interval from any sample size or precision object:
+
+```{r confint}
+s <- n_prop(p = 0.3, moe = 0.05)
+confint(s)
+
+pr <- prec_prop(p = 0.3, n = 400)
+confint(pr)
+
+confint(pr, level = 0.99)
+```
+
+For proportions, the interval is clamped to [0, 1].
 
 ## Multi-indicator surveys
 
-Household surveys like DHS or MICS track many indicators at once.
-Each indicator has its own expected prevalence, precision target, and
-design effect. `n_multi()` finds the sample size that satisfies all
-targets simultaneously.
+Household surveys like Demographic and Health Surveys (DHS) or Multiple Indicator Cluster Survey (MICS) track many indicators simultaneously. Each indicator has its own expected prevalence, precision target, and design effect. `n_multi()` finds the sample size that satisfies all targets at once.
 
-```{r}
+```{r n-multi}
 targets <- data.frame(
   name = c("stunting", "vaccination", "anemia"),
   p    = c(0.25, 0.70, 0.12),
@@ -92,16 +248,22 @@ targets <- data.frame(
 n_multi(targets)
 ```
 
-The binding indicator (marked with `*`) is the one that drives the
-overall sample size. The other indicators are estimated with better
-precision than requested.
+The binding indicator (marked with `*`) drives the overall sample size. The other indicators are estimated with better precision than requested.
 
-### Per-domain targets
+### Achieved precision
 
-In practice, surveys need adequate precision within domains
-(e.g. urban/rural, regions). Add domain columns to the targets
-data frame and `n_multi()` optimizes each domain separately:
-```{r}
+`prec_multi()` computes the achieved precision for each indicator at the chosen *n*:
+
+```{r prec-multi}
+plan <- n_multi(targets)
+prec_multi(plan)
+```
+
+### Domain targets
+
+Surveys often need adequate precision within subpopulations (urban/rural, regions). Add domain columns to the targets data frame and `n_multi()` optimizes each domain separately:
+
+```{r n-multi-domain}
 targets_dom <- data.frame(
   name       = rep(c("stunting", "vaccination", "anemia"), each = 2),
   residence  = rep(c("urban", "rural"), 3),
@@ -113,21 +275,43 @@ targets_dom <- data.frame(
 n_multi(targets_dom)
 ```
 
-Any column not recognized as a standard parameter (like `name`, `p`,
-`moe`, `deff`) is treated as a domain variable.
+Any column not recognized as a standard parameter (`name`, `p`, `moe`, `deff`, etc.) is automatically treated as a domain variable.
 
-## Multistage cluster allocation
+### Minimum sample size per domain
 
-For two-stage or three-stage designs, the question is not just "how
-many?" but "how many clusters and how many units per cluster?" The
-answer depends on the cost structure and the degree of clustering.
+The `min_n` parameter sets a floor for the per-domain sample size:
+
+```{r n-multi-min-n}
+n_multi(targets_dom, min_n = 300)
+```
+
+### Mixing proportions and means
+
+Targets can mix proportion and mean indicators. Use `var` and `mu` columns for means (leave `p` as `NA`), and `p` for proportions (leave `var`/`mu` as `NA`):
+
+```{r n-multi-mixed}
+targets_mixed <- data.frame(
+  name = c("vaccination", "expenditure"),
+  p    = c(0.70, NA),
+  var  = c(NA, 40000),
+  mu   = c(NA, 800),
+  cv   = c(0.05, 0.10),
+  deff = c(1.5, 2.0)
+)
+
+n_multi(targets_mixed)
+```
+
+## Multistage cluster designs
+
+For two-stage or three-stage designs, the question is not just "how many?" but "how many clusters and how many units per cluster?" The answer depends on the cost structure and the degree of clustering.
 
 ### Variance components from frame data
 
-If you have frame data with cluster identifiers, `varcomp()` estimates
-the between-cluster and within-cluster variance components:
-```{r}
-set.seed(42)
+If frame data with cluster identifiers is available, `varcomp()` estimates between-cluster and within-cluster variance components:
+
+```{r varcomp}
+set.seed(1)
 n_clust <- 80
 n_hh <- 15
 cluster_id <- rep(seq_len(n_clust), each = n_hh)
@@ -139,30 +323,27 @@ vc <- varcomp(expenditure ~ cluster, data = frame)
 vc
 ```
 
-The `delta` value is the intraclass correlation. It can be passed
-directly to `n_cluster()` and `design_effect()`.
+The `delta` value is the measure of homogeneity (intraclass correlation). It feeds directly into `n_cluster()` and `design_effect()`.
 
-### Optimal allocation
+### Optimal two-stage allocation
 
-Given per-stage costs and the variance structure, `n_cluster()` finds
-the allocation that minimizes cost for a target CV, or minimizes CV
-for a given budget:
-```{r}
+Given per-stage costs and the variance structure, `n_cluster()` finds the allocation that either minimizes cost for a target CV, or minimizes CV for a given budget:
+
+```{r n-cluster-2stage}
 # Minimize cost to achieve CV = 0.05
 n_cluster(cost = c(500, 50), delta = vc, cv = 0.05)
 
-# Maximize precision within a budget of 100,000
+# Maximize precision within a budget
 n_cluster(cost = c(500, 50), delta = vc, budget = 100000)
 ```
 
-The `delta = vc` shorthand passes the variance component object
-directly. `n_cluster()` extracts `delta`, `rel_var`, and `k`
-automatically.
+Passing `delta = vc` (the varcomp object) automatically extracts `delta`, `rel_var`, and `k`.
 
 ### Three-stage designs
 
-Add a third cost element for three-stage designs:
-```{r}
+Add a third cost element and a second delta for three-stage designs:
+
+```{r n-cluster-3stage}
 n_cluster(
   cost  = c(1000, 200, 20),
   delta = c(0.01, 0.05),
@@ -170,11 +351,48 @@ n_cluster(
 )
 ```
 
+### Response rate in cluster designs
+
+In budget mode, applying a response rate does not change the allocation (the budget constrains the design); instead, the achieved CV worsens. In CV mode, the first-stage sample is inflated by `1/resp_rate`:
+
+```{r n-cluster-resp}
+n_cluster(cost = c(500, 50), delta = vc, cv = 0.05, resp_rate = 0.90)
+```
+
+### Evaluating cluster allocations
+
+`prec_cluster()` computes the achieved CV for any allocation:
+
+```{r prec-cluster}
+alloc <- n_cluster(cost = c(500, 50), delta = vc, budget = 100000)
+prec_cluster(alloc)
+
+# Arbitrary allocation
+prec_cluster(n = c(50, 12), delta = 0.05)
+```
+
+### Design effects
+
+The cluster design effect formula `deff = 1 + (m - 1) * delta` links cluster size to precision loss:
+
+```{r design-effect}
+design_effect(delta = 0.05, m = 20, method = "cluster")
+```
+
+After data collection, compute the realized design effect from survey weights:
+
+```{r design-effect-weights}
+set.seed(123)
+w <- runif(500, 0.5, 4)
+design_effect(w, method = "kish")
+effective_n(w, method = "kish")
+```
+
 ### Multi-indicator multistage
 
-For surveys with multiple indicators and a cluster design, provide
-per-indicator `delta` columns and a cost vector to `n_multi()`:
-```{r}
+For surveys with multiple indicators in a cluster design, provide `delta` columns and a cost/budget to `n_multi()`:
+
+```{r n-multi-cluster}
 targets_ms <- data.frame(
   name   = c("stunting", "vaccination"),
   p      = c(0.25, 0.70),
@@ -185,97 +403,160 @@ targets_ms <- data.frame(
 n_multi(targets_ms, cost = c(500, 50), budget = 80000)
 ```
 
-## Strata boundaries
+## Optimal strata boundaries
 
-When a continuous auxiliary variable is available on the frame,
-`strata_bound()` finds the optimal boundaries that minimize the
-sample size (or CV) for a given stratification.
+When a continuous auxiliary variable is available on the frame, `strata_bound()` finds the cut points that minimize the sample size (or CV) for a given number of strata.
 
-```{r}
-set.seed(1)
+```{r strata-bound}
+set.seed(12345)
 x <- rlnorm(5000, meanlog = 6, sdlog = 1.2)
 
-# Dalenius-Hodges cumulative root frequency
 strata_bound(x, n_strata = 4, n = 300, method = "cumrootf")
 ```
 
 Four methods are available:
 
-- `"cumrootf"`: Dalenius-Hodges cumulative root frequency (fast, deterministic)
-- `"geo"`: geometric progression (fast, deterministic)
-- `"lh"`: Lavallee-Hidiroglou iterative algorithm (good for skewed data)
-- `"kozak"`: Kozak random search (global optimizer, slower)
+| Method       | Algorithm                                 | Speed    | Best for       |
+|:-------------|:------------------------------------------|:---------|:---------------|
+| `"cumrootf"` | Dalenius-Hodges cumulative root frequency | Fast     | General use    |
+| `"geo"`      | Geometric progression                     | Fast     | Skewed data    |
+| `"lh"`       | Lavall\u00e9e-Hidiroglou iterative        | Moderate | Skewed data    |
+| `"kozak"`    | Kozak random search                       | Slow     | Global optimum |
 
 The Kozak method often finds better boundaries for highly skewed
 distributions:
-```{r}
+
+```{r strata-kozak}
 strata_bound(x, n_strata = 4, cv = 0.05, method = "kozak")
+```
+
+### Allocation methods
+
+Allocation within strata is controlled by the `alloc` parameter:
+
+- `"proportional"`: allocate proportional to stratum size
+- `"neyman"`: allocate proportional to `N_h * S_h` (minimizes variance)
+- `"optimal"`: allocate proportional to `N_h * S_h / sqrt(c_h)` (accounts for costs)
+- Custom: pass `list(q1 = ..., q2 = ..., q3 = ...)` for the formula
+  `N_h^q1 * S_h^q2 / c_h^q3`
+
+### Classifying new observations
+
+`predict()` applies the learned boundaries to new data, returning a
+factor:
+
+```{r strata-predict}
+sb <- strata_bound(x, n_strata = 4, n = 200, method = "cumrootf")
+new_x <- c(100, 500, 1500, 5000)
+predict(sb, newdata = new_x, labels = paste0("S", 1:4))
 ```
 
 ## Power analysis
 
-Sample size calculations based on precision (margin of error) answer
-"how precisely can we estimate this indicator?" Power analysis answers
-a different question: "can we detect a change or a difference?"
+Precision analysis answers "how precisely can we estimate a level?" Power analysis answers a different question: "can we detect a change or difference between two groups or time points?"
 
-### Detecting change over time
+### Sample size for a detectable change
 
-A survey measured vaccination coverage at 70%. Can a follow-up survey
-detect a 5 percentage point increase with 80% power?
-```{r}
+A survey measured vaccination coverage at 70%. How many households are
+needed in a follow-up to detect a 5 percentage point increase with 80%
+power?
+
+```{r power-n}
 power_prop(p1 = 0.70, p2 = 0.75, power = 0.80)
 ```
 
-With a design effect of 2:
-```{r}
+With a design effect:
+
+```{r power-n-deff}
 power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
+```
+
+### Three solve modes
+
+`power_prop()` and `power_mean()` each solve for whichever of `n`, `power`, or the effect size is left unspecified:
+
+```{r power-modes}
+# Solve for n (default when p2 and power given)
+power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
+
+# Solve for power (set power = NULL)
+power_prop(p1 = 0.70, p2 = 0.75, n = 1500, power = NULL, deff = 2.0)
+
+# Solve for MDE (omit p2)
+power_prop(p1 = 0.70, n = 1500, deff = 2.0)
 ```
 
 ### Panel surveys
 
-If the follow-up resamples 50% of the original households and the
-correlation between occasions is 0.6, the required sample size drops:
-```{r}
+If the follow-up resamples a fraction of the original households and the between-round correlation is known, the required sample size drops:
+
+```{r power-panel}
 power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0,
            overlap = 0.50, rho = 0.6)
 ```
 
-### Solving for power or MDE
+### Continuous outcomes
 
-Given a fixed sample size, what power do we have?
-```{r}
-power_prop(p1 = 0.70, p2 = 0.75, n = 1500, power = NULL, deff = 2.0)
-```
+The same three solve modes work for means:
 
-What is the minimum detectable effect with n = 1500?
-```{r}
-power_prop(p1 = 0.70, n = 1500, deff = 2.0)
-```
-
-### Means
-
-The same three solve modes work for continuous outcomes:
-```{r}
-# Sample size to detect a difference of 5 units (within-group var = 200)
+```{r power-mean}
+# Sample size to detect a difference of 5 (within-group var = 200)
 power_mean(delta = 5, var = 200)
 
 # MDE with n = 400 per group
 power_mean(var = 200, n = 400)
 ```
 
-## Putting it together
+## Sensitivity analysis
 
-A typical planning sequence for a national household survey:
+How sensitive is a sample size to assumptions about the design effect, response rate, or prevalence? The `predict()` method evaluates any `svyplan` result at new parameter combinations.
+
+### Varying design parameters
+
+```{r predict-n}
+x <- n_prop(p = 0.3, moe = 0.05, deff = 1.5)
+predict(x, expand.grid(
+  deff = c(1.0, 1.5, 2.0, 2.5),
+  resp_rate = c(0.8, 0.9, 1.0)
+))
+```
+
+### Cluster budget scenarios
+
+```{r predict-cluster}
+cl <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+predict(cl, data.frame(budget = c(50000, 100000, 150000, 200000)))
+```
+
+### Power curves
+
+```{r predict-power}
+pw <- power_prop(p1 = 0.30, p2 = 0.35, n = 500, power = NULL)
+predict(pw, data.frame(n = seq(200, 1000, 200)))
+```
+
+### Precision by sample size
+
+```{r predict-prec}
+pr <- prec_prop(p = 0.3, n = 400)
+predict(pr, data.frame(n = c(100, 200, 400, 800, 1600)))
+```
+
+## Putting it all together
+
+A typical planning sequence for a national household survey ties several svyplan functions together:
 
 1. Define indicators and precision targets per domain
 2. Compute sample sizes with `n_multi()`
-3. If frame data is available, estimate variance components with `varcomp()`
-4. Optimize the multistage allocation with `n_cluster()` or `n_multi()` with costs
-5. Determine strata boundaries with `strata_bound()`
-6. Check that the design has adequate power with `power_prop()` / `power_mean()`
+3. Evaluate achieved precision with `prec_multi()`
+4. Run sensitivity analysis with `predict()`
+5. If frame data is available, estimate variance components with `varcomp()`
+6. Optimize the multistage allocation with `n_cluster()` or `n_multi()` with costs
+7. Determine strata boundaries with `strata_bound()`
+8. Check that the design has adequate power with `power_prop()` / `power_mean()`
 
-```{r}
-# Step 1-2: multi-indicator sample size
+```{r workflow}
+# 1-2: multi-indicator sample size with domain targets
 targets <- data.frame(
   name = c("stunting", "vaccination", "anemia"),
   p    = c(0.25, 0.70, 0.12),
@@ -285,10 +566,21 @@ targets <- data.frame(
 plan <- n_multi(targets)
 plan
 
-# Step 6: can we detect a 5pp change in stunting with this sample?
-power_prop(p1 = 0.25, p2 = 0.20, n = as.integer(plan), power = NULL, deff = 2.0)
+# 3: achieved precision for each indicator
+prec_multi(plan)
+
+# 4: how sensitive is the binding indicator to the response rate?
+predict(
+  n_prop(p = 0.25, moe = 0.05, deff = 2.0),
+  data.frame(resp_rate = c(0.7, 0.8, 0.9, 1.0))
+)
+
+# 8: can we detect a 5pp decline in stunting with this sample?
+power_prop(
+  p1 = 0.25, p2 = 0.20,
+  n = as.integer(plan), power = NULL,
+  deff = 2.0
+)
 ```
 
-All svyplan output objects support `as.integer()` (ceiling of n) and
-`as.double()` (exact n), making it easy to pass results between
-functions or into other tools.
+All `svyplan` output objects support `as.integer()` (ceiling of *n*) and `as.double()` (exact *n*), making it straightforward to pass results between functions or into other packages.

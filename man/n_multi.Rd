@@ -2,13 +2,30 @@
 % Please edit documentation in R/n_multi.R
 \name{n_multi}
 \alias{n_multi}
+\alias{n_multi.default}
+\alias{n_multi.svyplan_prec}
 \title{Multi-Indicator Sample Size}
 \usage{
-n_multi(targets, cost = NULL, budget = NULL, m = NULL, joint = FALSE)
+n_multi(targets, ...)
+
+\method{n_multi}{default}(
+  targets,
+  cost = NULL,
+  budget = NULL,
+  m = NULL,
+  joint = FALSE,
+  min_n = NULL,
+  ...
+)
+
+\method{n_multi}{svyplan_prec}(targets, cost = NULL, ...)
 }
 \arguments{
-\item{targets}{Data frame with one row per indicator. See Details for
-column specifications.}
+\item{targets}{For the default method: data frame with one row per
+indicator (see Details). For \code{svyplan_prec} objects: a precision
+result from \code{\link[=prec_multi]{prec_multi()}}.}
+
+\item{...}{Additional arguments passed to methods.}
 
 \item{cost}{Numeric vector of per-stage costs. \code{NULL} (default) for
 simple mode; length 2 or 3 for multistage mode.}
@@ -21,6 +38,14 @@ in the \code{targets} data frame or a \code{budget} here, not both.}
 \item{joint}{Logical. If \code{TRUE}, optimally split a single \code{budget}
 across domains to minimize the worst-case CV ratio. Only applies
 to multistage budget mode with multiple domains; ignored otherwise.}
+
+\item{min_n}{Numeric scalar or \code{NULL} (default). Minimum total sample
+size per domain. Only active when domains are present; silently
+ignored otherwise. In simple mode, per-domain sample sizes are
+floored to \code{min_n}. In joint multistage mode, domains that would
+receive fewer than \code{min_n} observations are penalized during
+optimization, with an upfront feasibility check. In non-joint
+multistage mode, a warning is issued for any domain below the floor.}
 }
 \value{
 A \code{svyplan_n} object (simple mode) or \code{svyplan_cluster} object
@@ -74,6 +99,9 @@ The \code{targets} data frame supports the following columns:
 \item{\code{rel_var}}{Unit relvariance. If omitted, derived from \code{p} or
 \code{var}/\code{mu}.}
 \item{\code{k1}, \code{k2}}{Ratio parameters (multistage, default 1).}
+\item{\code{resp_rate}}{Expected response rate, in (0, 1]. Default 1 (no
+adjustment). Inflates the required sample size to account for
+non-response.}
 }
 
 Any column not in the recognized set is treated as a \strong{domain variable}.
@@ -94,6 +122,11 @@ are specified, the default (\code{joint = FALSE}) gives each domain the full
 budget independently. With \code{joint = TRUE}, a single budget is split
 optimally across domains using L-BFGS-B optimization of budget fractions,
 minimizing the worst-case CV ratio across all domains.
+
+These functions assume sampling fractions are negligible at each stage
+(equivalent to sampling with replacement). No finite population correction
+is applied. This is standard for multistage planning when cluster
+populations are large relative to the sample.
 }
 \examples{
 # Simple mode: three indicators, take the max
@@ -142,5 +175,6 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 }
 \seealso{
 \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}} for single-indicator sizing;
-\code{\link[=n_cluster]{n_cluster()}} for single-indicator multistage allocation.
+\code{\link[=n_cluster]{n_cluster()}} for single-indicator multistage allocation;
+\code{\link[=prec_multi]{prec_multi()}} for the inverse.
 }

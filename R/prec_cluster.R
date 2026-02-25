@@ -1,17 +1,21 @@
-#' CV for a Multistage Cluster Allocation
+#' Sampling Precision for a Multistage Cluster Allocation
 #'
-#' Compute the coefficient of variation for a given multistage sample
+#' Compute the sampling error (SE, MOE, CV) for a given multistage sample
 #' allocation. This is the inverse of [n_cluster()].
 #'
-#' @param n Numeric vector of per-stage sample sizes: `c(n1, n2)` for
-#'   2-stage or `c(n1, n2, n3)` for 3-stage.
+#' @param n For the default method: numeric vector of per-stage sample
+#'   sizes (`c(n1, n2)` for 2-stage or `c(n1, n2, n3)` for 3-stage).
+#'   For `svyplan_cluster` objects: a cluster allocation from [n_cluster()].
+#' @param ... Additional arguments passed to methods.
 #' @param delta Numeric vector of homogeneity measures (length = stages - 1),
 #'   or a `svyplan_varcomp` object.
 #' @param rel_var Unit relvariance (default 1).
 #' @param k Ratio parameter(s). Scalar for 2-stage, length-2 vector for
 #'   3-stage (default 1).
+#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
+#'   adjustment). The effective stage-1 size is deflated by `resp_rate`.
 #'
-#' @return A numeric scalar: the coefficient of variation.
+#' @return A `svyplan_prec` object with components `$se`, `$moe`, and `$cv`.
 #'
 #' @details
 #' Stage count is determined by `length(n)`.
@@ -32,11 +36,16 @@
 #'   estimating variance components.
 #'
 #' @examples
-#' cv_cluster(n = c(50, 12), delta = 0.05)
-#' cv_cluster(n = c(50, 12, 8), delta = c(0.01, 0.05))
+#' prec_cluster(n = c(50, 12), delta = 0.05)
+#' prec_cluster(n = c(50, 12, 8), delta = c(0.01, 0.05))
 #'
 #' @export
-cv_cluster <- function(n, delta, rel_var = 1, k = 1) {
+prec_cluster <- function(n, ...) UseMethod("prec_cluster")
+
+#' @rdname prec_cluster
+#' @export
+prec_cluster.default <- function(n, delta, rel_var = 1, k = 1,
+                                 resp_rate = 1, ...) {
   if (inherits(delta, "svyplan_varcomp")) {
     vc <- delta
     delta <- vc$delta
@@ -53,29 +62,60 @@ cv_cluster <- function(n, delta, rel_var = 1, k = 1) {
 
   stages <- length(n)
   check_delta(delta, expected_length = stages - 1L)
+  check_resp_rate(resp_rate)
 
   if (any(n <= 0)) {
     stop("all elements of 'n' must be positive", call. = FALSE)
   }
 
+  n_eff <- n
+  n_eff[1L] <- n[1L] * resp_rate
+
   if (stages == 2L) {
-    .cv_cluster_2stage(n, delta, rel_var, k)
+    k <- rep_len(k, 1L)
+    cv_val <- .cv_cluster_2stage(n_eff, delta, rel_var, k)
   } else {
     k <- rep_len(k, 2L)
-    .cv_cluster_3stage(n, delta, rel_var, k)
+    cv_val <- .cv_cluster_3stage(n_eff, delta, rel_var, k)
   }
+
+  params <- list(n = n, delta = delta, rel_var = rel_var, k = k,
+                 resp_rate = resp_rate, stages = stages)
+
+  .new_svyplan_prec(
+    se     = NA_real_,
+    moe    = NA_real_,
+    cv     = cv_val,
+    type   = "cluster",
+    params = params
+  )
 }
 
-#' @keywords internal
-#' @noRd
+#' @rdname prec_cluster
+#' @export
+prec_cluster.svyplan_cluster <- function(n, ...) {
+  x <- n
+  p <- x$params
+  out <- prec_cluster.default(
+    n        = x$n,
+    delta    = p$delta,
+    rel_var  = p$rel_var,
+    k        = p$k,
+    resp_rate = p$resp_rate %||% 1
+  )
+  # Carry cost metadata for round-trip to n_cluster.svyplan_prec
+  out$params$cost <- p$cost
+  if (!is.null(p$budget)) out$params$budget <- p$budget
+  if (!is.null(p$m)) out$params$m <- p$m
+  out
+}
+
 .cv_cluster_2stage <- function(n, delta, rel_var, k) {
   n1 <- n[1L]
   n2 <- n[2L]
   sqrt(rel_var / (n1 * n2) * k * (1 + delta * (n2 - 1)))
 }
 
-#' @keywords internal
-#' @noRd
 .cv_cluster_3stage <- function(n, delta, rel_var, k) {
   n1 <- n[1L]
   n2 <- n[2L]

@@ -4,8 +4,10 @@
 #' multiple survey indicators simultaneously. Supports simple (single-stage)
 #' and multistage cluster designs, with optional domain-level planning.
 #'
-#' @param targets Data frame with one row per indicator. See Details for
-#'   column specifications.
+#' @param targets For the default method: data frame with one row per
+#'   indicator (see Details). For `svyplan_prec` objects: a precision
+#'   result from [prec_multi()].
+#' @param ... Additional arguments passed to methods.
 #' @param cost Numeric vector of per-stage costs. `NULL` (default) for
 #'   simple mode; length 2 or 3 for multistage mode.
 #' @param budget Total budget (multistage only). Provide either `cv` values
@@ -14,6 +16,13 @@
 #' @param joint Logical. If `TRUE`, optimally split a single `budget`
 #'   across domains to minimize the worst-case CV ratio. Only applies
 #'   to multistage budget mode with multiple domains; ignored otherwise.
+#' @param min_n Numeric scalar or `NULL` (default). Minimum total sample
+#'   size per domain. Only active when domains are present; silently
+#'   ignored otherwise. In simple mode, per-domain sample sizes are
+#'   floored to `min_n`. In joint multistage mode, domains that would
+#'   receive fewer than `min_n` observations are penalized during
+#'   optimization, with an upfront feasibility check. In non-joint
+#'   multistage mode, a warning is issued for any domain below the floor.
 #'
 #' @return A `svyplan_n` object (simple mode) or `svyplan_cluster` object
 #'   (multistage mode).
@@ -61,6 +70,9 @@
 #'   \item{`rel_var`}{Unit relvariance. If omitted, derived from `p` or
 #'     `var`/`mu`.}
 #'   \item{`k1`, `k2`}{Ratio parameters (multistage, default 1).}
+#'   \item{`resp_rate`}{Expected response rate, in (0, 1\]. Default 1 (no
+#'     adjustment). Inflates the required sample size to account for
+#'     non-response.}
 #' }
 #'
 #' Any column not in the recognized set is treated as a **domain variable**.
@@ -82,6 +94,11 @@
 #' optimally across domains using L-BFGS-B optimization of budget fractions,
 #' minimizing the worst-case CV ratio across all domains.
 #'
+#' These functions assume sampling fractions are negligible at each stage
+#' (equivalent to sampling with replacement). No finite population correction
+#' is applied. This is standard for multistage planning when cluster
+#' populations are large relative to the sample.
+#'
 #' @references
 #' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
 #'
@@ -90,7 +107,8 @@
 #' (2nd ed.). Springer.
 #'
 #' @seealso [n_prop()], [n_mean()] for single-indicator sizing;
-#'   [n_cluster()] for single-indicator multistage allocation.
+#'   [n_cluster()] for single-indicator multistage allocation;
+#'   [prec_multi()] for the inverse.
 #'
 #' @examples
 #' # Simple mode: three indicators, take the max
@@ -130,13 +148,31 @@
 #' n_multi(targets_jnt, cost = c(500, 50), budget = 100000, joint = TRUE)
 #'
 #' @export
-n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
-                    joint = FALSE) {
+n_multi <- function(targets, ...) UseMethod("n_multi")
+
+#' @rdname n_multi
+#' @export
+n_multi.default <- function(
+  targets,
+  cost = NULL,
+  budget = NULL,
+  m = NULL,
+  joint = FALSE,
+  min_n = NULL,
+  ...
+) {
   if (!is.data.frame(targets) || nrow(targets) == 0L) {
     stop("'targets' must be a non-empty data frame", call. = FALSE)
   }
   if (!is.logical(joint) || length(joint) != 1L || is.na(joint)) {
     stop("'joint' must be TRUE or FALSE", call. = FALSE)
+  }
+  if (!is.null(min_n)) {
+    if (
+      !is.numeric(min_n) || length(min_n) != 1L || is.na(min_n) || min_n <= 0
+    ) {
+      stop("'min_n' must be a positive numeric scalar", call. = FALSE)
+    }
   }
 
   multistage <- !is.null(cost)
@@ -168,7 +204,16 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
       .n_multi_simple(targets)
     }
   } else {
-    .n_multi_domains(targets, cost, budget, m, domain_cols, multistage, joint)
+    .n_multi_domains(
+      targets,
+      cost,
+      budget,
+      m,
+      domain_cols,
+      multistage,
+      joint,
+      min_n
+    )
   }
 }
 
@@ -191,7 +236,8 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     "delta2",
     "rel_var",
     "k1",
-    "k2"
+    "k2",
+    "resp_rate"
   )
 
   has_p <- "p" %in% names(targets)
@@ -213,13 +259,17 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     }
   }
 
-  # Each row needs either p or var
+  # Each row needs at least one of p or var (non-NA)
+  has_indicator <- rep(FALSE, nrow(targets))
+  if (has_p) has_indicator <- has_indicator | !is.na(targets$p)
+  if (has_var) has_indicator <- has_indicator | !is.na(targets$var)
+  if (any(!has_indicator))
+    stop(sprintf("row(s) %s must have a non-NA 'p' or 'var' value",
+         paste(which(!has_indicator), collapse = ", ")), call. = FALSE)
+
+  # When both columns exist, each row must use exactly one
   if (has_p && has_var) {
-    both_na <- is.na(targets$p) & is.na(targets$var)
     both_set <- !is.na(targets$p) & !is.na(targets$var)
-    if (any(both_na)) {
-      stop("each row must have either 'p' or 'var' specified", call. = FALSE)
-    }
     if (any(both_set)) {
       stop("each row must have only one of 'p' or 'var'", call. = FALSE)
     }
@@ -288,6 +338,16 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
 
   domain_cols <- setdiff(names(targets), known)
 
+  if (length(domain_cols) > 0L) {
+    message(
+      "Treating column(s) ",
+      paste(sQuote(domain_cols), collapse = ", "),
+      " as domain variable(s)"
+    )
+  }
+
+  .validate_common_columns(targets)
+
   list(domain_cols = domain_cols)
 }
 
@@ -328,6 +388,12 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     }
   }
 
+  if (!"resp_rate" %in% names(targets)) {
+    targets$resp_rate <- 1
+  } else {
+    targets$resp_rate[is.na(targets$resp_rate)] <- 1
+  }
+
   # Derive rel_var (only needed for multistage, but compute when possible)
   if (!"rel_var" %in% names(targets)) {
     targets$rel_var <- NA_real_
@@ -363,6 +429,11 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
       }
     }
   }
+
+  if (require_all && anyNA(rv))
+    stop(sprintf(
+      "row(s) %s: could not derive 'rel_var' - provide 'p', or 'var'+'mu', or 'rel_var' directly",
+      paste(which(is.na(rv)), collapse = ", ")), call. = FALSE)
 
   rv
 }
@@ -443,6 +514,7 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     }
 
     n_vec[i] <- n_vec[i] * deff
+    n_vec[i] <- .apply_resp_rate(n_vec[i], targets$resp_rate[i])
   }
 
   n_vec
@@ -472,22 +544,33 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   delta <- targets$delta1
   rel_var <- targets$rel_var
   k <- targets$k1
+  rr <- targets$resp_rate
   labels <- if ("name" %in% names(targets)) targets$name else seq_len(nr)
 
-  # n1 required for given n2, for indicator j
-  # n1_j(n2) = rel_var_j * k_j * (1 + delta_j*(n2-1)) / (n2 * cv_j^2)
+  # n1_actual_j = rel_var_j * k_j * (1 + delta_j*(n2-1)) / (n2 * cv_j^2 * rr_j)
   n1_required <- function(n2) {
     vapply(
       seq_len(nr),
       function(j) {
-        rel_var[j] * k[j] * (1 + delta[j] * (n2 - 1)) / (n2 * cv_t[j]^2)
+        rel_var[j] * k[j] * (1 + delta[j] * (n2 - 1)) / (n2 * cv_t[j]^2 * rr[j])
+      },
+      numeric(1L)
+    )
+  }
+
+  cv_achieved_fn <- function(n1, n2) {
+    vapply(
+      seq_len(nr),
+      function(j) {
+        sqrt(
+          rel_var[j] * k[j] / (n1 * rr[j] * n2) * (1 + delta[j] * (n2 - 1))
+        )
       },
       numeric(1L)
     )
   }
 
   if (is.null(budget)) {
-    # CV mode: minimize cost
     cost_fn <- function(n2) {
       n1 <- max(n1_required(n2))
       n1 * (C1 + C2 * n2)
@@ -502,17 +585,9 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     total_cost <- n1_opt * (C1 + C2 * n2_opt)
     binding_idx <- which.max(n1_vals)
 
-    cv_achieved <- vapply(
-      seq_len(nr),
-      function(j) {
-        sqrt(
-          rel_var[j] * k[j] / (n1_opt * n2_opt) * (1 + delta[j] * (n2_opt - 1))
-        )
-      },
-      numeric(1L)
-    )
+    cv_achieved <- cv_achieved_fn(n1_opt, n2_opt)
   } else {
-    bres <- .eval_2stage_budget(cv_t, delta, rel_var, k, C1, C2, budget, m)
+    bres <- .eval_2stage_budget(cv_t, delta, rel_var, k, rr, C1, C2, budget, m)
     n1_opt <- bres$n1
     n2_opt <- bres$n2
     cv_achieved <- bres$cv_achieved
@@ -530,13 +605,21 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     .binding = seq_len(nr) == binding_idx
   )
 
+  params <- list(cost = cost)
+  if (!is.null(budget)) {
+    params$budget <- budget
+  }
+  if (!is.null(m)) {
+    params$m <- m
+  }
+
   .new_svyplan_cluster(
     n = n_vec,
     stages = 2L,
     total_n = total_n,
     cv = cv_achieved[binding_idx],
     cost = total_cost,
-    params = list(cost = cost),
+    params = params,
     targets = targets,
     detail = detail,
     binding = labels[binding_idx]
@@ -559,15 +642,16 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   rel_var <- targets$rel_var
   k1 <- targets$k1
   k2 <- targets$k2
+  rr <- targets$resp_rate
   labels <- if ("name" %in% names(targets)) targets$name else seq_len(nr)
 
-  # n1 required for given (n2, n3), for indicator j
+  # Actual n1 required for given (n2, n3), accounting for per-indicator resp_rate
   n1_required <- function(n2, n3) {
     vapply(
       seq_len(nr),
       function(j) {
         rel_var[j] /
-          (cv_t[j]^2 * n2 * n3) *
+          (cv_t[j]^2 * n2 * n3 * rr[j]) *
           (k1[j] * delta1[j] * n2 * n3 + k2[j] * (1 + delta2[j] * (n3 - 1)))
       },
       numeric(1L)
@@ -580,7 +664,7 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
       function(j) {
         sqrt(
           rel_var[j] /
-            (n1 * n2 * n3) *
+            (n1 * rr[j] * n2 * n3) *
             (k1[j] * delta1[j] * n2 * n3 + k2[j] * (1 + delta2[j] * (n3 - 1)))
         )
       },
@@ -589,36 +673,83 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   }
 
   if (is.null(budget)) {
-    # CV mode: minimize cost
-    cost_fn <- function(par) {
-      n2 <- par[1L]
-      n3 <- par[2L]
-      n1 <- max(n1_required(n2, n3))
-      n1 * (C1 + C2 * n2 + C3 * n2 * n3)
+    if (is.null(m)) {
+      cost_fn <- function(par) {
+        n2 <- par[1L]
+        n3 <- par[2L]
+        n1 <- max(n1_required(n2, n3))
+        n1 * (C1 + C2 * n2 + C3 * n2 * n3)
+      }
+
+      init_n3 <- max(2, sqrt(C2 / C3))
+      init_n2 <- max(2, sqrt(C1 / C2))
+      opt <- optim(
+        par = c(init_n2, init_n3),
+        fn = cost_fn,
+        method = "L-BFGS-B",
+        lower = c(1, 1),
+        upper = c(Inf, Inf)
+      )
+      if (opt$convergence != 0L)
+        warning("L-BFGS-B did not converge (code ", opt$convergence, "): ",
+                "allocation may be approximate", call. = FALSE)
+
+      n2_opt <- opt$par[1L]
+      n3_opt <- opt$par[2L]
+      n1_vals <- n1_required(n2_opt, n3_opt)
+      n1_opt <- max(n1_vals)
+      total_cost <- n1_opt * (C1 + C2 * n2_opt + C3 * n2_opt * n3_opt)
+      binding_idx <- which.max(n1_vals)
+    } else {
+      n1_opt <- m
+
+      n2_required_fn <- function(n3) {
+        n2_per <- vapply(seq_len(nr), function(j) {
+          denom <- cv_t[j]^2 * m * rr[j] / (rel_var[j] * k2[j]) - k1[j] * delta1[j] / k2[j]
+          if (denom <= 0) Inf
+          else (1 + delta2[j] * (n3 - 1)) / (n3 * denom)
+        }, numeric(1L))
+        max(n2_per)
+      }
+
+      cost_fn_fixed <- function(n3) {
+        n2 <- n2_required_fn(n3)
+        m * (C1 + C2 * n2 + C3 * n2 * n3)
+      }
+
+      n3_analytic <- vapply(seq_len(nr), function(j) {
+        if (delta2[j] <= 0) 1 else sqrt((1 - delta2[j]) / delta2[j] * C2 / C3)
+      }, numeric(1L))
+      upper_n3 <- max(10, 3 * max(n3_analytic))
+
+      opt <- optimize(cost_fn_fixed, interval = c(1, upper_n3))
+      n3_opt <- opt$minimum
+      n2_opt <- n2_required_fn(n3_opt)
+
+      if (!is.finite(n2_opt) || n2_opt <= 0)
+        stop("target CV is too small for the given fixed stage-1 size",
+             call. = FALSE)
+
+      n1_vals <- n1_required(n2_opt, n3_opt)
+      binding_idx <- which.max(n1_vals)
+      total_cost <- m * (C1 + C2 * n2_opt + C3 * n2_opt * n3_opt)
     }
-
-    # Starting values from single-indicator heuristic
-    init_n3 <- max(2, sqrt(C2 / C3))
-    init_n2 <- max(2, sqrt(C1 / C2))
-    opt <- optim(
-      par = c(init_n2, init_n3),
-      fn = cost_fn,
-      method = "L-BFGS-B",
-      lower = c(1, 1),
-      upper = c(Inf, Inf)
-    )
-
-    n2_opt <- opt$par[1L]
-    n3_opt <- opt$par[2L]
-    n1_vals <- n1_required(n2_opt, n3_opt)
-    n1_opt <- max(n1_vals)
-    total_cost <- n1_opt * (C1 + C2 * n2_opt + C3 * n2_opt * n3_opt)
-    binding_idx <- which.max(n1_vals)
 
     cv_achieved <- cv_achieved_fn(n1_opt, n2_opt, n3_opt)
   } else {
     bres <- .eval_3stage_budget(
-      cv_t, delta1, delta2, rel_var, k1, k2, C1, C2, C3, budget, m
+      cv_t,
+      delta1,
+      delta2,
+      rel_var,
+      k1,
+      k2,
+      rr,
+      C1,
+      C2,
+      C3,
+      budget,
+      m
     )
     n1_opt <- bres$n1
     n2_opt <- bres$n2
@@ -638,13 +769,21 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     .binding = seq_len(nr) == binding_idx
   )
 
+  params <- list(cost = cost)
+  if (!is.null(budget)) {
+    params$budget <- budget
+  }
+  if (!is.null(m)) {
+    params$m <- m
+  }
+
   .new_svyplan_cluster(
     n = n_vec,
     stages = 3L,
     total_n = total_n,
     cv = cv_achieved[binding_idx],
     cost = total_cost,
-    params = list(cost = cost),
+    params = params,
     targets = targets,
     detail = detail,
     binding = labels[binding_idx]
@@ -661,7 +800,8 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   m,
   domain_cols,
   multistage,
-  joint = FALSE
+  joint = FALSE,
+  min_n = NULL
 ) {
   domain_keys <- interaction(targets[domain_cols], drop = TRUE, sep = ":")
   domain_levels <- levels(domain_keys)
@@ -669,7 +809,14 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
 
   if (multistage && joint && !is.null(budget) && length(domain_levels) > 1L) {
     return(.n_multi_domains_joint(
-      targets, cost, budget, m, domain_cols, domain_levels, split_idx
+      targets,
+      cost,
+      budget,
+      m,
+      domain_cols,
+      domain_levels,
+      split_idx,
+      min_n
     ))
   }
 
@@ -693,7 +840,10 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
       domain_cols,
       domain_levels,
       split_idx,
-      cost
+      cost,
+      budget,
+      m,
+      min_n
     )
   } else {
     .aggregate_simple_domains(
@@ -701,7 +851,8 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
       targets,
       domain_cols,
       domain_levels,
-      split_idx
+      split_idx,
+      min_n
     )
   }
 }
@@ -714,9 +865,9 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   targets,
   domain_cols,
   domain_levels,
-  split_idx
+  split_idx,
+  min_n = NULL
 ) {
-  # Build domains data frame
   domain_rows <- lapply(domain_levels, function(lev) {
     res <- results[[lev]]
     rows <- split_idx[[lev]]
@@ -728,12 +879,17 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   domains <- do.call(rbind, domain_rows)
   rownames(domains) <- NULL
 
-  # Overall n = max across domains
+  if (!is.null(min_n)) {
+    floored <- domains$.n < min_n
+    domains$.n[floored] <- min_n
+    domains$.binding[floored] <- "(min_n)"
+  }
+
   n_max <- max(domains$.n)
   overall_binding_idx <- which.max(domains$.n)
   binding_label <- domains$.binding[overall_binding_idx]
 
-  .new_svyplan_n(
+  res <- .new_svyplan_n(
     n = n_max,
     type = "multi",
     targets = targets,
@@ -741,6 +897,10 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     binding = binding_label,
     domains = domains
   )
+  if (!is.null(min_n)) {
+    res$params$min_n <- min_n
+  }
+  res
 }
 
 #' Aggregate multistage domain results
@@ -752,7 +912,10 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   domain_cols,
   domain_levels,
   split_idx,
-  cost
+  cost,
+  budget = NULL,
+  m = NULL,
+  min_n = NULL
 ) {
   stages <- results[[1L]]$stages
 
@@ -772,15 +935,50 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   domains <- do.call(rbind, domain_rows)
   rownames(domains) <- NULL
 
-  # Overall: aggregate totals
+  if (!is.null(min_n)) {
+    below <- which(domains$.total_n < min_n)
+    if (length(below) > 0L) {
+      dom_labels <- vapply(
+        below,
+        function(i) {
+          paste(domains[i, domain_cols, drop = TRUE], collapse = ":")
+        },
+        character(1L)
+      )
+      warning(
+        sprintf(
+          "domain(s) %s have total_n below min_n = %g",
+          paste(sQuote(dom_labels), collapse = ", "),
+          min_n
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
   total_n <- sum(ceiling(domains$.total_n))
   total_cost <- sum(domains$.cost)
   worst_cv_idx <- which.max(domains$.cv)
 
-  n_vec <- vapply(seq_len(stages), function(s) {
-    max(domains[[paste0("n", s)]])
-  }, numeric(1L))
+  n_vec <- vapply(
+    seq_len(stages),
+    function(s) {
+      max(domains[[paste0("n", s)]])
+    },
+    numeric(1L)
+  )
   names(n_vec) <- paste0("n", seq_len(stages))
+
+  params <- list(cost = cost)
+  if (!is.null(budget)) {
+    params$budget <- budget
+  }
+  if (!is.null(m)) {
+    params$m <- m
+  }
+  if (!is.null(min_n)) {
+    params$min_n <- min_n
+  }
 
   .new_svyplan_cluster(
     n = n_vec,
@@ -788,7 +986,7 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     total_n = total_n,
     cv = domains$.cv[worst_cv_idx],
     cost = total_cost,
-    params = list(cost = cost),
+    params = params,
     targets = targets,
     detail = NULL,
     binding = domains$.binding[worst_cv_idx],
@@ -796,8 +994,16 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   )
 }
 
-.n_multi_domains_joint <- function(targets, cost, budget, m, domain_cols,
-                                   domain_levels, split_idx) {
+.n_multi_domains_joint <- function(
+  targets,
+  cost,
+  budget,
+  m,
+  domain_cols,
+  domain_levels,
+  split_idx,
+  min_n = NULL
+) {
   stages <- length(cost)
   nd <- length(domain_levels)
   C1 <- cost[1L]
@@ -811,10 +1017,15 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     list(
       cv_t = sub$cv,
       delta1 = sub$delta1,
-      delta2 = if ("delta2" %in% names(sub)) sub$delta2 else rep(0, length(rows)),
+      delta2 = if ("delta2" %in% names(sub)) {
+        sub$delta2
+      } else {
+        rep(0, length(rows))
+      },
       rel_var = sub$rel_var,
       k1 = sub$k1,
       k2 = sub$k2,
+      resp_rate = sub$resp_rate,
       labels = labels
     )
   })
@@ -822,22 +1033,98 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   eval_domain <- function(d, budget_d) {
     p <- domain_params[[d]]
     if (stages == 2L) {
-      .eval_2stage_budget(p$cv_t, p$delta1, p$rel_var, p$k1,
-                          C1, C2, budget_d, m)
+      .eval_2stage_budget(
+        p$cv_t,
+        p$delta1,
+        p$rel_var,
+        p$k1,
+        p$resp_rate,
+        C1,
+        C2,
+        budget_d,
+        m
+      )
     } else {
-      .eval_3stage_budget(p$cv_t, p$delta1, p$delta2, p$rel_var, p$k1, p$k2,
-                          C1, C2, C3, budget_d, m)
+      .eval_3stage_budget(
+        p$cv_t,
+        p$delta1,
+        p$delta2,
+        p$rel_var,
+        p$k1,
+        p$k2,
+        p$resp_rate,
+        C1,
+        C2,
+        C3,
+        budget_d,
+        m
+      )
     }
+  }
+
+  total_n_for <- function(bres) {
+    if (stages == 2L) bres$n1 * bres$n2 else bres$n1 * bres$n2 * bres$n3
+  }
+
+  if (!is.null(min_n)) {
+    full_total <- vapply(
+      seq_len(nd),
+      function(d) {
+        tryCatch(total_n_for(eval_domain(d, budget)), error = function(e) 0)
+      },
+      numeric(1L)
+    )
+    for (d in seq_len(nd)) {
+      if (full_total[d] < min_n) {
+        stop(
+          sprintf(
+            "min_n = %g not achievable for domain '%s' (max total_n = %.0f at full budget)",
+            min_n,
+            domain_levels[d],
+            full_total[d]
+          ),
+          call. = FALSE
+        )
+      }
+    }
+    min_fracs <- min_n / full_total
+    if (sum(min_fracs) > 1) {
+      stop(
+        sprintf(
+          "min_n = %g not achievable for all domains within budget",
+          min_n
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
+  lower_bounds <- rep(1e-4, nd)
+  if (!is.null(min_n)) {
+    lower_bounds <- pmax(lower_bounds, min_fracs)
   }
 
   outer_obj <- function(w) {
     w_last <- 1 - sum(w)
-    if (w_last < 1e-4) return(1e12)
+    if (w_last < lower_bounds[nd]) {
+      return(1e12)
+    }
     fracs <- c(w, w_last)
     tryCatch(
-      max(vapply(seq_len(nd), function(d) {
-        eval_domain(d, fracs[d] * budget)$ratio
-      }, numeric(1L))),
+      {
+        vals <- vapply(
+          seq_len(nd),
+          function(d) {
+            bres <- eval_domain(d, fracs[d] * budget)
+            if (!is.null(min_n) && total_n_for(bres) < min_n) {
+              return(1e12)
+            }
+            bres$ratio
+          },
+          numeric(1L)
+        )
+        max(vals)
+      },
       error = function(e) 1e12
     )
   }
@@ -845,18 +1132,25 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   if (nd == 2L) {
     opt <- optimize(
       function(w1) outer_obj(w1),
-      interval = c(1e-4, 1 - 1e-4)
+      interval = c(lower_bounds[1], 1 - lower_bounds[2])
     )
     w_opt <- c(opt$minimum, 1 - opt$minimum)
   } else {
     init_w <- rep(1 / nd, nd - 1L)
+    init_w <- pmax(init_w, lower_bounds[-nd])
+    if (sum(init_w) >= 1 - lower_bounds[nd]) {
+      init_w <- lower_bounds[-nd] / sum(lower_bounds) * (1 - lower_bounds[nd])
+    }
     opt <- optim(
       par = init_w,
       fn = outer_obj,
       method = "L-BFGS-B",
-      lower = rep(1e-4, nd - 1L),
-      upper = rep(1 - 1e-4, nd - 1L)
+      lower = lower_bounds[-nd],
+      upper = rep(1 - lower_bounds[nd], nd - 1L)
     )
+    if (opt$convergence != 0L)
+      warning("L-BFGS-B did not converge (code ", opt$convergence, "): ",
+              "allocation may be approximate", call. = FALSE)
     w_opt <- c(opt$par, 1 - sum(opt$par))
   }
 
@@ -884,25 +1178,49 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   names(results) <- domain_levels
 
   res <- .aggregate_cluster_domains(
-    results, targets, domain_cols, domain_levels, split_idx, cost
+    results,
+    targets,
+    domain_cols,
+    domain_levels,
+    split_idx,
+    cost,
+    budget,
+    m,
+    min_n
   )
   res$params$joint <- TRUE
   res
 }
 
-.eval_2stage_budget <- function(cv_t, delta, rel_var, k, C1, C2, budget, m) {
+.eval_2stage_budget <- function(
+  cv_t,
+  delta,
+  rel_var,
+  k,
+  resp_rate,
+  C1,
+  C2,
+  budget,
+  m
+) {
   nr <- length(cv_t)
 
   if (is.null(m)) {
     obj_fn <- function(n2) {
       n1 <- budget / (C1 + C2 * n2)
-      if (n1 <= 0) return(1e12)
+      if (n1 <= 0) {
+        return(1e12)
+      }
       cv_ratios <- vapply(
         seq_len(nr),
         function(j) {
           sqrt(
-            rel_var[j] * k[j] / (n1 * n2) * (1 + delta[j] * (n2 - 1))
-          ) / cv_t[j]
+            rel_var[j] *
+              k[j] /
+              (n1 * resp_rate[j] * n2) *
+              (1 + delta[j] * (n2 - 1))
+          ) /
+            cv_t[j]
         },
         numeric(1L)
       )
@@ -928,7 +1246,10 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     seq_len(nr),
     function(j) {
       sqrt(
-        rel_var[j] * k[j] / (n1_opt * n2_opt) * (1 + delta[j] * (n2_opt - 1))
+        rel_var[j] *
+          k[j] /
+          (n1_opt * resp_rate[j] * n2_opt) *
+          (1 + delta[j] * (n2_opt - 1))
       )
     },
     numeric(1L)
@@ -946,8 +1267,20 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
   )
 }
 
-.eval_3stage_budget <- function(cv_t, delta1, delta2, rel_var, k1, k2,
-                                C1, C2, C3, budget, m) {
+.eval_3stage_budget <- function(
+  cv_t,
+  delta1,
+  delta2,
+  rel_var,
+  k1,
+  k2,
+  resp_rate,
+  C1,
+  C2,
+  C3,
+  budget,
+  m
+) {
   nr <- length(cv_t)
 
   cv_fn <- function(n1, n2, n3) {
@@ -955,9 +1288,9 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
       seq_len(nr),
       function(j) {
         sqrt(
-          rel_var[j] / (n1 * n2 * n3) *
-            (k1[j] * delta1[j] * n2 * n3 +
-             k2[j] * (1 + delta2[j] * (n3 - 1)))
+          rel_var[j] /
+            (n1 * resp_rate[j] * n2 * n3) *
+            (k1[j] * delta1[j] * n2 * n3 + k2[j] * (1 + delta2[j] * (n3 - 1)))
         )
       },
       numeric(1L)
@@ -969,7 +1302,9 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
       n2 <- par[1L]
       n3 <- par[2L]
       n1 <- budget / (C1 + C2 * n2 + C3 * n2 * n3)
-      if (n1 <= 0) return(1e12)
+      if (n1 <= 0) {
+        return(1e12)
+      }
       max(cv_fn(n1, n2, n3) / cv_t)
     }
 
@@ -982,6 +1317,9 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
       lower = c(1, 1),
       upper = c(Inf, Inf)
     )
+    if (opt$convergence != 0L)
+      warning("L-BFGS-B did not converge (code ", opt$convergence, "): ",
+              "allocation may be approximate", call. = FALSE)
 
     n2_opt <- opt$par[1L]
     n3_opt <- opt$par[2L]
@@ -993,7 +1331,9 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
       n2 <- par[1L]
       n3 <- par[2L]
       cost_check <- C1 * m + C2 * m * n2 + C3 * m * n2 * n3
-      if (cost_check > budget) return(1e12)
+      if (cost_check > budget) {
+        return(1e12)
+      }
       max(cv_fn(m, n2, n3) / cv_t)
     }
 
@@ -1007,6 +1347,9 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
       lower = c(1, 1),
       upper = c(Inf, Inf)
     )
+    if (opt$convergence != 0L)
+      warning("L-BFGS-B did not converge (code ", opt$convergence, "): ",
+              "allocation may be approximate", call. = FALSE)
 
     n2_opt <- opt$par[1L]
     n3_opt <- opt$par[2L]
@@ -1026,4 +1369,27 @@ n_multi <- function(targets, cost = NULL, budget = NULL, m = NULL,
     binding_idx = binding_idx,
     cost = total_cost
   )
+}
+
+#' @rdname n_multi
+#' @export
+n_multi.svyplan_prec <- function(targets, cost = NULL, ...) {
+  x <- targets
+  if (x$type != "multi") {
+    stop("n_multi requires a svyplan_prec of type 'multi'", call. = FALSE)
+  }
+  tgt <- x$params$targets
+  # Replace n column with moe/cv from precision results
+  tgt$n <- NULL
+  if (!is.null(x$detail)) {
+    if (".moe" %in% names(x$detail) && !all(is.na(x$detail$.moe))) {
+      tgt$moe <- x$detail$.moe
+      tgt$cv <- NULL
+    } else if (".cv" %in% names(x$detail) && !all(is.na(x$detail$.cv))) {
+      tgt$cv <- x$detail$.cv
+      tgt$moe <- NULL
+    }
+  }
+  cost <- cost %||% x$params$cost
+  n_multi.default(targets = tgt, cost = cost)
 }

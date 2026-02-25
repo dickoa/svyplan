@@ -58,6 +58,12 @@ scalar. For \code{"cr"}: a list with \verb{$strata} (data frame) and
 Estimate the design effect using various methods. This is an S3 generic
 that dispatches on the class of \code{x}.
 }
+\details{
+The \code{"kish"} method uses only weights and produces a single survey-wide
+DEFF. The \code{"henry"}, \code{"spencer"}, and \code{"cr"} methods are
+\strong{outcome-dependent}: they require \code{y}, and the resulting DEFF varies
+by outcome variable.
+}
 \section{Methods (by class)}{
 \itemize{
 \item \code{design_effect(numeric)}: Method for numeric weights vector.

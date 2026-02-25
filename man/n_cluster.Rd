@@ -2,13 +2,32 @@
 % Please edit documentation in R/n_cluster.R
 \name{n_cluster}
 \alias{n_cluster}
+\alias{n_cluster.default}
+\alias{n_cluster.svyplan_prec}
 \title{Optimal Multistage Cluster Allocation}
 \usage{
-n_cluster(cost, delta, rel_var = 1, k = 1, cv = NULL, budget = NULL, m = NULL)
+n_cluster(cost, ...)
+
+\method{n_cluster}{default}(
+  cost,
+  delta,
+  rel_var = 1,
+  k = 1,
+  cv = NULL,
+  budget = NULL,
+  m = NULL,
+  resp_rate = 1,
+  ...
+)
+
+\method{n_cluster}{svyplan_prec}(cost, cv = NULL, budget = NULL, ...)
 }
 \arguments{
-\item{cost}{Numeric vector of per-stage costs. Length determines the
-number of stages (2 or 3).}
+\item{cost}{For the default method: numeric vector of per-stage costs.
+Length determines the number of stages (2 or 3).
+For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_cluster]{prec_cluster()}}.}
+
+\item{...}{Additional arguments passed to methods.}
 
 \item{delta}{Numeric vector of homogeneity measures (length = stages - 1),
 or a \code{svyplan_varcomp} object.}
@@ -25,6 +44,9 @@ or \code{budget}.}
 
 \item{m}{Fixed stage-1 sample size. \code{NULL} (default) means optimize all
 stages.}
+
+\item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
+adjustment). The stage-1 sample size is inflated by \code{1 / resp_rate}.}
 }
 \value{
 A \code{svyplan_cluster} object with components:
@@ -54,6 +76,11 @@ When \code{m} is specified, stage 1 is fixed and only stage 2+ are optimized.
 
 If \code{delta} is a \code{svyplan_varcomp} object, \code{delta}, \code{rel_var}, and \code{k}
 are extracted automatically.
+
+These functions assume sampling fractions are negligible at each stage
+(equivalent to sampling with replacement). No finite population correction
+is applied. This is standard for multistage planning when cluster
+populations are large relative to the sample.
 }
 \examples{
 # 2-stage, budget mode
@@ -75,6 +102,6 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 (2nd ed.). Springer. Ch. 9.
 }
 \seealso{
-\code{\link[=cv_cluster]{cv_cluster()}} for the inverse, \code{\link[=varcomp]{varcomp()}} for estimating
+\code{\link[=prec_cluster]{prec_cluster()}} for the inverse, \code{\link[=varcomp]{varcomp()}} for estimating
 variance components.
 }

@@ -1,5 +1,8 @@
 test_that("power_prop solve-n matches formula", {
-  p1 <- 0.30; p2 <- 0.35; power <- 0.80; alpha <- 0.05
+  p1 <- 0.30
+  p2 <- 0.35
+  power <- 0.80
+  alpha <- 0.05
   z_a <- qnorm(1 - alpha / 2)
   z_b <- qnorm(power)
   V <- p1 * (1 - p1) + p2 * (1 - p2)
@@ -16,7 +19,10 @@ test_that("power_prop solve-n matches formula", {
 })
 
 test_that("power_prop solve-power matches formula", {
-  p1 <- 0.30; p2 <- 0.35; n <- 1500; alpha <- 0.05
+  p1 <- 0.30
+  p2 <- 0.35
+  n <- 1500
+  alpha <- 0.05
   z_a <- qnorm(1 - alpha / 2)
   V <- p1 * (1 - p1) + p2 * (1 - p2)
   delta <- abs(p1 - p2)
@@ -83,12 +89,18 @@ test_that("power_prop validates inputs", {
   expect_error(power_prop(p1 = 0), "must be in \\(0, 1\\)")
   expect_error(power_prop(p1 = 0.3, p2 = 0.4, n = 100), "exactly one")
   expect_error(power_prop(p1 = 0.3, p2 = 0.3), "must differ")
-  expect_error(power_prop(p1 = 0.3, p2 = 0.4, n = 100, power = NULL, sides = 3),
-               "sides")
-  expect_error(power_prop(p1 = 0.3, p2 = 0.4, n = 100, power = NULL, overlap = -1),
-               "overlap")
-  expect_error(power_prop(p1 = 0.3, p2 = 0.4, n = 100, power = NULL, rho = 2),
-               "rho")
+  expect_error(
+    power_prop(p1 = 0.3, p2 = 0.4, n = 100, power = NULL, sides = 3),
+    "sides"
+  )
+  expect_error(
+    power_prop(p1 = 0.3, p2 = 0.4, n = 100, power = NULL, overlap = -1),
+    "overlap"
+  )
+  expect_error(
+    power_prop(p1 = 0.3, p2 = 0.4, n = 100, power = NULL, rho = 2),
+    "rho"
+  )
 })
 
 test_that("power_prop format and print", {

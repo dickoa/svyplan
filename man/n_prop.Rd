@@ -2,20 +2,31 @@
 % Please edit documentation in R/n_prop.R
 \name{n_prop}
 \alias{n_prop}
+\alias{n_prop.default}
+\alias{n_prop.svyplan_prec}
 \title{Sample Size for a Proportion}
 \usage{
-n_prop(
+n_prop(p, ...)
+
+\method{n_prop}{default}(
   p,
   moe = NULL,
   cv = NULL,
   alpha = 0.05,
   N = Inf,
   deff = 1,
-  method = "wald"
+  resp_rate = 1,
+  method = "wald",
+  ...
 )
+
+\method{n_prop}{svyplan_prec}(p, moe = NULL, cv = NULL, ...)
 }
 \arguments{
-\item{p}{Expected proportion, in (0, 1).}
+\item{p}{For the default method: expected proportion, in (0, 1).
+For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_prop]{prec_prop()}}.}
+
+\item{...}{Additional arguments passed to methods.}
 
 \item{moe}{Desired margin of error. Specify exactly one of \code{moe} or \code{cv}.}
 
@@ -27,7 +38,11 @@ or \code{cv}.}
 \item{N}{Population size. \code{Inf} (default) means no finite population
 correction.}
 
-\item{deff}{Design effect multiplier (>= 1).}
+\item{deff}{Design effect multiplier (> 0). Values < 1 are valid for
+efficient designs (e.g., stratified sampling with Neyman allocation).}
+
+\item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
+adjustment). The sample size is inflated by \code{1 / resp_rate}.}
 
 \item{method}{One of \code{"wald"} (default), \code{"wilson"}, or \code{"logodds"}.}
 }
@@ -59,6 +74,9 @@ approximation.
 
 The Wald FPC uses the Cochran (1977, Ch. 3) form with an \code{N/(N-1)} factor
 to account for the Bernoulli finite-population variance.
+
+All methods use the normal (z) quantile. This is standard for survey
+sampling where the sample size is large enough for the CLT to apply.
 }
 \examples{
 # Wald, absolute margin of error
@@ -70,8 +88,8 @@ n_prop(p = 0.5, cv = 0.10, N = 10000)
 # Wilson score interval
 n_prop(p = 0.1, moe = 0.03, method = "wilson")
 
-# With design effect
-n_prop(p = 0.3, moe = 0.05, deff = 1.5)
+# With design effect and response rate
+n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 
 }
 \references{
@@ -83,5 +101,6 @@ Association}, 22(158), 209--212.
 }
 \seealso{
 \code{\link[=n_mean]{n_mean()}} for continuous variables, \code{\link[=n_cluster]{n_cluster()}} for
-multistage designs, \code{\link[=n_multi]{n_multi()}} for multiple indicators.
+multistage designs, \code{\link[=n_multi]{n_multi()}} for multiple indicators,
+\code{\link[=prec_prop]{prec_prop()}} for the inverse.
 }
