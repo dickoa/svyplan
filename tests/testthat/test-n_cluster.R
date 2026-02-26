@@ -168,3 +168,50 @@ test_that("svyplan_cluster has se/moe/cv fields", {
   expect_true(is.na(res$moe))
   expect_true(res$cv > 0)
 })
+
+test_that("n_cluster rejects invalid rel_var", {
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 0.05, rel_var = -1, cv = 0.05),
+    "must be positive"
+  )
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 0.05, rel_var = 0, cv = 0.05),
+    "must be positive"
+  )
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 0.05, rel_var = NA_real_, cv = 0.05),
+    "must not be NA"
+  )
+})
+
+test_that("n_cluster rejects invalid k", {
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 0.05, k = -1, cv = 0.05),
+    "positive"
+  )
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 0.05, k = 0, cv = 0.05),
+    "positive"
+  )
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 0.05, k = NA, cv = 0.05),
+    "positive"
+  )
+  expect_error(
+    n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05),
+              k = c(1, -1), cv = 0.05),
+    "positive"
+  )
+})
+
+test_that("n_cluster fixed-m CV error says 'too small'", {
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.001, m = 5),
+    "too small"
+  )
+  expect_error(
+    n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05),
+              cv = 0.001, m = 5),
+    "too small"
+  )
+})

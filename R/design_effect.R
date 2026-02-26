@@ -115,7 +115,7 @@ design_effect.default <- function(
   }
 
   check_scalar(m, "m")
-  check_delta(delta)
+  check_delta(delta, expected_length = 1L)
 
   1 + (m - 1) * delta
 }

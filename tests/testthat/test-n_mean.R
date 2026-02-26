@@ -73,3 +73,7 @@ test_that("mean cv is NA when mu not provided", {
   res <- n_mean(var = 100, moe = 2)
   expect_true(is.na(res$cv))
 })
+
+test_that("n_mean rejects N = 1", {
+  expect_error(n_mean(var = 100, moe = 2, N = 1), "greater than 1")
+})

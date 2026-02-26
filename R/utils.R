@@ -60,12 +60,12 @@ check_deff <- function(deff) {
   invisible(TRUE)
 }
 
-#' Check population size N > 0 or Inf
+#' Check population size N > 1 or Inf
 #' @keywords internal
 #' @noRd
 check_population_size <- function(N) {
-  if (!is.numeric(N) || length(N) != 1L || anyNA(N) || N <= 0) {
-    stop("'N' must be a positive number or Inf", call. = FALSE)
+  if (!is.numeric(N) || length(N) != 1L || anyNA(N) || N <= 1) {
+    stop("'N' must be greater than 1 (or Inf)", call. = FALSE)
   }
   invisible(TRUE)
 }
@@ -212,8 +212,8 @@ check_resp_rate <- function(resp_rate) {
   }
   if ("N" %in% names(targets)) {
     vals <- targets$N[!is.na(targets$N)]
-    if (any(vals <= 0))
-      stop("'N' values must be positive", call. = FALSE)
+    if (any(vals <= 1))
+      stop("'N' values must be greater than 1 (or Inf)", call. = FALSE)
   }
   if ("resp_rate" %in% names(targets)) {
     vals <- targets$resp_rate[!is.na(targets$resp_rate)]

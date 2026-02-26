@@ -684,9 +684,7 @@ test_that("joint budget: 3+ domains work", {
     delta1 = c(0.02, 0.05, 0.03),
     region = c("A", "B", "C")
   )
-  suppressWarnings(
-    res <- nm(df, cost = c(500, 50), budget = 150000, joint = TRUE)
-  )
+  res <- suppressWarnings(nm(df, cost = c(500, 50), budget = 150000, joint = TRUE))
   expect_s3_class(res, "svyplan_cluster")
   expect_equal(nrow(res$domains), 3L)
   expect_equal(sum(res$domains$.cost), 150000, tolerance = 1)
@@ -1095,4 +1093,23 @@ test_that("min_n: print shows min_n for cluster domains", {
   )
   res <- nm(df, cost = c(500, 50), budget = 100000, joint = TRUE, min_n = 50)
   expect_output(print(res), "min_n = 50")
+})
+
+test_that("n_multi rejects negative var", {
+  df <- data.frame(var = -10, mu = 5, moe = 1)
+  expect_error(nm(df), "var.*positive")
+  df2 <- data.frame(var = 0, mu = 5, moe = 1)
+  expect_error(nm(df2), "var.*positive")
+})
+
+test_that("n_multi rejects non-positive mu", {
+  df <- data.frame(var = 10, mu = 0, cv = 0.1)
+  expect_error(nm(df), "mu.*positive")
+  df2 <- data.frame(var = 10, mu = -5, cv = 0.1)
+  expect_error(nm(df2), "mu.*positive")
+})
+
+test_that("n_multi rejects N = 1 in simple mode", {
+  df <- data.frame(p = 0.3, moe = 0.05, N = 1)
+  expect_error(nm(df), "greater than 1")
 })

@@ -50,3 +50,70 @@ test_that("prec_multi requires n column", {
   targets <- data.frame(p = 0.3, moe = 0.05)
   expect_error(prec_multi(targets), "must contain an 'n' column")
 })
+
+test_that("prec_multi simple rejects invalid p", {
+  expect_error(
+    prec_multi(data.frame(p = 0, n = 100)),
+    "p.*\\(0, 1\\)"
+  )
+  expect_error(
+    prec_multi(data.frame(p = 1, n = 100)),
+    "p.*\\(0, 1\\)"
+  )
+  expect_error(
+    prec_multi(data.frame(p = -0.1, n = 100)),
+    "p.*\\(0, 1\\)"
+  )
+})
+
+test_that("prec_multi simple rejects invalid var", {
+  expect_error(
+    prec_multi(data.frame(var = -10, n = 100)),
+    "var.*positive"
+  )
+  expect_error(
+    prec_multi(data.frame(var = 0, n = 100)),
+    "var.*positive"
+  )
+})
+
+test_that("prec_multi simple rejects non-positive mu", {
+  expect_error(
+    prec_multi(data.frame(var = 10, mu = 0, n = 100)),
+    "mu.*positive"
+  )
+  expect_error(
+    prec_multi(data.frame(var = 10, mu = -5, n = 100)),
+    "mu.*positive"
+  )
+})
+
+test_that("prec_multi cluster requires n2 column", {
+  targets <- data.frame(
+    p = 0.3, n = 50, delta1 = 0.05
+  )
+  expect_error(
+    prec_multi(targets, cost = c(500, 50)),
+    "n2.*required"
+  )
+})
+
+test_that("prec_multi 3-stage requires n3 column", {
+  targets <- data.frame(
+    p = 0.3, n = 50, n2 = 10, delta1 = 0.05
+  )
+  expect_error(
+    prec_multi(targets, cost = c(500, 100, 50)),
+    "n3.*required"
+  )
+})
+
+test_that("prec_multi cluster rejects NA in n2", {
+  targets <- data.frame(
+    p = c(0.3, 0.1), n = c(50, 50), n2 = c(10, NA), delta1 = c(0.05, 0.02)
+  )
+  expect_error(
+    prec_multi(targets, cost = c(500, 50)),
+    "n2.*required"
+  )
+})

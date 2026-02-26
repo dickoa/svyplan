@@ -226,3 +226,15 @@ test_that("design_effect cr agrees with survey package", {
 
   expect_equal(our$overall, survey_deff, tolerance = 0.05)
 })
+
+test_that("design_effect cluster rejects vector delta", {
+  expect_error(
+    design_effect(delta = c(0.05, 0.10), m = 25),
+    "length 1"
+  )
+})
+
+test_that("design_effect cluster accepts scalar delta", {
+  d <- design_effect(delta = 0.05, m = 25)
+  expect_equal(d, 1 + 24 * 0.05)
+})

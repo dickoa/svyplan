@@ -97,6 +97,22 @@ prec_multi.default <- function(targets, cost = NULL, budget = NULL, m = NULL,
     stop(sprintf("row(s) %s must have a non-NA 'p' or 'var' value",
          paste(which(!has_indicator), collapse = ", ")), call. = FALSE)
 
+  if (has_p) {
+    p_vals <- targets$p[!is.na(targets$p)]
+    if (any(p_vals <= 0 | p_vals >= 1))
+      stop("all 'p' values must be in (0, 1)", call. = FALSE)
+  }
+  if (has_var) {
+    var_vals <- targets$var[!is.na(targets$var)]
+    if (any(var_vals <= 0))
+      stop("all 'var' values must be positive", call. = FALSE)
+  }
+  if ("mu" %in% names(targets)) {
+    mu_vals <- targets$mu[!is.na(targets$mu)]
+    if (any(mu_vals <= 0))
+      stop("'mu' values must be positive", call. = FALSE)
+  }
+
   nr <- nrow(targets)
   has_mu <- "mu" %in% names(targets)
 
@@ -171,8 +187,12 @@ prec_multi.default <- function(targets, cost = NULL, budget = NULL, m = NULL,
   labels <- if ("name" %in% names(targets)) targets$name else seq_len(nr)
 
   n1 <- targets$n
-  n2 <- if ("n2" %in% names(targets)) targets$n2 else rep(NA_real_, nr)
-  n3 <- if ("n3" %in% names(targets)) targets$n3 else rep(NA_real_, nr)
+  if (stages >= 2L && (!"n2" %in% names(targets) || anyNA(targets$n2) || any(targets$n2 <= 0)))
+    stop("'n2' column is required for multistage precision (positive, no NA)", call. = FALSE)
+  if (stages == 3L && (!"n3" %in% names(targets) || anyNA(targets$n3) || any(targets$n3 <= 0)))
+    stop("'n3' column is required for 3-stage precision (positive, no NA)", call. = FALSE)
+  n2 <- targets$n2
+  n3 <- if (stages == 3L) targets$n3 else rep(NA_real_, nr)
 
   rr <- targets$resp_rate
   n1_eff <- n1 * rr

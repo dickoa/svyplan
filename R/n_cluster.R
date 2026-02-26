@@ -87,6 +87,10 @@ n_cluster.default <- function(cost, delta, rel_var = 1, k = 1,
     k <- vc$k
   }
 
+  check_scalar(rel_var, "rel_var")
+  if (!is.numeric(k) || length(k) == 0L || anyNA(k) || any(k <= 0))
+    stop("'k' must contain positive values", call. = FALSE)
+
   stages <- length(cost)
   check_delta(delta, expected_length = stages - 1L)
 
@@ -171,7 +175,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
     } else {
       n2_opt <- (1 - delta) / (cv^2 * n1_eff / (rel_var * k) - delta)
       if (n2_opt <= 0) {
-        stop("target CV is too large for the given parameters", call. = FALSE)
+        stop("target CV is too small for the given fixed stage-1 size and parameters", call. = FALSE)
       }
       total_cost <- C1 * m + C2 * m * n2_opt
       cv_achieved <- cv
@@ -247,7 +251,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
       n2_opt <- k2 * (1 + delta2 * (n3_opt - 1)) /
         (n3_opt * (cv^2 * n1_eff / rel_var - k1 * delta1))
       if (n2_opt <= 0) {
-        stop("target CV is too large for the given parameters", call. = FALSE)
+        stop("target CV is too small for the given fixed stage-1 size and parameters", call. = FALSE)
       }
       total_cost <- C1 * m + C2 * m * n2_opt + C3 * m * n2_opt * n3_opt
       cv_achieved <- cv

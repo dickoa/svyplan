@@ -259,6 +259,13 @@ n_multi.default <- function(
     }
   }
 
+  if (has_var) {
+    var_vals <- targets$var[!is.na(targets$var)]
+    if (any(var_vals <= 0)) {
+      stop("all 'var' values must be positive", call. = FALSE)
+    }
+  }
+
   # Each row needs at least one of p or var (non-NA)
   has_indicator <- rep(FALSE, nrow(targets))
   if (has_p) has_indicator <- has_indicator | !is.na(targets$p)
@@ -333,6 +340,13 @@ n_multi.default <- function(
           call. = FALSE
         )
       }
+    }
+  }
+
+  if ("mu" %in% names(targets)) {
+    mu_vals <- targets$mu[!is.na(targets$mu)]
+    if (any(mu_vals <= 0)) {
+      stop("'mu' values must be positive", call. = FALSE)
     }
   }
 
