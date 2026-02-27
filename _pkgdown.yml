@@ -56,3 +56,8 @@ reference:
   desc: Grid exploration for svyplan objects.
   contents:
   - predict.svyplan
+
+- title: Plot methods
+  desc: Plot svyplan objects.
+  contents:
+  - plot.svyplan
