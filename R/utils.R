@@ -102,6 +102,20 @@ check_cost <- function(cost) {
   invisible(TRUE)
 }
 
+#' Check fixed cost (C0)
+#' @keywords internal
+#' @noRd
+check_fixed_cost <- function(fixed_cost, budget = NULL) {
+  if (!is.numeric(fixed_cost) || length(fixed_cost) != 1L ||
+      is.na(fixed_cost) || fixed_cost < 0) {
+    stop("'fixed_cost' must be a non-negative numeric scalar", call. = FALSE)
+  }
+  if (!is.null(budget) && fixed_cost >= budget) {
+    stop("'fixed_cost' must be less than 'budget'", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 #' Check delta vector
 #' @keywords internal
 #' @noRd

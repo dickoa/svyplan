@@ -1,3 +1,12 @@
+.alloc_weights <- function(alloc, q, N_h, S_h, cost_h) {
+  switch(alloc,
+    proportional = N_h,
+    neyman       = N_h * S_h,
+    optimal      = N_h * S_h / sqrt(cost_h),
+    power        = S_h * N_h^q
+  )
+}
+
 .strata_precompute <- function(x_sort) {
   list(
     cs = c(0, cumsum(x_sort)),
@@ -69,7 +78,8 @@
   x,
   bk,
   n_total,
-  alloc_q,
+  alloc,
+  q,
   cost_h,
   certain_idx = NULL,
   .pre = NULL
@@ -109,7 +119,7 @@
     mean_h[is.nan(mean_h)] <- 0
   }
 
-  a_h <- N_h^alloc_q[[1L]] * S_h^alloc_q[[2L]] / cost_h^alloc_q[[3L]]
+  a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h)
   m_h <- pmin(rep(2, L), N_h)
   M_h <- N_h
   if (!is.null(certain_idx)) {
@@ -152,13 +162,14 @@
   x,
   bk,
   n_total,
-  alloc_q,
+  alloc,
+  q,
   cost_h,
   certain_idx = NULL,
   .pre = NULL
 ) {
   if (is.unsorted(bk)) return(Inf)
-  res <- .strata_alloc(x, bk, n_total, alloc_q, cost_h, certain_idx, .pre)
+  res <- .strata_alloc(x, bk, n_total, alloc, q, cost_h, certain_idx, .pre)
   if (any(res$N_h == 0L)) return(Inf)
   res$cv
 }
@@ -170,7 +181,8 @@
   x,
   bk,
   target_cv,
-  alloc_q,
+  alloc,
+  q,
   cost_h,
   certain_idx = NULL,
   .pre = NULL
@@ -214,7 +226,7 @@
   ybar <- sum(W_h * mean_h)
   target_V <- (target_cv * abs(ybar))^2
 
-  a_h <- N_h^alloc_q[[1L]] * S_h^alloc_q[[2L]] / cost_h^alloc_q[[3L]]
+  a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h)
   m_h <- pmin(rep(2, L), N_h)
   M_h <- N_h
   if (!is.null(certain_idx)) {
@@ -279,7 +291,8 @@
   L,
   n_total,
   target_cv,
-  alloc_q,
+  alloc,
+  q,
   cost_h,
   maxiter,
   certain_idx = NULL
@@ -306,7 +319,8 @@
         x_sort,
         bk_,
         target_cv,
-        alloc_q,
+        alloc,
+        q,
         cost_h,
         certain_idx,
         .pre = pre
@@ -318,7 +332,8 @@
         x_sort,
         bk_,
         n_total,
-        alloc_q,
+        alloc,
+        q,
         cost_h,
         certain_idx,
         .pre = pre
@@ -380,7 +395,8 @@
   L,
   n_total,
   target_cv,
-  alloc_q,
+  alloc,
+  q,
   cost_h,
   maxiter,
   niter,
@@ -397,9 +413,6 @@
   N <- pre$n
   cs <- pre$cs
   cs2 <- pre$cs2
-  q1 <- alloc_q[[1L]]
-  q2 <- alloc_q[[2L]]
-  q3 <- alloc_q[[3L]]
   use_cv <- !is.null(target_cv)
 
   # Map each unique value to its rightmost position in x_sort (prefix index)
@@ -417,7 +430,7 @@
                     pmax(0, (sum2_h - N_h * mean_h^2) / (N_h - 1L)), 0)
     S_h <- sqrt(var_h)
     W_h <- N_h / N
-    a_h <- N_h^q1 * S_h^q2 / cost_h^q3
+    a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h)
     if (!is.null(certain_idx)) a_h[certain_idx] <- 0
     sa <- sum(a_h)
     if (sa <= 0) return(Inf)

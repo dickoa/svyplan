@@ -117,7 +117,12 @@ print.svyplan_cluster <- function(x, ...) {
   } else {
     cat(sprintf(" -> total n = %d\n", total_display))
   }
-  cat(sprintf("cv = %.4f, cost = %.0f\n", x$cv, x$cost))
+  fc <- x$params$fixed_cost
+  if (!is.null(fc) && fc > 0) {
+    cat(sprintf("cv = %.4f, cost = %.0f (fixed: %.0f)\n", x$cv, x$cost, fc))
+  } else {
+    cat(sprintf("cv = %.4f, cost = %.0f\n", x$cv, x$cost))
+  }
 
   if (!is.null(x$domains)) {
     cat(sprintf("Domains: %d\n", nrow(x$domains)))
@@ -143,7 +148,13 @@ print.svyplan_cluster <- function(x, ...) {
       dom[[col]] <- ceiling(dom[[col]])
     }
     dom$.total_n <- apply(dom[, paste0("n", seq_len(x$stages)), drop = FALSE], 1, prod)
-    cat(sprintf("Total n = %d\n", sum(dom$.total_n)))
+    fc <- x$params$fixed_cost
+    if (!is.null(fc) && fc > 0) {
+      cat(sprintf("Total n = %d, cost = %.0f (fixed: %.0f)\n",
+                  sum(dom$.total_n), x$cost, fc))
+    } else {
+      cat(sprintf("Total n = %d\n", sum(dom$.total_n)))
+    }
     dom$.cv <- sprintf("%.4f", dom$.cv)
     dom$.cost <- sprintf("%.0f", dom$.cost)
     print(dom, row.names = FALSE, right = FALSE)
@@ -156,8 +167,14 @@ print.svyplan_cluster <- function(x, ...) {
     }, character(1L))
     cat(paste(stage_parts, collapse = " | "))
     cat(sprintf(" -> total n = %d\n", total_display))
-    cat(sprintf("cv = %.4f, cost = %.0f (binding: %s)\n",
-                x$cv, x$cost, x$binding))
+    fc <- x$params$fixed_cost
+    if (!is.null(fc) && fc > 0) {
+      cat(sprintf("cv = %.4f, cost = %.0f (fixed: %.0f, binding: %s)\n",
+                  x$cv, x$cost, fc, x$binding))
+    } else {
+      cat(sprintf("cv = %.4f, cost = %.0f (binding: %s)\n",
+                  x$cv, x$cost, x$binding))
+    }
     cat("---\n")
     d <- x$detail
     d$.cv_achieved <- sprintf("%.4f", d$.cv_achieved)
@@ -480,6 +497,13 @@ print.svyplan_strata <- function(x, ...) {
   cat(sprintf("Boundaries: %s\n",
               paste(sprintf("%.1f", x$boundaries), collapse = ", ")))
   cat(sprintf("n = %d, cv = %.4f\n", ceiling(x$n), x$cv))
+  if (!is.null(x$alloc) && is.character(x$alloc)) {
+    if (x$alloc == "power") {
+      cat(sprintf("Allocation: power (q = %.2f)\n", x$params$q))
+    } else {
+      cat(sprintf("Allocation: %s\n", x$alloc))
+    }
+  }
   if (isTRUE(x$converged)) {
     cat("Converged: yes\n")
   } else if (isFALSE(x$converged)) {

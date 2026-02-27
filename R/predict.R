@@ -26,7 +26,7 @@
 #' - **`n_prop`**: `p`, `moe`, `cv`, `alpha`, `N`, `deff`, `resp_rate`
 #' - **`n_mean`**: `var`, `mu`, `moe`, `cv`, `alpha`, `N`, `deff`,
 #'   `resp_rate`
-#' - **`n_cluster`**: `cv`, `budget`, `resp_rate`
+#' - **`n_cluster`**: `cv`, `budget`, `resp_rate`, `fixed_cost`
 #' - **`power_prop`**: `p1`, `p2`, `n`, `power`, `alpha`, `N`, `deff`,
 #'   `sides`, `overlap`, `rho`, `resp_rate` (excluding the solved-for
 #'   parameter)
@@ -132,7 +132,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
     )
   }
 
-  allowed <- c("cv", "budget", "resp_rate")
+  allowed <- c("cv", "budget", "resp_rate", "fixed_cost")
   .validate_newdata(newdata, allowed)
 
   p <- object$params
@@ -144,7 +144,8 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
 
   base <- list(
     cost = p$cost, delta = p$delta, rel_var = p$rel_var,
-    k = p$k, resp_rate = p$resp_rate %||% 1, m = p$m
+    k = p$k, resp_rate = p$resp_rate %||% 1, m = p$m,
+    fixed_cost = p$fixed_cost %||% 0
   )
 
   if (has_cv_col) {
@@ -164,7 +165,8 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
       cost = params$cost, delta = params$delta,
       rel_var = params$rel_var, k = params$k,
       cv = params$cv, budget = params$budget,
-      m = params$m, resp_rate = params$resp_rate
+      m = params$m, resp_rate = params$resp_rate,
+      fixed_cost = params$fixed_cost
     )
     out <- as.list(res$n)
     out$total_n <- res$total_n

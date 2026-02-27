@@ -15,6 +15,7 @@ n_multi(targets, ...)
   m = NULL,
   joint = FALSE,
   min_n = NULL,
+  fixed_cost = 0,
   ...
 )
 
@@ -46,6 +47,9 @@ floored to \code{min_n}. In joint multistage mode, domains that would
 receive fewer than \code{min_n} observations are penalized during
 optimization, with an upfront feasibility check. In non-joint
 multistage mode, a warning is issued for any domain below the floor.}
+
+\item{fixed_cost}{Fixed overhead cost (C0). Default 0. Only applies
+to multistage mode. See \code{\link[=n_cluster]{n_cluster()}} for details.}
 }
 \value{
 A \code{svyplan_n} object (simple mode) or \code{svyplan_cluster} object

@@ -11,6 +11,7 @@ strata_bound(
   cv = NULL,
   method = "lh",
   alloc = "neyman",
+  q = 0.5,
   cost = NULL,
   certain = NULL,
   nclass = NULL,
@@ -36,11 +37,18 @@ or \code{cv}. Required for methods \code{"lh"} and \code{"kozak"}.}
 (random search). Default \code{"lh"}.}
 
 \item{alloc}{Allocation rule: \code{"proportional"}, \code{"neyman"},
-\code{"optimal"}, or a list with components \code{q1}, \code{q2}, \code{q3} for power
-allocation. Default \code{"neyman"}.}
+\code{"optimal"}, or \code{"power"} (Bankier compromise). Default \code{"neyman"}.
+See Details.}
 
-\item{cost}{Per-stratum unit costs. Scalar or vector of length
-\code{n_strata}. Default \code{NULL} (equal costs).}
+\item{q}{Bankier power parameter, used only when \code{alloc = "power"}.
+Numeric scalar in \eqn{[0, 1]}. At \code{q = 1} the allocation equals
+Neyman; at \code{q = 0} it yields near-equal subnational CVs.
+Default 0.5.}
+
+\item{cost}{Per-stratum unit costs, ordered from lowest to highest
+stratum. Scalar (equal costs) or vector of length \code{n_strata}.
+Default \code{NULL} (equal unit costs, \eqn{c_h = 1} for all strata),
+in which case \code{"optimal"} and \code{"neyman"} coincide.}
 
 \item{certain}{Take-all threshold. Units with \code{x >= certain} form a
 census stratum.}
@@ -63,7 +71,7 @@ A \code{svyplan_strata} object with components:
 \item{cv}{Achieved coefficient of variation.}
 \item{strata}{Data frame with per-stratum summaries.}
 \item{method}{Algorithm used.}
-\item{alloc}{Allocation parameters as a list.}
+\item{alloc}{Allocation method name (character).}
 \item{params}{List of additional parameters.}
 \item{converged}{Logical (for iterative methods).}
 }
@@ -94,12 +102,24 @@ may get trapped in local minima. The non-iterative methods (\code{"cumrootf"},
 \code{"geo"}) are useful for quick exploratory stratification or when neither
 \code{n} nor \code{cv} is known yet.
 
-Allocation is controlled by the \code{alloc} parameter via power allocation:
-\eqn{n_h \propto N_h^{q_1} S_h^{q_2} / c_h^{q_3}}{n_h ~ N_h^q1 * S_h^q2 / c_h^q3}.
-Named shortcuts: \code{"proportional"} = (1, 0, 0), \code{"neyman"} = (1, 1, 0),
-\code{"optimal"} = (1, 1, 0.5). Stratum allocations \code{n_h} are rounded to
-integers using the ORIC method (Cont and Heidari, 2014), which preserves
-\code{sum(n_h) = n} while minimizing rounding distortion.
+Allocation is controlled by the \code{alloc} parameter. Four methods are
+available:
+\itemize{
+\item \strong{proportional}: \eqn{n_h \propto N_h}{n_h ~ N_h}.
+\item \strong{neyman}: \eqn{n_h \propto N_h S_h}{n_h ~ N_h * S_h}.
+Minimizes the national CV when unit costs are equal.
+\item \strong{optimal}: \eqn{n_h \propto N_h S_h / \sqrt{c_h}}{n_h ~ N_h * S_h / sqrt(c_h)}.
+Accounts for differential unit costs.
+\item \strong{power}: Bankier (1988) compromise,
+\eqn{n_h \propto S_h N_h^q}{n_h ~ S_h * N_h^q}.
+The parameter \code{q} controls the trade-off between national precision
+(\code{q = 1}, equivalent to Neyman) and near-equal subnational CVs
+(\code{q = 0}).
+}
+
+Stratum allocations \code{n_h} are rounded to integers using the ORIC method
+(Cont and Heidari, 2014), which preserves \code{sum(n_h) = n} while minimizing
+rounding distortion.
 }
 \examples{
 set.seed(42)
@@ -110,6 +130,9 @@ strata_bound(x, n_strata = 4, method = "cumrootf", n = 100)
 
 # LH (default, iterative)
 strata_bound(x, n_strata = 4, n = 100)
+
+# Bankier power allocation (compromise between national and subnational CVs)
+strata_bound(x, n_strata = 4, n = 100, alloc = "power", q = 0.5)
 
 # With take-all stratum
 strata_bound(x, n_strata = 3, n = 80, certain = quantile(x, 0.95))
@@ -132,6 +155,9 @@ construction of stratum boundaries in skewed populations.
 Wesolowski, J., Wieczorkowski, R. and Wojciak, W. (2021). Optimality of
 the recursive Neyman allocation.
 \emph{Journal of Survey Statistics and Methodology}, 10(5), 1263--1275.
+
+Bankier, M. D. (1988). Power allocations: determining sample sizes for
+subnational areas. \emph{The American Statistician}, 42(3), 174--177.
 
 Cont, R. and Heidari, M. (2014). Optimal rounding under integer
 constraints. \emph{arXiv preprint} arXiv:1501.00014.

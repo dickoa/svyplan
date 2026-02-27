@@ -1,4 +1,4 @@
----
+--
 title: "Survey sample size planning with svyplan"
 output: rmarkdown::html_vignette
 vignette: >
@@ -359,6 +359,20 @@ In budget mode, applying a response rate does not change the allocation (the bud
 n_cluster(cost = c(500, 50), delta = vc, cv = 0.05, resp_rate = 0.90)
 ```
 
+### Fixed overhead costs
+
+The standard cost model is purely linear: `C = c1*n1 + c2*n1*n2`. Real surveys also have a fixed overhead (training, infrastructure, setup). The `fixed_cost` parameter adds this term: `C = C0 + c1*n1 + c2*n1*n2`. In budget mode, only `budget - fixed_cost` is available for the variable component, reducing n1 while leaving the optimal n2/n1 ratio unchanged. In CV mode, all sample sizes stay the same and `fixed_cost` is simply added to the total cost:
+
+```{r n-cluster-fixed}
+# Budget mode: fixed overhead reduces the allocatable budget
+n_cluster(cost = c(500, 50), delta = vc, budget = 100000, fixed_cost = 5000)
+
+# CV mode: same allocation, cost increases by fixed_cost
+n_cluster(cost = c(500, 50), delta = vc, cv = 0.05, fixed_cost = 5000)
+```
+
+The same parameter is available in `n_multi()` for multistage multi-indicator designs.
+
 ### Evaluating cluster allocations
 
 `prec_cluster()` computes the achieved CV for any allocation:
@@ -434,11 +448,17 @@ strata_bound(x, n_strata = 4, cv = 0.05, method = "kozak")
 
 Allocation within strata is controlled by the `alloc` parameter:
 
-- `"proportional"`: allocate proportional to stratum size
-- `"neyman"`: allocate proportional to `N_h * S_h` (minimizes variance)
-- `"optimal"`: allocate proportional to `N_h * S_h / sqrt(c_h)` (accounts for costs)
-- Custom: pass `list(q1 = ..., q2 = ..., q3 = ...)` for the formula
-  `N_h^q1 * S_h^q2 / c_h^q3`
+- `"proportional"`: $n_h \propto N_h$
+- `"neyman"` (default): $n_h \propto N_h \cdot S_h$ (minimizes national CV)
+- `"optimal"`: $n_h \propto N_h \cdot S_h / \sqrt{c_h}$ (accounts for costs)
+- `"power"`: Bankier (1988) compromise, $n_h \propto S_h \cdot N_h^q$,
+  where $q \in [0, 1]$ controls the trade-off between national precision
+  ($q = 1$, Neyman) and equal subnational CVs ($q = 0$)
+
+```{r strata-power-alloc}
+# Bankier power allocation (compromise, q = 0.5)
+strata_bound(x, n_strata = 4, n = 300, alloc = "power", q = 0.5)
+```
 
 ### Classifying new observations
 
@@ -449,6 +469,14 @@ factor:
 sb <- strata_bound(x, n_strata = 4, n = 200, method = "cumrootf")
 new_x <- c(100, 500, 1500, 5000)
 predict(sb, newdata = new_x, labels = paste0("S", 1:4))
+```
+
+### Visualizing allocation
+
+`plot()` shows the sampling fraction per stratum. Under Neyman allocation, high-variance strata are sampled more intensively. The dashed line marks the overall fraction:
+
+```{r strata-plot, fig.width=7, fig.height=4}
+plot(sb)
 ```
 
 ## Power analysis
@@ -505,6 +533,15 @@ power_mean(delta = 5, var = 200)
 
 # MDE with n = 400 per group
 power_mean(var = 200, n = 400)
+```
+
+### Power curve
+
+`plot()` draws the power-vs-sample-size curve with reference lines at the solved point:
+
+```{r power-plot, fig.width=7, fig.height=4}
+pw <- power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
+plot(pw)
 ```
 
 ## Sensitivity analysis

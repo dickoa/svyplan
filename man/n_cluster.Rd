@@ -17,6 +17,7 @@ n_cluster(cost, ...)
   budget = NULL,
   m = NULL,
   resp_rate = 1,
+  fixed_cost = 0,
   ...
 )
 
@@ -47,6 +48,11 @@ stages.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The stage-1 sample size is inflated by \code{1 / resp_rate}.}
+
+\item{fixed_cost}{Fixed overhead cost (C0). Default 0.
+The total cost model becomes \code{C = C0 + c1*n1 + c2*n1*n2 [+ c3*n1*n2*n3]}.
+In budget mode, only \code{budget - fixed_cost} is available for variable costs;
+in CV mode, \code{fixed_cost} is added to the variable cost.}
 }
 \value{
 A \code{svyplan_cluster} object with components:
@@ -94,6 +100,9 @@ n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000, m = 40)
 
 # 3-stage
 n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+
+# With fixed overhead cost
+n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000, fixed_cost = 5000)
 
 }
 \references{

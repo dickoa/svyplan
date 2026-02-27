@@ -1,4 +1,22 @@
-# svyplan 0.5.4999
+# svyplan 0.5.9999
+
+## Stratification
+
+* `strata_bound()` gains a `"power"` allocation method implementing Bankier
+  (1988) power allocation: `n_h` proportional to `S_h * N_h^q`, where `q`
+  controls the trade-off between national precision (`q = 1`, Neyman) and
+  equal subnational CVs (`q = 0`). New `q` parameter (default 0.5).
+
+* The old `alloc = list(q1, q2, q3)` interface has been removed. Use the
+  named methods `"proportional"`, `"neyman"`, `"optimal"`, or `"power"`
+  instead.
+
+* `print.svyplan_strata()` now displays the allocation method.
+
+* The `$alloc` field on `svyplan_strata` objects is now a character string
+  (the method name) instead of a list of exponents.
+
+# svyplan 0.4.9999
 
 ## Precision analysis
 
@@ -111,7 +129,7 @@
   stratification variable. Four methods: Dalenius-Hodges cumulative root
   frequency (`"cumrootf"`), geometric progression (`"geo"`),
   Lavallee-Hidiroglou iterative (`"lh"`), and Kozak random search (`"kozak"`).
-  Supports proportional, Neyman, optimal, and custom power allocation.
+  Supports proportional, Neyman, and optimal allocation.
   Take-all (certainty) strata via the `certain` argument.
 
 * Kozak random search optimized: inlined prefix-sum evaluation, pre-generated

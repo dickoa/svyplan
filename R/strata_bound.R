@@ -17,10 +17,16 @@
 #'   `"geo"` (geometric), `"lh"` (Lavallée-Hidiroglou), or `"kozak"`
 #'   (random search). Default `"lh"`.
 #' @param alloc Allocation rule: `"proportional"`, `"neyman"`,
-#'   `"optimal"`, or a list with components `q1`, `q2`, `q3` for power
-#'   allocation. Default `"neyman"`.
-#' @param cost Per-stratum unit costs. Scalar or vector of length
-#'   `n_strata`. Default `NULL` (equal costs).
+#'   `"optimal"`, or `"power"` (Bankier compromise). Default `"neyman"`.
+#'   See Details.
+#' @param q Bankier power parameter, used only when `alloc = "power"`.
+#'   Numeric scalar in \eqn{[0, 1]}. At `q = 1` the allocation equals
+#'   Neyman; at `q = 0` it yields near-equal subnational CVs.
+#'   Default 0.5.
+#' @param cost Per-stratum unit costs, ordered from lowest to highest
+#'   stratum. Scalar (equal costs) or vector of length `n_strata`.
+#'   Default `NULL` (equal unit costs, \eqn{c_h = 1} for all strata),
+#'   in which case `"optimal"` and `"neyman"` coincide.
 #' @param certain Take-all threshold. Units with `x >= certain` form a
 #'   census stratum.
 #' @param nclass Number of histogram bins for `"cumrootf"`. Default
@@ -38,7 +44,7 @@
 #'   \item{cv}{Achieved coefficient of variation.}
 #'   \item{strata}{Data frame with per-stratum summaries.}
 #'   \item{method}{Algorithm used.}
-#'   \item{alloc}{Allocation parameters as a list.}
+#'   \item{alloc}{Allocation method name (character).}
 #'   \item{params}{List of additional parameters.}
 #'   \item{converged}{Logical (for iterative methods).}
 #' }
@@ -62,12 +68,22 @@
 #' `"geo"`) are useful for quick exploratory stratification or when neither
 #' `n` nor `cv` is known yet.
 #'
-#' Allocation is controlled by the `alloc` parameter via power allocation:
-#' \eqn{n_h \propto N_h^{q_1} S_h^{q_2} / c_h^{q_3}}{n_h ~ N_h^q1 * S_h^q2 / c_h^q3}.
-#' Named shortcuts: `"proportional"` = (1, 0, 0), `"neyman"` = (1, 1, 0),
-#' `"optimal"` = (1, 1, 0.5). Stratum allocations `n_h` are rounded to
-#' integers using the ORIC method (Cont and Heidari, 2014), which preserves
-#' `sum(n_h) = n` while minimizing rounding distortion.
+#' Allocation is controlled by the `alloc` parameter. Four methods are
+#' available:
+#' - **proportional**: \eqn{n_h \propto N_h}{n_h ~ N_h}.
+#' - **neyman**: \eqn{n_h \propto N_h S_h}{n_h ~ N_h * S_h}.
+#'   Minimizes the national CV when unit costs are equal.
+#' - **optimal**: \eqn{n_h \propto N_h S_h / \sqrt{c_h}}{n_h ~ N_h * S_h / sqrt(c_h)}.
+#'   Accounts for differential unit costs.
+#' - **power**: Bankier (1988) compromise,
+#'   \eqn{n_h \propto S_h N_h^q}{n_h ~ S_h * N_h^q}.
+#'   The parameter `q` controls the trade-off between national precision
+#'   (`q = 1`, equivalent to Neyman) and near-equal subnational CVs
+#'   (`q = 0`).
+#'
+#' Stratum allocations `n_h` are rounded to integers using the ORIC method
+#' (Cont and Heidari, 2014), which preserves `sum(n_h) = n` while minimizing
+#' rounding distortion.
 #'
 #' @seealso [predict.svyplan_strata] to assign new data to strata.
 #'
@@ -89,6 +105,9 @@
 #' the recursive Neyman allocation.
 #' \emph{Journal of Survey Statistics and Methodology}, 10(5), 1263--1275.
 #'
+#' Bankier, M. D. (1988). Power allocations: determining sample sizes for
+#' subnational areas. \emph{The American Statistician}, 42(3), 174--177.
+#'
 #' Cont, R. and Heidari, M. (2014). Optimal rounding under integer
 #' constraints. \emph{arXiv preprint} arXiv:1501.00014.
 #'
@@ -102,6 +121,9 @@
 #' # LH (default, iterative)
 #' strata_bound(x, n_strata = 4, n = 100)
 #'
+#' # Bankier power allocation (compromise between national and subnational CVs)
+#' strata_bound(x, n_strata = 4, n = 100, alloc = "power", q = 0.5)
+#'
 #' # With take-all stratum
 #' strata_bound(x, n_strata = 3, n = 80, certain = quantile(x, 0.95))
 #'
@@ -109,6 +131,7 @@
 strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
                          method = "lh",
                          alloc = "neyman",
+                         q = 0.5,
                          cost = NULL,
                          certain = NULL,
                          nclass = NULL,
@@ -139,7 +162,16 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
   if (has_n) check_scalar(n, "n")
   if (has_cv) check_scalar(cv, "cv")
 
-  alloc_q <- .resolve_alloc(alloc)
+  if (!is.character(alloc)) {
+    stop("'alloc' must be one of \"proportional\", \"neyman\", \"optimal\", \"power\"",
+         call. = FALSE)
+  }
+  alloc <- match.arg(alloc, c("proportional", "neyman", "optimal", "power"))
+  if (alloc == "power") {
+    if (!is.numeric(q) || length(q) != 1L || is.na(q) || q < 0 || q > 1) {
+      stop("'q' must be a numeric scalar in [0, 1]", call. = FALSE)
+    }
+  }
 
   certain_idx <- NULL
   x_work <- x
@@ -196,14 +228,14 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
   } else if (method == "lh") {
     target_cv <- if (has_cv) cv else NULL
     n_opt <- if (has_n) n else NULL
-    res <- .strata_lh(x_sort, L_work, n_opt, target_cv, alloc_q, cost_h[seq_len(L_work)],
-                       maxiter)
+    res <- .strata_lh(x_sort, L_work, n_opt, target_cv, alloc, q,
+                       cost_h[seq_len(L_work)], maxiter)
     bk <- res$bk
     converged <- res$converged
   } else {
     target_cv <- if (has_cv) cv else NULL
     n_opt <- if (has_n) n else NULL
-    res <- .strata_kozak(x_sort, L_work, n_opt, target_cv, alloc_q,
+    res <- .strata_kozak(x_sort, L_work, n_opt, target_cv, alloc, q,
                           cost_h[seq_len(L_work)], maxiter, niter)
     bk <- res$bk
     converged <- res$converged
@@ -219,14 +251,14 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
   }
 
   if (has_cv && !has_n) {
-    n_total <- .strata_n_for_cv(x, bk, cv, alloc_q, cost_h)
+    n_total <- .strata_n_for_cv(x, bk, cv, alloc, q, cost_h)
   } else if (!has_n) {
     n_total <- length(x) / 2
   }
 
   certain_strata <- if (!is.null(certain)) n_strata else NULL
 
-  alloc_res <- .strata_alloc(x, bk, n_total, alloc_q, cost_h, certain_strata)
+  alloc_res <- .strata_alloc(x, bk, n_total, alloc, q, cost_h, certain_strata)
 
   strata_df <- data.frame(
     stratum = seq_len(n_strata),
@@ -252,35 +284,13 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     cv         = alloc_res$cv,
     strata     = strata_df,
     method     = method,
-    alloc      = alloc_q,
+    alloc      = alloc,
     params     = list(
       N       = length(x),
+      q       = if (alloc == "power") q else NULL,
       maxiter = if (method %in% c("lh", "kozak")) maxiter else NULL,
       niter   = if (method == "kozak") niter else NULL
     ),
     converged  = conv
   )
-}
-
-#' Resolve allocation shorthand to list(q1, q2, q3)
-#' @keywords internal
-#' @noRd
-.resolve_alloc <- function(alloc) {
-  if (is.character(alloc)) {
-    alloc <- match.arg(alloc, c("proportional", "neyman", "optimal"))
-    switch(alloc,
-      proportional = list(q1 = 1, q2 = 0, q3 = 0),
-      neyman       = list(q1 = 1, q2 = 1, q3 = 0),
-      optimal      = list(q1 = 1, q2 = 1, q3 = 0.5)
-    )
-  } else if (is.list(alloc)) {
-    nms <- names(alloc)
-    if (!all(c("q1", "q2", "q3") %in% nms)) {
-      stop("'alloc' list must have components 'q1', 'q2', 'q3'", call. = FALSE)
-    }
-    alloc[c("q1", "q2", "q3")]
-  } else {
-    stop("'alloc' must be a character string or a list with q1, q2, q3",
-         call. = FALSE)
-  }
 }

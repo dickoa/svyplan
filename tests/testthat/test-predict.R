@@ -232,3 +232,14 @@ test_that("predict produces NA + warning on row failure", {
   expect_false(is.na(res$n[1]))
   expect_false(is.na(res$n[3]))
 })
+
+test_that("predict.svyplan_cluster supports fixed_cost in newdata", {
+  x <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05,
+                  fixed_cost = 5000)
+  nd <- data.frame(fixed_cost = c(0, 5000, 10000))
+  res <- predict(x, nd)
+  expect_equal(nrow(res), 3L)
+  expect_true("fixed_cost" %in% names(res))
+  expect_true(res$cost[3] > res$cost[1])
+  expect_equal(res$n1[1], res$n1[2], tolerance = 1e-8)
+})

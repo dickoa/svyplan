@@ -107,6 +107,7 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
   out$params$cost <- p$cost
   if (!is.null(p$budget)) out$params$budget <- p$budget
   if (!is.null(p$m)) out$params$m <- p$m
+  if (!is.null(p$fixed_cost)) out$params$fixed_cost <- p$fixed_cost
   out
 }
 

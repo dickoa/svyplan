@@ -37,11 +37,18 @@ test_that("cannot specify both n and cv", {
 })
 
 test_that("validates alloc", {
-  expect_error(strata_bound(x_unif, n = 100, alloc = 42), "character string or a list")
+  expect_error(strata_bound(x_unif, n = 100, alloc = 42),
+               "must be one of")
   expect_error(strata_bound(x_unif, n = 100, alloc = "invalid"),
                "'arg' should be one of")
   expect_error(strata_bound(x_unif, n = 100, alloc = list(q1 = 1)),
-               "'alloc' list must have")
+               "must be one of")
+  expect_error(strata_bound(x_unif, n = 100, alloc = "power", q = 2),
+               "numeric scalar in \\[0, 1\\]")
+  expect_error(strata_bound(x_unif, n = 100, alloc = "power", q = -0.1),
+               "numeric scalar in \\[0, 1\\]")
+  expect_error(strata_bound(x_unif, n = 100, alloc = "power", q = "a"),
+               "numeric scalar in \\[0, 1\\]")
 })
 
 test_that("validates cost", {
@@ -160,11 +167,12 @@ test_that("neyman allocation: n_h proportional to N_h * S_h", {
   expect_true(cor(actual_prop, expected_prop) > 0.8)
 })
 
-test_that("custom alloc list works", {
+test_that("power allocation works", {
   res <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
-                       alloc = list(q1 = 0.5, q2 = 0.5, q3 = 0))
+                       alloc = "power", q = 0.5)
   expect_s3_class(res, "svyplan_strata")
-  expect_equal(res$alloc, list(q1 = 0.5, q2 = 0.5, q3 = 0))
+  expect_equal(res$alloc, "power")
+  expect_equal(res$params$q, 0.5)
 })
 
 test_that("n_h >= 2 per stratum", {
@@ -307,4 +315,51 @@ test_that("lh maxiter > 1 improves over maxiter = 1 on skewed data", {
   res200 <- strata_bound(x_skew, n_strata = 4, n = 200, method = "lh",
                           maxiter = 200L)
   expect_true(res200$cv <= res1$cv)
+})
+
+test_that("power alloc q = 1 matches neyman", {
+  res_ney <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
+                           alloc = "neyman")
+  res_pow <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
+                           alloc = "power", q = 1)
+  expect_equal(res_pow$strata$n_h, res_ney$strata$n_h)
+})
+
+test_that("power alloc q = 0 differs from neyman on skewed data", {
+  set.seed(7)
+  x_skew <- rlnorm(2000, meanlog = 6, sdlog = 2)
+  res_ney <- strata_bound(x_skew, n_strata = 4, n = 400, method = "cumrootf",
+                           alloc = "neyman")
+  res_pow <- strata_bound(x_skew, n_strata = 4, n = 400, method = "cumrootf",
+                           alloc = "power", q = 0)
+  expect_false(identical(res_pow$strata$n_h, res_ney$strata$n_h))
+  expect_equal(res_pow$alloc, "power")
+})
+
+test_that("power alloc uses default q = 0.5", {
+  res <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
+                       alloc = "power")
+  expect_equal(res$alloc, "power")
+  expect_equal(res$params$q, 0.5)
+})
+
+test_that("print shows allocation label", {
+  res_ney <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf",
+                           alloc = "neyman")
+  out_ney <- capture.output(print(res_ney))
+  expect_true(any(grepl("Allocation: neyman", out_ney)))
+
+  res_pow <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
+                           alloc = "power", q = 0.3)
+  out_pow <- capture.output(print(res_pow))
+  expect_true(any(grepl("power \\(q = 0\\.30\\)", out_pow)))
+})
+
+test_that("alloc field stores method name for all methods", {
+  for (a in c("proportional", "neyman", "optimal")) {
+    res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf",
+                         alloc = a)
+    expect_equal(res$alloc, a)
+    expect_null(res$params$q)
+  }
 })

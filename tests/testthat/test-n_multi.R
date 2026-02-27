@@ -1113,3 +1113,46 @@ test_that("n_multi rejects N = 1 in simple mode", {
   df <- data.frame(p = 0.3, moe = 0.05, N = 1)
   expect_error(nm(df), "greater than 1")
 })
+
+test_that("n_multi 2-stage CV with fixed_cost adds to cost", {
+  tgt <- data.frame(
+    name = c("stunting", "anemia"),
+    p = c(0.30, 0.10),
+    cv = c(0.10, 0.15),
+    delta1 = c(0.02, 0.05)
+  )
+  base <- nm(tgt, cost = c(500, 50))
+  fc <- nm(tgt, cost = c(500, 50), fixed_cost = 5000)
+  expect_equal(fc$n, base$n, tolerance = 1e-6)
+  expect_equal(fc$cost, base$cost + 5000, tolerance = 1e-4)
+  expect_equal(fc$params$fixed_cost, 5000)
+})
+
+test_that("n_multi 2-stage budget with fixed_cost reduces allocations", {
+  tgt <- data.frame(
+    name = c("stunting", "anemia"),
+    p = c(0.30, 0.10),
+    cv = c(0.10, 0.15),
+    delta1 = c(0.02, 0.05)
+  )
+  base <- nm(tgt, cost = c(500, 50), budget = 100000)
+  fc <- nm(tgt, cost = c(500, 50), budget = 100000, fixed_cost = 10000)
+  expect_true(fc$n[["n1"]] < base$n[["n1"]])
+  expect_equal(fc$cost, 100000)
+})
+
+test_that("n_multi joint domains with fixed_cost", {
+  tgt <- data.frame(
+    name = rep(c("stunting", "anemia"), each = 2),
+    p = c(0.30, 0.25, 0.10, 0.15),
+    cv = c(0.10, 0.10, 0.15, 0.15),
+    delta1 = c(0.02, 0.03, 0.05, 0.04),
+    region = rep(c("Urban", "Rural"), 2)
+  )
+  base <- nm(tgt, cost = c(500, 50), budget = 200000, joint = TRUE)
+  fc <- nm(tgt, cost = c(500, 50), budget = 200000, joint = TRUE,
+           fixed_cost = 10000)
+  expect_equal(fc$cost, 200000)
+  expect_true(fc$total_n < base$total_n)
+  expect_equal(fc$params$fixed_cost, 10000)
+})

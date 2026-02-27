@@ -164,6 +164,14 @@ power_prop(p1 = 0.70, n = 1500, deff = 2.0)
 power_mean(delta = 5, var = 200)
 ```
 
+`plot()` draws the power-vs-sample-size curve with reference lines at the solved point:
+
+```{r power-plot, fig.width=7, fig.height=4}
+pw <- power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
+plot(pw)
+```
+
+
 ## Design effects
 
 ```{r}

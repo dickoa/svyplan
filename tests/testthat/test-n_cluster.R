@@ -215,3 +215,86 @@ test_that("n_cluster fixed-m CV error says 'too small'", {
     "too small"
   )
 })
+
+test_that("fixed_cost = 0 is backward compatible", {
+  r1 <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  r2 <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000,
+                   fixed_cost = 0)
+  expect_equal(r1$n, r2$n)
+  expect_equal(r1$cost, r2$cost)
+  expect_null(r2$params$fixed_cost)
+})
+
+test_that("fixed_cost 2-stage budget mode reduces n1, n2 unchanged", {
+  base <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  fc <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000,
+                   fixed_cost = 5000)
+  expect_equal(fc$n[["n2"]], base$n[["n2"]], tolerance = 1e-10)
+  expect_true(fc$n[["n1"]] < base$n[["n1"]])
+  expect_equal(fc$cost, 100000)
+  expect_equal(fc$params$fixed_cost, 5000)
+})
+
+test_that("fixed_cost 2-stage CV mode leaves n unchanged, adds to cost", {
+  base <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+  fc <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05,
+                   fixed_cost = 5000)
+  expect_equal(fc$n, base$n, tolerance = 1e-10)
+  expect_equal(fc$cost, base$cost + 5000, tolerance = 1e-6)
+})
+
+test_that("fixed_cost 3-stage budget mode reduces n1", {
+  base <- n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05),
+                    budget = 500000)
+  fc <- n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05),
+                   budget = 500000, fixed_cost = 10000)
+  expect_equal(fc$n[["n2"]], base$n[["n2"]], tolerance = 1e-10)
+  expect_equal(fc$n[["n3"]], base$n[["n3"]], tolerance = 1e-10)
+  expect_true(fc$n[["n1"]] < base$n[["n1"]])
+  expect_equal(fc$cost, 500000)
+})
+
+test_that("fixed_cost 3-stage CV mode adds to cost", {
+  base <- n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05),
+                    cv = 0.05)
+  fc <- n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05),
+                   cv = 0.05, fixed_cost = 10000)
+  expect_equal(fc$n, base$n, tolerance = 1e-10)
+  expect_equal(fc$cost, base$cost + 10000, tolerance = 1e-6)
+})
+
+test_that("fixed_cost validation rejects bad inputs", {
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05, fixed_cost = -1),
+    "non-negative"
+  )
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05, fixed_cost = NA),
+    "non-negative"
+  )
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05,
+              fixed_cost = c(1, 2)),
+    "non-negative"
+  )
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000,
+              fixed_cost = 100000),
+    "less than"
+  )
+  expect_error(
+    n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000,
+              fixed_cost = 200000),
+    "less than"
+  )
+})
+
+test_that("fixed_cost round-trip n_cluster -> prec_cluster -> n_cluster", {
+  orig <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05,
+                    fixed_cost = 5000)
+  prec <- prec_cluster(orig)
+  expect_equal(prec$params$fixed_cost, 5000)
+  back <- n_cluster(prec)
+  expect_equal(unname(back$n), unname(orig$n), tolerance = 1e-4)
+  expect_equal(back$params$fixed_cost, 5000)
+})

@@ -1,8 +1,8 @@
 
 # svyplan
 
-Survey sample size determination, optimal allocation, stratification,
-and power analysis for R.
+Survey sample size determination, precision analysis, optimal
+allocation, stratification, and power analysis for R.
 
 ## Installation
 
@@ -25,6 +25,57 @@ n_prop(p = 0.3, moe = 0.05)
 n_mean(var = 100, moe = 2, N = 5000, deff = 1.5)
 #> Sample size for mean
 #> n = 142 (var = 100.00, moe = 2.000, deff = 1.50)
+```
+
+### Response rate adjustment
+
+All functions accept a `resp_rate` parameter. The sample size is
+inflated by `1 / resp_rate` to account for expected non-response:
+
+``` r
+n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
+#> Sample size for proportion (wald)
+#> n = 606 (net: 485) (p = 0.30, moe = 0.050, deff = 1.50, resp_rate = 0.80)
+```
+
+## Precision analysis
+
+Given a sample size, how precise will your estimates be? The `prec_*()`
+functions are the inverse of `n_*()`:
+
+``` r
+prec_prop(p = 0.3, n = 400)
+#> Sampling precision for proportion (wald)
+#> n = 400
+#> se = 0.0229, moe = 0.0449, cv = 0.0764
+
+prec_mean(var = 100, n = 400, mu = 50)
+#> Sampling precision for mean
+#> n = 400
+#> se = 0.5000, moe = 0.9800, cv = 0.0100
+```
+
+### Round-trip between size and precision
+
+All `n_*()` and `prec_*()` functions are S3 generics. Pass a precision
+result to `n_*()` to recover the sample size, or pass a sample size
+result to `prec_*()` to compute the achieved precision:
+
+``` r
+# Start with a precision target
+s <- n_prop(p = 0.3, moe = 0.05, deff = 1.5)
+
+# What precision does this n achieve?
+p <- prec_prop(s)
+p
+#> Sampling precision for proportion (wald)
+#> n = 485
+#> se = 0.0255, moe = 0.0500, cv = 0.0850
+
+# Recover the original n
+n_prop(p)
+#> Sample size for proportion (wald)
+#> n = 485 (p = 0.30, moe = 0.050, deff = 1.50)
 ```
 
 ## Multi-indicator surveys
@@ -59,12 +110,14 @@ data frame.
 # Optimal 2-stage allocation within a budget
 n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
 #> Optimal 2-stage allocation
-#> Stage 1: n1 = 85 | Stage 2: n2 = 14 -> total n = 1160
-#> CV = 0.0376, cost = 100000
+#> Stage 1: n1 = 85 | Stage 2: n2 = 14 -> total n = 1190
+#> cv = 0.0376, cost = 100000
 
-# CV for a given allocation
-cv_cluster(n = c(50, 12), delta = 0.05)
-#> [1] 0.0508265
+# Precision for a given allocation
+prec_cluster(n = c(50, 12), delta = 0.05)
+#> Sampling precision for 2-stage cluster
+#> n1 = 50 | n2 = 12 -> total n = 600
+#> cv = 0.0508
 ```
 
 Variance components can be estimated from frame data and passed directly
@@ -87,9 +140,41 @@ vc
 
 n_cluster(cost = c(500, 50), delta = vc, cv = 0.05)
 #> Optimal 2-stage allocation
-#> Stage 1: n1 = 15 | Stage 2: n2 = 2 -> total n = 27
-#> CV = 0.0500, cost = 8635
+#> Stage 1: n1 = 15 | Stage 2: n2 = 2 -> total n = 30
+#> cv = 0.0500, cost = 8635
 ```
+
+## Sensitivity analysis
+
+`predict()` evaluates a result at new parameter combinations, returning
+a data frame suitable for plotting:
+
+``` r
+x <- n_prop(p = 0.3, moe = 0.05, deff = 1.5)
+predict(x, expand.grid(
+  deff = c(1, 1.5, 2, 2.5),
+  resp_rate = c(0.7, 0.8, 0.9, 1.0)
+))
+#>    deff resp_rate         n         se  moe         cv
+#> 1   1.0       0.7  460.9751 0.02551067 0.05 0.08503558
+#> 2   1.5       0.7  691.4626 0.02551067 0.05 0.08503558
+#> 3   2.0       0.7  921.9501 0.02551067 0.05 0.08503558
+#> 4   2.5       0.7 1152.4376 0.02551067 0.05 0.08503558
+#> 5   1.0       0.8  403.3532 0.02551067 0.05 0.08503558
+#> 6   1.5       0.8  605.0298 0.02551067 0.05 0.08503558
+#> 7   2.0       0.8  806.7064 0.02551067 0.05 0.08503558
+#> 8   2.5       0.8 1008.3829 0.02551067 0.05 0.08503558
+#> 9   1.0       0.9  358.5362 0.02551067 0.05 0.08503558
+#> 10  1.5       0.9  537.8042 0.02551067 0.05 0.08503558
+#> 11  2.0       0.9  717.0723 0.02551067 0.05 0.08503558
+#> 12  2.5       0.9  896.3404 0.02551067 0.05 0.08503558
+#> 13  1.0       1.0  322.6825 0.02551067 0.05 0.08503558
+#> 14  1.5       1.0  484.0238 0.02551067 0.05 0.08503558
+#> 15  2.0       1.0  645.3651 0.02551067 0.05 0.08503558
+#> 16  2.5       1.0  806.7064 0.02551067 0.05 0.08503558
+```
+
+Works for all object types: sample size, precision, cluster, and power.
 
 ## Strata boundaries
 
@@ -103,7 +188,8 @@ x <- rlnorm(5000, meanlog = 6, sdlog = 1.2)
 strata_bound(x, n_strata = 4, n = 300, method = "cumrootf")
 #> Strata boundaries (Dalenius-Hodges, 4 strata)
 #> Boundaries: 400.0, 1300.0, 3300.0
-#> n = 300, CV = 0.0211
+#> n = 300, cv = 0.0211
+#> Allocation: neyman
 #> ---
 #>  stratum lower      upper    N_h  W_h   S_h    n_h
 #>  1          4.92557   400.00 2523 0.505 107.1   44
@@ -118,7 +204,8 @@ Four methods are available: Dalenius-Hodges (`"cumrootf"`), geometric
 ## Power analysis
 
 Solve for sample size, power, or minimum detectable effect. Supports
-design effects, finite population correction, and panel overlap.
+design effects, finite population correction, response rate adjustment,
+and panel overlap.
 
 ``` r
 # Sample size to detect a 5pp change from 70% with deff = 2
@@ -139,6 +226,16 @@ power_mean(delta = 5, var = 200)
 #> n = 126 (per group), power = 0.800, delta = 5.0000
 #> (alpha = 0.05)
 ```
+
+`plot()` draws the power-vs-sample-size curve with reference lines at
+the solved point:
+
+``` r
+pw <- power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
+plot(pw)
+```
+
+![](man/figures/README-power-plot-1.png)<!-- -->
 
 ## Design effects
 

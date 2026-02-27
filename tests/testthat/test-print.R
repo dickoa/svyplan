@@ -52,3 +52,16 @@ test_that("print returns invisible(x)", {
   result <- n_prop(p = 0.3, moe = 0.05)
   capture.output(expect_invisible(print(result)))
 })
+
+test_that("print shows fixed_cost when > 0", {
+  result <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05,
+                       fixed_cost = 5000)
+  out <- capture.output(print(result))
+  expect_true(any(grepl("fixed: 5000", out)))
+})
+
+test_that("print hides fixed_cost when 0", {
+  result <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+  out <- capture.output(print(result))
+  expect_false(any(grepl("fixed", out)))
+})

@@ -20,6 +20,10 @@
 #'   stages.
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The stage-1 sample size is inflated by `1 / resp_rate`.
+#' @param fixed_cost Fixed overhead cost (C0). Default 0.
+#'   The total cost model becomes `C = C0 + c1*n1 + c2*n1*n2 [+ c3*n1*n2*n3]`.
+#'   In budget mode, only `budget - fixed_cost` is available for variable costs;
+#'   in CV mode, `fixed_cost` is added to the variable cost.
 #'
 #' @return A `svyplan_cluster` object with components:
 #' \describe{
@@ -69,6 +73,9 @@
 #' # 3-stage
 #' n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
 #'
+#' # With fixed overhead cost
+#' n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000, fixed_cost = 5000)
+#'
 #' @export
 n_cluster <- function(cost, ...) UseMethod("n_cluster")
 
@@ -76,9 +83,10 @@ n_cluster <- function(cost, ...) UseMethod("n_cluster")
 #' @export
 n_cluster.default <- function(cost, delta, rel_var = 1, k = 1,
                               cv = NULL, budget = NULL, m = NULL,
-                              resp_rate = 1, ...) {
+                              resp_rate = 1, fixed_cost = 0, ...) {
   check_cost(cost)
   check_resp_rate(resp_rate)
+  check_fixed_cost(fixed_cost, budget)
 
   if (inherits(delta, "svyplan_varcomp")) {
     vc <- delta
@@ -108,10 +116,12 @@ n_cluster.default <- function(cost, delta, rel_var = 1, k = 1,
   if (!is.null(m)) check_scalar(m, "m")
 
   if (stages == 2L) {
-    .n_cluster_2stage(cost, delta, rel_var, k, cv, budget, m, resp_rate)
+    .n_cluster_2stage(cost, delta, rel_var, k, cv, budget, m, resp_rate,
+                      fixed_cost)
   } else {
     k <- rep_len(k, 2L)
-    .n_cluster_3stage(cost, delta, rel_var, k, cv, budget, m, resp_rate)
+    .n_cluster_3stage(cost, delta, rel_var, k, cv, budget, m, resp_rate,
+                      fixed_cost)
   }
 }
 
@@ -127,29 +137,31 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
     cv <- x$cv
   }
   n_cluster.default(
-    cost     = p$cost,
-    delta    = p$delta,
-    rel_var  = p$rel_var,
-    k        = p$k,
-    cv       = cv,
-    budget   = budget,
-    m        = p$m,
-    resp_rate = p$resp_rate %||% 1
+    cost       = p$cost,
+    delta      = p$delta,
+    rel_var    = p$rel_var,
+    k          = p$k,
+    cv         = cv,
+    budget     = budget,
+    m          = p$m,
+    resp_rate  = p$resp_rate %||% 1,
+    fixed_cost = p$fixed_cost %||% 0
   )
 }
 
 #' @keywords internal
 #' @noRd
 .n_cluster_2stage <- function(cost, delta, rel_var, k, cv, budget, m,
-                              resp_rate) {
+                              resp_rate, fixed_cost = 0) {
   C1 <- cost[1L]
   C2 <- cost[2L]
+  var_budget <- if (!is.null(budget)) budget - fixed_cost else NULL
 
   if (is.null(m)) {
     n2_opt <- sqrt(C1 / C2 * (1 - delta) / delta)
 
     if (!is.null(budget)) {
-      n1_opt <- budget / (C1 + C2 * n2_opt)
+      n1_opt <- var_budget / (C1 + C2 * n2_opt)
       n1_eff <- n1_opt * resp_rate
       cv_achieved <- sqrt(rel_var / (n1_eff * n2_opt) * k *
                             (1 + delta * (n2_opt - 1)))
@@ -157,14 +169,14 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
     } else {
       n1_eff_needed <- rel_var * k * (1 + delta * (n2_opt - 1)) / (n2_opt * cv^2)
       n1_opt <- n1_eff_needed / resp_rate
-      total_cost <- C1 * n1_opt + C2 * n1_opt * n2_opt
+      total_cost <- fixed_cost + C1 * n1_opt + C2 * n1_opt * n2_opt
       cv_achieved <- cv
     }
   } else {
     n1_opt <- m
     n1_eff <- m * resp_rate
     if (!is.null(budget)) {
-      n2_opt <- (budget - C1 * m) / (C2 * m)
+      n2_opt <- (var_budget - C1 * m) / (C2 * m)
       if (n2_opt <= 0) {
         stop("budget is too small for the given fixed stage-1 size",
              call. = FALSE)
@@ -177,7 +189,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
       if (n2_opt <= 0) {
         stop("target CV is too small for the given fixed stage-1 size and parameters", call. = FALSE)
       }
-      total_cost <- C1 * m + C2 * m * n2_opt
+      total_cost <- fixed_cost + C1 * m + C2 * m * n2_opt
       cv_achieved <- cv
     }
   }
@@ -190,6 +202,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
   if (!is.null(cv)) params$cv <- cv
   if (!is.null(budget)) params$budget <- budget
   if (!is.null(m)) params$m <- m
+  if (fixed_cost > 0) params$fixed_cost <- fixed_cost
 
   .new_svyplan_cluster(
     n       = n_vec,
@@ -204,7 +217,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
 #' @keywords internal
 #' @noRd
 .n_cluster_3stage <- function(cost, delta, rel_var, k, cv, budget, m,
-                              resp_rate) {
+                              resp_rate, fixed_cost = 0) {
   C1 <- cost[1L]
   C2 <- cost[2L]
   C3 <- cost[3L]
@@ -212,6 +225,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
   delta2 <- delta[2L]
   k1 <- k[1L]
   k2 <- k[2L]
+  var_budget <- if (!is.null(budget)) budget - fixed_cost else NULL
 
   n3_opt <- sqrt((1 - delta2) / delta2 * C2 / C3)
 
@@ -219,7 +233,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
     n2_opt <- 1 / n3_opt * sqrt((1 - delta2) / delta1 * C1 / C3 * k2 / k1)
 
     if (!is.null(budget)) {
-      n1_opt <- budget / (C1 + C2 * n2_opt + C3 * n2_opt * n3_opt)
+      n1_opt <- var_budget / (C1 + C2 * n2_opt + C3 * n2_opt * n3_opt)
       n1_eff <- n1_opt * resp_rate
       cv_achieved <- sqrt(rel_var / (n1_eff * n2_opt * n3_opt) *
                             (k1 * delta1 * n2_opt * n3_opt +
@@ -229,7 +243,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
       n1_eff_needed <- rel_var / (cv^2 * n2_opt * n3_opt) *
         (k1 * delta1 * n2_opt * n3_opt + k2 * (1 + delta2 * (n3_opt - 1)))
       n1_opt <- n1_eff_needed / resp_rate
-      total_cost <- C1 * n1_opt + C2 * n1_opt * n2_opt +
+      total_cost <- fixed_cost + C1 * n1_opt + C2 * n1_opt * n2_opt +
         C3 * n1_opt * n2_opt * n3_opt
       cv_achieved <- cv
     }
@@ -237,7 +251,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
     n1_opt <- m
     n1_eff <- m * resp_rate
     if (!is.null(budget)) {
-      C_prime <- budget / m - C1
+      C_prime <- var_budget / m - C1
       n2_opt <- C_prime / (C2 + C3 * n3_opt)
       if (n2_opt <= 0) {
         stop("budget is too small for the given fixed stage-1 size",
@@ -246,14 +260,16 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
       cv_achieved <- sqrt(rel_var / (n1_eff * n2_opt * n3_opt) *
                             (k1 * delta1 * n2_opt * n3_opt +
                                k2 * (1 + delta2 * (n3_opt - 1))))
-      total_cost <- C1 * m + C2 * m * n2_opt + C3 * m * n2_opt * n3_opt
+      total_cost <- C1 * m + C2 * m * n2_opt + C3 * m * n2_opt * n3_opt +
+        fixed_cost
     } else {
       n2_opt <- k2 * (1 + delta2 * (n3_opt - 1)) /
         (n3_opt * (cv^2 * n1_eff / rel_var - k1 * delta1))
       if (n2_opt <= 0) {
         stop("target CV is too small for the given fixed stage-1 size and parameters", call. = FALSE)
       }
-      total_cost <- C1 * m + C2 * m * n2_opt + C3 * m * n2_opt * n3_opt
+      total_cost <- fixed_cost + C1 * m + C2 * m * n2_opt +
+        C3 * m * n2_opt * n3_opt
       cv_achieved <- cv
     }
   }
@@ -266,6 +282,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
   if (!is.null(cv)) params$cv <- cv
   if (!is.null(budget)) params$budget <- budget
   if (!is.null(m)) params$m <- m
+  if (fixed_cost > 0) params$fixed_cost <- fixed_cost
 
   .new_svyplan_cluster(
     n       = n_vec,
