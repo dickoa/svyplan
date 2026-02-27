@@ -108,9 +108,27 @@ prec_prop.svyplan_n <- function(p, ...) {
 #' @keywords internal
 #' @noRd
 .logodds_moe <- function(p, n_eff, alpha, N) {
-  uniroot(
-    function(e) .n_prop_logodds_raw(p, e, alpha, N) - n_eff,
-    interval = c(1e-6, p * (1 - p)),
-    tol = .Machine$double.eps^0.5
-  )$root
+  if (!is.infinite(N) && n_eff >= N) {
+    warning("effective sample size >= population size; moe is 0", call. = FALSE)
+    return(0)
+  }
+  f <- function(e) .n_prop_logodds_raw(p, e, alpha, N) - n_eff
+  lo <- 1e-6
+  hi <- 0.5 - 1e-6
+  f_lo <- f(lo)
+  f_hi <- f(hi)
+  if (sign(f_lo) == sign(f_hi)) {
+    stop("log-odds MOE inversion failed: no sign change on [", lo, ", ", hi,
+         "] for p = ", p, ", n_eff = ", round(n_eff, 2),
+         ", N = ", N, call. = FALSE)
+  }
+  tryCatch(
+    uniroot(f, interval = c(lo, hi), f.lower = f_lo, f.upper = f_hi,
+            tol = .Machine$double.eps^0.5)$root,
+    error = function(e) {
+      stop("log-odds MOE inversion failed for p = ", p,
+           ", n_eff = ", round(n_eff, 2), ": ", conditionMessage(e),
+           call. = FALSE)
+    }
+  )
 }

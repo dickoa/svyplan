@@ -241,6 +241,59 @@ design_effect.default <- function(
   n <- length(w)
   sig2 <- n / (n - 1) * sum(w * (y - sum(w * y) / sum(w))^2) / (sum(w) - 1)
 
+  if (sig2 < .Machine$double.eps) {
+    warning("outcome variance is approximately zero; ",
+            "CR design effect is undefined, returning 1 by convention",
+            call. = FALSE)
+    cv2h <- if (!is.null(strvar)) {
+      str_idx <- match(strvar, sort(unique(strvar)))
+      H <- max(str_idx)
+      nh <- tabulate(str_idx, nbins = H)
+      w_grp <- split(w, str_idx)
+      vapply(seq_len(H), function(i) {
+        if (nh[i] <= 1L) return(0)
+        wsub <- w_grp[[i]]
+        (nh[i] - 1) / nh[i] * var(wsub) / mean(wsub)^2
+      }, numeric(1L))
+    } else {
+      (n - 1) / n * var(w) / mean(w)^2
+    }
+    if (!is.null(strvar)) {
+      strat <- sort(unique(strvar))
+      H <- length(strat)
+      str_idx <- match(strvar, strat)
+      nh <- tabulate(str_idx, nbins = H)
+      na_vec <- rep(NA_real_, H)
+      if (is.null(clvar)) {
+        return(list(
+          strata = data.frame(stratum = strat, n_h = nh, cv2_w = cv2h,
+                              deff_w = 1 + cv2h, deff_s = na_vec),
+          overall = 1
+        ))
+      } else {
+        return(list(
+          strata = data.frame(stratum = strat, n_h = nh, rho_h = na_vec,
+                              cv2_w = cv2h, deff_w = 1 + cv2h,
+                              deff_c = na_vec, deff_s = na_vec),
+          overall = 1
+        ))
+      }
+    } else {
+      if (is.null(clvar)) {
+        return(list(
+          strata = data.frame(n = n, cv2_w = cv2h, deff_w = 1 + cv2h),
+          overall = 1
+        ))
+      } else {
+        return(list(
+          strata = data.frame(n = n, rho = NA_real_, cv2_w = cv2h,
+                              deff_w = 1 + cv2h, deff_c = NA_real_),
+          overall = 1
+        ))
+      }
+    }
+  }
+
   if (!is.null(strvar)) {
     .deff_cr_stratified(w, y, strvar, clvar, stages, n, sig2)
   } else {
@@ -263,6 +316,7 @@ design_effect.default <- function(
   z <- vapply(cl_idx, function(idx) sum(w[idx] * (y[idx] - ybar)), numeric(1L))
   v_com <- a / (a - 1) * sum(z^2) / wsum^2
   v_srs <- sig2h / nh
+  if (v_srs < .Machine$double.eps) return(NA_real_)
   v_com / v_srs
 }
 

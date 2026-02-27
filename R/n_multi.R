@@ -268,11 +268,21 @@ n_multi.default <- function(
 
   # Each row needs at least one of p or var (non-NA)
   has_indicator <- rep(FALSE, nrow(targets))
-  if (has_p) has_indicator <- has_indicator | !is.na(targets$p)
-  if (has_var) has_indicator <- has_indicator | !is.na(targets$var)
-  if (any(!has_indicator))
-    stop(sprintf("row(s) %s must have a non-NA 'p' or 'var' value",
-         paste(which(!has_indicator), collapse = ", ")), call. = FALSE)
+  if (has_p) {
+    has_indicator <- has_indicator | !is.na(targets$p)
+  }
+  if (has_var) {
+    has_indicator <- has_indicator | !is.na(targets$var)
+  }
+  if (any(!has_indicator)) {
+    stop(
+      sprintf(
+        "row(s) %s must have a non-NA 'p' or 'var' value",
+        paste(which(!has_indicator), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
 
   # When both columns exist, each row must use exactly one
   if (has_p && has_var) {
@@ -444,10 +454,15 @@ n_multi.default <- function(
     }
   }
 
-  if (require_all && anyNA(rv))
-    stop(sprintf(
-      "row(s) %s: could not derive 'rel_var' - provide 'p', or 'var'+'mu', or 'rel_var' directly",
-      paste(which(is.na(rv)), collapse = ", ")), call. = FALSE)
+  if (require_all && anyNA(rv)) {
+    stop(
+      sprintf(
+        "row(s) %s: could not derive 'rel_var' - provide 'p', or 'var'+'mu', or 'rel_var' directly",
+        paste(which(is.na(rv)), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
 
   rv
 }
@@ -704,9 +719,15 @@ n_multi.default <- function(
         lower = c(1, 1),
         upper = c(Inf, Inf)
       )
-      if (opt$convergence != 0L)
-        warning("L-BFGS-B did not converge (code ", opt$convergence, "): ",
-                "allocation may be approximate", call. = FALSE)
+      if (opt$convergence != 0L) {
+        warning(
+          "L-BFGS-B did not converge (code ",
+          opt$convergence,
+          "): ",
+          "allocation may be approximate",
+          call. = FALSE
+        )
+      }
 
       n2_opt <- opt$par[1L]
       n3_opt <- opt$par[2L]
@@ -718,11 +739,22 @@ n_multi.default <- function(
       n1_opt <- m
 
       n2_required_fn <- function(n3) {
-        n2_per <- vapply(seq_len(nr), function(j) {
-          denom <- cv_t[j]^2 * m * rr[j] / (rel_var[j] * k2[j]) - k1[j] * delta1[j] / k2[j]
-          if (denom <= 0) Inf
-          else (1 + delta2[j] * (n3 - 1)) / (n3 * denom)
-        }, numeric(1L))
+        n2_per <- vapply(
+          seq_len(nr),
+          function(j) {
+            denom <- cv_t[j]^2 *
+              m *
+              rr[j] /
+              (rel_var[j] * k2[j]) -
+              k1[j] * delta1[j] / k2[j]
+            if (denom <= 0) {
+              Inf
+            } else {
+              (1 + delta2[j] * (n3 - 1)) / (n3 * denom)
+            }
+          },
+          numeric(1L)
+        )
         max(n2_per)
       }
 
@@ -731,18 +763,25 @@ n_multi.default <- function(
         m * (C1 + C2 * n2 + C3 * n2 * n3)
       }
 
-      n3_analytic <- vapply(seq_len(nr), function(j) {
-        if (delta2[j] <= 0) 1 else sqrt((1 - delta2[j]) / delta2[j] * C2 / C3)
-      }, numeric(1L))
+      n3_analytic <- vapply(
+        seq_len(nr),
+        function(j) {
+          if (delta2[j] <= 0) 1 else sqrt((1 - delta2[j]) / delta2[j] * C2 / C3)
+        },
+        numeric(1L)
+      )
       upper_n3 <- max(10, 3 * max(n3_analytic))
 
       opt <- optimize(cost_fn_fixed, interval = c(1, upper_n3))
       n3_opt <- opt$minimum
       n2_opt <- n2_required_fn(n3_opt)
 
-      if (!is.finite(n2_opt) || n2_opt <= 0)
-        stop("target CV is too small for the given fixed stage-1 size",
-             call. = FALSE)
+      if (!is.finite(n2_opt) || n2_opt <= 0) {
+        stop(
+          "target CV is too small for the given fixed stage-1 size",
+          call. = FALSE
+        )
+      }
 
       n1_vals <- n1_required(n2_opt, n3_opt)
       binding_idx <- which.max(n1_vals)
@@ -1162,9 +1201,15 @@ n_multi.default <- function(
       lower = lower_bounds[-nd],
       upper = rep(1 - lower_bounds[nd], nd - 1L)
     )
-    if (opt$convergence != 0L)
-      warning("L-BFGS-B did not converge (code ", opt$convergence, "): ",
-              "allocation may be approximate", call. = FALSE)
+    if (opt$convergence != 0L) {
+      warning(
+        "L-BFGS-B did not converge (code ",
+        opt$convergence,
+        "): ",
+        "allocation may be approximate",
+        call. = FALSE
+      )
+    }
     w_opt <- c(opt$par, 1 - sum(opt$par))
   }
 
@@ -1331,9 +1376,15 @@ n_multi.default <- function(
       lower = c(1, 1),
       upper = c(Inf, Inf)
     )
-    if (opt$convergence != 0L)
-      warning("L-BFGS-B did not converge (code ", opt$convergence, "): ",
-              "allocation may be approximate", call. = FALSE)
+    if (opt$convergence != 0L) {
+      warning(
+        "L-BFGS-B did not converge (code ",
+        opt$convergence,
+        "): ",
+        "allocation may be approximate",
+        call. = FALSE
+      )
+    }
 
     n2_opt <- opt$par[1L]
     n3_opt <- opt$par[2L]
@@ -1361,9 +1412,15 @@ n_multi.default <- function(
       lower = c(1, 1),
       upper = c(Inf, Inf)
     )
-    if (opt$convergence != 0L)
-      warning("L-BFGS-B did not converge (code ", opt$convergence, "): ",
-              "allocation may be approximate", call. = FALSE)
+    if (opt$convergence != 0L) {
+      warning(
+        "L-BFGS-B did not converge (code ",
+        opt$convergence,
+        "): ",
+        "allocation may be approximate",
+        call. = FALSE
+      )
+    }
 
     n2_opt <- opt$par[1L]
     n3_opt <- opt$par[2L]

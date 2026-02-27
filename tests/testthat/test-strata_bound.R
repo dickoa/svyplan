@@ -297,3 +297,14 @@ test_that("lh handles skewed data without NA crash", {
   res <- strata_bound(x_skew, n_strata = 4, n = 100, method = "lh")
   expect_s3_class(res, "svyplan_strata")
 })
+
+test_that("lh maxiter > 1 improves over maxiter = 1 on skewed data", {
+  skip_on_cran()
+  set.seed(42)
+  x_skew <- rlnorm(800, meanlog = 6, sdlog = 2)
+  res1 <- strata_bound(x_skew, n_strata = 4, n = 200, method = "lh",
+                        maxiter = 1L)
+  res200 <- strata_bound(x_skew, n_strata = 4, n = 200, method = "lh",
+                          maxiter = 200L)
+  expect_true(res200$cv <= res1$cv)
+})

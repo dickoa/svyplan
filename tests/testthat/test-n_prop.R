@@ -121,3 +121,10 @@ test_that("proportion FPC round-trip with finite N", {
   res <- n_prop(p = 0.3, moe = 0.05, N = 1000)
   expect_equal(res$moe, 0.05, tolerance = 1e-6)
 })
+
+test_that("n_prop logodds rejects moe >= 0.5", {
+  expect_error(n_prop(p = 0.3, moe = 0.5, method = "logodds"),
+               "moe.*< 0.5")
+  expect_error(n_prop(p = 0.3, moe = 0.6, method = "logodds"),
+               "moe.*< 0.5")
+})

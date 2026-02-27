@@ -150,6 +150,9 @@ n_prop.default <- function(p, moe = NULL, cv = NULL, alpha = 0.05,
   if (is.null(moe)) {
     stop("Log-odds method requires 'moe' (not 'cv')", call. = FALSE)
   }
+  if (moe >= 0.5) {
+    stop("log-odds method requires 'moe' < 0.5", call. = FALSE)
+  }
   .n_prop_logodds_raw(p, moe, alpha, N)
 }
 

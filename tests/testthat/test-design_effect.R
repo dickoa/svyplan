@@ -238,3 +238,59 @@ test_that("design_effect cluster accepts scalar delta", {
   d <- design_effect(delta = 0.05, m = 25)
   expect_equal(d, 1 + 24 * 0.05)
 })
+
+test_that("design_effect cr constant y stratified + clustered returns 1", {
+  set.seed(1)
+  n <- 100
+  w <- runif(n, 1, 5)
+  y <- rep(42, n)
+  strvar <- rep(1:2, each = 50)
+  clvar <- rep(1:20, each = 5)
+  expect_warning(
+    res <- design_effect(w, y = y, strvar = strvar, clvar = clvar,
+                         stages = c(2L, 2L), method = "cr"),
+    "variance is approximately zero"
+  )
+  expect_equal(res$overall, 1)
+  expect_true(all(is.na(res$strata$deff_s)))
+  expect_true(all(is.na(res$strata$deff_c)))
+  expect_true(all(is.na(res$strata$rho_h)))
+  expect_true(all(!is.na(res$strata$cv2_w)))
+})
+
+test_that("design_effect cr constant y unstratified + clustered returns 1", {
+  set.seed(2)
+  n <- 60
+  w <- runif(n, 1, 3)
+  y <- rep(10, n)
+  clvar <- rep(1:12, each = 5)
+  expect_warning(
+    res <- design_effect(w, y = y, clvar = clvar, method = "cr"),
+    "variance is approximately zero"
+  )
+  expect_equal(res$overall, 1)
+  expect_true(is.na(res$strata$rho))
+  expect_true(is.na(res$strata$deff_c))
+})
+
+test_that("design_effect cr constant y stratified no clusters returns 1", {
+  set.seed(3)
+  n <- 80
+  w <- runif(n, 1, 4)
+  y <- rep(7, n)
+  strvar <- rep(1:4, each = 20)
+  expect_warning(
+    res <- design_effect(w, y = y, strvar = strvar, method = "cr"),
+    "variance is approximately zero"
+  )
+  expect_equal(res$overall, 1)
+  expect_true(all(is.na(res$strata$deff_s)))
+})
+
+test_that(".stratum_cluster_deff returns NA for constant y in stratum", {
+  w <- c(1, 2, 3, 4, 5, 6)
+  y <- rep(5, 6)
+  clvar <- c(1, 1, 2, 2, 3, 3)
+  res <- svyplan:::.stratum_cluster_deff(w, y, clvar, sig2h = 0, nh = 6)
+  expect_true(is.na(res))
+})
