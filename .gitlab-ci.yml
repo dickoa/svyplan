@@ -61,7 +61,7 @@ coverage:
     - Rscript -e "install.packages(c('remotes', 'covr'), repos='https://cloud.r-project.org')"
     - Rscript -e "remotes::install_deps(dependencies = TRUE)"
   script:
-    - Rscript -e "covr::coveralls(quiet = FALSE, repo_token = Sys.getenv('COVERALLS_REPO_TOKEN'), service_name = 'gitlab-ci', service_job_id = Sys.getenv('CI_JOB_ID'))"
+    - Rscript -e "covr::codecov(quiet = FALSE, token = Sys.getenv('CODECOV_TOKEN'))"
   coverage: '/Coverage:\s*\d+\.\d+%/'
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
