@@ -1,4 +1,4 @@
---
+---
 title: "Survey sample size planning with svyplan"
 output: rmarkdown::html_vignette
 vignette: >
@@ -361,7 +361,7 @@ n_cluster(cost = c(500, 50), delta = vc, cv = 0.05, resp_rate = 0.90)
 
 ### Fixed overhead costs
 
-The standard cost model is purely linear: `C = c1*n1 + c2*n1*n2`. Real surveys also have a fixed overhead (training, infrastructure, setup). The `fixed_cost` parameter adds this term: `C = C0 + c1*n1 + c2*n1*n2`. In budget mode, only `budget - fixed_cost` is available for the variable component, reducing n1 while leaving the optimal n2/n1 ratio unchanged. In CV mode, all sample sizes stay the same and `fixed_cost` is simply added to the total cost:
+The standard cost model is purely linear: `C = c1*n_psu + c2*n_psu*psu_size`. Real surveys also have a fixed overhead (training, infrastructure, setup). The `fixed_cost` parameter adds this term: `C = C0 + c1*n_psu + c2*n_psu*psu_size`. In budget mode, only `budget - fixed_cost` is available for the variable component, reducing n_psu while leaving the optimal psu_size/n_psu ratio unchanged. In CV mode, all sample sizes stay the same and `fixed_cost` is simply added to the total cost:
 
 ```{r n-cluster-fixed}
 # Budget mode: fixed overhead reduces the allocatable budget
@@ -387,10 +387,10 @@ prec_cluster(n = c(50, 12), delta = 0.05)
 
 ### Design effects
 
-The cluster design effect formula `deff = 1 + (m - 1) * delta` links cluster size to precision loss:
+The cluster design effect formula `deff = 1 + (psu_size - 1) * delta` links cluster size to precision loss:
 
 ```{r design-effect}
-design_effect(delta = 0.05, m = 20, method = "cluster")
+design_effect(delta = 0.05, psu_size = 20, method = "cluster")
 ```
 
 After data collection, compute the realized design effect from survey weights:
@@ -404,14 +404,14 @@ effective_n(w, method = "kish")
 
 ### Multi-indicator multistage
 
-For surveys with multiple indicators in a cluster design, provide `delta` columns and a cost/budget to `n_multi()`:
+For surveys with multiple indicators in a cluster design, provide `delta_psu` columns and a cost/budget to `n_multi()`:
 
 ```{r n-multi-cluster}
 targets_ms <- data.frame(
   name   = c("stunting", "vaccination"),
   p      = c(0.25, 0.70),
   cv     = c(0.10, 0.08),
-  delta1 = c(0.05, 0.02)
+  delta_psu = c(0.05, 0.02)
 )
 
 n_multi(targets_ms, cost = c(500, 50), budget = 80000)
@@ -451,13 +451,13 @@ Allocation within strata is controlled by the `alloc` parameter:
 - `"proportional"`: $n_h \propto N_h$
 - `"neyman"` (default): $n_h \propto N_h \cdot S_h$ (minimizes national CV)
 - `"optimal"`: $n_h \propto N_h \cdot S_h / \sqrt{c_h}$ (accounts for costs)
-- `"power"`: Bankier (1988) compromise, $n_h \propto S_h \cdot N_h^q$,
-  where $q \in [0, 1]$ controls the trade-off between national precision
-  ($q = 1$, Neyman) and equal subnational CVs ($q = 0$)
+- `"power"`: Bankier (1988) compromise, $n_h \propto S_h \cdot N_h^{power\_q}$,
+  where $power\_q \in [0, 1]$ controls the trade-off between national precision
+  ($power\_q = 1$, Neyman) and equal subnational CVs ($power\_q = 0$)
 
 ```{r strata-power-alloc}
-# Bankier power allocation (compromise, q = 0.5)
-strata_bound(x, n_strata = 4, n = 300, alloc = "power", q = 0.5)
+# Bankier power allocation (compromise, power_q = 0.5)
+strata_bound(x, n_strata = 4, n = 300, alloc = "power", power_q = 0.5)
 ```
 
 ### Classifying new observations
@@ -529,7 +529,7 @@ The same three solve modes work for means:
 
 ```{r power-mean}
 # Sample size to detect a difference of 5 (within-group var = 200)
-power_mean(delta = 5, var = 200)
+power_mean(effect = 5, var = 200)
 
 # MDE with n = 400 per group
 power_mean(var = 200, n = 400)

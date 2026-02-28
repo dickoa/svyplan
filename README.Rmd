@@ -161,7 +161,7 @@ power_prop(p1 = 0.70, p2 = 0.75, deff = 2.0)
 power_prop(p1 = 0.70, n = 1500, deff = 2.0)
 
 # Means
-power_mean(delta = 5, var = 200)
+power_mean(effect = 5, var = 200)
 ```
 
 `plot()` draws the power-vs-sample-size curve with reference lines at the solved point:
@@ -176,7 +176,7 @@ plot(pw)
 
 ```{r}
 # Planning: expected cluster design effect
-design_effect(delta = 0.05, m = 20, method = "cluster")
+design_effect(delta = 0.05, psu_size = 20, method = "cluster")
 
 # Diagnostic: Kish design effect from weights
 set.seed(1)

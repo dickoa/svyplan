@@ -97,7 +97,7 @@ test_that("predict.svyplan_cluster varies budget", {
   res <- predict(x, nd)
 
   expect_equal(nrow(res), 3L)
-  expect_true(all(c("n1", "n2", "total_n", "cv", "cost") %in% names(res)))
+  expect_true(all(c("n_psu", "psu_size", "total_n", "cv", "cost") %in% names(res)))
   expect_true(all(diff(res$cv) < 0))
 })
 
@@ -115,7 +115,7 @@ test_that("predict.svyplan_cluster uses original mode when no cv/budget in newda
   res <- predict(x, nd)
 
   expect_equal(nrow(res), 3L)
-  expect_true(res$n1[1] > res$n1[3])
+  expect_true(res$n_psu[1] > res$n_psu[3])
 })
 
 test_that("predict.svyplan_cluster errors on both cv and budget", {
@@ -129,7 +129,7 @@ test_that("predict.svyplan_cluster rejects multi-indicator results", {
     name   = c("a", "b"),
     p      = c(0.3, 0.1),
     cv     = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   x <- n_multi(targets, cost = c(500, 50))
   expect_error(predict(x, data.frame(cv = 0.05)), "multi-indicator")
@@ -141,7 +141,7 @@ test_that("predict.svyplan_power varies n (solved for power)", {
   res <- predict(pw, nd)
 
   expect_equal(nrow(res), 4L)
-  expect_true(all(c("n", "power", "delta") %in% names(res)))
+  expect_true(all(c("n", "power", "effect") %in% names(res)))
   expect_true(all(diff(res$power) > 0))
 })
 
@@ -154,7 +154,7 @@ test_that("predict.svyplan_power varies power (solved for n)", {
 })
 
 test_that("predict.svyplan_power works for means", {
-  pw <- power_mean(delta = 5, var = 100, n = 200, power = NULL)
+  pw <- power_mean(effect = 5, var = 100, n = 200, power = NULL)
   nd <- data.frame(n = c(100, 200, 400))
   res <- predict(pw, nd)
 
@@ -241,5 +241,5 @@ test_that("predict.svyplan_cluster supports fixed_cost in newdata", {
   expect_equal(nrow(res), 3L)
   expect_true("fixed_cost" %in% names(res))
   expect_true(res$cost[3] > res$cost[1])
-  expect_equal(res$n1[1], res$n1[2], tolerance = 1e-8)
+  expect_equal(res$n_psu[1], res$n_psu[2], tolerance = 1e-8)
 })

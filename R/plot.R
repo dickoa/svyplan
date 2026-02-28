@@ -51,27 +51,31 @@ NULL
 plot.svyplan_strata <- function(x, ...) {
   strata <- x$strata
   labels <- paste0(
-    "[", signif(strata$lower, 3), ", ",
-    signif(strata$upper, 3), ")"
+    "[",
+    signif(strata$lower, 3),
+    ", ",
+    signif(strata$upper, 3),
+    ")"
   )
   labels[length(labels)] <- sub("\\)$", "]", labels[length(labels)])
 
   f_h <- strata$n_h / strata$N_h
   names(f_h) <- labels
 
-  method_label <- switch(x$method,
+  method_label <- switch(
+    x$method,
     cumrootf = "Dalenius-Hodges",
-    geo      = "Geometric",
-    lh       = "Lavallee-Hidiroglou",
-    kozak    = "Kozak",
+    geo = "Geometric",
+    lh = "Lavallee-Hidiroglou",
+    kozak = "Kozak",
     x$method
   )
 
   defaults <- list(
-    col  = "grey40",
+    col = "grey40",
     main = sprintf("%s (%d strata, cv = %.4f)", method_label, x$n_strata, x$cv),
     ylab = "Sampling fraction (f_h)",
-    las  = 2
+    las = 2
   )
   args <- modifyList(defaults, list(...))
   do.call(barplot, c(list(height = f_h), args))
@@ -91,9 +95,10 @@ plot.svyplan_power <- function(x, npoints = 101L, ...) {
 
   pw_seq <- .power_curve_grid(x, n_seq)
 
-  type_label <- switch(x$type,
+  type_label <- switch(
+    x$type,
     proportion = "proportions",
-    mean       = "means",
+    mean = "means",
     x$type
   )
 
@@ -115,26 +120,49 @@ plot.svyplan_power <- function(x, npoints = 101L, ...) {
   invisible(x)
 }
 
+#' @keywords internal
+#' @noRd
 .power_curve_grid <- function(x, n_seq) {
   p <- x$params
-  vapply(n_seq, function(ni) {
-    tryCatch({
-      if (x$type == "proportion") {
-        res <- power_prop(
-          p1 = p$p1, p2 = p$p2, n = ni, power = NULL,
-          alpha = p$alpha, N = p$N, deff = p$deff,
-          resp_rate = p$resp_rate,
-          sides = p$sides, overlap = p$overlap, rho = p$rho
-        )
-      } else {
-        res <- power_mean(
-          delta = x$delta, var = p$var, n = ni, power = NULL,
-          alpha = p$alpha, N = p$N, deff = p$deff,
-          resp_rate = p$resp_rate,
-          sides = p$sides, overlap = p$overlap, rho = p$rho
-        )
-      }
-      res$power
-    }, error = function(e) NA_real_)
-  }, numeric(1))
+  vapply(
+    n_seq,
+    function(ni) {
+      tryCatch(
+        {
+          if (x$type == "proportion") {
+            res <- power_prop(
+              p1 = p$p1,
+              p2 = p$p2,
+              n = ni,
+              power = NULL,
+              alpha = p$alpha,
+              N = p$N,
+              deff = p$deff,
+              resp_rate = p$resp_rate,
+              sides = p$sides,
+              overlap = p$overlap,
+              rho = p$rho
+            )
+          } else {
+            res <- power_mean(
+              effect = x$effect,
+              var = p$var,
+              n = ni,
+              power = NULL,
+              alpha = p$alpha,
+              N = p$N,
+              deff = p$deff,
+              resp_rate = p$resp_rate,
+              sides = p$sides,
+              overlap = p$overlap,
+              rho = p$rho
+            )
+          }
+          res$power
+        },
+        error = function(e) NA_real_
+      )
+    },
+    numeric(1)
+  )
 }

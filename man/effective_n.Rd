@@ -13,9 +13,9 @@ effective_n(x = NULL, ...)
   ...,
   y = NULL,
   x_cal = NULL,
-  p = NULL,
-  strvar = NULL,
-  clvar = NULL,
+  prob = NULL,
+  strata_id = NULL,
+  cluster_id = NULL,
   stages = NULL,
   method = "kish"
 )
@@ -24,7 +24,7 @@ effective_n(x = NULL, ...)
   x = NULL,
   ...,
   delta = NULL,
-  m = NULL,
+  psu_size = NULL,
   n = NULL,
   method = "cluster"
 )
@@ -39,11 +39,11 @@ or \code{NULL} (for the \code{"cluster"} planning method).}
 
 \item{x_cal}{Calibration covariate (for \code{"henry"}).}
 
-\item{p}{1-draw selection probabilities (for \code{"spencer"}).}
+\item{prob}{1-draw selection probabilities (for \code{"spencer"}).}
 
-\item{strvar}{Stratum IDs (for \code{"cr"}).}
+\item{strata_id}{Stratum IDs (for \code{"cr"}).}
 
-\item{clvar}{Cluster IDs (for \code{"cr"}).}
+\item{cluster_id}{Cluster IDs (for \code{"cr"}).}
 
 \item{stages}{Integer vector of stages per stratum (for \code{"cr"}).}
 
@@ -53,7 +53,7 @@ or \code{NULL} (for the \code{"cluster"} planning method).}
 
 \item{delta}{ICC / homogeneity measure, scalar or \code{svyplan_varcomp}.}
 
-\item{m}{Mean cluster size (scalar).}
+\item{psu_size}{Mean PSU size (scalar).}
 
 \item{n}{Total sample size (required for the cluster method).}
 }
@@ -73,11 +73,12 @@ This is an S3 generic that mirrors \code{\link[=design_effect]{design_effect()}}
 }}
 \examples{
 # Effective sample size from weights (Kish)
+set.seed(1)
 w <- runif(100, 1, 5)
 effective_n(w, method = "kish")
 
 # Planning: effective n given cluster design
-effective_n(delta = 0.05, m = 25, n = 800, method = "cluster")
+effective_n(delta = 0.05, psu_size = 25, n = 800, method = "cluster")
 
 }
 \seealso{

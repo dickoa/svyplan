@@ -22,6 +22,7 @@
 \alias{as.integer.svyplan_n}
 \alias{as.double.svyplan_n}
 \alias{as.integer.svyplan_cluster}
+\alias{as.double.svyplan_cluster}
 \alias{as.integer.svyplan_power}
 \alias{as.double.svyplan_power}
 \alias{print.svyplan_strata}
@@ -72,6 +73,8 @@
 
 \method{as.integer}{svyplan_cluster}(x, ...)
 
+\method{as.double}{svyplan_cluster}(x, ...)
+
 \method{as.integer}{svyplan_power}(x, ...)
 
 \method{as.double}{svyplan_power}(x, ...)
@@ -104,4 +107,14 @@
 }
 \description{
 Print svyplan objects
+}
+\details{
+For \code{svyplan_cluster} objects, per-stage sizes are ceiled to integers
+for operational use. The total shown by \code{print()}, \code{format()}, and
+\code{as.integer()} is the product of ceiled per-stage sizes — the number of
+interviews to actually conduct. The unrounded continuous optimum
+(\code{x$total_n}) is shown in parentheses and returned by \code{as.double()}.
+
+Summary: \code{as.integer(x)} = operational total (what goes in the field),
+\code{as.double(x)} = continuous optimum (what the math solved for).
 }

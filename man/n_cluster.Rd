@@ -15,7 +15,7 @@ n_cluster(cost, ...)
   k = 1,
   cv = NULL,
   budget = NULL,
-  m = NULL,
+  n_psu = NULL,
   resp_rate = 1,
   fixed_cost = 0,
   ...
@@ -43,25 +43,30 @@ or \code{budget}.}
 
 \item{budget}{Total budget. Specify exactly one of \code{cv} or \code{budget}.}
 
-\item{m}{Fixed stage-1 sample size. \code{NULL} (default) means optimize all
-stages.}
+\item{n_psu}{Fixed number of PSUs (stage-1 sample size). \code{NULL} (default)
+means optimize all stages.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The stage-1 sample size is inflated by \code{1 / resp_rate}.}
 
 \item{fixed_cost}{Fixed overhead cost (C0). Default 0.
-The total cost model becomes \code{C = C0 + c1*n1 + c2*n1*n2 [+ c3*n1*n2*n3]}.
+The total cost model becomes
+\code{C = C0 + c1*n_psu + c2*n_psu*psu_size [+ c3*n_psu*psu_size*ssu_size]}.
 In budget mode, only \code{budget - fixed_cost} is available for variable costs;
 in CV mode, \code{fixed_cost} is added to the variable cost.}
 }
 \value{
 A \code{svyplan_cluster} object with components:
 \describe{
-\item{\code{n}}{Named numeric vector of per-stage sample sizes
-(e.g. \code{c(n1 = 80, n2 = 12)}).}
+\item{\code{n}}{Named numeric vector of continuous per-stage sample sizes
+(e.g. \code{c(n_psu = 84.1, psu_size = 13.8)}). Use \code{ceiling()} for
+operational (integer) values.}
 \item{\code{stages}}{Number of stages (2 or 3).}
-\item{\code{total_n}}{Total sample size (\code{prod(n)}).}
-\item{\code{cv}}{Achieved coefficient of variation.}
+\item{\code{total_n}}{Continuous total sample size (\code{prod(n)}). Use
+\code{as.integer()} for the operational total (product of ceiled stages),
+or \code{as.double()} for this continuous value.}
+\item{\code{cv}}{Achieved coefficient of variation (based on continuous
+optimum).}
 \item{\code{cost}}{Total cost.}
 \item{\code{params}}{List of input parameters.}
 }
@@ -78,7 +83,7 @@ Stage count is determined by \code{length(cost)}. Two dispatch dimensions:
 \item \strong{budget vs cv} mode (which is non-NULL)
 }
 
-When \code{m} is specified, stage 1 is fixed and only stage 2+ are optimized.
+When \code{n_psu} is specified, stage 1 is fixed and only stage 2+ are optimized.
 
 If \code{delta} is a \code{svyplan_varcomp} object, \code{delta}, \code{rel_var}, and \code{k}
 are extracted automatically.
@@ -95,8 +100,8 @@ n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
 # 2-stage, CV mode
 n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
 
-# 2-stage, fixed m
-n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000, m = 40)
+# 2-stage, fixed n_psu
+n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000, n_psu = 40)
 
 # 3-stage
 n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)

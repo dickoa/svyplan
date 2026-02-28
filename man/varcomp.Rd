@@ -33,12 +33,13 @@ Length determines the number of stage boundaries (stages - 1).}
 \value{
 A \code{svyplan_varcomp} object with components:
 \describe{
-\item{\code{var_between}}{Between-cluster variance (scalar).}
-\item{\code{var_within}}{Within-cluster variance. Length 1 for 2-stage,
-length 2 for 3-stage.}
+\item{\code{varb}}{Between-PSU variance (scalar).}
+\item{\code{varw}}{Within-PSU variance. Scalar for 2-stage, length-2
+vector (\code{varw_psu}, \code{varw_ssu}) for 3-stage.}
 \item{\code{delta}}{Measure of homogeneity. Length 1 for 2-stage,
-length 2 for 3-stage.}
-\item{\code{k}}{Ratio parameter(s), same length as \code{delta}.}
+length 2 (\code{delta_psu}, \code{delta_ssu}) for 3-stage.}
+\item{\code{k}}{Ratio parameter(s), same length as \code{delta}
+(\code{k_psu}, \code{k_ssu} for 3-stage).}
 \item{\code{rel_var}}{Unit relvariance (scalar).}
 \item{\code{stages}}{Number of stages (2 or 3).}
 }

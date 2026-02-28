@@ -69,13 +69,23 @@
 #' n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 #'
 #' @export
-n_prop <- function(p, ...) UseMethod("n_prop")
+n_prop <- function(p, ...) {
+  UseMethod("n_prop")
+}
 
 #' @rdname n_prop
 #' @export
-n_prop.default <- function(p, moe = NULL, cv = NULL, alpha = 0.05,
-                           N = Inf, deff = 1, resp_rate = 1,
-                           method = "wald", ...) {
+n_prop.default <- function(
+  p,
+  moe = NULL,
+  cv = NULL,
+  alpha = 0.05,
+  N = Inf,
+  deff = 1,
+  resp_rate = 1,
+  method = "wald",
+  ...
+) {
   check_proportion(p, "p")
   check_precision(moe, cv)
   check_alpha(alpha)
@@ -84,25 +94,36 @@ n_prop.default <- function(p, moe = NULL, cv = NULL, alpha = 0.05,
   check_resp_rate(resp_rate)
   method <- match.arg(method, c("wald", "wilson", "logodds"))
 
-  n <- switch(method,
-    wald    = .n_prop_wald(p, moe, cv, alpha, N),
-    wilson  = .n_prop_wilson(p, moe, cv, alpha),
+  n <- switch(
+    method,
+    wald = .n_prop_wald(p, moe, cv, alpha, N),
+    wilson = .n_prop_wilson(p, moe, cv, alpha),
     logodds = .n_prop_logodds(p, moe, cv, alpha, N)
   )
 
   n <- n * deff
   n <- .apply_resp_rate(n, resp_rate)
 
-  if (!is.infinite(N) && n > N)
+  if (!is.infinite(N) && n > N) {
     warning("Calculated sample size exceeds population size N.", call. = FALSE)
+  }
 
-  params <- list(p = p, alpha = alpha, N = N, deff = deff,
-                 resp_rate = resp_rate)
-  if (!is.null(moe)) params$moe <- moe else params$cv <- cv
+  params <- list(
+    p = p,
+    alpha = alpha,
+    N = N,
+    deff = deff,
+    resp_rate = resp_rate
+  )
+  if (!is.null(moe)) {
+    params$moe <- moe
+  } else {
+    params$cv <- cv
+  }
 
   .new_svyplan_n(
-    n      = n,
-    type   = "proportion",
+    n = n,
+    type = "proportion",
     method = method,
     params = params
   )
@@ -137,8 +158,10 @@ n_prop.default <- function(p, moe = NULL, cv = NULL, alpha = 0.05,
 
   rad <- e^2 - p * q * (4 * e^2 - p * q)
   if (rad < 0) {
-    stop("Wilson formula radicand is negative; check parameter values",
-         call. = FALSE)
+    stop(
+      "Wilson formula radicand is negative; check parameter values",
+      call. = FALSE
+    )
   }
 
   (p * q - 2 * e^2 + sqrt(rad)) * (z / e)^2 / 2
@@ -186,13 +209,13 @@ n_prop.svyplan_prec <- function(p, moe = NULL, cv = NULL, ...) {
     moe <- x$moe
   }
   n_prop.default(
-    p         = par$p,
-    moe       = moe,
-    cv        = cv,
-    alpha     = par$alpha,
-    N         = par$N,
-    deff      = par$deff,
+    p = par$p,
+    moe = moe,
+    cv = cv,
+    alpha = par$alpha,
+    N = par$N,
+    deff = par$deff,
     resp_rate = par$resp_rate,
-    method    = x$method %||% "wald"
+    method = x$method %||% "wald"
   )
 }

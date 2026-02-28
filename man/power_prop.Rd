@@ -49,7 +49,7 @@ A \code{svyplan_power} object with components:
 \describe{
 \item{\code{n}}{Per-group sample size.}
 \item{\code{power}}{Achieved power.}
-\item{\code{delta}}{Difference in proportions (\code{p2 - p1}).}
+\item{\code{effect}}{Difference in proportions (\code{abs(p2 - p1)}).}
 \item{\code{solved}}{Which quantity was solved for
 (\code{"n"}, \code{"power"}, or \code{"mde"}).}
 \item{\code{params}}{List of input parameters.}
@@ -74,8 +74,9 @@ observed at both occasions, following the approach in Kish (1965, Ch. 11).
 \item \strong{Solve power}: Compute SE, then
 \eqn{\text{power} = \Phi(\delta / \text{SE} - z_{\alpha/s})}.
 For two-sided tests both tails are included.
-\item \strong{Solve MDE}: \code{uniroot} search for the smallest \code{p2 > p1} achieving
-the target power. To find the MDE for a decrease, swap \code{p1} and \code{p2}.
+\item \strong{Solve MDE}: \code{uniroot} search for the \code{p2} closest to \code{p1} that
+achieves the target power. Both directions (\code{p2 > p1} and \code{p2 < p1})
+are searched; the closer alternative is returned.
 }
 }
 \examples{
@@ -85,8 +86,11 @@ power_prop(p1 = 0.30, p2 = 0.35)
 # Power given n = 500
 power_prop(p1 = 0.30, p2 = 0.35, n = 500, power = NULL)
 
-# MDE with n = 1000
+# MDE with n = 1000 (searches both directions, returns closest p2)
 power_prop(p1 = 0.30, n = 1000)
+
+# MDE near boundary (downward alternative found automatically)
+power_prop(p1 = 0.999, n = 100)
 
 # With design effect
 power_prop(p1 = 0.30, p2 = 0.35, deff = 1.5)

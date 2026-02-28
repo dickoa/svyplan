@@ -40,11 +40,43 @@ test_that("prec_cluster validates inputs", {
                "must have length")
 })
 
+test_that("prec_cluster rejects NA in n", {
+  expect_error(prec_cluster(n = c(50, NA), delta = 0.05), "NA")
+})
+
 test_that("prec_cluster prints cluster format", {
   result <- prec_cluster(n = c(50, 12), delta = 0.05)
   out <- capture.output(print(result))
   expect_match(out[1], "Sampling precision for 2-stage cluster")
-  expect_match(out[2], "n1 = 50")
-  expect_match(out[2], "n2 = 12")
+  expect_match(out[2], "n_psu = 50")
+  expect_match(out[2], "psu_size = 12")
   expect_match(out[3], "cv =")
+})
+
+test_that("prec_cluster rejects negative rel_var", {
+  expect_error(
+    prec_cluster(n = c(50, 12), delta = 0.05, rel_var = -1),
+    "rel_var.*positive"
+  )
+})
+
+test_that("prec_cluster rejects zero rel_var", {
+  expect_error(
+    prec_cluster(n = c(50, 12), delta = 0.05, rel_var = 0),
+    "rel_var.*positive"
+  )
+})
+
+test_that("prec_cluster rejects negative k", {
+  expect_error(
+    prec_cluster(n = c(50, 12), delta = 0.05, k = -1),
+    "k.*positive"
+  )
+})
+
+test_that("prec_cluster rejects NA k", {
+  expect_error(
+    prec_cluster(n = c(50, 12), delta = 0.05, k = NA),
+    "k.*positive"
+  )
 })

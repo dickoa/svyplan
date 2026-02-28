@@ -30,34 +30,34 @@ test_that("n_multi rejects budget without cost", {
 
 test_that("n_multi rejects m without cost", {
   df <- data.frame(p = 0.3, moe = 0.05)
-  expect_error(nm(df, m = 50), "'m' requires 'cost'")
+  expect_error(nm(df, n_psu =50), "'n_psu' requires 'cost'")
 })
 
 test_that("multistage requires cv column", {
-  df <- data.frame(p = 0.3, moe = 0.05, delta1 = 0.02)
+  df <- data.frame(p = 0.3, moe = 0.05, delta_psu = 0.02)
   expect_error(nm(df, cost = c(500, 50)), "requires 'cv'")
 })
 
-test_that("multistage requires delta1 column", {
+test_that("multistage requires delta_psu column", {
   df <- data.frame(p = 0.3, cv = 0.10)
-  expect_error(nm(df, cost = c(500, 50)), "requires 'delta1'")
+  expect_error(nm(df, cost = c(500, 50)), "requires 'delta_psu'")
 })
 
 test_that("var + cv requires mu", {
-  df <- data.frame(var = 100, cv = 0.05, delta1 = 0.02)
+  df <- data.frame(var = 100, cv = 0.05, delta_psu = 0.02)
   expect_error(nm(df, cost = c(500, 50)), "'mu' is required")
 })
 
 test_that("n_multi rejects negative cv in multistage", {
   expect_error(
-    nm(data.frame(p = 0.3, cv = -0.1, delta1 = 0.05), cost = c(500, 50)),
+    nm(data.frame(p = 0.3, cv = -0.1, delta_psu = 0.05), cost = c(500, 50)),
     "positive"
   )
 })
 
-test_that("n_multi rejects delta1 outside [0, 1]", {
+test_that("n_multi rejects delta_psu outside [0, 1]", {
   expect_error(
-    nm(data.frame(p = 0.3, cv = 0.1, delta1 = 1.5), cost = c(500, 50)),
+    nm(data.frame(p = 0.3, cv = 0.1, delta_psu = 1.5), cost = c(500, 50)),
     "\\[0, 1\\]"
   )
 })
@@ -236,7 +236,7 @@ test_that("single indicator 2-stage matches n_cluster", {
   df <- data.frame(
     p = 0.3,
     cv = 0.05,
-    delta1 = 0.05
+    delta_psu = 0.05
   )
   res <- nm(df, cost = c(500, 50))
   ref <- n_cluster(
@@ -245,7 +245,7 @@ test_that("single indicator 2-stage matches n_cluster", {
     rel_var = (1 - 0.3) / 0.3,
     cv = 0.05
   )
-  expect_equal(res$n[["n2"]], ref$n[["n2"]], tolerance = 0.5)
+  expect_equal(res$n[["psu_size"]], ref$n[["psu_size"]], tolerance = 0.5)
   expect_equal(res$cv, ref$cv, tolerance = 0.01)
   expect_s3_class(res, "svyplan_cluster")
 })
@@ -255,7 +255,7 @@ test_that("multi-indicator 2-stage has correct structure", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   res <- nm(df, cost = c(500, 50))
   expect_s3_class(res, "svyplan_cluster")
@@ -272,7 +272,7 @@ test_that("multi-indicator 2-stage achieves CV for binding indicator", {
     name = c("a", "b"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   res <- nm(df, cost = c(500, 50))
   # Binding indicator should approximately meet its target
@@ -288,7 +288,7 @@ test_that("round-trip: prec_cluster confirms achieved CVs", {
   df <- data.frame(
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   res <- nm(df, cost = c(500, 50))
 
@@ -297,7 +297,7 @@ test_that("round-trip: prec_cluster confirms achieved CVs", {
     cv_check <- unname(
       prec_cluster(
         n = res$n,
-        delta = df$delta1[j],
+        delta = df$delta_psu[j],
         rel_var = rv
       )$cv
     )
@@ -309,7 +309,7 @@ test_that("2-stage budget mode respects budget", {
   df <- data.frame(
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   res <- nm(df, cost = c(500, 50), budget = 100000)
   expect_equal(res$cost, 100000, tolerance = 1)
@@ -319,7 +319,7 @@ test_that("2-stage budget mode returns achieved CVs", {
   df <- data.frame(
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   res <- nm(df, cost = c(500, 50), budget = 100000)
   expect_true(all(res$detail$.cv_achieved > 0))
@@ -329,10 +329,10 @@ test_that("2-stage budget + fixed m works", {
   df <- data.frame(
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
-  res <- nm(df, cost = c(500, 50), budget = 100000, m = 80)
-  expect_equal(res$n[["n1"]], 80)
+  res <- nm(df, cost = c(500, 50), budget = 100000, n_psu =80)
+  expect_equal(res$n[["n_psu"]], 80)
   expect_true(res$cost <= 100000 + 1)
 })
 
@@ -340,10 +340,10 @@ test_that("2-stage budget too small raises error", {
   df <- data.frame(
     p = 0.3,
     cv = 0.10,
-    delta1 = 0.05
+    delta_psu = 0.05
   )
   expect_error(
-    nm(df, cost = c(500, 50), budget = 100, m = 80),
+    nm(df, cost = c(500, 50), budget = 100, n_psu =80),
     "budget is too small"
   )
 })
@@ -353,15 +353,15 @@ test_that("2-stage with domains produces domain results", {
     name = rep(c("a", "b"), each = 2),
     p = c(0.3, 0.4, 0.1, 0.2),
     cv = rep(0.10, 4),
-    delta1 = rep(0.02, 4),
+    delta_psu = rep(0.02, 4),
     region = rep(c("North", "South"), 2)
   )
   res <- nm(df, cost = c(500, 50))
   expect_s3_class(res, "svyplan_cluster")
   expect_true(!is.null(res$domains))
   expect_equal(nrow(res$domains), 2L)
-  expect_true("n1" %in% names(res$domains))
-  expect_true("n2" %in% names(res$domains))
+  expect_true("n_psu" %in% names(res$domains))
+  expect_true("psu_size" %in% names(res$domains))
   expect_true(".binding" %in% names(res$domains))
 })
 
@@ -370,8 +370,8 @@ test_that("3-stage multi-indicator has correct structure", {
     name = c("a", "b"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.01, 0.02),
-    delta2 = c(0.05, 0.08)
+    delta_psu = c(0.01, 0.02),
+    delta_ssu = c(0.05, 0.08)
   )
   res <- nm(df, cost = c(500, 100, 50))
   expect_s3_class(res, "svyplan_cluster")
@@ -384,8 +384,8 @@ test_that("3-stage budget mode works", {
   df <- data.frame(
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.01, 0.02),
-    delta2 = c(0.05, 0.08)
+    delta_psu = c(0.01, 0.02),
+    delta_ssu = c(0.05, 0.08)
   )
   res <- nm(df, cost = c(500, 100, 50), budget = 200000)
   expect_equal(res$cost, 200000, tolerance = 1)
@@ -413,13 +413,13 @@ test_that("rel_var can be supplied directly", {
   df <- data.frame(
     p = 0.3,
     cv = 0.10,
-    delta1 = 0.05,
+    delta_psu = 0.05,
     rel_var = 3.0
   )
   res <- nm(df, cost = c(500, 50))
   # Should use supplied rel_var, not derived (1-0.3)/0.3 = 2.33
   ref <- n_cluster(cost = c(500, 50), delta = 0.05, rel_var = 3.0, cv = 0.10)
-  expect_equal(res$n[["n2"]], ref$n[["n2"]], tolerance = 0.5)
+  expect_equal(res$n[["psu_size"]], ref$n[["psu_size"]], tolerance = 0.5)
 })
 
 test_that("print.svyplan_n works for multi type", {
@@ -449,7 +449,7 @@ test_that("print.svyplan_cluster works for multi type", {
     name = c("a", "b"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   res <- nm(df, cost = c(500, 50))
   expect_output(print(res), "Multi-indicator optimal allocation")
@@ -460,7 +460,7 @@ test_that("print.svyplan_cluster works for multi type with domains", {
   df <- data.frame(
     p = c(0.3, 0.1),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
   res <- nm(df, cost = c(500, 50))
@@ -481,13 +481,13 @@ test_that("joint budget: worst CV ratio <= equal-split (asymmetric domains)", {
     name = c("a", "b"),
     p = c(0.05, 0.10),
     cv = c(0.20, 0.15),
-    delta1 = c(0.08, 0.05)
+    delta_psu = c(0.08, 0.05)
   )
   df_easy <- data.frame(
     name = c("a", "b"),
     p = c(0.40, 0.30),
     cv = c(0.10, 0.10),
-    delta1 = c(0.02, 0.02)
+    delta_psu = c(0.02, 0.02)
   )
   budget <- 100000
   cost <- c(500, 50)
@@ -522,7 +522,7 @@ test_that("joint budget: single domain identical to non-joint", {
     name = c("a", "b"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     region = c("R1", "R1")
   )
   res_ind <- nm(df, cost = c(500, 50), budget = 80000, joint = FALSE)
@@ -535,7 +535,7 @@ test_that("joint budget: equal domains get approximately equal budgets", {
   df <- data.frame(
     p = c(0.3, 0.3),
     cv = c(0.10, 0.10),
-    delta1 = c(0.03, 0.03),
+    delta_psu = c(0.03, 0.03),
     region = c("A", "B")
   )
   res <- nm(df, cost = c(500, 50), budget = 100000, joint = TRUE)
@@ -548,7 +548,7 @@ test_that("joint budget: doubling budget improves worst CV", {
     name = rep(c("a", "b"), each = 2),
     p = c(0.30, 0.10, 0.10, 0.30),
     cv = c(0.10, 0.15, 0.15, 0.10),
-    delta1 = c(0.02, 0.05, 0.05, 0.02),
+    delta_psu = c(0.02, 0.05, 0.05, 0.02),
     region = rep(c("R1", "R2"), 2)
   )
   res1 <- nm(df, cost = c(500, 50), budget = 50000, joint = TRUE)
@@ -560,7 +560,7 @@ test_that("joint budget: total cost equals budget", {
   df <- data.frame(
     p = c(0.3, 0.1),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
   res <- nm(df, cost = c(500, 50), budget = 100000, joint = TRUE)
@@ -572,7 +572,7 @@ test_that("joint budget: budget shifts toward harder domain", {
     name = rep(c("a", "b"), each = 2),
     p = c(0.05, 0.40, 0.10, 0.30),
     cv = c(0.20, 0.10, 0.15, 0.10),
-    delta1 = c(0.08, 0.02, 0.05, 0.02),
+    delta_psu = c(0.08, 0.02, 0.05, 0.02),
     region = rep(c("Hard", "Easy"), 2)
   )
   res <- nm(df, cost = c(500, 50), budget = 100000, joint = TRUE)
@@ -586,7 +586,7 @@ test_that("joint budget: 2-domain grid search confirms optimizer", {
     name = rep(c("a", "b"), each = 2),
     p = c(0.10, 0.30, 0.20, 0.40),
     cv = c(0.12, 0.10, 0.10, 0.08),
-    delta1 = c(0.05, 0.03, 0.04, 0.02),
+    delta_psu = c(0.05, 0.03, 0.04, 0.02),
     region = rep(c("R1", "R2"), 2)
   )
   budget <- 80000
@@ -631,7 +631,7 @@ test_that("joint budget: output has correct structure", {
   df <- data.frame(
     p = c(0.3, 0.1),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
   res <- nm(df, cost = c(500, 50), budget = 100000, joint = TRUE)
@@ -647,7 +647,7 @@ test_that("joint = TRUE without budget is same as independent (CV mode)", {
   df <- data.frame(
     p = c(0.3, 0.1),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
   res_ind <- nm(df, cost = c(500, 50), joint = FALSE)
@@ -659,7 +659,7 @@ test_that("joint = TRUE without domains is same as joint = FALSE", {
   df <- data.frame(
     p = c(0.3, 0.1),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   res_ind <- nm(df, cost = c(500, 50), budget = 80000, joint = FALSE)
   res_jnt <- nm(df, cost = c(500, 50), budget = 80000, joint = TRUE)
@@ -681,7 +681,7 @@ test_that("joint budget: 3+ domains work", {
   df <- data.frame(
     p = c(0.3, 0.1, 0.2),
     cv = c(0.10, 0.15, 0.12),
-    delta1 = c(0.02, 0.05, 0.03),
+    delta_psu = c(0.02, 0.05, 0.03),
     region = c("A", "B", "C")
   )
   res <- suppressWarnings(nm(df, cost = c(500, 50), budget = 150000, joint = TRUE))
@@ -695,8 +695,8 @@ test_that("joint budget: 3-stage design works", {
   df <- data.frame(
     p = c(0.3, 0.1),
     cv = c(0.10, 0.15),
-    delta1 = c(0.01, 0.02),
-    delta2 = c(0.05, 0.08),
+    delta_psu = c(0.01, 0.02),
+    delta_ssu = c(0.05, 0.08),
     region = c("A", "B")
   )
   res <- nm(df, cost = c(500, 100, 50), budget = 200000, joint = TRUE)
@@ -711,7 +711,7 @@ test_that("joint budget: multiple indicators per domain", {
     name = rep(c("stunting", "anemia", "vaccination"), each = 2),
     p = c(0.30, 0.25, 0.10, 0.15, 0.70, 0.60),
     cv = rep(c(0.10, 0.15, 0.08), each = 2),
-    delta1 = rep(c(0.02, 0.05, 0.03), each = 2),
+    delta_psu = rep(c(0.02, 0.05, 0.03), each = 2),
     region = rep(c("Urban", "Rural"), 3)
   )
   res <- nm(df, cost = c(500, 50), budget = 120000, joint = TRUE)
@@ -723,7 +723,7 @@ test_that("joint budget: print shows joint label", {
   df <- data.frame(
     p = c(0.3, 0.1),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
   res <- nm(df, cost = c(500, 50), budget = 100000, joint = TRUE)
@@ -765,19 +765,19 @@ test_that("2-stage resp_rate: per-indicator inflation in optimization", {
     name = c("a", "b"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     resp_rate = c(1, 1)
   )
   df_diff <- data.frame(
     name = c("a", "b"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     resp_rate = c(0.5, 0.9)
   )
   res_eq <- nm(df_equal, cost = c(500, 50))
   res_diff <- nm(df_diff, cost = c(500, 50))
-  expect_true(res_diff$n[["n1"]] > res_eq$n[["n1"]])
+  expect_true(res_diff$n[["n_psu"]] > res_eq$n[["n_psu"]])
 })
 
 test_that("2-stage resp_rate: per-indicator vs global min gives different results", {
@@ -792,7 +792,7 @@ test_that("2-stage resp_rate: per-indicator vs global min gives different result
     name = c("easy", "hard"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.08),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     resp_rate = c(0.5, 0.9)
   )
   res <- nm(df, cost = c(500, 50))
@@ -808,12 +808,12 @@ test_that("2-stage budget mode: resp_rate affects CV achieved", {
   df_no_rr <- data.frame(
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   df_rr <- data.frame(
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     resp_rate = c(0.8, 0.7)
   )
   res_no <- nm(df_no_rr, cost = c(500, 50), budget = 100000)
@@ -827,8 +827,8 @@ test_that("3-stage resp_rate: per-indicator inflation works", {
     name = c("a", "b"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.01, 0.02),
-    delta2 = c(0.05, 0.08),
+    delta_psu = c(0.01, 0.02),
+    delta_ssu = c(0.05, 0.08),
     resp_rate = c(0.8, 0.7)
   )
   res <- nm(df, cost = c(500, 100, 50))
@@ -845,26 +845,26 @@ test_that("multistage params store budget and m", {
   df <- data.frame(
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   res_cv <- nm(df, cost = c(500, 50))
   expect_equal(res_cv$params$cost, c(500, 50))
   expect_null(res_cv$params$budget)
-  expect_null(res_cv$params$m)
+  expect_null(res_cv$params$n_psu)
 
   res_b <- nm(df, cost = c(500, 50), budget = 100000)
   expect_equal(res_b$params$budget, 100000)
 
-  res_bm <- nm(df, cost = c(500, 50), budget = 100000, m = 80)
+  res_bm <- nm(df, cost = c(500, 50), budget = 100000, n_psu =80)
   expect_equal(res_bm$params$budget, 100000)
-  expect_equal(res_bm$params$m, 80)
+  expect_equal(res_bm$params$n_psu, 80)
 })
 
 test_that("domain multistage params store budget", {
   df <- data.frame(
     p = c(0.3, 0.1),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
   res <- nm(df, cost = c(500, 50), budget = 100000)
@@ -875,12 +875,12 @@ test_that("uniform resp_rate matches no resp_rate", {
   df1 <- data.frame(
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   df2 <- data.frame(
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     resp_rate = c(1, 1)
   )
   res1 <- nm(df1, cost = c(500, 50))
@@ -974,7 +974,7 @@ test_that("min_n: joint budget ensures all domains >= min_n", {
     name = rep(c("stunting", "anemia"), each = 2),
     p = c(0.30, 0.25, 0.10, 0.15),
     cv = c(0.10, 0.10, 0.15, 0.15),
-    delta1 = c(0.02, 0.03, 0.05, 0.04),
+    delta_psu = c(0.02, 0.03, 0.05, 0.04),
     region = rep(c("Urban", "Rural"), 2)
   )
   res_no <- nm(df, cost = c(500, 50), budget = 100000, joint = TRUE)
@@ -997,7 +997,7 @@ test_that("min_n: joint monotonicity -> larger min_n -> worse overall CV", {
     name = rep(c("a", "b"), each = 2),
     p = c(0.05, 0.40, 0.10, 0.30),
     cv = c(0.20, 0.10, 0.15, 0.10),
-    delta1 = c(0.08, 0.02, 0.05, 0.02),
+    delta_psu = c(0.08, 0.02, 0.05, 0.02),
     region = rep(c("Hard", "Easy"), 2)
   )
   res1 <- nm(df, cost = c(500, 50), budget = 100000, joint = TRUE, min_n = 50)
@@ -1009,7 +1009,7 @@ test_that("min_n: joint feasibility error when single domain impossible", {
   df <- data.frame(
     p = c(0.3, 0.1),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
   expect_error(
@@ -1022,7 +1022,7 @@ test_that("min_n: joint feasibility error when budget too small for all domains"
   df <- data.frame(
     p = c(0.3, 0.1, 0.2),
     cv = c(0.10, 0.15, 0.12),
-    delta1 = c(0.02, 0.05, 0.03),
+    delta_psu = c(0.02, 0.05, 0.03),
     region = c("A", "B", "C")
   )
   res_full <- suppressWarnings(nm(
@@ -1042,7 +1042,7 @@ test_that("min_n: non-joint multistage warns when total_n < min_n", {
   df <- data.frame(
     p = c(0.3, 0.1),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
   res <- nm(df, cost = c(500, 50))
@@ -1057,7 +1057,7 @@ test_that("min_n: non-joint multistage no warning when all above floor", {
   df <- data.frame(
     p = c(0.3, 0.1),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
   expect_no_warning(suppressMessages(nm(df, cost = c(500, 50), min_n = 1)))
@@ -1067,7 +1067,7 @@ test_that("min_n: multistage stores min_n in params", {
   df <- data.frame(
     p = c(0.3, 0.1),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
   res <- suppressWarnings(nm(df, cost = c(500, 50), min_n = 500))
@@ -1088,7 +1088,7 @@ test_that("min_n: print shows min_n for cluster domains", {
   df <- data.frame(
     p = c(0.3, 0.1),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05),
+    delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
   res <- nm(df, cost = c(500, 50), budget = 100000, joint = TRUE, min_n = 50)
@@ -1119,7 +1119,7 @@ test_that("n_multi 2-stage CV with fixed_cost adds to cost", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   base <- nm(tgt, cost = c(500, 50))
   fc <- nm(tgt, cost = c(500, 50), fixed_cost = 5000)
@@ -1133,11 +1133,11 @@ test_that("n_multi 2-stage budget with fixed_cost reduces allocations", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   base <- nm(tgt, cost = c(500, 50), budget = 100000)
   fc <- nm(tgt, cost = c(500, 50), budget = 100000, fixed_cost = 10000)
-  expect_true(fc$n[["n1"]] < base$n[["n1"]])
+  expect_true(fc$n[["n_psu"]] < base$n[["n_psu"]])
   expect_equal(fc$cost, 100000)
 })
 
@@ -1146,7 +1146,7 @@ test_that("n_multi joint domains with fixed_cost", {
     name = rep(c("stunting", "anemia"), each = 2),
     p = c(0.30, 0.25, 0.10, 0.15),
     cv = c(0.10, 0.10, 0.15, 0.15),
-    delta1 = c(0.02, 0.03, 0.05, 0.04),
+    delta_psu = c(0.02, 0.03, 0.05, 0.04),
     region = rep(c("Urban", "Rural"), 2)
   )
   base <- nm(tgt, cost = c(500, 50), budget = 200000, joint = TRUE)
@@ -1155,4 +1155,24 @@ test_that("n_multi joint domains with fixed_cost", {
   expect_equal(fc$cost, 200000)
   expect_true(fc$total_n < base$total_n)
   expect_equal(fc$params$fixed_cost, 10000)
+})
+
+test_that("n_multi rejects negative rel_var", {
+  tgt <- data.frame(p = 0.3, cv = 0.10, delta_psu = 0.02, rel_var = -1)
+  expect_error(nm(tgt, cost = c(500, 50)), "rel_var.*positive")
+})
+
+test_that("n_multi rejects zero rel_var", {
+  tgt <- data.frame(p = 0.3, cv = 0.10, delta_psu = 0.02, rel_var = 0)
+  expect_error(nm(tgt, cost = c(500, 50)), "rel_var.*positive")
+})
+
+test_that("n_multi rejects negative k_psu", {
+  tgt <- data.frame(p = 0.3, cv = 0.10, delta_psu = 0.02, k_psu = -1)
+  expect_error(nm(tgt, cost = c(500, 50)), "k_psu.*positive")
+})
+
+test_that("n_multi rejects negative k_ssu", {
+  tgt <- data.frame(p = 0.3, cv = 0.10, delta_psu = 0.02, k_ssu = -1)
+  expect_error(nm(tgt, cost = c(500, 50)), "k_ssu.*positive")
 })

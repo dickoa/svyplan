@@ -12,7 +12,7 @@ n_multi(targets, ...)
   targets,
   cost = NULL,
   budget = NULL,
-  m = NULL,
+  n_psu = NULL,
   joint = FALSE,
   min_n = NULL,
   fixed_cost = 0,
@@ -34,7 +34,7 @@ simple mode; length 2 or 3 for multistage mode.}
 \item{budget}{Total budget (multistage only). Provide either \code{cv} values
 in the \code{targets} data frame or a \code{budget} here, not both.}
 
-\item{m}{Fixed stage-1 sample size (multistage only).}
+\item{n_psu}{Fixed stage-1 sample size (multistage only).}
 
 \item{joint}{Logical. If \code{TRUE}, optimally split a single \code{budget}
 across domains to minimize the worst-case CV ratio. Only applies
@@ -58,7 +58,7 @@ A \code{svyplan_n} object (simple mode) or \code{svyplan_cluster} object
 \strong{Without domains}, the object contains:
 \describe{
 \item{\code{n}}{Sample size (simple) or named per-stage allocation vector
-(multistage, e.g. \code{c(n1 = 80, n2 = 12)}).}
+(multistage, e.g. \code{c(n_psu = 80, psu_size = 12)}).}
 \item{\code{detail}}{Per-indicator results (sample sizes or achieved CVs).}
 \item{\code{binding}}{Name or index of the binding (most demanding) indicator.}
 \item{\code{targets}}{The input targets data frame.}
@@ -68,10 +68,10 @@ A \code{svyplan_n} object (simple mode) or \code{svyplan_cluster} object
 \describe{
 \item{\code{n}}{Maximum per-stage sample size across domains. In simple
 mode, a single number; in multistage mode, a named vector
-(e.g. \code{c(n1 = 120, n2 = 15)}) giving the conservative
+(e.g. \code{c(n_psu = 120, psu_size = 15)}) giving the conservative
 allocation that satisfies all domains.}
 \item{\code{domains}}{Data frame with one row per domain, including
-domain variable columns, per-stage allocations (\code{n1}, \code{n2}, ...),
+domain variable columns, per-stage allocations (\code{n_psu}, \code{psu_size}, ...),
 and summary columns (\code{.total_n}, \code{.cv}, \code{.cost}, \code{.binding}
 for multistage; \code{.n}, \code{.binding} for simple mode).
 Use this for stratum-specific allocations.}
@@ -93,16 +93,16 @@ The \code{targets} data frame supports the following columns:
 \item{\code{name}}{Indicator label (optional).}
 \item{\code{p}}{Expected proportion, in (0, 1). One of \code{p} or \code{var} per row.}
 \item{\code{var}}{Population variance. One of \code{p} or \code{var} per row.}
-\item{\code{mu}}{Population mean. Required when \code{var} is specified with \code{cv}.}
+\item{\code{mu}}{Population mean magnitude (positive). Required when \code{var} is specified with \code{cv}.}
 \item{\code{moe}}{Margin of error (simple mode).}
 \item{\code{cv}}{Target coefficient of variation (either mode).}
 \item{\code{alpha}}{Significance level (default 0.05).}
 \item{\code{deff}}{Design effect multiplier (simple mode only, default 1).}
 \item{\code{N}}{Population size (simple mode only, default Inf).}
-\item{\code{delta1}, \code{delta2}}{Homogeneity measures (multistage).}
+\item{\code{delta_psu}, \code{delta_ssu}}{Homogeneity measures (multistage).}
 \item{\code{rel_var}}{Unit relvariance. If omitted, derived from \code{p} or
 \code{var}/\code{mu}.}
-\item{\code{k1}, \code{k2}}{Ratio parameters (multistage, default 1).}
+\item{\code{k_psu}, \code{k_ssu}}{Ratio parameters (multistage, default 1).}
 \item{\code{resp_rate}}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). Inflates the required sample size to account for
 non-response.}
@@ -155,7 +155,7 @@ targets_cl <- data.frame(
   name   = c("stunting", "anemia"),
   p      = c(0.30, 0.10),
   cv     = c(0.10, 0.15),
-  delta1 = c(0.02, 0.05)
+  delta_psu = c(0.02, 0.05)
 )
 n_multi(targets_cl, cost = c(500, 50))
 
@@ -164,7 +164,7 @@ targets_jnt <- data.frame(
   name   = rep(c("stunting", "anemia"), each = 2),
   p      = c(0.30, 0.25, 0.10, 0.15),
   cv     = c(0.10, 0.10, 0.15, 0.15),
-  delta1 = c(0.02, 0.03, 0.05, 0.04),
+  delta_psu = c(0.02, 0.03, 0.05, 0.04),
   region = rep(c("Urban", "Rural"), 2)
 )
 n_multi(targets_jnt, cost = c(500, 50), budget = 100000, joint = TRUE)

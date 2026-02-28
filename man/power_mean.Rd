@@ -5,7 +5,7 @@
 \title{Power Analysis for Means}
 \usage{
 power_mean(
-  delta = NULL,
+  effect = NULL,
   var,
   n = NULL,
   power = 0.8,
@@ -19,8 +19,8 @@ power_mean(
 )
 }
 \arguments{
-\item{delta}{Effect size (difference in means). Leave \code{NULL} to solve
-for MDE.}
+\item{effect}{Absolute difference in means (effect-size magnitude, positive).
+Leave \code{NULL} to solve for MDE.}
 
 \item{var}{Within-group variance (required).}
 
@@ -50,7 +50,7 @@ A \code{svyplan_power} object with components:
 \describe{
 \item{\code{n}}{Per-group sample size.}
 \item{\code{power}}{Achieved power.}
-\item{\code{delta}}{Effect size (difference in means).}
+\item{\code{effect}}{Effect size (difference in means).}
 \item{\code{solved}}{Which quantity was solved for
 (\code{"n"}, \code{"power"}, or \code{"mde"}).}
 \item{\code{params}}{List of input parameters.}
@@ -58,7 +58,7 @@ A \code{svyplan_power} object with components:
 }
 \description{
 Compute sample size, power, or minimum detectable effect (MDE) for a
-two-sample test of means. Leave exactly one of \code{n}, \code{power}, or \code{delta}
+two-sample test of means. Leave exactly one of \code{n}, \code{power}, or \code{effect}
 as \code{NULL} to solve for that quantity.
 }
 \details{
@@ -80,16 +80,16 @@ the panel overlap term (Kish, 1965, Ch. 11).
 }
 \examples{
 # Sample size to detect a difference of 5 with variance 100
-power_mean(delta = 5, var = 100)
+power_mean(effect = 5, var = 100)
 
 # Power given n = 200
-power_mean(delta = 5, var = 100, n = 200, power = NULL)
+power_mean(effect = 5, var = 100, n = 200, power = NULL)
 
 # MDE with n = 500
 power_mean(var = 100, n = 500)
 
 # With design effect
-power_mean(delta = 5, var = 100, deff = 1.5)
+power_mean(effect = 5, var = 100, deff = 1.5)
 
 }
 \references{

@@ -93,7 +93,7 @@ test_that("n_multi 2-stage -> prec_multi round-trip", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta1 = c(0.02, 0.05)
+    delta_psu = c(0.02, 0.05)
   )
   s1 <- n_multi(tgt, cost = c(500, 50))
   p1 <- prec_multi(s1)
@@ -134,4 +134,44 @@ test_that("prec_multi rejects non-multi svyplan_n", {
 test_that("prec_cluster.svyplan_cluster round-trip preserves delta", {
   s1 <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
   expect_no_error(prec_cluster(s1))
+})
+
+test_that("n_multi 2-stage -> prec_multi -> n_multi preserves cluster class", {
+  tgt <- data.frame(
+    name = c("stunting", "anemia"),
+    p = c(0.30, 0.10),
+    cv = c(0.10, 0.15),
+    delta_psu = c(0.02, 0.05)
+  )
+  s1 <- n_multi(tgt, cost = c(500, 50))
+  p1 <- prec_multi(s1)
+  s2 <- n_multi(p1)
+  expect_s3_class(s2, "svyplan_cluster")
+  expect_equal(s2$stages, s1$stages)
+})
+
+test_that("n_multi budget round-trip preserves budget param", {
+  tgt <- data.frame(
+    name = c("stunting", "anemia"),
+    p = c(0.30, 0.10),
+    cv = c(0.10, 0.15),
+    delta_psu = c(0.02, 0.05)
+  )
+  s1 <- n_multi(tgt, cost = c(500, 50), budget = 100000)
+  p1 <- prec_multi(s1)
+  expect_equal(p1$params$budget, 100000)
+  s2 <- n_multi(p1)
+  expect_equal(s2$params$budget, 100000)
+})
+
+test_that("n_multi round-trip does not leak n2/n3 as domain columns", {
+  tgt <- data.frame(
+    name = c("stunting", "anemia"),
+    p = c(0.30, 0.10),
+    cv = c(0.10, 0.15),
+    delta_psu = c(0.02, 0.05)
+  )
+  s1 <- n_multi(tgt, cost = c(500, 50))
+  p1 <- prec_multi(s1)
+  expect_no_message(s2 <- n_multi(p1))
 })

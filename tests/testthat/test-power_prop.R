@@ -15,7 +15,7 @@ test_that("power_prop solve-n matches formula", {
   expect_equal(res$solved, "n")
   expect_equal(res$type, "proportion")
   expect_equal(res$power, 0.80)
-  expect_equal(res$delta, 0.05)
+  expect_equal(res$effect, 0.05)
 })
 
 test_that("power_prop solve-power matches formula", {
@@ -38,9 +38,8 @@ test_that("power_prop solve-power matches formula", {
 test_that("power_prop solve-mde returns valid p2", {
   res <- power_prop(p1 = 0.30, n = 1000)
   expect_equal(res$solved, "mde")
-  expect_true(res$params$p2 > 0.30)
-  expect_true(res$params$p2 < 1)
-  expect_equal(res$delta, res$params$p2 - 0.30, tolerance = 1e-8)
+  expect_true(res$params$p2 > 0 && res$params$p2 < 1)
+  expect_equal(res$effect, abs(res$params$p2 - 0.30), tolerance = 1e-8)
 })
 
 test_that("power_prop deff multiplier", {
@@ -76,7 +75,9 @@ test_that("power_prop round-trip n -> power", {
 test_that("power_prop round-trip n -> mde", {
   res_n <- power_prop(p1 = 0.30, p2 = 0.35, power = 0.80)
   res_mde <- power_prop(p1 = 0.30, n = res_n$n, power = 0.80)
-  expect_equal(res_mde$params$p2, 0.35, tolerance = 1e-3)
+  # MDE returns closest p2; delta should be <= original
+  expect_true(res_mde$effect <= abs(0.35 - 0.30) + 1e-3)
+  expect_true(res_mde$effect > 0)
 })
 
 test_that("power_prop coercion methods", {
@@ -108,4 +109,32 @@ test_that("power_prop format and print", {
   expect_match(format(res), "svyplan_power")
   expect_output(print(res), "Power analysis for proportions")
   expect_output(print(res), "solved for sample size")
+})
+
+test_that("power_prop MDE works for extreme high p1 (downward solve)", {
+  # p1 = 0.999: upward interval (0.999, 1) too narrow, must find downward root
+  res <- power_prop(p1 = 0.999, n = 100)
+  expect_true(res$params$p2 < 0.999)
+  expect_true(res$effect > 0)
+})
+
+test_that("power_prop MDE works for extreme low p1 (upward solve)", {
+  # p1 = 0.001: downward interval (0, 0.001) too narrow, must find upward root
+  res <- power_prop(p1 = 0.001, n = 100)
+  expect_true(res$params$p2 > 0.001)
+  expect_true(res$effect > 0)
+})
+
+test_that("power_prop MDE returns closest root", {
+  # p1 = 0.5: symmetric, both directions give same |delta|
+  res <- power_prop(p1 = 0.5, n = 500)
+  expect_true(res$effect > 0)
+  expect_true(res$params$p2 > 0 && res$params$p2 < 1)
+})
+
+test_that("power_prop MDE errors when no solution exists", {
+  expect_error(
+    power_prop(p1 = 0.5, n = 2, power = 0.999),
+    "no detectable alternative"
+  )
 })

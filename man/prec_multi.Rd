@@ -9,7 +9,14 @@
 \usage{
 prec_multi(targets, ...)
 
-\method{prec_multi}{default}(targets, cost = NULL, budget = NULL, m = NULL, joint = FALSE, ...)
+\method{prec_multi}{default}(
+  targets,
+  cost = NULL,
+  budget = NULL,
+  n_psu = NULL,
+  joint = FALSE,
+  ...
+)
 
 \method{prec_multi}{svyplan_n}(targets, ...)
 
@@ -27,7 +34,7 @@ simple mode; length 2 or 3 for multistage mode.}
 
 \item{budget}{Total budget (currently unused in precision mode).}
 
-\item{m}{Fixed stage-1 sample size (currently unused in precision mode).}
+\item{n_psu}{Fixed stage-1 sample size (currently unused in precision mode).}
 
 \item{joint}{Logical (currently unused in precision mode).}
 }
@@ -49,15 +56,15 @@ The \code{targets} data frame supports the following columns:
 \item{\code{mu}}{Population mean. Required for CV when \code{var} is specified.}
 \item{\code{n}}{Sample size (required). For simple mode, a scalar per
 indicator. For multistage, per-stage sizes can be provided as
-\code{n}, \code{n2}, \code{n3} columns.}
+\code{n}, \code{psu_size}, \code{ssu_size} columns.}
 \item{\code{alpha}}{Significance level (default 0.05).}
 \item{\code{deff}}{Design effect multiplier (simple mode only, default 1).}
 \item{\code{N}}{Population size (simple mode only, default Inf).}
 \item{\code{resp_rate}}{Expected response rate (default 1).}
-\item{\code{delta1}, \code{delta2}}{Homogeneity measures (multistage).}
+\item{\code{delta_psu}, \code{delta_ssu}}{Homogeneity measures (multistage).}
 \item{\code{rel_var}}{Unit relvariance. If omitted, derived from \code{p} or
 \code{var}/\code{mu}.}
-\item{\code{k1}, \code{k2}}{Ratio parameters (multistage, default 1).}
+\item{\code{k_psu}, \code{k_ssu}}{Ratio parameters (multistage, default 1).}
 }
 
 Any column not in the recognized set is treated as a \strong{domain variable}.

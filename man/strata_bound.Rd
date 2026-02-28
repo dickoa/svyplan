@@ -11,12 +11,12 @@ strata_bound(
   cv = NULL,
   method = "lh",
   alloc = "neyman",
-  q = 0.5,
+  power_q = 0.5,
   cost = NULL,
   certain = NULL,
   nclass = NULL,
   maxiter = 200L,
-  niter = NULL
+  n_restart = NULL
 )
 }
 \arguments{
@@ -40,9 +40,9 @@ or \code{cv}. Required for methods \code{"lh"} and \code{"kozak"}.}
 \code{"optimal"}, or \code{"power"} (Bankier compromise). Default \code{"neyman"}.
 See Details.}
 
-\item{q}{Bankier power parameter, used only when \code{alloc = "power"}.
-Numeric scalar in \eqn{[0, 1]}. At \code{q = 1} the allocation equals
-Neyman; at \code{q = 0} it yields near-equal subnational CVs.
+\item{power_q}{Bankier power parameter, used only when \code{alloc = "power"}.
+Numeric scalar in \eqn{[0, 1]}. At \code{power_q = 1} the allocation equals
+Neyman; at \code{power_q = 0} it yields near-equal subnational CVs.
 Default 0.5.}
 
 \item{cost}{Per-stratum unit costs, ordered from lowest to highest
@@ -59,7 +59,7 @@ census stratum.}
 \item{maxiter}{Maximum iterations for \code{"lh"} and \code{"kozak"}. Default
 200.}
 
-\item{niter}{Random restarts for \code{"kozak"}. Default \code{NULL} (= 10 *
+\item{n_restart}{Random restarts for \code{"kozak"}. Default \code{NULL} (= 10 *
 \code{n_strata}).}
 }
 \value{
@@ -111,14 +111,14 @@ Minimizes the national CV when unit costs are equal.
 \item \strong{optimal}: \eqn{n_h \propto N_h S_h / \sqrt{c_h}}{n_h ~ N_h * S_h / sqrt(c_h)}.
 Accounts for differential unit costs.
 \item \strong{power}: Bankier (1988) compromise,
-\eqn{n_h \propto S_h N_h^q}{n_h ~ S_h * N_h^q}.
-The parameter \code{q} controls the trade-off between national precision
-(\code{q = 1}, equivalent to Neyman) and near-equal subnational CVs
-(\code{q = 0}).
+\eqn{n_h \propto S_h N_h^{power\_q}}{n_h ~ S_h * N_h^power_q}.
+The parameter \code{power_q} controls the trade-off between national precision
+(\code{power_q = 1}, equivalent to Neyman) and near-equal subnational CVs
+(\code{power_q = 0}).
 }
 
 Stratum allocations \code{n_h} are rounded to integers using the ORIC method
-(Cont and Heidari, 2014), which preserves \code{sum(n_h) = n} while minimizing
+(Cont and Heidari, 2015), which preserves \code{sum(n_h) = n} while minimizing
 rounding distortion.
 }
 \examples{
@@ -132,7 +132,7 @@ strata_bound(x, n_strata = 4, method = "cumrootf", n = 100)
 strata_bound(x, n_strata = 4, n = 100)
 
 # Bankier power allocation (compromise between national and subnational CVs)
-strata_bound(x, n_strata = 4, n = 100, alloc = "power", q = 0.5)
+strata_bound(x, n_strata = 4, n = 100, alloc = "power", power_q = 0.5)
 
 # With take-all stratum
 strata_bound(x, n_strata = 3, n = 80, certain = quantile(x, 0.95))
@@ -159,7 +159,7 @@ the recursive Neyman allocation.
 Bankier, M. D. (1988). Power allocations: determining sample sizes for
 subnational areas. \emph{The American Statistician}, 42(3), 174--177.
 
-Cont, R. and Heidari, M. (2014). Optimal rounding under integer
+Cont, R. and Heidari, M. (2015). Optimal rounding under integer
 constraints. \emph{arXiv preprint} arXiv:1501.00014.
 }
 \seealso{

@@ -33,8 +33,8 @@ test_that("power_prop resp_rate works for solve-n", {
 })
 
 test_that("power_mean resp_rate works for solve-n", {
-  base <- power_mean(delta = 5, var = 100, n = NULL, power = 0.8)
-  rr <- power_mean(delta = 5, var = 100, n = NULL, power = 0.8,
+  base <- power_mean(effect = 5, var = 100, n = NULL, power = 0.8)
+  rr <- power_mean(effect = 5, var = 100, n = NULL, power = 0.8,
                     resp_rate = 0.8)
   expect_equal(rr$n, base$n / 0.8, tolerance = 1e-6)
 })

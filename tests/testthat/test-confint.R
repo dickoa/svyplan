@@ -59,3 +59,17 @@ test_that("confint.svyplan_prec fails for cluster type", {
   result <- prec_cluster(n = c(50, 12), delta = 0.05)
   expect_error(confint(result), "not supported")
 })
+
+test_that("confint.svyplan_n rejects invalid level", {
+  result <- n_prop(p = 0.3, moe = 0.05)
+  expect_error(confint(result, level = 1.2), "level.*\\(0, 1\\)")
+  expect_error(confint(result, level = 0), "level.*\\(0, 1\\)")
+  expect_error(confint(result, level = -1), "level.*\\(0, 1\\)")
+})
+
+test_that("confint.svyplan_prec rejects invalid level", {
+  result <- prec_prop(p = 0.3, n = 400)
+  expect_error(confint(result, level = 1.2), "level.*\\(0, 1\\)")
+  expect_error(confint(result, level = 0), "level.*\\(0, 1\\)")
+  expect_error(confint(result, level = -1), "level.*\\(0, 1\\)")
+})

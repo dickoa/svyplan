@@ -16,8 +16,8 @@
 #'   columns. The result columns depend on the object type:
 #'
 #'   - `svyplan_n`: `n`, `se`, `moe`, `cv`
-#'   - `svyplan_cluster`: `n1`, `n2`, (opt. `n3`), `total_n`, `cv`, `cost`
-#'   - `svyplan_power`: `n`, `power`, `delta`
+#'   - `svyplan_cluster`: `n_psu`, `psu_size`, (opt. `ssu_size`), `total_n`, `cv`, `cost`
+#'   - `svyplan_power`: `n`, `power`, `effect`
 #'   - `svyplan_prec`: `se`, `moe`, `cv`
 #'
 #' @details
@@ -30,7 +30,7 @@
 #' - **`power_prop`**: `p1`, `p2`, `n`, `power`, `alpha`, `N`, `deff`,
 #'   `sides`, `overlap`, `rho`, `resp_rate` (excluding the solved-for
 #'   parameter)
-#' - **`power_mean`**: `delta`, `var`, `n`, `power`, `alpha`, `N`,
+#' - **`power_mean`**: `effect`, `var`, `n`, `power`, `alpha`, `N`,
 #'   `deff`, `sides`, `overlap`, `rho`, `resp_rate` (excluding the
 #'   solved-for parameter)
 #' - **`prec_prop`**: `p`, `n`, `alpha`, `N`, `deff`, `resp_rate`
@@ -144,7 +144,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
 
   base <- list(
     cost = p$cost, delta = p$delta, rel_var = p$rel_var,
-    k = p$k, resp_rate = p$resp_rate %||% 1, m = p$m,
+    k = p$k, resp_rate = p$resp_rate %||% 1, n_psu = p$n_psu,
     fixed_cost = p$fixed_cost %||% 0
   )
 
@@ -165,7 +165,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
       cost = params$cost, delta = params$delta,
       rel_var = params$rel_var, k = params$k,
       cv = params$cv, budget = params$budget,
-      m = params$m, resp_rate = params$resp_rate,
+      n_psu = params$n_psu, resp_rate = params$resp_rate,
       fixed_cost = params$fixed_cost
     )
     out <- as.list(res$n)
@@ -199,13 +199,13 @@ predict.svyplan_power <- function(object, newdata, ...) {
       )
       args[excluded] <- list(NULL)
       res <- do.call(power_prop, args)
-      data.frame(n = res$n, power = res$power, delta = res$delta)
+      data.frame(n = res$n, power = res$power, effect = res$effect)
     })
 
   } else if (object$type == "mean") {
-    all_params <- c("delta", "var", "n", "power", "alpha", "N", "deff",
+    all_params <- c("effect", "var", "n", "power", "alpha", "N", "deff",
                     "resp_rate", "sides", "overlap", "rho")
-    excluded <- switch(solved, n = "n", power = "power", mde = "delta")
+    excluded <- switch(solved, n = "n", power = "power", mde = "effect")
     allowed <- setdiff(all_params, excluded)
 
     .validate_newdata(newdata, allowed)
@@ -213,14 +213,14 @@ predict.svyplan_power <- function(object, newdata, ...) {
 
     .predict_grid(newdata, base, function(p) {
       args <- list(
-        delta = p$delta, var = p$var, n = p$n, power = p$power,
+        effect = p$effect, var = p$var, n = p$n, power = p$power,
         alpha = p$alpha, N = p$N, deff = p$deff,
         resp_rate = p$resp_rate,
         sides = p$sides, overlap = p$overlap, rho = p$rho
       )
       args[excluded] <- list(NULL)
       res <- do.call(power_mean, args)
-      data.frame(n = res$n, power = res$power, delta = res$delta)
+      data.frame(n = res$n, power = res$power, effect = res$effect)
     })
 
   } else {

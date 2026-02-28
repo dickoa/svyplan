@@ -1,12 +1,17 @@
+#' @keywords internal
+#' @noRd
 .alloc_weights <- function(alloc, q, N_h, S_h, cost_h) {
-  switch(alloc,
+  switch(
+    alloc,
     proportional = N_h,
-    neyman       = N_h * S_h,
-    optimal      = N_h * S_h / sqrt(cost_h),
-    power        = S_h * N_h^q
+    neyman = N_h * S_h,
+    optimal = N_h * S_h / sqrt(cost_h),
+    power = S_h * N_h^q
   )
 }
 
+#' @keywords internal
+#' @noRd
 .strata_precompute <- function(x_sort) {
   list(
     cs = c(0, cumsum(x_sort)),
@@ -16,10 +21,14 @@
   )
 }
 
+#' @keywords internal
+#' @noRd
 .bk_to_idx <- function(x_sort, bk) {
   c(0L, findInterval(bk, x_sort), length(x_sort))
 }
 
+#' @keywords internal
+#' @noRd
 .strata_stats_from_prefix <- function(pre, idx) {
   L <- length(idx) - 1L
   N_h <- diff(idx)
@@ -37,6 +46,8 @@
   )
 }
 
+#' @keywords internal
+#' @noRd
 .rna_alloc <- function(a_h, n_total, m_h, M_h) {
   n_h <- numeric(length(a_h))
   fixed <- logical(length(a_h))
@@ -168,9 +179,13 @@
   certain_idx = NULL,
   .pre = NULL
 ) {
-  if (is.unsorted(bk)) return(Inf)
+  if (is.unsorted(bk)) {
+    return(Inf)
+  }
   res <- .strata_alloc(x, bk, n_total, alloc, q, cost_h, certain_idx, .pre)
-  if (any(res$N_h == 0L)) return(Inf)
+  if (any(res$N_h == 0L)) {
+    return(Inf)
+  }
   res$cv
 }
 
@@ -187,23 +202,28 @@
   certain_idx = NULL,
   .pre = NULL
 ) {
-  if (is.unsorted(bk)) return(Inf)
+  if (is.unsorted(bk)) {
+    return(Inf)
+  }
   L <- length(bk) + 1L
 
   if (!is.null(.pre)) {
     idx <- .bk_to_idx(.pre$x_sort, bk)
     stats <- .strata_stats_from_prefix(.pre, idx)
     N_h <- stats$N_h
-    if (any(N_h == 0L)) return(Inf)
+    if (any(N_h == 0L)) {
+      return(Inf)
+    }
     N <- .pre$n
     W_h <- stats$W_h
     S_h <- stats$S_h
     mean_h <- stats$mean_h
   } else {
-    x_range <- range(x)
     bins <- findInterval(x, bk, left.open = TRUE) + 1L
     N_h <- tabulate(bins, nbins = L)
-    if (any(N_h == 0L)) return(Inf)
+    if (any(N_h == 0L)) {
+      return(Inf)
+    }
     N <- length(x)
     W_h <- N_h / N
 
@@ -297,7 +317,6 @@
   maxiter,
   certain_idx = NULL
 ) {
-  N <- length(x_sort)
   x_uniq <- sort(unique(x_sort))
   nu <- length(x_uniq)
 
@@ -418,7 +437,6 @@
   # Map each unique value to its rightmost position in x_sort (prefix index)
   uniq_pidx <- findInterval(x_uniq, x_sort)
 
-  # Inline objective: work with prefix indices directly, skip findInterval
   obj_from_pidx <- function(pidx) {
     lo <- pidx[seq_len(L)] + 1L
     hi <- pidx[seq_len(L) + 1L] + 1L
@@ -426,17 +444,26 @@
     sum_h <- cs[hi] - cs[lo]
     sum2_h <- cs2[hi] - cs2[lo]
     mean_h <- ifelse(N_h > 0L, sum_h / N_h, 0)
-    var_h <- ifelse(N_h > 1L,
-                    pmax(0, (sum2_h - N_h * mean_h^2) / (N_h - 1L)), 0)
+    var_h <- ifelse(
+      N_h > 1L,
+      pmax(0, (sum2_h - N_h * mean_h^2) / (N_h - 1L)),
+      0
+    )
     S_h <- sqrt(var_h)
     W_h <- N_h / N
     a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h)
-    if (!is.null(certain_idx)) a_h[certain_idx] <- 0
+    if (!is.null(certain_idx)) {
+      a_h[certain_idx] <- 0
+    }
     sa <- sum(a_h)
-    if (sa <= 0) return(Inf)
+    if (sa <= 0) {
+      return(Inf)
+    }
     m_h <- pmin(rep(2, L), N_h)
     M_h <- N_h
-    if (!is.null(certain_idx)) m_h[certain_idx] <- N_h[certain_idx]
+    if (!is.null(certain_idx)) {
+      m_h[certain_idx] <- N_h[certain_idx]
+    }
 
     if (use_cv) {
       ybar <- sum(W_h * mean_h)
@@ -447,8 +474,12 @@
       for (i in seq_len(20L)) {
         mid <- (bi_lo + bi_hi) / 2
         n_h <- .rna_alloc(a_h, mid, m_h, M_h)
-        V <- sum(W_h[active]^2 * S_h[active]^2 /
-                   n_h[active] * (1 - n_h[active] / N_h[active]))
+        V <- sum(
+          W_h[active]^2 *
+            S_h[active]^2 /
+            n_h[active] *
+            (1 - n_h[active] / N_h[active])
+        )
         if (V > tgt_V) bi_lo <- mid else bi_hi <- mid
       }
       (bi_lo + bi_hi) / 2
@@ -498,9 +529,15 @@
       h <- rand_h[ri]
       new_h <- cur_idx[h] + rand_dir[ri]
 
-      if (new_h < 2L || new_h >= nu) next
-      if (h > 1L && new_h <= cur_idx[h - 1L]) next
-      if (h < L - 1L && new_h >= cur_idx[h + 1L]) next
+      if (new_h < 2L || new_h >= nu) {
+        next
+      }
+      if (h > 1L && new_h <= cur_idx[h - 1L]) {
+        next
+      }
+      if (h < L - 1L && new_h >= cur_idx[h + 1L]) {
+        next
+      }
 
       new_pidx <- cur_pidx
       new_pidx[h + 1L] <- uniq_pidx[new_h]
@@ -521,6 +558,8 @@
   list(bk = x_uniq[best_idx], converged = NA)
 }
 
+#' @keywords internal
+#' @noRd
 .round_oric <- function(x) {
   m <- floor(x)
   frac <- x - m

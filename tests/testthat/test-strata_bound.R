@@ -43,11 +43,11 @@ test_that("validates alloc", {
                "'arg' should be one of")
   expect_error(strata_bound(x_unif, n = 100, alloc = list(q1 = 1)),
                "must be one of")
-  expect_error(strata_bound(x_unif, n = 100, alloc = "power", q = 2),
+  expect_error(strata_bound(x_unif, n = 100, alloc = "power", power_q =2),
                "numeric scalar in \\[0, 1\\]")
-  expect_error(strata_bound(x_unif, n = 100, alloc = "power", q = -0.1),
+  expect_error(strata_bound(x_unif, n = 100, alloc = "power", power_q =-0.1),
                "numeric scalar in \\[0, 1\\]")
-  expect_error(strata_bound(x_unif, n = 100, alloc = "power", q = "a"),
+  expect_error(strata_bound(x_unif, n = 100, alloc = "power", power_q ="a"),
                "numeric scalar in \\[0, 1\\]")
 })
 
@@ -127,7 +127,7 @@ test_that("lh: converges on lognormal data", {
 test_that("kozak: converges on lognormal data", {
   skip_on_cran()
   res <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "kozak",
-                       niter = 5L, maxiter = 50L)
+                       n_restart = 5L, maxiter = 50L)
   expect_s3_class(res, "svyplan_strata")
   expect_equal(res$method, "kozak")
 })
@@ -136,7 +136,7 @@ test_that("kozak cv matches target approximately", {
   skip_on_cran()
   target_cv <- 0.10
   res <- strata_bound(x_lnorm, n_strata = 4, cv = target_cv, method = "kozak",
-                       niter = 10L, maxiter = 100L)
+                       n_restart = 10L, maxiter = 100L)
   expect_true(res$cv <= target_cv * 1.5)
 })
 
@@ -144,7 +144,7 @@ test_that("kozak n matches target approximately", {
   skip_on_cran()
   target_n <- 200
   res <- strata_bound(x_lnorm, n_strata = 3, n = target_n, method = "kozak",
-                       niter = 5L, maxiter = 50L)
+                       n_restart = 5L, maxiter = 50L)
   expect_true(abs(res$n - target_n) / target_n < 0.5)
 })
 
@@ -169,10 +169,10 @@ test_that("neyman allocation: n_h proportional to N_h * S_h", {
 
 test_that("power allocation works", {
   res <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
-                       alloc = "power", q = 0.5)
+                       alloc = "power", power_q =0.5)
   expect_s3_class(res, "svyplan_strata")
   expect_equal(res$alloc, "power")
-  expect_equal(res$params$q, 0.5)
+  expect_equal(res$params$power_q, 0.5)
 })
 
 test_that("n_h >= 2 per stratum", {
@@ -250,7 +250,7 @@ test_that("works on simulated lognormal (realistic skewed data)", {
   set.seed(999)
   x_skew <- rlnorm(2000, meanlog = 8, sdlog = 2)
   res <- strata_bound(x_skew, n_strata = 5, n = 500, method = "kozak",
-                       niter = 5L, maxiter = 50L)
+                       n_restart = 5L, maxiter = 50L)
   expect_s3_class(res, "svyplan_strata")
   expect_equal(nrow(res$strata), 5L)
   expect_true(all(res$strata$N_h > 0))
@@ -267,7 +267,7 @@ test_that("kozak outperforms or matches cumrootf", {
   skip_on_cran()
   res_cr <- strata_bound(x_lnorm, n_strata = 4, n = 200, method = "cumrootf")
   res_kz <- strata_bound(x_lnorm, n_strata = 4, n = 200, method = "kozak",
-                          niter = 10L, maxiter = 100L)
+                          n_restart = 10L, maxiter = 100L)
   expect_true(res_kz$cv <= res_cr$cv * 1.2)
 })
 
@@ -286,10 +286,10 @@ test_that("cost parameter with per-stratum vector", {
 test_that("params captures expected fields", {
   skip_on_cran()
   res <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "kozak",
-                       niter = 15L, maxiter = 50L)
+                       n_restart = 15L, maxiter = 50L)
   expect_equal(res$params$N, length(x_lnorm))
   expect_equal(res$params$maxiter, 50L)
-  expect_equal(res$params$niter, 15L)
+  expect_equal(res$params$n_restart, 15L)
 })
 
 test_that("2 strata works (single boundary)", {
@@ -321,7 +321,7 @@ test_that("power alloc q = 1 matches neyman", {
   res_ney <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
                            alloc = "neyman")
   res_pow <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
-                           alloc = "power", q = 1)
+                           alloc = "power", power_q =1)
   expect_equal(res_pow$strata$n_h, res_ney$strata$n_h)
 })
 
@@ -331,7 +331,7 @@ test_that("power alloc q = 0 differs from neyman on skewed data", {
   res_ney <- strata_bound(x_skew, n_strata = 4, n = 400, method = "cumrootf",
                            alloc = "neyman")
   res_pow <- strata_bound(x_skew, n_strata = 4, n = 400, method = "cumrootf",
-                           alloc = "power", q = 0)
+                           alloc = "power", power_q =0)
   expect_false(identical(res_pow$strata$n_h, res_ney$strata$n_h))
   expect_equal(res_pow$alloc, "power")
 })
@@ -340,7 +340,7 @@ test_that("power alloc uses default q = 0.5", {
   res <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
                        alloc = "power")
   expect_equal(res$alloc, "power")
-  expect_equal(res$params$q, 0.5)
+  expect_equal(res$params$power_q, 0.5)
 })
 
 test_that("print shows allocation label", {
@@ -350,9 +350,9 @@ test_that("print shows allocation label", {
   expect_true(any(grepl("Allocation: neyman", out_ney)))
 
   res_pow <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
-                           alloc = "power", q = 0.3)
+                           alloc = "power", power_q =0.3)
   out_pow <- capture.output(print(res_pow))
-  expect_true(any(grepl("power \\(q = 0\\.30\\)", out_pow)))
+  expect_true(any(grepl("power \\(power_q = 0\\.30\\)", out_pow)))
 })
 
 test_that("alloc field stores method name for all methods", {
@@ -360,6 +360,6 @@ test_that("alloc field stores method name for all methods", {
     res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf",
                          alloc = a)
     expect_equal(res$alloc, a)
-    expect_null(res$params$q)
+    expect_null(res$params$power_q)
   }
 })

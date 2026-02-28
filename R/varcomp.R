@@ -9,12 +9,13 @@
 #'
 #' @return A `svyplan_varcomp` object with components:
 #' \describe{
-#'   \item{`var_between`}{Between-cluster variance (scalar).}
-#'   \item{`var_within`}{Within-cluster variance. Length 1 for 2-stage,
-#'     length 2 for 3-stage.}
+#'   \item{`varb`}{Between-PSU variance (scalar).}
+#'   \item{`varw`}{Within-PSU variance. Scalar for 2-stage, length-2
+#'     vector (`varw_psu`, `varw_ssu`) for 3-stage.}
 #'   \item{`delta`}{Measure of homogeneity. Length 1 for 2-stage,
-#'     length 2 for 3-stage.}
-#'   \item{`k`}{Ratio parameter(s), same length as `delta`.}
+#'     length 2 (`delta_psu`, `delta_ssu`) for 3-stage.}
+#'   \item{`k`}{Ratio parameter(s), same length as `delta`
+#'     (`k_psu`, `k_ssu` for 3-stage).}
 #'   \item{`rel_var`}{Unit relvariance (scalar).}
 #'   \item{`stages`}{Number of stages (2 or 3).}
 #' }
@@ -202,6 +203,22 @@ varcomp.survey.design <- function(x, ..., prob = NULL) {
 #' @keywords internal
 #' @noRd
 .varcomp_dispatch <- function(y, stage_id, prob) {
+  if (!is.numeric(y) || length(y) == 0L) {
+    stop("'y' must be a non-empty numeric vector", call. = FALSE)
+  }
+  if (anyNA(y)) {
+    stop("outcome vector must not contain NA values", call. = FALSE)
+  }
+  if (length(stage_id) == 0L) {
+    stop("'stage_id' must not be empty", call. = FALSE)
+  }
+  for (i in seq_along(stage_id)) {
+    if (length(stage_id[[i]]) != length(y)) {
+      stop(sprintf("'stage_id[[%d]]' must have length %d (same as outcome vector)",
+                   i, length(y)), call. = FALSE)
+    }
+  }
+
   n_boundaries <- length(stage_id)
   stages <- n_boundaries + 1L
 
@@ -263,17 +280,27 @@ varcomp.survey.design <- function(x, ..., prob = NULL) {
 
   vw <- M * sum(Ni^2 * S2Ui) / tU^2
 
-  rel_var <- S2U / ybarU^2
-  delta <- vb / (vb + vw)
-  k <- (vb + vw) / rel_var
+  eps <- sqrt(.Machine$double.eps)
+  rel_var <- if (abs(ybarU) < eps && S2U < eps) 0 else S2U / ybarU^2
+
+  total_v <- vb + vw
+  if (total_v < eps || rel_var < eps || !is.finite(rel_var)) {
+    warning("outcome variance is approximately zero; delta set to 0 by convention",
+            call. = FALSE)
+    delta <- 0
+    k <- 1
+  } else {
+    delta <- vb / total_v
+    k <- total_v / rel_var
+  }
 
   .new_svyplan_varcomp(
-    var_between = vb,
-    var_within  = vw,
-    delta       = delta,
-    k           = k,
-    rel_var     = rel_var,
-    stages      = 2L
+    varb    = vb,
+    varw    = vw,
+    delta   = delta,
+    k       = k,
+    rel_var = rel_var,
+    stages  = 2L
   )
 }
 
@@ -313,17 +340,28 @@ varcomp.survey.design <- function(x, ..., prob = NULL) {
   ybarU <- mean(y)
   vw <- sum(Ni^2 * cl_vars / pp_psu) / tU^2
   S2U <- var(y)
-  rel_var <- S2U / ybarU^2
-  k <- (vb + vw) / rel_var
-  delta <- vb / (vb + vw)
+
+  eps <- sqrt(.Machine$double.eps)
+  rel_var <- if (abs(ybarU) < eps && S2U < eps) 0 else S2U / ybarU^2
+
+  total_v <- vb + vw
+  if (total_v < eps || rel_var < eps || !is.finite(rel_var)) {
+    warning("outcome variance is approximately zero; delta set to 0 by convention",
+            call. = FALSE)
+    delta <- 0
+    k <- 1
+  } else {
+    delta <- vb / total_v
+    k <- total_v / rel_var
+  }
 
   .new_svyplan_varcomp(
-    var_between = vb,
-    var_within  = vw,
-    delta       = delta,
-    k           = k,
-    rel_var     = rel_var,
-    stages      = 2L
+    varb    = vb,
+    varw    = vw,
+    delta   = delta,
+    k       = k,
+    rel_var = rel_var,
+    stages  = 2L
   )
 }
 
@@ -393,20 +431,41 @@ varcomp.survey.design <- function(x, ..., prob = NULL) {
 
   vw3 <- sum(Ni_ssu * Qij^2 * S2U3ij / pp_ssu) / tU^2
 
-  V <- var(y) / mean(y)^2
+  eps <- sqrt(.Machine$double.eps)
+  ybarU <- mean(y)
+  S2U <- var(y)
+  V <- if (abs(ybarU) < eps && S2U < eps) 0 else S2U / ybarU^2
 
-  delta1 <- B / (B + W)
-  delta2 <- vw2 / (vw2 + vw3)
-
-  k1 <- (B + W) / V
-  k2 <- (vw2 + vw3) / V
+  warn <- FALSE
+  bw <- B + W
+  if (bw < eps || V < eps || !is.finite(V)) {
+    warn <- TRUE
+    delta1 <- 0
+    k1 <- 1
+  } else {
+    delta1 <- B / bw
+    k1 <- bw / V
+  }
+  ww <- vw2 + vw3
+  if (ww < eps || V < eps || !is.finite(V)) {
+    warn <- TRUE
+    delta2 <- 0
+    k2 <- 1
+  } else {
+    delta2 <- vw2 / ww
+    k2 <- ww / V
+  }
+  if (warn) {
+    warning("outcome variance is approximately zero; delta set to 0 by convention",
+            call. = FALSE)
+  }
 
   .new_svyplan_varcomp(
-    var_between = B,
-    var_within  = c(vw2, vw3),
-    delta       = c(delta1, delta2),
-    k           = c(k1, k2),
-    rel_var     = V,
-    stages      = 3L
+    varb    = B,
+    varw    = c(varw_psu = vw2, varw_ssu = vw3),
+    delta   = c(delta_psu = delta1, delta_ssu = delta2),
+    k       = c(k_psu = k1, k_ssu = k2),
+    rel_var = V,
+    stages  = 3L
   )
 }

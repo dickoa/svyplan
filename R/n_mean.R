@@ -6,7 +6,7 @@
 #' @param var For the default method: population variance \eqn{S^2}.
 #'   For `svyplan_prec` objects: a precision result from [prec_mean()].
 #' @param ... Additional arguments passed to methods.
-#' @param mu Population mean. Required when `cv` is specified.
+#' @param mu Population mean magnitude (positive). Required when `cv` is specified.
 #' @param moe Desired margin of error. Specify exactly one of `moe` or `cv`.
 #' @param cv Target coefficient of variation. Specify exactly one of `moe`
 #'   or `cv`.

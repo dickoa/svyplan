@@ -13,14 +13,14 @@ design_effect(x = NULL, ...)
   ...,
   y = NULL,
   x_cal = NULL,
-  p = NULL,
-  strvar = NULL,
-  clvar = NULL,
+  prob = NULL,
+  strata_id = NULL,
+  cluster_id = NULL,
   stages = NULL,
   method = "kish"
 )
 
-\method{design_effect}{default}(x = NULL, ..., delta = NULL, m = NULL, method = "cluster")
+\method{design_effect}{default}(x = NULL, ..., delta = NULL, psu_size = NULL, method = "cluster")
 }
 \arguments{
 \item{x}{A numeric vector of survey weights (for diagnostic methods),
@@ -32,11 +32,11 @@ or \code{NULL} (for the \code{"cluster"} planning method).}
 
 \item{x_cal}{Calibration covariate (required for \code{"henry"}).}
 
-\item{p}{1-draw selection probabilities (required for \code{"spencer"}).}
+\item{prob}{1-draw selection probabilities (required for \code{"spencer"}).}
 
-\item{strvar}{Stratum IDs (required for \code{"cr"}).}
+\item{strata_id}{Stratum IDs (required for \code{"cr"}).}
 
-\item{clvar}{Cluster IDs (required for \code{"cr"}).}
+\item{cluster_id}{Cluster IDs (required for \code{"cr"}).}
 
 \item{stages}{Integer vector of stages per stratum (required for \code{"cr"}).}
 
@@ -47,7 +47,7 @@ or \code{NULL} (for the \code{"cluster"} planning method).}
 \item{delta}{ICC / homogeneity measure, scalar or \code{svyplan_varcomp}
 (extracts \code{delta[1]}).}
 
-\item{m}{Mean cluster size (scalar).}
+\item{psu_size}{Mean cluster size (scalar).}
 }
 \value{
 For \code{"kish"}, \code{"cluster"}, \code{"henry"}, \code{"spencer"}: a numeric
@@ -73,11 +73,12 @@ by outcome variable.
 }}
 \examples{
 # Kish design effect from weights
+set.seed(2)
 w <- runif(100, 1, 5)
 design_effect(w, method = "kish")
 
 # Planning: cluster design effect
-design_effect(delta = 0.05, m = 25, method = "cluster")
+design_effect(delta = 0.05, psu_size = 25, method = "cluster")
 
 }
 \references{

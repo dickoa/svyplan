@@ -29,7 +29,7 @@ For \code{svyplan_n} objects: a sample size result from \code{\link[=n_mean]{n_m
 
 \item{n}{Sample size.}
 
-\item{mu}{Population mean. Required for the CV component.}
+\item{mu}{Population mean magnitude (positive). Required for the CV component.}
 
 \item{alpha}{Significance level, default 0.05.}
 

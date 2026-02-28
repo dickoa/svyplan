@@ -40,12 +40,22 @@
 #' prec_prop(p = 0.3, n = 400, deff = 1.5, resp_rate = 0.8)
 #'
 #' @export
-prec_prop <- function(p, ...) UseMethod("prec_prop")
+prec_prop <- function(p, ...) {
+  UseMethod("prec_prop")
+}
 
 #' @rdname prec_prop
 #' @export
-prec_prop.default <- function(p, n, alpha = 0.05, N = Inf, deff = 1,
-                              resp_rate = 1, method = "wald", ...) {
+prec_prop.default <- function(
+  p,
+  n,
+  alpha = 0.05,
+  N = Inf,
+  deff = 1,
+  resp_rate = 1,
+  method = "wald",
+  ...
+) {
   check_proportion(p, "p")
   check_scalar(n, "n")
   check_alpha(alpha)
@@ -72,14 +82,20 @@ prec_prop.default <- function(p, n, alpha = 0.05, N = Inf, deff = 1,
   }
   cv_val <- se / p
 
-  params <- list(p = p, n = n, alpha = alpha, N = N, deff = deff,
-                 resp_rate = resp_rate)
+  params <- list(
+    p = p,
+    n = n,
+    alpha = alpha,
+    N = N,
+    deff = deff,
+    resp_rate = resp_rate
+  )
 
   .new_svyplan_prec(
-    se     = se,
-    moe    = moe,
-    cv     = cv_val,
-    type   = "proportion",
+    se = se,
+    moe = moe,
+    cv = cv_val,
+    type = "proportion",
     method = method,
     params = params
   )
@@ -94,13 +110,13 @@ prec_prop.svyplan_n <- function(p, ...) {
   }
   par <- x$params
   prec_prop.default(
-    p         = par$p,
-    n         = x$n,
-    alpha     = par$alpha,
-    N         = par$N,
-    deff      = par$deff,
+    p = par$p,
+    n = x$n,
+    alpha = par$alpha,
+    N = par$N,
+    deff = par$deff,
     resp_rate = par$resp_rate %||% 1,
-    method    = x$method %||% "wald"
+    method = x$method %||% "wald"
   )
 }
 
@@ -118,17 +134,38 @@ prec_prop.svyplan_n <- function(p, ...) {
   f_lo <- f(lo)
   f_hi <- f(hi)
   if (sign(f_lo) == sign(f_hi)) {
-    stop("log-odds MOE inversion failed: no sign change on [", lo, ", ", hi,
-         "] for p = ", p, ", n_eff = ", round(n_eff, 2),
-         ", N = ", N, call. = FALSE)
+    stop(
+      "log-odds MOE inversion failed: no sign change on [",
+      lo,
+      ", ",
+      hi,
+      "] for p = ",
+      p,
+      ", n_eff = ",
+      round(n_eff, 2),
+      ", N = ",
+      N,
+      call. = FALSE
+    )
   }
   tryCatch(
-    uniroot(f, interval = c(lo, hi), f.lower = f_lo, f.upper = f_hi,
-            tol = .Machine$double.eps^0.5)$root,
+    uniroot(
+      f,
+      interval = c(lo, hi),
+      f.lower = f_lo,
+      f.upper = f_hi,
+      tol = .Machine$double.eps^0.5
+    )$root,
     error = function(e) {
-      stop("log-odds MOE inversion failed for p = ", p,
-           ", n_eff = ", round(n_eff, 2), ": ", conditionMessage(e),
-           call. = FALSE)
+      stop(
+        "log-odds MOE inversion failed for p = ",
+        p,
+        ", n_eff = ",
+        round(n_eff, 2),
+        ": ",
+        conditionMessage(e),
+        call. = FALSE
+      )
     }
   )
 }

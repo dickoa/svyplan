@@ -1,147 +1,6 @@
-# svyplan 0.5.9999
+# svyplan 0.6.0
 
-## Stratification
-
-* `strata_bound()` gains a `"power"` allocation method implementing Bankier
-  (1988) power allocation: `n_h` proportional to `S_h * N_h^q`, where `q`
-  controls the trade-off between national precision (`q = 1`, Neyman) and
-  equal subnational CVs (`q = 0`). New `q` parameter (default 0.5).
-
-* The old `alloc = list(q1, q2, q3)` interface has been removed. Use the
-  named methods `"proportional"`, `"neyman"`, `"optimal"`, or `"power"`
-  instead.
-
-* `print.svyplan_strata()` now displays the allocation method.
-
-* The `$alloc` field on `svyplan_strata` objects is now a character string
-  (the method name) instead of a list of exponents.
-
-# svyplan 0.4.9999
-
-## Precision analysis
-
-* `prec_prop()` — sampling precision (se, moe, cv) for a proportion given a
-  sample size. Inverse of `n_prop()`. Uses the Cochran finite-population
-  correction for Bernoulli proportions.
-
-* `prec_mean()` — sampling precision for a mean given a sample size. Inverse
-  of `n_mean()`.
-
-* `prec_cluster()` — sampling precision (cv) for a multistage cluster
-  allocation. Inverse of `n_cluster()`. Accepts `svyplan_cluster` objects
-  directly and carries cost metadata for round-trip.
-
-* `prec_multi()` — per-indicator sampling precision for multi-indicator
-  survey designs. Inverse of `n_multi()`. Supports simple and multistage
-  modes.
-
-* New S3 class `svyplan_prec` with print, format, summary, and confint
-  methods.
-
-## Bidirectional S3 dispatch
-
-* `n_prop()`, `n_mean()`, `n_cluster()`, and `n_multi()` are now S3 generics.
-  Passing a `svyplan_prec` object recovers the sample size that produces the
-  given precision. Passing a `svyplan_n` or `svyplan_cluster` object to the
-  corresponding `prec_*()` function computes the achieved precision.
-
-## Response rate adjustment
-
-* All sample size (`n_prop`, `n_mean`, `n_cluster`, `n_multi`), precision
-  (`prec_prop`, `prec_mean`, `prec_cluster`, `prec_multi`), and power
-  (`power_prop`, `power_mean`) functions accept a `resp_rate` parameter.
-  Sample sizes are inflated by `1 / resp_rate`; precision is computed on the
-  effective sample `n * resp_rate`.
-
-## Sensitivity analysis
-
-* `predict()` methods for `svyplan_n`, `svyplan_cluster`, `svyplan_power`,
-  and `svyplan_prec` objects. Evaluate the result at new parameter
-  combinations (e.g. varying `deff`, `resp_rate`, `budget`) and return a
-  data frame suitable for plotting.
-
-## Confidence intervals
-
-* `confint()` methods for `svyplan_n` and `svyplan_prec` objects. Returns
-  a matrix with the expected confidence interval at the design's alpha level
-  or a user-specified level.
-
-## survey package integration
-
-* When the survey package is installed, `survey::SE()` and `survey::cv()`
-  methods are registered for `svyplan_n`, `svyplan_prec`, and
-  `svyplan_cluster` objects.
-
-## Precision fields on sample size objects
-
-* `svyplan_n` objects now include `$se`, `$moe`, and `$cv` fields, computed
-  automatically from the sample size and design parameters. Multi-indicator
-  results have `NA` for these fields.
-
-* `svyplan_cluster` objects include `$se` (NA) and `$cv` fields.
-
-## Removed
-
-* `cv_cluster()` has been removed. Use `prec_cluster(...)$cv` instead.
-
-# svyplan 0.3.0
-
-## Power analysis
-
-* `power_prop()` — power analysis for two-sample proportion tests. Solves for
-  sample size, power, or minimum detectable effect (MDE). Supports design
-  effect adjustment, finite population correction, one-sided and two-sided
-  tests, and panel overlap for repeated surveys.
-
-* `power_mean()` — power analysis for two-sample mean tests. Same solve modes
-  and features as `power_prop()`, with analytical MDE solution.
-
-* New S3 class `svyplan_power` with print, format, summary, as.integer, and
-  as.double methods.
-
-## Stratification
-
-* `predict.svyplan_strata()` — apply strata boundaries to a numeric vector,
-  returning a factor with customizable labels. Enables integration with
-  samplyr's `stratify_by()` pipeline.
-
-## Variance components
-
-* `varcomp()` is now an S3 generic with methods for formulas, numeric vectors,
-  and survey design objects.
-
-* `varcomp.survey.design()` — extract cluster structure and outcome from a
-  `survey::svydesign()` object. Requires the survey package.
-
-## Design effects
-
-* Chen-Rust design effect decomposition no longer requires the survey package.
-  Uses a direct linearization (ultimate cluster) variance estimator.
-
-* `design_effect()` with Henry or Spencer method now returns 1.0 for equal
-  weights instead of NaN.
-
-# svyplan 0.2.0
-
-## Stratification
-
-* `strata_bound()` — optimal strata boundary determination for a continuous
-  stratification variable. Four methods: Dalenius-Hodges cumulative root
-  frequency (`"cumrootf"`), geometric progression (`"geo"`),
-  Lavallee-Hidiroglou iterative (`"lh"`), and Kozak random search (`"kozak"`).
-  Supports proportional, Neyman, and optimal allocation.
-  Take-all (certainty) strata via the `certain` argument.
-
-* Kozak random search optimized: inlined prefix-sum evaluation, pre-generated
-  random numbers, and reduced bisection precision during search (full
-  precision for final result). ~3x faster in cv-mode.
-
-* New S3 class `svyplan_strata` with print, format, summary, as.data.frame,
-  as.integer, and as.double methods.
-
-# svyplan 0.1.0
-
-Initial release.
+Initial CRAN release.
 
 ## Sample size determination
 
@@ -151,22 +10,100 @@ Initial release.
   budget and cv modes).
 * `n_multi()` — multi-indicator sample size for surveys with several
   precision targets. Supports simple (single-stage) and multistage modes,
-  with automatic per-domain optimization.
+  with automatic per-domain optimization and `min_n` floor.
 
-## Design analysis
+## Precision analysis
+
+* `prec_prop()` — sampling precision (se, moe, cv) for a proportion given a
+  sample size. Inverse of `n_prop()`.
+* `prec_mean()` — sampling precision for a mean given a sample size. Inverse
+  of `n_mean()`.
+* `prec_cluster()` — sampling precision (cv) for a multistage cluster
+  allocation. Inverse of `n_cluster()`.
+* `prec_multi()` — per-indicator sampling precision for multi-indicator
+  survey designs. Inverse of `n_multi()`.
+
+All `n_*` and `prec_*` functions are S3 generics with bidirectional
+round-trip: passing a precision object to the corresponding `n_*` function
+recovers the sample size, and vice versa.
+
+## Power analysis
+
+* `power_prop()` — power analysis for two-sample proportion tests. Solves
+  for sample size, power, or minimum detectable effect (MDE). Supports
+  panel overlap for repeated surveys. MDE mode searches both directions
+  (`p2 > p1` and `p2 < p1`) and returns the closest detectable alternative.
+* `power_mean()` — power analysis for two-sample mean tests. Same solve
+  modes and features as `power_prop()`.
+
+## Stratification
+
+* `strata_bound()` — optimal strata boundary determination for a continuous
+  stratification variable. Four methods: Dalenius-Hodges cumulative root
+  frequency (`"cumrootf"`), geometric progression (`"geo"`),
+  Lavallee-Hidiroglou iterative (`"lh"`), and Kozak random search
+  (`"kozak"`). Four allocation methods: proportional, Neyman, optimal
+  (cost-weighted), and Bankier (1988) power allocation (`"power"`) with
+  parameter `q` controlling the national/subnational precision trade-off.
+  Take-all (certainty) strata via the `certain` argument.
+* `predict.svyplan_strata()` — apply strata boundaries to new data,
+  returning a factor.
+
+## Design components
 
 * `varcomp()` — variance component estimation from frame data via nested
-  ANOVA (SRS and PPS, formula and vector interfaces).
-
-## Design effects
-
+  ANOVA (SRS and PPS). S3 generic with methods for formulas, numeric
+  vectors, and `survey::svydesign` objects.
 * `design_effect()` — S3 generic for design effect estimation (Kish, Henry,
-  Spencer, Chen-Rust methods, plus cluster planning mode).
+  Spencer, Chen-Rust decomposition, and cluster planning mode).
 * `effective_n()` — S3 generic for effective sample size.
+
+## Common features
+
+* All sample size, precision, and power functions accept `deff` (design
+  effect), `N` (finite population correction), and `resp_rate` (response
+  rate adjustment).
+* `predict()` methods for sensitivity analysis: evaluate any result at new
+  parameter combinations.
+* `confint()` methods for `svyplan_n` and `svyplan_prec` objects.
+* When the survey package is installed, `survey::SE()` and `survey::cv()`
+  methods are registered automatically.
 
 ## S3 classes
 
-* `svyplan_n` — single-stage sample size results.
+* `svyplan_n` — sample size results (with se, moe, cv fields).
 * `svyplan_cluster` — multistage allocation results.
-* `svyplan_varcomp` — variance component estimates with fields
-  `var_between`, `var_within`, `delta`, `k`, and `rel_var`.
+* `svyplan_prec` — precision results.
+* `svyplan_varcomp` — variance component estimates.
+* `svyplan_strata` — strata boundary results.
+* `svyplan_power` — power analysis results.
+
+All classes have print, format, and summary methods.
+
+## Input validation
+
+* `n_multi()` and `prec_multi()` now reject non-positive `rel_var`, `k1`,
+  and `k2` values in multistage mode.
+* `prec_multi()` multistage mode now validates `delta1` (and `delta2` for
+  3-stage) presence, type, NA, and range.
+* `prec_cluster()` now validates that `rel_var` and `k` are positive and
+  finite.
+* `varcomp()` now rejects NA and empty outcome vectors.
+* `confint()` methods for `svyplan_n` and `svyplan_prec` now validate that
+  `level` is in (0, 1).
+* `design_effect()` CR method now rejects mismatched vector lengths for
+  `y`, `strvar`, and `clvar`.
+* Weight validators (`design_effect()`, `effective_n()`) now reject
+  non-finite values (`Inf`, `-Inf`).
+
+## Display
+
+* `svyplan_cluster` total sample size is now computed as the product of
+  ceiled per-stage sizes in `print()`, `format()`, and `as.integer()`,
+  ensuring displayed totals are consistent with displayed stage sizes.
+* `print()` and `format()` for `svyplan_cluster` now show the unrounded
+  continuous optimum alongside the operational total
+  (e.g. `total n = 1190 (unrounded: 1159)`).
+* New `as.double.svyplan_cluster()` method returns the continuous total
+  (`x$total_n`). Use `as.integer()` for the operational total (fieldwork)
+  and `as.double()` for the continuous optimum (mathematical solution).

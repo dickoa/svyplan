@@ -19,9 +19,9 @@
 #' @param alloc Allocation rule: `"proportional"`, `"neyman"`,
 #'   `"optimal"`, or `"power"` (Bankier compromise). Default `"neyman"`.
 #'   See Details.
-#' @param q Bankier power parameter, used only when `alloc = "power"`.
-#'   Numeric scalar in \eqn{[0, 1]}. At `q = 1` the allocation equals
-#'   Neyman; at `q = 0` it yields near-equal subnational CVs.
+#' @param power_q Bankier power parameter, used only when `alloc = "power"`.
+#'   Numeric scalar in \eqn{[0, 1]}. At `power_q = 1` the allocation equals
+#'   Neyman; at `power_q = 0` it yields near-equal subnational CVs.
 #'   Default 0.5.
 #' @param cost Per-stratum unit costs, ordered from lowest to highest
 #'   stratum. Scalar (equal costs) or vector of length `n_strata`.
@@ -33,7 +33,7 @@
 #'   `NULL` (Freedman-Diaconis rule).
 #' @param maxiter Maximum iterations for `"lh"` and `"kozak"`. Default
 #'   200.
-#' @param niter Random restarts for `"kozak"`. Default `NULL` (= 10 *
+#' @param n_restart Random restarts for `"kozak"`. Default `NULL` (= 10 *
 #'   `n_strata`).
 #'
 #' @return A `svyplan_strata` object with components:
@@ -76,13 +76,13 @@
 #' - **optimal**: \eqn{n_h \propto N_h S_h / \sqrt{c_h}}{n_h ~ N_h * S_h / sqrt(c_h)}.
 #'   Accounts for differential unit costs.
 #' - **power**: Bankier (1988) compromise,
-#'   \eqn{n_h \propto S_h N_h^q}{n_h ~ S_h * N_h^q}.
-#'   The parameter `q` controls the trade-off between national precision
-#'   (`q = 1`, equivalent to Neyman) and near-equal subnational CVs
-#'   (`q = 0`).
+#'   \eqn{n_h \propto S_h N_h^{power\_q}}{n_h ~ S_h * N_h^power_q}.
+#'   The parameter `power_q` controls the trade-off between national precision
+#'   (`power_q = 1`, equivalent to Neyman) and near-equal subnational CVs
+#'   (`power_q = 0`).
 #'
 #' Stratum allocations `n_h` are rounded to integers using the ORIC method
-#' (Cont and Heidari, 2014), which preserves `sum(n_h) = n` while minimizing
+#' (Cont and Heidari, 2015), which preserves `sum(n_h) = n` while minimizing
 #' rounding distortion.
 #'
 #' @seealso [predict.svyplan_strata] to assign new data to strata.
@@ -108,7 +108,7 @@
 #' Bankier, M. D. (1988). Power allocations: determining sample sizes for
 #' subnational areas. \emph{The American Statistician}, 42(3), 174--177.
 #'
-#' Cont, R. and Heidari, M. (2014). Optimal rounding under integer
+#' Cont, R. and Heidari, M. (2015). Optimal rounding under integer
 #' constraints. \emph{arXiv preprint} arXiv:1501.00014.
 #'
 #' @examples
@@ -122,7 +122,7 @@
 #' strata_bound(x, n_strata = 4, n = 100)
 #'
 #' # Bankier power allocation (compromise between national and subnational CVs)
-#' strata_bound(x, n_strata = 4, n = 100, alloc = "power", q = 0.5)
+#' strata_bound(x, n_strata = 4, n = 100, alloc = "power", power_q = 0.5)
 #'
 #' # With take-all stratum
 #' strata_bound(x, n_strata = 3, n = 80, certain = quantile(x, 0.95))
@@ -131,12 +131,12 @@
 strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
                          method = "lh",
                          alloc = "neyman",
-                         q = 0.5,
+                         power_q = 0.5,
                          cost = NULL,
                          certain = NULL,
                          nclass = NULL,
                          maxiter = 200L,
-                         niter = NULL) {
+                         n_restart = NULL) {
   if (!is.numeric(x) || length(x) < 2L) {
     stop("'x' must be a numeric vector with at least 2 elements", call. = FALSE)
   }
@@ -168,12 +168,11 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
   }
   alloc <- match.arg(alloc, c("proportional", "neyman", "optimal", "power"))
   if (alloc == "power") {
-    if (!is.numeric(q) || length(q) != 1L || is.na(q) || q < 0 || q > 1) {
-      stop("'q' must be a numeric scalar in [0, 1]", call. = FALSE)
+    if (!is.numeric(power_q) || length(power_q) != 1L || is.na(power_q) || power_q < 0 || power_q > 1) {
+      stop("'power_q' must be a numeric scalar in [0, 1]", call. = FALSE)
     }
   }
 
-  certain_idx <- NULL
   x_work <- x
   L_work <- n_strata
 
@@ -213,9 +212,9 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     cost_h <- rep_len(cost, n_strata)
   }
 
-  if (is.null(niter)) niter <- 10L * n_strata
+  if (is.null(n_restart)) n_restart <- 10L * n_strata
   maxiter <- as.integer(maxiter)
-  niter <- as.integer(niter)
+  n_restart <- as.integer(n_restart)
 
   x_sort <- sort(x_work)
 
@@ -228,15 +227,15 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
   } else if (method == "lh") {
     target_cv <- if (has_cv) cv else NULL
     n_opt <- if (has_n) n else NULL
-    res <- .strata_lh(x_sort, L_work, n_opt, target_cv, alloc, q,
+    res <- .strata_lh(x_sort, L_work, n_opt, target_cv, alloc, power_q,
                        cost_h[seq_len(L_work)], maxiter)
     bk <- res$bk
     converged <- res$converged
   } else {
     target_cv <- if (has_cv) cv else NULL
     n_opt <- if (has_n) n else NULL
-    res <- .strata_kozak(x_sort, L_work, n_opt, target_cv, alloc, q,
-                          cost_h[seq_len(L_work)], maxiter, niter)
+    res <- .strata_kozak(x_sort, L_work, n_opt, target_cv, alloc, power_q,
+                          cost_h[seq_len(L_work)], maxiter, n_restart)
     bk <- res$bk
     converged <- res$converged
   }
@@ -251,14 +250,14 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
   }
 
   if (has_cv && !has_n) {
-    n_total <- .strata_n_for_cv(x, bk, cv, alloc, q, cost_h)
+    n_total <- .strata_n_for_cv(x, bk, cv, alloc, power_q, cost_h)
   } else if (!has_n) {
     n_total <- length(x) / 2
   }
 
   certain_strata <- if (!is.null(certain)) n_strata else NULL
 
-  alloc_res <- .strata_alloc(x, bk, n_total, alloc, q, cost_h, certain_strata)
+  alloc_res <- .strata_alloc(x, bk, n_total, alloc, power_q, cost_h, certain_strata)
 
   strata_df <- data.frame(
     stratum = seq_len(n_strata),
@@ -286,10 +285,10 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     method     = method,
     alloc      = alloc,
     params     = list(
-      N       = length(x),
-      q       = if (alloc == "power") q else NULL,
-      maxiter = if (method %in% c("lh", "kozak")) maxiter else NULL,
-      niter   = if (method == "kozak") niter else NULL
+      N         = length(x),
+      power_q   = if (alloc == "power") power_q else NULL,
+      maxiter   = if (method %in% c("lh", "kozak")) maxiter else NULL,
+      n_restart = if (method == "kozak") n_restart else NULL
     ),
     converged  = conv
   )

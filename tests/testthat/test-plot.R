@@ -55,7 +55,7 @@ test_that("plot.svyplan_power accepts user overrides", {
 })
 
 test_that("plot.svyplan_power returns invisible(x)", {
-  pw <- power_mean(delta = 5, var = 100)
+  pw <- power_mean(effect = 5, var = 100)
   pdf(tempfile())
   on.exit(dev.off())
   out <- plot(pw)

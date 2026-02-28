@@ -7,7 +7,7 @@
 #'   For `svyplan_n` objects: a sample size result from [n_mean()].
 #' @param ... Additional arguments passed to methods.
 #' @param n Sample size.
-#' @param mu Population mean. Required for the CV component.
+#' @param mu Population mean magnitude (positive). Required for the CV component.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size. `Inf` (default) means no finite population
 #'   correction.
@@ -36,19 +36,31 @@
 #' prec_mean(var = 100, n = 400)
 #'
 #' @export
-prec_mean <- function(var, ...) UseMethod("prec_mean")
+prec_mean <- function(var, ...) {
+  UseMethod("prec_mean")
+}
 
 #' @rdname prec_mean
 #' @export
-prec_mean.default <- function(var, n, mu = NULL, alpha = 0.05, N = Inf,
-                              deff = 1, resp_rate = 1, ...) {
+prec_mean.default <- function(
+  var,
+  n,
+  mu = NULL,
+  alpha = 0.05,
+  N = Inf,
+  deff = 1,
+  resp_rate = 1,
+  ...
+) {
   check_scalar(var, "var")
   check_scalar(n, "n")
   check_alpha(alpha)
   check_population_size(N)
   check_deff(deff)
   check_resp_rate(resp_rate)
-  if (!is.null(mu)) check_scalar(mu, "mu")
+  if (!is.null(mu)) {
+    check_scalar(mu, "mu")
+  }
 
   n_eff <- n * resp_rate / deff
   z <- qnorm(1 - alpha / 2)
@@ -60,15 +72,23 @@ prec_mean.default <- function(var, n, mu = NULL, alpha = 0.05, N = Inf,
   moe <- z * se
   cv_val <- if (!is.null(mu)) se / mu else NA_real_
 
-  params <- list(var = var, n = n, alpha = alpha, N = N, deff = deff,
-                 resp_rate = resp_rate)
-  if (!is.null(mu)) params$mu <- mu
+  params <- list(
+    var = var,
+    n = n,
+    alpha = alpha,
+    N = N,
+    deff = deff,
+    resp_rate = resp_rate
+  )
+  if (!is.null(mu)) {
+    params$mu <- mu
+  }
 
   .new_svyplan_prec(
-    se     = se,
-    moe    = moe,
-    cv     = cv_val,
-    type   = "mean",
+    se = se,
+    moe = moe,
+    cv = cv_val,
+    type = "mean",
     params = params
   )
 }
@@ -82,12 +102,12 @@ prec_mean.svyplan_n <- function(var, ...) {
   }
   par <- x$params
   prec_mean.default(
-    var       = par$var,
-    n         = x$n,
-    mu        = par$mu,
-    alpha     = par$alpha,
-    N         = par$N,
-    deff      = par$deff,
+    var = par$var,
+    n = x$n,
+    mu = par$mu,
+    alpha = par$alpha,
+    N = par$N,
+    deff = par$deff,
     resp_rate = par$resp_rate %||% 1
   )
 }

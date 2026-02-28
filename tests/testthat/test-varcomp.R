@@ -22,13 +22,13 @@ test_that("varcomp 2-stage SRS vector interface matches formula", {
   result_vector <- varcomp(frame$income, stage_id = list(frame$district))
 
   expect_equal(
-    result_vector$var_between,
-    result_formula$var_between,
+    result_vector$varb,
+    result_formula$varb,
     tolerance = 1e-10
   )
   expect_equal(
-    result_vector$var_within,
-    result_formula$var_within,
+    result_vector$varw,
+    result_formula$varw,
     tolerance = 1e-10
   )
   expect_equal(result_vector$delta, result_formula$delta, tolerance = 1e-10)
@@ -53,8 +53,8 @@ test_that("varcomp 2-stage SRS known values", {
   B2 <- S2U1 / tbarU^2
   W2 <- M * sum(Ni^2 * S2Ui) / tU^2
 
-  expect_equal(result$var_between, B2, tolerance = 1e-10)
-  expect_equal(result$var_within, W2, tolerance = 1e-10)
+  expect_equal(result$varb, B2, tolerance = 1e-10)
+  expect_equal(result$varw, W2, tolerance = 1e-10)
   expect_equal(result$delta, B2 / (B2 + W2), tolerance = 1e-10)
 })
 
@@ -77,8 +77,8 @@ test_that("varcomp 2-stage PPS known values", {
   B2 <- S2U1 / tU^2
   W2 <- sum(Ni^2 * cl_vars / pp) / tU^2
 
-  expect_equal(result$var_between, B2, tolerance = 1e-10)
-  expect_equal(result$var_within, W2, tolerance = 1e-10)
+  expect_equal(result$varb, B2, tolerance = 1e-10)
+  expect_equal(result$varw, W2, tolerance = 1e-10)
 })
 
 test_that("varcomp 2-stage PPS with formula prob", {
@@ -139,8 +139,8 @@ test_that("varcomp.survey.design matches formula interface", {
   result <- varcomp(dsgn, ~income)
 
   expect_s3_class(result, "svyplan_varcomp")
-  expect_equal(result$var_between, ref$var_between, tolerance = 1e-10)
-  expect_equal(result$var_within, ref$var_within, tolerance = 1e-10)
+  expect_equal(result$varb, ref$varb, tolerance = 1e-10)
+  expect_equal(result$varw, ref$varw, tolerance = 1e-10)
   expect_equal(result$delta, ref$delta, tolerance = 1e-10)
 })
 
@@ -194,8 +194,8 @@ test_that("3-stage varcomp with non-nested SSU IDs matches nested", {
   res_nested <- varcomp(y, stage_id = list(psu_id, ssu_id_nested), prob = pp)
 
   expect_equal(res_non$delta, res_nested$delta, tolerance = 1e-10)
-  expect_equal(res_non$var_between, res_nested$var_between, tolerance = 1e-10)
-  expect_equal(res_non$var_within, res_nested$var_within, tolerance = 1e-10)
+  expect_equal(res_non$varb, res_nested$varb, tolerance = 1e-10)
+  expect_equal(res_non$varw, res_nested$varw, tolerance = 1e-10)
 })
 
 test_that("all-singleton 2-stage returns delta = 1 with warning", {
@@ -220,4 +220,73 @@ test_that("varcomp.survey.design validates inputs", {
 
   dsgn_nocl <- survey::svydesign(ids = ~1, data = frame, weights = rep(1, 50))
   expect_error(varcomp(dsgn_nocl, ~y), "no clusters")
+})
+
+test_that("varcomp rejects mismatched stage_id length", {
+  expect_error(
+    varcomp(1:10, stage_id = list(1:5)),
+    "same as outcome vector"
+  )
+})
+
+test_that("varcomp rejects empty stage_id", {
+  expect_error(
+    varcomp(1:10, stage_id = list()),
+    "must not be empty"
+  )
+})
+
+test_that("varcomp 2-stage SRS constant y gives delta = 0 with warning", {
+  y <- rep(42, 50)
+  psu_id <- rep(1:10, each = 5)
+  expect_warning(
+    res <- varcomp(y, stage_id = list(psu_id)),
+    "approximately zero"
+  )
+  expect_equal(res$delta, 0)
+  expect_equal(res$k, 1)
+  expect_true(is.finite(res$delta))
+  expect_true(is.finite(res$k))
+})
+
+test_that("varcomp 2-stage PPS constant y gives delta = 0 with warning", {
+  y <- rep(42, 50)
+  psu_id <- rep(1:10, each = 5)
+  pp <- rep(0.1, 10)
+  expect_warning(
+    res <- varcomp(y, stage_id = list(psu_id), prob = pp),
+    "approximately zero"
+  )
+  expect_equal(res$delta, 0)
+  expect_equal(res$k, 1)
+  expect_true(is.finite(res$delta))
+  expect_true(is.finite(res$k))
+})
+
+test_that("varcomp 3-stage PPS constant y gives finite delta with warning", {
+  y <- rep(42, 60)
+  psu_id <- rep(1:6, each = 10)
+  ssu_id <- rep(rep(1:2, each = 5), 6)
+  pp <- rep(1 / 6, 6)
+  expect_warning(
+    res <- varcomp(y, stage_id = list(psu_id, ssu_id), prob = pp),
+    "approximately zero"
+  )
+  expect_length(res$delta, 2)
+  expect_true(all(is.finite(res$delta)))
+  expect_true(all(is.finite(res$k)))
+})
+
+test_that("varcomp rejects NA in outcome vector", {
+  expect_error(
+    varcomp(c(1, 2, NA), stage_id = list(c(1, 1, 2))),
+    "must not contain NA"
+  )
+})
+
+test_that("varcomp rejects empty outcome vector", {
+  expect_error(
+    varcomp(numeric(0), stage_id = list(integer(0))),
+    "non-empty numeric"
+  )
 })

@@ -110,13 +110,13 @@ data frame.
 # Optimal 2-stage allocation within a budget
 n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
 #> Optimal 2-stage allocation
-#> Stage 1: n1 = 85 | Stage 2: n2 = 14 -> total n = 1190
+#> n_psu = 85 | psu_size = 14 -> total n = 1190 (unrounded: 1159)
 #> cv = 0.0376, cost = 100000
 
 # Precision for a given allocation
 prec_cluster(n = c(50, 12), delta = 0.05)
 #> Sampling precision for 2-stage cluster
-#> n1 = 50 | n2 = 12 -> total n = 600
+#> n_psu = 50 | psu_size = 12 -> total n = 600
 #> cv = 0.0508
 ```
 
@@ -133,14 +133,14 @@ frame <- data.frame(
 vc <- varcomp(income ~ district, data = frame)
 vc
 #> Variance components (2-stage)
-#> var_between = 0.0307, var_within = 0.0105
+#> varb = 0.0307, varw = 0.0105
 #> delta = 0.7448
 #> k = 1.0311
 #> Unit relvariance = 0.0400
 
 n_cluster(cost = c(500, 50), delta = vc, cv = 0.05)
 #> Optimal 2-stage allocation
-#> Stage 1: n1 = 15 | Stage 2: n2 = 2 -> total n = 30
+#> n_psu = 15 | psu_size = 2 -> total n = 30 (unrounded: 26)
 #> cv = 0.0500, cost = 8635
 ```
 
@@ -211,19 +211,19 @@ and panel overlap.
 # Sample size to detect a 5pp change from 70% with deff = 2
 power_prop(p1 = 0.70, p2 = 0.75, deff = 2.0)
 #> Power analysis for proportions (solved for sample size)
-#> n = 2496 (per group), power = 0.800, delta = 0.0500
+#> n = 2496 (per group), power = 0.800, effect = 0.0500
 #> (p1 = 0.700, p2 = 0.750, alpha = 0.05, deff = 2.00)
 
 # MDE with n = 1500 per group
 power_prop(p1 = 0.70, n = 1500, deff = 2.0)
 #> Power analysis for proportions (solved for minimum detectable effect)
-#> n = 1500 (per group), power = 0.800, delta = 0.0639
+#> n = 1500 (per group), power = 0.800, effect = 0.0639
 #> (p1 = 0.700, p2 = 0.764, alpha = 0.05, deff = 2.00)
 
 # Means
-power_mean(delta = 5, var = 200)
+power_mean(effect = 5, var = 200)
 #> Power analysis for means (solved for sample size)
-#> n = 126 (per group), power = 0.800, delta = 5.0000
+#> n = 126 (per group), power = 0.800, effect = 5.0000
 #> (alpha = 0.05)
 ```
 
@@ -241,7 +241,7 @@ plot(pw)
 
 ``` r
 # Planning: expected cluster design effect
-design_effect(delta = 0.05, m = 20, method = "cluster")
+design_effect(delta = 0.05, psu_size = 20, method = "cluster")
 #> [1] 1.95
 
 # Diagnostic: Kish design effect from weights

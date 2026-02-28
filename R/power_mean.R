@@ -1,11 +1,11 @@
 #' Power Analysis for Means
 #'
 #' Compute sample size, power, or minimum detectable effect (MDE) for a
-#' two-sample test of means. Leave exactly one of `n`, `power`, or `delta`
+#' two-sample test of means. Leave exactly one of `n`, `power`, or `effect`
 #' as `NULL` to solve for that quantity.
 #'
-#' @param delta Effect size (difference in means). Leave `NULL` to solve
-#'   for MDE.
+#' @param effect Absolute difference in means (effect-size magnitude, positive).
+#'   Leave `NULL` to solve for MDE.
 #' @param var Within-group variance (required).
 #' @param n Per-group sample size. Leave `NULL` to solve for sample size.
 #' @param power Target power, in (0, 1). Leave `NULL` to solve for power.
@@ -24,7 +24,7 @@
 #' \describe{
 #'   \item{`n`}{Per-group sample size.}
 #'   \item{`power`}{Achieved power.}
-#'   \item{`delta`}{Effect size (difference in means).}
+#'   \item{`effect`}{Effect size (difference in means).}
 #'   \item{`solved`}{Which quantity was solved for
 #'     (`"n"`, `"power"`, or `"mde"`).}
 #'   \item{`params`}{List of input parameters.}
@@ -56,19 +56,19 @@
 #'
 #' @examples
 #' # Sample size to detect a difference of 5 with variance 100
-#' power_mean(delta = 5, var = 100)
+#' power_mean(effect = 5, var = 100)
 #'
 #' # Power given n = 200
-#' power_mean(delta = 5, var = 100, n = 200, power = NULL)
+#' power_mean(effect = 5, var = 100, n = 200, power = NULL)
 #'
 #' # MDE with n = 500
 #' power_mean(var = 100, n = 500)
 #'
 #' # With design effect
-#' power_mean(delta = 5, var = 100, deff = 1.5)
+#' power_mean(effect = 5, var = 100, deff = 1.5)
 #'
 #' @export
-power_mean <- function(delta = NULL, var, n = NULL, power = 0.80,
+power_mean <- function(effect = NULL, var, n = NULL, power = 0.80,
                        alpha = 0.05, N = Inf, deff = 1,
                        resp_rate = 1,
                        sides = 2, overlap = 0, rho = 0) {
@@ -81,13 +81,13 @@ power_mean <- function(delta = NULL, var, n = NULL, power = 0.80,
   check_rho(rho)
   check_resp_rate(resp_rate)
 
-  null_count <- is.null(delta) + is.null(n) + is.null(power)
+  null_count <- is.null(effect) + is.null(n) + is.null(power)
   if (null_count != 1L) {
-    stop("leave exactly one of 'n', 'power', or 'delta' as NULL", call. = FALSE)
+    stop("leave exactly one of 'n', 'power', or 'effect' as NULL", call. = FALSE)
   }
 
-  if (!is.null(delta)) {
-    check_scalar(delta, "delta")
+  if (!is.null(effect)) {
+    check_scalar(effect, "effect")
   }
   if (!is.null(n)) {
     check_scalar(n, "n")
@@ -102,21 +102,21 @@ power_mean <- function(delta = NULL, var, n = NULL, power = 0.80,
                  sides = sides, overlap = overlap, rho = rho)
 
   if (is.null(n)) {
-    params$delta <- delta
+    params$effect <- effect
     params$power <- power
-    res <- .power_mean_n(delta, V, power, alpha, N, deff, sides)
+    res <- .power_mean_n(effect, V, power, alpha, N, deff, sides)
     res <- .apply_resp_rate(res, resp_rate)
     .new_svyplan_power(n = res, power = power,
-                       delta = delta, type = "mean",
+                       effect = effect, type = "mean",
                        solved = "n", params = params)
 
   } else if (is.null(power)) {
-    params$delta <- delta
+    params$effect <- effect
     params$n <- n
     n_eff <- n * resp_rate
-    res <- .power_mean_power(delta, V, n_eff, alpha, N, deff, sides)
+    res <- .power_mean_power(effect, V, n_eff, alpha, N, deff, sides)
     .new_svyplan_power(n = n, power = res,
-                       delta = delta, type = "mean",
+                       effect = effect, type = "mean",
                        solved = "power", params = params)
 
   } else {
@@ -125,19 +125,19 @@ power_mean <- function(delta = NULL, var, n = NULL, power = 0.80,
     n_eff <- n * resp_rate
     res <- .power_mean_mde(V, n_eff, power, alpha, N, deff, sides)
     .new_svyplan_power(n = n, power = power,
-                       delta = res, type = "mean",
+                       effect = res, type = "mean",
                        solved = "mde", params = params)
   }
 }
 
-.power_mean_n <- function(delta, V, power, alpha, N, deff, sides) {
+.power_mean_n <- function(effect, V, power, alpha, N, deff, sides) {
   z_alpha <- qnorm(1 - alpha / sides)
   z_beta <- qnorm(power)
-  n0 <- (z_alpha + z_beta)^2 * V * deff / delta^2
+  n0 <- (z_alpha + z_beta)^2 * V * deff / effect^2
   .apply_fpc(n0, N)
 }
 
-.power_mean_power <- function(delta, V, n, alpha, N, deff, sides) {
+.power_mean_power <- function(effect, V, n, alpha, N, deff, sides) {
   if (!is.infinite(N) && n >= N) {
     warning("effective sample size (", round(n, 1),
             ") >= population size (", N,
@@ -147,9 +147,9 @@ power_mean <- function(delta = NULL, var, n = NULL, power = 0.80,
   z_alpha <- qnorm(1 - alpha / sides)
   f <- if (is.infinite(N)) 0 else n / N
   se <- sqrt(V * deff * (1 - f) / n)
-  pw <- pnorm(abs(delta) / se - z_alpha)
+  pw <- pnorm(abs(effect) / se - z_alpha)
   if (sides == 2L || sides == 2) {
-    pw <- pw + pnorm(-abs(delta) / se - z_alpha)
+    pw <- pw + pnorm(-abs(effect) / se - z_alpha)
   }
   min(pw, 1)
 }

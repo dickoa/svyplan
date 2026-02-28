@@ -28,7 +28,7 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_mean]
 
 \item{...}{Additional arguments passed to methods.}
 
-\item{mu}{Population mean. Required when \code{cv} is specified.}
+\item{mu}{Population mean magnitude (positive). Required when \code{cv} is specified.}
 
 \item{moe}{Desired margin of error. Specify exactly one of \code{moe} or \code{cv}.}
 

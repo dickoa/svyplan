@@ -32,8 +32,8 @@ A data frame with \code{newdata} columns followed by result
 columns. The result columns depend on the object type:
 \itemize{
 \item \code{svyplan_n}: \code{n}, \code{se}, \code{moe}, \code{cv}
-\item \code{svyplan_cluster}: \code{n1}, \code{n2}, (opt. \code{n3}), \code{total_n}, \code{cv}, \code{cost}
-\item \code{svyplan_power}: \code{n}, \code{power}, \code{delta}
+\item \code{svyplan_cluster}: \code{n_psu}, \code{psu_size}, (opt. \code{ssu_size}), \code{total_n}, \code{cv}, \code{cost}
+\item \code{svyplan_power}: \code{n}, \code{power}, \code{effect}
 \item \code{svyplan_prec}: \code{se}, \code{moe}, \code{cv}
 }
 }
@@ -52,7 +52,7 @@ Valid parameters for \code{newdata} by object type:
 \item \strong{\code{power_prop}}: \code{p1}, \code{p2}, \code{n}, \code{power}, \code{alpha}, \code{N}, \code{deff},
 \code{sides}, \code{overlap}, \code{rho}, \code{resp_rate} (excluding the solved-for
 parameter)
-\item \strong{\code{power_mean}}: \code{delta}, \code{var}, \code{n}, \code{power}, \code{alpha}, \code{N},
+\item \strong{\code{power_mean}}: \code{effect}, \code{var}, \code{n}, \code{power}, \code{alpha}, \code{N},
 \code{deff}, \code{sides}, \code{overlap}, \code{rho}, \code{resp_rate} (excluding the
 solved-for parameter)
 \item \strong{\code{prec_prop}}: \code{p}, \code{n}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}

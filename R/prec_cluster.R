@@ -4,7 +4,8 @@
 #' allocation. This is the inverse of [n_cluster()].
 #'
 #' @param n For the default method: numeric vector of per-stage sample
-#'   sizes (`c(n1, n2)` for 2-stage or `c(n1, n2, n3)` for 3-stage).
+#'   sizes (`c(n_psu, psu_size)` for 2-stage or
+#'   `c(n_psu, psu_size, ssu_size)` for 3-stage).
 #'   For `svyplan_cluster` objects: a cluster allocation from [n_cluster()].
 #' @param ... Additional arguments passed to methods.
 #' @param delta Numeric vector of homogeneity measures (length = stages - 1),
@@ -40,12 +41,20 @@
 #' prec_cluster(n = c(50, 12, 8), delta = c(0.01, 0.05))
 #'
 #' @export
-prec_cluster <- function(n, ...) UseMethod("prec_cluster")
+prec_cluster <- function(n, ...) {
+  UseMethod("prec_cluster")
+}
 
 #' @rdname prec_cluster
 #' @export
-prec_cluster.default <- function(n, delta, rel_var = 1, k = 1,
-                                 resp_rate = 1, ...) {
+prec_cluster.default <- function(
+  n,
+  delta,
+  rel_var = 1,
+  k = 1,
+  resp_rate = 1,
+  ...
+) {
   if (inherits(delta, "svyplan_varcomp")) {
     vc <- delta
     delta <- vc$delta
@@ -59,13 +68,36 @@ prec_cluster.default <- function(n, delta, rel_var = 1, k = 1,
   if (length(n) > 3L) {
     stop("4+ stage CV calculation is not yet supported", call. = FALSE)
   }
+  if (anyNA(n)) {
+    stop("'n' must not contain NA values", call. = FALSE)
+  }
 
   stages <- length(n)
+  delta <- .reorder_stage_vec(delta, "delta")
+  k <- .reorder_stage_vec(k, "k")
   check_delta(delta, expected_length = stages - 1L)
   check_resp_rate(resp_rate)
+  check_scalar(rel_var, "rel_var")
+  if (
+    !is.numeric(k) ||
+      length(k) == 0L ||
+      anyNA(k) ||
+      any(k <= 0) ||
+      any(!is.finite(k))
+  ) {
+    stop("'k' must contain positive finite values", call. = FALSE)
+  }
 
   if (any(n <= 0)) {
     stop("all elements of 'n' must be positive", call. = FALSE)
+  }
+
+  if (is.null(names(n))) {
+    if (stages == 2L) {
+      names(n) <- c("n_psu", "psu_size")
+    } else {
+      names(n) <- c("n_psu", "psu_size", "ssu_size")
+    }
   }
 
   n_eff <- n
@@ -73,20 +105,26 @@ prec_cluster.default <- function(n, delta, rel_var = 1, k = 1,
 
   if (stages == 2L) {
     k <- rep_len(k, 1L)
-    cv_val <- .cv_cluster_2stage(n_eff, delta, rel_var, k)
+    cv_val <- unname(.cv_cluster_2stage(n_eff, delta, rel_var, k))
   } else {
     k <- rep_len(k, 2L)
-    cv_val <- .cv_cluster_3stage(n_eff, delta, rel_var, k)
+    cv_val <- unname(.cv_cluster_3stage(n_eff, delta, rel_var, k))
   }
 
-  params <- list(n = n, delta = delta, rel_var = rel_var, k = k,
-                 resp_rate = resp_rate, stages = stages)
+  params <- list(
+    n = n,
+    delta = delta,
+    rel_var = rel_var,
+    k = k,
+    resp_rate = resp_rate,
+    stages = stages
+  )
 
   .new_svyplan_prec(
-    se     = NA_real_,
-    moe    = NA_real_,
-    cv     = cv_val,
-    type   = "cluster",
+    se = NA_real_,
+    moe = NA_real_,
+    cv = cv_val,
+    type = "cluster",
     params = params
   )
 }
@@ -97,26 +135,36 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
   x <- n
   p <- x$params
   out <- prec_cluster.default(
-    n        = x$n,
-    delta    = p$delta,
-    rel_var  = p$rel_var,
-    k        = p$k,
+    n = x$n,
+    delta = p$delta,
+    rel_var = p$rel_var,
+    k = p$k,
     resp_rate = p$resp_rate %||% 1
   )
   # Carry cost metadata for round-trip to n_cluster.svyplan_prec
   out$params$cost <- p$cost
-  if (!is.null(p$budget)) out$params$budget <- p$budget
-  if (!is.null(p$m)) out$params$m <- p$m
-  if (!is.null(p$fixed_cost)) out$params$fixed_cost <- p$fixed_cost
+  if (!is.null(p$budget)) {
+    out$params$budget <- p$budget
+  }
+  if (!is.null(p$n_psu)) {
+    out$params$n_psu <- p$n_psu
+  }
+  if (!is.null(p$fixed_cost)) {
+    out$params$fixed_cost <- p$fixed_cost
+  }
   out
 }
 
+#' @keywords internal
+#' @noRd
 .cv_cluster_2stage <- function(n, delta, rel_var, k) {
   n1 <- n[1L]
   n2 <- n[2L]
   sqrt(rel_var / (n1 * n2) * k * (1 + delta * (n2 - 1)))
 }
 
+#' @keywords internal
+#' @noRd
 .cv_cluster_3stage <- function(n, delta, rel_var, k) {
   n1 <- n[1L]
   n2 <- n[2L]
@@ -125,6 +173,9 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
   delta2 <- delta[2L]
   k1 <- k[1L]
   k2 <- k[2L]
-  sqrt(rel_var / (n1 * n2 * n3) * (k1 * delta1 * n2 * n3 +
-                                     k2 * (1 + delta2 * (n3 - 1))))
+  sqrt(
+    rel_var /
+      (n1 * n2 * n3) *
+      (k1 * delta1 * n2 * n3 + k2 * (1 + delta2 * (n3 - 1)))
+  )
 }

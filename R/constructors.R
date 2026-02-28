@@ -1,22 +1,29 @@
 #' Construct a svyplan_n object
 #' @keywords internal
 #' @noRd
-.new_svyplan_n <- function(n, type, method = NULL, params = list(),
-                           targets = NULL, detail = NULL,
-                           binding = NULL, domains = NULL) {
+.new_svyplan_n <- function(
+  n,
+  type,
+  method = NULL,
+  params = list(),
+  targets = NULL,
+  detail = NULL,
+  binding = NULL,
+  domains = NULL
+) {
   prec <- .compute_prec_for_n(n, type, params, method = method)
 
   structure(
     list(
-      n       = n,
-      type    = type,
-      method  = method,
-      params  = params,
-      se      = prec$se,
-      moe     = prec$moe,
-      cv      = prec$cv,
+      n = n,
+      type = type,
+      method = method,
+      params = params,
+      se = prec$se,
+      moe = prec$moe,
+      cv = prec$cv,
       targets = targets,
-      detail  = detail,
+      detail = detail,
       binding = binding,
       domains = domains
     ),
@@ -74,21 +81,30 @@
 #' Construct a svyplan_cluster object
 #' @keywords internal
 #' @noRd
-.new_svyplan_cluster <- function(n, stages, total_n, cv, cost, params = list(),
-                                 targets = NULL, detail = NULL,
-                                 binding = NULL, domains = NULL) {
+.new_svyplan_cluster <- function(
+  n,
+  stages,
+  total_n,
+  cv,
+  cost,
+  params = list(),
+  targets = NULL,
+  detail = NULL,
+  binding = NULL,
+  domains = NULL
+) {
   structure(
     list(
-      n       = n,
-      stages  = stages,
+      n = n,
+      stages = stages,
       total_n = total_n,
-      se      = NA_real_,
-      moe     = NA_real_,
-      cv      = cv,
-      cost    = cost,
-      params  = params,
+      se = NA_real_,
+      moe = NA_real_,
+      cv = cv,
+      cost = cost,
+      params = params,
       targets = targets,
-      detail  = detail,
+      detail = detail,
       binding = binding,
       domains = domains
     ),
@@ -99,14 +115,21 @@
 #' Construct a svyplan_prec object
 #' @keywords internal
 #' @noRd
-.new_svyplan_prec <- function(se, moe, cv, type, method = NULL,
-                              params = list(), detail = NULL) {
+.new_svyplan_prec <- function(
+  se,
+  moe,
+  cv,
+  type,
+  method = NULL,
+  params = list(),
+  detail = NULL
+) {
   structure(
     list(
-      se     = se,
-      moe    = moe,
-      cv     = cv,
-      type   = type,
+      se = se,
+      moe = moe,
+      cv = cv,
+      type = type,
       method = method,
       params = params,
       detail = detail
@@ -118,16 +141,22 @@
 #' Construct a svyplan_varcomp object
 #' @keywords internal
 #' @noRd
-.new_svyplan_varcomp <- function(var_between, var_within, delta, k,
-                                 rel_var, stages) {
+.new_svyplan_varcomp <- function(
+  varb,
+  varw,
+  delta,
+  k,
+  rel_var,
+  stages
+) {
   structure(
     list(
-      var_between = var_between,
-      var_within  = var_within,
-      delta       = delta,
-      k           = k,
-      rel_var     = rel_var,
-      stages      = stages
+      varb = varb,
+      varw = varw,
+      delta = delta,
+      k = k,
+      rel_var = rel_var,
+      stages = stages
     ),
     class = c("svyplan_varcomp", "list")
   )
@@ -136,13 +165,13 @@
 #' Construct a svyplan_power object
 #' @keywords internal
 #' @noRd
-.new_svyplan_power <- function(n, power, delta, type, solved, params = list()) {
+.new_svyplan_power <- function(n, power, effect, type, solved, params = list()) {
   structure(
     list(
-      n      = n,
-      power  = power,
-      delta  = delta,
-      type   = type,
+      n = n,
+      power = power,
+      effect = effect,
+      type = type,
       solved = solved,
       params = params
     ),
@@ -153,20 +182,28 @@
 #' Construct a svyplan_strata object
 #' @keywords internal
 #' @noRd
-.new_svyplan_strata <- function(boundaries, n_strata, n, cv, strata,
-                                method, alloc, params,
-                                converged = NA) {
+.new_svyplan_strata <- function(
+  boundaries,
+  n_strata,
+  n,
+  cv,
+  strata,
+  method,
+  alloc,
+  params,
+  converged = NA
+) {
   structure(
     list(
       boundaries = boundaries,
-      n_strata   = n_strata,
-      n          = n,
-      cv         = cv,
-      strata     = strata,
-      method     = method,
-      alloc      = alloc,
-      params     = params,
-      converged  = converged
+      n_strata = n_strata,
+      n = n,
+      cv = cv,
+      strata = strata,
+      method = method,
+      alloc = alloc,
+      params = params,
+      converged = converged
     ),
     class = c("svyplan_strata", "list")
   )
