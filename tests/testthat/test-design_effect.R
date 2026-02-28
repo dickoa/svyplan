@@ -11,17 +11,21 @@ test_that("design_effect kish formula", {
 })
 
 test_that("design_effect cluster planning formula", {
-  result <- design_effect(delta = 0.05, psu_size =25, method = "cluster")
+  result <- design_effect(delta = 0.05, psu_size = 25, method = "cluster")
   expect_equal(result, 1 + (25 - 1) * 0.05)
   expect_equal(result, 2.2)
 })
 
 test_that("design_effect cluster with svyplan_varcomp", {
   vc <- .new_svyplan_varcomp(
-    varb =0.01, varw =1.0, delta = 0.05, k = 1.0,
-    rel_var = 1.0, stages = 2L
+    varb = 0.01,
+    varw = 1.0,
+    delta = 0.05,
+    k = 1.0,
+    rel_var = 1.0,
+    stages = 2L
   )
-  result <- design_effect(delta = vc, psu_size =25, method = "cluster")
+  result <- design_effect(delta = vc, psu_size = 25, method = "cluster")
   expect_equal(result, 1 + (25 - 1) * 0.05)
 })
 
@@ -102,11 +106,11 @@ test_that("design_effect spencer handles equal probabilities", {
 
 test_that("design_effect cluster rejects invalid delta", {
   expect_error(
-    design_effect(delta = -0.2, psu_size =10, method = "cluster"),
+    design_effect(delta = -0.2, psu_size = 10, method = "cluster"),
     "\\[0, 1\\]"
   )
   expect_error(
-    design_effect(delta = 1.5, psu_size =10, method = "cluster"),
+    design_effect(delta = 1.5, psu_size = 10, method = "cluster"),
     "\\[0, 1\\]"
   )
 })
@@ -119,39 +123,60 @@ test_that("design_effect rejects zero weights", {
 })
 
 test_that("design_effect validates inputs", {
-  expect_error(design_effect(delta = 0.05, method = "cluster"),
-               "'delta' and 'psu_size' are required")
-  expect_error(design_effect(psu_size = 25, method = "cluster"),
-               "'delta' and 'psu_size' are required")
+  expect_error(
+    design_effect(delta = 0.05, method = "cluster"),
+    "'delta' and 'psu_size' are required"
+  )
+  expect_error(
+    design_effect(psu_size = 25, method = "cluster"),
+    "'delta' and 'psu_size' are required"
+  )
   w <- runif(10, 1, 5)
-  expect_error(design_effect(w, method = "henry"),
-               "'y' and 'x_cal' are required")
-  expect_error(design_effect(w, method = "spencer"),
-               "'y' and 'prob' are required")
-  expect_error(design_effect(w, y = rnorm(10), method = "cr"),
-               "'strata_id' or 'cluster_id'")
+  expect_error(
+    design_effect(w, method = "henry"),
+    "'y' and 'x_cal' are required"
+  )
+  expect_error(
+    design_effect(w, method = "spencer"),
+    "'y' and 'prob' are required"
+  )
+  expect_error(
+    design_effect(w, y = rnorm(10), method = "cr"),
+    "'strata_id' or 'cluster_id'"
+  )
 })
 
 test_that("design_effect cr stratified + clustered", {
   set.seed(42)
   n <- 200
-  strvar <- rep(1:5, each = 40)
-  clvar <- rep(1:50, each = 4)
+  strata <- rep(1:5, each = 40)
+  cluster <- rep(1:50, each = 4)
   w <- runif(n, 10, 50)
   y <- rnorm(n, 50, 10)
   stages <- rep(2L, 5)
 
-  result <- design_effect(w, y = y, strata_id = strvar, cluster_id = clvar,
-                          stages = stages, method = "cr")
+  result <- design_effect(
+    w,
+    y = y,
+    strata_id = strata,
+    cluster_id = cluster,
+    stages = stages,
+    method = "cr"
+  )
   expect_true(is.list(result))
   expect_true("strata" %in% names(result))
   expect_true("overall" %in% names(result))
   expect_true(is.numeric(result$overall))
   expect_equal(nrow(result$strata), 5L)
   expect_true(all(c("deff_w", "deff_c", "deff_s") %in% names(result$strata)))
-  expect_equal(result$overall, sum(result$strata$deff_w *
-                                     result$strata$deff_c *
-                                     result$strata$deff_s))
+  expect_equal(
+    result$overall,
+    sum(
+      result$strata$deff_w *
+        result$strata$deff_c *
+        result$strata$deff_s
+    )
+  )
 })
 
 test_that("design_effect cr stratified, no clusters", {
@@ -188,8 +213,14 @@ test_that("design_effect cr mixed stages", {
   y <- rnorm(n, 50, 10)
   stages <- c(1L, 2L, 2L, 1L)
 
-  result <- design_effect(w, y = y, strata_id = strvar, cluster_id = clvar,
-                          stages = stages, method = "cr")
+  result <- design_effect(
+    w,
+    y = y,
+    strata_id = strvar,
+    cluster_id = clvar,
+    stages = stages,
+    method = "cr"
+  )
   expect_equal(result$strata$deff_c[1], 1)
   expect_equal(result$strata$deff_c[4], 1)
 })
@@ -215,12 +246,22 @@ test_that("design_effect cr agrees with survey package", {
   y <- rnorm(n, 50, 10)
   stages <- rep(2L, 4)
 
-  our <- design_effect(w, y = y, strata_id = strvar, cluster_id = clvar,
-                       stages = stages, method = "cr")
+  our <- design_effect(
+    w,
+    y = y,
+    strata_id = strvar,
+    cluster_id = clvar,
+    stages = stages,
+    method = "cr"
+  )
 
-  dsgn <- survey::svydesign(ids = ~clvar, strata = ~strvar,
-                            data = data.frame(y = y), weights = w,
-                            nest = TRUE)
+  dsgn <- survey::svydesign(
+    ids = ~clvar,
+    strata = ~strvar,
+    data = data.frame(y = y),
+    weights = w,
+    nest = TRUE
+  )
   mn <- survey::svymean(~y, design = dsgn, deff = TRUE)
   survey_deff <- as.numeric(survey::deff(mn))
 
@@ -229,13 +270,13 @@ test_that("design_effect cr agrees with survey package", {
 
 test_that("design_effect cluster rejects vector delta", {
   expect_error(
-    design_effect(delta = c(0.05, 0.10), psu_size =25),
+    design_effect(delta = c(0.05, 0.10), psu_size = 25),
     "length 1"
   )
 })
 
 test_that("design_effect cluster accepts scalar delta", {
-  d <- design_effect(delta = 0.05, psu_size =25)
+  d <- design_effect(delta = 0.05, psu_size = 25)
   expect_equal(d, 1 + 24 * 0.05)
 })
 
@@ -247,8 +288,14 @@ test_that("design_effect cr constant y stratified + clustered returns 1", {
   strvar <- rep(1:2, each = 50)
   clvar <- rep(1:20, each = 5)
   expect_warning(
-    res <- design_effect(w, y = y, strata_id = strvar, cluster_id = clvar,
-                         stages = c(2L, 2L), method = "cr"),
+    res <- design_effect(
+      w,
+      y = y,
+      strata_id = strvar,
+      cluster_id = clvar,
+      stages = c(2L, 2L),
+      method = "cr"
+    ),
     "variance is approximately zero"
   )
   expect_equal(res$overall, 1)
@@ -308,7 +355,13 @@ test_that("design_effect CR rejects mismatched cluster_id length", {
   w <- runif(10, 1, 2)
   y <- rnorm(10)
   expect_error(
-    design_effect(w, y = y, strata_id = rep(1:2, 5), cluster_id = 1:9, method = "cr"),
+    design_effect(
+      w,
+      y = y,
+      strata_id = rep(1:2, 5),
+      cluster_id = 1:9,
+      method = "cr"
+    ),
     "cluster_id.*same length"
   )
 })
@@ -334,8 +387,6 @@ test_that("design_effect rejects -Inf weights", {
     "finite"
   )
 })
-
-# --- Henry input validation ---
 
 test_that("henry rejects y with NA", {
   w <- c(1, 2, 3)
@@ -365,12 +416,15 @@ test_that("henry rejects length mismatch", {
   )
 })
 
-# --- Spencer input validation ---
-
 test_that("spencer rejects y with NA", {
   w <- c(1, 2, 3)
   expect_error(
-    design_effect(w, y = c(1, NA, 3), prob = c(0.1, 0.2, 0.3), method = "spencer"),
+    design_effect(
+      w,
+      y = c(1, NA, 3),
+      prob = c(0.1, 0.2, 0.3),
+      method = "spencer"
+    ),
     "'y'.*NA"
   )
 })
@@ -378,7 +432,12 @@ test_that("spencer rejects y with NA", {
 test_that("spencer rejects prob with Inf", {
   w <- c(1, 2, 3)
   expect_error(
-    design_effect(w, y = c(1, 2, 3), prob = c(0.1, Inf, 0.3), method = "spencer"),
+    design_effect(
+      w,
+      y = c(1, 2, 3),
+      prob = c(0.1, Inf, 0.3),
+      method = "spencer"
+    ),
     "'prob'.*finite"
   )
 })
@@ -390,7 +449,12 @@ test_that("spencer rejects prob outside (0, 1]", {
     "'prob'.*\\(0, 1\\]"
   )
   expect_error(
-    design_effect(w, y = c(1, 2, 3), prob = c(0.1, 1.5, 0.3), method = "spencer"),
+    design_effect(
+      w,
+      y = c(1, 2, 3),
+      prob = c(0.1, 1.5, 0.3),
+      method = "spencer"
+    ),
     "'prob'.*\\(0, 1\\]"
   )
 })
@@ -403,12 +467,15 @@ test_that("spencer rejects length mismatch", {
   )
 })
 
-# --- CR input validation ---
-
 test_that("cr rejects y with NA", {
   w <- c(1, 2, 3, 4)
   expect_error(
-    design_effect(w, y = c(1, NA, 3, 4), strata_id = c(1, 1, 2, 2), method = "cr"),
+    design_effect(
+      w,
+      y = c(1, NA, 3, 4),
+      strata_id = c(1, 1, 2, 2),
+      method = "cr"
+    ),
     "'y'.*NA"
   )
 })
@@ -416,7 +483,12 @@ test_that("cr rejects y with NA", {
 test_that("cr rejects y with Inf", {
   w <- c(1, 2, 3, 4)
   expect_error(
-    design_effect(w, y = c(1, Inf, 3, 4), strata_id = c(1, 1, 2, 2), method = "cr"),
+    design_effect(
+      w,
+      y = c(1, Inf, 3, 4),
+      strata_id = c(1, 1, 2, 2),
+      method = "cr"
+    ),
     "'y'.*finite"
   )
 })
