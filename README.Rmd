@@ -12,6 +12,12 @@ knitr::opts_chunk$set(
 
 # svyplan
 
+<!-- badges: start -->
+[![CRAN status](https://www.r-pkg.org/badges/version/svyplan)](https://CRAN.R-project.org/package=svyplan)
+[![R-CMD-check](https://gitlab.com/dickoa/svyplan/badges/main/pipeline.svg)](https://gitlab.com/dickoa/svyplan/-/pipelines)
+[![Codecov test coverage](https://codecov.io/gl/dickoa/svyplan/branch/main/graph/badge.svg)](https://app.codecov.io/gl/dickoa/svyplan?branch=main)
+<!-- badges: end -->
+
 Survey sample size determination, precision analysis, optimal allocation,
 stratification, and power analysis for R.
 

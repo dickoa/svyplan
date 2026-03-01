@@ -76,6 +76,13 @@ print.svyplan_n <- function(x, ...) {
   }
 }
 
+#' Format continuous total sample size for display
+#' @keywords internal
+#' @noRd
+.fmt_continuous_n <- function(x) {
+  format(signif(x, 8), trim = TRUE, scientific = FALSE)
+}
+
 #' @keywords internal
 #' @noRd
 .print_multi_n <- function(x) {
@@ -135,17 +142,17 @@ print.svyplan_cluster <- function(x, ...) {
     character(1L)
   )
   cat(paste(stage_parts, collapse = " | "))
-  unrounded <- floor(x$total_n)
+  unrounded <- .fmt_continuous_n(x$total_n)
   resp_rate <- x$params$resp_rate
   if (!is.null(resp_rate) && resp_rate < 1) {
     net_total <- ceiling(total_display * resp_rate)
     cat(sprintf(
-      " -> total n = %d (unrounded: %d, net: %d)\n",
+      " -> total n = %d (unrounded: %s, net: %d)\n",
       total_display, unrounded, net_total
     ))
   } else {
     cat(sprintf(
-      " -> total n = %d (unrounded: %d)\n",
+      " -> total n = %d (unrounded: %s)\n",
       total_display, unrounded
     ))
   }
@@ -189,11 +196,11 @@ print.svyplan_cluster <- function(x, ...) {
       1,
       prod
     )
-    unrounded <- floor(x$total_n)
+    unrounded <- .fmt_continuous_n(x$total_n)
     fc <- x$params$fixed_cost
     if (!is.null(fc) && fc > 0) {
       cat(sprintf(
-        "Total n = %d (unrounded: %d), cost = %.0f (fixed: %.0f)\n",
+        "Total n = %d (unrounded: %s), cost = %.0f (fixed: %.0f)\n",
         sum(dom$.total_n),
         unrounded,
         x$cost,
@@ -201,7 +208,7 @@ print.svyplan_cluster <- function(x, ...) {
       ))
     } else {
       cat(sprintf(
-        "Total n = %d (unrounded: %d)\n",
+        "Total n = %d (unrounded: %s)\n",
         sum(dom$.total_n), unrounded
       ))
     }
@@ -224,8 +231,8 @@ print.svyplan_cluster <- function(x, ...) {
       character(1L)
     )
     cat(paste(stage_parts, collapse = " | "))
-    unrounded <- floor(x$total_n)
-    cat(sprintf(" -> total n = %d (unrounded: %d)\n", total_display, unrounded))
+    unrounded <- .fmt_continuous_n(x$total_n)
+    cat(sprintf(" -> total n = %d (unrounded: %s)\n", total_display, unrounded))
     fc <- x$params$fixed_cost
     if (!is.null(fc) && fc > 0) {
       cat(sprintf(
@@ -435,7 +442,7 @@ format.svyplan_cluster <- function(x, ...) {
     "-stage, total_n=",
     prod(ceiling(x$n)),
     " (unrounded: ",
-    floor(x$total_n),
+    .fmt_continuous_n(x$total_n),
     ")]"
   )
 }
@@ -488,6 +495,63 @@ summary.svyplan_power <- function(object, ...) {
   print(object, ...)
 }
 
+#' Compute method-specific confidence interval limits for a proportion
+#' @keywords internal
+#' @noRd
+.prop_ci_limits <- function(
+  p,
+  n,
+  alpha,
+  N = Inf,
+  deff = 1,
+  resp_rate = 1,
+  method = "wald"
+) {
+  n_eff <- n * resp_rate / deff
+  z <- qnorm(1 - alpha / 2)
+  method <- match.arg(method, c("wald", "wilson", "logodds"))
+
+  if (method == "wald") {
+    fpc <- if (is.infinite(N)) 1 else (N - n_eff) / (N - 1)
+    fpc <- .clamp_fpc(fpc, n_eff, N)
+    se <- sqrt(p * (1 - p) * fpc / n_eff)
+    lo <- p - z * se
+    hi <- p + z * se
+  } else if (method == "wilson") {
+    den <- 1 + z^2 / n_eff
+    center <- (p + z^2 / (2 * n_eff)) / den
+    half <- z * sqrt(p * (1 - p) / n_eff + z^2 / (4 * n_eff^2)) / den
+    lo <- center - half
+    hi <- center + half
+  } else {
+    fpc <- if (is.infinite(N)) 1 else (N - n_eff) / (N - 1)
+    fpc <- .clamp_fpc(fpc, n_eff, N)
+    eta <- qlogis(p)
+    se_eta <- sqrt(fpc / (n_eff * p * (1 - p)))
+    lo <- plogis(eta - z * se_eta)
+    hi <- plogis(eta + z * se_eta)
+  }
+
+  c(max(lo, 0), min(hi, 1))
+}
+
+#' Build CI matrix with standard labels
+#' @keywords internal
+#' @noRd
+.ci_matrix <- function(lo, hi, alpha) {
+  matrix(
+    c(lo, hi),
+    nrow = 1L,
+    dimnames = list(
+      "",
+      c(
+        sprintf("%.1f %%", 100 * alpha / 2),
+        sprintf("%.1f %%", 100 * (1 - alpha / 2))
+      )
+    )
+  )
+}
+
 #' @rdname print.svyplan
 #' @export
 confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
@@ -504,7 +568,17 @@ confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
 
   p <- object$params
   if (object$type == "proportion") {
-    est <- p$p
+    alpha <- 1 - level
+    ci <- .prop_ci_limits(
+      p = p$p,
+      n = object$n,
+      alpha = alpha,
+      N = p$N %||% Inf,
+      deff = p$deff %||% 1,
+      resp_rate = p$resp_rate %||% 1,
+      method = object$method %||% "wald"
+    )
+    return(.ci_matrix(ci[1L], ci[2L], alpha))
   } else if (object$type == "mean") {
     est <- p$mu
     if (is.null(est)) {
@@ -523,23 +597,7 @@ confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
 
   lo <- est - moe
   hi <- est + moe
-  if (object$type == "proportion") {
-    lo <- max(lo, 0)
-    hi <- min(hi, 1)
-  }
-
-  ci <- matrix(
-    c(lo, hi),
-    nrow = 1L,
-    dimnames = list(
-      "",
-      c(
-        sprintf("%.1f %%", 100 * alpha / 2),
-        sprintf("%.1f %%", 100 * (1 - alpha / 2))
-      )
-    )
-  )
-  ci
+  .ci_matrix(lo, hi, alpha)
 }
 
 #' @rdname print.svyplan
@@ -551,7 +609,17 @@ confint.svyplan_prec <- function(object, parm, level = 0.95, ...) {
   }
   p <- object$params
   if (object$type == "proportion") {
-    est <- p$p
+    alpha <- 1 - level
+    ci <- .prop_ci_limits(
+      p = p$p,
+      n = p$n,
+      alpha = alpha,
+      N = p$N %||% Inf,
+      deff = p$deff %||% 1,
+      resp_rate = p$resp_rate %||% 1,
+      method = object$method %||% "wald"
+    )
+    return(.ci_matrix(ci[1L], ci[2L], alpha))
   } else if (object$type == "mean") {
     est <- p$mu
     if (is.null(est)) {
@@ -570,23 +638,7 @@ confint.svyplan_prec <- function(object, parm, level = 0.95, ...) {
 
   lo <- est - moe
   hi <- est + moe
-  if (object$type == "proportion") {
-    lo <- max(lo, 0)
-    hi <- min(hi, 1)
-  }
-
-  ci <- matrix(
-    c(lo, hi),
-    nrow = 1L,
-    dimnames = list(
-      "",
-      c(
-        sprintf("%.1f %%", 100 * alpha / 2),
-        sprintf("%.1f %%", 100 * (1 - alpha / 2))
-      )
-    )
-  )
-  ci
+  .ci_matrix(lo, hi, alpha)
 }
 
 #' @rdname print.svyplan

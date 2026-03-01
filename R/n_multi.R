@@ -868,7 +868,7 @@ n_multi.default <- function(
     ssu_size_opt <- bres$ssu_size
     cv_achieved <- bres$cv_achieved
     binding_idx <- bres$binding_idx
-    total_cost <- budget
+    total_cost <- fixed_cost + bres$cost
   }
 
   n_vec <- c(n_psu = n1_opt, psu_size = psu_size_opt, ssu_size = ssu_size_opt)
@@ -1448,7 +1448,7 @@ n_multi.default <- function(
   }
 
   if (is.null(n_psu)) {
-    obj_fn <- function(par) {
+    obj_fn_free <- function(par) {
       psu_size <- par[1L]
       ssu_size <- par[2L]
       n1 <- budget / (C1 + C2 * psu_size + C3 * psu_size * ssu_size)
@@ -1462,7 +1462,7 @@ n_multi.default <- function(
     init_psu_size <- max(2, sqrt(C1 / C2))
     opt <- optim(
       par = c(init_psu_size, init_ssu_size),
-      fn = obj_fn,
+      fn = obj_fn_free,
       method = "L-BFGS-B",
       lower = c(1, 1),
       upper = c(Inf, Inf)
@@ -1483,39 +1483,57 @@ n_multi.default <- function(
     total_cost <- budget
   } else {
     n1_opt <- n_psu
-    obj_fn <- function(par) {
-      psu_size <- par[1L]
-      ssu_size <- par[2L]
-      cost_check <- C1 * n_psu + C2 * n_psu * psu_size + C3 * n_psu * psu_size * ssu_size
-      if (cost_check > budget) {
-        return(1e12)
-      }
-      max(cv_fn(n_psu, psu_size, ssu_size) / cv_t)
-    }
-
-    init_ssu_size <- max(2, sqrt(C2 / C3))
-    init_psu_size <- max(2, (budget / n_psu - C1) / (C2 + C3 * init_ssu_size))
-    init_psu_size <- max(2, init_psu_size)
-    opt <- optim(
-      par = c(init_psu_size, init_ssu_size),
-      fn = obj_fn,
-      method = "L-BFGS-B",
-      lower = c(1, 1),
-      upper = c(Inf, Inf)
-    )
-    if (opt$convergence != 0L) {
-      warning(
-        "L-BFGS-B did not converge (code ",
-        opt$convergence,
-        "): ",
-        "allocation may be approximate",
+    min_cost <- n_psu * (C1 + C2 + C3)
+    if (min_cost > budget) {
+      stop(
+        "budget is too small for the given fixed stage-1 size",
         call. = FALSE
       )
     }
 
-    psu_size_opt <- opt$par[1L]
-    ssu_size_opt <- opt$par[2L]
+    max_ssu_size <- (budget - C1 * n_psu - C2 * n_psu) / (C3 * n_psu)
+    if (!is.finite(max_ssu_size) || max_ssu_size < 1) {
+      stop(
+        "budget is too small for the given fixed stage-1 size",
+        call. = FALSE
+      )
+    }
+
+    psu_size_from_ssu <- function(ssu_size) {
+      (budget / n_psu - C1) / (C2 + C3 * ssu_size)
+    }
+
+    obj_fn_fixed <- function(ssu_size) {
+      psu_size <- psu_size_from_ssu(ssu_size)
+      if (!is.finite(psu_size) || psu_size < 1) {
+        return(Inf)
+      }
+      max(cv_fn(n_psu, psu_size, ssu_size) / cv_t)
+    }
+
+    if (max_ssu_size <= 1 + 1e-10) {
+      ssu_size_opt <- 1
+    } else {
+      opt <- optimize(obj_fn_fixed, interval = c(1, max_ssu_size))
+      ssu_size_opt <- opt$minimum
+    }
+    psu_size_opt <- psu_size_from_ssu(ssu_size_opt)
+
+    if (!is.finite(psu_size_opt) || psu_size_opt < 1) {
+      stop(
+        "failed to find a feasible allocation under the given budget and fixed stage-1 size",
+        call. = FALSE
+      )
+    }
     total_cost <- C1 * n_psu + C2 * n_psu * psu_size_opt + C3 * n_psu * psu_size_opt * ssu_size_opt
+
+    tol <- max(1e-8, 1e-6 * max(1, budget))
+    if (total_cost - budget > tol) {
+      stop(
+        "failed to find a feasible allocation under the given budget and fixed stage-1 size",
+        call. = FALSE
+      )
+    }
   }
 
   cv_achieved <- cv_fn(n1_opt, psu_size_opt, ssu_size_opt)

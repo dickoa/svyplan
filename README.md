@@ -1,6 +1,15 @@
 
 # svyplan
 
+<!-- badges: start -->
+
+[![CRAN
+status](https://www.r-pkg.org/badges/version/svyplan)](https://CRAN.R-project.org/package=svyplan)
+[![R-CMD-check](https://gitlab.com/dickoa/svyplan/badges/main/pipeline.svg)](https://gitlab.com/dickoa/svyplan/-/pipelines)
+[![Codecov test
+coverage](https://codecov.io/gl/dickoa/svyplan/branch/main/graph/badge.svg)](https://app.codecov.io/gl/dickoa/svyplan?branch=main)
+<!-- badges: end -->
+
 Survey sample size determination, precision analysis, optimal
 allocation, stratification, and power analysis for R.
 
@@ -110,7 +119,7 @@ data frame.
 # Optimal 2-stage allocation within a budget
 n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
 #> Optimal 2-stage allocation
-#> n_psu = 85 | psu_size = 14 -> total n = 1190 (unrounded: 1159)
+#> n_psu = 85 | psu_size = 14 -> total n = 1190 (unrounded: 1159.1)
 #> cv = 0.0376, cost = 100000
 
 # Precision for a given allocation
@@ -140,7 +149,7 @@ vc
 
 n_cluster(cost = c(500, 50), delta = vc, cv = 0.05)
 #> Optimal 2-stage allocation
-#> n_psu = 15 | psu_size = 2 -> total n = 30 (unrounded: 26)
+#> n_psu = 15 | psu_size = 2 -> total n = 30 (unrounded: 26.97443)
 #> cv = 0.0500, cost = 8635
 ```
 

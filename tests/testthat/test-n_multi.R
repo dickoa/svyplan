@@ -392,6 +392,128 @@ test_that("3-stage budget mode works", {
   expect_true(all(res$detail$.cv_achieved > 0))
 })
 
+test_that("3-stage budget + fixed n_psu errors when infeasible", {
+  df <- data.frame(
+    p = 0.30,
+    cv = 0.10,
+    delta_psu = 0.05,
+    delta_ssu = 0.10
+  )
+  expect_error(
+    nm(df, cost = c(100, 10, 1), budget = 5000, n_psu = 100),
+    "budget is too small"
+  )
+})
+
+test_that("3-stage budget + fixed n_psu returns a feasible allocation", {
+  df <- data.frame(
+    p = c(0.30, 0.10),
+    cv = c(0.10, 0.15),
+    delta_psu = c(0.01, 0.02),
+    delta_ssu = c(0.05, 0.08)
+  )
+  cost <- c(500, 100, 50)
+  budget <- 200000
+  n_psu <- 50
+  res <- suppressWarnings(nm(df, cost = cost, budget = budget, n_psu = n_psu))
+
+  actual_cost <- n_psu * (
+    cost[1] +
+      cost[2] * res$n[["psu_size"]] +
+      cost[3] * res$n[["psu_size"]] * res$n[["ssu_size"]]
+  )
+  tol <- max(1e-8, 1e-6 * max(1, budget))
+
+  expect_lte(actual_cost, budget + tol)
+  expect_lte(res$cost, budget + tol)
+})
+
+test_that("3-stage fixed n_psu feasible case from stress repro no longer errors", {
+  df <- data.frame(
+    p = 0.6148084,
+    cv = 0.1802057,
+    delta_psu = 0.07598318,
+    delta_ssu = 0.1211543
+  )
+  cost <- c(33.188273, 65.237988, 10.203139)
+  n_psu <- 132
+  budget <- 26095.09
+
+  res <- nm(df, cost = cost, budget = budget, n_psu = n_psu)
+
+  actual_cost <- n_psu * (
+    cost[1] +
+      cost[2] * res$n[["psu_size"]] +
+      cost[3] * res$n[["psu_size"]] * res$n[["ssu_size"]]
+  )
+  tol <- max(1e-8, 1e-6 * max(1, budget))
+
+  expect_lte(actual_cost, budget + tol)
+  expect_lte(res$cost, budget + tol)
+})
+
+test_that("3-stage fixed n_psu at minimum feasible budget returns size 1/1", {
+  df <- data.frame(
+    p = 0.30,
+    cv = 0.20,
+    delta_psu = 0.05,
+    delta_ssu = 0.10
+  )
+  cost <- c(100, 10, 1)
+  n_psu <- 100
+  budget <- n_psu * sum(cost)
+
+  res <- nm(df, cost = cost, budget = budget, n_psu = n_psu)
+
+  expect_equal(res$n[["psu_size"]], 1, tolerance = 1e-8)
+  expect_equal(res$n[["ssu_size"]], 1, tolerance = 1e-8)
+  expect_equal(res$cost, budget, tolerance = 1e-6)
+})
+
+test_that("3-stage fixed n_psu feasible random cases stay within budget", {
+  set.seed(20260301)
+  for (i in seq_len(30)) {
+    p <- runif(1, 0.1, 0.9)
+    cv <- runif(1, 0.08, 0.2)
+    delta_psu <- runif(1, 0, 0.2)
+    delta_ssu <- runif(1, 0, 0.3)
+    cost <- c(runif(1, 20, 500), runif(1, 5, 200), runif(1, 1, 100))
+    n_psu <- sample(20:150, 1)
+    min_cost <- n_psu * sum(cost)
+    budget <- runif(1, min_cost * 1.15, min_cost * 4)
+    df <- data.frame(
+      p = p,
+      cv = cv,
+      delta_psu = delta_psu,
+      delta_ssu = delta_ssu
+    )
+
+    res <- nm(df, cost = cost, budget = budget, n_psu = n_psu)
+    actual_cost <- n_psu * (
+      cost[1] +
+        cost[2] * res$n[["psu_size"]] +
+        cost[3] * res$n[["psu_size"]] * res$n[["ssu_size"]]
+    )
+    tol <- max(1e-8, 1e-6 * max(1, budget))
+
+    expect_lte(actual_cost, budget + tol)
+    expect_lte(res$cost, budget + tol)
+  }
+})
+
+test_that("3-stage fixed n_psu budget mode respects fixed_cost feasibility", {
+  df <- data.frame(
+    p = 0.30,
+    cv = 0.10,
+    delta_psu = 0.05,
+    delta_ssu = 0.10
+  )
+  expect_error(
+    nm(df, cost = c(100, 10, 1), budget = 15000, n_psu = 100, fixed_cost = 5000),
+    "budget is too small"
+  )
+})
+
 test_that("identical targets yield same per-indicator n", {
   df <- data.frame(
     name = c("a", "b"),

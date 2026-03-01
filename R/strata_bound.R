@@ -259,6 +259,30 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
 
   alloc_res <- .strata_alloc(x, bk, n_total, alloc, power_q, cost_h, certain_strata)
 
+  if (has_n) {
+    m_h <- pmin(rep(2, n_strata), alloc_res$N_h)
+    if (!is.null(certain_strata)) {
+      m_h[certain_strata] <- alloc_res$N_h[certain_strata]
+    }
+    min_feasible <- sum(m_h)
+    max_feasible <- sum(alloc_res$N_h)
+    tol <- max(1e-8, 1e-8 * max(1, n))
+    if (n < min_feasible - tol) {
+      stop(
+        "'n' is infeasible for the computed strata: minimum feasible is ",
+        min_feasible,
+        call. = FALSE
+      )
+    }
+    if (n > max_feasible + tol) {
+      stop(
+        "'n' is infeasible for the computed strata: maximum feasible is ",
+        max_feasible,
+        call. = FALSE
+      )
+    }
+  }
+
   strata_df <- data.frame(
     stratum = seq_len(n_strata),
     lower   = alloc_res$lower,

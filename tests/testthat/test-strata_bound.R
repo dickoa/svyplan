@@ -36,6 +36,20 @@ test_that("cannot specify both n and cv", {
   expect_error(strata_bound(x_unif, n = 100, cv = 0.05), "at most one")
 })
 
+test_that("errors when requested n is below feasible minimum", {
+  expect_error(
+    strata_bound(x_unif, n_strata = 4, n = 3, method = "cumrootf"),
+    "minimum feasible"
+  )
+})
+
+test_that("errors when requested n is above feasible maximum", {
+  expect_error(
+    strata_bound(x_unif, n_strata = 3, n = length(x_unif) + 1, method = "cumrootf"),
+    "maximum feasible"
+  )
+})
+
 test_that("validates alloc", {
   expect_error(strata_bound(x_unif, n = 100, alloc = 42),
                "must be one of")
