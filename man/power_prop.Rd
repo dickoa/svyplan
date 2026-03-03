@@ -13,9 +13,11 @@ power_prop(
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  sides = 2,
+  alternative = c("two.sided", "one.sided"),
+  ratio = 1,
   overlap = 0,
-  rho = 0
+  rho = 0,
+  method = c("wald", "arcsine", "logodds")
 )
 }
 \arguments{
@@ -23,14 +25,16 @@ power_prop(
 
 \item{p2}{Alternative proportion, in (0, 1). Leave \code{NULL} to solve for MDE.}
 
-\item{n}{Per-group sample size. Leave \code{NULL} to solve for sample size.}
+\item{n}{Per-group sample size. Scalar (equal groups) or length-2 vector
+\code{c(n1, n2)} for unequal groups. Leave \code{NULL} to solve for sample size.}
 
 \item{power}{Target power, in (0, 1). Leave \code{NULL} to solve for power.}
 
 \item{alpha}{Significance level, default 0.05.}
 
-\item{N}{Per-group population size. \code{Inf} (default) means no finite
-population correction.}
+\item{N}{Population size for finite-population correction. A scalar applies
+to both groups; a length-2 vector \code{c(N1, N2)} sets group-specific
+population sizes. \code{Inf} disables FPC for the corresponding group.}
 
 \item{deff}{Design effect multiplier (> 0). Values < 1 are valid for
 efficient designs (e.g., stratified sampling with Neyman allocation).}
@@ -38,16 +42,27 @@ efficient designs (e.g., stratified sampling with Neyman allocation).}
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The sample size is inflated by \code{1 / resp_rate}.}
 
-\item{sides}{\code{1} for one-sided or \code{2} (default) for two-sided test.}
+\item{alternative}{Character: \code{"two.sided"} (default) or \code{"one.sided"}.}
 
-\item{overlap}{Panel overlap fraction in [0, 1], for repeated surveys.}
+\item{ratio}{Allocation ratio n1/n2 (default 1). Only used when solving
+for n (\code{n = NULL}). For example, \code{ratio = 2} means group 1 gets twice
+the sample of group 2.}
+
+\item{overlap}{Panel overlap fraction in [0, 1], for repeated surveys.
+Defined as the fraction of group 1 that also appears in group 2
+(\code{overlap = n12 / n1}). Only supported with \code{method = "wald"}.}
 
 \item{rho}{Correlation between occasions in [0, 1].}
+
+\item{method}{Variance method: \code{"wald"} (default), \code{"arcsine"}, or
+\code{"logodds"}. Arcsine and log-odds transforms are variance-stabilizing
+and perform better for rare or extreme proportions (Valliant,
+2018, \ifelse{html}{\out{&sect;}}{\enc{§}{S}}4.3.4--4.3.5).}
 }
 \value{
 A \code{svyplan_power} object with components:
 \describe{
-\item{\code{n}}{Per-group sample size.}
+\item{\code{n}}{Per-group sample size (scalar or length-2 for unequal groups).}
 \item{\code{power}}{Achieved power.}
 \item{\code{effect}}{Difference in proportions (\code{abs(p2 - p1)}).}
 \item{\code{solved}}{Which quantity was solved for
@@ -61,22 +76,15 @@ two-sample test of proportions. Leave exactly one of \code{n}, \code{power}, or
 \code{p2} as \code{NULL} to solve for that quantity.
 }
 \details{
-The effective variance for the difference in proportions is:
+Three methods are available:
 
-\deqn{V = p_1(1-p_1) + p_2(1-p_2) - 2 \cdot \text{overlap} \cdot \rho
-  \sqrt{p_1(1-p_1) \cdot p_2(1-p_2)}}
-
-The panel overlap term reduces the variance when the same units are
-observed at both occasions, following the approach in Kish (1965, Ch. 11).
-\itemize{
-\item \strong{Solve n}: \eqn{n_0 = (z_{\alpha/s} + z_\beta)^2 \cdot V \cdot
-  \text{deff} / \delta^2}, then finite population correction.
-\item \strong{Solve power}: Compute SE, then
-\eqn{\text{power} = \Phi(\delta / \text{SE} - z_{\alpha/s})}.
-For two-sided tests both tails are included.
-\item \strong{Solve MDE}: \code{uniroot} search for the \code{p2} closest to \code{p1} that
-achieves the target power. Both directions (\code{p2 > p1} and \code{p2 < p1})
-are searched; the closer alternative is returned.
+\describe{
+\item{\code{"wald"}}{Standard Wald test. Supports panel overlap.}
+\item{\code{"arcsine"}}{Arcsine-transformed test. The arcsine variance
+\eqn{1/(4n)} is approximately constant in \eqn{p}, making it
+more accurate for rare proportions.}
+\item{\code{"logodds"}}{Log-odds (logit) test with separate null and
+alternative variances. Uses Valliant Eq (4.23)/(4.24).}
 }
 }
 \examples{
@@ -86,23 +94,26 @@ power_prop(p1 = 0.30, p2 = 0.35)
 # Power given n = 500
 power_prop(p1 = 0.30, p2 = 0.35, n = 500, power = NULL)
 
-# MDE with n = 1000 (searches both directions, returns closest p2)
+# MDE with n = 1000
 power_prop(p1 = 0.30, n = 1000)
 
-# MDE near boundary (downward alternative found automatically)
-power_prop(p1 = 0.999, n = 100)
+# Arcsine transform for rare proportions
+power_prop(p1 = 0.15, p2 = 0.18, alternative = "one.sided",
+           method = "arcsine")
 
-# With design effect
-power_prop(p1 = 0.30, p2 = 0.35, deff = 1.5)
+# Log-odds transform
+power_prop(p1 = 0.15, p2 = 0.18, alternative = "one.sided",
+           method = "logodds")
 
-# Panel survey with 50\% overlap
-power_prop(p1 = 0.30, p2 = 0.35, overlap = 0.5, rho = 0.6)
+# Allocation ratio 2:1
+power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
 
 }
 \references{
-Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
+Valliant, R., Dever, J. A., & Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples} (2nd ed.). Springer. Chapter 4.
 
-Kish, L. (1965). \emph{Survey Sampling}. Wiley.
+Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
 }
 \seealso{
 \code{\link[=power_mean]{power_mean()}} for continuous outcomes, \code{\link[=n_prop]{n_prop()}} for

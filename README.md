@@ -214,7 +214,8 @@ Four methods are available: Dalenius-Hodges (`"cumrootf"`), geometric
 
 Solve for sample size, power, or minimum detectable effect. Supports
 design effects, finite population correction, response rate adjustment,
-and panel overlap.
+panel overlap, unequal groups, and allocation ratios. Arcsine and
+log-odds methods available for rare proportions.
 
 ``` r
 # Sample size to detect a 5pp change from 70% with deff = 2
@@ -234,6 +235,13 @@ power_mean(effect = 5, var = 200)
 #> Power analysis for means (solved for sample size)
 #> n = 126 (per group), power = 0.800, effect = 5.0000
 #> (alpha = 0.05)
+
+# Arcsine method for rare proportions
+power_prop(p1 = 0.15, p2 = 0.18, alternative = "one.sided",
+           method = "arcsine")
+#> Power analysis for proportions (solved for sample size)
+#> n = 1890 (per group), power = 0.800, effect = 0.0300
+#> (p1 = 0.150, p2 = 0.180, alpha = 0.05, one-sided, method = arcsine)
 ```
 
 `plot()` draws the power-vs-sample-size curve with reference lines at

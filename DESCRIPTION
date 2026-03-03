@@ -1,7 +1,7 @@
 Package: svyplan
 Type: Package
 Title: Survey Sample Size Determination and Precision Analysis
-Version: 0.6.0
+Version: 0.7.0
 Authors@R: person(given = "Ahmadou",
                   family = "Dicko",
                   email = "mail@ahmadoudicko.com",

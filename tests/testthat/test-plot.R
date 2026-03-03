@@ -61,3 +61,8 @@ test_that("plot.svyplan_power returns invisible(x)", {
   out <- plot(pw)
   expect_identical(out, pw)
 })
+
+test_that("plot.svyplan_power errors for vector n", {
+  pw <- power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
+  expect_error(plot(pw), "does not support power objects with unequal-group n")
+})

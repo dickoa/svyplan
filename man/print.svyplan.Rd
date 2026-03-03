@@ -12,11 +12,6 @@
 \alias{format.svyplan_prec}
 \alias{format.svyplan_varcomp}
 \alias{format.svyplan_power}
-\alias{summary.svyplan_n}
-\alias{summary.svyplan_cluster}
-\alias{summary.svyplan_prec}
-\alias{summary.svyplan_varcomp}
-\alias{summary.svyplan_power}
 \alias{confint.svyplan_n}
 \alias{confint.svyplan_prec}
 \alias{as.integer.svyplan_n}
@@ -27,7 +22,6 @@
 \alias{as.double.svyplan_power}
 \alias{print.svyplan_strata}
 \alias{format.svyplan_strata}
-\alias{summary.svyplan_strata}
 \alias{as.data.frame.svyplan_strata}
 \alias{as.integer.svyplan_strata}
 \alias{as.double.svyplan_strata}
@@ -53,16 +47,6 @@
 
 \method{format}{svyplan_power}(x, ...)
 
-\method{summary}{svyplan_n}(object, ...)
-
-\method{summary}{svyplan_cluster}(object, ...)
-
-\method{summary}{svyplan_prec}(object, ...)
-
-\method{summary}{svyplan_varcomp}(object, ...)
-
-\method{summary}{svyplan_power}(object, ...)
-
 \method{confint}{svyplan_n}(object, parm, level = 0.95, ...)
 
 \method{confint}{svyplan_prec}(object, parm, level = 0.95, ...)
@@ -83,8 +67,6 @@
 
 \method{format}{svyplan_strata}(x, ...)
 
-\method{summary}{svyplan_strata}(object, ...)
-
 \method{as.data.frame}{svyplan_strata}(x, ...)
 
 \method{as.integer}{svyplan_strata}(x, ...)
@@ -96,7 +78,7 @@
 
 \item{...}{Additional arguments (currently unused).}
 
-\item{object}{A svyplan object (for \code{summary} and \code{confint} methods).}
+\item{object}{A svyplan object (for \code{confint} methods).}
 
 \item{parm}{Ignored (included for S3 consistency with \code{\link[=confint]{confint()}}).}
 

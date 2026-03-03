@@ -50,11 +50,11 @@ Valid parameters for \code{newdata} by object type:
 \code{resp_rate}
 \item \strong{\code{n_cluster}}: \code{cv}, \code{budget}, \code{resp_rate}, \code{fixed_cost}
 \item \strong{\code{power_prop}}: \code{p1}, \code{p2}, \code{n}, \code{power}, \code{alpha}, \code{N}, \code{deff},
-\code{sides}, \code{overlap}, \code{rho}, \code{resp_rate} (excluding the solved-for
-parameter)
+\code{alternative}, \code{overlap}, \code{rho}, \code{resp_rate} (excluding the solved-for
+parameter). Not supported for objects with vector \code{n}.
 \item \strong{\code{power_mean}}: \code{effect}, \code{var}, \code{n}, \code{power}, \code{alpha}, \code{N},
-\code{deff}, \code{sides}, \code{overlap}, \code{rho}, \code{resp_rate} (excluding the
-solved-for parameter)
+\code{deff}, \code{alternative}, \code{overlap}, \code{rho}, \code{resp_rate} (excluding the
+solved-for parameter). Not supported for objects with vector \code{n}.
 \item \strong{\code{prec_prop}}: \code{p}, \code{n}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}
 \item \strong{\code{prec_mean}}: \code{var}, \code{n}, \code{mu}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}
 }

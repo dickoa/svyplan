@@ -1,7 +1,7 @@
 #' Print svyplan objects
 #'
 #' @param x A svyplan object.
-#' @param object A svyplan object (for `summary` and `confint` methods).
+#' @param object A svyplan object (for `confint` methods).
 #' @param parm Ignored (included for S3 consistency with [confint()]).
 #' @param level Confidence level (default 0.95).
 #' @param ... Additional arguments (currently unused).
@@ -321,8 +321,6 @@ print.svyplan_prec <- function(x, ...) {
   if (!is.na(x$cv[1L])) {
     if (!is.na(x$se[1L])) {
       cat(", ")
-    } else {
-      cat("")
     }
     cat(sprintf("cv = %.4f", x$cv[1L]))
   }
@@ -383,21 +381,31 @@ print.svyplan_power <- function(x, ...) {
 
   p <- x$params
   resp_rate <- p$resp_rate
-  if (!is.null(resp_rate) && resp_rate < 1) {
+
+  if (length(x$n) == 2L) {
+    n1 <- ceiling(x$n[1]); n2 <- ceiling(x$n[2])
+    if (!is.null(resp_rate) && resp_rate < 1) {
+      cat(sprintf(
+        "n1 = %d, n2 = %d (total = %d, net: %d), power = %.3f, effect = %.4f\n",
+        n1, n2, n1 + n2, ceiling((n1 + n2) * resp_rate),
+        x$power, x$effect
+      ))
+    } else {
+      cat(sprintf(
+        "n1 = %d, n2 = %d (total = %d), power = %.3f, effect = %.4f\n",
+        n1, n2, n1 + n2, x$power, x$effect
+      ))
+    }
+  } else if (!is.null(resp_rate) && resp_rate < 1) {
     net_n <- ceiling(x$n * resp_rate)
     cat(sprintf(
       "n = %d (net: %d, per group), power = %.3f, effect = %.4f\n",
-      ceiling(x$n),
-      net_n,
-      x$power,
-      x$effect
+      ceiling(x$n), net_n, x$power, x$effect
     ))
   } else {
     cat(sprintf(
       "n = %d (per group), power = %.3f, effect = %.4f\n",
-      ceiling(x$n),
-      x$power,
-      x$effect
+      ceiling(x$n), x$power, x$effect
     ))
   }
 
@@ -419,8 +427,14 @@ print.svyplan_power <- function(x, ...) {
     parts <- c(parts, sprintf("overlap = %.2f", p$overlap))
     parts <- c(parts, sprintf("rho = %.2f", p$rho))
   }
-  if (!is.null(p$sides) && p$sides == 1) {
+  if (!is.null(p$alternative) && p$alternative == "one.sided") {
     parts <- c(parts, "one-sided")
+  }
+  if (!is.null(p$method) && p$method != "wald") {
+    parts <- c(parts, sprintf("method = %s", p$method))
+  }
+  if (!is.null(p$ratio) && p$ratio != 1) {
+    parts <- c(parts, sprintf("ratio = %.2g", p$ratio))
   }
   cat(sprintf("(%s)\n", paste(parts, collapse = ", ")))
 
@@ -462,37 +476,12 @@ format.svyplan_varcomp <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 format.svyplan_power <- function(x, ...) {
-  paste0("svyplan_power [", x$type, ", ", x$solved, ", n=", ceiling(x$n), "]")
-}
-
-#' @rdname print.svyplan
-#' @export
-summary.svyplan_n <- function(object, ...) {
-  print(object, ...)
-}
-
-#' @rdname print.svyplan
-#' @export
-summary.svyplan_cluster <- function(object, ...) {
-  print(object, ...)
-}
-
-#' @rdname print.svyplan
-#' @export
-summary.svyplan_prec <- function(object, ...) {
-  print(object, ...)
-}
-
-#' @rdname print.svyplan
-#' @export
-summary.svyplan_varcomp <- function(object, ...) {
-  print(object, ...)
-}
-
-#' @rdname print.svyplan
-#' @export
-summary.svyplan_power <- function(object, ...) {
-  print(object, ...)
+  n_str <- if (length(x$n) == 2L) {
+    paste0(ceiling(x$n[1]), ",", ceiling(x$n[2]))
+  } else {
+    as.character(ceiling(x$n))
+  }
+  paste0("svyplan_power [", x$type, ", ", x$solved, ", n=", n_str, "]")
 }
 
 #' Compute method-specific confidence interval limits for a proportion
@@ -727,12 +716,6 @@ format.svyplan_strata <- function(x, ...) {
     ceiling(x$n),
     "]"
   )
-}
-
-#' @rdname print.svyplan
-#' @export
-summary.svyplan_strata <- function(object, ...) {
-  print(object, ...)
 }
 
 #' @rdname print.svyplan

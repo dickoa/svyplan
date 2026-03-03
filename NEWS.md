@@ -1,4 +1,4 @@
-# svyplan 0.6.0
+# svyplan 0.7.0
 
 Initial CRAN release.
 
@@ -33,8 +33,15 @@ recovers the sample size, and vice versa.
   for sample size, power, or minimum detectable effect (MDE). Supports
   panel overlap for repeated surveys. MDE mode searches both directions
   (`p2 > p1` and `p2 < p1`) and returns the closest detectable alternative.
+  `alternative` replaces `sides` (R standard naming). Supports unequal group
+  sizes (`n = c(n1, n2)`), allocation ratio (`ratio`), and `method`
+  parameter for arcsine and log-odds transforms (Valliant, 2018,
+  Sections 4.3.4--4.3.5).
 * `power_mean()` — power analysis for two-sample mean tests. Same solve
-  modes and features as `power_prop()`.
+  modes and features as `power_prop()`. `alternative` replaces `sides`.
+  Supports unequal group variances (`var = c(v1, v2)`), unequal group
+  sizes (`n = c(n1, n2)`), and allocation ratio (`ratio`). Cohen's d
+  conversion documented.
 
 ## Stratification
 
@@ -78,7 +85,7 @@ recovers the sample size, and vice versa.
 * `svyplan_strata` — strata boundary results.
 * `svyplan_power` — power analysis results.
 
-All classes have print, format, and summary methods.
+All classes have print and format methods.
 
 ## Input validation
 

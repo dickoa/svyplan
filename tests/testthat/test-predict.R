@@ -243,3 +243,31 @@ test_that("predict.svyplan_cluster supports fixed_cost in newdata", {
   expect_true(res$cost[3] > res$cost[1])
   expect_equal(res$n_psu[1], res$n_psu[2], tolerance = 1e-8)
 })
+
+test_that("predict.svyplan_power errors for vector n object", {
+  pw <- power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
+  expect_error(
+    predict(pw, data.frame(power = 0.90)),
+    "does not support power objects with unequal-group n"
+  )
+})
+
+test_that("predict.svyplan_power passes method through for power_prop", {
+  pw <- power_prop(p1 = 0.15, p2 = 0.18, n = 2000, power = NULL,
+                    alternative = "one.sided", method = "arcsine")
+  nd <- data.frame(n = c(1000, 2000, 3000))
+  res <- predict(pw, nd)
+  expect_equal(nrow(res), 3L)
+  expect_true(all(diff(res$power) > 0))
+})
+
+test_that("predict.svyplan_power supports varying alternative", {
+  pw <- power_prop(p1 = 0.30, p2 = 0.35, n = 500, power = NULL)
+  nd <- data.frame(
+    alternative = c("two.sided", "one.sided"),
+    stringsAsFactors = FALSE
+  )
+  res <- predict(pw, nd)
+  expect_equal(nrow(res), 2L)
+  expect_true(res$power[2] > res$power[1])
+})

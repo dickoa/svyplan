@@ -418,7 +418,7 @@
   q,
   cost_h,
   maxiter,
-  niter,
+  n_restart,
   certain_idx = NULL
 ) {
   x_uniq <- sort(unique(x_sort))
@@ -508,12 +508,12 @@
   best_obj <- obj_from_pidx(init_pidx)
   best_idx <- init_idx
 
-  total_steps <- as.integer(niter) * as.integer(maxiter)
+  total_steps <- as.integer(n_restart) * as.integer(maxiter)
   rand_h <- sample.int(L - 1L, total_steps, replace = TRUE)
   rand_dir <- sample(c(-1L, 1L), total_steps, replace = TRUE)
   ri <- 0L
 
-  for (restart in seq_len(niter)) {
+  for (restart in seq_len(n_restart)) {
     if (restart == 1L) {
       cur_idx <- init_idx
     } else {

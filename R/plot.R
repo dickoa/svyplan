@@ -89,6 +89,9 @@ plot.svyplan_strata <- function(x, ...) {
 #' @rdname plot.svyplan
 #' @export
 plot.svyplan_power <- function(x, npoints = 101L, ...) {
+  if (length(x$n) == 2L)
+    stop("plot() does not support power objects with unequal-group n",
+         call. = FALSE)
   n_lo <- max(10, x$n * 0.1)
   n_hi <- x$n * 3
   n_seq <- seq(n_lo, n_hi, length.out = npoints)
@@ -139,9 +142,10 @@ plot.svyplan_power <- function(x, npoints = 101L, ...) {
               N = p$N,
               deff = p$deff,
               resp_rate = p$resp_rate,
-              sides = p$sides,
+              alternative = p$alternative,
               overlap = p$overlap,
-              rho = p$rho
+              rho = p$rho,
+              method = p$method %||% "wald"
             )
           } else {
             res <- power_mean(
@@ -153,7 +157,7 @@ plot.svyplan_power <- function(x, npoints = 101L, ...) {
               N = p$N,
               deff = p$deff,
               resp_rate = p$resp_rate,
-              sides = p$sides,
+              alternative = p$alternative,
               overlap = p$overlap,
               rho = p$rho
             )

@@ -13,7 +13,8 @@ power_mean(
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  sides = 2,
+  alternative = c("two.sided", "one.sided"),
+  ratio = 1,
   overlap = 0,
   rho = 0
 )
@@ -22,16 +23,19 @@ power_mean(
 \item{effect}{Absolute difference in means (effect-size magnitude, positive).
 Leave \code{NULL} to solve for MDE.}
 
-\item{var}{Within-group variance (required).}
+\item{var}{Within-group variance. Scalar (equal variances in both groups)
+or length-2 vector \code{c(var1, var2)} for unequal group variances.}
 
-\item{n}{Per-group sample size. Leave \code{NULL} to solve for sample size.}
+\item{n}{Per-group sample size. Scalar (equal groups) or length-2 vector
+\code{c(n1, n2)} for unequal groups. Leave \code{NULL} to solve for sample size.}
 
 \item{power}{Target power, in (0, 1). Leave \code{NULL} to solve for power.}
 
 \item{alpha}{Significance level, default 0.05.}
 
-\item{N}{Per-group population size. \code{Inf} (default) means no finite
-population correction.}
+\item{N}{Population size for finite-population correction. A scalar applies
+to both groups; a length-2 vector \code{c(N1, N2)} sets group-specific
+population sizes. \code{Inf} disables FPC for the corresponding group.}
 
 \item{deff}{Design effect multiplier (> 0). Values < 1 are valid for
 efficient designs (e.g., stratified sampling with Neyman allocation).}
@@ -39,16 +43,22 @@ efficient designs (e.g., stratified sampling with Neyman allocation).}
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The sample size is inflated by \code{1 / resp_rate}.}
 
-\item{sides}{\code{1} for one-sided or \code{2} (default) for two-sided test.}
+\item{alternative}{Character: \code{"two.sided"} (default) or \code{"one.sided"}.}
 
-\item{overlap}{Panel overlap fraction in [0, 1], for repeated surveys.}
+\item{ratio}{Allocation ratio n1/n2 (default 1). Only used when solving
+for n (\code{n = NULL}). For example, \code{ratio = 2} means group 1 gets twice
+the sample of group 2.}
+
+\item{overlap}{Panel overlap fraction in [0, 1], for repeated surveys.
+Defined as the fraction of group 1 that also appears in group 2
+(\code{overlap = n12 / n1}).}
 
 \item{rho}{Correlation between occasions in [0, 1].}
 }
 \value{
 A \code{svyplan_power} object with components:
 \describe{
-\item{\code{n}}{Per-group sample size.}
+\item{\code{n}}{Per-group sample size (scalar or length-2 for unequal groups).}
 \item{\code{power}}{Achieved power.}
 \item{\code{effect}}{Effect size (difference in means).}
 \item{\code{solved}}{Which quantity was solved for
@@ -62,21 +72,18 @@ two-sample test of means. Leave exactly one of \code{n}, \code{power}, or \code{
 as \code{NULL} to solve for that quantity.
 }
 \details{
-The effective variance for the difference in means is:
+To specify the effect in terms of Cohen's d (standardized effect size),
+convert via \code{effect = d * sqrt(mean(var))}, where \code{d} follows Cohen's
+conventions: 0.2 (small), 0.5 (medium), 0.8 (large).
 
-\deqn{V = 2 \cdot \text{var} \cdot (1 - \text{overlap} \cdot \rho)}
+When \code{var} is a length-2 vector, the variance of the difference is:
 
-The factor of 2 accounts for the two independent groups, reduced by
-the panel overlap term (Kish, 1965, Ch. 11).
-\itemize{
-\item \strong{Solve n}: \eqn{n_0 = (z_{\alpha/s} + z_\beta)^2 \cdot V \cdot
-  \text{deff} / \delta^2}, then finite population correction.
-\item \strong{Solve power}: Compute SE, then
-\eqn{\text{power} = \Phi(\delta / \text{SE} - z_{\alpha/s})}.
-\item \strong{Solve MDE}: Analytical formula,
-\eqn{\delta = (z_{\alpha/s} + z_\beta) \sqrt{V \cdot \text{deff}
-  \cdot (1-f) / n}}.
-}
+\deqn{V = \sigma^2_1 / r + \sigma^2_2 - 2 \cdot \text{overlap} \cdot
+  \rho \cdot \sigma_1 \sigma_2}
+
+where \code{r} is the allocation ratio n1/n2 (default 1). When \code{var} is
+scalar and \code{ratio = 1}, this simplifies to the familiar
+\code{V = 2 * var * (1 - overlap * rho)}.
 }
 \examples{
 # Sample size to detect a difference of 5 with variance 100
@@ -91,11 +98,18 @@ power_mean(var = 100, n = 500)
 # With design effect
 power_mean(effect = 5, var = 100, deff = 1.5)
 
+# Unequal group variances
+power_mean(effect = 5, var = c(80, 120))
+
+# Allocation ratio 2:1
+power_mean(effect = 5, var = 100, ratio = 2)
+
 }
 \references{
-Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
+Valliant, R., Dever, J. A., & Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples} (2nd ed.). Springer. Chapter 4.
 
-Kish, L. (1965). \emph{Survey Sampling}. Wiley.
+Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
 }
 \seealso{
 \code{\link[=power_prop]{power_prop()}} for proportions, \code{\link[=n_mean]{n_mean()}} for estimation

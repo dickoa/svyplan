@@ -71,6 +71,9 @@ prec_cluster.default <- function(
   if (anyNA(n)) {
     stop("'n' must not contain NA values", call. = FALSE)
   }
+  if (any(!is.finite(n))) {
+    stop("'n' must contain only finite values", call. = FALSE)
+  }
 
   stages <- length(n)
   delta <- .reorder_stage_vec(delta, "delta")

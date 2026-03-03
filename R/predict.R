@@ -28,11 +28,11 @@
 #'   `resp_rate`
 #' - **`n_cluster`**: `cv`, `budget`, `resp_rate`, `fixed_cost`
 #' - **`power_prop`**: `p1`, `p2`, `n`, `power`, `alpha`, `N`, `deff`,
-#'   `sides`, `overlap`, `rho`, `resp_rate` (excluding the solved-for
-#'   parameter)
+#'   `alternative`, `overlap`, `rho`, `resp_rate` (excluding the solved-for
+#'   parameter). Not supported for objects with vector `n`.
 #' - **`power_mean`**: `effect`, `var`, `n`, `power`, `alpha`, `N`,
-#'   `deff`, `sides`, `overlap`, `rho`, `resp_rate` (excluding the
-#'   solved-for parameter)
+#'   `deff`, `alternative`, `overlap`, `rho`, `resp_rate` (excluding the
+#'   solved-for parameter). Not supported for objects with vector `n`.
 #' - **`prec_prop`**: `p`, `n`, `alpha`, `N`, `deff`, `resp_rate`
 #' - **`prec_mean`**: `var`, `n`, `mu`, `alpha`, `N`, `deff`, `resp_rate`
 #'
@@ -179,23 +179,29 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
 #' @rdname predict.svyplan
 #' @export
 predict.svyplan_power <- function(object, newdata, ...) {
+  if (length(object$n) == 2L)
+    stop("predict() does not support power objects with unequal-group n; call power_*() directly",
+         call. = FALSE)
+
   solved <- object$solved
 
   if (object$type == "proportion") {
     all_params <- c("p1", "p2", "n", "power", "alpha", "N", "deff",
-                    "resp_rate", "sides", "overlap", "rho")
+                    "resp_rate", "alternative", "overlap", "rho")
     excluded <- switch(solved, n = "n", power = "power", mde = "p2")
     allowed <- setdiff(all_params, excluded)
 
-    .validate_newdata(newdata, allowed)
+    .validate_newdata(newdata, allowed, allowed_character = "alternative")
     base <- object$params
+    method <- base$method %||% "wald"
 
     .predict_grid(newdata, base, function(p) {
       args <- list(
         p1 = p$p1, p2 = p$p2, n = p$n, power = p$power,
         alpha = p$alpha, N = p$N, deff = p$deff,
         resp_rate = p$resp_rate,
-        sides = p$sides, overlap = p$overlap, rho = p$rho
+        alternative = p$alternative, overlap = p$overlap, rho = p$rho,
+        method = method
       )
       args[excluded] <- list(NULL)
       res <- do.call(power_prop, args)
@@ -204,11 +210,11 @@ predict.svyplan_power <- function(object, newdata, ...) {
 
   } else if (object$type == "mean") {
     all_params <- c("effect", "var", "n", "power", "alpha", "N", "deff",
-                    "resp_rate", "sides", "overlap", "rho")
+                    "resp_rate", "alternative", "overlap", "rho")
     excluded <- switch(solved, n = "n", power = "power", mde = "effect")
     allowed <- setdiff(all_params, excluded)
 
-    .validate_newdata(newdata, allowed)
+    .validate_newdata(newdata, allowed, allowed_character = "alternative")
     base <- object$params
 
     .predict_grid(newdata, base, function(p) {
@@ -216,7 +222,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
         effect = p$effect, var = p$var, n = p$n, power = p$power,
         alpha = p$alpha, N = p$N, deff = p$deff,
         resp_rate = p$resp_rate,
-        sides = p$sides, overlap = p$overlap, rho = p$rho
+        alternative = p$alternative, overlap = p$overlap, rho = p$rho
       )
       args[excluded] <- list(NULL)
       res <- do.call(power_mean, args)
@@ -290,7 +296,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 
 #' @keywords internal
 #' @noRd
-.validate_newdata <- function(newdata, allowed) {
+.validate_newdata <- function(newdata, allowed, allowed_character = character(0)) {
   if (!is.data.frame(newdata)) {
     stop("'newdata' must be a data frame", call. = FALSE)
   }
@@ -315,10 +321,16 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 
   non_numeric <- names(newdata)[!vapply(newdata, is.numeric, logical(1))]
   if (length(non_numeric) > 0L) {
+    char_ok <- non_numeric[
+      non_numeric %in% allowed_character &
+      vapply(newdata[non_numeric], function(x) is.character(x) || is.factor(x), logical(1))
+    ]
+    bad <- setdiff(non_numeric, char_ok)
+    if (length(bad) == 0L) return(invisible(TRUE))
     stop(
       sprintf(
         "non-numeric columns in newdata: %s",
-        paste(sQuote(non_numeric), collapse = ", ")
+        paste(sQuote(bad), collapse = ", ")
       ),
       call. = FALSE
     )
@@ -356,7 +368,9 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   for (i in seq_len(nrows)) {
     params <- base
     for (nm in nd_names) {
-      params[[nm]] <- newdata[[nm]][i]
+      val <- newdata[[nm]][i]
+      if (is.factor(val)) val <- as.character(val)
+      params[[nm]] <- val
     }
 
     results[[i]] <- tryCatch(

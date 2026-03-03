@@ -459,6 +459,20 @@ test_that("spencer rejects prob outside (0, 1]", {
   )
 })
 
+test_that("henry rejects single-observation input cleanly", {
+  expect_error(
+    design_effect(c(1), y = c(1), x_cal = c(1), method = "henry"),
+    "length >= 2"
+  )
+})
+
+test_that("spencer rejects single-observation input cleanly", {
+  expect_error(
+    design_effect(c(1), y = c(1), prob = c(1), method = "spencer"),
+    "length >= 2"
+  )
+})
+
 test_that("spencer rejects length mismatch", {
   w <- c(1, 2, 3)
   expect_error(

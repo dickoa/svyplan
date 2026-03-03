@@ -44,6 +44,13 @@ test_that("prec_cluster rejects NA in n", {
   expect_error(prec_cluster(n = c(50, NA), delta = 0.05), "NA")
 })
 
+test_that("prec_cluster rejects infinite n", {
+  expect_error(
+    prec_cluster(n = c(Inf, 10), delta = 0.05),
+    "finite"
+  )
+})
+
 test_that("prec_cluster prints cluster format", {
   result <- prec_cluster(n = c(50, 12), delta = 0.05)
   out <- capture.output(print(result))

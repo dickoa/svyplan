@@ -219,21 +219,6 @@ check_delta <- function(delta, expected_length = NULL) {
   unname(x[idx])
 }
 
-#' Check sides parameter (1 or 2)
-#' @keywords internal
-#' @noRd
-check_sides <- function(sides) {
-  if (
-    !identical(sides, 1L) &&
-      !identical(sides, 1) &&
-      !identical(sides, 2L) &&
-      !identical(sides, 2)
-  ) {
-    stop("'sides' must be 1 or 2", call. = FALSE)
-  }
-  invisible(TRUE)
-}
-
 #' Check overlap fraction in \[0, 1\]
 #' @keywords internal
 #' @noRd
@@ -292,7 +277,173 @@ check_resp_rate <- function(resp_rate) {
   n / resp_rate
 }
 
+#' Normalize scalar or length-2 input to always length-2
+#' @keywords internal
+#' @noRd
+.as_pair <- function(x, name, positive = TRUE) {
+  if (!is.numeric(x) || anyNA(x) || !all(is.finite(x)))
+    stop(sprintf("'%s' must be finite numeric", name), call. = FALSE)
+  if (length(x) == 1L) {
+    if (positive && x <= 0)
+      stop(sprintf("'%s' must be positive", name), call. = FALSE)
+    return(c(x, x))
+  }
+  if (length(x) == 2L) {
+    if (positive && any(x <= 0))
+      stop(sprintf("all '%s' elements must be positive", name), call. = FALSE)
+    return(x)
+  }
+  stop(sprintf("'%s' must be length 1 or 2", name), call. = FALSE)
+}
+
+#' Validate and normalize n for power functions
+#' @keywords internal
+#' @noRd
+.check_power_n <- function(n) {
+  if (!is.numeric(n) || anyNA(n) || !all(is.finite(n)))
+    stop("'n' must be finite numeric", call. = FALSE)
+  if (!length(n) %in% c(1L, 2L))
+    stop("'n' must be length 1 (equal groups) or 2 (unequal groups)",
+         call. = FALSE)
+  if (any(n < 2))
+    stop("'n' must be >= 2", call. = FALSE)
+  n
+}
+
+#' Resolve n/ratio when solving for n
+#' @keywords internal
+#' @noRd
+.resolve_ratio <- function(n, ratio) {
+  if (is.null(ratio)) return(1)
+  if (!is.numeric(ratio) || length(ratio) != 1L ||
+      is.na(ratio) || ratio <= 0 || !is.finite(ratio))
+    stop("'ratio' must be a positive finite scalar", call. = FALSE)
+  if (!is.null(n) && ratio != 1) {
+    stop("'ratio' cannot be used when 'n' is provided", call. = FALSE)
+  }
+  ratio
+}
+
+#' Compute z_alpha for power functions
+#' @keywords internal
+#' @noRd
+.z_alpha <- function(alpha, alternative) {
+  qnorm(1 - alpha / if (alternative == "two.sided") 2 else 1)
+}
+
+#' Check power population size N (scalar or length-2)
+#' @keywords internal
+#' @noRd
+.check_power_N <- function(N) {
+  if (!is.numeric(N) || anyNA(N) || !all(is.finite(N) | is.infinite(N))) {
+    stop("'N' must be numeric, finite, or Inf", call. = FALSE)
+  }
+  if (!length(N) %in% c(1L, 2L)) {
+    stop("'N' must be length 1 (equal groups) or 2 (group-specific)", call. = FALSE)
+  }
+  if (any(N <= 1 & !is.infinite(N))) {
+    stop("'N' values must be greater than 1 (or Inf)", call. = FALSE)
+  }
+  if (length(N) == 1L) c(N, N) else N
+}
+
+#' Effective N for n2 when ratio constraint links n1 = ratio * n2
+#' @keywords internal
+#' @noRd
+.N2_for_ratio <- function(N_pair, ratio) {
+  min(N_pair[2], N_pair[1] / ratio)
+}
+
+#' Upper bound for n2 from finite-population constraints on effective n
+#' @keywords internal
+#' @noRd
+.n2_upper_bound <- function(N_pair, ratio, resp_rate) {
+  b1 <- if (is.infinite(N_pair[1])) Inf else N_pair[1] / (ratio * resp_rate)
+  b2 <- if (is.infinite(N_pair[2])) Inf else N_pair[2] / resp_rate
+  min(b1, b2)
+}
+
+#' Solve n2 by inverting a monotone power function
+#' @keywords internal
+#' @noRd
+.solve_n2_from_power <- function(target_power, power_fn, N_pair, ratio, resp_rate,
+                                 tol = 1e-8) {
+  lo <- sqrt(.Machine$double.eps)
+  p_lo <- suppressWarnings(power_fn(lo))
+  if (!is.finite(p_lo)) p_lo <- 0
+  if (target_power <= p_lo) return(lo)
+
+  hi_cap <- .n2_upper_bound(N_pair, ratio, resp_rate)
+  if (is.finite(hi_cap)) {
+    hi <- hi_cap * (1 - 1e-7)
+    if (hi <= lo) {
+      stop("target power is unattainable under finite population constraints",
+           call. = FALSE)
+    }
+    p_hi <- suppressWarnings(power_fn(hi))
+    if (!is.finite(p_hi) || p_hi < target_power - tol) {
+      stop("target power is unattainable under finite population constraints",
+           call. = FALSE)
+    }
+  } else {
+    hi <- max(2, lo * 2)
+    p_hi <- suppressWarnings(power_fn(hi))
+    iter <- 0L
+    while ((is.na(p_hi) || p_hi < target_power) && hi < 1e12 && iter < 100L) {
+      hi <- hi * 2
+      p_hi <- suppressWarnings(power_fn(hi))
+      iter <- iter + 1L
+    }
+    if (!is.finite(p_hi) || p_hi < target_power - tol) {
+      stop("could not bracket sample size for target power", call. = FALSE)
+    }
+  }
+
+  uniroot(function(n2) power_fn(n2) - target_power,
+          interval = c(lo, hi), tol = tol)$root
+}
+
+#' Per-group FPC factor (returns 1 for Inf, 0-clamped)
+#' @keywords internal
+#' @noRd
+.fpc_factor <- function(n, N) {
+  if (is.infinite(N)) return(1)
+  max(0, 1 - n / N)
+}
+
+#' Validate computed variance term before sqrt
+#' @keywords internal
+#' @noRd
+.safe_variance <- function(V, what = "variance") {
+  if (!is.finite(V)) {
+    stop(sprintf("%s is not finite; check input parameters", what), call. = FALSE)
+  }
+  tol <- sqrt(.Machine$double.eps)
+  if (V < -tol) {
+    stop(
+      sprintf("%s is negative; reduce overlap or rho, or adjust inputs", what),
+      call. = FALSE
+    )
+  }
+  if (V < 0) 0 else V
+}
+
+#' Validate overlap against ratio or explicit n
+#' @keywords internal
+#' @noRd
+.check_overlap_n <- function(overlap, n = NULL, ratio = NULL) {
+  if (overlap == 0) return(invisible(NULL))
+  if (!is.null(ratio) && ratio > 1 && overlap > 1 / ratio)
+    stop(sprintf("overlap (%.3g) must be <= 1/ratio (%.3g)", overlap, 1 / ratio),
+         call. = FALSE)
+  if (!is.null(n) && length(n) == 2L && overlap > n[2] / n[1])
+    stop(sprintf("overlap (%.3g) must be <= n[2]/n[1] (%.3g)",
+                 overlap, n[2] / n[1]),
+         call. = FALSE)
+}
+
 #' Null-coalescing operator
+#' Internal fallback for R versions before base::`%||%` became available.
 #' @keywords internal
 #' @noRd
 `%||%` <- function(x, y) {
@@ -360,8 +511,20 @@ check_resp_rate <- function(resp_rate) {
 #' @keywords internal
 #' @noRd
 .wtdvar <- function(x, w) {
+  if (!is.numeric(x) || !is.numeric(w) || length(x) != length(w)) {
+    stop("'x' and 'w' must be numeric vectors of equal length", call. = FALSE)
+  }
+  if (length(w) < 2L) {
+    stop("'x' and 'w' must have length >= 2", call. = FALSE)
+  }
+  if (anyNA(x) || anyNA(w) || any(!is.finite(x)) || any(!is.finite(w))) {
+    stop("'x' and 'w' must contain only finite, non-missing values", call. = FALSE)
+  }
   n <- length(w)
   sw <- sum(w)
+  if (sw <= 0) {
+    stop("sum of weights must be positive", call. = FALSE)
+  }
   xbarw <- sum(w * x) / sw
   n / (n - 1) * sum(w * (x - xbarw)^2) / sw
 }

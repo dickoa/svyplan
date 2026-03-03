@@ -81,7 +81,7 @@ par(op)
 | Design      | `varcomp`, `design_effect`, `effective_n`                | Variance components and design effects |
 | Strata      | `strata_bound`                                          | Optimal stratification boundaries      |
 
-Every function returns an S3 object with `print`, `summary`, `predict`, and (where applicable) `confint` methods.
+Every function returns an S3 object with `print`, `predict`, and (where applicable) `confint` methods.
 
 ## The n_\*/prec_\* duality
 
@@ -533,6 +533,28 @@ power_mean(effect = 5, var = 200)
 
 # MDE with n = 400 per group
 power_mean(var = 200, n = 400)
+```
+
+### Unequal groups and alternative methods
+
+Both `power_prop()` and `power_mean()` support unequal group sizes via `ratio` or explicit `n = c(n1, n2)`:
+
+```{r power-unequal}
+# 2:1 allocation ratio
+power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
+
+# Unequal group variances
+power_mean(effect = 5, var = c(80, 120))
+```
+
+For rare proportions, arcsine and log-odds transforms are more accurate:
+
+```{r power-methods}
+power_prop(p1 = 0.15, p2 = 0.18, alternative = "one.sided",
+           method = "arcsine")
+
+power_prop(p1 = 0.15, p2 = 0.18, alternative = "one.sided",
+           method = "logodds")
 ```
 
 ### Power curve

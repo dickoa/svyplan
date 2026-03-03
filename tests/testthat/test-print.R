@@ -87,3 +87,29 @@ test_that("format.svyplan_cluster shows unrounded", {
   expect_match(fmt, "unrounded")
   expect_true(grepl(expected_unrounded, fmt, fixed = TRUE))
 })
+
+test_that("print.svyplan_power shows vector n", {
+  res <- power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
+  out <- capture.output(print(res))
+  expect_true(any(grepl("n1 = ", out)))
+  expect_true(any(grepl("n2 = ", out)))
+  expect_true(any(grepl("total = ", out)))
+})
+
+test_that("print.svyplan_power shows method for arcsine", {
+  res <- power_prop(p1 = 0.15, p2 = 0.18, method = "arcsine")
+  out <- capture.output(print(res))
+  expect_true(any(grepl("method = arcsine", out)))
+})
+
+test_that("print.svyplan_power shows one-sided", {
+  res <- power_prop(p1 = 0.30, p2 = 0.35, alternative = "one.sided")
+  out <- capture.output(print(res))
+  expect_true(any(grepl("one-sided", out)))
+})
+
+test_that("format.svyplan_power handles vector n", {
+  res <- power_mean(effect = 5, var = 100, ratio = 2)
+  fmt <- format(res)
+  expect_match(fmt, ",")
+})
