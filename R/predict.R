@@ -26,7 +26,11 @@
 #' - **`n_prop`**: `p`, `moe`, `cv`, `alpha`, `N`, `deff`, `resp_rate`
 #' - **`n_mean`**: `var`, `mu`, `moe`, `cv`, `alpha`, `N`, `deff`,
 #'   `resp_rate`
-#' - **`n_cluster`**: `cv`, `budget`, `resp_rate`, `fixed_cost`
+#' - **`n_cluster`**: `cv`, `budget`, `rel_var`, `resp_rate`, `fixed_cost`,
+#'   stage deltas (`delta` or `delta_psu`; plus `delta_ssu` for 3-stage),
+#'   stage ratios (`k` or `k_psu`; plus `k_ssu` for 3-stage),
+#'   stage costs (`cost_psu`, `cost_ssu`, `cost_tsu`; for 2-stage,
+#'   `cost_tsu` aliases `cost_ssu`)
 #' - **`power_prop`**: `p1`, `p2`, `n`, `power`, `alpha`, `N`, `deff`,
 #'   `alternative`, `overlap`, `rho`, `resp_rate` (excluding the solved-for
 #'   parameter). Not supported for objects with vector `n`.
@@ -132,7 +136,38 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
     )
   }
 
-  allowed <- c("cv", "budget", "resp_rate", "fixed_cost")
+  stages <- length(object$params$cost)
+  if (stages == 3L && "delta" %in% names(newdata)) {
+    stop(
+      "for 3-stage cluster predict, vary 'delta_psu' and 'delta_ssu' instead of 'delta'",
+      call. = FALSE
+    )
+  }
+  if (stages == 3L && "k" %in% names(newdata)) {
+    stop(
+      "for 3-stage cluster predict, vary 'k_psu' and 'k_ssu' instead of 'k'",
+      call. = FALSE
+    )
+  }
+
+  cost_meta <- .cluster_cost_col_map(names(newdata), stages)
+  delta_meta <- .cluster_stage_col_map(
+    names(newdata),
+    "delta",
+    stage_count = stages - 1L,
+    allow_scalar_alias = stages == 2L
+  )
+  k_meta <- .cluster_stage_col_map(
+    names(newdata),
+    "k",
+    stage_count = stages - 1L,
+    allow_scalar_alias = stages == 2L
+  )
+
+  allowed <- unique(c(
+    "cv", "budget", "rel_var", "resp_rate", "fixed_cost",
+    delta_meta$allowed, k_meta$allowed, cost_meta$allowed
+  ))
   .validate_newdata(newdata, allowed)
 
   p <- object$params
@@ -161,9 +196,22 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
   }
 
   .predict_grid(newdata, base, function(params) {
+    row_cost <- .apply_cluster_cost_cols(base$cost, params, cost_meta$map)
+    row_delta <- .apply_cluster_stage_cols(
+      base$delta,
+      params,
+      delta_meta$map,
+      delta_meta$canonical
+    )
+    row_k <- .apply_cluster_stage_cols(
+      base$k,
+      params,
+      k_meta$map,
+      k_meta$canonical
+    )
     res <- n_cluster.default(
-      cost = params$cost, delta = params$delta,
-      rel_var = params$rel_var, k = params$k,
+      cost = row_cost, delta = row_delta,
+      rel_var = params$rel_var, k = row_k,
       cv = params$cv, budget = params$budget,
       n_psu = params$n_psu, resp_rate = params$resp_rate,
       fixed_cost = params$fixed_cost

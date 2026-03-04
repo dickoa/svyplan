@@ -185,6 +185,236 @@ check_delta <- function(delta, expected_length = NULL) {
 #' @param name Parameter name for error messages (e.g., `"delta"`, `"k"`).
 #' @keywords internal
 #' @noRd
+.reorder_named_vec <- function(x, name, canonical, aliases = character(0)) {
+  nms <- names(x)
+  if (is.null(nms)) {
+    return(unname(x))
+  }
+  if (anyNA(nms) || any(nms == "")) {
+    stop(sprintf("'%s' names must be non-empty", name), call. = FALSE)
+  }
+  if (anyDuplicated(nms)) {
+    stop(sprintf("duplicate names in '%s'", name), call. = FALSE)
+  }
+
+  dict <- setNames(canonical, canonical)
+  if (length(aliases) > 0L) {
+    dict <- c(dict, aliases)
+  }
+
+  unknown <- setdiff(nms, names(dict))
+  if (length(unknown) > 0L) {
+    expected <- unique(c(canonical, names(aliases)))
+    stop(
+      sprintf(
+        "unrecognized names in '%s': %s; expected %s",
+        name,
+        paste(sQuote(unknown), collapse = ", "),
+        paste(sQuote(expected), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  target <- unname(dict[nms])
+  if (anyDuplicated(target)) {
+    stop(
+      sprintf("named '%s' has overlapping aliases for the same stage", name),
+      call. = FALSE
+    )
+  }
+
+  missing <- setdiff(canonical, target)
+  if (length(missing) > 0L) {
+    stop(
+      sprintf(
+        "named '%s' must include all stages: %s",
+        name,
+        paste(sQuote(canonical), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  idx <- match(canonical, target)
+  unname(x[idx])
+}
+
+#' Reorder named stage cost vector
+#'
+#' Supports stage names `cost_psu`, `cost_ssu`, `cost_tsu`.
+#' For 2-stage designs, `cost_tsu` is accepted as an alias of `cost_ssu`.
+#' @keywords internal
+#' @noRd
+.reorder_cost_vec <- function(cost) {
+  nms <- names(cost)
+  if (is.null(nms)) {
+    return(unname(cost))
+  }
+
+  stages <- length(cost)
+  canonical <- if (stages == 2L) {
+    c("cost_psu", "cost_ssu")
+  } else {
+    c("cost_psu", "cost_ssu", "cost_tsu")
+  }
+  aliases <- if (stages == 2L) {
+    c(cost_tsu = "cost_ssu")
+  } else {
+    character(0)
+  }
+  .reorder_named_vec(cost, "cost", canonical, aliases)
+}
+
+#' Reorder named stage sample-size vector
+#'
+#' Supports stage names `n_psu`, `psu_size`, `ssu_size`.
+#' @keywords internal
+#' @noRd
+.reorder_n_vec <- function(n) {
+  stages <- length(n)
+  out_names <- if (stages == 2L) {
+    c("n_psu", "psu_size")
+  } else {
+    c("n_psu", "psu_size", "ssu_size")
+  }
+
+  if (is.null(names(n))) {
+    names(n) <- out_names
+    return(n)
+  }
+
+  n <- .reorder_named_vec(n, "n", out_names)
+  names(n) <- out_names
+  n
+}
+
+#' Reorder named stage cost columns in predict(newdata)
+#'
+#' @keywords internal
+#' @noRd
+.cluster_cost_col_map <- function(cols, stages) {
+  if (stages == 2L) {
+    allowed <- c("cost_psu", "cost_ssu", "cost_tsu")
+    dict <- c(
+      cost_psu = "cost_psu",
+      cost_ssu = "cost_ssu",
+      cost_tsu = "cost_ssu"
+    )
+  } else {
+    allowed <- c("cost_psu", "cost_ssu", "cost_tsu")
+    dict <- c(
+      cost_psu = "cost_psu",
+      cost_ssu = "cost_ssu",
+      cost_tsu = "cost_tsu"
+    )
+  }
+
+  used <- intersect(cols, allowed)
+  if (length(used) == 0L) {
+    return(list(allowed = allowed, map = setNames(character(0), character(0))))
+  }
+
+  mapped <- unname(dict[used])
+  if (anyDuplicated(mapped)) {
+    dup_stage <- mapped[duplicated(mapped)][1L]
+    offenders <- used[mapped == dup_stage]
+    stop(
+      sprintf(
+        "newdata cannot contain multiple columns for %s: %s",
+        dup_stage,
+        paste(sQuote(offenders), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  list(allowed = allowed, map = setNames(mapped, used))
+}
+
+#' Reorder named stage parameter columns in predict(newdata)
+#'
+#' Supports stage names like `delta_psu` / `delta_ssu` (or `k_psu` / `k_ssu`).
+#' Optionally supports a scalar alias (`delta` or `k`) for 2-stage.
+#' @keywords internal
+#' @noRd
+.cluster_stage_col_map <- function(cols, name, stage_count, allow_scalar_alias = FALSE) {
+  canonical <- if (stage_count == 1L) {
+    paste0(name, "_psu")
+  } else {
+    c(paste0(name, "_psu"), paste0(name, "_ssu"))
+  }
+  allowed <- canonical
+  dict <- setNames(canonical, canonical)
+  if (allow_scalar_alias) {
+    allowed <- c(allowed, name)
+    dict <- c(dict, setNames(canonical[1L], name))
+  }
+
+  used <- intersect(cols, allowed)
+  if (length(used) == 0L) {
+    return(list(
+      allowed = allowed,
+      map = setNames(character(0), character(0)),
+      canonical = canonical
+    ))
+  }
+
+  mapped <- unname(dict[used])
+  if (anyDuplicated(mapped)) {
+    dup_stage <- mapped[duplicated(mapped)][1L]
+    offenders <- used[mapped == dup_stage]
+    stop(
+      sprintf(
+        "newdata cannot contain multiple columns for %s: %s",
+        dup_stage,
+        paste(sQuote(offenders), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  list(allowed = allowed, map = setNames(mapped, used), canonical = canonical)
+}
+
+#' Apply mapped cost columns from predict row params to base cost
+#' @keywords internal
+#' @noRd
+.apply_cluster_cost_cols <- function(base_cost, params, cost_col_map) {
+  if (length(cost_col_map) == 0L) {
+    return(base_cost)
+  }
+  out <- unname(base_cost)
+  for (col in names(cost_col_map)) {
+    idx <- match(cost_col_map[[col]], c("cost_psu", "cost_ssu", "cost_tsu"))
+    out[idx] <- params[[col]]
+  }
+  out
+}
+
+#' Apply mapped stage columns from predict row params to a base stage vector
+#' @keywords internal
+#' @noRd
+.apply_cluster_stage_cols <- function(base_stage, params, stage_col_map, canonical) {
+  out <- unname(base_stage)
+  if (length(stage_col_map) == 0L) {
+    return(out)
+  }
+  for (col in names(stage_col_map)) {
+    idx <- match(stage_col_map[[col]], canonical)
+    out[idx] <- params[[col]]
+  }
+  out
+}
+
+#' Reorder a named stage-indexed vector
+#'
+#' If `x` is unnamed, return as-is. If named, validate and reorder
+#' to canonical stage order.
+#' @param x Numeric vector (length 1 or 2).
+#' @param name Parameter name for error messages (e.g., `"delta"`, `"k"`).
+#' @keywords internal
+#' @noRd
 .reorder_stage_vec <- function(x, name) {
   nms <- names(x)
   if (is.null(nms)) {
@@ -192,31 +422,10 @@ check_delta <- function(delta, expected_length = NULL) {
   }
   psu_nm <- paste0(name, "_psu")
   ssu_nm <- paste0(name, "_ssu")
-  valid <- c(psu_nm, ssu_nm)
-  unknown <- setdiff(nms, valid[seq_along(x)])
-  if (length(unknown) > 0L) {
-    stop(
-      sprintf(
-        "unrecognized names in '%s': %s; expected %s",
-        name,
-        paste(sQuote(unknown), collapse = ", "),
-        paste(sQuote(valid[seq_along(x)]), collapse = ", ")
-      ),
-      call. = FALSE
-    )
-  }
   if (length(x) == 1L) {
-    return(unname(x))
+    return(.reorder_named_vec(x, name, psu_nm))
   }
-  # length 2: reorder to (psu, ssu)
-  idx <- match(valid, nms)
-  if (anyNA(idx)) {
-    stop(
-      sprintf("named '%s' must have both '%s' and '%s'", name, psu_nm, ssu_nm),
-      call. = FALSE
-    )
-  }
-  unname(x[idx])
+  .reorder_named_vec(x, name, c(psu_nm, ssu_nm))
 }
 
 #' Check overlap fraction in \[0, 1\]

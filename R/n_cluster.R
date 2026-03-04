@@ -5,7 +5,9 @@
 #' variance for a given budget.
 #'
 #' @param cost For the default method: numeric vector of per-stage costs.
-#'   Length determines the number of stages (2 or 3).
+#'   Length determines the number of stages (2 or 3). Named vectors are
+#'   accepted with stage names `cost_psu`, `cost_ssu`, `cost_tsu`
+#'   (`cost_tsu` aliases `cost_ssu` in 2-stage).
 #'   For `svyplan_prec` objects: a precision result from [prec_cluster()].
 #' @param ... Additional arguments passed to methods.
 #' @param delta Numeric vector of homogeneity measures (length = stages - 1),
@@ -101,6 +103,7 @@ n_cluster.default <- function(
   ...
 ) {
   check_cost(cost)
+  cost <- .reorder_cost_vec(cost)
   check_resp_rate(resp_rate)
 
   if (inherits(delta, "svyplan_varcomp")) {
@@ -269,10 +272,10 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
   total_n <- prod(n_vec)
 
   params <- list(
-    cost = cost,
-    delta = delta,
+    cost = c(cost_psu = cost[1L], cost_ssu = cost[2L]),
+    delta = c(delta_psu = delta[1L]),
     rel_var = rel_var,
-    k = k,
+    k = c(k_psu = k[1L]),
     resp_rate = resp_rate
   )
   if (!is.null(cv)) {
@@ -389,10 +392,10 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
   total_n <- prod(n_vec)
 
   params <- list(
-    cost = cost,
-    delta = delta,
+    cost = c(cost_psu = cost[1L], cost_ssu = cost[2L], cost_tsu = cost[3L]),
+    delta = c(delta_psu = delta[1L], delta_ssu = delta[2L]),
     rel_var = rel_var,
-    k = k,
+    k = c(k_psu = k[1L], k_ssu = k[2L]),
     resp_rate = resp_rate
   )
   if (!is.null(cv)) {

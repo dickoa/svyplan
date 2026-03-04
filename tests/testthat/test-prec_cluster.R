@@ -29,7 +29,8 @@ test_that("prec_cluster with resp_rate deflates stage-1", {
 test_that("prec_cluster.svyplan_cluster carries cost metadata", {
   s1 <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
   p1 <- prec_cluster(s1)
-  expect_equal(p1$params$cost, c(500, 50))
+  expect_equal(unname(p1$params$cost), c(500, 50))
+  expect_equal(names(p1$params$cost), c("cost_psu", "cost_ssu"))
   expect_equal(p1$params$budget, 100000)
 })
 
@@ -85,5 +86,32 @@ test_that("prec_cluster rejects NA k", {
   expect_error(
     prec_cluster(n = c(50, 12), delta = 0.05, k = NA),
     "k.*positive"
+  )
+})
+
+test_that("prec_cluster accepts named n vectors and reorders", {
+  ref2 <- prec_cluster(n = c(50, 12), delta = 0.05)
+  named2 <- prec_cluster(n = c(psu_size = 12, n_psu = 50), delta = 0.05)
+  alias2 <- prec_cluster(n = c(psu_size = 12, n_psu = 50), delta = 0.05)
+  expect_equal(named2$cv, ref2$cv, tolerance = 1e-10)
+  expect_equal(alias2$cv, ref2$cv, tolerance = 1e-10)
+  expect_equal(names(named2$params$n), c("n_psu", "psu_size"))
+
+  ref3 <- prec_cluster(n = c(50, 12, 8), delta = c(0.01, 0.05))
+  named3 <- prec_cluster(
+    n = c(ssu_size = 8, n_psu = 50, psu_size = 12),
+    delta = c(0.01, 0.05)
+  )
+  alias3 <- prec_cluster(
+    n = c(ssu_size = 8, n_psu = 50, psu_size = 12),
+    delta = c(0.01, 0.05)
+  )
+  expect_equal(named3$cv, ref3$cv, tolerance = 1e-10)
+  expect_equal(alias3$cv, ref3$cv, tolerance = 1e-10)
+  expect_equal(names(named3$params$n), c("n_psu", "psu_size", "ssu_size"))
+
+  expect_error(
+    prec_cluster(n = c(n1 = 50, n2 = 12), delta = 0.05),
+    "unrecognized names"
   )
 })

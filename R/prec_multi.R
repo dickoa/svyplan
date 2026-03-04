@@ -78,6 +78,7 @@ prec_multi.default <- function(
 
   if (multistage) {
     check_cost(cost)
+    cost <- .reorder_cost_vec(cost)
     .prec_multi_cluster(targets, cost)
   } else {
     .prec_multi_simple(targets)

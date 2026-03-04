@@ -420,6 +420,65 @@ test_that("n_cluster accepts named k vector", {
   expect_equal(swapped$n, ref$n)
 })
 
+test_that("n_cluster accepts named cost vectors and reorders", {
+  ref2 <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+  named2 <- n_cluster(
+    cost = c(cost_ssu = 50, cost_psu = 500),
+    delta = 0.05,
+    cv = 0.05
+  )
+  alias2 <- n_cluster(
+    cost = c(cost_tsu = 50, cost_psu = 500),
+    delta = 0.05,
+    cv = 0.05
+  )
+  expect_equal(named2$n, ref2$n)
+  expect_equal(alias2$n, ref2$n)
+
+  ref3 <- n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+  named3 <- n_cluster(
+    cost = c(cost_tsu = 50, cost_psu = 500, cost_ssu = 100),
+    delta = c(0.01, 0.05),
+    cv = 0.05
+  )
+  expect_equal(named3$n, ref3$n)
+})
+
+test_that("n_cluster rejects bad names in cost", {
+  expect_error(
+    n_cluster(cost = c(foo = 500, bar = 50), delta = 0.05, cv = 0.05),
+    "unrecognized names"
+  )
+  expect_error(
+    n_cluster(cost = c(cost1 = 500, cost2 = 50), delta = 0.05, cv = 0.05),
+    "unrecognized names"
+  )
+})
+
+test_that("n_cluster stores stage-named cost in params (2-stage)", {
+  x <- n_cluster(cost = c(750, 100), delta = 0.05, budget = 1e5)
+  expect_equal(names(x$params$cost), c("cost_psu", "cost_ssu"))
+  expect_equal(unname(x$params$cost), c(750, 100))
+})
+
+test_that("n_cluster stores stage-named cost/delta/k in params (3-stage)", {
+  x <- n_cluster(
+    cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    k = c(1.2, 0.8), cv = 0.05
+  )
+  expect_equal(names(x$params$cost), c("cost_psu", "cost_ssu", "cost_tsu"))
+  expect_equal(names(x$params$delta), c("delta_psu", "delta_ssu"))
+  expect_equal(names(x$params$k), c("k_psu", "k_ssu"))
+})
+
+test_that("cost names survive prec_cluster round-trip", {
+  x <- n_cluster(cost = c(750, 100), delta = 0.05, budget = 1e5)
+  pr <- prec_cluster(x)
+  x2 <- n_cluster(pr, budget = 1e5)
+  expect_equal(names(x2$params$cost), c("cost_psu", "cost_ssu"))
+  expect_equal(x2$n, x$n, tolerance = 1e-6)
+})
+
 test_that("prec_cluster accepts named delta and reorders", {
   ref <- prec_cluster(n = c(50, 12, 8), delta = c(0.01, 0.05))
   swapped <- prec_cluster(

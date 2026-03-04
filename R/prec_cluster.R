@@ -5,7 +5,8 @@
 #'
 #' @param n For the default method: numeric vector of per-stage sample
 #'   sizes (`c(n_psu, psu_size)` for 2-stage or
-#'   `c(n_psu, psu_size, ssu_size)` for 3-stage).
+#'   `c(n_psu, psu_size, ssu_size)` for 3-stage). Named vectors are accepted
+#'   with stage names `n_psu`, `psu_size`, `ssu_size`.
 #'   For `svyplan_cluster` objects: a cluster allocation from [n_cluster()].
 #' @param ... Additional arguments passed to methods.
 #' @param delta Numeric vector of homogeneity measures (length = stages - 1),
@@ -68,6 +69,7 @@ prec_cluster.default <- function(
   if (length(n) > 3L) {
     stop("4+ stage CV calculation is not yet supported", call. = FALSE)
   }
+  n <- .reorder_n_vec(n)
   if (anyNA(n)) {
     stop("'n' must not contain NA values", call. = FALSE)
   }
@@ -93,14 +95,6 @@ prec_cluster.default <- function(
 
   if (any(n <= 0)) {
     stop("all elements of 'n' must be positive", call. = FALSE)
-  }
-
-  if (is.null(names(n))) {
-    if (stages == 2L) {
-      names(n) <- c("n_psu", "psu_size")
-    } else {
-      names(n) <- c("n_psu", "psu_size", "ssu_size")
-    }
   }
 
   n_eff <- n

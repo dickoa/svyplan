@@ -184,6 +184,7 @@ n_multi.default <- function(
 
   if (multistage) {
     check_cost(cost)
+    cost <- .reorder_cost_vec(cost)
     if (!is.null(budget)) {
       check_scalar(budget, "budget")
     }

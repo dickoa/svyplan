@@ -109,6 +109,50 @@ test_that("predict.svyplan_cluster varies cv", {
   expect_true(all(diff(res$cost) < 0))
 })
 
+test_that("predict.svyplan_cluster supports varying delta only", {
+  cl <- n_cluster(cost = c(750, 100), delta = 0.05, rel_var = 1, k = 1,
+                  budget = 1e5)
+  nd <- data.frame(delta = c(0.01, 0.05, 0.10, 0.20))
+  res <- predict(cl, nd)
+
+  expect_equal(nrow(res), 4L)
+  expect_equal(res$delta, nd$delta)
+
+  ref_cv <- vapply(nd$delta, function(d) {
+    n_cluster(
+      cost = c(750, 100), delta = d, rel_var = 1, k = 1, budget = 1e5
+    )$cv
+  }, numeric(1))
+  expect_equal(res$cv, ref_cv, tolerance = 1e-8)
+})
+
+test_that("predict.svyplan_cluster supports varying k in 2-stage", {
+  cl <- n_cluster(cost = c(750, 100), delta = 0.05, rel_var = 1, k = 1,
+                  budget = 1e5)
+  nd <- data.frame(k_psu = c(0.8, 1.0, 1.2))
+  res <- predict(cl, nd)
+
+  ref_cv <- vapply(nd$k_psu, function(kval) {
+    n_cluster(
+      cost = c(750, 100), delta = 0.05, rel_var = 1, k = kval, budget = 1e5
+    )$cv
+  }, numeric(1))
+  expect_equal(res$cv, ref_cv, tolerance = 1e-8)
+
+  nd_alias <- data.frame(k = c(0.8, 1.0, 1.2))
+  res_alias <- predict(cl, nd_alias)
+  expect_equal(res_alias$cv, ref_cv, tolerance = 1e-8)
+})
+
+test_that("predict.svyplan_cluster varies rel_var", {
+  x <- n_cluster(cost = c(500, 50), delta = 0.05, rel_var = 1, cv = 0.05)
+  nd <- data.frame(rel_var = c(0.5, 1, 2))
+  res <- predict(x, nd)
+
+  expect_equal(nrow(res), 3L)
+  expect_true(all(diff(res$total_n) > 0))
+})
+
 test_that("predict.svyplan_cluster uses original mode when no cv/budget in newdata", {
   x <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
   nd <- data.frame(resp_rate = c(0.8, 0.9, 1.0))
@@ -116,6 +160,85 @@ test_that("predict.svyplan_cluster uses original mode when no cv/budget in newda
 
   expect_equal(nrow(res), 3L)
   expect_true(res$n_psu[1] > res$n_psu[3])
+})
+
+test_that("predict.svyplan_cluster supports varying stage costs", {
+  x <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  nd <- data.frame(cost_psu = c(500, 800), cost_ssu = c(50, 120))
+  res <- predict(x, nd)
+  ref <- vapply(seq_len(nrow(nd)), function(i) {
+    n_cluster(
+      cost = c(nd$cost_psu[i], nd$cost_ssu[i]),
+      delta = 0.05,
+      budget = 100000
+    )$cv
+  }, numeric(1))
+  expect_equal(res$cv, ref, tolerance = 1e-8)
+
+  nd_alias <- data.frame(cost_psu = c(500, 800), cost_tsu = c(50, 120))
+  res_alias <- predict(x, nd_alias)
+  expect_equal(res_alias$cv, ref, tolerance = 1e-8)
+})
+
+test_that("predict.svyplan_cluster supports stage-wise delta and k in 3-stage", {
+  x <- n_cluster(
+    cost = c(500, 100, 50),
+    delta = c(0.01, 0.05),
+    k = c(1.0, 1.0),
+    budget = 200000
+  )
+  nd <- data.frame(
+    delta_psu = c(0.01, 0.02),
+    delta_ssu = c(0.05, 0.08),
+    k_psu = c(1.0, 1.2),
+    k_ssu = c(1.0, 0.9)
+  )
+  res <- predict(x, nd)
+
+  ref <- vapply(seq_len(nrow(nd)), function(i) {
+    n_cluster(
+      cost = c(500, 100, 50),
+      delta = c(nd$delta_psu[i], nd$delta_ssu[i]),
+      k = c(nd$k_psu[i], nd$k_ssu[i]),
+      budget = 200000
+    )$cv
+  }, numeric(1))
+  expect_equal(res$cv, ref, tolerance = 1e-8)
+})
+
+test_that("predict.svyplan_cluster rejects overlapping cost aliases", {
+  x <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  nd <- data.frame(cost_ssu = 50, cost_tsu = 50)
+  expect_error(predict(x, nd), "multiple columns")
+})
+
+test_that("predict.svyplan_cluster rejects overlapping delta/k aliases", {
+  x <- n_cluster(cost = c(500, 50), delta = 0.05, k = 1, budget = 100000)
+  expect_error(
+    predict(x, data.frame(delta = 0.05, delta_psu = 0.05)),
+    "multiple columns"
+  )
+  expect_error(
+    predict(x, data.frame(k = 1, k_psu = 1)),
+    "multiple columns"
+  )
+})
+
+test_that("predict.svyplan_cluster rejects scalar delta/k for 3-stage", {
+  x <- n_cluster(
+    cost = c(500, 100, 50),
+    delta = c(0.01, 0.05),
+    k = c(1, 1),
+    budget = 200000
+  )
+  expect_error(
+    predict(x, data.frame(delta = 0.02)),
+    "delta_psu'.*delta_ssu"
+  )
+  expect_error(
+    predict(x, data.frame(k = 1.1)),
+    "k_psu'.*k_ssu"
+  )
 })
 
 test_that("predict.svyplan_cluster errors on both cv and budget", {
