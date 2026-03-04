@@ -48,7 +48,11 @@ Valid parameters for \code{newdata} by object type:
 \item \strong{\code{n_prop}}: \code{p}, \code{moe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}
 \item \strong{\code{n_mean}}: \code{var}, \code{mu}, \code{moe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
 \code{resp_rate}
-\item \strong{\code{n_cluster}}: \code{cv}, \code{budget}, \code{resp_rate}, \code{fixed_cost}
+\item \strong{\code{n_cluster}}: \code{cv}, \code{budget}, \code{rel_var}, \code{resp_rate}, \code{fixed_cost},
+stage deltas (\code{delta} or \code{delta_psu}; plus \code{delta_ssu} for 3-stage),
+stage ratios (\code{k} or \code{k_psu}; plus \code{k_ssu} for 3-stage),
+stage costs (\code{cost_psu}, \code{cost_ssu}, \code{cost_tsu}; for 2-stage,
+\code{cost_tsu} aliases \code{cost_ssu})
 \item \strong{\code{power_prop}}: \code{p1}, \code{p2}, \code{n}, \code{power}, \code{alpha}, \code{N}, \code{deff},
 \code{alternative}, \code{overlap}, \code{rho}, \code{resp_rate} (excluding the solved-for
 parameter). Not supported for objects with vector \code{n}.

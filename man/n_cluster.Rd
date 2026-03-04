@@ -25,7 +25,9 @@ n_cluster(cost, ...)
 }
 \arguments{
 \item{cost}{For the default method: numeric vector of per-stage costs.
-Length determines the number of stages (2 or 3).
+Length determines the number of stages (2 or 3). Named vectors are
+accepted with stage names \code{cost_psu}, \code{cost_ssu}, \code{cost_tsu}
+(\code{cost_tsu} aliases \code{cost_ssu} in 2-stage).
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_cluster]{prec_cluster()}}.}
 
 \item{...}{Additional arguments passed to methods.}

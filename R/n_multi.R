@@ -205,8 +205,10 @@ n_multi.default <- function(
   targets <- .fill_defaults(targets, multistage)
 
   rv_final <- targets$rel_var[!is.na(targets$rel_var)]
-  if (length(rv_final) > 0L &&
-    (any(rv_final <= 0) || any(!is.finite(rv_final)))) {
+  if (
+    length(rv_final) > 0L &&
+      (any(rv_final <= 0) || any(!is.finite(rv_final)))
+  ) {
     stop("'rel_var' values must be positive and finite", call. = FALSE)
   }
   if (multistage) {
@@ -343,7 +345,10 @@ n_multi.default <- function(
       }
     }
     if (!"delta_psu" %in% names(targets)) {
-      stop("multistage mode requires 'delta_psu' column in targets", call. = FALSE)
+      stop(
+        "multistage mode requires 'delta_psu' column in targets",
+        call. = FALSE
+      )
     }
     cv_vals <- targets$cv[!is.na(targets$cv)]
     if (any(cv_vals <= 0) || any(!is.finite(cv_vals))) {
@@ -618,7 +623,10 @@ n_multi.default <- function(
     vapply(
       seq_len(nr),
       function(j) {
-        rel_var[j] * k[j] * (1 + delta[j] * (psu_size - 1)) / (psu_size * cv_t[j]^2 * rr[j])
+        rel_var[j] *
+          k[j] *
+          (1 + delta[j] * (psu_size - 1)) /
+          (psu_size * cv_t[j]^2 * rr[j])
       },
       numeric(1L)
     )
@@ -629,7 +637,10 @@ n_multi.default <- function(
       seq_len(nr),
       function(j) {
         sqrt(
-          rel_var[j] * k[j] / (n1 * rr[j] * psu_size) * (1 + delta[j] * (psu_size - 1))
+          rel_var[j] *
+            k[j] /
+            (n1 * rr[j] * psu_size) *
+            (1 + delta[j] * (psu_size - 1))
         )
       },
       numeric(1L)
@@ -738,7 +749,11 @@ n_multi.default <- function(
       function(j) {
         rel_var[j] /
           (cv_t[j]^2 * psu_size * ssu_size * rr[j]) *
-          (k_psu[j] * delta_psu[j] * psu_size * ssu_size + k_ssu[j] * (1 + delta_ssu[j] * (ssu_size - 1)))
+          (k_psu[j] *
+            delta_psu[j] *
+            psu_size *
+            ssu_size +
+            k_ssu[j] * (1 + delta_ssu[j] * (ssu_size - 1)))
       },
       numeric(1L)
     )
@@ -751,7 +766,11 @@ n_multi.default <- function(
         sqrt(
           rel_var[j] /
             (n1 * rr[j] * psu_size * ssu_size) *
-            (k_psu[j] * delta_psu[j] * psu_size * ssu_size + k_ssu[j] * (1 + delta_ssu[j] * (ssu_size - 1)))
+            (k_psu[j] *
+              delta_psu[j] *
+              psu_size *
+              ssu_size +
+              k_ssu[j] * (1 + delta_ssu[j] * (ssu_size - 1)))
         )
       },
       numeric(1L)
@@ -824,7 +843,11 @@ n_multi.default <- function(
       ssu_size_analytic <- vapply(
         seq_len(nr),
         function(j) {
-          if (delta_ssu[j] <= 0) 1 else sqrt((1 - delta_ssu[j]) / delta_ssu[j] * C2 / C3)
+          if (delta_ssu[j] <= 0) {
+            1
+          } else {
+            sqrt((1 - delta_ssu[j]) / delta_ssu[j] * C2 / C3)
+          }
         },
         numeric(1L)
       )
@@ -1304,7 +1327,11 @@ n_multi.default <- function(
     if (stages == 2L) {
       n_vec <- c(n_psu = bres$n1, psu_size = bres$psu_size)
     } else {
-      n_vec <- c(n_psu = bres$n1, psu_size = bres$psu_size, ssu_size = bres$ssu_size)
+      n_vec <- c(
+        n_psu = bres$n1,
+        psu_size = bres$psu_size,
+        ssu_size = bres$ssu_size
+      )
     }
     .new_svyplan_cluster(
       n = n_vec,
@@ -1441,7 +1468,11 @@ n_multi.default <- function(
         sqrt(
           rel_var[j] /
             (n1 * resp_rate[j] * psu_size * ssu_size) *
-            (k_psu[j] * delta_psu[j] * psu_size * ssu_size + k_ssu[j] * (1 + delta_ssu[j] * (ssu_size - 1)))
+            (k_psu[j] *
+              delta_psu[j] *
+              psu_size *
+              ssu_size +
+              k_ssu[j] * (1 + delta_ssu[j] * (ssu_size - 1)))
         )
       },
       numeric(1L)
@@ -1480,7 +1511,8 @@ n_multi.default <- function(
 
     psu_size_opt <- opt$par[1L]
     ssu_size_opt <- opt$par[2L]
-    n1_opt <- budget / (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size_opt)
+    n1_opt <- budget /
+      (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size_opt)
     total_cost <- budget
   } else {
     n1_opt <- n_psu
@@ -1526,7 +1558,10 @@ n_multi.default <- function(
         call. = FALSE
       )
     }
-    total_cost <- C1 * n_psu + C2 * n_psu * psu_size_opt + C3 * n_psu * psu_size_opt * ssu_size_opt
+    total_cost <- C1 *
+      n_psu +
+      C2 * n_psu * psu_size_opt +
+      C3 * n_psu * psu_size_opt * ssu_size_opt
 
     tol <- max(1e-8, 1e-6 * max(1, budget))
     if (total_cost - budget > tol) {

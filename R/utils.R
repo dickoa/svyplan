@@ -179,6 +179,7 @@ check_delta <- function(delta, expected_length = NULL) {
 
 #' Reorder a named stage-indexed vector
 #'
+#'
 #' If `x` is unnamed, return as-is. If named, validate and reorder
 #' to canonical `c(..._psu, ..._ssu)` order.
 #' @param x Numeric vector (length 1 or 2).
@@ -338,7 +339,12 @@ check_delta <- function(delta, expected_length = NULL) {
 #' Optionally supports a scalar alias (`delta` or `k`) for 2-stage.
 #' @keywords internal
 #' @noRd
-.cluster_stage_col_map <- function(cols, name, stage_count, allow_scalar_alias = FALSE) {
+.cluster_stage_col_map <- function(
+  cols,
+  name,
+  stage_count,
+  allow_scalar_alias = FALSE
+) {
   canonical <- if (stage_count == 1L) {
     paste0(name, "_psu")
   } else {
@@ -395,7 +401,12 @@ check_delta <- function(delta, expected_length = NULL) {
 #' Apply mapped stage columns from predict row params to a base stage vector
 #' @keywords internal
 #' @noRd
-.apply_cluster_stage_cols <- function(base_stage, params, stage_col_map, canonical) {
+.apply_cluster_stage_cols <- function(
+  base_stage,
+  params,
+  stage_col_map,
+  canonical
+) {
   out <- unname(base_stage)
   if (length(stage_col_map) == 0L) {
     return(out)
@@ -490,16 +501,19 @@ check_resp_rate <- function(resp_rate) {
 #' @keywords internal
 #' @noRd
 .as_pair <- function(x, name, positive = TRUE) {
-  if (!is.numeric(x) || anyNA(x) || !all(is.finite(x)))
+  if (!is.numeric(x) || anyNA(x) || !all(is.finite(x))) {
     stop(sprintf("'%s' must be finite numeric", name), call. = FALSE)
+  }
   if (length(x) == 1L) {
-    if (positive && x <= 0)
+    if (positive && x <= 0) {
       stop(sprintf("'%s' must be positive", name), call. = FALSE)
+    }
     return(c(x, x))
   }
   if (length(x) == 2L) {
-    if (positive && any(x <= 0))
+    if (positive && any(x <= 0)) {
       stop(sprintf("all '%s' elements must be positive", name), call. = FALSE)
+    }
     return(x)
   }
   stop(sprintf("'%s' must be length 1 or 2", name), call. = FALSE)
@@ -509,13 +523,18 @@ check_resp_rate <- function(resp_rate) {
 #' @keywords internal
 #' @noRd
 .check_power_n <- function(n) {
-  if (!is.numeric(n) || anyNA(n) || !all(is.finite(n)))
+  if (!is.numeric(n) || anyNA(n) || !all(is.finite(n))) {
     stop("'n' must be finite numeric", call. = FALSE)
-  if (!length(n) %in% c(1L, 2L))
-    stop("'n' must be length 1 (equal groups) or 2 (unequal groups)",
-         call. = FALSE)
-  if (any(n < 2))
+  }
+  if (!length(n) %in% c(1L, 2L)) {
+    stop(
+      "'n' must be length 1 (equal groups) or 2 (unequal groups)",
+      call. = FALSE
+    )
+  }
+  if (any(n < 2)) {
     stop("'n' must be >= 2", call. = FALSE)
+  }
   n
 }
 
@@ -523,10 +542,18 @@ check_resp_rate <- function(resp_rate) {
 #' @keywords internal
 #' @noRd
 .resolve_ratio <- function(n, ratio) {
-  if (is.null(ratio)) return(1)
-  if (!is.numeric(ratio) || length(ratio) != 1L ||
-      is.na(ratio) || ratio <= 0 || !is.finite(ratio))
+  if (is.null(ratio)) {
+    return(1)
+  }
+  if (
+    !is.numeric(ratio) ||
+      length(ratio) != 1L ||
+      is.na(ratio) ||
+      ratio <= 0 ||
+      !is.finite(ratio)
+  ) {
     stop("'ratio' must be a positive finite scalar", call. = FALSE)
+  }
   if (!is.null(n) && ratio != 1) {
     stop("'ratio' cannot be used when 'n' is provided", call. = FALSE)
   }
@@ -548,7 +575,10 @@ check_resp_rate <- function(resp_rate) {
     stop("'N' must be numeric, finite, or Inf", call. = FALSE)
   }
   if (!length(N) %in% c(1L, 2L)) {
-    stop("'N' must be length 1 (equal groups) or 2 (group-specific)", call. = FALSE)
+    stop(
+      "'N' must be length 1 (equal groups) or 2 (group-specific)",
+      call. = FALSE
+    )
   }
   if (any(N <= 1 & !is.infinite(N))) {
     stop("'N' values must be greater than 1 (or Inf)", call. = FALSE)
@@ -575,24 +605,38 @@ check_resp_rate <- function(resp_rate) {
 #' Solve n2 by inverting a monotone power function
 #' @keywords internal
 #' @noRd
-.solve_n2_from_power <- function(target_power, power_fn, N_pair, ratio, resp_rate,
-                                 tol = 1e-8) {
+.solve_n2_from_power <- function(
+  target_power,
+  power_fn,
+  N_pair,
+  ratio,
+  resp_rate,
+  tol = 1e-8
+) {
   lo <- sqrt(.Machine$double.eps)
   p_lo <- suppressWarnings(power_fn(lo))
-  if (!is.finite(p_lo)) p_lo <- 0
-  if (target_power <= p_lo) return(lo)
+  if (!is.finite(p_lo)) {
+    p_lo <- 0
+  }
+  if (target_power <= p_lo) {
+    return(lo)
+  }
 
   hi_cap <- .n2_upper_bound(N_pair, ratio, resp_rate)
   if (is.finite(hi_cap)) {
     hi <- hi_cap * (1 - 1e-7)
     if (hi <= lo) {
-      stop("target power is unattainable under finite population constraints",
-           call. = FALSE)
+      stop(
+        "target power is unattainable under finite population constraints",
+        call. = FALSE
+      )
     }
     p_hi <- suppressWarnings(power_fn(hi))
     if (!is.finite(p_hi) || p_hi < target_power - tol) {
-      stop("target power is unattainable under finite population constraints",
-           call. = FALSE)
+      stop(
+        "target power is unattainable under finite population constraints",
+        call. = FALSE
+      )
     }
   } else {
     hi <- max(2, lo * 2)
@@ -608,15 +652,20 @@ check_resp_rate <- function(resp_rate) {
     }
   }
 
-  uniroot(function(n2) power_fn(n2) - target_power,
-          interval = c(lo, hi), tol = tol)$root
+  uniroot(
+    function(n2) power_fn(n2) - target_power,
+    interval = c(lo, hi),
+    tol = tol
+  )$root
 }
 
 #' Per-group FPC factor (returns 1 for Inf, 0-clamped)
 #' @keywords internal
 #' @noRd
 .fpc_factor <- function(n, N) {
-  if (is.infinite(N)) return(1)
+  if (is.infinite(N)) {
+    return(1)
+  }
   max(0, 1 - n / N)
 }
 
@@ -625,7 +674,10 @@ check_resp_rate <- function(resp_rate) {
 #' @noRd
 .safe_variance <- function(V, what = "variance") {
   if (!is.finite(V)) {
-    stop(sprintf("%s is not finite; check input parameters", what), call. = FALSE)
+    stop(
+      sprintf("%s is not finite; check input parameters", what),
+      call. = FALSE
+    )
   }
   tol <- sqrt(.Machine$double.eps)
   if (V < -tol) {
@@ -641,14 +693,25 @@ check_resp_rate <- function(resp_rate) {
 #' @keywords internal
 #' @noRd
 .check_overlap_n <- function(overlap, n = NULL, ratio = NULL) {
-  if (overlap == 0) return(invisible(NULL))
-  if (!is.null(ratio) && ratio > 1 && overlap > 1 / ratio)
-    stop(sprintf("overlap (%.3g) must be <= 1/ratio (%.3g)", overlap, 1 / ratio),
-         call. = FALSE)
-  if (!is.null(n) && length(n) == 2L && overlap > n[2] / n[1])
-    stop(sprintf("overlap (%.3g) must be <= n[2]/n[1] (%.3g)",
-                 overlap, n[2] / n[1]),
-         call. = FALSE)
+  if (overlap == 0) {
+    return(invisible(NULL))
+  }
+  if (!is.null(ratio) && ratio > 1 && overlap > 1 / ratio) {
+    stop(
+      sprintf("overlap (%.3g) must be <= 1/ratio (%.3g)", overlap, 1 / ratio),
+      call. = FALSE
+    )
+  }
+  if (!is.null(n) && length(n) == 2L && overlap > n[2] / n[1]) {
+    stop(
+      sprintf(
+        "overlap (%.3g) must be <= n[2]/n[1] (%.3g)",
+        overlap,
+        n[2] / n[1]
+      ),
+      call. = FALSE
+    )
+  }
 }
 
 #' Null-coalescing operator
@@ -727,7 +790,10 @@ check_resp_rate <- function(resp_rate) {
     stop("'x' and 'w' must have length >= 2", call. = FALSE)
   }
   if (anyNA(x) || anyNA(w) || any(!is.finite(x)) || any(!is.finite(w))) {
-    stop("'x' and 'w' must contain only finite, non-missing values", call. = FALSE)
+    stop(
+      "'x' and 'w' must contain only finite, non-missing values",
+      call. = FALSE
+    )
   }
   n <- length(w)
   sw <- sum(w)

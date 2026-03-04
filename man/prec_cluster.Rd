@@ -15,7 +15,8 @@ prec_cluster(n, ...)
 \arguments{
 \item{n}{For the default method: numeric vector of per-stage sample
 sizes (\code{c(n_psu, psu_size)} for 2-stage or
-\code{c(n_psu, psu_size, ssu_size)} for 3-stage).
+\code{c(n_psu, psu_size, ssu_size)} for 3-stage). Named vectors are accepted
+with stage names \code{n_psu}, \code{psu_size}, \code{ssu_size}.
 For \code{svyplan_cluster} objects: a cluster allocation from \code{\link[=n_cluster]{n_cluster()}}.}
 
 \item{...}{Additional arguments passed to methods.}
