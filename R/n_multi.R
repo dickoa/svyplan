@@ -8,8 +8,8 @@
 #'   indicator (see Details). For `svyplan_prec` objects: a precision
 #'   result from [prec_multi()].
 #' @param ... Additional arguments passed to methods.
-#' @param cost Numeric vector of per-stage costs. `NULL` (default) for
-#'   simple mode; length 2 or 3 for multistage mode.
+#' @param stage_cost Numeric vector of per-stage costs. `NULL` (default)
+#'   for simple mode; length 2 or 3 for multistage mode.
 #' @param budget Total budget (multistage only). Provide either `cv` values
 #'   in the `targets` data frame or a `budget` here, not both.
 #' @param n_psu Fixed stage-1 sample size (multistage only).
@@ -25,6 +25,8 @@
 #'   multistage mode, a warning is issued for any domain below the floor.
 #' @param fixed_cost Fixed overhead cost (C0). Default 0. Only applies
 #'   to multistage mode. See [n_cluster()] for details.
+#' @param plan Optional [svyplan()] object providing design defaults
+#'   (`stage_cost`, `fixed_cost`).
 #'
 #' @return A `svyplan_n` object (simple mode) or `svyplan_cluster` object
 #'   (multistage mode).
@@ -81,10 +83,10 @@
 #' When domain columns are present, optimization runs independently per
 #' domain combination (default), or jointly when `joint = TRUE`.
 #'
-#' **Simple mode** (`cost = NULL`): computes sample size per indicator using
-#' Wald-type formulas, then takes the maximum per domain.
+#' **Simple mode** (`stage_cost = NULL`): computes sample size per indicator
+#' using Wald-type formulas, then takes the maximum per domain.
 #'
-#' **Multistage mode** (`cost` provided): uses analytical reduction.
+#' **Multistage mode** (`stage_cost` provided): uses analytical reduction.
 #' For each candidate sub-stage allocation, the required stage-1 size is
 #' the maximum across all indicators. The total cost is then minimized
 #' (CV mode) or the worst-case CV ratio is minimized (budget mode) using
@@ -137,7 +139,7 @@
 #'   cv     = c(0.10, 0.15),
 #'   delta_psu = c(0.02, 0.05)
 #' )
-#' n_multi(targets_cl, cost = c(500, 50))
+#' n_multi(targets_cl, stage_cost = c(500, 50))
 #'
 #' # Joint budget allocation across domains
 #' targets_jnt <- data.frame(
@@ -147,10 +149,14 @@
 #'   delta_psu = c(0.02, 0.03, 0.05, 0.04),
 #'   region = rep(c("Urban", "Rural"), 2)
 #' )
-#' n_multi(targets_jnt, cost = c(500, 50), budget = 100000, joint = TRUE)
+#' n_multi(targets_jnt, stage_cost = c(500, 50), budget = 100000, joint = TRUE)
 #'
 #' @export
 n_multi <- function(targets, ...) {
+  if (!missing(targets)) {
+    .res <- .dispatch_plan(targets, "targets", n_multi.default, ...)
+    if (!is.null(.res)) return(.res)
+  }
   UseMethod("n_multi")
 }
 
@@ -158,14 +164,17 @@ n_multi <- function(targets, ...) {
 #' @export
 n_multi.default <- function(
   targets,
-  cost = NULL,
+  stage_cost = NULL,
   budget = NULL,
   n_psu = NULL,
   joint = FALSE,
   min_n = NULL,
   fixed_cost = 0,
+  plan = NULL,
   ...
 ) {
+  .plan <- .merge_plan_args(plan, n_multi.default, match.call(), environment())
+  if (!is.null(.plan)) return(do.call(n_multi.default, c(.plan, list(...))))
   if (!is.data.frame(targets) || nrow(targets) == 0L) {
     stop("'targets' must be a non-empty data frame", call. = FALSE)
   }
@@ -180,11 +189,11 @@ n_multi.default <- function(
     }
   }
 
-  multistage <- !is.null(cost)
+  multistage <- !is.null(stage_cost)
 
   if (multistage) {
-    check_cost(cost)
-    cost <- .reorder_cost_vec(cost)
+    check_stage_cost(stage_cost)
+    stage_cost <- .reorder_stage_cost(stage_cost)
     if (!is.null(budget)) {
       check_scalar(budget, "budget")
     }
@@ -194,10 +203,10 @@ n_multi.default <- function(
     check_fixed_cost(fixed_cost, budget)
   } else {
     if (!is.null(budget)) {
-      stop("'budget' requires 'cost' to be specified", call. = FALSE)
+      stop("'budget' requires 'stage_cost' to be specified", call. = FALSE)
     }
     if (!is.null(n_psu)) {
-      stop("'n_psu' requires 'cost' to be specified", call. = FALSE)
+      stop("'n_psu' requires 'stage_cost' to be specified", call. = FALSE)
     }
   }
 
@@ -224,14 +233,14 @@ n_multi.default <- function(
 
   if (length(domain_cols) == 0L) {
     if (multistage) {
-      .n_multi_cluster(targets, cost, budget, n_psu, fixed_cost)
+      .n_multi_cluster(targets, stage_cost, budget, n_psu, fixed_cost)
     } else {
       .n_multi_simple(targets)
     }
   } else {
     .n_multi_domains(
       targets,
-      cost,
+      stage_cost,
       budget,
       n_psu,
       domain_cols,
@@ -594,21 +603,21 @@ n_multi.default <- function(
 #' Multistage cluster mode dispatcher
 #' @keywords internal
 #' @noRd
-.n_multi_cluster <- function(targets, cost, budget, n_psu, fixed_cost = 0) {
-  stages <- length(cost)
+.n_multi_cluster <- function(targets, stage_cost, budget, n_psu, fixed_cost = 0) {
+  stages <- length(stage_cost)
   if (stages == 2L) {
-    .n_multi_2stage(targets, cost, budget, n_psu, fixed_cost)
+    .n_multi_2stage(targets, stage_cost, budget, n_psu, fixed_cost)
   } else {
-    .n_multi_3stage(targets, cost, budget, n_psu, fixed_cost)
+    .n_multi_3stage(targets, stage_cost, budget, n_psu, fixed_cost)
   }
 }
 
 #' 2-stage multi-indicator optimization
 #' @keywords internal
 #' @noRd
-.n_multi_2stage <- function(targets, cost, budget, n_psu, fixed_cost = 0) {
-  C1 <- cost[1L]
-  C2 <- cost[2L]
+.n_multi_2stage <- function(targets, stage_cost, budget, n_psu, fixed_cost = 0) {
+  C1 <- stage_cost[1L]
+  C2 <- stage_cost[2L]
   nr <- nrow(targets)
 
   cv_t <- targets$cv
@@ -693,7 +702,7 @@ n_multi.default <- function(
     .binding = seq_len(nr) == binding_idx
   )
 
-  params <- list(cost = cost)
+  params <- list(stage_cost = stage_cost)
   if (!is.null(budget)) {
     params$budget <- budget
   }
@@ -720,10 +729,10 @@ n_multi.default <- function(
 #' 3-stage multi-indicator optimization
 #' @keywords internal
 #' @noRd
-.n_multi_3stage <- function(targets, cost, budget, n_psu, fixed_cost = 0) {
-  C1 <- cost[1L]
-  C2 <- cost[2L]
-  C3 <- cost[3L]
+.n_multi_3stage <- function(targets, stage_cost, budget, n_psu, fixed_cost = 0) {
+  C1 <- stage_cost[1L]
+  C2 <- stage_cost[2L]
+  C3 <- stage_cost[3L]
   nr <- nrow(targets)
 
   cv_t <- targets$cv
@@ -905,7 +914,7 @@ n_multi.default <- function(
     .binding = seq_len(nr) == binding_idx
   )
 
-  params <- list(cost = cost)
+  params <- list(stage_cost = stage_cost)
   if (!is.null(budget)) {
     params$budget <- budget
   }
@@ -934,7 +943,7 @@ n_multi.default <- function(
 #' @noRd
 .n_multi_domains <- function(
   targets,
-  cost,
+  stage_cost,
   budget,
   n_psu,
   domain_cols,
@@ -950,7 +959,7 @@ n_multi.default <- function(
   if (multistage && joint && !is.null(budget) && length(domain_levels) > 1L) {
     return(.n_multi_domains_joint(
       targets,
-      cost,
+      stage_cost,
       budget,
       n_psu,
       domain_cols,
@@ -967,7 +976,7 @@ n_multi.default <- function(
     # Drop domain columns for inner solve
     sub_inner <- sub[, !names(sub) %in% domain_cols, drop = FALSE]
     if (multistage) {
-      .n_multi_cluster(sub_inner, cost, budget, n_psu, fixed_cost)
+      .n_multi_cluster(sub_inner, stage_cost, budget, n_psu, fixed_cost)
     } else {
       .n_multi_simple(sub_inner)
     }
@@ -981,7 +990,7 @@ n_multi.default <- function(
       domain_cols,
       domain_levels,
       split_idx,
-      cost,
+      stage_cost,
       budget,
       n_psu,
       min_n,
@@ -1054,7 +1063,7 @@ n_multi.default <- function(
   domain_cols,
   domain_levels,
   split_idx,
-  cost,
+  stage_cost,
   budget = NULL,
   n_psu = NULL,
   min_n = NULL,
@@ -1113,7 +1122,7 @@ n_multi.default <- function(
   )
   names(n_vec) <- stage_names
 
-  params <- list(cost = cost)
+  params <- list(stage_cost = stage_cost)
   if (!is.null(budget)) {
     params$budget <- budget
   }
@@ -1145,7 +1154,7 @@ n_multi.default <- function(
 #' @noRd
 .n_multi_domains_joint <- function(
   targets,
-  cost,
+  stage_cost,
   budget,
   n_psu,
   domain_cols,
@@ -1154,11 +1163,11 @@ n_multi.default <- function(
   min_n = NULL,
   fixed_cost = 0
 ) {
-  stages <- length(cost)
+  stages <- length(stage_cost)
   nd <- length(domain_levels)
-  C1 <- cost[1L]
-  C2 <- cost[2L]
-  C3 <- if (stages == 3L) cost[3L] else NULL
+  C1 <- stage_cost[1L]
+  C2 <- stage_cost[2L]
+  C3 <- if (stages == 3L) stage_cost[3L] else NULL
 
   domain_params <- lapply(domain_levels, function(lev) {
     rows <- split_idx[[lev]]
@@ -1339,7 +1348,7 @@ n_multi.default <- function(
       total_n = prod(n_vec),
       cv = bres$cv_achieved[bres$binding_idx],
       cost = bres$cost,
-      params = list(cost = cost),
+      params = list(stage_cost = stage_cost),
       targets = NULL,
       detail = NULL,
       binding = p$labels[bres$binding_idx]
@@ -1353,7 +1362,7 @@ n_multi.default <- function(
     domain_cols,
     domain_levels,
     split_idx,
-    cost,
+    stage_cost,
     budget,
     n_psu,
     min_n,
@@ -1589,7 +1598,7 @@ n_multi.default <- function(
 
 #' @rdname n_multi
 #' @export
-n_multi.svyplan_prec <- function(targets, cost = NULL, ...) {
+n_multi.svyplan_prec <- function(targets, stage_cost = NULL, ...) {
   x <- targets
   if (x$type != "multi") {
     stop("n_multi requires a svyplan_prec of type 'multi'", call. = FALSE)
@@ -1607,7 +1616,7 @@ n_multi.svyplan_prec <- function(targets, cost = NULL, ...) {
       tgt$moe <- NULL
     }
   }
-  cost <- cost %||% x$params$cost
+  stage_cost <- stage_cost %||% x$params$stage_cost
   budget <- x$params$budget
   n_psu <- x$params$n_psu
   joint <- if (!is.null(x$params$joint)) x$params$joint else FALSE
@@ -1615,7 +1624,7 @@ n_multi.svyplan_prec <- function(targets, cost = NULL, ...) {
   fixed_cost <- if (!is.null(x$params$fixed_cost)) x$params$fixed_cost else 0
   n_multi.default(
     targets = tgt,
-    cost = cost,
+    stage_cost = stage_cost,
     budget = budget,
     n_psu = n_psu,
     joint = joint,

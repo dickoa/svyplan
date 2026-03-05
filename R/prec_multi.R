@@ -7,11 +7,12 @@
 #'   indicator (must contain an `n` column; see Details). For `svyplan_n`
 #'   or `svyplan_cluster` objects: a result from [n_multi()].
 #' @param ... Additional arguments passed to methods.
-#' @param cost Numeric vector of per-stage costs. `NULL` (default) for
+#' @param stage_cost Numeric vector of per-stage costs. `NULL` (default) for
 #'   simple mode; length 2 or 3 for multistage mode.
 #' @param budget Total budget (currently unused in precision mode).
 #' @param n_psu Fixed stage-1 sample size (currently unused in precision mode).
 #' @param joint Logical (currently unused in precision mode).
+#' @param plan A [svyplan()] profile providing default design parameters.
 #'
 #' @return A `svyplan_prec` object with a `$detail` data frame containing
 #'   per-indicator precision.
@@ -53,6 +54,10 @@
 #'
 #' @export
 prec_multi <- function(targets, ...) {
+  if (!missing(targets)) {
+    .res <- .dispatch_plan(targets, "targets", prec_multi.default, ...)
+    if (!is.null(.res)) return(.res)
+  }
   UseMethod("prec_multi")
 }
 
@@ -60,12 +65,23 @@ prec_multi <- function(targets, ...) {
 #' @export
 prec_multi.default <- function(
   targets,
-  cost = NULL,
+  stage_cost = NULL,
   budget = NULL,
   n_psu = NULL,
   joint = FALSE,
+  plan = NULL,
   ...
 ) {
+  merged <- .merge_plan_args(
+    plan,
+    prec_multi.default,
+    match.call(),
+    environment()
+  )
+  if (!is.null(merged)) {
+    return(do.call(prec_multi.default, merged))
+  }
+
   if (!is.data.frame(targets) || nrow(targets) == 0L) {
     stop("'targets' must be a non-empty data frame", call. = FALSE)
   }
@@ -74,12 +90,12 @@ prec_multi.default <- function(
     stop("'targets' must contain an 'n' column for prec_multi", call. = FALSE)
   }
 
-  multistage <- !is.null(cost)
+  multistage <- !is.null(stage_cost)
 
   if (multistage) {
-    check_cost(cost)
-    cost <- .reorder_cost_vec(cost)
-    .prec_multi_cluster(targets, cost)
+    check_stage_cost(stage_cost)
+    stage_cost <- .reorder_stage_cost(stage_cost)
+    .prec_multi_cluster(targets, stage_cost)
   } else {
     .prec_multi_simple(targets)
   }
@@ -201,8 +217,8 @@ prec_multi.default <- function(
 
 #' @keywords internal
 #' @noRd
-.prec_multi_cluster <- function(targets, cost) {
-  stages <- length(cost)
+.prec_multi_cluster <- function(targets, stage_cost) {
+  stages <- length(stage_cost)
 
   if (!"alpha" %in% names(targets)) {
     targets$alpha <- 0.05
@@ -225,8 +241,10 @@ prec_multi.default <- function(
   targets$rel_var <- .derive_rel_var(targets, require_all = TRUE)
 
   rv_check <- targets$rel_var[!is.na(targets$rel_var)]
-  if (length(rv_check) > 0L &&
-    (any(rv_check <= 0) || any(!is.finite(rv_check)))) {
+  if (
+    length(rv_check) > 0L &&
+      (any(rv_check <= 0) || any(!is.finite(rv_check)))
+  ) {
     stop("'rel_var' values must be positive and finite", call. = FALSE)
   }
   if (any(targets$k_psu <= 0) || any(!is.finite(targets$k_psu))) {
@@ -242,7 +260,9 @@ prec_multi.default <- function(
   n1 <- targets$n
   if (
     stages >= 2L &&
-      (!"psu_size" %in% names(targets) || anyNA(targets$psu_size) || any(targets$psu_size <= 0))
+      (!"psu_size" %in% names(targets) ||
+        anyNA(targets$psu_size) ||
+        any(targets$psu_size <= 0))
   ) {
     stop(
       "'psu_size' column is required for multistage precision (positive, no NA)",
@@ -251,7 +271,9 @@ prec_multi.default <- function(
   }
   if (
     stages == 3L &&
-      (!"ssu_size" %in% names(targets) || anyNA(targets$ssu_size) || any(targets$ssu_size <= 0))
+      (!"ssu_size" %in% names(targets) ||
+        anyNA(targets$ssu_size) ||
+        any(targets$ssu_size <= 0))
   ) {
     stop(
       "'ssu_size' column is required for 3-stage precision (positive, no NA)",
@@ -299,7 +321,11 @@ prec_multi.default <- function(
 
   cv_vec <- numeric(nr)
   delta1 <- targets$delta_psu
-  delta2 <- if ("delta_ssu" %in% names(targets)) targets$delta_ssu else rep(0, nr)
+  delta2 <- if ("delta_ssu" %in% names(targets)) {
+    targets$delta_ssu
+  } else {
+    rep(0, nr)
+  }
   rel_var <- targets$rel_var
   k1 <- targets$k_psu
   k2 <- targets$k_ssu
@@ -332,7 +358,7 @@ prec_multi.default <- function(
     moe = rep(NA_real_, nr),
     cv = cv_vec,
     type = "multi",
-    params = list(targets = targets, cost = cost),
+    params = list(targets = targets, stage_cost = stage_cost),
     detail = detail
   )
 }
@@ -396,8 +422,8 @@ prec_multi.svyplan_cluster <- function(targets, ...) {
     if (x$stages >= 3L) tgt$ssu_size <- dom$ssu_size[dom_idx]
   }
 
-  cost <- x$params$cost
-  res <- prec_multi.default(targets = tgt, cost = cost)
+  stage_cost <- x$params$stage_cost
+  res <- prec_multi.default(targets = tgt, stage_cost = stage_cost)
   for (p in c("budget", "n_psu", "joint", "fixed_cost", "min_n")) {
     if (!is.null(x$params[[p]])) res$params[[p]] <- x$params[[p]]
   }

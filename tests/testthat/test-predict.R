@@ -64,7 +64,7 @@ test_that("no duplicate columns when newdata overlaps result names", {
   res2 <- predict(x, nd2)
   expect_equal(sum(names(res2) == "cv"), 1L)
 
-  cl <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+  cl <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
   nd3 <- data.frame(cv = c(0.03, 0.05))
   res3 <- predict(cl, nd3)
   expect_equal(sum(names(res3) == "cv"), 1L)
@@ -92,7 +92,7 @@ test_that("predict.svyplan_n errors for multi-indicator results", {
 })
 
 test_that("predict.svyplan_cluster varies budget", {
-  x <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   nd <- data.frame(budget = c(50000, 100000, 200000))
   res <- predict(x, nd)
 
@@ -102,7 +102,7 @@ test_that("predict.svyplan_cluster varies budget", {
 })
 
 test_that("predict.svyplan_cluster varies cv", {
-  x <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
   nd <- data.frame(cv = c(0.03, 0.05, 0.10))
   res <- predict(x, nd)
 
@@ -110,7 +110,7 @@ test_that("predict.svyplan_cluster varies cv", {
 })
 
 test_that("predict.svyplan_cluster supports varying delta only", {
-  cl <- n_cluster(cost = c(750, 100), delta = 0.05, rel_var = 1, k = 1,
+  cl <- n_cluster(stage_cost = c(750, 100), delta = 0.05, rel_var = 1, k = 1,
                   budget = 1e5)
   nd <- data.frame(delta = c(0.01, 0.05, 0.10, 0.20))
   res <- predict(cl, nd)
@@ -120,21 +120,21 @@ test_that("predict.svyplan_cluster supports varying delta only", {
 
   ref_cv <- vapply(nd$delta, function(d) {
     n_cluster(
-      cost = c(750, 100), delta = d, rel_var = 1, k = 1, budget = 1e5
+      stage_cost = c(750, 100), delta = d, rel_var = 1, k = 1, budget = 1e5
     )$cv
   }, numeric(1))
   expect_equal(res$cv, ref_cv, tolerance = 1e-8)
 })
 
 test_that("predict.svyplan_cluster supports varying k in 2-stage", {
-  cl <- n_cluster(cost = c(750, 100), delta = 0.05, rel_var = 1, k = 1,
+  cl <- n_cluster(stage_cost = c(750, 100), delta = 0.05, rel_var = 1, k = 1,
                   budget = 1e5)
   nd <- data.frame(k_psu = c(0.8, 1.0, 1.2))
   res <- predict(cl, nd)
 
   ref_cv <- vapply(nd$k_psu, function(kval) {
     n_cluster(
-      cost = c(750, 100), delta = 0.05, rel_var = 1, k = kval, budget = 1e5
+      stage_cost = c(750, 100), delta = 0.05, rel_var = 1, k = kval, budget = 1e5
     )$cv
   }, numeric(1))
   expect_equal(res$cv, ref_cv, tolerance = 1e-8)
@@ -145,7 +145,7 @@ test_that("predict.svyplan_cluster supports varying k in 2-stage", {
 })
 
 test_that("predict.svyplan_cluster varies rel_var", {
-  x <- n_cluster(cost = c(500, 50), delta = 0.05, rel_var = 1, cv = 0.05)
+  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, rel_var = 1, cv = 0.05)
   nd <- data.frame(rel_var = c(0.5, 1, 2))
   res <- predict(x, nd)
 
@@ -154,7 +154,7 @@ test_that("predict.svyplan_cluster varies rel_var", {
 })
 
 test_that("predict.svyplan_cluster uses original mode when no cv/budget in newdata", {
-  x <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
   nd <- data.frame(resp_rate = c(0.8, 0.9, 1.0))
   res <- predict(x, nd)
 
@@ -163,12 +163,12 @@ test_that("predict.svyplan_cluster uses original mode when no cv/budget in newda
 })
 
 test_that("predict.svyplan_cluster supports varying stage costs", {
-  x <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   nd <- data.frame(cost_psu = c(500, 800), cost_ssu = c(50, 120))
   res <- predict(x, nd)
   ref <- vapply(seq_len(nrow(nd)), function(i) {
     n_cluster(
-      cost = c(nd$cost_psu[i], nd$cost_ssu[i]),
+      stage_cost = c(nd$cost_psu[i], nd$cost_ssu[i]),
       delta = 0.05,
       budget = 100000
     )$cv
@@ -182,7 +182,7 @@ test_that("predict.svyplan_cluster supports varying stage costs", {
 
 test_that("predict.svyplan_cluster supports stage-wise delta and k in 3-stage", {
   x <- n_cluster(
-    cost = c(500, 100, 50),
+    stage_cost = c(500, 100, 50),
     delta = c(0.01, 0.05),
     k = c(1.0, 1.0),
     budget = 200000
@@ -197,7 +197,7 @@ test_that("predict.svyplan_cluster supports stage-wise delta and k in 3-stage", 
 
   ref <- vapply(seq_len(nrow(nd)), function(i) {
     n_cluster(
-      cost = c(500, 100, 50),
+      stage_cost = c(500, 100, 50),
       delta = c(nd$delta_psu[i], nd$delta_ssu[i]),
       k = c(nd$k_psu[i], nd$k_ssu[i]),
       budget = 200000
@@ -207,13 +207,13 @@ test_that("predict.svyplan_cluster supports stage-wise delta and k in 3-stage", 
 })
 
 test_that("predict.svyplan_cluster rejects overlapping cost aliases", {
-  x <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   nd <- data.frame(cost_ssu = 50, cost_tsu = 50)
   expect_error(predict(x, nd), "multiple columns")
 })
 
 test_that("predict.svyplan_cluster rejects overlapping delta/k aliases", {
-  x <- n_cluster(cost = c(500, 50), delta = 0.05, k = 1, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, k = 1, budget = 100000)
   expect_error(
     predict(x, data.frame(delta = 0.05, delta_psu = 0.05)),
     "multiple columns"
@@ -226,7 +226,7 @@ test_that("predict.svyplan_cluster rejects overlapping delta/k aliases", {
 
 test_that("predict.svyplan_cluster rejects scalar delta/k for 3-stage", {
   x <- n_cluster(
-    cost = c(500, 100, 50),
+    stage_cost = c(500, 100, 50),
     delta = c(0.01, 0.05),
     k = c(1, 1),
     budget = 200000
@@ -242,7 +242,7 @@ test_that("predict.svyplan_cluster rejects scalar delta/k for 3-stage", {
 })
 
 test_that("predict.svyplan_cluster errors on both cv and budget", {
-  x <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
   nd <- data.frame(cv = 0.05, budget = 100000)
   expect_error(predict(x, nd), "cannot contain both")
 })
@@ -254,7 +254,7 @@ test_that("predict.svyplan_cluster rejects multi-indicator results", {
     cv     = c(0.10, 0.15),
     delta_psu = c(0.02, 0.05)
   )
-  x <- n_multi(targets, cost = c(500, 50))
+  x <- n_multi(targets, stage_cost = c(500, 50))
   expect_error(predict(x, data.frame(cv = 0.05)), "multi-indicator")
 })
 
@@ -357,7 +357,7 @@ test_that("predict produces NA + warning on row failure", {
 })
 
 test_that("predict.svyplan_cluster supports fixed_cost in newdata", {
-  x <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05,
+  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05,
                   fixed_cost = 5000)
   nd <- data.frame(fixed_cost = c(0, 5000, 10000))
   res <- predict(x, nd)

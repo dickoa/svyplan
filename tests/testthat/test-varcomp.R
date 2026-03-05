@@ -99,7 +99,7 @@ test_that("varcomp integrates with n_cluster", {
     district = rep(1:20, each = 10)
   )
   vc <- varcomp(income ~ district, data = frame)
-  plan <- n_cluster(cost = c(500, 50), delta = vc, budget = 100000)
+  plan <- n_cluster(stage_cost = c(500, 50), delta = vc, budget = 100000)
   expect_s3_class(plan, "svyplan_cluster")
 })
 
@@ -178,7 +178,7 @@ test_that("varcomp.survey.design feeds into n_cluster", {
     weights = rep(1, 200)
   )
   vc <- varcomp(dsgn, ~income)
-  plan <- n_cluster(cost = c(500, 50), delta = vc, budget = 100000)
+  plan <- n_cluster(stage_cost = c(500, 50), delta = vc, budget = 100000)
   expect_s3_class(plan, "svyplan_cluster")
 })
 
@@ -289,4 +289,31 @@ test_that("varcomp rejects empty outcome vector", {
     varcomp(numeric(0), stage_id = list(integer(0))),
     "non-empty numeric"
   )
+})
+
+test_that("varcomp accepts '/' and '%in%' for multi-stage formula", {
+  set.seed(1)
+  frame <- data.frame(
+    y = rnorm(40),
+    psu = rep(1:5, each = 8),
+    ssu = rep(1:20, each = 2),
+    pp = rep(1 / 5, 40)
+  )
+  expect_error(
+    varcomp(y ~ psu + ssu, data = frame, prob = ~pp),
+    "must express nesting"
+  )
+  expect_error(
+    varcomp(y ~ psu * ssu, data = frame, prob = ~pp),
+    "must express nesting"
+  )
+  expect_error(
+    varcomp(y ~ psu + ssu + psu:ssu, data = frame, prob = ~pp),
+    "must express nesting"
+  )
+  res_slash <- varcomp(y ~ psu/ssu, data = frame, prob = ~pp)
+  res_in <- varcomp(y ~ ssu %in% psu, data = frame, prob = ~pp)
+  expect_equal(res_slash$delta, res_in$delta, tolerance = 1e-10)
+  expect_equal(res_slash$varb, res_in$varb, tolerance = 1e-10)
+  expect_equal(res_slash$varw, res_in$varw, tolerance = 1e-10)
 })

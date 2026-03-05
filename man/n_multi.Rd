@@ -10,16 +10,17 @@ n_multi(targets, ...)
 
 \method{n_multi}{default}(
   targets,
-  cost = NULL,
+  stage_cost = NULL,
   budget = NULL,
   n_psu = NULL,
   joint = FALSE,
   min_n = NULL,
   fixed_cost = 0,
+  plan = NULL,
   ...
 )
 
-\method{n_multi}{svyplan_prec}(targets, cost = NULL, ...)
+\method{n_multi}{svyplan_prec}(targets, stage_cost = NULL, ...)
 }
 \arguments{
 \item{targets}{For the default method: data frame with one row per
@@ -28,8 +29,8 @@ result from \code{\link[=prec_multi]{prec_multi()}}.}
 
 \item{...}{Additional arguments passed to methods.}
 
-\item{cost}{Numeric vector of per-stage costs. \code{NULL} (default) for
-simple mode; length 2 or 3 for multistage mode.}
+\item{stage_cost}{Numeric vector of per-stage costs. \code{NULL} (default)
+for simple mode; length 2 or 3 for multistage mode.}
 
 \item{budget}{Total budget (multistage only). Provide either \code{cv} values
 in the \code{targets} data frame or a \code{budget} here, not both.}
@@ -50,6 +51,9 @@ multistage mode, a warning is issued for any domain below the floor.}
 
 \item{fixed_cost}{Fixed overhead cost (C0). Default 0. Only applies
 to multistage mode. See \code{\link[=n_cluster]{n_cluster()}} for details.}
+
+\item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults
+(\code{stage_cost}, \code{fixed_cost}).}
 }
 \value{
 A \code{svyplan_n} object (simple mode) or \code{svyplan_cluster} object
@@ -112,10 +116,10 @@ Any column not in the recognized set is treated as a \strong{domain variable}.
 When domain columns are present, optimization runs independently per
 domain combination (default), or jointly when \code{joint = TRUE}.
 
-\strong{Simple mode} (\code{cost = NULL}): computes sample size per indicator using
-Wald-type formulas, then takes the maximum per domain.
+\strong{Simple mode} (\code{stage_cost = NULL}): computes sample size per indicator
+using Wald-type formulas, then takes the maximum per domain.
 
-\strong{Multistage mode} (\code{cost} provided): uses analytical reduction.
+\strong{Multistage mode} (\code{stage_cost} provided): uses analytical reduction.
 For each candidate sub-stage allocation, the required stage-1 size is
 the maximum across all indicators. The total cost is then minimized
 (CV mode) or the worst-case CV ratio is minimized (budget mode) using
@@ -157,7 +161,7 @@ targets_cl <- data.frame(
   cv     = c(0.10, 0.15),
   delta_psu = c(0.02, 0.05)
 )
-n_multi(targets_cl, cost = c(500, 50))
+n_multi(targets_cl, stage_cost = c(500, 50))
 
 # Joint budget allocation across domains
 targets_jnt <- data.frame(
@@ -167,7 +171,7 @@ targets_jnt <- data.frame(
   delta_psu = c(0.02, 0.03, 0.05, 0.04),
   region = rep(c("Urban", "Rural"), 2)
 )
-n_multi(targets_jnt, cost = c(500, 50), budget = 100000, joint = TRUE)
+n_multi(targets_jnt, stage_cost = c(500, 50), budget = 100000, joint = TRUE)
 
 }
 \references{

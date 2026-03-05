@@ -24,7 +24,9 @@ NULL
 #' @rdname print.svyplan
 #' @export
 print.svyplan_n <- function(x, ...) {
-  if (x$type == "multi") {
+  if (x$type == "alloc") {
+    .print_alloc_n(x)
+  } else if (x$type == "multi") {
     .print_multi_n(x)
   } else {
     .print_single_n(x)
@@ -365,6 +367,8 @@ print.svyplan_power <- function(x, ...) {
     x$type,
     proportion = "proportions",
     mean = "means",
+    did_prop = "DiD proportions",
+    did_mean = "DiD means",
     x$type
   )
   solved_label <- switch(
@@ -386,13 +390,13 @@ print.svyplan_power <- function(x, ...) {
     n1 <- ceiling(x$n[1]); n2 <- ceiling(x$n[2])
     if (!is.null(resp_rate) && resp_rate < 1) {
       cat(sprintf(
-        "n1 = %d, n2 = %d (total = %d, net: %d), power = %.3f, effect = %.4f\n",
+        "n_treat = %d, n_control = %d (total = %d, net: %d), power = %.3f, effect = %.4f\n",
         n1, n2, n1 + n2, ceiling((n1 + n2) * resp_rate),
         x$power, x$effect
       ))
     } else {
       cat(sprintf(
-        "n1 = %d, n2 = %d (total = %d), power = %.3f, effect = %.4f\n",
+        "n_treat = %d, n_control = %d (total = %d), power = %.3f, effect = %.4f\n",
         n1, n2, n1 + n2, x$power, x$effect
       ))
     }
@@ -410,6 +414,16 @@ print.svyplan_power <- function(x, ...) {
   }
 
   parts <- character(0L)
+  if (!is.null(p$treat)) {
+    parts <- c(parts, sprintf(
+      "treat = (%.3f, %.3f)", p$treat[1], p$treat[2]
+    ))
+  }
+  if (!is.null(p$control)) {
+    parts <- c(parts, sprintf(
+      "control = (%.3f, %.3f)", p$control[1], p$control[2]
+    ))
+  }
   if (!is.null(p$p1)) {
     parts <- c(parts, sprintf("p1 = %.3f", p$p1))
   }
@@ -422,6 +436,11 @@ print.svyplan_power <- function(x, ...) {
   }
   if (!is.null(resp_rate) && resp_rate < 1) {
     parts <- c(parts, sprintf("resp_rate = %.2f", resp_rate))
+  }
+  if (!is.null(p$var) && length(p$var) == 4L) {
+    parts <- c(parts, sprintf(
+      "var = (%.2f, %.2f, %.2f, %.2f)", p$var[1], p$var[2], p$var[3], p$var[4]
+    ))
   }
   if (!is.null(p$overlap) && p$overlap > 0) {
     parts <- c(parts, sprintf("overlap = %.2f", p$overlap))
@@ -669,6 +688,13 @@ as.double.svyplan_power <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 print.svyplan_strata <- function(x, ...) {
+  .print_boundary_strata(x)
+  invisible(x)
+}
+
+#' @keywords internal
+#' @noRd
+.print_boundary_strata <- function(x) {
   method_label <- switch(
     x$method,
     cumrootf = "Dalenius-Hodges",
@@ -699,9 +725,41 @@ print.svyplan_strata <- function(x, ...) {
   df <- x$strata
   df$W_h <- sprintf("%.3f", df$W_h)
   df$S_h <- sprintf("%.1f", df$S_h)
-  df$certain <- NULL
+  df$take_all <- NULL
   print(df, row.names = FALSE, right = FALSE)
-  invisible(x)
+}
+
+#' @keywords internal
+#' @noRd
+.print_alloc_n <- function(x) {
+  p <- x$params
+  alloc <- p$alloc %||% x$method
+  H <- if (!is.null(x$detail)) nrow(x$detail) else NA
+  cat(sprintf("Stratum allocation (%s", alloc))
+  if (!is.na(H)) cat(sprintf(", %d strata", H))
+  cat(")\n")
+  cat(sprintf("n = %d", ceiling(x$n)))
+  if (!is.na(x$cv)) cat(sprintf(", cv = %.4f", x$cv))
+  if (!is.na(x$se)) cat(sprintf(", se = %.4f", x$se))
+  cat("\n")
+  parts <- character(0L)
+  if (!is.null(p$min_n) && p$min_n > 0)
+    parts <- c(parts, sprintf("min_n = %g", p$min_n))
+  resp_rate <- p$resp_rate
+  if (!is.null(resp_rate) && resp_rate < 1)
+    parts <- c(parts, sprintf("resp_rate = %.2f", resp_rate))
+  if (!is.null(p$deff) && p$deff != 1)
+    parts <- c(parts, sprintf("deff = %.2f", p$deff))
+  if (length(parts) > 0L)
+    cat(sprintf("(%s)\n", paste(parts, collapse = ", ")))
+  if (!is.null(x$domains)) {
+    cat(sprintf("Domains: %d\n", nrow(x$domains)))
+    cat("---\n")
+    dom <- x$domains
+    if (".cv" %in% names(dom)) dom$.cv <- sprintf("%.4f", dom$.cv)
+    if (".cost" %in% names(dom)) dom$.cost <- sprintf("%.0f", dom$.cost)
+    print(dom, row.names = FALSE, right = FALSE)
+  }
 }
 
 #' @rdname print.svyplan

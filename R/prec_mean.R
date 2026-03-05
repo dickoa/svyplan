@@ -15,6 +15,7 @@
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The effective sample size is deflated by `resp_rate`.
+#' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_prec` object with components `$se`, `$moe`, and `$cv`.
 #'   `$cv` is `NA` when `mu` is not provided.
@@ -37,6 +38,10 @@
 #'
 #' @export
 prec_mean <- function(var, ...) {
+  if (!missing(var)) {
+    .res <- .dispatch_plan(var, "var", prec_mean.default, ...)
+    if (!is.null(.res)) return(.res)
+  }
   UseMethod("prec_mean")
 }
 
@@ -50,8 +55,11 @@ prec_mean.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  plan = NULL,
   ...
 ) {
+  .plan <- .merge_plan_args(plan, prec_mean.default, match.call(), environment())
+  if (!is.null(.plan)) return(do.call(prec_mean.default, c(.plan, list(...))))
   check_scalar(var, "var")
   check_scalar(n, "n")
   check_alpha(alpha)
@@ -80,6 +88,7 @@ prec_mean.default <- function(
     deff = deff,
     resp_rate = resp_rate
   )
+
   if (!is.null(mu)) {
     params$mu <- mu
   }

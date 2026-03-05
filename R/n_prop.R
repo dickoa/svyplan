@@ -17,6 +17,7 @@
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The sample size is inflated by `1 / resp_rate`.
 #' @param method One of `"wald"` (default), `"wilson"`, or `"logodds"`.
+#' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_n` object.
 #'
@@ -70,6 +71,10 @@
 #'
 #' @export
 n_prop <- function(p, ...) {
+  if (!missing(p)) {
+    .res <- .dispatch_plan(p, "p", n_prop.default, ...)
+    if (!is.null(.res)) return(.res)
+  }
   UseMethod("n_prop")
 }
 
@@ -84,8 +89,11 @@ n_prop.default <- function(
   deff = 1,
   resp_rate = 1,
   method = "wald",
+  plan = NULL,
   ...
 ) {
+  .plan <- .merge_plan_args(plan, n_prop.default, match.call(), environment())
+  if (!is.null(.plan)) return(do.call(n_prop.default, c(.plan, list(...))))
   check_proportion(p, "p")
   check_precision(moe, cv)
   check_alpha(alpha)
@@ -115,6 +123,7 @@ n_prop.default <- function(
     deff = deff,
     resp_rate = resp_rate
   )
+
   if (!is.null(moe)) {
     params$moe <- moe
   } else {

@@ -2,9 +2,12 @@
 % Please edit documentation in R/power_prop.R
 \name{power_prop}
 \alias{power_prop}
+\alias{power_prop.default}
 \title{Power Analysis for Proportions}
 \usage{
-power_prop(
+power_prop(p1, ...)
+
+\method{power_prop}{default}(
   p1,
   p2 = NULL,
   n = NULL,
@@ -17,11 +20,15 @@ power_prop(
   ratio = 1,
   overlap = 0,
   rho = 0,
-  method = c("wald", "arcsine", "logodds")
+  method = c("wald", "arcsine", "logodds"),
+  plan = NULL,
+  ...
 )
 }
 \arguments{
 \item{p1}{Baseline proportion, in (0, 1).}
+
+\item{...}{Additional arguments passed to methods.}
 
 \item{p2}{Alternative proportion, in (0, 1). Leave \code{NULL} to solve for MDE.}
 
@@ -58,6 +65,8 @@ Defined as the fraction of group 1 that also appears in group 2
 \code{"logodds"}. Arcsine and log-odds transforms are variance-stabilizing
 and perform better for rare or extreme proportions (Valliant,
 2018, \ifelse{html}{\out{&sect;}}{\enc{§}{S}}4.3.4--4.3.5).}
+
+\item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
 A \code{svyplan_power} object with components:

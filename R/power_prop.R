@@ -29,6 +29,8 @@
 #'   `"logodds"`. Arcsine and log-odds transforms are variance-stabilizing
 #'   and perform better for rare or extreme proportions (Valliant,
 #'   2018, \ifelse{html}{\out{&sect;}}{\enc{§}{S}}4.3.4--4.3.5).
+#' @param plan Optional [svyplan()] object providing design defaults.
+#' @param ... Additional arguments passed to methods.
 #'
 #' @return A `svyplan_power` object with components:
 #' \describe{
@@ -83,13 +85,26 @@
 #' power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
 #'
 #' @export
-power_prop <- function(p1, p2 = NULL, n = NULL, power = 0.80,
+power_prop <- function(p1, ...) {
+  if (!missing(p1)) {
+    .res <- .dispatch_plan(p1, "p1", power_prop.default, ...)
+    if (!is.null(.res)) return(.res)
+  }
+  UseMethod("power_prop")
+}
+
+#' @rdname power_prop
+#' @export
+power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
                        alpha = 0.05, N = Inf, deff = 1,
                        resp_rate = 1,
                        alternative = c("two.sided", "one.sided"),
                        ratio = 1,
                        overlap = 0, rho = 0,
-                       method = c("wald", "arcsine", "logodds")) {
+                       method = c("wald", "arcsine", "logodds"),
+                       plan = NULL, ...) {
+  .plan <- .merge_plan_args(plan, power_prop.default, match.call(), environment())
+  if (!is.null(.plan)) return(do.call(power_prop.default, c(.plan, list(...))))
   check_proportion(p1, "p1")
   alternative <- match.arg(alternative)
   method <- match.arg(method)

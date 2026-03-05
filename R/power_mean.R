@@ -27,6 +27,8 @@
 #'   Defined as the fraction of group 1 that also appears in group 2
 #'   (`overlap = n12 / n1`).
 #' @param rho Correlation between occasions in \[0, 1\].
+#' @param plan Optional [svyplan()] object providing design defaults.
+#' @param ... Additional arguments passed to methods.
 #'
 #' @return A `svyplan_power` object with components:
 #' \describe{
@@ -81,12 +83,25 @@
 #' power_mean(effect = 5, var = 100, ratio = 2)
 #'
 #' @export
-power_mean <- function(effect = NULL, var, n = NULL, power = 0.80,
+power_mean <- function(effect, ...) {
+  if (!missing(effect)) {
+    .res <- .dispatch_plan(effect, "effect", power_mean.default, ...)
+    if (!is.null(.res)) return(.res)
+  }
+  UseMethod("power_mean")
+}
+
+#' @rdname power_mean
+#' @export
+power_mean.default <- function(effect = NULL, var, n = NULL, power = 0.80,
                        alpha = 0.05, N = Inf, deff = 1,
                        resp_rate = 1,
                        alternative = c("two.sided", "one.sided"),
                        ratio = 1,
-                       overlap = 0, rho = 0) {
+                       overlap = 0, rho = 0,
+                       plan = NULL, ...) {
+  .plan <- .merge_plan_args(plan, power_mean.default, match.call(), environment())
+  if (!is.null(.plan)) return(do.call(power_mean.default, c(.plan, list(...))))
   alternative <- match.arg(alternative)
   var_pair <- .as_pair(var, "var")
   check_alpha(alpha)
@@ -115,6 +130,7 @@ power_mean <- function(effect = NULL, var, n = NULL, power = 0.80,
   params <- list(var = var, alpha = alpha, N = N, deff = deff,
                  resp_rate = resp_rate, alternative = alternative,
                  ratio = ratio, overlap = overlap, rho = rho)
+
 
   ov_term <- 2 * overlap * rho * sqrt(var_pair[1] * var_pair[2])
 

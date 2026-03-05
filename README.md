@@ -47,6 +47,33 @@ n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 #> n = 606 (net: 485) (p = 0.30, moe = 0.050, deff = 1.50, resp_rate = 0.80)
 ```
 
+### Survey plan profiles
+
+When the same design parameters apply across many calls, bundle them
+into a `svyplan()` profile:
+
+``` r
+plan <- svyplan(deff = 1.5, resp_rate = 0.85, N = 50000)
+
+# Pass as argument
+n_prop(p = 0.3, moe = 0.05, plan = plan)
+#> Sample size for proportion (wald)
+#> n = 566 (net: 481) (p = 0.30, moe = 0.050, deff = 1.50, resp_rate = 0.85)
+
+# Or pipe (positional or named args)
+plan |> n_mean(100, moe = 2)
+#> Sample size for mean
+#> n = 170 (net: 144) (var = 100.00, moe = 2.000, deff = 1.50, resp_rate = 0.85)
+plan |> n_mean(var = 100, moe = 2)
+#> Sample size for mean
+#> n = 170 (net: 144) (var = 100.00, moe = 2.000, deff = 1.50, resp_rate = 0.85)
+
+# Explicit args always override plan defaults
+n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2.0)
+#> Sample size for proportion (wald)
+#> n = 755 (net: 642) (p = 0.30, moe = 0.050, deff = 2.00, resp_rate = 0.85)
+```
+
 ## Precision analysis
 
 Given a sample size, how precise will your estimates be? The `prec_*()`
@@ -117,7 +144,7 @@ data frame.
 
 ``` r
 # Optimal 2-stage allocation within a budget
-n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
 #> Optimal 2-stage allocation
 #> n_psu = 85 | psu_size = 14 -> total n = 1190 (unrounded: 1159.1)
 #> cv = 0.0376, cost = 100000
@@ -147,7 +174,7 @@ vc
 #> k = 1.0311
 #> Unit relvariance = 0.0400
 
-n_cluster(cost = c(500, 50), delta = vc, cv = 0.05)
+n_cluster(stage_cost = c(500, 50), delta = vc, cv = 0.05)
 #> Optimal 2-stage allocation
 #> n_psu = 15 | psu_size = 2 -> total n = 30 (unrounded: 26.97443)
 #> cv = 0.0500, cost = 8635
@@ -242,6 +269,13 @@ power_prop(p1 = 0.15, p2 = 0.18, alternative = "one.sided",
 #> Power analysis for proportions (solved for sample size)
 #> n = 1890 (per group), power = 0.800, effect = 0.0300
 #> (p1 = 0.150, p2 = 0.180, alpha = 0.05, one-sided, method = arcsine)
+
+# Difference-in-differences
+power_did(treat = c(0.50, 0.55), control = c(0.50, 0.48),
+          outcome = "prop", effect = 0.07)
+#> Power analysis for DiD proportions (solved for sample size)
+#> n = 1598 (per group), power = 0.800, effect = 0.0700
+#> (treat = (0.500, 0.550), control = (0.500, 0.480), alpha = 0.05)
 ```
 
 `plot()` draws the power-vs-sample-size curve with reference lines at
@@ -253,6 +287,26 @@ plot(pw)
 ```
 
 ![](man/figures/README-power-plot-1.png)<!-- -->
+
+## Stratified allocation
+
+Given a sampling frame with stratum sizes and variabilities, `n_alloc()`
+distributes the total sample across strata:
+
+``` r
+frame <- data.frame(
+  N_h = c(4000, 3000, 3000),
+  S_h = c(10, 15, 8),
+  mean_h = c(50, 60, 55)
+)
+
+n_alloc(frame, n = 600, alloc = "neyman")
+#> Stratum allocation (neyman, 3 strata)
+#> n = 600, cv = 0.0079, se = 0.4305
+```
+
+`prec_alloc()` computes the precision for a given allocation (inverse of
+`n_alloc()`).
 
 ## Design effects
 

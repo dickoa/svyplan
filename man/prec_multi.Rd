@@ -11,10 +11,11 @@ prec_multi(targets, ...)
 
 \method{prec_multi}{default}(
   targets,
-  cost = NULL,
+  stage_cost = NULL,
   budget = NULL,
   n_psu = NULL,
   joint = FALSE,
+  plan = NULL,
   ...
 )
 
@@ -29,7 +30,7 @@ or \code{svyplan_cluster} objects: a result from \code{\link[=n_multi]{n_multi()
 
 \item{...}{Additional arguments passed to methods.}
 
-\item{cost}{Numeric vector of per-stage costs. \code{NULL} (default) for
+\item{stage_cost}{Numeric vector of per-stage costs. \code{NULL} (default) for
 simple mode; length 2 or 3 for multistage mode.}
 
 \item{budget}{Total budget (currently unused in precision mode).}
@@ -37,6 +38,8 @@ simple mode; length 2 or 3 for multistage mode.}
 \item{n_psu}{Fixed stage-1 sample size (currently unused in precision mode).}
 
 \item{joint}{Logical (currently unused in precision mode).}
+
+\item{plan}{A \code{\link[=svyplan]{svyplan()}} profile providing default design parameters.}
 }
 \value{
 A \code{svyplan_prec} object with a \verb{$detail} data frame containing

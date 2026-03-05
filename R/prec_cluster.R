@@ -16,6 +16,7 @@
 #'   3-stage (default 1).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The effective stage-1 size is deflated by `resp_rate`.
+#' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_prec` object with components `$se`, `$moe`, and `$cv`.
 #'
@@ -43,6 +44,10 @@
 #'
 #' @export
 prec_cluster <- function(n, ...) {
+  if (!missing(n)) {
+    .res <- .dispatch_plan(n, "n", prec_cluster.default, ...)
+    if (!is.null(.res)) return(.res)
+  }
   UseMethod("prec_cluster")
 }
 
@@ -50,12 +55,17 @@ prec_cluster <- function(n, ...) {
 #' @export
 prec_cluster.default <- function(
   n,
-  delta,
+  delta = NULL,
   rel_var = 1,
   k = 1,
   resp_rate = 1,
+  plan = NULL,
   ...
 ) {
+  .plan <- .merge_plan_args(plan, prec_cluster.default, match.call(), environment())
+  if (!is.null(.plan)) return(do.call(prec_cluster.default, c(.plan, list(...))))
+  if (is.null(delta))
+    stop("'delta' is required (directly or via plan)", call. = FALSE)
   if (inherits(delta, "svyplan_varcomp")) {
     vc <- delta
     delta <- vc$delta
@@ -116,7 +126,6 @@ prec_cluster.default <- function(
     resp_rate = resp_rate,
     stages = stages
   )
-
   .new_svyplan_prec(
     se = NA_real_,
     moe = NA_real_,
@@ -138,8 +147,8 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
     k = p$k,
     resp_rate = p$resp_rate %||% 1
   )
-  # Carry cost metadata for round-trip to n_cluster.svyplan_prec
-  out$params$cost <- p$cost
+  # Carry stage_cost metadata for round-trip to n_cluster.svyplan_prec
+  out$params$stage_cost <- p$stage_cost
   if (!is.null(p$budget)) {
     out$params$budget <- p$budget
   }

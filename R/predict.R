@@ -114,6 +114,58 @@ predict.svyplan_n <- function(object, newdata, ...) {
       data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv)
     })
 
+  } else if (object$type == "alloc") {
+    allowed <- c("n", "cv", "budget", "alpha", "deff", "resp_rate", "min_n", "power_q")
+    base <- object$params
+    base_small <- list(
+      n = base$n, cv = base$cv, budget = base$budget,
+      alpha = base$alpha, deff = base$deff, resp_rate = base$resp_rate,
+      min_n = base$min_n, power_q = base$power_q %||% 0.5
+    )
+
+    .validate_newdata(newdata, allowed)
+
+    has_n <- "n" %in% names(newdata)
+    has_cv <- "cv" %in% names(newdata)
+    has_budget <- "budget" %in% names(newdata)
+    if ((has_n + has_cv + has_budget) > 1L) {
+      stop("newdata can vary at most one of 'n', 'cv', or 'budget'",
+           call. = FALSE)
+    }
+    if (has_n) {
+      base_small$cv <- NULL
+      base_small$budget <- NULL
+    } else if (has_cv) {
+      base_small$n <- NULL
+      base_small$budget <- NULL
+    } else if (has_budget) {
+      base_small$n <- NULL
+      base_small$cv <- NULL
+    }
+
+    .predict_grid(newdata, base_small, function(p) {
+      count_mode <- (!is.null(p$n)) + (!is.null(p$cv)) + (!is.null(p$budget))
+      if (count_mode != 1L) {
+        stop("each predict row must define exactly one of n/cv/budget",
+             call. = FALSE)
+      }
+      res <- n_alloc.default(
+        frame = base$frame,
+        n = p$n, cv = p$cv, budget = p$budget,
+        alloc = base$alloc %||% "neyman",
+        unit_cost = base$cost_h,
+        alpha = p$alpha,
+        deff = p$deff,
+        resp_rate = p$resp_rate,
+        min_n = p$min_n,
+        power_q = p$power_q
+      )
+      data.frame(
+        n = res$n, se = res$se, moe = res$moe, cv = res$cv,
+        cost = res$params$achieved$cost
+      )
+    })
+
   } else {
     stop(
       sprintf(
@@ -136,7 +188,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
     )
   }
 
-  stages <- length(object$params$cost)
+  stages <- length(object$params$stage_cost)
   if (stages == 3L && "delta" %in% names(newdata)) {
     stop(
       "for 3-stage cluster predict, vary 'delta_psu' and 'delta_ssu' instead of 'delta'",
@@ -178,7 +230,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
   }
 
   base <- list(
-    cost = p$cost, delta = p$delta, rel_var = p$rel_var,
+    stage_cost = p$stage_cost, delta = p$delta, rel_var = p$rel_var,
     k = p$k, resp_rate = p$resp_rate %||% 1, n_psu = p$n_psu,
     fixed_cost = p$fixed_cost %||% 0
   )
@@ -196,7 +248,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
   }
 
   .predict_grid(newdata, base, function(params) {
-    row_cost <- .apply_cluster_cost_cols(base$cost, params, cost_meta$map)
+    row_cost <- .apply_cluster_cost_cols(base$stage_cost, params, cost_meta$map)
     row_delta <- .apply_cluster_stage_cols(
       base$delta,
       params,
@@ -210,7 +262,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
       k_meta$canonical
     )
     res <- n_cluster.default(
-      cost = row_cost, delta = row_delta,
+      stage_cost = row_cost, delta = row_delta,
       rel_var = params$rel_var, k = row_k,
       cv = params$cv, budget = params$budget,
       n_psu = params$n_psu, resp_rate = params$resp_rate,
@@ -274,6 +326,30 @@ predict.svyplan_power <- function(object, newdata, ...) {
       )
       args[excluded] <- list(NULL)
       res <- do.call(power_mean, args)
+      data.frame(n = res$n, power = res$power, effect = res$effect)
+    })
+
+  } else if (object$type %in% c("did_prop", "did_mean")) {
+    all_params <- c("effect", "n", "power", "alpha", "N", "deff",
+                    "resp_rate", "alternative", "overlap", "rho", "ratio")
+    excluded <- switch(solved, n = "n", power = "power", mde = "effect")
+    allowed <- setdiff(all_params, excluded)
+
+    .validate_newdata(newdata, allowed, allowed_character = "alternative")
+    base <- object$params
+
+    .predict_grid(newdata, base, function(p) {
+      args <- list(
+        treat = p$treat, control = p$control,
+        outcome = p$outcome, var = p$var,
+        effect = p$effect, n = p$n, power = p$power,
+        alpha = p$alpha, N = p$N, deff = p$deff,
+        resp_rate = p$resp_rate,
+        alternative = p$alternative, ratio = p$ratio,
+        overlap = p$overlap, rho = p$rho
+      )
+      args[excluded] <- list(NULL)
+      res <- do.call(power_did, args)
       data.frame(n = res$n, power = res$power, effect = res$effect)
     })
 

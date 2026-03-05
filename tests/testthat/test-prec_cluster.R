@@ -26,11 +26,11 @@ test_that("prec_cluster with resp_rate deflates stage-1", {
   expect_true(rr$cv > base$cv)
 })
 
-test_that("prec_cluster.svyplan_cluster carries cost metadata", {
-  s1 <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+test_that("prec_cluster.svyplan_cluster carries stage_cost metadata", {
+  s1 <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   p1 <- prec_cluster(s1)
-  expect_equal(unname(p1$params$cost), c(500, 50))
-  expect_equal(names(p1$params$cost), c("cost_psu", "cost_ssu"))
+  expect_equal(unname(p1$params$stage_cost), c(500, 50))
+  expect_equal(names(p1$params$stage_cost), c("cost_psu", "cost_ssu"))
   expect_equal(p1$params$budget, 100000)
 })
 

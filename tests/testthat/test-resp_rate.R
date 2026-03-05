@@ -18,8 +18,8 @@ test_that("n_mean resp_rate inflates sample size", {
 })
 
 test_that("n_cluster resp_rate inflates stage-1 in CV mode", {
-  base <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
-  rr <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05,
+  base <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
+  rr <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05,
                    resp_rate = 0.8)
   expect_equal(rr$n[1], base$n[1] / 0.8, tolerance = 1e-6)
   expect_equal(unname(rr$n[2]), unname(base$n[2]), tolerance = 1e-6)

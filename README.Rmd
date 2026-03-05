@@ -49,6 +49,25 @@ by `1 / resp_rate` to account for expected non-response:
 n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 ```
 
+### Survey plan profiles
+
+When the same design parameters apply across many calls, bundle them into
+a `svyplan()` profile:
+
+```{r}
+plan <- svyplan(deff = 1.5, resp_rate = 0.85, N = 50000)
+
+# Pass as argument
+n_prop(p = 0.3, moe = 0.05, plan = plan)
+
+# Or pipe (positional or named args)
+plan |> n_mean(100, moe = 2)
+plan |> n_mean(var = 100, moe = 2)
+
+# Explicit args always override plan defaults
+n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2.0)
+```
+
 ## Precision analysis
 
 Given a sample size, how precise will your estimates be? The `prec_*()`
@@ -101,7 +120,7 @@ data frame.
 
 ```{r}
 # Optimal 2-stage allocation within a budget
-n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
 
 # Precision for a given allocation
 prec_cluster(n = c(50, 12), delta = 0.05)
@@ -120,7 +139,7 @@ frame <- data.frame(
 vc <- varcomp(income ~ district, data = frame)
 vc
 
-n_cluster(cost = c(500, 50), delta = vc, cv = 0.05)
+n_cluster(stage_cost = c(500, 50), delta = vc, cv = 0.05)
 ```
 
 ## Sensitivity analysis
@@ -173,6 +192,10 @@ power_mean(effect = 5, var = 200)
 # Arcsine method for rare proportions
 power_prop(p1 = 0.15, p2 = 0.18, alternative = "one.sided",
            method = "arcsine")
+
+# Difference-in-differences
+power_did(treat = c(0.50, 0.55), control = c(0.50, 0.48),
+          outcome = "prop", effect = 0.07)
 ```
 
 `plot()` draws the power-vs-sample-size curve with reference lines at the solved point:
@@ -182,6 +205,24 @@ pw <- power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
 plot(pw)
 ```
 
+
+## Stratified allocation
+
+Given a sampling frame with stratum sizes and variabilities, `n_alloc()`
+distributes the total sample across strata:
+
+```{r}
+frame <- data.frame(
+  N_h = c(4000, 3000, 3000),
+  S_h = c(10, 15, 8),
+  mean_h = c(50, 60, 55)
+)
+
+n_alloc(frame, n = 600, alloc = "neyman")
+```
+
+`prec_alloc()` computes the precision for a given allocation (inverse of
+`n_alloc()`).
 
 ## Design effects
 

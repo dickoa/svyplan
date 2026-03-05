@@ -17,6 +17,7 @@ n_mean(var, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  plan = NULL,
   ...
 )
 
@@ -45,6 +46,8 @@ efficient designs (e.g., stratified sampling with Neyman allocation).}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The sample size is inflated by \code{1 / resp_rate}.}
+
+\item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
 A \code{svyplan_n} object.

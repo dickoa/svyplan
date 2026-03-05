@@ -65,9 +65,9 @@ test_that("validates alloc", {
                "numeric scalar in \\[0, 1\\]")
 })
 
-test_that("validates cost", {
-  expect_error(strata_bound(x_unif, n = 100, cost = -1), "positive")
-  expect_error(strata_bound(x_unif, n = 100, cost = c(1, NA)), "positive")
+test_that("validates unit_cost", {
+  expect_error(strata_bound(x_unif, n = 100, unit_cost = -1), "positive")
+  expect_error(strata_bound(x_unif, n = 100, unit_cost = c(1, NA)), "positive")
 })
 
 test_that("validates certain", {
@@ -78,12 +78,12 @@ test_that("validates certain", {
                "all units")
 })
 
-test_that("certain marks only the last stratum as take-all", {
+test_that("take_all marks only the last stratum as take-all", {
   set.seed(1)
   x <- c(runif(95, 1, 100), runif(5, 200, 300))
   thr <- as.numeric(quantile(x, 0.95))
   res <- strata_bound(x, n_strata = 3, n = 30, certain = thr, method = "cumrootf")
-  expect_equal(which(res$strata$certain), 3L)
+  expect_equal(which(res$strata$take_all), 3L)
   expect_equal(res$strata$n_h[3], res$strata$N_h[3])
 })
 
@@ -199,9 +199,9 @@ test_that("take-all stratum works", {
   thresh <- quantile(x_lnorm, 0.90)
   res <- strata_bound(x_lnorm, n_strata = 3, n = 200, certain = thresh)
   expect_s3_class(res, "svyplan_strata")
-  expect_true(any(res$strata$certain))
-  certain_row <- res$strata[res$strata$certain, ]
-  expect_equal(certain_row$n_h, certain_row$N_h)
+  expect_true(any(res$strata$take_all))
+  take_all_row <- res$strata[res$strata$take_all, ]
+  expect_equal(take_all_row$n_h, take_all_row$N_h)
 })
 
 test_that("output class is svyplan_strata", {
@@ -213,7 +213,7 @@ test_that("output class is svyplan_strata", {
 test_that("strata df has correct columns", {
   res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf")
   expected_cols <- c("stratum", "lower", "upper", "N_h", "W_h", "S_h",
-                     "n_h", "certain")
+                     "n_h", "take_all")
   expect_equal(names(res$strata), expected_cols)
 })
 
@@ -285,15 +285,15 @@ test_that("kozak outperforms or matches cumrootf", {
   expect_true(res_kz$cv <= res_cr$cv * 1.2)
 })
 
-test_that("cost parameter is scalar-recycled", {
+test_that("unit_cost parameter is scalar-recycled", {
   res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf",
-                       cost = 5)
+                       unit_cost = 5)
   expect_s3_class(res, "svyplan_strata")
 })
 
-test_that("cost parameter with per-stratum vector", {
+test_that("unit_cost parameter with per-stratum vector", {
   res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf",
-                       cost = c(1, 2, 5))
+                       unit_cost = c(1, 2, 5))
   expect_s3_class(res, "svyplan_strata")
 })
 

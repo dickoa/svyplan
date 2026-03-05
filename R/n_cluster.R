@@ -4,9 +4,9 @@
 #' design, minimizing cost for a given precision or minimizing
 #' variance for a given budget.
 #'
-#' @param cost For the default method: numeric vector of per-stage costs.
-#'   Length determines the number of stages (2 or 3). Named vectors are
-#'   accepted with stage names `cost_psu`, `cost_ssu`, `cost_tsu`
+#' @param stage_cost For the default method: numeric vector of per-stage
+#'   costs. Length determines the number of stages (2 or 3). Named vectors
+#'   are accepted with stage names `cost_psu`, `cost_ssu`, `cost_tsu`
 #'   (`cost_tsu` aliases `cost_ssu` in 2-stage).
 #'   For `svyplan_prec` objects: a precision result from [prec_cluster()].
 #' @param ... Additional arguments passed to methods.
@@ -27,6 +27,8 @@
 #'   `C = C0 + c1*n_psu + c2*n_psu*psu_size [+ c3*n_psu*psu_size*ssu_size]`.
 #'   In budget mode, only `budget - fixed_cost` is available for variable costs;
 #'   in CV mode, `fixed_cost` is added to the variable cost.
+#' @param plan Optional [svyplan()] object providing design defaults
+#'   (including `stage_cost`, `delta`, `rel_var`, `k`, `resp_rate`, `fixed_cost`).
 #'
 #' @return A `svyplan_cluster` object with components:
 #' \describe{
@@ -44,7 +46,7 @@
 #' }
 #'
 #' @details
-#' Stage count is determined by `length(cost)`. Two dispatch dimensions:
+#' Stage count is determined by `length(stage_cost)`. Two dispatch dimensions:
 #'
 #' - **2-stage vs 3-stage** (vector length)
 #' - **budget vs cv** mode (which is non-NULL)
@@ -69,30 +71,34 @@
 #'
 #' @examples
 #' # 2-stage, budget mode
-#' n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+#' n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
 #'
 #' # 2-stage, CV mode
-#' n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+#' n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
 #'
 #' # 2-stage, fixed n_psu
-#' n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000, n_psu = 40)
+#' n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, n_psu = 40)
 #'
 #' # 3-stage
-#' n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+#' n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
 #'
 #' # With fixed overhead cost
-#' n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000, fixed_cost = 5000)
+#' n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, fixed_cost = 5000)
 #'
 #' @export
-n_cluster <- function(cost, ...) {
+n_cluster <- function(stage_cost, ...) {
+  if (!missing(stage_cost)) {
+    .res <- .dispatch_plan(stage_cost, "stage_cost", n_cluster.default, ...)
+    if (!is.null(.res)) return(.res)
+  }
   UseMethod("n_cluster")
 }
 
 #' @rdname n_cluster
 #' @export
 n_cluster.default <- function(
-  cost,
-  delta,
+  stage_cost = NULL,
+  delta = NULL,
   rel_var = 1,
   k = 1,
   cv = NULL,
@@ -100,10 +106,17 @@ n_cluster.default <- function(
   n_psu = NULL,
   resp_rate = 1,
   fixed_cost = 0,
+  plan = NULL,
   ...
 ) {
-  check_cost(cost)
-  cost <- .reorder_cost_vec(cost)
+  .plan <- .merge_plan_args(plan, n_cluster.default, match.call(), environment())
+  if (!is.null(.plan)) return(do.call(n_cluster.default, c(.plan, list(...))))
+  if (is.null(stage_cost))
+    stop("'stage_cost' is required (directly or via plan)", call. = FALSE)
+  if (is.null(delta))
+    stop("'delta' is required (directly or via plan)", call. = FALSE)
+  check_stage_cost(stage_cost)
+  stage_cost <- .reorder_stage_cost(stage_cost)
   check_resp_rate(resp_rate)
 
   if (inherits(delta, "svyplan_varcomp")) {
@@ -124,7 +137,7 @@ n_cluster.default <- function(
     stop("'k' must contain positive finite values", call. = FALSE)
   }
 
-  stages <- length(cost)
+  stages <- length(stage_cost)
   delta <- .reorder_stage_vec(delta, "delta")
   k <- .reorder_stage_vec(k, "k")
   check_delta(delta, expected_length = stages - 1L)
@@ -152,9 +165,9 @@ n_cluster.default <- function(
   }
   check_fixed_cost(fixed_cost, budget)
 
-  if (stages == 2L) {
+  res <- if (stages == 2L) {
     .n_cluster_2stage(
-      cost,
+      stage_cost,
       delta,
       rel_var,
       k,
@@ -167,7 +180,7 @@ n_cluster.default <- function(
   } else {
     k <- rep_len(k, 2L)
     .n_cluster_3stage(
-      cost,
+      stage_cost,
       delta,
       rel_var,
       k,
@@ -178,12 +191,13 @@ n_cluster.default <- function(
       fixed_cost
     )
   }
+  res
 }
 
 #' @rdname n_cluster
 #' @export
-n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
-  x <- cost
+n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
+  x <- stage_cost
   if (x$type != "cluster") {
     stop("n_cluster requires a svyplan_prec of type 'cluster'", call. = FALSE)
   }
@@ -192,7 +206,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
     cv <- x$cv
   }
   n_cluster.default(
-    cost = p$cost,
+    stage_cost = p$stage_cost,
     delta = p$delta,
     rel_var = p$rel_var,
     k = p$k,
@@ -207,7 +221,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
 #' @keywords internal
 #' @noRd
 .n_cluster_2stage <- function(
-  cost,
+  stage_cost,
   delta,
   rel_var,
   k,
@@ -217,8 +231,8 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
   resp_rate,
   fixed_cost = 0
 ) {
-  C1 <- cost[1L]
-  C2 <- cost[2L]
+  C1 <- stage_cost[1L]
+  C2 <- stage_cost[2L]
   var_budget <- if (!is.null(budget)) budget - fixed_cost else NULL
 
   if (is.null(n_psu)) {
@@ -272,7 +286,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
   total_n <- prod(n_vec)
 
   params <- list(
-    cost = c(cost_psu = cost[1L], cost_ssu = cost[2L]),
+    stage_cost = c(cost_psu = stage_cost[1L], cost_ssu = stage_cost[2L]),
     delta = c(delta_psu = delta[1L]),
     rel_var = rel_var,
     k = c(k_psu = k[1L]),
@@ -304,7 +318,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
 #' @keywords internal
 #' @noRd
 .n_cluster_3stage <- function(
-  cost,
+  stage_cost,
   delta,
   rel_var,
   k,
@@ -314,9 +328,9 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
   resp_rate,
   fixed_cost = 0
 ) {
-  C1 <- cost[1L]
-  C2 <- cost[2L]
-  C3 <- cost[3L]
+  C1 <- stage_cost[1L]
+  C2 <- stage_cost[2L]
+  C3 <- stage_cost[3L]
   delta1 <- delta[1L]
   delta2 <- delta[2L]
   k1 <- k[1L]
@@ -392,7 +406,7 @@ n_cluster.svyplan_prec <- function(cost, cv = NULL, budget = NULL, ...) {
   total_n <- prod(n_vec)
 
   params <- list(
-    cost = c(cost_psu = cost[1L], cost_ssu = cost[2L], cost_tsu = cost[3L]),
+    stage_cost = c(cost_psu = stage_cost[1L], cost_ssu = stage_cost[2L], cost_tsu = stage_cost[3L]),
     delta = c(delta_psu = delta[1L], delta_ssu = delta[2L]),
     rel_var = rel_var,
     k = c(k_psu = k[1L], k_ssu = k[2L]),

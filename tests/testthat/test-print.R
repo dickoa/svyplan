@@ -7,7 +7,7 @@ test_that("print.svyplan_n outputs correctly", {
 })
 
 test_that("print.svyplan_cluster outputs correctly", {
-  result <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  result <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   out <- capture.output(print(result))
   expect_match(out[1], "Optimal 2-stage allocation")
   expect_match(out[2], "n_psu")
@@ -44,7 +44,7 @@ test_that("as.double.svyplan_n returns raw n", {
 })
 
 test_that("as.integer.svyplan_cluster returns product of ceiled stages", {
-  result <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  result <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   expect_equal(as.integer(result), as.integer(prod(ceiling(result$n))))
 })
 
@@ -54,20 +54,20 @@ test_that("print returns invisible(x)", {
 })
 
 test_that("print shows fixed_cost when > 0", {
-  result <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05,
+  result <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05,
                        fixed_cost = 5000)
   out <- capture.output(print(result))
   expect_true(any(grepl("fixed: 5000", out)))
 })
 
 test_that("print hides fixed_cost when 0", {
-  result <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+  result <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
   out <- capture.output(print(result))
   expect_false(any(grepl("fixed", out)))
 })
 
 test_that("print shows unrounded total for cluster", {
-  x <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   out <- capture.output(print(x))
   expected_unrounded <- format(signif(x$total_n, 8), trim = TRUE, scientific = FALSE)
   expect_true(any(grepl("unrounded", out)))
@@ -75,13 +75,13 @@ test_that("print shows unrounded total for cluster", {
 })
 
 test_that("as.double.svyplan_cluster returns continuous total_n", {
-  x <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   expect_equal(as.double(x), x$total_n)
   expect_true(as.double(x) < as.integer(x))
 })
 
 test_that("format.svyplan_cluster shows unrounded", {
-  x <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   fmt <- format(x)
   expected_unrounded <- format(signif(x$total_n, 8), trim = TRUE, scientific = FALSE)
   expect_match(fmt, "unrounded")
@@ -91,8 +91,8 @@ test_that("format.svyplan_cluster shows unrounded", {
 test_that("print.svyplan_power shows vector n", {
   res <- power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
   out <- capture.output(print(res))
-  expect_true(any(grepl("n1 = ", out)))
-  expect_true(any(grepl("n2 = ", out)))
+  expect_true(any(grepl("n_treat = ", out)))
+  expect_true(any(grepl("n_control = ", out)))
   expect_true(any(grepl("total = ", out)))
 })
 

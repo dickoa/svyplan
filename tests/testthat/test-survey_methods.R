@@ -8,7 +8,7 @@ test_that("SE and cv work via $ access (no survey needed)", {
   expect_false(is.na(p1$se))
   expect_false(is.na(p1$cv))
 
-  c1 <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  c1 <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   expect_true(is.na(c1$se))
   expect_false(is.na(c1$cv))
 })
@@ -53,7 +53,7 @@ test_that("survey::SE and survey::cv work when survey is loaded", {
   expect_equal(survey::SE(p1), p1$se)
   expect_equal(survey::cv(p1), p1$cv)
 
-  c1 <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  c1 <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   expect_true(is.na(survey::SE(c1)))
   expect_equal(survey::cv(c1), c1$cv)
 })

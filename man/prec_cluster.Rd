@@ -8,7 +8,15 @@
 \usage{
 prec_cluster(n, ...)
 
-\method{prec_cluster}{default}(n, delta, rel_var = 1, k = 1, resp_rate = 1, ...)
+\method{prec_cluster}{default}(
+  n,
+  delta = NULL,
+  rel_var = 1,
+  k = 1,
+  resp_rate = 1,
+  plan = NULL,
+  ...
+)
 
 \method{prec_cluster}{svyplan_cluster}(n, ...)
 }
@@ -31,6 +39,8 @@ or a \code{svyplan_varcomp} object.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The effective stage-1 size is deflated by \code{resp_rate}.}
+
+\item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
 A \code{svyplan_prec} object with components \verb{$se}, \verb{$moe}, and \verb{$cv}.

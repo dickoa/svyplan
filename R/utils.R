@@ -120,20 +120,20 @@ check_covariate <- function(x, n, name) {
   invisible(TRUE)
 }
 
-#' Check cost vector
+#' Check stage cost vector
 #' @keywords internal
 #' @noRd
-check_cost <- function(cost) {
-  if (!is.numeric(cost) || length(cost) < 2L) {
-    stop("'cost' must be a numeric vector of length >= 2", call. = FALSE)
+check_stage_cost <- function(stage_cost) {
+  if (!is.numeric(stage_cost) || length(stage_cost) < 2L) {
+    stop("'stage_cost' must be a numeric vector of length >= 2", call. = FALSE)
   }
-  if (anyNA(cost) || any(cost <= 0)) {
-    stop("'cost' must contain positive values only", call. = FALSE)
+  if (anyNA(stage_cost) || any(stage_cost <= 0)) {
+    stop("'stage_cost' must contain positive values only", call. = FALSE)
   }
-  if (any(is.infinite(cost))) {
-    stop("'cost' must contain finite values only", call. = FALSE)
+  if (any(is.infinite(stage_cost))) {
+    stop("'stage_cost' must contain finite values only", call. = FALSE)
   }
-  if (length(cost) > 3L) {
+  if (length(stage_cost) > 3L) {
     stop("4+ stage optimization is not yet supported", call. = FALSE)
   }
   invisible(TRUE)
@@ -247,13 +247,13 @@ check_delta <- function(delta, expected_length = NULL) {
 #' For 2-stage designs, `cost_tsu` is accepted as an alias of `cost_ssu`.
 #' @keywords internal
 #' @noRd
-.reorder_cost_vec <- function(cost) {
-  nms <- names(cost)
+.reorder_stage_cost <- function(stage_cost) {
+  nms <- names(stage_cost)
   if (is.null(nms)) {
-    return(unname(cost))
+    return(unname(stage_cost))
   }
 
-  stages <- length(cost)
+  stages <- length(stage_cost)
   canonical <- if (stages == 2L) {
     c("cost_psu", "cost_ssu")
   } else {
@@ -264,7 +264,7 @@ check_delta <- function(delta, expected_length = NULL) {
   } else {
     character(0)
   }
-  .reorder_named_vec(cost, "cost", canonical, aliases)
+  .reorder_named_vec(stage_cost, "stage_cost", canonical, aliases)
 }
 
 #' Reorder named stage sample-size vector
@@ -720,6 +720,77 @@ check_resp_rate <- function(resp_rate) {
 #' @noRd
 `%||%` <- function(x, y) {
   if (is.null(x)) y else x
+}
+
+#' Dispatch helper for svyplan pipe support
+#'
+#' Intercepts `plan |> fn(arg = val)` calls where R's named-argument
+#' matching pushes the svyplan object into `...` instead of dispatching
+#' on it.
+#' @return The function result, or `NULL` if no interception needed.
+#' @keywords internal
+#' @noRd
+.dispatch_plan <- function(first, first_name, fn, ...) {
+  dots <- list(...)
+  nms <- names(dots) %||% rep("", length(dots))
+  has_named_plan <- any(nms == "plan") &&
+    inherits(dots[[match("plan", nms)]], "svyplan")
+  unnamed <- which(!nzchar(nms))
+  n_unnamed_plan <- sum(
+    vapply(dots[unnamed], inherits, logical(1), "svyplan")
+  )
+  n_total <- inherits(first, "svyplan") + n_unnamed_plan + has_named_plan
+  if (n_total > 1L) {
+    stop(
+      "multiple svyplan objects supplied; use plan= to specify one",
+      call. = FALSE
+    )
+  }
+  if (inherits(first, "svyplan")) {
+    return(do.call(fn, c(list(plan = first), dots)))
+  }
+  if (n_unnamed_plan == 1L) {
+    plan_idx <- unnamed[vapply(dots[unnamed], inherits, logical(1), "svyplan")]
+    plan <- dots[[plan_idx]]
+    dots <- dots[-plan_idx]
+    return(do.call(fn, c(setNames(list(first), first_name), list(plan = plan), dots)))
+  }
+  NULL
+}
+
+#' Merge plan defaults into a function call
+#'
+#' Pure function that returns a merged argument list when plan defaults
+#' need to be applied, or `NULL` when no merging is needed. Uses
+#' `formals()` introspection on the target function to determine which
+#' plan defaults are applicable.
+#'
+#' @param plan A `svyplan` object or `NULL`.
+#' @param fn The target function (e.g., `n_prop.default`).
+#' @param mc The result of `match.call()` from the caller.
+#' @param env The calling function's `environment()`.
+#' @return A named list of merged arguments, or `NULL`.
+#' @keywords internal
+#' @noRd
+.merge_plan_args <- function(plan, fn, mc, env) {
+  if (is.null(plan)) return(NULL)
+  if (!inherits(plan, "svyplan"))
+    stop("'plan' must be a svyplan object", call. = FALSE)
+
+  defaults <- plan$defaults
+  if (length(defaults) == 0L) return(NULL)
+
+  target_fmls <- setdiff(names(formals(fn)), c("...", "plan"))
+  applicable <- defaults[names(defaults) %in% target_fmls]
+  if (length(applicable) == 0L) return(NULL)
+
+  explicit <- names(mc)[-1L]
+  fill <- applicable[!names(applicable) %in% explicit]
+  if (length(fill) == 0L) return(NULL)
+
+  args <- mget(target_fmls, envir = env)
+  args[names(fill)] <- fill
+  args
 }
 
 #' Clamp FPC to 0 when n_eff >= N (census)

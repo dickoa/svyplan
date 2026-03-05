@@ -23,7 +23,7 @@
 #'   Numeric scalar in \eqn{[0, 1]}. At `power_q = 1` the allocation equals
 #'   Neyman; at `power_q = 0` it yields near-equal subnational CVs.
 #'   Default 0.5.
-#' @param cost Per-stratum unit costs, ordered from lowest to highest
+#' @param unit_cost Per-stratum unit costs, ordered from lowest to highest
 #'   stratum. Scalar (equal costs) or vector of length `n_strata`.
 #'   Default `NULL` (equal unit costs, \eqn{c_h = 1} for all strata),
 #'   in which case `"optimal"` and `"neyman"` coincide.
@@ -132,7 +132,7 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
                          method = "lh",
                          alloc = "neyman",
                          power_q = 0.5,
-                         cost = NULL,
+                         unit_cost = NULL,
                          certain = NULL,
                          nclass = NULL,
                          maxiter = 200L,
@@ -203,13 +203,13 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     stop("method 'geo' requires all values in 'x' to be positive", call. = FALSE)
   }
 
-  if (is.null(cost)) {
+  if (is.null(unit_cost)) {
     cost_h <- rep(1, n_strata)
   } else {
-    if (!is.numeric(cost) || anyNA(cost) || any(cost <= 0)) {
-      stop("'cost' must be positive numeric", call. = FALSE)
+    if (!is.numeric(unit_cost) || anyNA(unit_cost) || any(unit_cost <= 0)) {
+      stop("'unit_cost' must be positive numeric", call. = FALSE)
     }
-    cost_h <- rep_len(cost, n_strata)
+    cost_h <- rep_len(unit_cost, n_strata)
   }
 
   if (is.null(n_restart)) n_restart <- 10L * n_strata
@@ -291,7 +291,7 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     W_h     = round(alloc_res$W_h, 6L),
     S_h     = round(alloc_res$S_h, 4L),
     n_h     = .round_oric(alloc_res$n_h),
-    certain = if (!is.null(certain)) {
+    take_all = if (!is.null(certain)) {
       seq_len(n_strata) %in% certain_strata
     } else {
       rep(FALSE, n_strata)

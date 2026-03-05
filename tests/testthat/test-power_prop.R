@@ -341,8 +341,8 @@ test_that("print shows ratio when != 1", {
 
 test_that("print shows vector n", {
   res <- power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
-  expect_output(print(res), "n1 = ")
-  expect_output(print(res), "n2 = ")
+  expect_output(print(res), "n_treat = ")
+  expect_output(print(res), "n_control = ")
   expect_output(print(res), "total = ")
 })
 

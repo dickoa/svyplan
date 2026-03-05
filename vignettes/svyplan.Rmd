@@ -22,12 +22,12 @@ library(svyplan)
 
 ## Function ecosystem
 
-The package exports 14 functions organized into five families. The diagram below shows how they relate to each other.
+The package exports 18 functions organized into six families. The diagram below shows how they relate to each other.
 
-```{r ecosystem-diagram, echo = FALSE, fig.height = 5.5, fig.width = 7}
+```{r ecosystem-diagram, echo = FALSE, fig.height = 6.5, fig.width = 7}
 op <- par(mar = c(0, 0, 0, 0), family = "sans")
 plot.new()
-plot.window(xlim = c(0, 10), ylim = c(0, 8))
+plot.window(xlim = c(0, 10), ylim = c(0, 9.5))
 
 draw_box <- function(x, y, w, h, label, sublabel = NULL,
                      col = "white", border = "black") {
@@ -44,23 +44,27 @@ draw_arrow <- function(x0, y0, x1, y1, both = FALSE, ...) {
          col = "grey40", code = if (both) 3L else 2L, ...)
 }
 
+draw_box(5, 8.5, 3.8, 1.0, "Plan Profile",
+         "svyplan")
+
 draw_box(2.5, 6.5, 3.8, 1.2, "Sample Size",
-         "n_prop \u00b7 n_mean \u00b7 n_cluster \u00b7 n_multi")
+         "n_prop \u00b7 n_mean \u00b7 n_cluster\nn_multi \u00b7 n_alloc")
 draw_box(7.5, 6.5, 3.8, 1.2, "Precision",
-         "prec_prop \u00b7 prec_mean \u00b7 prec_cluster \u00b7 prec_multi",
-         col = "white", border = "black")
+         "prec_prop \u00b7 prec_mean \u00b7 prec_cluster\nprec_multi \u00b7 prec_alloc")
 draw_box(2.5, 3.5, 3.8, 1.2, "Design Components",
-         "varcomp \u00b7 design_effect \u00b7 effective_n",
-         col = "white", border = "black")
+         "varcomp \u00b7 design_effect \u00b7 effective_n")
 draw_box(7.5, 3.5, 3.8, 1.2, "Power Analysis",
-         "power_prop \u00b7 power_mean",
-         col = "white", border = "black")
+         "power_prop \u00b7 power_mean \u00b7 power_did")
 draw_box(5, 1, 3.8, 1.2, "Stratification",
-         "strata_bound",
-         col = "white", border = "black")
+         "strata_bound")
+
+draw_arrow(3.5, 8.0, 2.5, 7.1)
+draw_arrow(6.5, 8.0, 7.5, 7.1)
+draw_arrow(5, 8.0, 5, 7.55)
+text(5, 7.7, "defaults", cex = 0.55, col = "grey40", font = 3)
 
 draw_arrow(4.4, 6.7, 5.6, 6.7, both = TRUE)
-text(5, 7.05, "round-trip", cex = 0.6, col = "grey40", font = 3)
+text(5, 7.15, "round-trip", cex = 0.6, col = "grey40", font = 3)
 
 draw_arrow(2.5, 4.1, 2.5, 5.9)
 draw_arrow(4.5, 3.5, 5.5, 3.5)
@@ -73,13 +77,14 @@ text(8.3, 5.0, "informs", cex = 0.55, col = "grey40", font = 3, srt = 90)
 par(op)
 ```
 
-| Family      | Functions                                               | Purpose                                |
-|:------------|:--------------------------------------------------------|:---------------------------------------|
-| Sample size | `n_prop`, `n_mean`, `n_cluster`, `n_multi`              | "How many units do I need?"            |
-| Precision   | `prec_prop`, `prec_mean`, `prec_cluster`, `prec_multi`  | "What precision does *n* achieve?"     |
-| Power       | `power_prop`, `power_mean`                              | "Can I detect a change?"               |
-| Design      | `varcomp`, `design_effect`, `effective_n`                | Variance components and design effects |
-| Strata      | `strata_bound`                                          | Optimal stratification boundaries      |
+| Family      | Functions                                                        | Purpose                                |
+|:------------|:-----------------------------------------------------------------|:---------------------------------------|
+| Plan        | `svyplan`                                                        | Reusable profile for design defaults   |
+| Sample size | `n_prop`, `n_mean`, `n_cluster`, `n_multi`, `n_alloc`            | "How many units do I need?"            |
+| Precision   | `prec_prop`, `prec_mean`, `prec_cluster`, `prec_multi`, `prec_alloc` | "What precision does *n* achieve?" |
+| Power       | `power_prop`, `power_mean`, `power_did`                          | "Can I detect a change?"               |
+| Design      | `varcomp`, `design_effect`, `effective_n`                        | Variance components and design effects |
+| Strata      | `strata_bound`                                                   | Optimal stratification boundaries      |
 
 Every function returns an S3 object with `print`, `predict`, and (where applicable) `confint` methods.
 
@@ -110,7 +115,7 @@ rrect(1.5, 1.5, 2.8, 0.8, "n_prop \u00b7 n_mean\nn_cluster \u00b7 n_multi",
       col = "white", border = "black", cex = 0.65)
 rrect(5.0, 1.5, 2.8, 0.8, "prec_prop \u00b7 prec_mean\nprec_cluster \u00b7 prec_multi",
       col = "white", border = "black", cex = 0.65)
-rrect(8.5, 1.5, 2.8, 0.8, "power_prop\npower_mean",
+rrect(8.5, 1.5, 2.8, 0.8, "power_prop \u00b7 power_mean\npower_did",
       col = "white", border = "black", cex = 0.65)
 
 draw_arrow <- function(x0, y0, x1, y1)
@@ -200,6 +205,41 @@ n_prop(p = 0.70, moe = 0.05, deff = 1.5, N = 50000, resp_rate = 0.85)
 ```
 
 The design effect can be less than 1 for efficient designs (e.g. well-stratified or PPS samples). svyplan accepts any `deff > 0`.
+
+### Survey plan profiles
+
+When the same `deff`, `N`, `resp_rate`, or `alpha` apply across many calls, bundle them into a `svyplan()` profile to avoid repetition:
+
+```{r svyplan-profile}
+plan <- svyplan(deff = 1.5, resp_rate = 0.85, N = 50000)
+
+# Pass as a named argument
+n_prop(p = 0.3, moe = 0.05, plan = plan)
+n_mean(var = 100, moe = 2, plan = plan)
+power_prop(p1 = 0.30, p2 = 0.35, plan = plan)
+```
+
+The profile can also hold cluster context (`stage_cost`, `delta`) for `n_cluster()`:
+
+```{r svyplan-cluster}
+cl_plan <- svyplan(stage_cost = c(500, 50), delta = 0.05, resp_rate = 0.85)
+n_cluster(cv = 0.05, plan = cl_plan)
+```
+
+Piping works with both positional and named arguments:
+
+```{r svyplan-pipe}
+plan |> n_prop(0.3, moe = 0.05)
+plan |> n_prop(p = 0.3, moe = 0.05)
+plan |> power_mean(5, var = 200)
+```
+
+Explicit arguments always override plan defaults:
+
+```{r svyplan-override}
+# plan has deff = 1.5, but deff = 2.0 wins here
+n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2.0)
+```
 
 ## Evaluating precision
 
@@ -331,10 +371,10 @@ Given per-stage costs and the variance structure, `n_cluster()` finds the alloca
 
 ```{r n-cluster-2stage}
 # Minimize cost to achieve CV = 0.05
-n_cluster(cost = c(500, 50), delta = vc, cv = 0.05)
+n_cluster(stage_cost = c(500, 50), delta = vc, cv = 0.05)
 
 # Maximize precision within a budget
-n_cluster(cost = c(500, 50), delta = vc, budget = 100000)
+n_cluster(stage_cost = c(500, 50), delta = vc, budget = 100000)
 ```
 
 Passing `delta = vc` (the varcomp object) automatically extracts `delta`, `rel_var`, and `k`.
@@ -345,7 +385,7 @@ Add a third cost element and a second delta for three-stage designs:
 
 ```{r n-cluster-3stage}
 n_cluster(
-  cost  = c(1000, 200, 20),
+  stage_cost  = c(1000, 200, 20),
   delta = c(0.01, 0.05),
   cv    = 0.05
 )
@@ -356,7 +396,7 @@ n_cluster(
 In budget mode, applying a response rate does not change the allocation (the budget constrains the design); instead, the achieved CV worsens. In CV mode, the first-stage sample is inflated by `1/resp_rate`:
 
 ```{r n-cluster-resp}
-n_cluster(cost = c(500, 50), delta = vc, cv = 0.05, resp_rate = 0.90)
+n_cluster(stage_cost = c(500, 50), delta = vc, cv = 0.05, resp_rate = 0.90)
 ```
 
 ### Fixed overhead costs
@@ -365,10 +405,10 @@ The standard cost model is purely linear: `C = c1*n_psu + c2*n_psu*psu_size`. Re
 
 ```{r n-cluster-fixed}
 # Budget mode: fixed overhead reduces the allocatable budget
-n_cluster(cost = c(500, 50), delta = vc, budget = 100000, fixed_cost = 5000)
+n_cluster(stage_cost = c(500, 50), delta = vc, budget = 100000, fixed_cost = 5000)
 
 # CV mode: same allocation, cost increases by fixed_cost
-n_cluster(cost = c(500, 50), delta = vc, cv = 0.05, fixed_cost = 5000)
+n_cluster(stage_cost = c(500, 50), delta = vc, cv = 0.05, fixed_cost = 5000)
 ```
 
 The same parameter is available in `n_multi()` for multistage multi-indicator designs.
@@ -378,7 +418,7 @@ The same parameter is available in `n_multi()` for multistage multi-indicator de
 `prec_cluster()` computes the achieved CV for any allocation:
 
 ```{r prec-cluster}
-alloc <- n_cluster(cost = c(500, 50), delta = vc, budget = 100000)
+alloc <- n_cluster(stage_cost = c(500, 50), delta = vc, budget = 100000)
 prec_cluster(alloc)
 
 # Arbitrary allocation
@@ -414,7 +454,7 @@ targets_ms <- data.frame(
   delta_psu = c(0.05, 0.02)
 )
 
-n_multi(targets_ms, cost = c(500, 50), budget = 80000)
+n_multi(targets_ms, stage_cost = c(500, 50), budget = 80000)
 ```
 
 ## Optimal strata boundaries
@@ -479,6 +519,29 @@ predict(sb, newdata = new_x, labels = paste0("S", 1:4))
 plot(sb)
 ```
 
+## Stratified allocation
+
+Given a sampling frame with stratum population sizes (`N_h`) and stratum standard deviations (`S_h`), `n_alloc()` distributes a total sample across strata. This is the second half of a stratified design: `strata_bound()` finds the cut points, and `n_alloc()` allocates within strata.
+
+```{r n-alloc-basic}
+frame <- data.frame(
+  N_h = c(4000, 3000, 3000),
+  S_h = c(10, 15, 8),
+  mean_h = c(50, 60, 55)
+)
+
+# Fixed total n with Neyman allocation
+n_alloc(frame, n = 600, alloc = "neyman")
+```
+
+Three solve modes are available: fixed total `n`, target `cv`, or `budget` constraint (when `cost_h` is provided in the frame).
+
+`prec_alloc()` computes the achieved precision for any allocation:
+
+```{r prec-alloc}
+prec_alloc(frame, n = c(200, 250, 150))
+```
+
 ## Power analysis
 
 Precision analysis answers "how precisely can we estimate a level?" Power analysis answers a different question: "can we detect a change or difference between two groups or time points?"
@@ -535,6 +598,21 @@ power_mean(effect = 5, var = 200)
 power_mean(var = 200, n = 400)
 ```
 
+### Difference-in-differences
+
+`power_did()` handles two-group, two-period DiD designs. Specify treated and control group outcomes as `c(baseline, endline)` vectors:
+
+```{r power-did}
+# Proportion outcome: treated improves, control stable
+power_did(treat = c(0.50, 0.55), control = c(0.50, 0.48),
+          outcome = "prop", effect = 0.07)
+
+# Mean outcome with panel overlap
+power_did(treat = c(50, 55), control = c(50, 52),
+          outcome = "mean", var = 100, effect = 3,
+          overlap = 0.5, rho = 0.6)
+```
+
 ### Unequal groups and alternative methods
 
 Both `power_prop()` and `power_mean()` support unequal group sizes via `ratio` or explicit `n = c(n1, n2)`:
@@ -583,7 +661,7 @@ predict(x, expand.grid(
 ### Cluster budget scenarios
 
 ```{r predict-cluster}
-cl <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+cl <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
 predict(cl, data.frame(budget = c(50000, 100000, 150000, 200000)))
 ```
 
@@ -603,42 +681,46 @@ predict(pr, data.frame(n = c(100, 200, 400, 800, 1600)))
 
 ## Putting it all together
 
-A typical planning sequence for a national household survey ties several svyplan functions together:
+A typical planning sequence for a national household survey ties several svyplan functions together. A `svyplan()` profile captures the shared design assumptions:
 
-1. Define indicators and precision targets per domain
-2. Compute sample sizes with `n_multi()`
-3. Evaluate achieved precision with `prec_multi()`
-4. Run sensitivity analysis with `predict()`
-5. If frame data is available, estimate variance components with `varcomp()`
-6. Optimize the multistage allocation with `n_cluster()` or `n_multi()` with costs
-7. Determine strata boundaries with `strata_bound()`
-8. Check that the design has adequate power with `power_prop()` / `power_mean()`
+1. Set shared design parameters once with `svyplan()`
+2. Define indicators and precision targets per domain
+3. Compute sample sizes with `n_multi()`
+4. Evaluate achieved precision with `prec_multi()`
+5. Run sensitivity analysis with `predict()`
+6. If frame data is available, estimate variance components with `varcomp()`
+7. Optimize the multistage allocation with `n_cluster()` or `n_multi()` with costs
+8. Determine strata boundaries with `strata_bound()`
+9. Check that the design has adequate power with `power_prop()` / `power_mean()`
 
 ```{r workflow}
-# 1-2: multi-indicator sample size with domain targets
+# 1: shared design assumptions
+design <- svyplan(deff = 2.0, resp_rate = 0.85)
+
+# 2-3: multi-indicator sample size
 targets <- data.frame(
   name = c("stunting", "vaccination", "anemia"),
   p    = c(0.25, 0.70, 0.12),
   moe  = c(0.05, 0.05, 0.03),
   deff = c(2.0, 1.5, 2.5)
 )
-plan <- n_multi(targets)
-plan
+result <- n_multi(targets)
+result
 
-# 3: achieved precision for each indicator
-prec_multi(plan)
+# 4: achieved precision for each indicator
+prec_multi(result)
 
-# 4: how sensitive is the binding indicator to the response rate?
+# 5: how sensitive is the binding indicator to the response rate?
 predict(
-  n_prop(p = 0.25, moe = 0.05, deff = 2.0),
+  n_prop(p = 0.25, moe = 0.05, plan = design),
   data.frame(resp_rate = c(0.7, 0.8, 0.9, 1.0))
 )
 
-# 8: can we detect a 5pp decline in stunting with this sample?
+# 9: can we detect a 5pp decline in stunting with this sample?
 power_prop(
   p1 = 0.25, p2 = 0.20,
-  n = as.integer(plan), power = NULL,
-  deff = 2.0
+  n = as.integer(result), power = NULL,
+  plan = design
 )
 ```
 

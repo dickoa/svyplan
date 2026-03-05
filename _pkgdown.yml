@@ -8,6 +8,11 @@ articles:
       - svyplan
 
 reference:
+- title: Survey plan profiles
+  desc: Reusable design defaults for survey planning.
+  contents:
+  - svyplan
+
 - title: Sample size determination
   desc: Compute required sample sizes for different designs.
   contents:
@@ -15,6 +20,7 @@ reference:
   - n_mean
   - n_cluster
   - n_multi
+  - n_alloc
 
 - title: Precision analysis
   desc: Evaluate sampling precision for a given design.
@@ -23,12 +29,14 @@ reference:
   - prec_mean
   - prec_cluster
   - prec_multi
+  - prec_alloc
 
 - title: Power analysis
   desc: Statistical power for two-sample tests.
   contents:
   - power_prop
   - power_mean
+  - power_did
 
 - title: Variance components
   desc: Estimate variance components from frame data.

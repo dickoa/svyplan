@@ -1,4 +1,4 @@
-# svyplan 0.7.0
+# svyplan 0.8.0
 
 Initial CRAN release.
 
@@ -11,6 +11,10 @@ Initial CRAN release.
 * `n_multi()` — multi-indicator sample size for surveys with several
   precision targets. Supports simple (single-stage) and multistage modes,
   with automatic per-domain optimization and `min_n` floor.
+* `n_alloc()` — stratified sample allocation given a frame with stratum
+  sizes and variabilities. Three solve modes: fixed total `n`, target `cv`,
+  or `budget` constraint. Four allocation methods: proportional, Neyman,
+  optimal (cost-weighted), and Bankier power allocation.
 
 ## Precision analysis
 
@@ -22,6 +26,8 @@ Initial CRAN release.
   allocation. Inverse of `n_cluster()`.
 * `prec_multi()` — per-indicator sampling precision for multi-indicator
   survey designs. Inverse of `n_multi()`.
+* `prec_alloc()` — sampling precision for a stratified allocation. Inverse
+  of `n_alloc()`.
 
 All `n_*` and `prec_*` functions are S3 generics with bidirectional
 round-trip: passing a precision object to the corresponding `n_*` function
@@ -42,6 +48,11 @@ recovers the sample size, and vice versa.
   Supports unequal group variances (`var = c(v1, v2)`), unequal group
   sizes (`n = c(n1, n2)`), and allocation ratio (`ratio`). Cohen's d
   conversion documented.
+* `power_did()` — power analysis for difference-in-differences designs.
+  Parametrized via `treat = c(baseline, endline)` and
+  `control = c(baseline, endline)` vectors. Supports both proportion and
+  mean outcomes, cell-specific variances, panel overlap, and all common
+  design parameters.
 
 ## Stratification
 
@@ -52,7 +63,7 @@ recovers the sample size, and vice versa.
   (`"kozak"`). Four allocation methods: proportional, Neyman, optimal
   (cost-weighted), and Bankier (1988) power allocation (`"power"`) with
   parameter `q` controlling the national/subnational precision trade-off.
-  Take-all (certainty) strata via the `certain` argument.
+  Take-all (certainty) strata via the `take_all` argument.
 * `predict.svyplan_strata()` — apply strata boundaries to new data,
   returning a factor.
 
@@ -65,11 +76,29 @@ recovers the sample size, and vice versa.
   Spencer, Chen-Rust decomposition, and cluster planning mode).
 * `effective_n()` — S3 generic for effective sample size.
 
+## Survey plan profiles
+
+* `svyplan()` — create a reusable profile capturing shared design defaults
+  (`deff`, `N`, `resp_rate`, `alpha`, `stage_cost`, `unit_cost`, etc.). Pass
+  to any function via `plan = plan` or pipe with `plan |> n_prop(...)`.
+  Piping works with both positional and named arguments
+  (e.g. `plan |> n_prop(p = 0.3, moe = 0.05)`).
+  Explicit arguments always override plan defaults.
+
+## Naming
+
+* Cluster/multistage functions use `stage_cost` for per-stage cost vectors
+  (`n_cluster()`, `n_multi()`, `prec_multi()`).
+* Stratified allocation functions use `unit_cost` for per-stratum unit costs
+  (`n_alloc()`, `prec_alloc()`, `strata_bound()`).
+
 ## Common features
 
 * All sample size, precision, and power functions accept `deff` (design
   effect), `N` (finite population correction), and `resp_rate` (response
   rate adjustment).
+* All functions accept `plan` — a `svyplan()` profile providing shared
+  design defaults.
 * `predict()` methods for sensitivity analysis: evaluate any result at new
   parameter combinations.
 * `confint()` methods for `svyplan_n` and `svyplan_prec` objects.
@@ -78,6 +107,7 @@ recovers the sample size, and vice versa.
 
 ## S3 classes
 
+* `svyplan` — survey plan profile (reusable design defaults).
 * `svyplan_n` — sample size results (with se, moe, cv fields).
 * `svyplan_cluster` — multistage allocation results.
 * `svyplan_prec` — precision results.

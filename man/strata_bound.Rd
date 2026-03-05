@@ -12,7 +12,7 @@ strata_bound(
   method = "lh",
   alloc = "neyman",
   power_q = 0.5,
-  cost = NULL,
+  unit_cost = NULL,
   certain = NULL,
   nclass = NULL,
   maxiter = 200L,
@@ -45,7 +45,7 @@ Numeric scalar in \eqn{[0, 1]}. At \code{power_q = 1} the allocation equals
 Neyman; at \code{power_q = 0} it yields near-equal subnational CVs.
 Default 0.5.}
 
-\item{cost}{Per-stratum unit costs, ordered from lowest to highest
+\item{unit_cost}{Per-stratum unit costs, ordered from lowest to highest
 stratum. Scalar (equal costs) or vector of length \code{n_strata}.
 Default \code{NULL} (equal unit costs, \eqn{c_h = 1} for all strata),
 in which case \code{"optimal"} and \code{"neyman"} coincide.}

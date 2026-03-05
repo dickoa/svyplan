@@ -50,14 +50,18 @@ NULL
 #' @export
 plot.svyplan_strata <- function(x, ...) {
   strata <- x$strata
-  labels <- paste0(
-    "[",
-    signif(strata$lower, 3),
-    ", ",
-    signif(strata$upper, 3),
-    ")"
-  )
-  labels[length(labels)] <- sub("\\)$", "]", labels[length(labels)])
+  if (!is.null(strata$lower) && !is.null(strata$upper)) {
+    labels <- paste0(
+      "[",
+      signif(strata$lower, 3),
+      ", ",
+      signif(strata$upper, 3),
+      ")"
+    )
+    labels[length(labels)] <- sub("\\)$", "]", labels[length(labels)])
+  } else {
+    labels <- paste0("H", strata$stratum)
+  }
 
   f_h <- strata$n_h / strata$N_h
   names(f_h) <- labels
@@ -102,6 +106,8 @@ plot.svyplan_power <- function(x, npoints = 101L, ...) {
     x$type,
     proportion = "proportions",
     mean = "means",
+    did_prop = "DiD proportions",
+    did_mean = "DiD means",
     x$type
   )
 
@@ -146,6 +152,23 @@ plot.svyplan_power <- function(x, npoints = 101L, ...) {
               overlap = p$overlap,
               rho = p$rho,
               method = p$method %||% "wald"
+            )
+          } else if (x$type %in% c("did_prop", "did_mean")) {
+            res <- power_did(
+              treat = p$treat,
+              control = p$control,
+              outcome = p$outcome,
+              var = p$var,
+              effect = x$effect,
+              n = ni,
+              power = NULL,
+              alpha = p$alpha,
+              N = p$N,
+              deff = p$deff,
+              resp_rate = p$resp_rate,
+              alternative = p$alternative,
+              overlap = p$overlap,
+              rho = p$rho
             )
           } else {
             res <- power_mean(

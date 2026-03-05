@@ -6,11 +6,11 @@
 \alias{n_cluster.svyplan_prec}
 \title{Optimal Multistage Cluster Allocation}
 \usage{
-n_cluster(cost, ...)
+n_cluster(stage_cost, ...)
 
 \method{n_cluster}{default}(
-  cost,
-  delta,
+  stage_cost = NULL,
+  delta = NULL,
   rel_var = 1,
   k = 1,
   cv = NULL,
@@ -18,15 +18,16 @@ n_cluster(cost, ...)
   n_psu = NULL,
   resp_rate = 1,
   fixed_cost = 0,
+  plan = NULL,
   ...
 )
 
-\method{n_cluster}{svyplan_prec}(cost, cv = NULL, budget = NULL, ...)
+\method{n_cluster}{svyplan_prec}(stage_cost, cv = NULL, budget = NULL, ...)
 }
 \arguments{
-\item{cost}{For the default method: numeric vector of per-stage costs.
-Length determines the number of stages (2 or 3). Named vectors are
-accepted with stage names \code{cost_psu}, \code{cost_ssu}, \code{cost_tsu}
+\item{stage_cost}{For the default method: numeric vector of per-stage
+costs. Length determines the number of stages (2 or 3). Named vectors
+are accepted with stage names \code{cost_psu}, \code{cost_ssu}, \code{cost_tsu}
 (\code{cost_tsu} aliases \code{cost_ssu} in 2-stage).
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_cluster]{prec_cluster()}}.}
 
@@ -56,6 +57,9 @@ The total cost model becomes
 \code{C = C0 + c1*n_psu + c2*n_psu*psu_size [+ c3*n_psu*psu_size*ssu_size]}.
 In budget mode, only \code{budget - fixed_cost} is available for variable costs;
 in CV mode, \code{fixed_cost} is added to the variable cost.}
+
+\item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults
+(including \code{stage_cost}, \code{delta}, \code{rel_var}, \code{k}, \code{resp_rate}, \code{fixed_cost}).}
 }
 \value{
 A \code{svyplan_cluster} object with components:
@@ -79,7 +83,7 @@ design, minimizing cost for a given precision or minimizing
 variance for a given budget.
 }
 \details{
-Stage count is determined by \code{length(cost)}. Two dispatch dimensions:
+Stage count is determined by \code{length(stage_cost)}. Two dispatch dimensions:
 \itemize{
 \item \strong{2-stage vs 3-stage} (vector length)
 \item \strong{budget vs cv} mode (which is non-NULL)
@@ -97,19 +101,19 @@ populations are large relative to the sample.
 }
 \examples{
 # 2-stage, budget mode
-n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
 
 # 2-stage, CV mode
-n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
 
 # 2-stage, fixed n_psu
-n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000, n_psu = 40)
+n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, n_psu = 40)
 
 # 3-stage
-n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
 
 # With fixed overhead cost
-n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000, fixed_cost = 5000)
+n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, fixed_cost = 5000)
 
 }
 \references{

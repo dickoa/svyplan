@@ -2,7 +2,6 @@
 % Please edit documentation in R/svyplan-package.R
 \docType{package}
 \name{svyplan-package}
-\alias{svyplan}
 \alias{svyplan-package}
 \title{svyplan: Survey Sample Size Determination and Precision Analysis}
 \description{

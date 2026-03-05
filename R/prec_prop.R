@@ -16,6 +16,7 @@
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The effective sample size is deflated by `resp_rate`.
 #' @param method One of `"wald"` (default), `"wilson"`, or `"logodds"`.
+#' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_prec` object with components `$se`, `$moe`, and `$cv`.
 #'
@@ -41,6 +42,10 @@
 #'
 #' @export
 prec_prop <- function(p, ...) {
+  if (!missing(p)) {
+    .res <- .dispatch_plan(p, "p", prec_prop.default, ...)
+    if (!is.null(.res)) return(.res)
+  }
   UseMethod("prec_prop")
 }
 
@@ -54,8 +59,11 @@ prec_prop.default <- function(
   deff = 1,
   resp_rate = 1,
   method = "wald",
+  plan = NULL,
   ...
 ) {
+  .plan <- .merge_plan_args(plan, prec_prop.default, match.call(), environment())
+  if (!is.null(.plan)) return(do.call(prec_prop.default, c(.plan, list(...))))
   check_proportion(p, "p")
   check_scalar(n, "n")
   check_alpha(alpha)
@@ -90,6 +98,7 @@ prec_prop.default <- function(
     deff = deff,
     resp_rate = resp_rate
   )
+
 
   .new_svyplan_prec(
     se = se,

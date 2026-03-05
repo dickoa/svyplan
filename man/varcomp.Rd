@@ -51,8 +51,12 @@ ANOVA decomposition. Supports SRS and PPS first-stage designs.
 \details{
 The interface is determined by the class of \code{x}:
 \itemize{
-\item \strong{Formula}: \code{varcomp(income ~ district, data = frame)}. The LHS is
-the analysis variable, RHS terms are stage IDs (outermost first).
+\item \strong{Formula}: \code{varcomp(income ~ district/village, data = frame)}. The
+LHS is the analysis variable, RHS terms express nesting using
+\code{/} or \code{\%in\%} (see \link{formula}): \code{y ~ psu/ssu} or equivalently
+\code{y ~ ssu \%in\% psu} (SSUs nested within PSUs). With \code{/} the
+outermost stage comes first; with \code{\%in\%} the innermost comes
+first. Be careful not to reverse the order.
 \item \strong{Numeric vector}: \code{varcomp(y, stage_id = list(cluster_ids))}.
 \item \strong{survey.design}: \code{varcomp(design, ~y)}. Cluster structure is
 extracted from the design object. Requires the survey package.
@@ -84,17 +88,34 @@ structure is extracted from the design.
 
 }}
 \examples{
-# 2-stage SRS using formula
+# 2-stage SRS using formula (PSU = district)
 set.seed(42)
-frame <- data.frame(
+frame2 <- data.frame(
   income = rnorm(200, 50000, 10000),
   district = rep(1:20, each = 10)
 )
-vc <- varcomp(income ~ district, data = frame)
-vc
+vc2 <- varcomp(income ~ district, data = frame2)
+vc2
 
 # Feed into n_cluster
-n_cluster(cost = c(500, 50), delta = vc, budget = 100000)
+n_cluster(stage_cost = c(500, 50), delta = vc2, budget = 100000)
+
+# 3-stage PPS using formula: villages nested within districts
+# "/" expresses nesting (outermost stage first, see ?formula)
+set.seed(42)
+frame3 <- data.frame(
+  income = rnorm(400, 50000, 10000),
+  district = rep(1:20, each = 20),
+  village = rep(1:100, each = 4),
+  pp = rep(1 / 20, 400)
+)
+vc3 <- varcomp(income ~ district/village, data = frame3, prob = ~pp)
+vc3
+
+# Vector (list) interface — equivalent to the formula above
+varcomp(frame3$income,
+        stage_id = list(frame3$district, frame3$village),
+        prob = frame3$pp)
 
 }
 \references{

@@ -16,6 +16,7 @@ prec_prop(p, ...)
   deff = 1,
   resp_rate = 1,
   method = "wald",
+  plan = NULL,
   ...
 )
 
@@ -41,6 +42,8 @@ efficient designs (e.g., stratified sampling with Neyman allocation).}
 adjustment). The effective sample size is deflated by \code{resp_rate}.}
 
 \item{method}{One of \code{"wald"} (default), \code{"wilson"}, or \code{"logodds"}.}
+
+\item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
 A \code{svyplan_prec} object with components \verb{$se}, \verb{$moe}, and \verb{$cv}.

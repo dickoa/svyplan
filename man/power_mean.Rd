@@ -2,9 +2,12 @@
 % Please edit documentation in R/power_mean.R
 \name{power_mean}
 \alias{power_mean}
+\alias{power_mean.default}
 \title{Power Analysis for Means}
 \usage{
-power_mean(
+power_mean(effect, ...)
+
+\method{power_mean}{default}(
   effect = NULL,
   var,
   n = NULL,
@@ -16,12 +19,16 @@ power_mean(
   alternative = c("two.sided", "one.sided"),
   ratio = 1,
   overlap = 0,
-  rho = 0
+  rho = 0,
+  plan = NULL,
+  ...
 )
 }
 \arguments{
 \item{effect}{Absolute difference in means (effect-size magnitude, positive).
 Leave \code{NULL} to solve for MDE.}
+
+\item{...}{Additional arguments passed to methods.}
 
 \item{var}{Within-group variance. Scalar (equal variances in both groups)
 or length-2 vector \code{c(var1, var2)} for unequal group variances.}
@@ -54,6 +61,8 @@ Defined as the fraction of group 1 that also appears in group 2
 (\code{overlap = n12 / n1}).}
 
 \item{rho}{Correlation between occasions in [0, 1].}
+
+\item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
 A \code{svyplan_power} object with components:

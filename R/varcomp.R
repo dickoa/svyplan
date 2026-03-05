@@ -23,8 +23,12 @@
 #' @details
 #' The interface is determined by the class of `x`:
 #'
-#' - **Formula**: `varcomp(income ~ district, data = frame)`. The LHS is
-#'   the analysis variable, RHS terms are stage IDs (outermost first).
+#' - **Formula**: `varcomp(income ~ district/village, data = frame)`. The
+#'   LHS is the analysis variable, RHS terms express nesting using
+#'   `/` or `%in%` (see [formula]): `y ~ psu/ssu` or equivalently
+#'   `y ~ ssu %in% psu` (SSUs nested within PSUs). With `/` the
+#'   outermost stage comes first; with `%in%` the innermost comes
+#'   first. Be careful not to reverse the order.
 #' - **Numeric vector**: `varcomp(y, stage_id = list(cluster_ids))`.
 #' - **survey.design**: `varcomp(design, ~y)`. Cluster structure is
 #'   extracted from the design object. Requires the survey package.
@@ -54,17 +58,34 @@
 #' @seealso [n_cluster()] which accepts a `svyplan_varcomp` as `delta`.
 #'
 #' @examples
-#' # 2-stage SRS using formula
+#' # 2-stage SRS using formula (PSU = district)
 #' set.seed(42)
-#' frame <- data.frame(
+#' frame2 <- data.frame(
 #'   income = rnorm(200, 50000, 10000),
 #'   district = rep(1:20, each = 10)
 #' )
-#' vc <- varcomp(income ~ district, data = frame)
-#' vc
+#' vc2 <- varcomp(income ~ district, data = frame2)
+#' vc2
 #'
 #' # Feed into n_cluster
-#' n_cluster(cost = c(500, 50), delta = vc, budget = 100000)
+#' n_cluster(stage_cost = c(500, 50), delta = vc2, budget = 100000)
+#'
+#' # 3-stage PPS using formula: villages nested within districts
+#' # "/" expresses nesting (outermost stage first, see ?formula)
+#' set.seed(42)
+#' frame3 <- data.frame(
+#'   income = rnorm(400, 50000, 10000),
+#'   district = rep(1:20, each = 20),
+#'   village = rep(1:100, each = 4),
+#'   pp = rep(1 / 20, 400)
+#' )
+#' vc3 <- varcomp(income ~ district/village, data = frame3, prob = ~pp)
+#' vc3
+#'
+#' # Vector (list) interface — equivalent to the formula above
+#' varcomp(frame3$income,
+#'         stage_id = list(frame3$district, frame3$village),
+#'         prob = frame3$pp)
 #'
 #' @export
 varcomp <- function(x, ...) {
@@ -155,6 +176,37 @@ varcomp.survey.design <- function(x, ..., prob = NULL) {
 
   y_name <- vars[1L]
   stage_names <- vars[-1L]
+
+  if (length(stage_names) > 1L) {
+    tl <- attr(terms(formula), "term.labels")
+    n_stg <- length(stage_names)
+    slash_ok <- length(tl) == n_stg && !grepl(":", tl[1L], fixed = TRUE)
+    if (slash_ok) {
+      for (i in seq_along(tl)[-1L]) {
+        if (!startsWith(tl[i], paste0(tl[i - 1L], ":"))) {
+          slash_ok <- FALSE
+          break
+        }
+      }
+    }
+    in_ok <- !slash_ok && length(tl) == 1L &&
+      length(strsplit(tl, ":")[[1L]]) == n_stg
+    if (slash_ok) {
+      stage_names <- tl[1L]
+      for (i in seq_along(tl)[-1L]) {
+        stage_names <- c(stage_names,
+                         sub(paste0(tl[i - 1L], ":"), "", tl[i], fixed = TRUE))
+      }
+    } else if (in_ok) {
+      stage_names <- rev(strsplit(tl, ":")[[1L]])
+    } else {
+      stop(
+        "multi-stage formula must express nesting ",
+        "(e.g., y ~ psu/ssu or y ~ ssu %in% psu); see ?formula",
+        call. = FALSE
+      )
+    }
+  }
 
   y <- data[[y_name]]
   if (is.null(y)) {

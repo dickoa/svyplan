@@ -17,6 +17,7 @@
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The sample size is inflated by `1 / resp_rate`.
+#' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_n` object.
 #'
@@ -56,12 +57,21 @@
 #' n_mean(var = 100, moe = 2, N = 5000, deff = 1.5, resp_rate = 0.8)
 #'
 #' @export
-n_mean <- function(var, ...) UseMethod("n_mean")
+n_mean <- function(var, ...) {
+  if (!missing(var)) {
+    .res <- .dispatch_plan(var, "var", n_mean.default, ...)
+    if (!is.null(.res)) return(.res)
+  }
+  UseMethod("n_mean")
+}
 
 #' @rdname n_mean
 #' @export
 n_mean.default <- function(var, mu = NULL, moe = NULL, cv = NULL, alpha = 0.05,
-                           N = Inf, deff = 1, resp_rate = 1, ...) {
+                           N = Inf, deff = 1, resp_rate = 1,
+                           plan = NULL, ...) {
+  .plan <- .merge_plan_args(plan, n_mean.default, match.call(), environment())
+  if (!is.null(.plan)) return(do.call(n_mean.default, c(.plan, list(...))))
   check_scalar(var, "var")
   check_precision(moe, cv)
   check_alpha(alpha)
@@ -93,6 +103,7 @@ n_mean.default <- function(var, mu = NULL, moe = NULL, cv = NULL, alpha = 0.05,
 
   params <- list(var = var, alpha = alpha, N = N, deff = deff,
                  resp_rate = resp_rate)
+
   if (!is.null(mu)) params$mu <- mu
   if (!is.null(moe)) params$moe <- moe else params$cv <- cv
 

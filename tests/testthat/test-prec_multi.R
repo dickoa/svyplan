@@ -40,7 +40,7 @@ test_that("prec_multi multistage mode computes per-indicator CV", {
     psu_size     = c(12, 12),
     delta_psu = c(0.02, 0.05)
   )
-  result <- prec_multi(targets, cost = c(500, 50))
+  result <- prec_multi(targets, stage_cost = c(500, 50))
   expect_equal(result$type, "multi")
   expect_equal(nrow(result$detail), 2L)
   expect_true(all(!is.na(result$detail$.cv)))
@@ -93,7 +93,7 @@ test_that("prec_multi cluster requires psu_size column", {
     p = 0.3, n = 50, delta_psu = 0.05
   )
   expect_error(
-    prec_multi(targets, cost = c(500, 50)),
+    prec_multi(targets, stage_cost = c(500, 50)),
     "psu_size.*required"
   )
 })
@@ -103,7 +103,7 @@ test_that("prec_multi 3-stage requires ssu_size column", {
     p = 0.3, n = 50, psu_size = 10, delta_psu = 0.05
   )
   expect_error(
-    prec_multi(targets, cost = c(500, 100, 50)),
+    prec_multi(targets, stage_cost = c(500, 100, 50)),
     "ssu_size.*required"
   )
 })
@@ -113,7 +113,7 @@ test_that("prec_multi cluster rejects NA in psu_size", {
     p = c(0.3, 0.1), n = c(50, 50), psu_size = c(10, NA), delta_psu = c(0.05, 0.02)
   )
   expect_error(
-    prec_multi(targets, cost = c(500, 50)),
+    prec_multi(targets, stage_cost = c(500, 50)),
     "psu_size.*required"
   )
 })
@@ -123,7 +123,7 @@ test_that("prec_multi cluster rejects negative rel_var", {
     p = 0.3, n = 50, psu_size = 10, delta_psu = 0.05, rel_var = -1
   )
   expect_error(
-    prec_multi(targets, cost = c(500, 50)),
+    prec_multi(targets, stage_cost = c(500, 50)),
     "rel_var.*positive"
   )
 })
@@ -133,7 +133,7 @@ test_that("prec_multi cluster rejects zero rel_var", {
     p = 0.3, n = 50, psu_size = 10, delta_psu = 0.05, rel_var = 0
   )
   expect_error(
-    prec_multi(targets, cost = c(500, 50)),
+    prec_multi(targets, stage_cost = c(500, 50)),
     "rel_var.*positive"
   )
 })
@@ -143,7 +143,7 @@ test_that("prec_multi cluster rejects negative k_psu", {
     p = 0.3, n = 50, psu_size = 10, delta_psu = 0.05, k_psu = -1
   )
   expect_error(
-    prec_multi(targets, cost = c(500, 50)),
+    prec_multi(targets, stage_cost = c(500, 50)),
     "k_psu.*positive"
   )
 })
@@ -153,7 +153,7 @@ test_that("prec_multi cluster rejects negative k_ssu", {
     p = 0.3, n = 50, psu_size = 10, delta_psu = 0.05, k_ssu = -1
   )
   expect_error(
-    prec_multi(targets, cost = c(500, 50)),
+    prec_multi(targets, stage_cost = c(500, 50)),
     "k_ssu.*positive"
   )
 })
@@ -161,7 +161,7 @@ test_that("prec_multi cluster rejects negative k_ssu", {
 test_that("prec_multi cluster rejects missing delta_psu", {
   targets <- data.frame(p = 0.3, n = 50, psu_size = 10)
   expect_error(
-    prec_multi(targets, cost = c(500, 50)),
+    prec_multi(targets, stage_cost = c(500, 50)),
     "delta_psu.*required"
   )
 })
@@ -169,12 +169,12 @@ test_that("prec_multi cluster rejects missing delta_psu", {
 test_that("prec_multi cluster rejects delta_psu out of range", {
   targets <- data.frame(p = 0.3, n = 50, psu_size = 2, delta_psu = -2)
   expect_error(
-    prec_multi(targets, cost = c(500, 50)),
+    prec_multi(targets, stage_cost = c(500, 50)),
     "delta_psu.*\\[0, 1\\]"
   )
   targets2 <- data.frame(p = 0.3, n = 50, psu_size = 2, delta_psu = 1.5)
   expect_error(
-    prec_multi(targets2, cost = c(500, 50)),
+    prec_multi(targets2, stage_cost = c(500, 50)),
     "delta_psu.*\\[0, 1\\]"
   )
 })
@@ -182,7 +182,7 @@ test_that("prec_multi cluster rejects delta_psu out of range", {
 test_that("prec_multi cluster rejects NA delta_psu", {
   targets <- data.frame(p = 0.3, n = 50, psu_size = 10, delta_psu = NA_real_)
   expect_error(
-    prec_multi(targets, cost = c(500, 50)),
+    prec_multi(targets, stage_cost = c(500, 50)),
     "delta_psu.*NA"
   )
 })
@@ -190,7 +190,7 @@ test_that("prec_multi cluster rejects NA delta_psu", {
 test_that("prec_multi 3-stage rejects missing delta_ssu", {
   targets <- data.frame(p = 0.3, n = 50, psu_size = 10, ssu_size = 5, delta_psu = 0.05)
   expect_error(
-    prec_multi(targets, cost = c(500, 100, 50)),
+    prec_multi(targets, stage_cost = c(500, 100, 50)),
     "delta_ssu.*required"
   )
 })
@@ -200,7 +200,7 @@ test_that("prec_multi 3-stage rejects NA delta_ssu", {
     p = 0.3, n = 50, psu_size = 10, ssu_size = 5, delta_psu = 0.05, delta_ssu = NA_real_
   )
   expect_error(
-    prec_multi(targets, cost = c(500, 100, 50)),
+    prec_multi(targets, stage_cost = c(500, 100, 50)),
     "delta_ssu.*NA"
   )
 })

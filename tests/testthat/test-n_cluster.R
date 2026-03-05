@@ -1,5 +1,5 @@
 test_that("n_cluster 2-stage budget mode", {
-  result <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  result <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   expect_s3_class(result, "svyplan_cluster")
 
   n2_opt <- sqrt(500 / 50 * (1 - 0.05) / 0.05)
@@ -14,7 +14,7 @@ test_that("n_cluster 2-stage budget mode", {
 })
 
 test_that("n_cluster 2-stage CV mode", {
-  result <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+  result <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
 
   n2_opt <- sqrt(500 / 50 * (1 - 0.05) / 0.05)
   n1_opt <- 1 * 1 * (1 + 0.05 * (n2_opt - 1)) / (n2_opt * 0.05^2)
@@ -27,7 +27,7 @@ test_that("n_cluster 2-stage CV mode", {
 
 test_that("n_cluster 2-stage fixed m budget mode", {
   result <- n_cluster(
-    cost = c(500, 50),
+    stage_cost = c(500, 50),
     delta = 0.05,
     budget = 100000,
     n_psu = 40
@@ -44,7 +44,7 @@ test_that("n_cluster 2-stage fixed m budget mode", {
 })
 
 test_that("n_cluster 2-stage fixed m CV mode", {
-  result <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05, n_psu = 40)
+  result <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05, n_psu = 40)
 
   n2_expected <- (1 - 0.05) / (0.05^2 * 40 / (1 * 1) - 0.05)
   cost_expected <- 500 * 40 + 50 * 40 * n2_expected
@@ -56,7 +56,7 @@ test_that("n_cluster 2-stage fixed m CV mode", {
 
 test_that("n_cluster 3-stage budget mode", {
   result <- n_cluster(
-    cost = c(500, 100, 50),
+    stage_cost = c(500, 100, 50),
     delta = c(0.01, 0.05),
     budget = 500000
   )
@@ -72,7 +72,7 @@ test_that("n_cluster 3-stage budget mode", {
 })
 
 test_that("n_cluster 3-stage CV mode", {
-  result <- n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+  result <- n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
 
   n3_opt <- sqrt((1 - 0.05) / 0.05 * 100 / 50)
   n2_opt <- 1 / n3_opt * sqrt((1 - 0.05) / 0.01 * 500 / 50 * 1 / 1)
@@ -94,44 +94,44 @@ test_that("n_cluster accepts svyplan_varcomp", {
     rel_var = 1.0,
     stages = 2L
   )
-  result <- n_cluster(cost = c(500, 50), delta = vc, budget = 100000)
+  result <- n_cluster(stage_cost = c(500, 50), delta = vc, budget = 100000)
   expect_s3_class(result, "svyplan_cluster")
   expect_equal(result$stages, 2L)
 })
 
 test_that("n_cluster round-trips with prec_cluster", {
-  plan <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  plan <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   cv_check <- prec_cluster(n = unname(plan$n), delta = 0.05)$cv
   expect_equal(cv_check, plan$cv, tolerance = 1e-6)
 })
 
 test_that("n_cluster rejects boundary delta values", {
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 0, budget = 1e5),
+    n_cluster(stage_cost = c(500, 50), delta = 0, budget = 1e5),
     "\\(0, 1\\)"
   )
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 1, cv = 0.05),
+    n_cluster(stage_cost = c(500, 50), delta = 1, cv = 0.05),
     "\\(0, 1\\)"
   )
 })
 
 test_that("n_cluster validates inputs", {
   expect_error(
-    n_cluster(cost = 500, delta = 0.05, budget = 100000),
+    n_cluster(stage_cost = 500, delta = 0.05, budget = 100000),
     "length >= 2"
   )
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 0.05),
+    n_cluster(stage_cost = c(500, 50), delta = 0.05),
     "specify exactly one"
   )
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05, budget = 100000),
+    n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05, budget = 100000),
     "specify exactly one"
   )
   expect_error(
     n_cluster(
-      cost = c(500, 50, 20, 10),
+      stage_cost = c(500, 50, 20, 10),
       delta = c(0.01, 0.02, 0.03),
       budget = 100000
     ),
@@ -141,42 +141,40 @@ test_that("n_cluster validates inputs", {
 
 test_that("n_cluster is an S3 generic", {
   expect_true(is.function(n_cluster))
-  skip_if(identical(Sys.getenv("R_COVR"), "true"))
-  expect_true(isS3stdGeneric(n_cluster))
   # Verify dispatch works on numeric (default method)
-  res <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  res <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   expect_s3_class(res, "svyplan_cluster")
 })
 
 test_that("n_cluster params store cv in CV mode", {
-  res <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+  res <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
   expect_equal(res$params$cv, 0.05)
   expect_null(res$params$budget)
   expect_null(res$params$n_psu)
 })
 
 test_that("n_cluster params store budget and m", {
-  res <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000, n_psu = 40)
+  res <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, n_psu = 40)
   expect_equal(res$params$budget, 100000)
   expect_equal(res$params$n_psu, 40)
   expect_null(res$params$cv)
 })
 
 test_that("n_cluster params store budget without m", {
-  res <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  res <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   expect_equal(res$params$budget, 100000)
   expect_null(res$params$n_psu)
 })
 
 test_that("n_cluster 3-stage params store cv", {
-  res <- n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+  res <- n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
   expect_equal(res$params$cv, 0.05)
   expect_null(res$params$budget)
 })
 
 test_that("n_cluster 3-stage params store budget and m", {
   res <- n_cluster(
-    cost = c(500, 100, 50),
+    stage_cost = c(500, 100, 50),
     delta = c(0.01, 0.05),
     budget = 500000,
     n_psu = 50
@@ -186,7 +184,7 @@ test_that("n_cluster 3-stage params store budget and m", {
 })
 
 test_that("svyplan_cluster has se/moe/cv fields", {
-  res <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  res <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   expect_true("se" %in% names(res))
   expect_true("moe" %in% names(res))
   expect_true("cv" %in% names(res))
@@ -197,35 +195,35 @@ test_that("svyplan_cluster has se/moe/cv fields", {
 
 test_that("n_cluster rejects invalid rel_var", {
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 0.05, rel_var = -1, cv = 0.05),
+    n_cluster(stage_cost = c(500, 50), delta = 0.05, rel_var = -1, cv = 0.05),
     "must be positive"
   )
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 0.05, rel_var = 0, cv = 0.05),
+    n_cluster(stage_cost = c(500, 50), delta = 0.05, rel_var = 0, cv = 0.05),
     "must be positive"
   )
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 0.05, rel_var = NA_real_, cv = 0.05),
+    n_cluster(stage_cost = c(500, 50), delta = 0.05, rel_var = NA_real_, cv = 0.05),
     "must not be NA"
   )
 })
 
 test_that("n_cluster rejects invalid k", {
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 0.05, k = -1, cv = 0.05),
+    n_cluster(stage_cost = c(500, 50), delta = 0.05, k = -1, cv = 0.05),
     "positive"
   )
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 0.05, k = 0, cv = 0.05),
+    n_cluster(stage_cost = c(500, 50), delta = 0.05, k = 0, cv = 0.05),
     "positive"
   )
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 0.05, k = NA, cv = 0.05),
+    n_cluster(stage_cost = c(500, 50), delta = 0.05, k = NA, cv = 0.05),
     "positive"
   )
   expect_error(
     n_cluster(
-      cost = c(500, 100, 50),
+      stage_cost = c(500, 100, 50),
       delta = c(0.01, 0.05),
       k = c(1, -1),
       cv = 0.05
@@ -236,12 +234,12 @@ test_that("n_cluster rejects invalid k", {
 
 test_that("n_cluster fixed-m CV error says 'too small'", {
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.001, n_psu = 5),
+    n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.001, n_psu = 5),
     "too small"
   )
   expect_error(
     n_cluster(
-      cost = c(500, 100, 50),
+      stage_cost = c(500, 100, 50),
       delta = c(0.01, 0.05),
       cv = 0.001,
       n_psu = 5
@@ -251,9 +249,9 @@ test_that("n_cluster fixed-m CV error says 'too small'", {
 })
 
 test_that("fixed_cost = 0 is backward compatible", {
-  r1 <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  r1 <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   r2 <- n_cluster(
-    cost = c(500, 50),
+    stage_cost = c(500, 50),
     delta = 0.05,
     budget = 100000,
     fixed_cost = 0
@@ -264,9 +262,9 @@ test_that("fixed_cost = 0 is backward compatible", {
 })
 
 test_that("fixed_cost 2-stage budget mode reduces n1, n2 unchanged", {
-  base <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  base <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   fc <- n_cluster(
-    cost = c(500, 50),
+    stage_cost = c(500, 50),
     delta = 0.05,
     budget = 100000,
     fixed_cost = 5000
@@ -278,20 +276,20 @@ test_that("fixed_cost 2-stage budget mode reduces n1, n2 unchanged", {
 })
 
 test_that("fixed_cost 2-stage CV mode leaves n unchanged, adds to cost", {
-  base <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
-  fc <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05, fixed_cost = 5000)
+  base <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
+  fc <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05, fixed_cost = 5000)
   expect_equal(fc$n, base$n, tolerance = 1e-10)
   expect_equal(fc$cost, base$cost + 5000, tolerance = 1e-6)
 })
 
 test_that("fixed_cost 3-stage budget mode reduces n1", {
   base <- n_cluster(
-    cost = c(500, 100, 50),
+    stage_cost = c(500, 100, 50),
     delta = c(0.01, 0.05),
     budget = 500000
   )
   fc <- n_cluster(
-    cost = c(500, 100, 50),
+    stage_cost = c(500, 100, 50),
     delta = c(0.01, 0.05),
     budget = 500000,
     fixed_cost = 10000
@@ -303,9 +301,9 @@ test_that("fixed_cost 3-stage budget mode reduces n1", {
 })
 
 test_that("fixed_cost 3-stage CV mode adds to cost", {
-  base <- n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+  base <- n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
   fc <- n_cluster(
-    cost = c(500, 100, 50),
+    stage_cost = c(500, 100, 50),
     delta = c(0.01, 0.05),
     cv = 0.05,
     fixed_cost = 10000
@@ -316,20 +314,20 @@ test_that("fixed_cost 3-stage CV mode adds to cost", {
 
 test_that("fixed_cost validation rejects bad inputs", {
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05, fixed_cost = -1),
+    n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05, fixed_cost = -1),
     "non-negative"
   )
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05, fixed_cost = NA),
+    n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05, fixed_cost = NA),
     "non-negative"
   )
   expect_error(
-    n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05, fixed_cost = c(1, 2)),
+    n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05, fixed_cost = c(1, 2)),
     "non-negative"
   )
   expect_error(
     n_cluster(
-      cost = c(500, 50),
+      stage_cost = c(500, 50),
       delta = 0.05,
       budget = 100000,
       fixed_cost = 100000
@@ -338,7 +336,7 @@ test_that("fixed_cost validation rejects bad inputs", {
   )
   expect_error(
     n_cluster(
-      cost = c(500, 50),
+      stage_cost = c(500, 50),
       delta = 0.05,
       budget = 100000,
       fixed_cost = 200000
@@ -348,13 +346,13 @@ test_that("fixed_cost validation rejects bad inputs", {
 })
 
 test_that("as.integer equals product of ceiled stage sizes", {
-  res <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  res <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   expect_equal(as.integer(res), as.integer(prod(ceiling(res$n))))
 })
 
 test_that("fixed_cost round-trip n_cluster -> prec_cluster -> n_cluster", {
   orig <- n_cluster(
-    cost = c(500, 50),
+    stage_cost = c(500, 50),
     delta = 0.05,
     cv = 0.05,
     fixed_cost = 5000
@@ -367,7 +365,7 @@ test_that("fixed_cost round-trip n_cluster -> prec_cluster -> n_cluster", {
 })
 
 test_that("cluster display total equals product of ceiled stage sizes", {
-  x <- n_cluster(cost = c(500, 50), delta = 0.05, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   expect_equal(as.integer(x), as.integer(prod(ceiling(x$n))))
   expect_match(format(x), as.character(prod(ceiling(x$n))))
   out <- capture.output(print(x))
@@ -376,9 +374,9 @@ test_that("cluster display total equals product of ceiled stage sizes", {
 })
 
 test_that("n_cluster accepts named delta vector in correct order", {
-  ref <- n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+  ref <- n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
   named <- n_cluster(
-    cost = c(500, 100, 50),
+    stage_cost = c(500, 100, 50),
     delta = c(delta_psu = 0.01, delta_ssu = 0.05),
     cv = 0.05
   )
@@ -387,9 +385,9 @@ test_that("n_cluster accepts named delta vector in correct order", {
 })
 
 test_that("n_cluster reorders named delta vector", {
-  ref <- n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+  ref <- n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
   swapped <- n_cluster(
-    cost = c(500, 100, 50),
+    stage_cost = c(500, 100, 50),
     delta = c(delta_ssu = 0.05, delta_psu = 0.01),
     cv = 0.05
   )
@@ -399,20 +397,20 @@ test_that("n_cluster reorders named delta vector", {
 
 test_that("n_cluster rejects bad names in delta", {
   expect_error(
-    n_cluster(cost = c(500, 50), delta = c(foo = 0.05), cv = 0.05),
+    n_cluster(stage_cost = c(500, 50), delta = c(foo = 0.05), cv = 0.05),
     "unrecognized names"
   )
 })
 
 test_that("n_cluster accepts named k vector", {
   ref <- n_cluster(
-    cost = c(500, 100, 50),
+    stage_cost = c(500, 100, 50),
     delta = c(0.01, 0.05),
     k = c(1.2, 0.8),
     cv = 0.05
   )
   swapped <- n_cluster(
-    cost = c(500, 100, 50),
+    stage_cost = c(500, 100, 50),
     delta = c(0.01, 0.05),
     k = c(k_ssu = 0.8, k_psu = 1.2),
     cv = 0.05
@@ -421,23 +419,23 @@ test_that("n_cluster accepts named k vector", {
 })
 
 test_that("n_cluster accepts named cost vectors and reorders", {
-  ref2 <- n_cluster(cost = c(500, 50), delta = 0.05, cv = 0.05)
+  ref2 <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
   named2 <- n_cluster(
-    cost = c(cost_ssu = 50, cost_psu = 500),
+    stage_cost = c(cost_ssu = 50, cost_psu = 500),
     delta = 0.05,
     cv = 0.05
   )
   alias2 <- n_cluster(
-    cost = c(cost_tsu = 50, cost_psu = 500),
+    stage_cost = c(cost_tsu = 50, cost_psu = 500),
     delta = 0.05,
     cv = 0.05
   )
   expect_equal(named2$n, ref2$n)
   expect_equal(alias2$n, ref2$n)
 
-  ref3 <- n_cluster(cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+  ref3 <- n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
   named3 <- n_cluster(
-    cost = c(cost_tsu = 50, cost_psu = 500, cost_ssu = 100),
+    stage_cost = c(cost_tsu = 50, cost_psu = 500, cost_ssu = 100),
     delta = c(0.01, 0.05),
     cv = 0.05
   )
@@ -446,36 +444,36 @@ test_that("n_cluster accepts named cost vectors and reorders", {
 
 test_that("n_cluster rejects bad names in cost", {
   expect_error(
-    n_cluster(cost = c(foo = 500, bar = 50), delta = 0.05, cv = 0.05),
+    n_cluster(stage_cost = c(foo = 500, bar = 50), delta = 0.05, cv = 0.05),
     "unrecognized names"
   )
   expect_error(
-    n_cluster(cost = c(cost1 = 500, cost2 = 50), delta = 0.05, cv = 0.05),
+    n_cluster(stage_cost = c(cost1 = 500, cost2 = 50), delta = 0.05, cv = 0.05),
     "unrecognized names"
   )
 })
 
 test_that("n_cluster stores stage-named cost in params (2-stage)", {
-  x <- n_cluster(cost = c(750, 100), delta = 0.05, budget = 1e5)
-  expect_equal(names(x$params$cost), c("cost_psu", "cost_ssu"))
-  expect_equal(unname(x$params$cost), c(750, 100))
+  x <- n_cluster(stage_cost = c(750, 100), delta = 0.05, budget = 1e5)
+  expect_equal(names(x$params$stage_cost), c("cost_psu", "cost_ssu"))
+  expect_equal(unname(x$params$stage_cost), c(750, 100))
 })
 
 test_that("n_cluster stores stage-named cost/delta/k in params (3-stage)", {
   x <- n_cluster(
-    cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
     k = c(1.2, 0.8), cv = 0.05
   )
-  expect_equal(names(x$params$cost), c("cost_psu", "cost_ssu", "cost_tsu"))
+  expect_equal(names(x$params$stage_cost), c("cost_psu", "cost_ssu", "cost_tsu"))
   expect_equal(names(x$params$delta), c("delta_psu", "delta_ssu"))
   expect_equal(names(x$params$k), c("k_psu", "k_ssu"))
 })
 
 test_that("cost names survive prec_cluster round-trip", {
-  x <- n_cluster(cost = c(750, 100), delta = 0.05, budget = 1e5)
+  x <- n_cluster(stage_cost = c(750, 100), delta = 0.05, budget = 1e5)
   pr <- prec_cluster(x)
   x2 <- n_cluster(pr, budget = 1e5)
-  expect_equal(names(x2$params$cost), c("cost_psu", "cost_ssu"))
+  expect_equal(names(x2$params$stage_cost), c("cost_psu", "cost_ssu"))
   expect_equal(x2$n, x$n, tolerance = 1e-6)
 })
 

@@ -47,7 +47,7 @@ test_that("predict works with new data of different length", {
   expect_equal(nlevels(f), 4L)
 })
 
-test_that("predict works with certain stratum", {
+test_that("predict works with take_all stratum", {
   set.seed(3)
   x <- rlnorm(500, meanlog = 6, sdlog = 1.5)
   sb <- strata_bound(x, n_strata = 3, n = 80, certain = quantile(x, 0.95))
