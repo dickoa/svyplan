@@ -108,11 +108,37 @@ test_that("n_cluster round-trips with prec_cluster", {
 test_that("n_cluster rejects boundary delta values", {
   expect_error(
     n_cluster(stage_cost = c(500, 50), delta = 0, budget = 1e5),
-    "\\(0, 1\\)"
+    "stay away from 0 and 1"
   )
   expect_error(
     n_cluster(stage_cost = c(500, 50), delta = 1, cv = 0.05),
-    "\\(0, 1\\)"
+    "stay away from 0 and 1"
+  )
+})
+
+test_that("n_cluster rejects near-boundary delta values", {
+  expect_error(
+    n_cluster(stage_cost = c(500, 50), delta = 1e-12, budget = 1e5),
+    "stay away from 0 and 1"
+  )
+  expect_error(
+    n_cluster(stage_cost = c(500, 50), delta = 1 - 1e-12, cv = 0.05),
+    "stay away from 0 and 1"
+  )
+})
+
+test_that("n_cluster rejects svyplan_varcomp with near-zero delta", {
+  vc <- .new_svyplan_varcomp(
+    varb = 1e-12,
+    varw = 1,
+    delta = 1e-12,
+    k = 1,
+    rel_var = 1,
+    stages = 2L
+  )
+  expect_error(
+    n_cluster(stage_cost = c(500, 50), delta = vc, cv = 0.1),
+    "stay away from 0 and 1"
   )
 })
 

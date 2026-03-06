@@ -88,6 +88,29 @@ test_that("format.svyplan_cluster shows unrounded", {
   expect_true(grepl(expected_unrounded, fmt, fixed = TRUE))
 })
 
+test_that("cluster print and format handle pathological stage sizes", {
+  x <- structure(
+    list(
+      n = c(n_psu = 3.99303258914344e-15, psu_size = 150518950596651648),
+      stages = 2L,
+      total_n = 601.027075016102,
+      se = NA_real_,
+      moe = NA_real_,
+      cv = 0.2,
+      cost = 30051.3537508051,
+      params = list(resp_rate = 1),
+      targets = NULL,
+      detail = NULL,
+      binding = NULL,
+      domains = NULL
+    ),
+    class = c("svyplan_cluster", "list")
+  )
+
+  expect_no_error(capture.output(print(x)))
+  expect_no_error(format(x))
+})
+
 test_that("print.svyplan_power shows vector n", {
   res <- power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
   out <- capture.output(print(res))

@@ -56,6 +56,14 @@
 #' If `delta` is a `svyplan_varcomp` object, `delta`, `rel_var`, and `k`
 #' are extracted automatically.
 #'
+#' Boundary and near-boundary homogeneity values are not supported by the
+#' analytical optimum used here. When `delta` is near 0, most variability is
+#' within PSUs, so the closed-form optimum collapses toward taking many units
+#' in very few PSUs. When `delta` is near 1, most variability is between PSUs,
+#' so the optimum collapses toward taking very few units in many PSUs. In both
+#' cases the analytical allocation becomes degenerate, so `n_cluster()`
+#' rejects values numerically too close to 0 or 1.
+#'
 #' These functions assume sampling fractions are negligible at each stage
 #' (equivalent to sampling with replacement). No finite population correction
 #' is applied. This is standard for multistage planning when cluster
@@ -141,13 +149,7 @@ n_cluster.default <- function(
   delta <- .reorder_stage_vec(delta, "delta")
   k <- .reorder_stage_vec(k, "k")
   check_delta(delta, expected_length = stages - 1L)
-
-  if (any(delta == 0) || any(delta == 1)) {
-    stop(
-      "'delta' must be in (0, 1) for n_cluster(); boundary values make cluster optimization degenerate",
-      call. = FALSE
-    )
-  }
+  .check_cluster_delta_open(delta, context = "n_cluster()")
 
   has_cv <- !is.null(cv)
   has_budget <- !is.null(budget)

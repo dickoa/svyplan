@@ -94,6 +94,14 @@ When \code{n_psu} is specified, stage 1 is fixed and only stage 2+ are optimized
 If \code{delta} is a \code{svyplan_varcomp} object, \code{delta}, \code{rel_var}, and \code{k}
 are extracted automatically.
 
+Boundary and near-boundary homogeneity values are not supported by the
+analytical optimum used here. When \code{delta} is near 0, most variability is
+within PSUs, so the closed-form optimum collapses toward taking many units
+in very few PSUs. When \code{delta} is near 1, most variability is between PSUs,
+so the optimum collapses toward taking very few units in many PSUs. In both
+cases the analytical allocation becomes degenerate, so \code{n_cluster()}
+rejects values numerically too close to 0 or 1.
+
 These functions assume sampling fractions are negligible at each stage
 (equivalent to sampling with replacement). No finite population correction
 is applied. This is standard for multistage planning when cluster

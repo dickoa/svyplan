@@ -85,6 +85,19 @@ print.svyplan_n <- function(x, ...) {
   format(signif(x, 8), trim = TRUE, scientific = FALSE)
 }
 
+#' Format a count-like numeric value defensively
+#' @keywords internal
+#' @noRd
+.fmt_count_n <- function(x) {
+  if (length(x) != 1L || is.na(x)) {
+    return("NA")
+  }
+  if (!is.finite(x)) {
+    return(format(x, trim = TRUE))
+  }
+  format(x, trim = TRUE, scientific = FALSE)
+}
+
 #' @keywords internal
 #' @noRd
 .print_multi_n <- function(x) {
@@ -139,7 +152,7 @@ print.svyplan_cluster <- function(x, ...) {
   stage_parts <- vapply(
     seq_along(n_display),
     function(i) {
-      sprintf("%s = %d", stage_labels[i], n_display[i])
+      sprintf("%s = %s", stage_labels[i], .fmt_count_n(n_display[i]))
     },
     character(1L)
   )
@@ -149,13 +162,13 @@ print.svyplan_cluster <- function(x, ...) {
   if (!is.null(resp_rate) && resp_rate < 1) {
     net_total <- ceiling(total_display * resp_rate)
     cat(sprintf(
-      " -> total n = %d (unrounded: %s, net: %d)\n",
-      total_display, unrounded, net_total
+      " -> total n = %s (unrounded: %s, net: %s)\n",
+      .fmt_count_n(total_display), unrounded, .fmt_count_n(net_total)
     ))
   } else {
     cat(sprintf(
-      " -> total n = %d (unrounded: %s)\n",
-      total_display, unrounded
+      " -> total n = %s (unrounded: %s)\n",
+      .fmt_count_n(total_display), unrounded
     ))
   }
   fc <- x$params$fixed_cost
@@ -228,13 +241,17 @@ print.svyplan_cluster <- function(x, ...) {
     stage_parts <- vapply(
       seq_along(n_display),
       function(i) {
-        sprintf("%s = %d", stage_labels[i], n_display[i])
+        sprintf("%s = %s", stage_labels[i], .fmt_count_n(n_display[i]))
       },
       character(1L)
     )
     cat(paste(stage_parts, collapse = " | "))
     unrounded <- .fmt_continuous_n(x$total_n)
-    cat(sprintf(" -> total n = %d (unrounded: %s)\n", total_display, unrounded))
+    cat(sprintf(
+      " -> total n = %s (unrounded: %s)\n",
+      .fmt_count_n(total_display),
+      unrounded
+    ))
     fc <- x$params$fixed_cost
     if (!is.null(fc) && fc > 0) {
       cat(sprintf(
@@ -295,15 +312,15 @@ print.svyplan_prec <- function(x, ...) {
     stage_parts <- vapply(
       seq_along(n_display),
       function(i) {
-        sprintf("%s = %d", stage_labels[i], n_display[i])
+        sprintf("%s = %s", stage_labels[i], .fmt_count_n(n_display[i]))
       },
       character(1L)
     )
     cat(paste(stage_parts, collapse = " | "))
-    cat(sprintf(" -> total n = %d", total_display))
+    cat(sprintf(" -> total n = %s", .fmt_count_n(total_display)))
     resp_rate <- p$resp_rate
     if (!is.null(resp_rate) && resp_rate < 1) {
-      cat(sprintf(" (net: %d)", ceiling(total_display * resp_rate)))
+      cat(sprintf(" (net: %s)", .fmt_count_n(ceiling(total_display * resp_rate))))
     }
     cat("\n")
   } else {
@@ -473,7 +490,7 @@ format.svyplan_cluster <- function(x, ...) {
     "svyplan_cluster [",
     x$stages,
     "-stage, total_n=",
-    prod(ceiling(x$n)),
+    .fmt_count_n(prod(ceiling(x$n))),
     " (unrounded: ",
     .fmt_continuous_n(x$total_n),
     ")]"

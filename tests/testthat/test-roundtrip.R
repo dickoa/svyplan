@@ -88,6 +88,19 @@ test_that("n_multi simple -> prec_multi -> n_multi round-trip", {
   expect_equal(s2$n, s1$n, tolerance = 1e-6)
 })
 
+test_that("n_multi.svyplan_prec forwards prop_method overrides", {
+  p1 <- prec_multi(data.frame(p = 0.05, n = 400), prop_method = "wilson")
+  s_wilson <- n_multi(p1)
+  s_wald <- n_multi(p1, prop_method = "wald")
+
+  expect_equal(s_wilson$n, 400, tolerance = 1e-6)
+  expect_equal(
+    s_wald$n,
+    n_prop(p = 0.05, moe = p1$detail$.moe[1], method = "wald")$n,
+    tolerance = 1e-6
+  )
+})
+
 test_that("n_multi 2-stage -> prec_multi round-trip", {
   tgt <- data.frame(
     name = c("stunting", "anemia"),
@@ -99,6 +112,19 @@ test_that("n_multi 2-stage -> prec_multi round-trip", {
   p1 <- prec_multi(s1)
   expect_s3_class(p1, "svyplan_prec")
   expect_equal(nrow(p1$detail), 2L)
+})
+
+test_that("prec_multi.svyplan_n forwards prop_method overrides", {
+  s1 <- n_multi(data.frame(p = 0.05, moe = 0.02), prop_method = "wilson")
+  p_wilson <- prec_multi(s1)
+  p_wald <- prec_multi(s1, prop_method = "wald")
+
+  expect_equal(p_wilson$detail$.moe[1], 0.02, tolerance = 1e-6)
+  expect_equal(
+    p_wald$detail$.moe[1],
+    prec_prop(p = 0.05, n = s1$n, method = "wald")$moe,
+    tolerance = 1e-6
+  )
 })
 
 test_that("n_prop rejects wrong prec type", {

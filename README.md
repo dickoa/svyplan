@@ -38,8 +38,9 @@ n_mean(var = 100, moe = 2, N = 5000, deff = 1.5)
 
 ### Response rate adjustment
 
-All functions accept a `resp_rate` parameter. The sample size is
-inflated by `1 / resp_rate` to account for expected non-response:
+Most sizing and precision functions accept `resp_rate`. In sample-size
+mode, the required sample is inflated by `1 / resp_rate` to account for
+expected non-response:
 
 ``` r
 n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
@@ -180,6 +181,11 @@ n_cluster(stage_cost = c(500, 50), delta = vc, cv = 0.05)
 #> cv = 0.0500, cost = 8635
 ```
 
+`delta` is the survey-planning measure of homogeneity used by
+`varcomp()`, `n_cluster()`, and `design_effect()`. It is not the same as
+a generic mixed-model ICC, and values near 0 or 1 correspond to
+degenerate boundary cases for the closed-form cluster optimizer.
+
 ## Sensitivity analysis
 
 `predict()` evaluates a result at new parameter combinations, returning
@@ -303,6 +309,35 @@ frame <- data.frame(
 n_alloc(frame, n = 600, alloc = "neyman")
 #> Stratum allocation (neyman, 3 strata)
 #> n = 600, cv = 0.0079, se = 0.4305
+```
+
+Constraints and alternative solve modes are also supported:
+
+``` r
+frame_constraints <- transform(
+  frame,
+  cost_h = c(1, 1.5, 1),
+  max_weight = c(25, 20, NA),
+  take_all = c(FALSE, FALSE, TRUE)
+)
+
+# Budget-constrained allocation with weight and take-all constraints
+n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n = 40)
+```
+
+Domain-level CV targets can be enforced by adding domain identifiers:
+
+``` r
+frame_domains <- data.frame(
+  province = c("North", "North", "South", "South"),
+  stratum = c("Urban", "Rural", "Urban", "Rural"),
+  N_h = c(2000, 3000, 1800, 3200),
+  S_h = c(12, 18, 10, 16),
+  mean_h = c(55, 48, 58, 50)
+)
+
+# Minimum total n such that each province meets the CV target
+n_alloc(frame_domains, cv = 0.04, alloc = "power", power_q = 0.3)
 ```
 
 `prec_alloc()` computes the precision for a given allocation (inverse of

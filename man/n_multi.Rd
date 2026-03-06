@@ -16,6 +16,7 @@ n_multi(targets, ...)
   joint = FALSE,
   min_n = NULL,
   fixed_cost = 0,
+  prop_method = "wald",
   plan = NULL,
   ...
 )
@@ -51,6 +52,12 @@ multistage mode, a warning is issued for any domain below the floor.}
 
 \item{fixed_cost}{Fixed overhead cost (C0). Default 0. Only applies
 to multistage mode. See \code{\link[=n_cluster]{n_cluster()}} for details.}
+
+\item{prop_method}{Proportion CI method for simple mode, one of \code{"wald"}
+(default), \code{"wilson"}, or \code{"logodds"}. This is passed to \code{\link[=n_prop]{n_prop()}}
+for proportion rows and ignored for mean rows and multistage mode.
+An optional \code{prop_method} column in \code{targets} overrides this default
+on a per-row basis.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults
 (\code{stage_cost}, \code{fixed_cost}).}
@@ -103,6 +110,9 @@ The \code{targets} data frame supports the following columns:
 \item{\code{alpha}}{Significance level (default 0.05).}
 \item{\code{deff}}{Design effect multiplier (simple mode only, default 1).}
 \item{\code{N}}{Population size (simple mode only, default Inf).}
+\item{\code{prop_method}}{Optional proportion method for simple mode,
+one of \code{"wald"}, \code{"wilson"}, or \code{"logodds"}. Only used for rows
+with \code{p}; ignored for mean rows and multistage mode.}
 \item{\code{delta_psu}, \code{delta_ssu}}{Homogeneity measures (multistage).}
 \item{\code{rel_var}}{Unit relvariance. If omitted, derived from \code{p} or
 \code{var}/\code{mu}.}
@@ -117,13 +127,24 @@ When domain columns are present, optimization runs independently per
 domain combination (default), or jointly when \code{joint = TRUE}.
 
 \strong{Simple mode} (\code{stage_cost = NULL}): computes sample size per indicator
-using Wald-type formulas, then takes the maximum per domain.
+by delegating proportion rows to \code{\link[=n_prop]{n_prop()}} and mean rows to \code{\link[=n_mean]{n_mean()}},
+then takes the maximum per domain. Use \code{prop_method} or a
+\code{targets$prop_method} column to choose \code{"wald"}, \code{"wilson"}, or
+\code{"logodds"} for proportion rows.
 
 \strong{Multistage mode} (\code{stage_cost} provided): uses analytical reduction.
 For each candidate sub-stage allocation, the required stage-1 size is
 the maximum across all indicators. The total cost is then minimized
 (CV mode) or the worst-case CV ratio is minimized (budget mode) using
 numerical optimization.
+
+Boundary and near-boundary homogeneity values are not supported by the
+analytical multistage optimum. When \code{delta} is near 0, most variability is
+within clusters, so the optimum collapses toward many interviews in very
+few PSUs. When \code{delta} is near 1, most variability is between clusters, so
+the optimum collapses toward very few interviews in many PSUs. To stay
+aligned with \code{\link[=n_cluster]{n_cluster()}}, multistage \code{n_multi()} rejects values
+numerically too close to 0 or 1.
 
 \strong{Joint budget allocation} (\code{joint = TRUE}): when domains and a budget
 are specified, the default (\code{joint = FALSE}) gives each domain the full
@@ -144,6 +165,19 @@ targets <- data.frame(
   moe  = c(0.05, 0.05, 0.03)
 )
 n_multi(targets)
+
+# Rare proportion: use Wilson globally in simple mode
+n_multi(targets[3, , drop = FALSE], prop_method = "wilson")
+
+# Per-row proportion methods in a mixed target table
+targets_mixed <- data.frame(
+  name = c("rare_prop", "mean_ind"),
+  p = c(0.05, NA),
+  var = c(NA, 100),
+  moe = c(0.02, 2),
+  prop_method = c("wilson", NA)
+)
+n_multi(targets_mixed)
 
 # Simple mode with domains
 targets_dom <- data.frame(

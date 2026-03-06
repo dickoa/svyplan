@@ -93,8 +93,9 @@ design_effect.numeric <- function(
 
 #' @describeIn design_effect Planning method (no weights needed).
 #'
-#' @param delta ICC / homogeneity measure, scalar or `svyplan_varcomp`
-#'   (extracts `delta[1]`).
+#' @param delta Measure of homogeneity for cluster planning, scalar or
+#'   `svyplan_varcomp` (extracts `delta[1]`). This is the same `delta`
+#'   used by [n_cluster()] and [varcomp()], not a generic mixed-model ICC.
 #' @param psu_size Mean cluster size (scalar).
 #'
 #' @export

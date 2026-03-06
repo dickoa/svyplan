@@ -177,6 +177,33 @@ check_delta <- function(delta, expected_length = NULL) {
   invisible(TRUE)
 }
 
+#' Tolerance for detecting numerically degenerate cluster homogeneity
+#' @keywords internal
+#' @noRd
+.cluster_delta_tol <- function() {
+  1e-8
+}
+
+#' Reject cluster homogeneity values that are too close to 0 or 1
+#' @keywords internal
+#' @noRd
+.check_cluster_delta_open <- function(delta, context = "n_cluster()") {
+  tol <- .cluster_delta_tol()
+  bad <- delta <= tol | delta >= 1 - tol
+  if (any(bad)) {
+    stop(
+      sprintf(
+        "'delta' must stay away from 0 and 1 for %s; values <= %.0e or >= %.8f make cluster optimization degenerate",
+        context,
+        tol,
+        1 - tol
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 #' Reorder a named stage-indexed vector
 #'
 #'

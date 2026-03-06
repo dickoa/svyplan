@@ -103,6 +103,24 @@ frame <- data.frame(
 n_alloc(frame, n = 600)
 n_alloc(frame, cv = 0.03)
 
+frame_constraints <- transform(
+  frame,
+  max_weight = c(25, 20, NA),
+  take_all = c(FALSE, FALSE, TRUE)
+)
+
+n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n = 40)
+
+frame_domains <- data.frame(
+  province = c("North", "North", "South", "South"),
+  stratum = c("Urban", "Rural", "Urban", "Rural"),
+  N_h = c(2000, 3000, 1800, 3200),
+  S_h = c(12, 18, 10, 16),
+  mean_h = c(55, 48, 58, 50)
+)
+
+n_alloc(frame_domains, cv = 0.04, alloc = "power", power_q = 0.3)
+
 }
 \references{
 Valliant, R., Dever, J. A., & Kreuter, F. (2018). \emph{Practical Tools for

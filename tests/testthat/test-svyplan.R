@@ -35,6 +35,11 @@ test_that("svyplan with extended defaults", {
   expect_equal(plan$defaults$rho, 0.6)
 })
 
+test_that("svyplan accepts prop_method default", {
+  plan <- svyplan(prop_method = "wilson")
+  expect_equal(plan$defaults$prop_method, "wilson")
+})
+
 test_that("svyplan validates core typed params", {
   expect_error(svyplan(alpha = 2), "alpha")
   expect_error(svyplan(alpha = 0), "alpha")
@@ -247,6 +252,20 @@ test_that("n_multi uses plan for stage_cost", {
   res <- suppressMessages(n_multi(targets, plan = plan))
   ref <- suppressMessages(n_multi(targets, stage_cost = c(500, 50)))
   expect_equal(res$n, ref$n)
+})
+
+test_that("n_multi uses plan prop_method in simple mode", {
+  plan <- svyplan(prop_method = "wilson")
+  res <- n_multi(data.frame(p = 0.05, moe = 0.02), plan = plan)
+  ref <- n_multi(data.frame(p = 0.05, moe = 0.02), prop_method = "wilson")
+  expect_equal(res$n, ref$n)
+})
+
+test_that("prec_multi uses plan prop_method in simple mode", {
+  plan <- svyplan(prop_method = "wilson")
+  res <- prec_multi(data.frame(p = 0.05, n = 400), plan = plan)
+  ref <- prec_multi(data.frame(p = 0.05, n = 400), prop_method = "wilson")
+  expect_equal(res$detail$.moe[1], ref$detail$.moe[1], tolerance = 1e-6)
 })
 
 test_that("n_alloc uses plan defaults", {

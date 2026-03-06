@@ -44,8 +44,9 @@ or \code{NULL} (for the \code{"cluster"} planning method).}
 \code{"spencer"}, or \code{"cr"}. For planning (no weights): \code{"cluster"}
 (default and only option).}
 
-\item{delta}{ICC / homogeneity measure, scalar or \code{svyplan_varcomp}
-(extracts \code{delta[1]}).}
+\item{delta}{Measure of homogeneity for cluster planning, scalar or
+\code{svyplan_varcomp} (extracts \code{delta[1]}). This is the same \code{delta}
+used by \code{\link[=n_cluster]{n_cluster()}} and \code{\link[=varcomp]{varcomp()}}, not a generic mixed-model ICC.}
 
 \item{psu_size}{Mean cluster size (scalar).}
 }

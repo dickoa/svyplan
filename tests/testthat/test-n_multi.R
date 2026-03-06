@@ -62,6 +62,30 @@ test_that("n_multi rejects delta_psu outside [0, 1]", {
   )
 })
 
+test_that("n_multi rejects near-boundary delta values in multistage mode", {
+  expect_error(
+    nm(data.frame(p = 0.3, cv = 0.1, delta_psu = 0), stage_cost = c(500, 50)),
+    "stay away from 0 and 1"
+  )
+  expect_error(
+    nm(data.frame(p = 0.3, cv = 0.1, delta_psu = 1e-12), stage_cost = c(500, 50)),
+    "stay away from 0 and 1"
+  )
+  expect_error(
+    nm(
+      data.frame(
+        p = 0.3,
+        cv = 0.1,
+        delta_psu = 0.05,
+        delta_ssu = 1 - 1e-12,
+        rel_var = (1 - 0.3) / 0.3
+      ),
+      stage_cost = c(500, 100, 50)
+    ),
+    "stay away from 0 and 1"
+  )
+})
+
 test_that("n_multi rejects negative moe", {
   expect_error(
     nm(data.frame(p = 0.3, moe = -0.05)),
@@ -90,6 +114,75 @@ test_that("single proportion CV mode matches n_prop", {
   res <- nm(df)
   ref <- n_prop(p = 0.5, cv = 0.10)
   expect_equal(res$n, ref$n, tolerance = 1e-6)
+})
+
+test_that("simple proportion mode honors global prop_method", {
+  df <- data.frame(p = 0.05, moe = 0.02)
+  res_wilson <- nm(df, prop_method = "wilson")
+  ref_wilson <- n_prop(p = 0.05, moe = 0.02, method = "wilson")
+  expect_equal(res_wilson$n, ref_wilson$n, tolerance = 1e-6)
+
+  res_logodds <- nm(df, prop_method = "logodds")
+  ref_logodds <- n_prop(p = 0.05, moe = 0.02, method = "logodds")
+  expect_equal(res_logodds$n, ref_logodds$n, tolerance = 1e-6)
+})
+
+test_that("targets prop_method overrides the global simple-mode default", {
+  df <- data.frame(
+    name = c("rare", "common"),
+    p = c(0.05, 0.5),
+    moe = c(0.02, 0.05),
+    prop_method = c("wilson", NA)
+  )
+  res <- nm(df, prop_method = "wald")
+
+  ref_rare <- n_prop(p = 0.05, moe = 0.02, method = "wilson")$n
+  ref_common <- n_prop(p = 0.5, moe = 0.05, method = "wald")$n
+
+  expect_equal(res$detail$.n[1], ref_rare, tolerance = 1e-6)
+  expect_equal(res$detail$.n[2], ref_common, tolerance = 1e-6)
+  expect_equal(res$n, max(ref_rare, ref_common), tolerance = 1e-6)
+})
+
+test_that("prop_method is ignored for mean rows in mixed targets", {
+  df <- data.frame(
+    name = c("prop_ind", "mean_ind"),
+    p = c(0.05, NA),
+    var = c(NA, 100),
+    mu = c(NA, 50),
+    moe = c(0.02, NA),
+    cv = c(NA, 0.05),
+    prop_method = c("wilson", "logodds")
+  )
+  res <- nm(df)
+
+  ref_prop <- n_prop(p = 0.05, moe = 0.02, method = "wilson")$n
+  ref_mean <- n_mean(var = 100, mu = 50, cv = 0.05)$n
+
+  expect_equal(res$detail$.n[1], ref_prop, tolerance = 1e-6)
+  expect_equal(res$detail$.n[2], ref_mean, tolerance = 1e-6)
+})
+
+test_that("simple mode validates prop_method values", {
+  expect_error(
+    nm(data.frame(p = 0.3, moe = 0.05), prop_method = "bad"),
+    "'prop_method' must be one of"
+  )
+  expect_error(
+    nm(data.frame(p = 0.3, moe = 0.05, prop_method = "bad")),
+    "'prop_method' values must be one of"
+  )
+})
+
+test_that("simple proportion mode keeps n_prop method restrictions", {
+  expect_error(
+    nm(data.frame(p = 0.05, cv = 0.2), prop_method = "wilson"),
+    "Wilson method requires 'moe' \\(not 'cv'\\)"
+  )
+  expect_error(
+    nm(data.frame(p = 0.05, cv = 0.2, prop_method = "logodds")),
+    "Log-odds method requires 'moe' \\(not 'cv'\\)"
+  )
 })
 
 test_that("single mean CV mode matches n_mean", {

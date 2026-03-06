@@ -19,6 +19,7 @@
 #'
 #' @param ... Named defaults to reuse across calls. Allowed names:
 #'   `alpha`, `N`, `deff`, `resp_rate`,
+#'   `prop_method`,
 #'   `stage_cost`, `delta`, `rel_var`, `k`, `fixed_cost`,
 #'   `unit_cost`,
 #'   `alternative`, `method`, `ratio`, `overlap`, `rho`,
@@ -59,6 +60,7 @@
 #' n_prop(p = 0.3, moe = 0.05, plan = plan)
 #' n_mean(var = 100, mu = 50, cv = 0.05, plan = plan)
 #' power_prop(p1 = 0.30, p2 = 0.35, plan = plan)
+#' n_multi(data.frame(p = 0.05, moe = 0.02), plan = svyplan(prop_method = "wilson"))
 #'
 #' # Use via pipe
 #' plan |> n_prop(0.3, moe = 0.05)
@@ -115,6 +117,7 @@ update.svyplan <- function(object, ...) {
 .svyplan_allowed_defaults <- function() {
   c(
     "alpha", "N", "deff", "resp_rate",
+    "prop_method",
     "stage_cost", "delta", "rel_var", "k", "fixed_cost",
     "unit_cost",
     "alternative", "method", "ratio", "overlap", "rho",

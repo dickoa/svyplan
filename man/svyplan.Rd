@@ -12,6 +12,7 @@ svyplan(...)
 \arguments{
 \item{...}{Named defaults to reuse across calls. Allowed names:
 \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
+\code{prop_method},
 \code{stage_cost}, \code{delta}, \code{rel_var}, \code{k}, \code{fixed_cost},
 \code{unit_cost},
 \code{alternative}, \code{method}, \code{ratio}, \code{overlap}, \code{rho},
@@ -68,6 +69,7 @@ plan <- svyplan(deff = 1.8, resp_rate = 0.85, N = 50000)
 n_prop(p = 0.3, moe = 0.05, plan = plan)
 n_mean(var = 100, mu = 50, cv = 0.05, plan = plan)
 power_prop(p1 = 0.30, p2 = 0.35, plan = plan)
+n_multi(data.frame(p = 0.05, moe = 0.02), plan = svyplan(prop_method = "wilson"))
 
 # Use via pipe
 plan |> n_prop(0.3, moe = 0.05)

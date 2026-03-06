@@ -32,6 +32,68 @@ test_that("prec_multi simple mode with deff and resp_rate", {
   expect_equal(result$detail$.se[1], se_exp, tolerance = 1e-6)
 })
 
+test_that("prec_multi simple mode honors global prop_method", {
+  targets <- data.frame(p = 0.05, n = 400)
+
+  res_wilson <- prec_multi(targets, prop_method = "wilson")
+  ref_wilson <- prec_prop(p = 0.05, n = 400, method = "wilson")
+  expect_equal(res_wilson$detail$.se[1], ref_wilson$se, tolerance = 1e-6)
+  expect_equal(res_wilson$detail$.moe[1], ref_wilson$moe, tolerance = 1e-6)
+  expect_equal(res_wilson$detail$.cv[1], ref_wilson$cv, tolerance = 1e-6)
+
+  res_logodds <- prec_multi(targets, prop_method = "logodds")
+  ref_logodds <- prec_prop(p = 0.05, n = 400, method = "logodds")
+  expect_equal(res_logodds$detail$.se[1], ref_logodds$se, tolerance = 1e-6)
+  expect_equal(res_logodds$detail$.moe[1], ref_logodds$moe, tolerance = 1e-6)
+  expect_equal(res_logodds$detail$.cv[1], ref_logodds$cv, tolerance = 1e-6)
+})
+
+test_that("prec_multi targets prop_method overrides the global default", {
+  targets <- data.frame(
+    name = c("rare", "common"),
+    p = c(0.05, 0.5),
+    n = c(400, 400),
+    prop_method = c("wilson", NA)
+  )
+
+  res <- prec_multi(targets, prop_method = "wald")
+  ref_rare <- prec_prop(p = 0.05, n = 400, method = "wilson")
+  ref_common <- prec_prop(p = 0.5, n = 400, method = "wald")
+
+  expect_equal(res$detail$.moe[1], ref_rare$moe, tolerance = 1e-6)
+  expect_equal(res$detail$.moe[2], ref_common$moe, tolerance = 1e-6)
+})
+
+test_that("prec_multi prop_method is ignored for mean rows", {
+  targets <- data.frame(
+    name = c("prop_ind", "mean_ind"),
+    p = c(0.05, NA),
+    var = c(NA, 100),
+    mu = c(NA, 50),
+    n = c(400, 400),
+    prop_method = c("wilson", "logodds")
+  )
+
+  res <- prec_multi(targets)
+  ref_prop <- prec_prop(p = 0.05, n = 400, method = "wilson")
+  ref_mean <- prec_mean(var = 100, mu = 50, n = 400)
+
+  expect_equal(res$detail$.moe[1], ref_prop$moe, tolerance = 1e-6)
+  expect_equal(res$detail$.moe[2], ref_mean$moe, tolerance = 1e-6)
+  expect_equal(res$detail$.cv[2], ref_mean$cv, tolerance = 1e-6)
+})
+
+test_that("prec_multi validates prop_method values in simple mode", {
+  expect_error(
+    prec_multi(data.frame(p = 0.3, n = 100), prop_method = "bad"),
+    "'prop_method' must be one of"
+  )
+  expect_error(
+    prec_multi(data.frame(p = 0.3, n = 100, prop_method = "bad")),
+    "'prop_method' values must be one of"
+  )
+})
+
 test_that("prec_multi multistage mode computes per-indicator CV", {
   targets <- data.frame(
     name   = c("stunting", "anemia"),
@@ -49,6 +111,16 @@ test_that("prec_multi multistage mode computes per-indicator CV", {
 test_that("prec_multi requires n column", {
   targets <- data.frame(p = 0.3, moe = 0.05)
   expect_error(prec_multi(targets), "must contain an 'n' column")
+})
+
+test_that("prec_multi.svyplan_n preserves proportion method from n_multi()", {
+  targets <- data.frame(p = 0.05, moe = 0.02)
+  n_res <- n_multi(targets, prop_method = "wilson")
+  p_res <- prec_multi(n_res)
+  ref <- prec_prop(p = 0.05, n = n_res$n, method = "wilson")
+
+  expect_equal(p_res$detail$.moe[1], ref$moe, tolerance = 1e-6)
+  expect_equal(p_res$detail$.cv[1], ref$cv, tolerance = 1e-6)
 })
 
 test_that("prec_multi simple rejects invalid p", {

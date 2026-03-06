@@ -15,6 +15,7 @@ prec_multi(targets, ...)
   budget = NULL,
   n_psu = NULL,
   joint = FALSE,
+  prop_method = "wald",
   plan = NULL,
   ...
 )
@@ -38,6 +39,12 @@ simple mode; length 2 or 3 for multistage mode.}
 \item{n_psu}{Fixed stage-1 sample size (currently unused in precision mode).}
 
 \item{joint}{Logical (currently unused in precision mode).}
+
+\item{prop_method}{Proportion CI method for simple mode, one of \code{"wald"}
+(default), \code{"wilson"}, or \code{"logodds"}. This is passed to \code{\link[=prec_prop]{prec_prop()}}
+for proportion rows and ignored for mean rows and multistage mode.
+An optional \code{prop_method} column in \code{targets} overrides this default
+on a per-row basis.}
 
 \item{plan}{A \code{\link[=svyplan]{svyplan()}} profile providing default design parameters.}
 }
@@ -63,6 +70,9 @@ indicator. For multistage, per-stage sizes can be provided as
 \item{\code{alpha}}{Significance level (default 0.05).}
 \item{\code{deff}}{Design effect multiplier (simple mode only, default 1).}
 \item{\code{N}}{Population size (simple mode only, default Inf).}
+\item{\code{prop_method}}{Optional proportion method for simple mode,
+one of \code{"wald"}, \code{"wilson"}, or \code{"logodds"}. Only used for rows
+with \code{p}; ignored for mean rows and multistage mode.}
 \item{\code{resp_rate}}{Expected response rate (default 1).}
 \item{\code{delta_psu}, \code{delta_ssu}}{Homogeneity measures (multistage).}
 \item{\code{rel_var}}{Unit relvariance. If omitted, derived from \code{p} or
@@ -71,6 +81,11 @@ indicator. For multistage, per-stage sizes can be provided as
 }
 
 Any column not in the recognized set is treated as a \strong{domain variable}.
+
+In simple mode, \code{prec_multi()} delegates proportion rows to \code{\link[=prec_prop]{prec_prop()}}
+and mean rows to \code{\link[=prec_mean]{prec_mean()}}. Use \code{prop_method} or a
+\code{targets$prop_method} column to choose \code{"wald"}, \code{"wilson"}, or
+\code{"logodds"} for proportion rows.
 }
 \examples{
 # Simple mode: precision for three indicators at n = 400
@@ -80,6 +95,9 @@ targets <- data.frame(
   n    = c(400, 400, 400)
 )
 prec_multi(targets)
+
+# Wilson precision for a rare proportion
+prec_multi(data.frame(p = 0.05, n = 400), prop_method = "wilson")
 
 }
 \seealso{

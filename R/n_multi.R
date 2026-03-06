@@ -25,6 +25,11 @@
 #'   multistage mode, a warning is issued for any domain below the floor.
 #' @param fixed_cost Fixed overhead cost (C0). Default 0. Only applies
 #'   to multistage mode. See [n_cluster()] for details.
+#' @param prop_method Proportion CI method for simple mode, one of `"wald"`
+#'   (default), `"wilson"`, or `"logodds"`. This is passed to [n_prop()]
+#'   for proportion rows and ignored for mean rows and multistage mode.
+#'   An optional `prop_method` column in `targets` overrides this default
+#'   on a per-row basis.
 #' @param plan Optional [svyplan()] object providing design defaults
 #'   (`stage_cost`, `fixed_cost`).
 #'
@@ -70,6 +75,9 @@
 #'   \item{`alpha`}{Significance level (default 0.05).}
 #'   \item{`deff`}{Design effect multiplier (simple mode only, default 1).}
 #'   \item{`N`}{Population size (simple mode only, default Inf).}
+#'   \item{`prop_method`}{Optional proportion method for simple mode,
+#'     one of `"wald"`, `"wilson"`, or `"logodds"`. Only used for rows
+#'     with `p`; ignored for mean rows and multistage mode.}
 #'   \item{`delta_psu`, `delta_ssu`}{Homogeneity measures (multistage).}
 #'   \item{`rel_var`}{Unit relvariance. If omitted, derived from `p` or
 #'     `var`/`mu`.}
@@ -84,13 +92,24 @@
 #' domain combination (default), or jointly when `joint = TRUE`.
 #'
 #' **Simple mode** (`stage_cost = NULL`): computes sample size per indicator
-#' using Wald-type formulas, then takes the maximum per domain.
+#' by delegating proportion rows to [n_prop()] and mean rows to [n_mean()],
+#' then takes the maximum per domain. Use `prop_method` or a
+#' `targets$prop_method` column to choose `"wald"`, `"wilson"`, or
+#' `"logodds"` for proportion rows.
 #'
 #' **Multistage mode** (`stage_cost` provided): uses analytical reduction.
 #' For each candidate sub-stage allocation, the required stage-1 size is
 #' the maximum across all indicators. The total cost is then minimized
 #' (CV mode) or the worst-case CV ratio is minimized (budget mode) using
 #' numerical optimization.
+#'
+#' Boundary and near-boundary homogeneity values are not supported by the
+#' analytical multistage optimum. When `delta` is near 0, most variability is
+#' within clusters, so the optimum collapses toward many interviews in very
+#' few PSUs. When `delta` is near 1, most variability is between clusters, so
+#' the optimum collapses toward very few interviews in many PSUs. To stay
+#' aligned with [n_cluster()], multistage `n_multi()` rejects values
+#' numerically too close to 0 or 1.
 #'
 #' **Joint budget allocation** (`joint = TRUE`): when domains and a budget
 #' are specified, the default (`joint = FALSE`) gives each domain the full
@@ -122,6 +141,19 @@
 #'   moe  = c(0.05, 0.05, 0.03)
 #' )
 #' n_multi(targets)
+#'
+#' # Rare proportion: use Wilson globally in simple mode
+#' n_multi(targets[3, , drop = FALSE], prop_method = "wilson")
+#'
+#' # Per-row proportion methods in a mixed target table
+#' targets_mixed <- data.frame(
+#'   name = c("rare_prop", "mean_ind"),
+#'   p = c(0.05, NA),
+#'   var = c(NA, 100),
+#'   moe = c(0.02, 2),
+#'   prop_method = c("wilson", NA)
+#' )
+#' n_multi(targets_mixed)
 #'
 #' # Simple mode with domains
 #' targets_dom <- data.frame(
@@ -170,6 +202,7 @@ n_multi.default <- function(
   joint = FALSE,
   min_n = NULL,
   fixed_cost = 0,
+  prop_method = "wald",
   plan = NULL,
   ...
 ) {
@@ -187,6 +220,17 @@ n_multi.default <- function(
     ) {
       stop("'min_n' must be a positive numeric scalar", call. = FALSE)
     }
+  }
+  if (
+    !is.character(prop_method) ||
+      length(prop_method) != 1L ||
+      is.na(prop_method) ||
+      !prop_method %in% c("wald", "wilson", "logodds")
+  ) {
+    stop(
+      "'prop_method' must be one of 'wald', 'wilson', or 'logodds'",
+      call. = FALSE
+    )
   }
 
   multistage <- !is.null(stage_cost)
@@ -211,7 +255,7 @@ n_multi.default <- function(
   }
 
   info <- .validate_targets(targets, multistage)
-  targets <- .fill_defaults(targets, multistage)
+  targets <- .fill_defaults(targets, multistage, prop_method = prop_method)
 
   rv_final <- targets$rel_var[!is.na(targets$rel_var)]
   if (
@@ -267,6 +311,7 @@ n_multi.default <- function(
     "alpha",
     "deff",
     "N",
+    "prop_method",
     "delta_psu",
     "delta_ssu",
     "rel_var",
@@ -344,6 +389,17 @@ n_multi.default <- function(
     }
   }
 
+  if ("prop_method" %in% names(targets)) {
+    method_vals <- targets$prop_method[!is.na(targets$prop_method)]
+    bad_methods <- !method_vals %in% c("wald", "wilson", "logodds")
+    if (any(bad_methods)) {
+      stop(
+        "'prop_method' values must be one of 'wald', 'wilson', or 'logodds'",
+        call. = FALSE
+      )
+    }
+  }
+
   if (multistage) {
     if (!has_cv) {
       stop("multistage mode requires 'cv' column in targets", call. = FALSE)
@@ -367,11 +423,13 @@ n_multi.default <- function(
     if (any(d1_vals < 0 | d1_vals > 1)) {
       stop("'delta_psu' values must be in [0, 1]", call. = FALSE)
     }
+    .check_cluster_delta_open(d1_vals, context = "n_multi()")
     if ("delta_ssu" %in% names(targets)) {
       d2_vals <- targets$delta_ssu[!is.na(targets$delta_ssu)]
       if (any(d2_vals < 0 | d2_vals > 1)) {
         stop("'delta_ssu' values must be in [0, 1]", call. = FALSE)
       }
+      .check_cluster_delta_open(d2_vals, context = "n_multi()")
     }
   }
 
@@ -433,7 +491,7 @@ n_multi.default <- function(
 #' Fill default values in targets
 #' @keywords internal
 #' @noRd
-.fill_defaults <- function(targets, multistage) {
+.fill_defaults <- function(targets, multistage, prop_method = "wald") {
   if (!"alpha" %in% names(targets)) {
     targets$alpha <- 0.05
   } else {
@@ -471,6 +529,12 @@ n_multi.default <- function(
     targets$resp_rate <- 1
   } else {
     targets$resp_rate[is.na(targets$resp_rate)] <- 1
+  }
+
+  if (!"prop_method" %in% names(targets)) {
+    targets$prop_method <- prop_method
+  } else {
+    targets$prop_method[is.na(targets$prop_method)] <- prop_method
   }
 
   if (!"rel_var" %in% names(targets)) {
@@ -552,7 +616,7 @@ n_multi.default <- function(
   )
 }
 
-#' Compute per-indicator n using Wald-type formulas (inline)
+#' Compute per-indicator n by delegating to the single-indicator engines
 #' @keywords internal
 #' @noRd
 .compute_simple_n <- function(targets) {
@@ -561,40 +625,36 @@ n_multi.default <- function(
 
   has_p <- "p" %in% names(targets)
   has_moe <- "moe" %in% names(targets)
+  has_mu <- "mu" %in% names(targets)
 
   for (i in seq_len(nr)) {
-    z <- qnorm(1 - targets$alpha[i] / 2)
-    deff <- targets$deff[i]
-    N <- targets$N[i]
-
     is_prop <- has_p && !is.na(targets$p[i])
     use_moe <- has_moe && !is.na(targets$moe[i])
 
     if (is_prop) {
-      p <- targets$p[i]
-      q <- 1 - p
-      if (use_moe) {
-        a <- if (is.infinite(N)) 1 else N / (N - 1)
-        n_vec[i] <- a * z^2 * p * q / (targets$moe[i]^2 + z^2 * p * q / (N - 1))
-      } else {
-        cv_t <- targets$cv[i]
-        a <- if (is.infinite(N)) 1 else N / (N - 1)
-        n_vec[i] <- a * q / p / (cv_t^2 + q / p / (N - 1))
-      }
+      res_i <- n_prop.default(
+        p = targets$p[i],
+        moe = if (use_moe) targets$moe[i] else NULL,
+        cv = if (use_moe) NULL else targets$cv[i],
+        alpha = targets$alpha[i],
+        N = targets$N[i],
+        deff = targets$deff[i],
+        resp_rate = targets$resp_rate[i],
+        method = targets$prop_method[i]
+      )
     } else {
-      v <- targets$var[i]
-      if (use_moe) {
-        n_vec[i] <- z^2 * v / (targets$moe[i]^2 + z^2 * v / N)
-      } else {
-        cv_t <- targets$cv[i]
-        mu <- targets$mu[i]
-        CVpop <- sqrt(v) / mu
-        n_vec[i] <- CVpop^2 / (cv_t^2 + CVpop^2 / N)
-      }
+      res_i <- n_mean.default(
+        var = targets$var[i],
+        mu = if (has_mu && !is.na(targets$mu[i])) targets$mu[i] else NULL,
+        moe = if (use_moe) targets$moe[i] else NULL,
+        cv = if (use_moe) NULL else targets$cv[i],
+        alpha = targets$alpha[i],
+        N = targets$N[i],
+        deff = targets$deff[i],
+        resp_rate = targets$resp_rate[i]
+      )
     }
-
-    n_vec[i] <- n_vec[i] * deff
-    n_vec[i] <- .apply_resp_rate(n_vec[i], targets$resp_rate[i])
+    n_vec[i] <- res_i$n
   }
 
   n_vec
@@ -1600,10 +1660,14 @@ n_multi.default <- function(
 #' @export
 n_multi.svyplan_prec <- function(targets, stage_cost = NULL, ...) {
   x <- targets
+  dots <- list(...)
   if (x$type != "multi") {
     stop("n_multi requires a svyplan_prec of type 'multi'", call. = FALSE)
   }
   tgt <- x$params$targets
+  if ("prop_method" %in% names(dots)) {
+    tgt$prop_method <- NA_character_
+  }
   tgt$n <- NULL
   tgt$psu_size <- NULL
   tgt$ssu_size <- NULL
@@ -1622,13 +1686,19 @@ n_multi.svyplan_prec <- function(targets, stage_cost = NULL, ...) {
   joint <- if (!is.null(x$params$joint)) x$params$joint else FALSE
   min_n <- x$params$min_n
   fixed_cost <- if (!is.null(x$params$fixed_cost)) x$params$fixed_cost else 0
-  n_multi.default(
-    targets = tgt,
-    stage_cost = stage_cost,
-    budget = budget,
-    n_psu = n_psu,
-    joint = joint,
-    min_n = min_n,
-    fixed_cost = fixed_cost
+  do.call(
+    n_multi.default,
+    c(
+      list(
+        targets = tgt,
+        stage_cost = stage_cost,
+        budget = budget,
+        n_psu = n_psu,
+        joint = joint,
+        min_n = min_n,
+        fixed_cost = fixed_cost
+      ),
+      dots
+    )
   )
 }
