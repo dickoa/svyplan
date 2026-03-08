@@ -323,6 +323,9 @@ frame_constraints <- transform(
 
 # Budget-constrained allocation with weight and take-all constraints
 n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n = 40)
+#> Stratum allocation (optimal, 3 strata)
+#> n = 3404, cv = 0.0076, se = 0.4125
+#> (min_n = 40)
 ```
 
 Domain-level CV targets can be enforced by adding domain identifiers:
@@ -338,6 +341,13 @@ frame_domains <- data.frame(
 
 # Minimum total n such that each province meets the CV target
 n_alloc(frame_domains, cv = 0.04, alloc = "power", power_q = 0.3)
+#> Stratum allocation (power, 4 strata)
+#> n = 111, cv = 0.0272, se = 1.4076
+#> Domains: 2
+#> ---
+#>  province .domain .n       .se      .moe     .cv    .cost
+#>  North    North   59.23404 2.032000 3.982647 0.0400 59   
+#>  South    South   51.50815 1.948447 3.818886 0.0368 52
 ```
 
 `prec_alloc()` computes the precision for a given allocation (inverse of

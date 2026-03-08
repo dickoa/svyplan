@@ -1,12 +1,47 @@
 #' Constrained Stratified Allocation
 #'
-#' Compute a constrained stratum allocation under a fixed total sample size,
-#' target CV, or budget.
+#' Distribute a total sample size across strata defined by a single
+#' stratification variable, under a fixed total \eqn{n}, target CV, or budget.
+#' When the design uses multiple stratification variables (e.g. region and
+#' urbanicity), cross them into a single variable beforehand so that each row
+#' of `frame` represents one unique stratum.
 #'
-#' @param frame For the default method: data frame with one row per stratum.
-#'   Must include `N_h` and either `S_h` or `var`.
-#'   Optional columns: `mean_h` (or `p_h`), `cost_h`, `max_weight`, `take_all`.
-#'   Any unrecognized columns are treated as domain identifiers.
+#' @param frame For the default method: data frame with **one row per
+#'   stratum**. Each row describes a population stratum defined by a single
+#'   stratification variable (or a cross of several variables collapsed into
+#'   one). When multiple classification variables exist, build the crossed
+#'   strata before calling `n_alloc` (e.g. with [interaction()]).
+#'
+#'   **Required columns:**
+#'   \describe{
+#'     \item{`N_h`}{Population size per stratum (positive finite integer or
+#'       numeric).}
+#'     \item{`S_h` or `var`}{Stratum standard deviation or variance
+#'       (non-negative finite). Provide exactly one.}
+#'   }
+#'
+#'   **Optional columns:**
+#'   \describe{
+#'     \item{`stratum`}{Stratum label. If omitted, row numbers are used.
+#'       Must be unique (or unique within each domain when domain columns
+#'       are present).}
+#'     \item{`mean_h` or `p_h`}{Stratum mean or proportion. Required when
+#'       solving for `cv`. When `p_h` is used it must lie in \eqn{[0, 1]}.}
+#'     \item{`cost_h`}{Per-unit cost in each stratum (positive finite).
+#'       Defaults to 1 everywhere.}
+#'     \item{`max_weight`}{Maximum sampling weight \eqn{N_h / n_h}. Use
+#'       `NA` for unconstrained strata.}
+#'     \item{`take_all`}{Logical (or 0/1). If `TRUE`, the entire stratum
+#'       is included (census stratum).}
+#'   }
+#'
+#'   **Domain columns:** any column not listed above is treated as a domain
+#'   identifier. Domains define sub-populations that each contain one or
+#'   more strata. When `cv` is the target, precision is enforced
+#'   *within every domain* (see Details). For example, a `province` column
+#'   would make each province a separate domain whose strata are the rows
+#'   that share the same province value.
+#'
 #'   For `svyplan_prec` objects: a precision result from [prec_alloc()].
 #' @param ... Additional arguments passed to methods.
 #' @param n Total sample size. Specify exactly one of `n`, `cv`, or `budget`.
@@ -31,6 +66,32 @@
 #'   allocation table in `$detail`.
 #'
 #' @details
+#' ## Frame structure
+#'
+#' Each row of `frame` represents one stratum of a **single** stratification
+#' variable. When a design stratifies by several variables (e.g. region
+#' \eqn{\times} urbanicity), cross them into one variable first:
+#'
+#' ```
+#' frame$stratum <- interaction(frame$region, frame$urban, drop = TRUE)
+#' ```
+#'
+#' This ensures that each row maps to exactly one population cell and that
+#' the allocation formulas apply to the correct \eqn{N_h}, \eqn{S_h} pairs.
+#'
+#' ## Domains vs. strata
+#'
+#' Domain columns partition strata into sub-populations. Each domain groups
+#' one or more strata. When `cv` is specified, the algorithm finds the
+#' minimum total \eqn{n} such that the *worst-case* domain CV meets the
+#' target — i.e. every domain achieves the required precision.
+#'
+#' In `n` or `budget` mode, domains affect reporting only: per-domain
+#' precision metrics appear in `$domains` but the allocation itself treats
+#' all strata globally.
+#'
+#' ## Allocation methods
+#'
 #' Allocation is controlled by the `alloc` parameter (same methods as
 #' [strata_bound()]):
 #' - **proportional**: \eqn{n_h \propto N_h}
@@ -41,9 +102,6 @@
 #' Stratum allocations are rounded to integers using the ORIC method
 #' (Cont and Heidari, 2015). Constraints (`min_n`, `max_weight`, `take_all`)
 #' are enforced via recursive Neyman allocation (RNA, Wesolowski et al., 2021).
-#'
-#' When `cv` is specified with domain columns, the algorithm finds the
-#' minimum total `n` such that every domain achieves the target CV.
 #'
 #' When `budget` is specified, the algorithm finds the maximum affordable
 #' allocation under unit costs.
@@ -461,15 +519,30 @@ prec_alloc.svyplan_n <- function(x, ...) {
   } else {
     stop("'frame' must contain either 'S_h' or 'var'", call. = FALSE)
   }
+  if (all(S_h == 0)) {
+    warning("all 'S_h' values are zero; allocation has no variability to distribute",
+            call. = FALSE)
+  }
 
   mean_h <- rep(NA_real_, nrow(frame))
   if ("mean_h" %in% names(frame)) {
     mean_h <- frame$mean_h
   } else if ("p_h" %in% names(frame)) {
-    mean_h <- frame$p_h
+    ph <- frame$p_h
+    if (!is.numeric(ph) || anyNA(ph) || any(!is.finite(ph))) {
+      stop("'p_h' must contain finite numeric values", call. = FALSE)
+    }
+    if (any(ph < 0 | ph > 1)) {
+      stop("'p_h' must contain values in [0, 1]", call. = FALSE)
+    }
+    mean_h <- ph
   }
   if (any(!is.na(mean_h) & !is.finite(mean_h))) {
     stop("'mean_h' (or 'p_h') must contain finite values", call. = FALSE)
+  }
+  if (!all(is.na(mean_h)) && all(mean_h == 0, na.rm = TRUE)) {
+    warning("all 'mean_h' (or 'p_h') values are zero; CV will be Inf",
+            call. = FALSE)
   }
 
   if (!is.null(unit_cost)) {
@@ -496,9 +569,9 @@ prec_alloc.svyplan_n <- function(x, ...) {
   max_weight <- rep(NA_real_, nrow(frame))
   if ("max_weight" %in% names(frame)) {
     max_weight <- frame$max_weight
-    bad <- !is.na(max_weight) & (!is.finite(max_weight) | max_weight <= 0)
+    bad <- !is.na(max_weight) & (!is.finite(max_weight) | max_weight < 1)
     if (any(bad)) {
-      stop("'max_weight' must be positive and finite when provided",
+      stop("'max_weight' must be >= 1 and finite when provided",
            call. = FALSE)
     }
   }
@@ -536,6 +609,25 @@ prec_alloc.svyplan_n <- function(x, ...) {
     domain_idx <- setNames(lapply(lev, function(k) which(key == k)), lev)
     domain_values <- frame[match(lev, key), domain_cols, drop = FALSE]
     rownames(domain_values) <- NULL
+
+    for (d in names(domain_idx)) {
+      s_d <- stratum[domain_idx[[d]]]
+      if (anyDuplicated(s_d)) {
+        stop(
+          sprintf("duplicate stratum labels in domain '%s': %s", d,
+                  paste(s_d[duplicated(s_d)], collapse = ", ")),
+          call. = FALSE
+        )
+      }
+    }
+  } else {
+    if (anyDuplicated(stratum)) {
+      dups <- stratum[duplicated(stratum)]
+      stop(
+        sprintf("duplicate stratum labels: %s", paste(unique(dups), collapse = ", ")),
+        call. = FALSE
+      )
+    }
   }
 
   list(

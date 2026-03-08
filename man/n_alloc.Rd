@@ -27,10 +27,42 @@ n_alloc(frame, ...)
 \method{n_alloc}{svyplan_prec}(frame, n = NULL, cv = NULL, budget = NULL, ...)
 }
 \arguments{
-\item{frame}{For the default method: data frame with one row per stratum.
-Must include \code{N_h} and either \code{S_h} or \code{var}.
-Optional columns: \code{mean_h} (or \code{p_h}), \code{cost_h}, \code{max_weight}, \code{take_all}.
-Any unrecognized columns are treated as domain identifiers.
+\item{frame}{For the default method: data frame with \strong{one row per
+stratum}. Each row describes a population stratum defined by a single
+stratification variable (or a cross of several variables collapsed into
+one). When multiple classification variables exist, build the crossed
+strata before calling \code{n_alloc} (e.g. with \code{\link[=interaction]{interaction()}}).
+
+\strong{Required columns:}
+\describe{
+\item{\code{N_h}}{Population size per stratum (positive finite integer or
+numeric).}
+\item{\code{S_h} or \code{var}}{Stratum standard deviation or variance
+(non-negative finite). Provide exactly one.}
+}
+
+\strong{Optional columns:}
+\describe{
+\item{\code{stratum}}{Stratum label. If omitted, row numbers are used.
+Must be unique (or unique within each domain when domain columns
+are present).}
+\item{\code{mean_h} or \code{p_h}}{Stratum mean or proportion. Required when
+solving for \code{cv}. When \code{p_h} is used it must lie in \eqn{[0, 1]}.}
+\item{\code{cost_h}}{Per-unit cost in each stratum (positive finite).
+Defaults to 1 everywhere.}
+\item{\code{max_weight}}{Maximum sampling weight \eqn{N_h / n_h}. Use
+\code{NA} for unconstrained strata.}
+\item{\code{take_all}}{Logical (or 0/1). If \code{TRUE}, the entire stratum
+is included (census stratum).}
+}
+
+\strong{Domain columns:} any column not listed above is treated as a domain
+identifier. Domains define sub-populations that each contain one or
+more strata. When \code{cv} is the target, precision is enforced
+\emph{within every domain} (see Details). For example, a \code{province} column
+would make each province a separate domain whose strata are the rows
+that share the same province value.
+
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_alloc]{prec_alloc()}}.}
 
 \item{...}{Additional arguments passed to methods.}
@@ -68,10 +100,40 @@ A \code{svyplan_n} object with \code{type = "alloc"} and a stratum-level
 allocation table in \verb{$detail}.
 }
 \description{
-Compute a constrained stratum allocation under a fixed total sample size,
-target CV, or budget.
+Distribute a total sample size across strata defined by a single
+stratification variable, under a fixed total \eqn{n}, target CV, or budget.
+When the design uses multiple stratification variables (e.g. region and
+urbanicity), cross them into a single variable beforehand so that each row
+of \code{frame} represents one unique stratum.
 }
 \details{
+\subsection{Frame structure}{
+
+Each row of \code{frame} represents one stratum of a \strong{single} stratification
+variable. When a design stratifies by several variables (e.g. region
+\eqn{\times} urbanicity), cross them into one variable first:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{frame$stratum <- interaction(frame$region, frame$urban, drop = TRUE)
+}\if{html}{\out{</div>}}
+
+This ensures that each row maps to exactly one population cell and that
+the allocation formulas apply to the correct \eqn{N_h}, \eqn{S_h} pairs.
+}
+
+\subsection{Domains vs. strata}{
+
+Domain columns partition strata into sub-populations. Each domain groups
+one or more strata. When \code{cv} is specified, the algorithm finds the
+minimum total \eqn{n} such that the \emph{worst-case} domain CV meets the
+target — i.e. every domain achieves the required precision.
+
+In \code{n} or \code{budget} mode, domains affect reporting only: per-domain
+precision metrics appear in \verb{$domains} but the allocation itself treats
+all strata globally.
+}
+
+\subsection{Allocation methods}{
+
 Allocation is controlled by the \code{alloc} parameter (same methods as
 \code{\link[=strata_bound]{strata_bound()}}):
 \itemize{
@@ -85,11 +147,9 @@ Stratum allocations are rounded to integers using the ORIC method
 (Cont and Heidari, 2015). Constraints (\code{min_n}, \code{max_weight}, \code{take_all})
 are enforced via recursive Neyman allocation (RNA, Wesolowski et al., 2021).
 
-When \code{cv} is specified with domain columns, the algorithm finds the
-minimum total \code{n} such that every domain achieves the target CV.
-
 When \code{budget} is specified, the algorithm finds the maximum affordable
 allocation under unit costs.
+}
 }
 \examples{
 frame <- data.frame(

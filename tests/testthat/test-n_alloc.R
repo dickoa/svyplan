@@ -225,6 +225,84 @@ test_that("n_alloc: validation errors", {
   )
 })
 
+test_that("n_alloc: p_h must be in [0, 1]", {
+  expect_error(
+    n_alloc(data.frame(N_h = c(100, 200), S_h = c(1, 2), p_h = c(0.3, 1.5)),
+            cv = 0.05),
+    "\\[0, 1\\]"
+  )
+  expect_error(
+    n_alloc(data.frame(N_h = c(100, 200), S_h = c(1, 2), p_h = c(-0.1, 0.5)),
+            cv = 0.05),
+    "\\[0, 1\\]"
+  )
+})
+
+test_that("n_alloc: duplicate stratum labels rejected", {
+  expect_error(
+    n_alloc(
+      data.frame(stratum = c("A", "A", "B"), N_h = c(100, 200, 300), S_h = c(1, 2, 3)),
+      n = 50
+    ),
+    "duplicate stratum"
+  )
+})
+
+test_that("n_alloc: duplicate stratum within domain rejected", {
+  expect_error(
+    n_alloc(
+      data.frame(
+        region = c("N", "N", "S"),
+        stratum = c("U", "U", "U"),
+        N_h = c(100, 200, 300),
+        S_h = c(1, 2, 3),
+        mean_h = c(50, 60, 55)
+      ),
+      cv = 0.05
+    ),
+    "duplicate stratum.*domain"
+  )
+})
+
+test_that("n_alloc: same stratum label across domains is allowed", {
+  frame <- data.frame(
+    region = c("N", "S"),
+    stratum = c("Urban", "Urban"),
+    N_h = c(1000, 2000),
+    S_h = c(10, 20),
+    mean_h = c(50, 60)
+  )
+  res <- n_alloc(frame, cv = 0.05)
+  expect_s3_class(res, "svyplan_n")
+})
+
+test_that("n_alloc: max_weight < 1 rejected", {
+  expect_error(
+    n_alloc(
+      data.frame(N_h = c(100, 200), S_h = c(1, 2), max_weight = c(0.5, 10)),
+      n = 50
+    ),
+    ">= 1"
+  )
+})
+
+test_that("n_alloc: all-zero S_h warns", {
+  expect_warning(
+    n_alloc(data.frame(N_h = c(100, 200), S_h = c(0, 0)), n = 50),
+    "no variability"
+  )
+})
+
+test_that("n_alloc: all-zero mean_h warns about Inf CV", {
+  expect_warning(
+    n_alloc(
+      data.frame(N_h = c(100, 200), S_h = c(1, 2), mean_h = c(0, 0)),
+      n = 50
+    ),
+    "CV will be Inf"
+  )
+})
+
 test_that("n_alloc: single stratum", {
   frame <- data.frame(N_h = 1000, S_h = 10)
   res <- n_alloc(frame, n = 100)
