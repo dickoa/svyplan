@@ -142,6 +142,17 @@
 #' )
 #' n_multi(targets)
 #'
+#' # MICS/DHS-style: specify precision as a relative margin of error (RME).
+#' # RME = moe / p, so convert with moe = RME * p before calling n_multi().
+#' rme <- 0.12
+#' targets_rme <- data.frame(
+#'   name = c("stunting", "vaccination", "anemia"),
+#'   p    = c(0.30, 0.70, 0.10),
+#'   deff = c(2.0, 1.5, 2.5)
+#' )
+#' targets_rme$moe <- rme * targets_rme$p
+#' n_multi(targets_rme)
+#'
 #' # Rare proportion: use Wilson globally in simple mode
 #' n_multi(targets[3, , drop = FALSE], prop_method = "wilson")
 #'

@@ -74,6 +74,11 @@
 #' # With design effect and response rate
 #' n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 #'
+#' # MICS/DHS-style relative margin of error (RME)
+#' # RME = moe / p, so moe = RME * p
+#' p <- 0.2
+#' n_prop(p = p, moe = 0.12 * p, deff = 1.5, resp_rate = 0.9)
+#'
 #' @export
 n_prop <- function(p, ...) {
   if (!missing(p)) {

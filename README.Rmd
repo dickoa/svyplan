@@ -117,6 +117,31 @@ n_multi(targets)
 Per-domain optimization works by adding domain columns to the targets
 data frame.
 
+### MICS/DHS-style relative margin of error
+
+Programmes like UNICEF MICS and DHS express precision as a **relative
+margin of error** (RME = MOE / p). To use this with svyplan, convert to
+an absolute margin of error: `moe = RME * p`.
+
+```{r}
+# RME = 12% for each indicator
+rme <- 0.12
+targets_rme <- data.frame(
+  name = c("stunting", "vaccination", "anemia"),
+  p    = c(0.25, 0.70, 0.12),
+  deff = c(2.0, 1.5, 2.5)
+)
+targets_rme$moe <- rme * targets_rme$p
+
+n_multi(targets_rme)
+```
+
+The MICS template reports sample size in **households**. svyplan returns
+the number of **individuals** in the target population. To convert,
+divide by the expected number of eligible individuals per household:
+`n_hh = ceiling(n / (pb * hh_size))`, where `pb` is the share of the
+target population and `hh_size` is the average household size.
+
 ## Multistage cluster designs
 
 ```{r}

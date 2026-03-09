@@ -99,6 +99,11 @@ n_prop(p = 0.1, moe = 0.03, method = "wilson")
 # With design effect and response rate
 n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 
+# MICS/DHS-style relative margin of error (RME)
+# RME = moe / p, so moe = RME * p
+p <- 0.2
+n_prop(p = p, moe = 0.12 * p, deff = 1.5, resp_rate = 0.9)
+
 }
 \references{
 Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
