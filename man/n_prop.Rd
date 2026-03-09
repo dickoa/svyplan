@@ -80,6 +80,11 @@ to account for the Bernoulli finite-population variance.
 
 All methods use the normal (z) quantile. This is standard for survey
 sampling where the sample size is large enough for the CLT to apply.
+
+When called on a \code{svyplan_prec} object, parameters are extracted from the
+stored result. Passing a different \code{method} evaluates the stored precision
+target under that formula; the round-trip will not be exact because the
+precision was computed under the original method.
 }
 \examples{
 # Wald, absolute margin of error

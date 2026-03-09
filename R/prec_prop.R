@@ -30,6 +30,11 @@
 #' correction for a Bernoulli proportion is `(N - n_eff) / (N - 1)`, not
 #' the simpler `1 - n_eff / N` used for means.
 #'
+#' When called on a `svyplan_n` object, parameters are extracted from the
+#' stored result. Passing a different `method` evaluates the stored sample
+#' size under that formula; the round-trip will not be exact because `n`
+#' was determined under the original method.
+#'
 #' @seealso [n_prop()] for the inverse (compute n from a precision target),
 #'   [prec_mean()] for continuous variables.
 #'
@@ -117,6 +122,7 @@ prec_prop.svyplan_n <- function(p, ...) {
   if (x$type != "proportion") {
     stop("prec_prop requires a svyplan_n of type 'proportion'", call. = FALSE)
   }
+  dots <- list(...)
   par <- x$params
   prec_prop.default(
     p = par$p,
@@ -125,7 +131,7 @@ prec_prop.svyplan_n <- function(p, ...) {
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate %||% 1,
-    method = x$method %||% "wald"
+    method = dots$method %||% x$method %||% "wald"
   )
 }
 

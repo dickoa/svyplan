@@ -45,6 +45,11 @@
 #' All methods use the normal (z) quantile. This is standard for survey
 #' sampling where the sample size is large enough for the CLT to apply.
 #'
+#' When called on a `svyplan_prec` object, parameters are extracted from the
+#' stored result. Passing a different `method` evaluates the stored precision
+#' target under that formula; the round-trip will not be exact because the
+#' precision was computed under the original method.
+#'
 #' @references
 #' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
 #'
@@ -213,6 +218,7 @@ n_prop.svyplan_prec <- function(p, moe = NULL, cv = NULL, ...) {
   if (x$type != "proportion") {
     stop("n_prop requires a svyplan_prec of type 'proportion'", call. = FALSE)
   }
+  dots <- list(...)
   par <- x$params
   if (is.null(moe) && is.null(cv)) {
     moe <- x$moe
@@ -225,6 +231,6 @@ n_prop.svyplan_prec <- function(p, moe = NULL, cv = NULL, ...) {
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate,
-    method = x$method %||% "wald"
+    method = dots$method %||% x$method %||% "wald"
   )
 }

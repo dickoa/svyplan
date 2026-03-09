@@ -62,6 +62,11 @@ optional finite population correction.
 The Wald FPC uses the Cochran (1977, Ch. 3) form: the finite-population
 correction for a Bernoulli proportion is \code{(N - n_eff) / (N - 1)}, not
 the simpler \code{1 - n_eff / N} used for means.
+
+When called on a \code{svyplan_n} object, parameters are extracted from the
+stored result. Passing a different \code{method} evaluates the stored sample
+size under that formula; the round-trip will not be exact because \code{n}
+was determined under the original method.
 }
 \examples{
 # Precision with n = 400

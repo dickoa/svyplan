@@ -201,3 +201,37 @@ test_that("n_multi round-trip does not leak n2/n3 as domain columns", {
   p1 <- prec_multi(s1)
   expect_no_message(s2 <- n_multi(p1))
 })
+
+test_that("n_prop.svyplan_prec respects explicit method override", {
+  p_wilson <- prec_prop(p = 0.3, n = 400, method = "wilson")
+  s_same <- n_prop(p_wilson)
+  s_wald <- n_prop(p_wilson, method = "wald")
+  s_logodds <- n_prop(p_wilson, method = "logodds")
+
+  expect_equal(s_same$method, "wilson")
+  expect_equal(s_same$n, 400, tolerance = 1e-6)
+
+  expect_equal(s_wald$method, "wald")
+  expect_true(s_wald$n != s_same$n)
+
+  expect_equal(s_logodds$method, "logodds")
+  expect_true(s_logodds$n != s_same$n)
+})
+
+test_that("prec_prop.svyplan_n respects explicit method override", {
+  s_wilson <- n_prop(p = 0.3, moe = 0.05, method = "wilson")
+  p_same <- prec_prop(s_wilson)
+  p_wald <- prec_prop(s_wilson, method = "wald")
+  p_logodds <- prec_prop(s_wilson, method = "logodds")
+
+  expect_equal(p_same$method, "wilson")
+  expect_equal(p_same$moe, 0.05, tolerance = 1e-6)
+
+  expect_equal(p_wald$method, "wald")
+  expect_equal(p_wald$params$n, s_wilson$n)
+  expect_true(abs(p_wald$moe - 0.05) > 1e-4)
+
+  expect_equal(p_logodds$method, "logodds")
+  expect_equal(p_logodds$params$n, s_wilson$n)
+  expect_true(abs(p_logodds$moe - 0.05) > 1e-4)
+})
