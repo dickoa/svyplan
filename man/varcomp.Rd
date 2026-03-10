@@ -100,22 +100,24 @@ vc2
 # Feed into n_cluster
 n_cluster(stage_cost = c(500, 50), delta = vc2, budget = 100000)
 
-# 3-stage PPS using formula: villages nested within districts
+# 3-stage SRS using formula: villages nested within districts
 # "/" expresses nesting (outermost stage first, see ?formula)
 set.seed(42)
 frame3 <- data.frame(
   income = rnorm(400, 50000, 10000),
   district = rep(1:20, each = 20),
-  village = rep(1:100, each = 4),
-  pp = rep(1 / 20, 400)
+  village = rep(1:100, each = 4)
 )
-vc3 <- varcomp(income ~ district/village, data = frame3, prob = ~pp)
+vc3 <- varcomp(income ~ district/village, data = frame3)
 vc3
 
-# Vector (list) interface — equivalent to the formula above
+# 3-stage PPS (explicit first-stage probabilities)
+frame3$pp <- rep(1 / 20, 400)
+vc3_pps <- varcomp(income ~ district/village, data = frame3, prob = ~pp)
+
+# Vector (list) interface
 varcomp(frame3$income,
-        stage_id = list(frame3$district, frame3$village),
-        prob = frame3$pp)
+        stage_id = list(frame3$district, frame3$village))
 
 }
 \references{

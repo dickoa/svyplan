@@ -155,6 +155,12 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
   if (!is.null(p$n_psu)) {
     out$params$n_psu <- p$n_psu
   }
+  if (!is.null(p$psu_size)) {
+    out$params$psu_size <- p$psu_size
+  }
+  if (!is.null(p$ssu_size)) {
+    out$params$ssu_size <- p$ssu_size
+  }
   if (!is.null(p$fixed_cost)) {
     out$params$fixed_cost <- p$fixed_cost
   }

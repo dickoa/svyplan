@@ -469,7 +469,7 @@ prec_multi.svyplan_cluster <- function(targets, ...) {
 
   stage_cost <- x$params$stage_cost
   res <- prec_multi.default(targets = tgt, stage_cost = stage_cost)
-  for (p in c("budget", "n_psu", "joint", "fixed_cost", "min_n")) {
+  for (p in c("budget", "n_psu", "psu_size", "ssu_size", "joint", "fixed_cost", "min_n")) {
     if (!is.null(x$params[[p]])) res$params[[p]] <- x$params[[p]]
   }
   res

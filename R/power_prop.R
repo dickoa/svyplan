@@ -5,7 +5,11 @@
 #' `p2` as `NULL` to solve for that quantity.
 #'
 #' @param p1 Baseline proportion, in (0, 1).
-#' @param p2 Alternative proportion, in (0, 1). Leave `NULL` to solve for MDE.
+#' @param p2 Alternative proportion, in (0, 1). Leave `NULL` to solve for
+#'   the minimum detectable effect (MDE). The solver searches both above and
+#'   below `p1` and returns the alternative closest to `p1` that achieves the
+#'   target power. When `p1` is near 0 or 1, the MDE may only be detectable
+#'   in one direction.
 #' @param n Per-group sample size. Scalar (equal groups) or length-2 vector
 #'   `c(n1, n2)` for unequal groups. Leave `NULL` to solve for sample size.
 #' @param power Target power, in (0, 1). Leave `NULL` to solve for power.

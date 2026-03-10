@@ -30,7 +30,11 @@ power_prop(p1, ...)
 
 \item{...}{Additional arguments passed to methods.}
 
-\item{p2}{Alternative proportion, in (0, 1). Leave \code{NULL} to solve for MDE.}
+\item{p2}{Alternative proportion, in (0, 1). Leave \code{NULL} to solve for
+the minimum detectable effect (MDE). The solver searches both above and
+below \code{p1} and returns the alternative closest to \code{p1} that achieves the
+target power. When \code{p1} is near 0 or 1, the MDE may only be detectable
+in one direction.}
 
 \item{n}{Per-group sample size. Scalar (equal groups) or length-2 vector
 \code{c(n1, n2)} for unequal groups. Leave \code{NULL} to solve for sample size.}

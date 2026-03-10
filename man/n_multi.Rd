@@ -13,6 +13,8 @@ n_multi(targets, ...)
   stage_cost = NULL,
   budget = NULL,
   n_psu = NULL,
+  psu_size = NULL,
+  ssu_size = NULL,
   joint = FALSE,
   min_n = NULL,
   fixed_cost = 0,
@@ -36,7 +38,15 @@ for simple mode; length 2 or 3 for multistage mode.}
 \item{budget}{Total budget (multistage only). Provide either \code{cv} values
 in the \code{targets} data frame or a \code{budget} here, not both.}
 
-\item{n_psu}{Fixed stage-1 sample size (multistage only).}
+\item{n_psu}{Fixed stage-1 sample size (multistage only). For 2-stage, at
+most one of \code{n_psu} or \code{psu_size} may be fixed. For 3-stage, up to two
+of \code{n_psu}, \code{psu_size}, \code{ssu_size} may be fixed.}
+
+\item{psu_size}{Fixed cluster size (stage-2 sample size per PSU, multistage
+only). \code{NULL} (default) means optimize.}
+
+\item{ssu_size}{Fixed SSU take size (stage-3 sample size per SSU). \code{NULL}
+(default) means optimize. Only valid for 3-stage designs.}
 
 \item{joint}{Logical. If \code{TRUE}, optimally split a single \code{budget}
 across domains to minimize the worst-case CV ratio. Only applies

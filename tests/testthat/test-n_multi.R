@@ -1391,3 +1391,196 @@ test_that("n_multi rejects negative k_ssu", {
   tgt <- data.frame(p = 0.3, cv = 0.10, delta_psu = 0.02, k_ssu = -1)
   expect_error(nm(tgt, stage_cost = c(500, 50)), "k_ssu.*positive")
 })
+
+test_that("n_multi rejects ssu_size for 2-stage", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05)
+  expect_error(
+    nm(df, stage_cost = c(500, 50), budget = 50000, ssu_size = 5),
+    "ssu_size.*not applicable"
+  )
+})
+
+test_that("n_multi rejects fixing all stages 2-stage", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05)
+  expect_error(
+    nm(df, stage_cost = c(500, 50), budget = 50000, n_psu = 100, psu_size = 10),
+    "cannot fix all stages"
+  )
+})
+
+test_that("n_multi rejects fixing all stages 3-stage", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05, delta_ssu = 0.10)
+  expect_error(
+    nm(df, stage_cost = c(500, 50, 5), budget = 500000,
+       n_psu = 100, psu_size = 10, ssu_size = 5),
+    "cannot fix all stages"
+  )
+})
+
+test_that("2-stage psu_size CV mode matches n_cluster", {
+  rv <- 0.3 * 0.7 / 0.3^2
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05)
+  res <- nm(df, stage_cost = c(500, 50), psu_size = 15)
+  ref <- n_cluster(
+    stage_cost = c(500, 50), delta = 0.05, cv = 0.10, psu_size = 15,
+    rel_var = rv
+  )
+  expect_equal(res$n[["n_psu"]], ref$n[["n_psu"]], tolerance = 1e-4)
+  expect_equal(res$n[["psu_size"]], 15)
+})
+
+test_that("2-stage psu_size budget mode matches n_cluster", {
+  rv <- 0.3 * 0.7 / 0.3^2
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05)
+  res <- nm(df, stage_cost = c(500, 50), budget = 50000, psu_size = 12)
+  ref <- n_cluster(
+    stage_cost = c(500, 50), delta = 0.05, budget = 50000, psu_size = 12,
+    rel_var = rv
+  )
+  expect_equal(res$n[["n_psu"]], ref$n[["n_psu"]], tolerance = 1e-4)
+  expect_equal(res$n[["psu_size"]], 12)
+  expect_equal(res$cost, ref$cost, tolerance = 1e-4)
+})
+
+test_that("3-stage psu_size only CV mode", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05, delta_ssu = 0.10)
+  res <- nm(df, stage_cost = c(500, 50, 5), psu_size = 10)
+  expect_equal(res$n[["psu_size"]], 10)
+  expect_true(res$cv <= 0.10 + 1e-6)
+  expect_equal(res$params$psu_size, 10)
+})
+
+test_that("3-stage ssu_size only CV mode", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05, delta_ssu = 0.10)
+  res <- nm(df, stage_cost = c(500, 50, 5), ssu_size = 8)
+  expect_equal(res$n[["ssu_size"]], 8)
+  expect_true(res$cv <= 0.10 + 1e-6)
+  expect_equal(res$params$ssu_size, 8)
+})
+
+test_that("3-stage psu_size + ssu_size CV mode", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05, delta_ssu = 0.10)
+  res <- nm(df, stage_cost = c(500, 50, 5), psu_size = 10, ssu_size = 5)
+  expect_equal(res$n[["psu_size"]], 10)
+  expect_equal(res$n[["ssu_size"]], 5)
+  expect_true(res$cv <= 0.10 + 1e-6)
+})
+
+test_that("3-stage n_psu + ssu_size CV mode", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05, delta_ssu = 0.10)
+  res <- nm(df, stage_cost = c(500, 50, 5), n_psu = 80, ssu_size = 5)
+  expect_equal(res$n[["n_psu"]], 80)
+  expect_equal(res$n[["ssu_size"]], 5)
+  expect_true(res$cv <= 0.10 + 1e-6)
+})
+
+test_that("3-stage n_psu + psu_size CV mode", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05, delta_ssu = 0.10)
+  res <- nm(df, stage_cost = c(500, 50, 5), n_psu = 80, psu_size = 10)
+  expect_equal(res$n[["n_psu"]], 80)
+  expect_equal(res$n[["psu_size"]], 10)
+  expect_true(res$cv <= 0.10 + 1e-6)
+})
+
+test_that("3-stage psu_size only budget mode", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05, delta_ssu = 0.10)
+  budget <- 100000
+  res <- nm(df, stage_cost = c(500, 50, 5), budget = budget, psu_size = 10)
+  expect_equal(res$n[["psu_size"]], 10)
+  expect_true(res$cost <= budget + 1e-4)
+})
+
+test_that("3-stage ssu_size only budget mode", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05, delta_ssu = 0.10)
+  budget <- 100000
+  res <- nm(df, stage_cost = c(500, 50, 5), budget = budget, ssu_size = 5)
+  expect_equal(res$n[["ssu_size"]], 5)
+  expect_true(res$cost <= budget + 1e-4)
+})
+
+test_that("3-stage psu_size + ssu_size budget mode", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05, delta_ssu = 0.10)
+  budget <- 100000
+  res <- nm(df, stage_cost = c(500, 50, 5), budget = budget,
+            psu_size = 10, ssu_size = 5)
+  expect_equal(res$n[["psu_size"]], 10)
+  expect_equal(res$n[["ssu_size"]], 5)
+  n1 <- budget / (500 + 50 * 10 + 5 * 10 * 5)
+  expect_equal(res$n[["n_psu"]], n1, tolerance = 1e-6)
+  expect_equal(res$cost, budget, tolerance = 1e-4)
+})
+
+test_that("3-stage n_psu + ssu_size budget mode", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05, delta_ssu = 0.10)
+  budget <- 100000
+  res <- nm(df, stage_cost = c(500, 50, 5), budget = budget,
+            n_psu = 80, ssu_size = 5)
+  expect_equal(res$n[["n_psu"]], 80)
+  expect_equal(res$n[["ssu_size"]], 5)
+  n2 <- (budget / 80 - 500) / (50 + 5 * 5)
+  expect_equal(res$n[["psu_size"]], n2, tolerance = 1e-6)
+})
+
+test_that("3-stage n_psu + psu_size budget mode", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05, delta_ssu = 0.10)
+  budget <- 100000
+  res <- nm(df, stage_cost = c(500, 50, 5), budget = budget,
+            n_psu = 80, psu_size = 10)
+  expect_equal(res$n[["n_psu"]], 80)
+  expect_equal(res$n[["psu_size"]], 10)
+  n3 <- (budget - 500 * 80 - 50 * 80 * 10) / (5 * 80 * 10)
+  expect_equal(res$n[["ssu_size"]], n3, tolerance = 1e-6)
+})
+
+test_that("n_multi psu_size/ssu_size round-trip via prec_multi", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05, delta_ssu = 0.10)
+  res <- nm(df, stage_cost = c(500, 50, 5), psu_size = 10, ssu_size = 5)
+  prec <- prec_multi(res)
+  expect_equal(prec$params$psu_size, 10)
+  expect_equal(prec$params$ssu_size, 5)
+  res2 <- nm(prec)
+  expect_equal(res2$n[["psu_size"]], 10, tolerance = 1e-4)
+  expect_equal(res2$n[["ssu_size"]], 5, tolerance = 1e-4)
+  expect_equal(res2$n[["n_psu"]], res$n[["n_psu"]], tolerance = 1e-4)
+})
+
+test_that("n_multi psu_size params stored correctly", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05)
+  res <- nm(df, stage_cost = c(500, 50), psu_size = 12)
+  expect_equal(res$params$psu_size, 12)
+  expect_null(res$params$ssu_size)
+})
+
+test_that("n_multi 3-stage fixed stages with multiple indicators", {
+  df <- data.frame(
+    p = c(0.30, 0.50),
+    cv = c(0.10, 0.08),
+    delta_psu = c(0.05, 0.03),
+    delta_ssu = c(0.10, 0.05)
+  )
+  res <- nm(df, stage_cost = c(500, 50, 5), psu_size = 10, ssu_size = 5)
+  expect_equal(res$n[["psu_size"]], 10)
+  expect_equal(res$n[["ssu_size"]], 5)
+  expect_true(all(res$detail$.cv_achieved <= res$detail$.cv_target + 1e-6))
+})
+
+test_that("n_multi 2-stage psu_size with domains", {
+  df <- data.frame(
+    domain = c("urban", "rural"),
+    p = c(0.30, 0.50),
+    cv = c(0.10, 0.08),
+    delta_psu = c(0.05, 0.03)
+  )
+  res <- nm(df, stage_cost = c(500, 50), psu_size = 15)
+  expect_true(!is.null(res$domains))
+  expect_true(all(res$domains$psu_size == 15))
+})
+
+test_that("n_multi 3-stage budget infeasibility with fixed stages", {
+  df <- data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05, delta_ssu = 0.10)
+  expect_error(
+    nm(df, stage_cost = c(500, 50, 5), budget = 100,
+       n_psu = 80, psu_size = 10),
+    "budget.*too small"
+  )
+})

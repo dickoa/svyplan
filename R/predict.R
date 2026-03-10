@@ -218,6 +218,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
 
   allowed <- unique(c(
     "cv", "budget", "rel_var", "resp_rate", "fixed_cost",
+    "n_psu", "psu_size", "ssu_size",
     delta_meta$allowed, k_meta$allowed, cost_meta$allowed
   ))
   .validate_newdata(newdata, allowed)
@@ -232,6 +233,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
   base <- list(
     stage_cost = p$stage_cost, delta = p$delta, rel_var = p$rel_var,
     k = p$k, resp_rate = p$resp_rate %||% 1, n_psu = p$n_psu,
+    psu_size = p$psu_size, ssu_size = p$ssu_size,
     fixed_cost = p$fixed_cost %||% 0
   )
 
@@ -265,7 +267,8 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
       stage_cost = row_cost, delta = row_delta,
       rel_var = params$rel_var, k = row_k,
       cv = params$cv, budget = params$budget,
-      n_psu = params$n_psu, resp_rate = params$resp_rate,
+      n_psu = params$n_psu, psu_size = params$psu_size,
+      ssu_size = params$ssu_size, resp_rate = params$resp_rate,
       fixed_cost = params$fixed_cost
     )
     out <- as.list(res$n)

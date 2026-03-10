@@ -70,22 +70,24 @@
 #' # Feed into n_cluster
 #' n_cluster(stage_cost = c(500, 50), delta = vc2, budget = 100000)
 #'
-#' # 3-stage PPS using formula: villages nested within districts
+#' # 3-stage SRS using formula: villages nested within districts
 #' # "/" expresses nesting (outermost stage first, see ?formula)
 #' set.seed(42)
 #' frame3 <- data.frame(
 #'   income = rnorm(400, 50000, 10000),
 #'   district = rep(1:20, each = 20),
-#'   village = rep(1:100, each = 4),
-#'   pp = rep(1 / 20, 400)
+#'   village = rep(1:100, each = 4)
 #' )
-#' vc3 <- varcomp(income ~ district/village, data = frame3, prob = ~pp)
+#' vc3 <- varcomp(income ~ district/village, data = frame3)
 #' vc3
 #'
-#' # Vector (list) interface — equivalent to the formula above
+#' # 3-stage PPS (explicit first-stage probabilities)
+#' frame3$pp <- rep(1 / 20, 400)
+#' vc3_pps <- varcomp(income ~ district/village, data = frame3, prob = ~pp)
+#'
+#' # Vector (list) interface
 #' varcomp(frame3$income,
-#'         stage_id = list(frame3$district, frame3$village),
-#'         prob = frame3$pp)
+#'         stage_id = list(frame3$district, frame3$village))
 #'
 #' @export
 varcomp <- function(x, ...) {
@@ -284,10 +286,10 @@ varcomp.survey.design <- function(x, ..., prob = NULL) {
     .varcomp_2stage_srs(y, stage_id[[1L]])
   } else if (stages == 2L && has_prob) {
     .varcomp_2stage_pps(y, stage_id[[1L]], prob)
-  } else if (stages == 3L) {
-    if (!has_prob) {
-      stop("3-stage varcomp requires 'prob' (PPS probabilities)", call. = FALSE)
-    }
+  } else if (stages == 3L && !has_prob) {
+    M <- length(unique(stage_id[[1L]]))
+    .varcomp_3stage_pps(y, stage_id[[1L]], stage_id[[2L]], rep(1 / M, length(y)))
+  } else {
     .varcomp_3stage_pps(y, stage_id[[1L]], stage_id[[2L]], prob)
   }
 }

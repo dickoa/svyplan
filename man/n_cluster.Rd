@@ -16,6 +16,8 @@ n_cluster(stage_cost, ...)
   cv = NULL,
   budget = NULL,
   n_psu = NULL,
+  psu_size = NULL,
+  ssu_size = NULL,
   resp_rate = 1,
   fixed_cost = 0,
   plan = NULL,
@@ -47,7 +49,16 @@ or \code{budget}.}
 \item{budget}{Total budget. Specify exactly one of \code{cv} or \code{budget}.}
 
 \item{n_psu}{Fixed number of PSUs (stage-1 sample size). \code{NULL} (default)
-means optimize all stages.}
+means optimize. For 2-stage, at most one of \code{n_psu} or \code{psu_size} may be
+specified. For 3-stage, up to two of \code{n_psu}, \code{psu_size}, \code{ssu_size} may
+be fixed.}
+
+\item{psu_size}{Fixed cluster size (stage-2 sample size per PSU). \code{NULL}
+(default) means optimize. This is the typical MICS/DHS parameterization
+where the number of households per cluster is fixed.}
+
+\item{ssu_size}{Fixed SSU take size (stage-3 sample size per SSU). \code{NULL}
+(default) means optimize. Only valid for 3-stage designs.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The stage-1 sample size is inflated by \code{1 / resp_rate}.}
@@ -89,7 +100,10 @@ Stage count is determined by \code{length(stage_cost)}. Two dispatch dimensions:
 \item \strong{budget vs cv} mode (which is non-NULL)
 }
 
-When \code{n_psu} is specified, stage 1 is fixed and only stage 2+ are optimized.
+One or more stage sizes can be fixed, leaving the remaining stage(s) to be
+optimized or derived from the constraint. For 2-stage designs, at most one
+stage may be fixed. For 3-stage designs, up to two stages may be fixed;
+the remaining free stage is derived from the budget or CV constraint.
 
 If \code{delta} is a \code{svyplan_varcomp} object, \code{delta}, \code{rel_var}, and \code{k}
 are extracted automatically.
@@ -117,8 +131,17 @@ n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
 # 2-stage, fixed n_psu
 n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, n_psu = 40)
 
+# 2-stage, fixed psu_size (MICS/DHS style: 20 households per cluster)
+n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, psu_size = 20)
+
 # 3-stage
 n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+
+# 3-stage, fixed n_psu + ssu_size (solve for psu_size)
+n_cluster(
+  stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+  budget = 500000, n_psu = 50, ssu_size = 8
+)
 
 # With fixed overhead cost
 n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, fixed_cost = 5000)

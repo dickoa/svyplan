@@ -12,7 +12,13 @@
 #'   for simple mode; length 2 or 3 for multistage mode.
 #' @param budget Total budget (multistage only). Provide either `cv` values
 #'   in the `targets` data frame or a `budget` here, not both.
-#' @param n_psu Fixed stage-1 sample size (multistage only).
+#' @param n_psu Fixed stage-1 sample size (multistage only). For 2-stage, at
+#'   most one of `n_psu` or `psu_size` may be fixed. For 3-stage, up to two
+#'   of `n_psu`, `psu_size`, `ssu_size` may be fixed.
+#' @param psu_size Fixed cluster size (stage-2 sample size per PSU, multistage
+#'   only). `NULL` (default) means optimize.
+#' @param ssu_size Fixed SSU take size (stage-3 sample size per SSU). `NULL`
+#'   (default) means optimize. Only valid for 3-stage designs.
 #' @param joint Logical. If `TRUE`, optimally split a single `budget`
 #'   across domains to minimize the worst-case CV ratio. Only applies
 #'   to multistage budget mode with multiple domains; ignored otherwise.
@@ -210,6 +216,8 @@ n_multi.default <- function(
   stage_cost = NULL,
   budget = NULL,
   n_psu = NULL,
+  psu_size = NULL,
+  ssu_size = NULL,
   joint = FALSE,
   min_n = NULL,
   fixed_cost = 0,
@@ -252,8 +260,16 @@ n_multi.default <- function(
     if (!is.null(budget)) {
       check_scalar(budget, "budget")
     }
-    if (!is.null(n_psu)) {
-      check_scalar(n_psu, "n_psu")
+    if (!is.null(n_psu)) check_scalar(n_psu, "n_psu")
+    if (!is.null(psu_size)) check_scalar(psu_size, "psu_size")
+    if (!is.null(ssu_size)) check_scalar(ssu_size, "ssu_size")
+    stages <- length(stage_cost)
+    if (stages == 2L && !is.null(ssu_size)) {
+      stop("'ssu_size' is not applicable for 2-stage designs", call. = FALSE)
+    }
+    n_fixed <- sum(!is.null(n_psu), !is.null(psu_size), !is.null(ssu_size))
+    if (n_fixed >= stages) {
+      stop("cannot fix all stages; use prec_multi() instead", call. = FALSE)
     }
     check_fixed_cost(fixed_cost, budget)
   } else {
@@ -262,6 +278,12 @@ n_multi.default <- function(
     }
     if (!is.null(n_psu)) {
       stop("'n_psu' requires 'stage_cost' to be specified", call. = FALSE)
+    }
+    if (!is.null(psu_size)) {
+      stop("'psu_size' requires 'stage_cost' to be specified", call. = FALSE)
+    }
+    if (!is.null(ssu_size)) {
+      stop("'ssu_size' requires 'stage_cost' to be specified", call. = FALSE)
     }
   }
 
@@ -288,7 +310,7 @@ n_multi.default <- function(
 
   if (length(domain_cols) == 0L) {
     if (multistage) {
-      .n_multi_cluster(targets, stage_cost, budget, n_psu, fixed_cost)
+      .n_multi_cluster(targets, stage_cost, budget, n_psu, psu_size, ssu_size, fixed_cost)
     } else {
       .n_multi_simple(targets)
     }
@@ -298,6 +320,8 @@ n_multi.default <- function(
       stage_cost,
       budget,
       n_psu,
+      psu_size,
+      ssu_size,
       domain_cols,
       multistage,
       joint,
@@ -674,19 +698,21 @@ n_multi.default <- function(
 #' Multistage cluster mode dispatcher
 #' @keywords internal
 #' @noRd
-.n_multi_cluster <- function(targets, stage_cost, budget, n_psu, fixed_cost = 0) {
+.n_multi_cluster <- function(targets, stage_cost, budget, n_psu,
+                            psu_size = NULL, ssu_size = NULL, fixed_cost = 0) {
   stages <- length(stage_cost)
   if (stages == 2L) {
-    .n_multi_2stage(targets, stage_cost, budget, n_psu, fixed_cost)
+    .n_multi_2stage(targets, stage_cost, budget, n_psu, psu_size, fixed_cost)
   } else {
-    .n_multi_3stage(targets, stage_cost, budget, n_psu, fixed_cost)
+    .n_multi_3stage(targets, stage_cost, budget, n_psu, psu_size, ssu_size, fixed_cost)
   }
 }
 
 #' 2-stage multi-indicator optimization
 #' @keywords internal
 #' @noRd
-.n_multi_2stage <- function(targets, stage_cost, budget, n_psu, fixed_cost = 0) {
+.n_multi_2stage <- function(targets, stage_cost, budget, n_psu,
+                           psu_size = NULL, fixed_cost = 0) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   nr <- nrow(targets)
@@ -728,19 +754,27 @@ n_multi.default <- function(
   }
 
   if (is.null(budget)) {
-    cost_fn <- function(psu_size) {
-      n1 <- max(n1_required(psu_size))
-      n1 * (C1 + C2 * psu_size)
+    if (!is.null(psu_size)) {
+      psu_size_opt <- psu_size
+      n1_vals <- n1_required(psu_size_opt)
+      n1_opt <- max(n1_vals)
+      total_cost <- fixed_cost + n1_opt * (C1 + C2 * psu_size_opt)
+      binding_idx <- which.max(n1_vals)
+    } else {
+      cost_fn <- function(psu_size) {
+        n1 <- max(n1_required(psu_size))
+        n1 * (C1 + C2 * psu_size)
+      }
+
+      upper <- max(10, 10 * sqrt(C1 / C2))
+      opt <- optimize(cost_fn, interval = c(1, upper))
+      psu_size_opt <- opt$minimum
+
+      n1_vals <- n1_required(psu_size_opt)
+      n1_opt <- max(n1_vals)
+      total_cost <- fixed_cost + n1_opt * (C1 + C2 * psu_size_opt)
+      binding_idx <- which.max(n1_vals)
     }
-
-    upper <- max(10, 10 * sqrt(C1 / C2))
-    opt <- optimize(cost_fn, interval = c(1, upper))
-    psu_size_opt <- opt$minimum
-
-    n1_vals <- n1_required(psu_size_opt)
-    n1_opt <- max(n1_vals)
-    total_cost <- fixed_cost + n1_opt * (C1 + C2 * psu_size_opt)
-    binding_idx <- which.max(n1_vals)
 
     cv_achieved <- cv_achieved_fn(n1_opt, psu_size_opt)
   } else {
@@ -754,7 +788,8 @@ n_multi.default <- function(
       C1,
       C2,
       var_budget,
-      n_psu
+      n_psu,
+      psu_size
     )
     n1_opt <- bres$n1
     psu_size_opt <- bres$psu_size
@@ -780,6 +815,9 @@ n_multi.default <- function(
   if (!is.null(n_psu)) {
     params$n_psu <- n_psu
   }
+  if (!is.null(psu_size)) {
+    params$psu_size <- psu_size
+  }
   if (fixed_cost > 0) {
     params$fixed_cost <- fixed_cost
   }
@@ -800,7 +838,8 @@ n_multi.default <- function(
 #' 3-stage multi-indicator optimization
 #' @keywords internal
 #' @noRd
-.n_multi_3stage <- function(targets, stage_cost, budget, n_psu, fixed_cost = 0) {
+.n_multi_3stage <- function(targets, stage_cost, budget, n_psu,
+                           psu_size = NULL, ssu_size = NULL, fixed_cost = 0) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   C3 <- stage_cost[3L]
@@ -857,13 +896,23 @@ n_multi.default <- function(
     )
   }
 
+  solve_for <- if (!is.null(n_psu) && !is.null(psu_size)) {
+    "n3"
+  } else if (!is.null(n_psu)) {
+    "n2"
+  } else {
+    "n1"
+  }
+
+  n_free <- 3L - sum(!is.null(n_psu), !is.null(psu_size), !is.null(ssu_size))
+
   if (is.null(budget)) {
-    if (is.null(n_psu)) {
+    if (n_free == 3L) {
       cost_fn <- function(par) {
-        psu_size <- par[1L]
-        ssu_size <- par[2L]
-        n1 <- max(n1_required(psu_size, ssu_size))
-        n1 * (C1 + C2 * psu_size + C3 * psu_size * ssu_size)
+        ps <- par[1L]
+        ss <- par[2L]
+        n1 <- max(n1_required(ps, ss))
+        n1 * (C1 + C2 * ps + C3 * ps * ss)
       }
 
       init_ssu_size <- max(2, sqrt(C2 / C3))
@@ -892,62 +941,176 @@ n_multi.default <- function(
       total_cost <- fixed_cost +
         n1_opt * (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size_opt)
       binding_idx <- which.max(n1_vals)
-    } else {
-      n1_opt <- n_psu
+    } else if (n_free == 2L) {
+      if (solve_for == "n2" && is.null(ssu_size)) {
+        n1_opt <- n_psu
 
-      psu_size_required_fn <- function(ssu_size) {
-        psu_size_per <- vapply(
+        psu_size_required_fn <- function(ss) {
+          psu_size_per <- vapply(
+            seq_len(nr),
+            function(j) {
+              denom <- cv_t[j]^2 *
+                n_psu *
+                rr[j] /
+                (rel_var[j] * k_ssu[j]) -
+                k_psu[j] * delta_psu[j] / k_ssu[j]
+              if (denom <= 0) Inf
+              else (1 + delta_ssu[j] * (ss - 1)) / (ss * denom)
+            },
+            numeric(1L)
+          )
+          max(psu_size_per)
+        }
+
+        cost_fn_fixed <- function(ss) {
+          ps <- psu_size_required_fn(ss)
+          n_psu * (C1 + C2 * ps + C3 * ps * ss)
+        }
+
+        ssu_size_analytic <- vapply(
           seq_len(nr),
           function(j) {
-            denom <- cv_t[j]^2 *
-              n_psu *
-              rr[j] /
-              (rel_var[j] * k_ssu[j]) -
-              k_psu[j] * delta_psu[j] / k_ssu[j]
-            if (denom <= 0) {
-              Inf
-            } else {
-              (1 + delta_ssu[j] * (ssu_size - 1)) / (ssu_size * denom)
-            }
+            if (delta_ssu[j] <= 0) 1
+            else sqrt((1 - delta_ssu[j]) / delta_ssu[j] * C2 / C3)
           },
           numeric(1L)
         )
-        max(psu_size_per)
-      }
+        upper_ssu_size <- max(10, 3 * max(ssu_size_analytic))
 
-      cost_fn_fixed <- function(ssu_size) {
-        psu_size <- psu_size_required_fn(ssu_size)
-        n_psu * (C1 + C2 * psu_size + C3 * psu_size * ssu_size)
-      }
+        opt <- optimize(cost_fn_fixed, interval = c(1, upper_ssu_size))
+        ssu_size_opt <- opt$minimum
+        psu_size_opt <- psu_size_required_fn(ssu_size_opt)
 
-      ssu_size_analytic <- vapply(
-        seq_len(nr),
-        function(j) {
-          if (delta_ssu[j] <= 0) {
-            1
-          } else {
-            sqrt((1 - delta_ssu[j]) / delta_ssu[j] * C2 / C3)
-          }
-        },
-        numeric(1L)
-      )
-      upper_ssu_size <- max(10, 3 * max(ssu_size_analytic))
+        if (!is.finite(psu_size_opt) || psu_size_opt <= 0) {
+          stop(
+            "target CV is too small for the given fixed stage sizes and parameters",
+            call. = FALSE
+          )
+        }
 
-      opt <- optimize(cost_fn_fixed, interval = c(1, upper_ssu_size))
-      ssu_size_opt <- opt$minimum
-      psu_size_opt <- psu_size_required_fn(ssu_size_opt)
-
-      if (!is.finite(psu_size_opt) || psu_size_opt <= 0) {
-        stop(
-          "target CV is too small for the given fixed stage-1 size",
-          call. = FALSE
+        n1_vals <- n1_required(psu_size_opt, ssu_size_opt)
+        binding_idx <- which.max(n1_vals)
+        total_cost <- fixed_cost +
+          n_psu * (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size_opt)
+      } else if (!is.null(ssu_size) && is.null(n_psu) && is.null(psu_size)) {
+        ssu_size_opt <- ssu_size
+        cost_fn_ss <- function(ps) {
+          n1 <- max(n1_required(ps, ssu_size_opt))
+          n1 * (C1 + C2 * ps + C3 * ps * ssu_size_opt)
+        }
+        upper <- max(10, 10 * sqrt(C1 / (C2 + C3 * ssu_size_opt)))
+        opt <- optimize(cost_fn_ss, interval = c(1, upper))
+        psu_size_opt <- opt$minimum
+        n1_vals <- n1_required(psu_size_opt, ssu_size_opt)
+        n1_opt <- max(n1_vals)
+        total_cost <- fixed_cost +
+          n1_opt * (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size_opt)
+        binding_idx <- which.max(n1_vals)
+      } else if (!is.null(psu_size) && is.null(n_psu) && is.null(ssu_size)) {
+        psu_size_opt <- psu_size
+        cost_fn_ps <- function(ss) {
+          n1 <- max(n1_required(psu_size_opt, ss))
+          n1 * (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ss)
+        }
+        ssu_size_analytic <- vapply(
+          seq_len(nr),
+          function(j) {
+            if (delta_ssu[j] <= 0) 1
+            else sqrt((1 - delta_ssu[j]) / delta_ssu[j] * C2 / C3)
+          },
+          numeric(1L)
         )
+        upper <- max(10, 3 * max(ssu_size_analytic))
+        opt <- optimize(cost_fn_ps, interval = c(1, upper))
+        ssu_size_opt <- opt$minimum
+        n1_vals <- n1_required(psu_size_opt, ssu_size_opt)
+        n1_opt <- max(n1_vals)
+        total_cost <- fixed_cost +
+          n1_opt * (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size_opt)
+        binding_idx <- which.max(n1_vals)
+      } else {
+        n1_opt <- n_psu
+        ssu_size_opt <- ssu_size
+        psu_size_required_fn2 <- function(j) {
+          denom <- cv_t[j]^2 * n_psu * rr[j] / (rel_var[j] * k_ssu[j]) -
+            k_psu[j] * delta_psu[j] / k_ssu[j]
+          if (denom <= 0) Inf
+          else (1 + delta_ssu[j] * (ssu_size - 1)) / (ssu_size * denom)
+        }
+        psu_per <- vapply(seq_len(nr), psu_size_required_fn2, numeric(1L))
+        psu_size_opt <- max(psu_per)
+        if (!is.finite(psu_size_opt) || psu_size_opt <= 0) {
+          stop(
+            "target CV is too small for the given fixed stage sizes and parameters",
+            call. = FALSE
+          )
+        }
+        n1_vals <- n1_required(psu_size_opt, ssu_size_opt)
+        binding_idx <- which.max(n1_vals)
+        total_cost <- fixed_cost +
+          n_psu * (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size_opt)
       }
-
-      n1_vals <- n1_required(psu_size_opt, ssu_size_opt)
-      binding_idx <- which.max(n1_vals)
-      total_cost <- fixed_cost +
-        n_psu * (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size_opt)
+    } else {
+      if (solve_for == "n1") {
+        psu_size_opt <- psu_size
+        ssu_size_opt <- ssu_size
+        n1_vals <- n1_required(psu_size_opt, ssu_size_opt)
+        n1_opt <- max(n1_vals)
+        total_cost <- fixed_cost +
+          n1_opt * (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size_opt)
+        binding_idx <- which.max(n1_vals)
+      } else if (solve_for == "n2") {
+        n1_opt <- n_psu
+        ssu_size_opt <- ssu_size
+        psu_per <- vapply(
+          seq_len(nr),
+          function(j) {
+            denom <- cv_t[j]^2 * n_psu * rr[j] / (rel_var[j] * k_ssu[j]) -
+              k_psu[j] * delta_psu[j] / k_ssu[j]
+            if (denom <= 0) Inf
+            else (1 + delta_ssu[j] * (ssu_size - 1)) / (ssu_size * denom)
+          },
+          numeric(1L)
+        )
+        psu_size_opt <- max(psu_per)
+        if (!is.finite(psu_size_opt) || psu_size_opt <= 0) {
+          stop(
+            "target CV is too small for the given fixed stage sizes and parameters",
+            call. = FALSE
+          )
+        }
+        n1_vals <- n1_required(psu_size_opt, ssu_size_opt)
+        binding_idx <- which.max(n1_vals)
+        total_cost <- fixed_cost +
+          n_psu * (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size_opt)
+      } else {
+        n1_opt <- n_psu
+        psu_size_opt <- psu_size
+        ssu_per <- vapply(
+          seq_len(nr),
+          function(j) {
+            a <- k_psu[j] * delta_psu[j]
+            b <- k_ssu[j]
+            d2 <- delta_ssu[j]
+            denom <- psu_size * (cv_t[j]^2 * n_psu * rr[j] / rel_var[j] - a) -
+              b * d2
+            if (denom <= 0) Inf
+            else b * (1 - d2) / denom
+          },
+          numeric(1L)
+        )
+        ssu_size_opt <- max(ssu_per)
+        if (!is.finite(ssu_size_opt) || ssu_size_opt <= 0) {
+          stop(
+            "target CV is too small for the given fixed stage sizes and parameters",
+            call. = FALSE
+          )
+        }
+        n1_vals <- n1_required(psu_size_opt, ssu_size_opt)
+        binding_idx <- which.max(n1_vals)
+        total_cost <- fixed_cost +
+          n_psu * (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size_opt)
+      }
     }
 
     cv_achieved <- cv_achieved_fn(n1_opt, psu_size_opt, ssu_size_opt)
@@ -965,7 +1128,9 @@ n_multi.default <- function(
       C2,
       C3,
       var_budget,
-      n_psu
+      n_psu,
+      psu_size,
+      ssu_size
     )
     n1_opt <- bres$n1
     psu_size_opt <- bres$psu_size
@@ -989,9 +1154,9 @@ n_multi.default <- function(
   if (!is.null(budget)) {
     params$budget <- budget
   }
-  if (!is.null(n_psu)) {
-    params$n_psu <- n_psu
-  }
+  if (!is.null(n_psu)) params$n_psu <- n_psu
+  if (!is.null(psu_size)) params$psu_size <- psu_size
+  if (!is.null(ssu_size)) params$ssu_size <- ssu_size
   if (fixed_cost > 0) {
     params$fixed_cost <- fixed_cost
   }
@@ -1017,6 +1182,8 @@ n_multi.default <- function(
   stage_cost,
   budget,
   n_psu,
+  psu_size = NULL,
+  ssu_size = NULL,
   domain_cols,
   multistage,
   joint = FALSE,
@@ -1033,6 +1200,8 @@ n_multi.default <- function(
       stage_cost,
       budget,
       n_psu,
+      psu_size,
+      ssu_size,
       domain_cols,
       domain_levels,
       split_idx,
@@ -1047,7 +1216,7 @@ n_multi.default <- function(
     # Drop domain columns for inner solve
     sub_inner <- sub[, !names(sub) %in% domain_cols, drop = FALSE]
     if (multistage) {
-      .n_multi_cluster(sub_inner, stage_cost, budget, n_psu, fixed_cost)
+      .n_multi_cluster(sub_inner, stage_cost, budget, n_psu, psu_size, ssu_size, fixed_cost)
     } else {
       .n_multi_simple(sub_inner)
     }
@@ -1064,6 +1233,8 @@ n_multi.default <- function(
       stage_cost,
       budget,
       n_psu,
+      psu_size,
+      ssu_size,
       min_n,
       fixed_cost
     )
@@ -1137,6 +1308,8 @@ n_multi.default <- function(
   stage_cost,
   budget = NULL,
   n_psu = NULL,
+  psu_size = NULL,
+  ssu_size = NULL,
   min_n = NULL,
   fixed_cost = 0
 ) {
@@ -1197,9 +1370,9 @@ n_multi.default <- function(
   if (!is.null(budget)) {
     params$budget <- budget
   }
-  if (!is.null(n_psu)) {
-    params$n_psu <- n_psu
-  }
+  if (!is.null(n_psu)) params$n_psu <- n_psu
+  if (!is.null(psu_size)) params$psu_size <- psu_size
+  if (!is.null(ssu_size)) params$ssu_size <- ssu_size
   if (!is.null(min_n)) {
     params$min_n <- min_n
   }
@@ -1228,6 +1401,8 @@ n_multi.default <- function(
   stage_cost,
   budget,
   n_psu,
+  psu_size = NULL,
+  ssu_size = NULL,
   domain_cols,
   domain_levels,
   split_idx,
@@ -1278,7 +1453,8 @@ n_multi.default <- function(
         C1,
         C2,
         budget_d,
-        n_psu
+        n_psu,
+        psu_size
       )
     } else {
       .eval_3stage_budget(
@@ -1293,7 +1469,9 @@ n_multi.default <- function(
         C2,
         C3,
         budget_d,
-        n_psu
+        n_psu,
+        psu_size,
+        ssu_size
       )
     }
   }
@@ -1436,6 +1614,8 @@ n_multi.default <- function(
     stage_cost,
     budget,
     n_psu,
+    psu_size,
+    ssu_size,
     min_n,
     fixed_cost
   )
@@ -1457,11 +1637,21 @@ n_multi.default <- function(
   C1,
   C2,
   budget,
-  n_psu
+  n_psu,
+  psu_size = NULL
 ) {
   nr <- length(cv_t)
 
-  if (is.null(n_psu)) {
+  if (!is.null(psu_size)) {
+    psu_size_opt <- psu_size
+    n1_opt <- budget / (C1 + C2 * psu_size)
+    if (n1_opt <= 0) {
+      stop(
+        "budget is too small for the given fixed cluster size",
+        call. = FALSE
+      )
+    }
+  } else if (is.null(n_psu)) {
     obj_fn <- function(psu_size) {
       n1 <- budget / (C1 + C2 * psu_size)
       if (n1 <= 0) {
@@ -1537,7 +1727,9 @@ n_multi.default <- function(
   C2,
   C3,
   budget,
-  n_psu
+  n_psu,
+  psu_size = NULL,
+  ssu_size = NULL
 ) {
   nr <- length(cv_t)
 
@@ -1559,22 +1751,21 @@ n_multi.default <- function(
     )
   }
 
-  if (is.null(n_psu)) {
-    obj_fn_free <- function(par) {
-      psu_size <- par[1L]
-      ssu_size <- par[2L]
-      n1 <- budget / (C1 + C2 * psu_size + C3 * psu_size * ssu_size)
-      if (n1 <= 0) {
-        return(1e12)
-      }
-      max(cv_fn(n1, psu_size, ssu_size) / cv_t)
-    }
+  n_free <- 3L - sum(!is.null(n_psu), !is.null(psu_size), !is.null(ssu_size))
 
-    init_ssu_size <- max(2, sqrt(C2 / C3))
-    init_psu_size <- max(2, sqrt(C1 / C2))
+  if (n_free == 3L) {
+    obj_fn_2d <- function(par) {
+      ps <- par[1L]
+      ss <- par[2L]
+      n1 <- budget / (C1 + C2 * ps + C3 * ps * ss)
+      if (n1 <= 0) return(1e12)
+      max(cv_fn(n1, ps, ss) / cv_t)
+    }
+    init_ps <- max(2, sqrt(C1 / C2))
+    init_ss <- max(2, sqrt(C2 / C3))
     opt <- optim(
-      par = c(init_psu_size, init_ssu_size),
-      fn = obj_fn_free,
+      par = c(init_ps, init_ss),
+      fn = obj_fn_2d,
       method = "L-BFGS-B",
       lower = c(1, 1),
       upper = c(Inf, Inf)
@@ -1583,73 +1774,94 @@ n_multi.default <- function(
       warning(
         "L-BFGS-B did not converge (code ",
         opt$convergence,
-        "): ",
-        "allocation may be approximate",
+        "): allocation may be approximate",
         call. = FALSE
       )
     }
-
     psu_size_opt <- opt$par[1L]
     ssu_size_opt <- opt$par[2L]
-    n1_opt <- budget /
-      (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size_opt)
+    n1_opt <- budget / (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size_opt)
     total_cost <- budget
-  } else {
-    n1_opt <- n_psu
-    min_cost <- n_psu * (C1 + C2 + C3)
-    if (min_cost > budget) {
-      stop(
-        "budget is too small for the given fixed stage-1 size",
-        call. = FALSE
-      )
-    }
-
-    max_ssu_size <- (budget - C1 * n_psu - C2 * n_psu) / (C3 * n_psu)
-    if (!is.finite(max_ssu_size) || max_ssu_size < 1) {
-      stop(
-        "budget is too small for the given fixed stage-1 size",
-        call. = FALSE
-      )
-    }
-
-    psu_size_from_ssu <- function(ssu_size) {
-      (budget / n_psu - C1) / (C2 + C3 * ssu_size)
-    }
-
-    obj_fn_fixed <- function(ssu_size) {
-      psu_size <- psu_size_from_ssu(ssu_size)
-      if (!is.finite(psu_size) || psu_size < 1) {
-        return(Inf)
+  } else if (n_free == 2L) {
+    if (!is.null(n_psu)) {
+      n1_opt <- n_psu
+      avail <- budget / n_psu - C1
+      if (avail < C2 + C3) {
+        stop("budget is too small for the given fixed stage sizes", call. = FALSE)
       }
-      max(cv_fn(n_psu, psu_size, ssu_size) / cv_t)
-    }
-
-    if (max_ssu_size <= 1 + 1e-10) {
-      ssu_size_opt <- 1
-    } else {
-      opt <- optimize(obj_fn_fixed, interval = c(1, max_ssu_size))
+      max_ss <- (avail - C2) / C3
+      if (!is.finite(max_ss) || max_ss < 1) {
+        stop("budget is too small for the given fixed stage sizes", call. = FALSE)
+      }
+      ps_from_ss <- function(ss) avail / (C2 + C3 * ss)
+      obj_fn_ss <- function(ss) {
+        ps <- ps_from_ss(ss)
+        if (!is.finite(ps) || ps < 1) return(Inf)
+        max(cv_fn(n_psu, ps, ss) / cv_t)
+      }
+      if (max_ss <= 1 + 1e-10) {
+        ssu_size_opt <- 1
+      } else {
+        opt <- optimize(obj_fn_ss, interval = c(1, max_ss))
+        ssu_size_opt <- opt$minimum
+      }
+      psu_size_opt <- ps_from_ss(ssu_size_opt)
+      if (!is.finite(psu_size_opt) || psu_size_opt < 1) {
+        stop("budget is too small for the given fixed stage sizes", call. = FALSE)
+      }
+    } else if (!is.null(psu_size)) {
+      obj_fn_ps <- function(ss) {
+        n1 <- budget / (C1 + C2 * psu_size + C3 * psu_size * ss)
+        if (n1 <= 0) return(1e12)
+        max(cv_fn(n1, psu_size, ss) / cv_t)
+      }
+      upper <- max(10, budget / (C1 + C2 * psu_size + C3 * psu_size))
+      opt <- optimize(obj_fn_ps, interval = c(1, upper))
       ssu_size_opt <- opt$minimum
+      psu_size_opt <- psu_size
+      n1_opt <- budget / (C1 + C2 * psu_size + C3 * psu_size * ssu_size_opt)
+    } else {
+      obj_fn_ss2 <- function(ps) {
+        n1 <- budget / (C1 + C2 * ps + C3 * ps * ssu_size)
+        if (n1 <= 0) return(1e12)
+        max(cv_fn(n1, ps, ssu_size) / cv_t)
+      }
+      upper <- max(10, budget / (C1 + C2 + C3 * ssu_size))
+      opt <- optimize(obj_fn_ss2, interval = c(1, upper))
+      psu_size_opt <- opt$minimum
+      ssu_size_opt <- ssu_size
+      n1_opt <- budget / (C1 + C2 * psu_size_opt + C3 * psu_size_opt * ssu_size)
     }
-    psu_size_opt <- psu_size_from_ssu(ssu_size_opt)
-
-    if (!is.finite(psu_size_opt) || psu_size_opt < 1) {
-      stop(
-        "failed to find a feasible allocation under the given budget and fixed stage-1 size",
-        call. = FALSE
-      )
+    total_cost <- C1 * n1_opt +
+      C2 * n1_opt * psu_size_opt +
+      C3 * n1_opt * psu_size_opt * ssu_size_opt
+  } else {
+    if (!is.null(n_psu) && !is.null(psu_size)) {
+      ssu_size_opt <- (budget - C1 * n_psu - C2 * n_psu * psu_size) /
+        (C3 * n_psu * psu_size)
+      if (ssu_size_opt <= 0) {
+        stop("budget is too small for the given fixed stage sizes", call. = FALSE)
+      }
+      n1_opt <- n_psu
+      psu_size_opt <- psu_size
+    } else if (!is.null(n_psu) && !is.null(ssu_size)) {
+      psu_size_opt <- (budget / n_psu - C1) / (C2 + C3 * ssu_size)
+      if (psu_size_opt <= 0) {
+        stop("budget is too small for the given fixed stage sizes", call. = FALSE)
+      }
+      n1_opt <- n_psu
+      ssu_size_opt <- ssu_size
+    } else {
+      n1_opt <- budget / (C1 + C2 * psu_size + C3 * psu_size * ssu_size)
+      if (n1_opt <= 0) {
+        stop("budget is too small for the given fixed stage sizes", call. = FALSE)
+      }
+      psu_size_opt <- psu_size
+      ssu_size_opt <- ssu_size
     }
-    total_cost <- C1 *
-      n_psu +
-      C2 * n_psu * psu_size_opt +
-      C3 * n_psu * psu_size_opt * ssu_size_opt
-
-    tol <- max(1e-8, 1e-6 * max(1, budget))
-    if (total_cost - budget > tol) {
-      stop(
-        "failed to find a feasible allocation under the given budget and fixed stage-1 size",
-        call. = FALSE
-      )
-    }
+    total_cost <- C1 * n1_opt +
+      C2 * n1_opt * psu_size_opt +
+      C3 * n1_opt * psu_size_opt * ssu_size_opt
   }
 
   cv_achieved <- cv_fn(n1_opt, psu_size_opt, ssu_size_opt)
@@ -1694,6 +1906,8 @@ n_multi.svyplan_prec <- function(targets, stage_cost = NULL, ...) {
   stage_cost <- stage_cost %||% x$params$stage_cost
   budget <- x$params$budget
   n_psu <- x$params$n_psu
+  psu_size <- x$params$psu_size
+  ssu_size <- x$params$ssu_size
   joint <- if (!is.null(x$params$joint)) x$params$joint else FALSE
   min_n <- x$params$min_n
   fixed_cost <- if (!is.null(x$params$fixed_cost)) x$params$fixed_cost else 0
@@ -1705,6 +1919,8 @@ n_multi.svyplan_prec <- function(targets, stage_cost = NULL, ...) {
         stage_cost = stage_cost,
         budget = budget,
         n_psu = n_psu,
+        psu_size = psu_size,
+        ssu_size = ssu_size,
         joint = joint,
         min_n = min_n,
         fixed_cost = fixed_cost

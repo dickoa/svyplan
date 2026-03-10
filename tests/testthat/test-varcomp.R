@@ -317,3 +317,47 @@ test_that("varcomp accepts '/' and '%in%' for multi-stage formula", {
   expect_equal(res_slash$varb, res_in$varb, tolerance = 1e-10)
   expect_equal(res_slash$varw, res_in$varw, tolerance = 1e-10)
 })
+
+test_that("3-stage SRS works without prob", {
+  set.seed(99)
+  frame <- data.frame(
+    y = rnorm(400, 50, 10),
+    psu = rep(1:20, each = 20),
+    ssu = rep(1:100, each = 4)
+  )
+  vc <- varcomp(y ~ psu/ssu, data = frame)
+  expect_s3_class(vc, "svyplan_varcomp")
+  expect_equal(vc$stages, 3L)
+  expect_length(vc$delta, 2L)
+  expect_length(vc$k, 2L)
+  expect_true(all(vc$delta >= 0 & vc$delta <= 1))
+})
+
+test_that("3-stage SRS matches PPS with uniform prob", {
+  set.seed(99)
+  M <- 20
+  frame <- data.frame(
+    y = rnorm(400, 50, 10),
+    psu = rep(1:M, each = 20),
+    ssu = rep(1:100, each = 4),
+    pp = rep(1 / M, 400)
+  )
+  vc_srs <- varcomp(y ~ psu/ssu, data = frame)
+  vc_pps <- varcomp(y ~ psu/ssu, data = frame, prob = ~pp)
+  expect_equal(vc_srs$delta, vc_pps$delta, tolerance = 1e-10)
+  expect_equal(vc_srs$k, vc_pps$k, tolerance = 1e-10)
+  expect_equal(vc_srs$rel_var, vc_pps$rel_var, tolerance = 1e-10)
+  expect_equal(vc_srs$varb, vc_pps$varb, tolerance = 1e-10)
+  expect_equal(vc_srs$varw, vc_pps$varw, tolerance = 1e-10)
+})
+
+test_that("3-stage SRS works with vector interface", {
+  set.seed(99)
+  y <- rnorm(400, 50, 10)
+  psu <- rep(1:20, each = 20)
+  ssu <- rep(1:100, each = 4)
+  vc_vec <- varcomp(y, stage_id = list(psu, ssu))
+  vc_frm <- varcomp(y ~ psu/ssu, data = data.frame(y, psu, ssu))
+  expect_equal(vc_vec$delta, vc_frm$delta, tolerance = 1e-10)
+  expect_equal(vc_vec$k, vc_frm$k, tolerance = 1e-10)
+})

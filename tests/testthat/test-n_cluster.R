@@ -503,6 +503,304 @@ test_that("cost names survive prec_cluster round-trip", {
   expect_equal(x2$n, x$n, tolerance = 1e-6)
 })
 
+test_that("n_cluster 2-stage fixed psu_size budget mode", {
+  result <- n_cluster(
+    stage_cost = c(500, 50),
+    delta = 0.05,
+    budget = 100000,
+    psu_size = 20
+  )
+
+  n1_expected <- 100000 / (500 + 50 * 20)
+  n1_eff <- n1_expected * 1
+  cv_expected <- sqrt(1 * 1 / (n1_eff * 20) * (1 + 0.05 * (20 - 1)))
+
+  expect_equal(result$n[["psu_size"]], 20, tolerance = 1e-6)
+  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$cv, cv_expected, tolerance = 1e-6)
+  expect_equal(result$cost, 100000)
+})
+
+test_that("n_cluster 2-stage fixed psu_size CV mode", {
+  result <- n_cluster(
+    stage_cost = c(500, 50),
+    delta = 0.05,
+    cv = 0.05,
+    psu_size = 20
+  )
+
+  n1_expected <- 1 * 1 * (1 + 0.05 * (20 - 1)) / (20 * 0.05^2)
+  cost_expected <- 500 * n1_expected + 50 * n1_expected * 20
+
+  expect_equal(result$n[["psu_size"]], 20, tolerance = 1e-6)
+  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$cv, 0.05, tolerance = 1e-6)
+  expect_equal(result$cost, cost_expected, tolerance = 1e-4)
+})
+
+test_that("n_cluster 3-stage fixed psu_size budget mode", {
+  result <- n_cluster(
+    stage_cost = c(500, 100, 50),
+    delta = c(0.01, 0.05),
+    budget = 500000,
+    psu_size = 10
+  )
+
+  n3_opt <- sqrt((1 - 0.05) / 0.05 * 100 / 50)
+  n2 <- 10
+  n1_expected <- 500000 / (500 + 100 * n2 + 50 * n2 * n3_opt)
+
+  expect_equal(result$n[["psu_size"]], 10, tolerance = 1e-6)
+  expect_equal(result$n[["ssu_size"]], n3_opt, tolerance = 1e-6)
+  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$cost, 500000)
+})
+
+test_that("n_cluster 3-stage fixed psu_size CV mode", {
+  result <- n_cluster(
+    stage_cost = c(500, 100, 50),
+    delta = c(0.01, 0.05),
+    cv = 0.05,
+    psu_size = 10
+  )
+
+  n3_opt <- sqrt((1 - 0.05) / 0.05 * 100 / 50)
+  n2 <- 10
+  n1_expected <- 1 /
+    (0.05^2 * n2 * n3_opt) *
+    (1 * 0.01 * n2 * n3_opt + 1 * (1 + 0.05 * (n3_opt - 1)))
+
+  expect_equal(result$n[["psu_size"]], 10, tolerance = 1e-6)
+  expect_equal(result$n[["ssu_size"]], n3_opt, tolerance = 1e-6)
+  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$cv, 0.05, tolerance = 1e-6)
+})
+
+test_that("n_cluster rejects all stages fixed (2-stage)", {
+  expect_error(
+    n_cluster(
+      stage_cost = c(500, 50), delta = 0.05, budget = 100000,
+      n_psu = 40, psu_size = 20
+    ),
+    "cannot fix all stages"
+  )
+})
+
+test_that("n_cluster rejects ssu_size for 2-stage", {
+  expect_error(
+    n_cluster(
+      stage_cost = c(500, 50), delta = 0.05, budget = 100000,
+      ssu_size = 8
+    ),
+    "not applicable"
+  )
+})
+
+test_that("n_cluster rejects all stages fixed (3-stage)", {
+  expect_error(
+    n_cluster(
+      stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), budget = 500000,
+      n_psu = 50, psu_size = 10, ssu_size = 8
+    ),
+    "cannot fix all stages"
+  )
+})
+
+test_that("n_cluster params store psu_size", {
+  res <- n_cluster(
+    stage_cost = c(500, 50), delta = 0.05, budget = 100000, psu_size = 20
+  )
+  expect_equal(res$params$psu_size, 20)
+  expect_null(res$params$n_psu)
+})
+
+test_that("psu_size round-trip n_cluster -> prec_cluster -> n_cluster", {
+  orig <- n_cluster(
+    stage_cost = c(500, 50),
+    delta = 0.05,
+    cv = 0.05,
+    psu_size = 20
+  )
+  prec <- prec_cluster(orig)
+  expect_equal(prec$params$psu_size, 20)
+  back <- n_cluster(prec)
+  expect_equal(unname(back$n), unname(orig$n), tolerance = 1e-4)
+  expect_equal(back$params$psu_size, 20)
+})
+
+test_that("fixed_cost with psu_size 2-stage budget mode reduces n1", {
+  base <- n_cluster(
+    stage_cost = c(500, 50), delta = 0.05, budget = 100000, psu_size = 20
+  )
+  fc <- n_cluster(
+    stage_cost = c(500, 50), delta = 0.05, budget = 100000,
+    psu_size = 20, fixed_cost = 5000
+  )
+  expect_equal(fc$n[["psu_size"]], 20, tolerance = 1e-10)
+  expect_true(fc$n[["n_psu"]] < base$n[["n_psu"]])
+  expect_equal(fc$cost, 100000)
+})
+
+test_that("n_cluster 3-stage ssu_size only budget mode", {
+  result <- n_cluster(
+    stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    budget = 500000, ssu_size = 8
+  )
+  n3 <- 8
+  n2_expected <- sqrt(
+    1 * (1 + 0.05 * (n3 - 1)) * 500 /
+      (n3 * 1 * 0.01 * (100 + 50 * n3))
+  )
+  n1_expected <- 500000 / (500 + 100 * n2_expected + 50 * n2_expected * n3)
+
+  expect_equal(result$n[["ssu_size"]], 8, tolerance = 1e-6)
+  expect_equal(result$n[["psu_size"]], n2_expected, tolerance = 1e-6)
+  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$cost, 500000)
+})
+
+test_that("n_cluster 3-stage ssu_size only CV mode", {
+  result <- n_cluster(
+    stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    cv = 0.05, ssu_size = 8
+  )
+  n3 <- 8
+  n2 <- sqrt(
+    1 * (1 + 0.05 * (n3 - 1)) * 500 /
+      (n3 * 1 * 0.01 * (100 + 50 * n3))
+  )
+  n1_expected <- 1 / (0.05^2 * n2 * n3) *
+    (1 * 0.01 * n2 * n3 + 1 * (1 + 0.05 * (n3 - 1)))
+
+  expect_equal(result$n[["ssu_size"]], 8, tolerance = 1e-6)
+  expect_equal(result$n[["psu_size"]], n2, tolerance = 1e-6)
+  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$cv, 0.05, tolerance = 1e-6)
+})
+
+test_that("n_cluster 3-stage n_psu + ssu_size budget mode", {
+  result <- n_cluster(
+    stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    budget = 500000, n_psu = 50, ssu_size = 8
+  )
+  n3 <- 8
+  n2_expected <- (500000 / 50 - 500) / (100 + 50 * n3)
+
+  expect_equal(result$n[["n_psu"]], 50, tolerance = 1e-6)
+  expect_equal(result$n[["ssu_size"]], 8, tolerance = 1e-6)
+  expect_equal(result$n[["psu_size"]], n2_expected, tolerance = 1e-6)
+  expect_equal(result$cost, 500000)
+})
+
+test_that("n_cluster 3-stage n_psu + ssu_size CV mode", {
+  result <- n_cluster(
+    stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    cv = 0.05, n_psu = 50, ssu_size = 8
+  )
+  n3 <- 8
+  n1_eff <- 50
+  n2_expected <- 1 * (1 + 0.05 * (n3 - 1)) /
+    (n3 * (0.05^2 * n1_eff / 1 - 1 * 0.01))
+
+  expect_equal(result$n[["n_psu"]], 50, tolerance = 1e-6)
+  expect_equal(result$n[["ssu_size"]], 8, tolerance = 1e-6)
+  expect_equal(result$n[["psu_size"]], n2_expected, tolerance = 1e-6)
+  expect_equal(result$cv, 0.05, tolerance = 1e-6)
+})
+
+test_that("n_cluster 3-stage psu_size + ssu_size budget mode", {
+  result <- n_cluster(
+    stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    budget = 500000, psu_size = 10, ssu_size = 8
+  )
+  n1_expected <- 500000 / (500 + 100 * 10 + 50 * 10 * 8)
+
+  expect_equal(result$n[["psu_size"]], 10, tolerance = 1e-6)
+  expect_equal(result$n[["ssu_size"]], 8, tolerance = 1e-6)
+  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$cost, 500000)
+})
+
+test_that("n_cluster 3-stage psu_size + ssu_size CV mode", {
+  result <- n_cluster(
+    stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    cv = 0.05, psu_size = 10, ssu_size = 8
+  )
+  n1_eff_expected <- 1 / (0.05^2 * 10 * 8) *
+    (1 * 0.01 * 10 * 8 + 1 * (1 + 0.05 * (8 - 1)))
+
+  expect_equal(result$n[["psu_size"]], 10, tolerance = 1e-6)
+  expect_equal(result$n[["ssu_size"]], 8, tolerance = 1e-6)
+  expect_equal(result$n[["n_psu"]], n1_eff_expected, tolerance = 1e-6)
+  expect_equal(result$cv, 0.05, tolerance = 1e-6)
+})
+
+test_that("n_cluster 3-stage n_psu + psu_size budget mode", {
+  result <- n_cluster(
+    stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    budget = 500000, n_psu = 50, psu_size = 10
+  )
+  n3_expected <- (500000 - 500 * 50 - 100 * 50 * 10) / (50 * 50 * 10)
+
+  expect_equal(result$n[["n_psu"]], 50, tolerance = 1e-6)
+  expect_equal(result$n[["psu_size"]], 10, tolerance = 1e-6)
+  expect_equal(result$n[["ssu_size"]], n3_expected, tolerance = 1e-6)
+  expect_equal(result$cost, 500000)
+})
+
+test_that("n_cluster 3-stage n_psu + psu_size CV mode", {
+  result <- n_cluster(
+    stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    cv = 0.05, n_psu = 50, psu_size = 10
+  )
+  n1_eff <- 50
+  denom <- 10 * (0.05^2 * n1_eff / 1 - 1 * 0.01) - 1 * 0.05
+  n3_expected <- 1 * (1 - 0.05) / denom
+
+  expect_equal(result$n[["n_psu"]], 50, tolerance = 1e-6)
+  expect_equal(result$n[["psu_size"]], 10, tolerance = 1e-6)
+  expect_equal(result$n[["ssu_size"]], n3_expected, tolerance = 1e-6)
+  expect_equal(result$cv, 0.05, tolerance = 1e-6)
+})
+
+test_that("n_cluster params store ssu_size", {
+  res <- n_cluster(
+    stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    budget = 500000, ssu_size = 8
+  )
+  expect_equal(res$params$ssu_size, 8)
+  expect_null(res$params$n_psu)
+  expect_null(res$params$psu_size)
+})
+
+test_that("ssu_size round-trip n_cluster -> prec_cluster -> n_cluster", {
+  orig <- n_cluster(
+    stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    cv = 0.05, n_psu = 50, ssu_size = 8
+  )
+  prec <- prec_cluster(orig)
+  expect_equal(prec$params$ssu_size, 8)
+  expect_equal(prec$params$n_psu, 50)
+  back <- n_cluster(prec)
+  expect_equal(unname(back$n), unname(orig$n), tolerance = 1e-4)
+})
+
+test_that("n_cluster 3-stage all combos verify against prec_cluster", {
+  verify <- function(...) {
+    res <- n_cluster(...)
+    cv_check <- prec_cluster(n = unname(res$n), delta = c(0.01, 0.05))$cv
+    expect_equal(cv_check, res$cv, tolerance = 1e-6)
+  }
+  verify(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    budget = 500000, ssu_size = 8)
+  verify(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    budget = 500000, n_psu = 50, ssu_size = 8)
+  verify(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    budget = 500000, psu_size = 10, ssu_size = 8)
+  verify(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    budget = 500000, n_psu = 50, psu_size = 10)
+})
+
 test_that("prec_cluster accepts named delta and reorders", {
   ref <- prec_cluster(n = c(50, 12, 8), delta = c(0.01, 0.05))
   swapped <- prec_cluster(
