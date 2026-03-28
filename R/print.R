@@ -403,18 +403,21 @@ print.svyplan_power <- function(x, ...) {
   p <- x$params
   resp_rate <- p$resp_rate
 
+  is_did <- startsWith(x$type, "did")
   if (length(x$n) == 2L) {
     n1 <- ceiling(x$n[1]); n2 <- ceiling(x$n[2])
+    lab1 <- if (is_did) "n_treat" else "n1"
+    lab2 <- if (is_did) "n_control" else "n2"
     if (!is.null(resp_rate) && resp_rate < 1) {
       cat(sprintf(
-        "n_treat = %d, n_control = %d (total = %d, net: %d), power = %.3f, effect = %.4f\n",
-        n1, n2, n1 + n2, ceiling((n1 + n2) * resp_rate),
+        "%s = %d, %s = %d (total = %d, net: %d), power = %.3f, effect = %.4f\n",
+        lab1, n1, lab2, n2, n1 + n2, ceiling((n1 + n2) * resp_rate),
         x$power, x$effect
       ))
     } else {
       cat(sprintf(
-        "n_treat = %d, n_control = %d (total = %d), power = %.3f, effect = %.4f\n",
-        n1, n2, n1 + n2, x$power, x$effect
+        "%s = %d, %s = %d (total = %d), power = %.3f, effect = %.4f\n",
+        lab1, n1, lab2, n2, n1 + n2, x$power, x$effect
       ))
     }
   } else if (!is.null(resp_rate) && resp_rate < 1) {

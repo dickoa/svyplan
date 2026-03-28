@@ -9,9 +9,12 @@
 #' @param ... Additional arguments passed to methods.
 #' @param stage_cost Numeric vector of per-stage costs. `NULL` (default) for
 #'   simple mode; length 2 or 3 for multistage mode.
-#' @param budget Total budget (currently unused in precision mode).
-#' @param n_psu Fixed stage-1 sample size (currently unused in precision mode).
-#' @param joint Logical (currently unused in precision mode).
+#' @param budget Total budget. Does not affect precision calculations;
+#'   preserved for round-trip conversion back to [n_multi()].
+#' @param n_psu Fixed stage-1 sample size. Does not affect precision
+#'   calculations; preserved for round-trip conversion back to [n_multi()].
+#' @param joint Logical. Does not affect precision calculations;
+#'   preserved for round-trip conversion back to [n_multi()].
 #' @param prop_method Proportion CI method for simple mode, one of `"wald"`
 #'   (default), `"wilson"`, or `"logodds"`. This is passed to [prec_prop()]
 #'   for proportion rows and ignored for mean rows and multistage mode.

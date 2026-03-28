@@ -15,7 +15,7 @@
 #' @param k Ratio parameter(s). Scalar for 2-stage, length-2 vector for
 #'   3-stage (default 1).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). The effective stage-1 size is deflated by `resp_rate`.
+#'   adjustment). The effective stage-1 size is `n * resp_rate`.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_prec` object with components `$se`, `$moe`, and `$cv`.

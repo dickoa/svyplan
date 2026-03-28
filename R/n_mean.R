@@ -16,7 +16,7 @@
 #' @param deff Design effect multiplier (> 0). Values < 1 are valid for
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). The sample size is inflated by `1 / resp_rate`.
+#'   adjustment). The required sample size is inflated by `1 / resp_rate`.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_n` object.
@@ -67,11 +67,22 @@ n_mean <- function(var, ...) {
 
 #' @rdname n_mean
 #' @export
-n_mean.default <- function(var, mu = NULL, moe = NULL, cv = NULL, alpha = 0.05,
-                           N = Inf, deff = 1, resp_rate = 1,
-                           plan = NULL, ...) {
+n_mean.default <- function(
+  var,
+  mu = NULL,
+  moe = NULL,
+  cv = NULL,
+  alpha = 0.05,
+  N = Inf,
+  deff = 1,
+  resp_rate = 1,
+  plan = NULL,
+  ...
+) {
   .plan <- .merge_plan_args(plan, n_mean.default, match.call(), environment())
-  if (!is.null(.plan)) return(do.call(n_mean.default, c(.plan, list(...))))
+  if (!is.null(.plan)) {
+    return(do.call(n_mean.default, c(.plan, list(...))))
+  }
   check_scalar(var, "var")
   check_precision(moe, cv)
   check_alpha(alpha)
@@ -98,18 +109,30 @@ n_mean.default <- function(var, mu = NULL, moe = NULL, cv = NULL, alpha = 0.05,
   n <- n * deff
   n <- .apply_resp_rate(n, resp_rate)
 
-  if (!is.infinite(N) && n > N)
+  if (!is.infinite(N) && n > N) {
     warning("Calculated sample size exceeds population size N.", call. = FALSE)
+  }
 
-  params <- list(var = var, alpha = alpha, N = N, deff = deff,
-                 resp_rate = resp_rate)
+  params <- list(
+    var = var,
+    alpha = alpha,
+    N = N,
+    deff = deff,
+    resp_rate = resp_rate
+  )
 
-  if (!is.null(mu)) params$mu <- mu
-  if (!is.null(moe)) params$moe <- moe else params$cv <- cv
+  if (!is.null(mu)) {
+    params$mu <- mu
+  }
+  if (!is.null(moe)) {
+    params$moe <- moe
+  } else {
+    params$cv <- cv
+  }
 
   .new_svyplan_n(
-    n      = n,
-    type   = "mean",
+    n = n,
+    type = "mean",
     params = params
   )
 }
@@ -126,13 +149,13 @@ n_mean.svyplan_prec <- function(var, moe = NULL, cv = NULL, ...) {
     moe <- x$moe
   }
   n_mean.default(
-    var       = par$var,
-    mu        = par$mu,
-    moe       = moe,
-    cv        = cv,
-    alpha     = par$alpha,
-    N         = par$N,
-    deff      = par$deff,
+    var = par$var,
+    mu = par$mu,
+    moe = moe,
+    cv = cv,
+    alpha = par$alpha,
+    N = par$N,
+    deff = par$deff,
     resp_rate = par$resp_rate
   )
 }

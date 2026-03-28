@@ -14,7 +14,7 @@
 #' @details
 #' `plot.svyplan_strata()` draws a bar chart of per-stratum sampling
 #' fractions (`f_h = n_h / N_h`) using [barplot()]. This shows how
-#' intensively each stratum is sampled — under Neyman allocation,
+#' intensively each stratum is sampled, under Neyman allocation,
 #' high-variance strata get higher fractions. A dashed horizontal line
 #' marks the overall sampling fraction (`n / N`). Defaults:
 #' `col = "grey40"`, `ylab = "Sampling fraction (f_h)"`, `las = 2`.
@@ -23,8 +23,7 @@
 #' [plot()]. The solved point is shown as a filled dot, with dashed
 #' reference lines at the computed power and sample size, and a dotted
 #' line at the significance level. Defaults: `ylim = c(0, 1)`,
-#' `type = "l"`, `xlab = "Sample size (per group)"`,
-#' `ylab = "Power"`.
+#' `type = "l"`, `xlab = "Sample size (per group)"`, `ylab = "Power"`.
 #'
 #' @examples
 #' # Sampling fraction per stratum
@@ -93,9 +92,12 @@ plot.svyplan_strata <- function(x, ...) {
 #' @rdname plot.svyplan
 #' @export
 plot.svyplan_power <- function(x, npoints = 101L, ...) {
-  if (length(x$n) == 2L)
-    stop("plot() does not support power objects with unequal-group n",
-         call. = FALSE)
+  if (length(x$n) == 2L) {
+    stop(
+      "plot() does not support power objects with unequal-group n",
+      call. = FALSE
+    )
+  }
   n_lo <- max(10, x$n * 0.1)
   n_hi <- x$n * 3
   n_seq <- seq(n_lo, n_hi, length.out = npoints)

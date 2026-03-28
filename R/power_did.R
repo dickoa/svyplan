@@ -27,7 +27,8 @@
 #'   Scalar applies to both arms; length-2 vector `c(N_treat, N_control)`.
 #'   `Inf` (default) disables FPC.
 #' @param deff Design effect multiplier (> 0).
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1.
+#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
+#'   adjustment). The required sample size is inflated by `1 / resp_rate`.
 #' @param alternative Character: `"two.sided"` (default) or `"one.sided"`.
 #' @param ratio Allocation ratio `n_treat / n_control` (default 1).
 #'   Used only when solving for `n` (`n = NULL`).

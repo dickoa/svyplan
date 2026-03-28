@@ -114,8 +114,8 @@ test_that("cluster print and format handle pathological stage sizes", {
 test_that("print.svyplan_power shows vector n", {
   res <- power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
   out <- capture.output(print(res))
-  expect_true(any(grepl("n_treat = ", out)))
-  expect_true(any(grepl("n_control = ", out)))
+  expect_true(any(grepl("n1 = ", out)))
+  expect_true(any(grepl("n2 = ", out)))
   expect_true(any(grepl("total = ", out)))
 })
 

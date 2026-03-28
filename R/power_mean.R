@@ -18,7 +18,7 @@
 #' @param deff Design effect multiplier (> 0). Values < 1 are valid for
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). The sample size is inflated by `1 / resp_rate`.
+#'   adjustment). The required sample size is inflated by `1 / resp_rate`.
 #' @param alternative Character: `"two.sided"` (default) or `"one.sided"`.
 #' @param ratio Allocation ratio n1/n2 (default 1). Only used when solving
 #'   for n (`n = NULL`). For example, `ratio = 2` means group 1 gets twice

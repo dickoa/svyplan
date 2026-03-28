@@ -62,7 +62,8 @@ Scalar applies to both arms; length-2 vector \code{c(N_treat, N_control)}.
 
 \item{deff}{Design effect multiplier (> 0).}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1.}
+\item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
+adjustment). The required sample size is inflated by \code{1 / resp_rate}.}
 
 \item{alternative}{Character: \code{"two.sided"} (default) or \code{"one.sided"}.}
 

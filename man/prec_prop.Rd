@@ -39,7 +39,7 @@ correction.}
 efficient designs (e.g., stratified sampling with Neyman allocation).}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
-adjustment). The effective sample size is deflated by \code{resp_rate}.}
+adjustment). The effective sample size is \code{n * resp_rate}.}
 
 \item{method}{One of \code{"wald"} (default), \code{"wilson"}, or \code{"logodds"}.}
 

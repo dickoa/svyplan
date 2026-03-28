@@ -34,11 +34,14 @@ or \code{svyplan_cluster} objects: a result from \code{\link[=n_multi]{n_multi()
 \item{stage_cost}{Numeric vector of per-stage costs. \code{NULL} (default) for
 simple mode; length 2 or 3 for multistage mode.}
 
-\item{budget}{Total budget (currently unused in precision mode).}
+\item{budget}{Total budget. Does not affect precision calculations;
+preserved for round-trip conversion back to \code{\link[=n_multi]{n_multi()}}.}
 
-\item{n_psu}{Fixed stage-1 sample size (currently unused in precision mode).}
+\item{n_psu}{Fixed stage-1 sample size. Does not affect precision
+calculations; preserved for round-trip conversion back to \code{\link[=n_multi]{n_multi()}}.}
 
-\item{joint}{Logical (currently unused in precision mode).}
+\item{joint}{Logical. Does not affect precision calculations;
+preserved for round-trip conversion back to \code{\link[=n_multi]{n_multi()}}.}
 
 \item{prop_method}{Proportion CI method for simple mode, one of \code{"wald"}
 (default), \code{"wilson"}, or \code{"logodds"}. This is passed to \code{\link[=prec_prop]{prec_prop()}}

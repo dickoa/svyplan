@@ -38,7 +38,7 @@ or a \code{svyplan_varcomp} object.}
 3-stage (default 1).}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
-adjustment). The effective stage-1 size is deflated by \code{resp_rate}.}
+adjustment). The effective stage-1 size is \code{n * resp_rate}.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }

@@ -48,7 +48,7 @@ population sizes. \code{Inf} disables FPC for the corresponding group.}
 efficient designs (e.g., stratified sampling with Neyman allocation).}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
-adjustment). The sample size is inflated by \code{1 / resp_rate}.}
+adjustment). The required sample size is inflated by \code{1 / resp_rate}.}
 
 \item{alternative}{Character: \code{"two.sided"} (default) or \code{"one.sided"}.}
 

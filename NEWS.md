@@ -30,7 +30,7 @@ Initial CRAN release.
   of `n_alloc()`.
 
 All `n_*` and `prec_*` functions are S3 generics with bidirectional
-round-trip: passing a precision object to the corresponding `n_*` function
+round-trip: passing a precision object to the corresponding `n_*` funct!i!on
 recovers the sample size, and vice versa.
 
 ## Power analysis

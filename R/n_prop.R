@@ -15,7 +15,7 @@
 #' @param deff Design effect multiplier (> 0). Values < 1 are valid for
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). The sample size is inflated by `1 / resp_rate`.
+#'   adjustment). The required sample size is inflated by `1 / resp_rate`.
 #' @param method One of `"wald"` (default), `"wilson"`, or `"logodds"`.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
@@ -103,7 +103,9 @@ n_prop.default <- function(
   ...
 ) {
   .plan <- .merge_plan_args(plan, n_prop.default, match.call(), environment())
-  if (!is.null(.plan)) return(do.call(n_prop.default, c(.plan, list(...))))
+  if (!is.null(.plan)) {
+    return(do.call(n_prop.default, c(.plan, list(...))))
+  }
   check_proportion(p, "p")
   check_precision(moe, cv)
   check_alpha(alpha)
@@ -153,12 +155,11 @@ n_prop.default <- function(
 .n_prop_wald <- function(p, moe, cv, alpha, N) {
   z <- qnorm(1 - alpha / 2)
   q <- 1 - p
+  a <- ifelse(is.infinite(N), 1, N / (N - 1))
 
   if (!is.null(moe)) {
-    a <- if (is.infinite(N)) 1 else N / (N - 1)
     n0 <- a * z^2 * p * q / (moe^2 + z^2 * p * q / (N - 1))
   } else {
-    a <- if (is.infinite(N)) 1 else N / (N - 1)
     n0 <- a * q / p / (cv^2 + q / p / (N - 1))
   }
 
@@ -206,7 +207,7 @@ n_prop.default <- function(
   z <- qnorm(1 - alpha / 2)
   q <- 1 - p
   kk <- q / p
-  a <- if (is.infinite(N)) 1 else N / (N - 1)
+  a <- ifelse(is.infinite(N), 1, N / (N - 1))
 
   rad <- e^2 * (1 + kk^2)^2 + kk^2 * (1 - 2 * e) * (1 + 2 * e)
   x <- e * (1 + kk^2) + sqrt(rad)
