@@ -114,8 +114,8 @@ targets <- data.frame(
 n_multi(targets)
 ```
 
-Per-domain optimization works by adding domain columns to the targets
-data frame.
+Per-domain optimization works by specifying domain columns via the
+`domains` parameter.
 
 ### MICS/DHS-style relative margin of error
 
@@ -266,7 +266,7 @@ frame_constraints <- transform(
 n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n = 40)
 ```
 
-Domain-level CV targets can be enforced by adding domain identifiers:
+Domain-level CV targets can be enforced via the `domains` parameter:
 
 ```{r}
 frame_domains <- data.frame(
@@ -278,7 +278,8 @@ frame_domains <- data.frame(
 )
 
 # Minimum total n such that each province meets the CV target
-n_alloc(frame_domains, cv = 0.04, alloc = "power", power_q = 0.3)
+n_alloc(frame_domains, domains = "province",
+        cv = 0.04, alloc = "power", power_q = 0.3)
 ```
 
 `prec_alloc()` computes the precision for a given allocation (inverse of

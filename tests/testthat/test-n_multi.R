@@ -279,13 +279,13 @@ test_that("detail dataframe has correct structure", {
   expect_equal(sum(res$detail$.binding), 1L)
 })
 
-test_that("domain column is auto-detected", {
+test_that("explicit domains parameter works", {
   df <- data.frame(
     p = c(0.3, 0.3),
     moe = c(0.05, 0.05),
     region = c("North", "South")
   )
-  res <- nm(df)
+  res <- nm(df, domains = "region")
   expect_s3_class(res, "svyplan_n")
   expect_true(!is.null(res$domains))
   expect_equal(nrow(res$domains), 2L)
@@ -299,7 +299,7 @@ test_that("per-domain results differ when parameters differ", {
     moe = c(0.03, 0.05),
     region = c("North", "South")
   )
-  res <- nm(df)
+  res <- nm(df, domains = "region")
   expect_true(res$domains$.n[1] != res$domains$.n[2])
 })
 
@@ -310,7 +310,7 @@ test_that("multi-indicator multi-domain takes max across domains", {
     moe = rep(0.05, 4),
     region = rep(c("R1", "R2"), 2)
   )
-  res <- nm(df)
+  res <- nm(df, domains = "region")
   expect_equal(res$n, max(res$domains$.n), tolerance = 1e-6)
 })
 
@@ -321,7 +321,7 @@ test_that("domains with two grouping columns work", {
     region = c("N", "N", "S", "S"),
     urban = c("U", "R", "U", "R")
   )
-  res <- nm(df)
+  res <- nm(df, domains = c("region", "urban"))
   expect_equal(nrow(res$domains), 4L)
 })
 
@@ -449,7 +449,7 @@ test_that("2-stage with domains produces domain results", {
     delta_psu = rep(0.02, 4),
     region = rep(c("North", "South"), 2)
   )
-  res <- nm(df, stage_cost = c(500, 50))
+  res <- nm(df, stage_cost = c(500, 50), domains = "region")
   expect_s3_class(res, "svyplan_cluster")
   expect_true(!is.null(res$domains))
   expect_equal(nrow(res$domains), 2L)
@@ -654,7 +654,7 @@ test_that("print.svyplan_n works for multi type with domains", {
     moe = c(0.05, 0.05),
     region = c("A", "B")
   )
-  res <- nm(df)
+  res <- nm(df, domains = "region")
   expect_output(print(res), "Multi-indicator sample size")
   expect_output(print(res), "domains")
 })
@@ -678,7 +678,7 @@ test_that("print.svyplan_cluster works for multi type with domains", {
     delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
-  res <- nm(df, stage_cost = c(500, 50))
+  res <- nm(df, stage_cost = c(500, 50), domains = "region")
   expect_output(print(res), "Multi-indicator optimal allocation")
   expect_output(print(res), "domains")
 })
@@ -718,7 +718,7 @@ test_that("joint budget: worst CV ratio <= equal-split (asymmetric domains)", {
     cbind(df_hard, region = "Hard"),
     cbind(df_easy, region = "Easy")
   )
-  res_jnt <- nm(df, stage_cost = stage_cost, budget = budget, joint = TRUE)
+  res_jnt <- nm(df, stage_cost = stage_cost, budget = budget, joint = TRUE, domains = "region")
   hard_b <- res_jnt$domains$.cost[res_jnt$domains$region == "Hard"]
   easy_b <- res_jnt$domains$.cost[res_jnt$domains$region == "Easy"]
 
@@ -740,8 +740,8 @@ test_that("joint budget: single domain identical to non-joint", {
     delta_psu = c(0.02, 0.05),
     region = c("R1", "R1")
   )
-  res_ind <- nm(df, stage_cost = c(500, 50), budget = 80000, joint = FALSE)
-  res_jnt <- nm(df, stage_cost = c(500, 50), budget = 80000, joint = TRUE)
+  res_ind <- nm(df, stage_cost = c(500, 50), budget = 80000, joint = FALSE, domains = "region")
+  res_jnt <- nm(df, stage_cost = c(500, 50), budget = 80000, joint = TRUE, domains = "region")
   expect_equal(res_ind$domains$.cv, res_jnt$domains$.cv, tolerance = 1e-4)
   expect_equal(res_ind$cost, res_jnt$cost, tolerance = 1)
 })
@@ -753,7 +753,7 @@ test_that("joint budget: equal domains get approximately equal budgets", {
     delta_psu = c(0.03, 0.03),
     region = c("A", "B")
   )
-  res <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE)
+  res <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE, domains = "region")
   budgets <- res$domains$.cost
   expect_equal(budgets[1], budgets[2], tolerance = budgets[1] * 0.05)
 })
@@ -766,8 +766,8 @@ test_that("joint budget: doubling budget improves worst CV", {
     delta_psu = c(0.02, 0.05, 0.05, 0.02),
     region = rep(c("R1", "R2"), 2)
   )
-  res1 <- nm(df, stage_cost = c(500, 50), budget = 50000, joint = TRUE)
-  res2 <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE)
+  res1 <- nm(df, stage_cost = c(500, 50), budget = 50000, joint = TRUE, domains = "region")
+  res2 <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE, domains = "region")
   expect_true(max(res2$domains$.cv) < max(res1$domains$.cv))
 })
 
@@ -778,7 +778,7 @@ test_that("joint budget: total cost equals budget", {
     delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
-  res <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE)
+  res <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE, domains = "region")
   expect_equal(sum(res$domains$.cost), 100000, tolerance = 1)
 })
 
@@ -790,7 +790,7 @@ test_that("joint budget: budget shifts toward harder domain", {
     delta_psu = c(0.08, 0.02, 0.05, 0.02),
     region = rep(c("Hard", "Easy"), 2)
   )
-  res <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE)
+  res <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE, domains = "region")
   hard_budget <- res$domains$.cost[res$domains$region == "Hard"]
   easy_budget <- res$domains$.cost[res$domains$region == "Easy"]
   expect_true(hard_budget > easy_budget)
@@ -807,7 +807,7 @@ test_that("joint budget: 2-domain grid search confirms optimizer", {
   budget <- 80000
   stage_cost <- c(500, 50)
 
-  res_jnt <- nm(df, stage_cost = stage_cost, budget = budget, joint = TRUE)
+  res_jnt <- nm(df, stage_cost = stage_cost, budget = budget, joint = TRUE, domains = "region")
   worst_jnt <- max(
     res_jnt$domains$.cv /
       c(
@@ -849,7 +849,7 @@ test_that("joint budget: output has correct structure", {
     delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
-  res <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE)
+  res <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE, domains = "region")
   expect_s3_class(res, "svyplan_cluster")
   expect_true(!is.null(res$domains))
   expect_true("region" %in% names(res$domains))
@@ -865,8 +865,8 @@ test_that("joint = TRUE without budget is same as independent (CV mode)", {
     delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
-  res_ind <- nm(df, stage_cost = c(500, 50), joint = FALSE)
-  res_jnt <- nm(df, stage_cost = c(500, 50), joint = TRUE)
+  res_ind <- nm(df, stage_cost = c(500, 50), joint = FALSE, domains = "region")
+  res_jnt <- nm(df, stage_cost = c(500, 50), joint = TRUE, domains = "region")
   expect_equal(res_ind$domains$.cv, res_jnt$domains$.cv, tolerance = 1e-4)
 })
 
@@ -899,7 +899,7 @@ test_that("joint budget: 3+ domains work", {
     delta_psu = c(0.02, 0.05, 0.03),
     region = c("A", "B", "C")
   )
-  res <- suppressWarnings(nm(df, stage_cost = c(500, 50), budget = 150000, joint = TRUE))
+  res <- suppressWarnings(nm(df, stage_cost = c(500, 50), budget = 150000, joint = TRUE, domains = "region"))
   expect_s3_class(res, "svyplan_cluster")
   expect_equal(nrow(res$domains), 3L)
   expect_equal(sum(res$domains$.cost), 150000, tolerance = 1)
@@ -914,7 +914,7 @@ test_that("joint budget: 3-stage design works", {
     delta_ssu = c(0.05, 0.08),
     region = c("A", "B")
   )
-  res <- nm(df, stage_cost = c(500, 100, 50), budget = 200000, joint = TRUE)
+  res <- nm(df, stage_cost = c(500, 100, 50), budget = 200000, joint = TRUE, domains = "region")
   expect_s3_class(res, "svyplan_cluster")
   expect_equal(res$stages, 3L)
   expect_equal(sum(res$domains$.cost), 200000, tolerance = 1)
@@ -929,7 +929,7 @@ test_that("joint budget: multiple indicators per domain", {
     delta_psu = rep(c(0.02, 0.05, 0.03), each = 2),
     region = rep(c("Urban", "Rural"), 3)
   )
-  res <- nm(df, stage_cost = c(500, 50), budget = 120000, joint = TRUE)
+  res <- nm(df, stage_cost = c(500, 50), budget = 120000, joint = TRUE, domains = "region")
   expect_equal(nrow(res$domains), 2L)
   expect_equal(sum(res$domains$.cost), 120000, tolerance = 1)
 })
@@ -941,7 +941,7 @@ test_that("joint budget: print shows joint label", {
     delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
-  res <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE)
+  res <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE, domains = "region")
   expect_output(print(res), "joint")
 })
 
@@ -1082,7 +1082,7 @@ test_that("domain multistage params store budget", {
     delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
-  res <- nm(df, stage_cost = c(500, 50), budget = 100000)
+  res <- nm(df, stage_cost = c(500, 50), budget = 100000, domains = "region")
   expect_equal(res$params$budget, 100000)
 })
 
@@ -1138,12 +1138,12 @@ test_that("min_n: simple + domains floor applied", {
     moe = c(0.05, 0.05),
     region = c("Easy", "Hard")
   )
-  res_no <- nm(df)
+  res_no <- nm(df, domains = "region")
   easy_n <- res_no$domains$.n[res_no$domains$region == "Easy"]
   hard_n <- res_no$domains$.n[res_no$domains$region == "Hard"]
 
   floor_val <- ceiling(max(easy_n, hard_n)) + 100
-  res_mn <- nm(df, min_n = floor_val)
+  res_mn <- nm(df, min_n = floor_val, domains = "region")
   expect_true(all(res_mn$domains$.n >= floor_val))
 })
 
@@ -1153,12 +1153,12 @@ test_that("min_n: simple + domains .binding updated for floored domains", {
     moe = c(0.05, 0.03),
     region = c("A", "B")
   )
-  res_no <- nm(df)
+  res_no <- nm(df, domains = "region")
   n_B <- res_no$domains$.n[res_no$domains$region == "B"]
   n_A <- res_no$domains$.n[res_no$domains$region == "A"]
   # Floor should be > A but < B so only A is floored
   floor_val <- ceiling(max(n_A, n_B)) + 50
-  res_mn <- nm(df, min_n = floor_val)
+  res_mn <- nm(df, min_n = floor_val, domains = "region")
   expect_true(all(res_mn$domains$.binding == "(min_n)"))
 })
 
@@ -1168,8 +1168,8 @@ test_that("min_n: simple + domains, floor below all domains -> no effect", {
     moe = c(0.05, 0.03),
     region = c("A", "B")
   )
-  res_no <- nm(df)
-  res_mn <- nm(df, min_n = 1)
+  res_no <- nm(df, domains = "region")
+  res_mn <- nm(df, min_n = 1, domains = "region")
   expect_equal(res_no$domains$.n, res_mn$domains$.n)
   expect_true(all(res_mn$domains$.binding != "(min_n)"))
 })
@@ -1180,7 +1180,7 @@ test_that("min_n: simple + domains stores min_n in params", {
     moe = c(0.05, 0.03),
     region = c("A", "B")
   )
-  res <- nm(df, min_n = 500)
+  res <- nm(df, min_n = 500, domains = "region")
   expect_equal(res$params$min_n, 500)
 })
 
@@ -1192,7 +1192,7 @@ test_that("min_n: joint budget ensures all domains >= min_n", {
     delta_psu = c(0.02, 0.03, 0.05, 0.04),
     region = rep(c("Urban", "Rural"), 2)
   )
-  res_no <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE)
+  res_no <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE, domains = "region")
   min_total <- min(res_no$domains$.total_n)
   floor_val <- ceiling(min_total * 0.5)
 
@@ -1201,7 +1201,8 @@ test_that("min_n: joint budget ensures all domains >= min_n", {
     stage_cost = c(500, 50),
     budget = 100000,
     joint = TRUE,
-    min_n = floor_val
+    min_n = floor_val,
+    domains = "region"
   )
   expect_true(all(res_mn$domains$.total_n >= floor_val - 1))
   expect_equal(res_mn$params$min_n, floor_val)
@@ -1215,8 +1216,8 @@ test_that("min_n: joint monotonicity -> larger min_n -> worse overall CV", {
     delta_psu = c(0.08, 0.02, 0.05, 0.02),
     region = rep(c("Hard", "Easy"), 2)
   )
-  res1 <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE, min_n = 50)
-  res2 <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE, min_n = 500)
+  res1 <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE, min_n = 50, domains = "region")
+  res2 <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE, min_n = 500, domains = "region")
   expect_true(max(res2$domains$.cv) >= max(res1$domains$.cv) - 1e-4)
 })
 
@@ -1228,7 +1229,7 @@ test_that("min_n: joint feasibility error when single domain impossible", {
     region = c("A", "B")
   )
   expect_error(
-    nm(df, stage_cost = c(500, 50), budget = 5000, joint = TRUE, min_n = 999999),
+    nm(df, stage_cost = c(500, 50), budget = 5000, joint = TRUE, min_n = 999999, domains = "region"),
     "not achievable for domain"
   )
 })
@@ -1244,11 +1245,12 @@ test_that("min_n: joint feasibility error when budget too small for all domains"
     df,
     stage_cost = c(500, 50),
     budget = 150000,
-    joint = TRUE
+    joint = TRUE,
+    domains = "region"
   ))
   big_floor <- ceiling(max(res_full$domains$.total_n) * 0.9)
   expect_error(
-    nm(df, stage_cost = c(500, 50), budget = 150000, joint = TRUE, min_n = big_floor),
+    nm(df, stage_cost = c(500, 50), budget = 150000, joint = TRUE, min_n = big_floor, domains = "region"),
     "not achievable"
   )
 })
@@ -1260,10 +1262,10 @@ test_that("min_n: non-joint multistage warns when total_n < min_n", {
     delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
-  res <- nm(df, stage_cost = c(500, 50))
+  res <- nm(df, stage_cost = c(500, 50), domains = "region")
   big_floor <- ceiling(max(res$domains$.total_n)) + 1000
   expect_warning(
-    nm(df, stage_cost = c(500, 50), min_n = big_floor),
+    nm(df, stage_cost = c(500, 50), min_n = big_floor, domains = "region"),
     "total_n below min_n"
   )
 })
@@ -1275,7 +1277,7 @@ test_that("min_n: non-joint multistage no warning when all above floor", {
     delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
-  expect_no_warning(suppressMessages(nm(df, stage_cost = c(500, 50), min_n = 1)))
+  expect_no_warning(suppressMessages(nm(df, stage_cost = c(500, 50), min_n = 1, domains = "region")))
 })
 
 test_that("min_n: multistage stores min_n in params", {
@@ -1285,7 +1287,7 @@ test_that("min_n: multistage stores min_n in params", {
     delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
-  res <- suppressWarnings(nm(df, stage_cost = c(500, 50), min_n = 500))
+  res <- suppressWarnings(nm(df, stage_cost = c(500, 50), min_n = 500, domains = "region"))
   expect_equal(res$params$min_n, 500)
 })
 
@@ -1295,7 +1297,7 @@ test_that("min_n: print shows min_n for simple domains", {
     moe = c(0.05, 0.05),
     region = c("A", "B")
   )
-  res <- nm(df, min_n = 500)
+  res <- nm(df, min_n = 500, domains = "region")
   expect_output(print(res), "min_n = 500")
 })
 
@@ -1306,7 +1308,7 @@ test_that("min_n: print shows min_n for cluster domains", {
     delta_psu = c(0.02, 0.05),
     region = c("A", "B")
   )
-  res <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE, min_n = 50)
+  res <- nm(df, stage_cost = c(500, 50), budget = 100000, joint = TRUE, min_n = 50, domains = "region")
   expect_output(print(res), "min_n = 50")
 })
 
@@ -1364,9 +1366,9 @@ test_that("n_multi joint domains with fixed_cost", {
     delta_psu = c(0.02, 0.03, 0.05, 0.04),
     region = rep(c("Urban", "Rural"), 2)
   )
-  base <- nm(tgt, stage_cost = c(500, 50), budget = 200000, joint = TRUE)
+  base <- nm(tgt, stage_cost = c(500, 50), budget = 200000, joint = TRUE, domains = "region")
   fc <- nm(tgt, stage_cost = c(500, 50), budget = 200000, joint = TRUE,
-           fixed_cost = 10000)
+           fixed_cost = 10000, domains = "region")
   expect_equal(fc$cost, 200000)
   expect_true(fc$total_n < base$total_n)
   expect_equal(fc$params$fixed_cost, 10000)
@@ -1571,7 +1573,7 @@ test_that("n_multi 2-stage psu_size with domains", {
     cv = c(0.10, 0.08),
     delta_psu = c(0.05, 0.03)
   )
-  res <- nm(df, stage_cost = c(500, 50), psu_size = 15)
+  res <- nm(df, stage_cost = c(500, 50), psu_size = 15, domains = "domain")
   expect_true(!is.null(res$domains))
   expect_true(all(res$domains$psu_size == 15))
 })
@@ -1583,4 +1585,24 @@ test_that("n_multi 3-stage budget infeasibility with fixed stages", {
        n_psu = 80, psu_size = 10),
     "budget.*too small"
   )
+})
+
+test_that("n_multi: domains must be character", {
+  df <- data.frame(p = 0.3, moe = 0.05, region = "A")
+  expect_error(n_multi(df, domains = 1), "character")
+})
+
+test_that("n_multi: domains columns must exist in targets", {
+  df <- data.frame(p = 0.3, moe = 0.05)
+  expect_error(n_multi(df, domains = "region"), "not found")
+})
+
+test_that("extra columns ignored when domains is NULL", {
+  df <- data.frame(
+    p = c(0.3, 0.3),
+    moe = c(0.05, 0.05),
+    region = c("North", "South")
+  )
+  res <- n_multi(df)
+  expect_null(res$domains)
 })

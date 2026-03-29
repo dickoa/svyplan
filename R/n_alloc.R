@@ -35,15 +35,13 @@
 #'       is included (census stratum).}
 #'   }
 #'
-#'   **Domain columns:** any column not listed above is treated as a domain
-#'   identifier. Domains define sub-populations that each contain one or
-#'   more strata. When `cv` is the target, precision is enforced
-#'   *within every domain* (see Details). For example, a `province` column
-#'   would make each province a separate domain whose strata are the rows
-#'   that share the same province value.
-#'
 #'   For `svyplan_prec` objects: a precision result from [prec_alloc()].
 #' @param ... Additional arguments passed to methods.
+#' @param domains Character vector of column names in `frame` to treat as
+#'   domain identifiers, or `NULL` (default) for no domains. All names
+#'   must exist in `frame`. Domains define sub-populations that each
+#'   contain one or more strata. When `cv` is the target, precision is
+#'   enforced *within every domain* (see Details).
 #' @param n Total sample size. Specify exactly one of `n`, `cv`, or `budget`.
 #' @param cv Target coefficient of variation (requires `mean_h` or `p_h`
 #'   in `frame`). When domain columns are present, this target is enforced
@@ -81,7 +79,8 @@
 #'
 #' ## Domains vs. strata
 #'
-#' Domain columns partition strata into sub-populations. Each domain groups
+#' Domains are specified via the `domains` parameter. Domain columns
+#' partition strata into sub-populations. Each domain groups
 #' one or more strata. When `cv` is specified, the algorithm finds the
 #' minimum total \eqn{n} such that the *worst-case* domain CV meets the
 #' target — i.e. every domain achieves the required precision.
@@ -143,7 +142,8 @@
 #'   mean_h = c(55, 48, 58, 50)
 #' )
 #'
-#' n_alloc(frame_domains, cv = 0.04, alloc = "power", power_q = 0.3)
+#' n_alloc(frame_domains, domains = "province",
+#'        cv = 0.04, alloc = "power", power_q = 0.3)
 #'
 #' @export
 n_alloc <- function(frame, ...) {
@@ -158,6 +158,7 @@ n_alloc <- function(frame, ...) {
 #' @export
 n_alloc.default <- function(
   frame,
+  domains = NULL,
   n = NULL,
   cv = NULL,
   budget = NULL,
@@ -191,7 +192,7 @@ n_alloc.default <- function(
     stop("specify exactly one of 'n', 'cv', or 'budget'", call. = FALSE)
   }
 
-  prep <- .alloc_prepare_frame(frame, unit_cost = unit_cost)
+  prep <- .alloc_prepare_frame(frame, domains = domains, unit_cost = unit_cost)
   N_h <- prep$N_h
   S_h <- prep$S_h
   mean_h <- prep$mean_h
@@ -303,7 +304,7 @@ n_alloc.default <- function(
     prep = prep, n_h = n_h, m_h = m_h, M_h = M_h,
     resp_rate = resp_rate, deff = deff
   )
-  domains <- .alloc_domain_summary(
+  domain_summary <- .alloc_domain_summary(
     prep = prep, n_h = n_h,
     alpha = alpha, deff = deff, resp_rate = resp_rate
   )
@@ -317,6 +318,7 @@ n_alloc.default <- function(
     cost_h = cost_h,
     min_n = min_n,
     domain_cols = prep$domain_cols,
+    mode = mode,
     power_q = if (alloc == "power") power_q else NULL,
     n_h = n_h,
     achieved = list(n = sum(n_h), cv = metrics$cv, cost = metrics$cost)
@@ -330,7 +332,7 @@ n_alloc.default <- function(
     params = params,
     detail = detail,
     binding = .alloc_binding_label(n_h, m_h, M_h),
-    domains = domains
+    domains = domain_summary
   )
   obj$se <- metrics$se
   obj$moe <- metrics$moe
@@ -360,6 +362,7 @@ n_alloc.svyplan_prec <- function(
 
   n_alloc.default(
     frame = p$frame,
+    domains = p$domain_cols,
     n = n, cv = cv, budget = budget,
     alloc = p$alloc %||% "neyman",
     unit_cost = p$cost_h,
@@ -379,6 +382,8 @@ n_alloc.svyplan_prec <- function(
 #'   For `svyplan_n` objects: an allocation result from [n_alloc()].
 #' @param ... Additional arguments passed to methods.
 #' @param n Stratum sample sizes, length `nrow(x)` (default method only).
+#' @param domains Character vector of column names in `x` to treat as
+#'   domain identifiers, or `NULL` (default) for no domains.
 #' @param alpha Significance level, default 0.05.
 #' @param deff Design effect multiplier (> 0).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1.
@@ -413,6 +418,7 @@ prec_alloc <- function(x, ...) {
 prec_alloc.default <- function(
   x,
   n,
+  domains = NULL,
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
@@ -426,7 +432,7 @@ prec_alloc.default <- function(
   check_deff(deff)
   check_resp_rate(resp_rate)
 
-  prep <- .alloc_prepare_frame(x, unit_cost = unit_cost)
+  prep <- .alloc_prepare_frame(x, domains = domains, unit_cost = unit_cost)
   H <- length(prep$N_h)
 
   if (!is.numeric(n) || anyNA(n) || any(!is.finite(n)) || length(n) != H) {
@@ -457,6 +463,7 @@ prec_alloc.default <- function(
     params = list(
       frame = x, n = n, alpha = alpha, deff = deff,
       resp_rate = resp_rate, cost_h = prep$cost_h,
+      domain_cols = prep$domain_cols,
       achieved = list(n = sum(n), cv = metrics$cv, cost = metrics$cost)
     ),
     detail = detail
@@ -483,6 +490,7 @@ prec_alloc.svyplan_n <- function(x, ...) {
   prec_alloc.default(
     x = p$frame,
     n = n_h,
+    domains = p$domain_cols,
     alpha = p$alpha,
     deff = p$deff,
     resp_rate = p$resp_rate,
@@ -492,7 +500,7 @@ prec_alloc.svyplan_n <- function(x, ...) {
 
 #' @keywords internal
 #' @noRd
-.alloc_prepare_frame <- function(frame, unit_cost = NULL) {
+.alloc_prepare_frame <- function(frame, domains = NULL, unit_cost = NULL) {
   if (!is.data.frame(frame) || nrow(frame) == 0L) {
     stop("'frame' must be a non-empty data frame", call. = FALSE)
   }
@@ -592,11 +600,22 @@ prec_alloc.svyplan_n <- function(x, ...) {
     as.character(seq_len(nrow(frame)))
   }
 
-  known <- c(
-    "stratum", "N_h", "S_h", "var", "mean_h", "p_h",
-    "cost_h", "max_weight", "take_all"
-  )
-  domain_cols <- setdiff(names(frame), known)
+  if (!is.null(domains)) {
+    if (!is.character(domains) || anyNA(domains)) {
+      stop("'domains' must be a character vector without NAs", call. = FALSE)
+    }
+    missing_cols <- setdiff(domains, names(frame))
+    if (length(missing_cols) > 0L) {
+      stop(
+        sprintf(
+          "domain column(s) not found in frame: %s",
+          paste(sQuote(missing_cols), collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+  }
+  domain_cols <- domains %||% character(0)
   domain_idx <- list()
   domain_values <- NULL
   if (length(domain_cols) > 0L) {

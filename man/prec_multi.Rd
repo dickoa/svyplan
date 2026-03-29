@@ -11,6 +11,7 @@ prec_multi(targets, ...)
 
 \method{prec_multi}{default}(
   targets,
+  domains = NULL,
   stage_cost = NULL,
   budget = NULL,
   n_psu = NULL,
@@ -30,6 +31,11 @@ indicator (must contain an \code{n} column; see Details). For \code{svyplan_n}
 or \code{svyplan_cluster} objects: a result from \code{\link[=n_multi]{n_multi()}}.}
 
 \item{...}{Additional arguments passed to methods.}
+
+\item{domains}{Character vector of column names in \code{targets} to treat
+as domain variables, or \code{NULL} (default) for no domains. All names
+must exist in \code{targets}. Domain columns are preserved in the result
+for round-trip conversion back to \code{\link[=n_multi]{n_multi()}}.}
 
 \item{stage_cost}{Numeric vector of per-stage costs. \code{NULL} (default) for
 simple mode; length 2 or 3 for multistage mode.}
@@ -83,7 +89,7 @@ with \code{p}; ignored for mean rows and multistage mode.}
 \item{\code{k_psu}, \code{k_ssu}}{Ratio parameters (multistage, default 1).}
 }
 
-Any column not in the recognized set is treated as a \strong{domain variable}.
+Domain columns are specified via the \code{domains} parameter.
 
 In simple mode, \code{prec_multi()} delegates proportion rows to \code{\link[=prec_prop]{prec_prop()}}
 and mean rows to \code{\link[=prec_mean]{prec_mean()}}. Use \code{prop_method} or a

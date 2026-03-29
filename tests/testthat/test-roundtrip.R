@@ -235,3 +235,51 @@ test_that("prec_prop.svyplan_n respects explicit method override", {
   expect_equal(p_logodds$params$n, s_wilson$n)
   expect_true(abs(p_logodds$moe - 0.05) > 1e-4)
 })
+
+test_that("n_multi domain round-trip preserves domain_cols", {
+  tgt <- data.frame(
+    name = c("a", "a"),
+    p = c(0.3, 0.1),
+    moe = c(0.05, 0.03),
+    region = c("North", "South")
+  )
+  s1 <- n_multi(tgt, domains = "region")
+  expect_equal(s1$params$domain_cols, "region")
+  p1 <- prec_multi(s1)
+  expect_equal(p1$params$domain_cols, "region")
+  s2 <- n_multi(p1)
+  expect_equal(s2$params$domain_cols, "region")
+})
+
+test_that("n_multi mode round-trip works for moe", {
+  tgt <- data.frame(p = c(0.3, 0.1), moe = c(0.05, 0.03))
+  s1 <- n_multi(tgt)
+  expect_equal(s1$params$mode, "moe")
+  p1 <- prec_multi(s1)
+  expect_equal(p1$params$mode, "moe")
+  s2 <- n_multi(p1)
+  expect_equal(s2$n, s1$n, tolerance = 1e-6)
+})
+
+test_that("n_multi mode round-trip works for cv", {
+  tgt <- data.frame(p = c(0.3, 0.1), cv = c(0.10, 0.15))
+  s1 <- n_multi(tgt)
+  expect_equal(s1$params$mode, "cv")
+  p1 <- prec_multi(s1)
+  s2 <- n_multi(p1)
+  expect_equal(s2$n, s1$n, tolerance = 1e-6)
+})
+
+test_that("n_alloc domain round-trip preserves domain_cols", {
+  frame <- data.frame(
+    region = c("N", "N", "S", "S"),
+    stratum = c("U", "R", "U", "R"),
+    N_h = c(1000, 2000, 1500, 500),
+    S_h = c(10, 20, 15, 8),
+    mean_h = c(50, 70, 60, 45)
+  )
+  s1 <- n_alloc(frame, domains = "region", cv = 0.05)
+  expect_equal(s1$params$domain_cols, "region")
+  p1 <- prec_alloc(s1)
+  expect_equal(p1$params$domain_cols, "region")
+})

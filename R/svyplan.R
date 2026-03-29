@@ -22,7 +22,7 @@
 #'   `prop_method`,
 #'   `stage_cost`, `delta`, `rel_var`, `k`, `fixed_cost`,
 #'   `unit_cost`,
-#'   `alternative`, `method`, `ratio`, `overlap`, `rho`,
+#'   `alternative`, `ratio`, `overlap`, `rho`,
 #'   `alloc`, `min_n`, `power_q`.
 #'
 #' @return A `svyplan` object.
@@ -120,7 +120,7 @@ update.svyplan <- function(object, ...) {
     "prop_method",
     "stage_cost", "delta", "rel_var", "k", "fixed_cost",
     "unit_cost",
-    "alternative", "method", "ratio", "overlap", "rho",
+    "alternative", "ratio", "overlap", "rho",
     "alloc", "min_n", "power_q"
   )
 }

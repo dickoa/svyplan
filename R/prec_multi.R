@@ -7,6 +7,10 @@
 #'   indicator (must contain an `n` column; see Details). For `svyplan_n`
 #'   or `svyplan_cluster` objects: a result from [n_multi()].
 #' @param ... Additional arguments passed to methods.
+#' @param domains Character vector of column names in `targets` to treat
+#'   as domain variables, or `NULL` (default) for no domains. All names
+#'   must exist in `targets`. Domain columns are preserved in the result
+#'   for round-trip conversion back to [n_multi()].
 #' @param stage_cost Numeric vector of per-stage costs. `NULL` (default) for
 #'   simple mode; length 2 or 3 for multistage mode.
 #' @param budget Total budget. Does not affect precision calculations;
@@ -49,7 +53,7 @@
 #'   \item{`k_psu`, `k_ssu`}{Ratio parameters (multistage, default 1).}
 #' }
 #'
-#' Any column not in the recognized set is treated as a **domain variable**.
+#' Domain columns are specified via the `domains` parameter.
 #'
 #' In simple mode, `prec_multi()` delegates proportion rows to [prec_prop()]
 #' and mean rows to [prec_mean()]. Use `prop_method` or a
@@ -84,6 +88,7 @@ prec_multi <- function(targets, ...) {
 #' @export
 prec_multi.default <- function(
   targets,
+  domains = NULL,
   stage_cost = NULL,
   budget = NULL,
   n_psu = NULL,
@@ -109,6 +114,21 @@ prec_multi.default <- function(
   if (!"n" %in% names(targets)) {
     stop("'targets' must contain an 'n' column for prec_multi", call. = FALSE)
   }
+  if (!is.null(domains)) {
+    if (!is.character(domains) || anyNA(domains)) {
+      stop("'domains' must be a character vector without NAs", call. = FALSE)
+    }
+    missing_cols <- setdiff(domains, names(targets))
+    if (length(missing_cols) > 0L) {
+      stop(
+        sprintf(
+          "domain column(s) not found in targets: %s",
+          paste(sQuote(missing_cols), collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+  }
   if (
     !is.character(prop_method) ||
       length(prop_method) != 1L ||
@@ -121,20 +141,23 @@ prec_multi.default <- function(
     )
   }
 
+  domain_cols <- domains %||% character(0)
   multistage <- !is.null(stage_cost)
 
   if (multistage) {
     check_stage_cost(stage_cost)
     stage_cost <- .reorder_stage_cost(stage_cost)
-    .prec_multi_cluster(targets, stage_cost)
+    .prec_multi_cluster(targets, stage_cost, domain_cols = domain_cols)
   } else {
-    .prec_multi_simple(targets, prop_method = prop_method)
+    .prec_multi_simple(targets, prop_method = prop_method,
+                       domain_cols = domain_cols)
   }
 }
 
 #' @keywords internal
 #' @noRd
-.prec_multi_simple <- function(targets, prop_method = "wald") {
+.prec_multi_simple <- function(targets, prop_method = "wald",
+                              domain_cols = character(0)) {
   if (!"alpha" %in% names(targets)) {
     targets$alpha <- 0.05
   }
@@ -254,14 +277,15 @@ prec_multi.default <- function(
     moe = moe_vec,
     cv = cv_vec,
     type = "multi",
-    params = list(targets = targets),
+    params = list(targets = targets, domain_cols = domain_cols),
     detail = detail
   )
 }
 
 #' @keywords internal
 #' @noRd
-.prec_multi_cluster <- function(targets, stage_cost) {
+.prec_multi_cluster <- function(targets, stage_cost,
+                                domain_cols = character(0)) {
   stages <- length(stage_cost)
 
   if (!"alpha" %in% names(targets)) {
@@ -402,7 +426,8 @@ prec_multi.default <- function(
     moe = rep(NA_real_, nr),
     cv = cv_vec,
     type = "multi",
-    params = list(targets = targets, stage_cost = stage_cost),
+    params = list(targets = targets, stage_cost = stage_cost,
+                  domain_cols = domain_cols),
     detail = detail
   )
 }
@@ -425,16 +450,21 @@ prec_multi.svyplan_n <- function(targets, ...) {
   if (!is.null(x$detail) && ".n" %in% names(x$detail)) {
     tgt$n <- x$detail$.n
   }
-  if (!is.null(x$domains)) {
+  dom_cols <- x$params$domain_cols %||% character(0)
+  if (!is.null(x$domains) && length(dom_cols) > 0L) {
     dom <- x$domains
-    known_dom <- c(".n", ".binding")
-    dom_cols <- setdiff(names(dom), known_dom)
     tgt_key <- interaction(tgt[dom_cols], drop = FALSE, sep = ":")
     dom_key <- interaction(dom[dom_cols], drop = FALSE, sep = ":")
     dom_idx <- match(tgt_key, dom_key)
     tgt$n <- dom$.n[dom_idx]
   }
-  do.call(prec_multi.default, c(list(targets = tgt), dots))
+  res <- do.call(prec_multi.default, c(
+    list(targets = tgt, domains = dom_cols), dots
+  ))
+  for (p in c("mode", "prop_method", "min_n")) {
+    if (!is.null(x$params[[p]])) res$params[[p]] <- x$params[[p]]
+  }
+  res
 }
 
 #' @rdname prec_multi
@@ -455,11 +485,9 @@ prec_multi.svyplan_cluster <- function(targets, ...) {
     tgt$ssu_size <- x$n[3L]
   }
 
-  if (!is.null(x$domains)) {
+  dom_cols <- x$params$domain_cols %||% character(0)
+  if (!is.null(x$domains) && length(dom_cols) > 0L) {
     dom <- x$domains
-    stage_cols <- names(x$n)
-    known_dom <- c(stage_cols, ".total_n", ".cv", ".cost", ".binding")
-    dom_cols <- setdiff(names(dom), known_dom)
     tgt_key <- interaction(tgt[dom_cols], drop = FALSE, sep = ":")
     dom_key <- interaction(dom[dom_cols], drop = FALSE, sep = ":")
     dom_idx <- match(tgt_key, dom_key)
@@ -471,8 +499,10 @@ prec_multi.svyplan_cluster <- function(targets, ...) {
   }
 
   stage_cost <- x$params$stage_cost
-  res <- prec_multi.default(targets = tgt, stage_cost = stage_cost)
-  for (p in c("budget", "n_psu", "psu_size", "ssu_size", "joint", "fixed_cost", "min_n")) {
+  res <- prec_multi.default(targets = tgt, domains = dom_cols,
+                            stage_cost = stage_cost)
+  for (p in c("budget", "n_psu", "psu_size", "ssu_size", "joint", "fixed_cost",
+              "min_n", "mode", "prop_method")) {
     if (!is.null(x$params[[p]])) res$params[[p]] <- x$params[[p]]
   }
   res

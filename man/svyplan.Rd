@@ -15,7 +15,7 @@ svyplan(...)
 \code{prop_method},
 \code{stage_cost}, \code{delta}, \code{rel_var}, \code{k}, \code{fixed_cost},
 \code{unit_cost},
-\code{alternative}, \code{method}, \code{ratio}, \code{overlap}, \code{rho},
+\code{alternative}, \code{ratio}, \code{overlap}, \code{rho},
 \code{alloc}, \code{min_n}, \code{power_q}.}
 
 \item{object}{A \code{svyplan} object to update.}

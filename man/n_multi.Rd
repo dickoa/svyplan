@@ -10,6 +10,7 @@ n_multi(targets, ...)
 
 \method{n_multi}{default}(
   targets,
+  domains = NULL,
   stage_cost = NULL,
   budget = NULL,
   n_psu = NULL,
@@ -31,6 +32,12 @@ indicator (see Details). For \code{svyplan_prec} objects: a precision
 result from \code{\link[=prec_multi]{prec_multi()}}.}
 
 \item{...}{Additional arguments passed to methods.}
+
+\item{domains}{Character vector of column names in \code{targets} to treat
+as domain variables, or \code{NULL} (default) for no domains. All names
+must exist in \code{targets}. When specified, optimization runs
+independently per domain combination (default), or jointly when
+\code{joint = TRUE}.}
 
 \item{stage_cost}{Numeric vector of per-stage costs. \code{NULL} (default)
 for simple mode; length 2 or 3 for multistage mode.}
@@ -132,9 +139,9 @@ adjustment). Inflates the required sample size to account for
 non-response.}
 }
 
-Any column not in the recognized set is treated as a \strong{domain variable}.
-When domain columns are present, optimization runs independently per
-domain combination (default), or jointly when \code{joint = TRUE}.
+Domain columns are specified via the \code{domains} parameter. When domains
+are present, optimization runs independently per domain combination
+(default), or jointly when \code{joint = TRUE}.
 
 \strong{Simple mode} (\code{stage_cost = NULL}): computes sample size per indicator
 by delegating proportion rows to \code{\link[=n_prop]{n_prop()}} and mean rows to \code{\link[=n_mean]{n_mean()}},
@@ -207,7 +214,7 @@ targets_dom <- data.frame(
   moe    = c(0.05, 0.05, 0.03, 0.03),
   region = rep(c("North", "South"), 2)
 )
-n_multi(targets_dom)
+n_multi(targets_dom, domains = "region")
 
 # Two-stage CV mode
 targets_cl <- data.frame(
@@ -226,7 +233,8 @@ targets_jnt <- data.frame(
   delta_psu = c(0.02, 0.03, 0.05, 0.04),
   region = rep(c("Urban", "Rural"), 2)
 )
-n_multi(targets_jnt, stage_cost = c(500, 50), budget = 100000, joint = TRUE)
+n_multi(targets_jnt, domains = "region",
+       stage_cost = c(500, 50), budget = 100000, joint = TRUE)
 
 }
 \references{

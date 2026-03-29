@@ -8,6 +8,11 @@
 #'   indicator (see Details). For `svyplan_prec` objects: a precision
 #'   result from [prec_multi()].
 #' @param ... Additional arguments passed to methods.
+#' @param domains Character vector of column names in `targets` to treat
+#'   as domain variables, or `NULL` (default) for no domains. All names
+#'   must exist in `targets`. When specified, optimization runs
+#'   independently per domain combination (default), or jointly when
+#'   `joint = TRUE`.
 #' @param stage_cost Numeric vector of per-stage costs. `NULL` (default)
 #'   for simple mode; length 2 or 3 for multistage mode.
 #' @param budget Total budget (multistage only). Provide either `cv` values
@@ -93,9 +98,9 @@
 #'     non-response.}
 #' }
 #'
-#' Any column not in the recognized set is treated as a **domain variable**.
-#' When domain columns are present, optimization runs independently per
-#' domain combination (default), or jointly when `joint = TRUE`.
+#' Domain columns are specified via the `domains` parameter. When domains
+#' are present, optimization runs independently per domain combination
+#' (default), or jointly when `joint = TRUE`.
 #'
 #' **Simple mode** (`stage_cost = NULL`): computes sample size per indicator
 #' by delegating proportion rows to [n_prop()] and mean rows to [n_mean()],
@@ -179,7 +184,7 @@
 #'   moe    = c(0.05, 0.05, 0.03, 0.03),
 #'   region = rep(c("North", "South"), 2)
 #' )
-#' n_multi(targets_dom)
+#' n_multi(targets_dom, domains = "region")
 #'
 #' # Two-stage CV mode
 #' targets_cl <- data.frame(
@@ -198,7 +203,8 @@
 #'   delta_psu = c(0.02, 0.03, 0.05, 0.04),
 #'   region = rep(c("Urban", "Rural"), 2)
 #' )
-#' n_multi(targets_jnt, stage_cost = c(500, 50), budget = 100000, joint = TRUE)
+#' n_multi(targets_jnt, domains = "region",
+#'        stage_cost = c(500, 50), budget = 100000, joint = TRUE)
 #'
 #' @export
 n_multi <- function(targets, ...) {
@@ -213,6 +219,7 @@ n_multi <- function(targets, ...) {
 #' @export
 n_multi.default <- function(
   targets,
+  domains = NULL,
   stage_cost = NULL,
   budget = NULL,
   n_psu = NULL,
@@ -287,7 +294,7 @@ n_multi.default <- function(
     }
   }
 
-  info <- .validate_targets(targets, multistage)
+  info <- .validate_targets(targets, multistage, domains = domains)
   targets <- .fill_defaults(targets, multistage, prop_method = prop_method)
 
   rv_final <- targets$rel_var[!is.na(targets$rel_var)]
@@ -308,11 +315,20 @@ n_multi.default <- function(
 
   domain_cols <- info$domain_cols
 
+  mode <- if (!multistage) {
+    if ("moe" %in% names(targets) && any(!is.na(targets$moe))) "moe" else "cv"
+  } else {
+    if (!is.null(budget)) "budget" else "cv"
+  }
+
   if (length(domain_cols) == 0L) {
     if (multistage) {
-      .n_multi_cluster(targets, stage_cost, budget, n_psu, psu_size, ssu_size, fixed_cost)
+      .n_multi_cluster(targets, stage_cost, budget, n_psu, psu_size, ssu_size,
+                       fixed_cost, domain_cols = domain_cols, mode = mode,
+                       prop_method = prop_method)
     } else {
-      .n_multi_simple(targets)
+      .n_multi_simple(targets, domain_cols = domain_cols, mode = mode,
+                      prop_method = prop_method)
     }
   } else {
     .n_multi_domains(
@@ -326,7 +342,9 @@ n_multi.default <- function(
       multistage,
       joint,
       min_n,
-      fixed_cost
+      fixed_cost,
+      mode = mode,
+      prop_method = prop_method
     )
   }
 }
@@ -335,25 +353,22 @@ n_multi.default <- function(
 #' @return List with `indicator_type` (per-row "p" or "var") and `domain_cols`.
 #' @keywords internal
 #' @noRd
-.validate_targets <- function(targets, multistage) {
-  known <- c(
-    "name",
-    "p",
-    "var",
-    "mu",
-    "moe",
-    "cv",
-    "alpha",
-    "deff",
-    "N",
-    "prop_method",
-    "delta_psu",
-    "delta_ssu",
-    "rel_var",
-    "k_psu",
-    "k_ssu",
-    "resp_rate"
-  )
+.validate_targets <- function(targets, multistage, domains = NULL) {
+  if (!is.null(domains)) {
+    if (!is.character(domains) || anyNA(domains)) {
+      stop("'domains' must be a character vector without NAs", call. = FALSE)
+    }
+    missing_cols <- setdiff(domains, names(targets))
+    if (length(missing_cols) > 0L) {
+      stop(
+        sprintf(
+          "domain column(s) not found in targets: %s",
+          paste(sQuote(missing_cols), collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+  }
 
   has_p <- "p" %in% names(targets)
   has_var <- "var" %in% names(targets)
@@ -487,15 +502,7 @@ n_multi.default <- function(
     }
   }
 
-  domain_cols <- setdiff(names(targets), known)
-
-  if (length(domain_cols) > 0L) {
-    message(
-      "Treating column(s) ",
-      paste(sQuote(domain_cols), collapse = ", "),
-      " as domain variable(s)"
-    )
-  }
+  domain_cols <- domains %||% character(0)
 
   if ("rel_var" %in% names(targets)) {
     rv_vals <- targets$rel_var[!is.na(targets$rel_var)]
@@ -623,7 +630,8 @@ n_multi.default <- function(
 #' Simple mode: compute n per indicator, take max
 #' @keywords internal
 #' @noRd
-.n_multi_simple <- function(targets) {
+.n_multi_simple <- function(targets, domain_cols = character(0), mode = "moe",
+                           prop_method = "wald") {
   n_vec <- .compute_simple_n(targets)
 
   idx <- which.max(n_vec)
@@ -645,6 +653,8 @@ n_multi.default <- function(
   .new_svyplan_n(
     n = n_max,
     type = "multi",
+    params = list(domain_cols = domain_cols, mode = mode,
+                  prop_method = prop_method),
     targets = targets,
     detail = detail,
     binding = binding_name
@@ -699,12 +709,18 @@ n_multi.default <- function(
 #' @keywords internal
 #' @noRd
 .n_multi_cluster <- function(targets, stage_cost, budget, n_psu,
-                            psu_size = NULL, ssu_size = NULL, fixed_cost = 0) {
+                            psu_size = NULL, ssu_size = NULL, fixed_cost = 0,
+                            domain_cols = character(0), mode = "cv",
+                            prop_method = "wald") {
   stages <- length(stage_cost)
   if (stages == 2L) {
-    .n_multi_2stage(targets, stage_cost, budget, n_psu, psu_size, fixed_cost)
+    .n_multi_2stage(targets, stage_cost, budget, n_psu, psu_size, fixed_cost,
+                    domain_cols = domain_cols, mode = mode,
+                    prop_method = prop_method)
   } else {
-    .n_multi_3stage(targets, stage_cost, budget, n_psu, psu_size, ssu_size, fixed_cost)
+    .n_multi_3stage(targets, stage_cost, budget, n_psu, psu_size, ssu_size,
+                    fixed_cost, domain_cols = domain_cols, mode = mode,
+                    prop_method = prop_method)
   }
 }
 
@@ -712,7 +728,9 @@ n_multi.default <- function(
 #' @keywords internal
 #' @noRd
 .n_multi_2stage <- function(targets, stage_cost, budget, n_psu,
-                           psu_size = NULL, fixed_cost = 0) {
+                           psu_size = NULL, fixed_cost = 0,
+                           domain_cols = character(0), mode = "cv",
+                           prop_method = "wald") {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   nr <- nrow(targets)
@@ -808,7 +826,8 @@ n_multi.default <- function(
     .binding = seq_len(nr) == binding_idx
   )
 
-  params <- list(stage_cost = stage_cost)
+  params <- list(stage_cost = stage_cost, domain_cols = domain_cols,
+                  mode = mode, prop_method = prop_method)
   if (!is.null(budget)) {
     params$budget <- budget
   }
@@ -839,7 +858,9 @@ n_multi.default <- function(
 #' @keywords internal
 #' @noRd
 .n_multi_3stage <- function(targets, stage_cost, budget, n_psu,
-                           psu_size = NULL, ssu_size = NULL, fixed_cost = 0) {
+                           psu_size = NULL, ssu_size = NULL, fixed_cost = 0,
+                           domain_cols = character(0), mode = "cv",
+                           prop_method = "wald") {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   C3 <- stage_cost[3L]
@@ -1150,7 +1171,8 @@ n_multi.default <- function(
     .binding = seq_len(nr) == binding_idx
   )
 
-  params <- list(stage_cost = stage_cost)
+  params <- list(stage_cost = stage_cost, domain_cols = domain_cols,
+                  mode = mode, prop_method = prop_method)
   if (!is.null(budget)) {
     params$budget <- budget
   }
@@ -1188,7 +1210,9 @@ n_multi.default <- function(
   multistage,
   joint = FALSE,
   min_n = NULL,
-  fixed_cost = 0
+  fixed_cost = 0,
+  mode = "moe",
+  prop_method = "wald"
 ) {
   domain_keys <- interaction(targets[domain_cols], drop = TRUE, sep = ":")
   domain_levels <- levels(domain_keys)
@@ -1206,7 +1230,9 @@ n_multi.default <- function(
       domain_levels,
       split_idx,
       min_n,
-      fixed_cost
+      fixed_cost,
+      mode = mode,
+      prop_method = prop_method
     ))
   }
 
@@ -1216,7 +1242,8 @@ n_multi.default <- function(
     # Drop domain columns for inner solve
     sub_inner <- sub[, !names(sub) %in% domain_cols, drop = FALSE]
     if (multistage) {
-      .n_multi_cluster(sub_inner, stage_cost, budget, n_psu, psu_size, ssu_size, fixed_cost)
+      .n_multi_cluster(sub_inner, stage_cost, budget, n_psu, psu_size,
+                       ssu_size, fixed_cost)
     } else {
       .n_multi_simple(sub_inner)
     }
@@ -1236,7 +1263,9 @@ n_multi.default <- function(
       psu_size,
       ssu_size,
       min_n,
-      fixed_cost
+      fixed_cost,
+      mode = mode,
+      prop_method = prop_method
     )
   } else {
     .aggregate_simple_domains(
@@ -1245,7 +1274,9 @@ n_multi.default <- function(
       domain_cols,
       domain_levels,
       split_idx,
-      min_n
+      min_n,
+      mode = mode,
+      prop_method = prop_method
     )
   }
 }
@@ -1259,7 +1290,9 @@ n_multi.default <- function(
   domain_cols,
   domain_levels,
   split_idx,
-  min_n = NULL
+  min_n = NULL,
+  mode = "moe",
+  prop_method = "wald"
 ) {
   domain_rows <- lapply(domain_levels, function(lev) {
     res <- results[[lev]]
@@ -1285,6 +1318,8 @@ n_multi.default <- function(
   res <- .new_svyplan_n(
     n = n_max,
     type = "multi",
+    params = list(domain_cols = domain_cols, mode = mode,
+                  prop_method = prop_method),
     targets = targets,
     detail = NULL,
     binding = binding_label,
@@ -1311,7 +1346,9 @@ n_multi.default <- function(
   psu_size = NULL,
   ssu_size = NULL,
   min_n = NULL,
-  fixed_cost = 0
+  fixed_cost = 0,
+  mode = "cv",
+  prop_method = "wald"
 ) {
   stages <- results[[1L]]$stages
   stage_names <- names(results[[1L]]$n)
@@ -1366,7 +1403,8 @@ n_multi.default <- function(
   )
   names(n_vec) <- stage_names
 
-  params <- list(stage_cost = stage_cost)
+  params <- list(stage_cost = stage_cost, domain_cols = domain_cols,
+                  mode = mode, prop_method = prop_method)
   if (!is.null(budget)) {
     params$budget <- budget
   }
@@ -1407,7 +1445,9 @@ n_multi.default <- function(
   domain_levels,
   split_idx,
   min_n = NULL,
-  fixed_cost = 0
+  fixed_cost = 0,
+  mode = "cv",
+  prop_method = "wald"
 ) {
   stages <- length(stage_cost)
   nd <- length(domain_levels)
@@ -1617,7 +1657,9 @@ n_multi.default <- function(
     psu_size,
     ssu_size,
     min_n,
-    fixed_cost
+    fixed_cost,
+    mode = mode,
+    prop_method = prop_method
   )
   res$params$joint <- TRUE
   if (fixed_cost > 0) {
@@ -1894,7 +1936,15 @@ n_multi.svyplan_prec <- function(targets, stage_cost = NULL, ...) {
   tgt$n <- NULL
   tgt$psu_size <- NULL
   tgt$ssu_size <- NULL
-  if (!is.null(x$detail)) {
+
+  stored_mode <- x$params$mode
+  if (!is.null(stored_mode) && stored_mode == "moe") {
+    tgt$moe <- x$detail$.moe
+    tgt$cv <- NULL
+  } else if (!is.null(stored_mode) && stored_mode %in% c("cv", "budget")) {
+    tgt$cv <- x$detail$.cv
+    tgt$moe <- NULL
+  } else if (!is.null(x$detail)) {
     if (".moe" %in% names(x$detail) && !all(is.na(x$detail$.moe))) {
       tgt$moe <- x$detail$.moe
       tgt$cv <- NULL
@@ -1903,7 +1953,9 @@ n_multi.svyplan_prec <- function(targets, stage_cost = NULL, ...) {
       tgt$moe <- NULL
     }
   }
+
   stage_cost <- stage_cost %||% x$params$stage_cost
+  domains_param <- x$params$domain_cols
   budget <- x$params$budget
   n_psu <- x$params$n_psu
   psu_size <- x$params$psu_size
@@ -1916,6 +1968,7 @@ n_multi.svyplan_prec <- function(targets, stage_cost = NULL, ...) {
     c(
       list(
         targets = tgt,
+        domains = domains_param,
         stage_cost = stage_cost,
         budget = budget,
         n_psu = n_psu,

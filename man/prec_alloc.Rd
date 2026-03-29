@@ -11,6 +11,7 @@ prec_alloc(x, ...)
 \method{prec_alloc}{default}(
   x,
   n,
+  domains = NULL,
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
@@ -28,6 +29,9 @@ For \code{svyplan_n} objects: an allocation result from \code{\link[=n_alloc]{n_
 \item{...}{Additional arguments passed to methods.}
 
 \item{n}{Stratum sample sizes, length \code{nrow(x)} (default method only).}
+
+\item{domains}{Character vector of column names in \code{x} to treat as
+domain identifiers, or \code{NULL} (default) for no domains.}
 
 \item{alpha}{Significance level, default 0.05.}
 

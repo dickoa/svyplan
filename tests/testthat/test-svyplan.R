@@ -27,12 +27,15 @@ test_that("svyplan with cluster context", {
 })
 
 test_that("svyplan with extended defaults", {
-  plan <- svyplan(alternative = "one.sided", method = "arcsine",
+  plan <- svyplan(alternative = "one.sided",
                   overlap = 0.5, rho = 0.6)
   expect_equal(plan$defaults$alternative, "one.sided")
-  expect_equal(plan$defaults$method, "arcsine")
   expect_equal(plan$defaults$overlap, 0.5)
   expect_equal(plan$defaults$rho, 0.6)
+})
+
+test_that("svyplan rejects ambiguous method parameter", {
+  expect_error(svyplan(method = "arcsine"), "unknown default")
 })
 
 test_that("svyplan accepts prop_method default", {

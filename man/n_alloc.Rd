@@ -10,6 +10,7 @@ n_alloc(frame, ...)
 
 \method{n_alloc}{default}(
   frame,
+  domains = NULL,
   n = NULL,
   cv = NULL,
   budget = NULL,
@@ -56,16 +57,15 @@ Defaults to 1 everywhere.}
 is included (census stratum).}
 }
 
-\strong{Domain columns:} any column not listed above is treated as a domain
-identifier. Domains define sub-populations that each contain one or
-more strata. When \code{cv} is the target, precision is enforced
-\emph{within every domain} (see Details). For example, a \code{province} column
-would make each province a separate domain whose strata are the rows
-that share the same province value.
-
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_alloc]{prec_alloc()}}.}
 
 \item{...}{Additional arguments passed to methods.}
+
+\item{domains}{Character vector of column names in \code{frame} to treat as
+domain identifiers, or \code{NULL} (default) for no domains. All names
+must exist in \code{frame}. Domains define sub-populations that each
+contain one or more strata. When \code{cv} is the target, precision is
+enforced \emph{within every domain} (see Details).}
 
 \item{n}{Total sample size. Specify exactly one of \code{n}, \code{cv}, or \code{budget}.}
 
@@ -122,7 +122,8 @@ the allocation formulas apply to the correct \eqn{N_h}, \eqn{S_h} pairs.
 
 \subsection{Domains vs. strata}{
 
-Domain columns partition strata into sub-populations. Each domain groups
+Domains are specified via the \code{domains} parameter. Domain columns
+partition strata into sub-populations. Each domain groups
 one or more strata. When \code{cv} is specified, the algorithm finds the
 minimum total \eqn{n} such that the \emph{worst-case} domain CV meets the
 target — i.e. every domain achieves the required precision.
@@ -179,7 +180,8 @@ frame_domains <- data.frame(
   mean_h = c(55, 48, 58, 50)
 )
 
-n_alloc(frame_domains, cv = 0.04, alloc = "power", power_q = 0.3)
+n_alloc(frame_domains, domains = "province",
+       cv = 0.04, alloc = "power", power_q = 0.3)
 
 }
 \references{

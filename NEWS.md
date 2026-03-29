@@ -10,7 +10,7 @@ Initial CRAN release.
   budget and cv modes).
 * `n_multi()` — multi-indicator sample size for surveys with several
   precision targets. Supports simple (single-stage) and multistage modes,
-  with automatic per-domain optimization and `min_n` floor.
+  with explicit per-domain optimization via `domains` and `min_n` floor.
 * `n_alloc()` — stratified sample allocation given a frame with stratum
   sizes and variabilities. Three solve modes: fixed total `n`, target `cv`,
   or `budget` constraint. Four allocation methods: proportional, Neyman,
@@ -40,9 +40,8 @@ recovers the sample size, and vice versa.
   panel overlap for repeated surveys. MDE mode searches both directions
   (`p2 > p1` and `p2 < p1`) and returns the closest detectable alternative.
   `alternative` replaces `sides` (R standard naming). Supports unequal group
-  sizes (`n = c(n1, n2)`), allocation ratio (`ratio`), and `method`
-  parameter for arcsine and log-odds transforms (Valliant, 2018,
-  Sections 4.3.4--4.3.5).
+  sizes (`n = c(n1, n2)`), allocation ratio (`ratio`), and arcsine and
+  log-odds transform methods (Valliant, 2018, Sections 4.3.4--4.3.5).
 * `power_mean()` — power analysis for two-sample mean tests. Same solve
   modes and features as `power_prop()`. `alternative` replaces `sides`.
   Supports unequal group variances (`var = c(v1, v2)`), unequal group
@@ -91,6 +90,25 @@ recovers the sample size, and vice versa.
   (`n_cluster()`, `n_multi()`, `prec_multi()`).
 * Stratified allocation functions use `unit_cost` for per-stratum unit costs
   (`n_alloc()`, `prec_alloc()`, `strata_bound()`).
+
+## Domain handling
+
+* `n_multi()`, `prec_multi()`, `n_alloc()`, and `prec_alloc()` now require
+  an explicit `domains` parameter to specify domain columns. Columns not
+  listed in `domains` are silently ignored, eliminating the previous
+  behaviour where any unrecognised column was automatically treated as a
+  domain variable.
+* `n_multi()` and `prec_multi()` results now store `params$domain_cols`,
+  `params$mode` (`"moe"`, `"cv"`, or `"budget"`), and `params$prop_method`
+  for clean round-trip conversion. The round-trip methods
+  (`prec_multi.svyplan_n`, `prec_multi.svyplan_cluster`,
+  `n_multi.svyplan_prec`) read these fields directly instead of
+  reverse-engineering domain columns from output tables.
+* `svyplan()` no longer accepts `method` as a plan default. The `method`
+  parameter is ambiguous across function families (`n_prop`: wald/wilson/logodds;
+  `power_prop`: wald/arcsine/logodds) and cannot be validated at construction
+  time. Pass `method` directly to individual functions instead. Use
+  `prop_method` for `n_multi()`/`prec_multi()` defaults.
 
 ## Common features
 

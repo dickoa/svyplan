@@ -123,14 +123,14 @@ test_that("n_alloc: budget mode", {
   expect_true(abs(total_cost - 500) < 1)
 })
 
-test_that("n_alloc: domain auto-detection", {
+test_that("n_alloc: explicit domains parameter", {
   frame <- data.frame(
     region = c("N", "N", "S", "S"),
     N_h = c(1000, 2000, 1500, 500),
     S_h = c(10, 20, 15, 8),
     mean_h = c(50, 70, 60, 45)
   )
-  res <- n_alloc(frame, cv = 0.05)
+  res <- n_alloc(frame, domains = "region", cv = 0.05)
   expect_false(is.null(res$domains))
   expect_equal(nrow(res$domains), 2L)
   expect_true(all(res$domains$.cv <= 0.05 + 1e-3))
@@ -143,7 +143,7 @@ test_that("n_alloc: domain n target", {
     S_h = c(10, 20, 15, 8),
     mean_h = c(50, 70, 60, 45)
   )
-  res <- n_alloc(frame, n = 500)
+  res <- n_alloc(frame, domains = "region", n = 500)
   expect_false(is.null(res$domains))
 })
 
@@ -258,6 +258,7 @@ test_that("n_alloc: duplicate stratum within domain rejected", {
         S_h = c(1, 2, 3),
         mean_h = c(50, 60, 55)
       ),
+      domains = "region",
       cv = 0.05
     ),
     "duplicate stratum.*domain"
@@ -272,7 +273,7 @@ test_that("n_alloc: same stratum label across domains is allowed", {
     S_h = c(10, 20),
     mean_h = c(50, 60)
   )
-  res <- n_alloc(frame, cv = 0.05)
+  res <- n_alloc(frame, domains = "region", cv = 0.05)
   expect_s3_class(res, "svyplan_n")
 })
 
@@ -335,7 +336,7 @@ test_that("n_alloc: domain print output", {
     S_h = c(10, 20, 15, 8),
     mean_h = c(50, 70, 60, 45)
   )
-  res <- n_alloc(frame, cv = 0.05)
+  res <- n_alloc(frame, domains = "region", cv = 0.05)
   out <- capture.output(print(res))
   expect_true(any(grepl("Domains", out)))
 })
@@ -367,7 +368,7 @@ test_that("n_alloc: cv domain convergence", {
     S_h = c(10, 20, 15, 8, 12),
     mean_h = c(50, 70, 60, 45, 55)
   )
-  res <- n_alloc(frame, cv = 0.04)
+  res <- n_alloc(frame, domains = "region", cv = 0.04)
   expect_true(all(res$domains$.cv <= 0.04 + 1e-3))
 })
 
@@ -483,4 +484,25 @@ test_that("n_alloc: predict switches from n to cv mode", {
   grid <- predict(res, data.frame(cv = c(0.05, 0.10)))
   expect_equal(nrow(grid), 2L)
   expect_true(grid$n[1] > grid$n[2])
+})
+
+test_that("n_alloc: domains must be character", {
+  frame <- data.frame(N_h = 100, S_h = 10, region = "A")
+  expect_error(n_alloc(frame, domains = 1, n = 50), "character")
+})
+
+test_that("n_alloc: domains columns must exist in frame", {
+  frame <- data.frame(N_h = 100, S_h = 10)
+  expect_error(n_alloc(frame, domains = "region", n = 50), "not found")
+})
+
+test_that("n_alloc: extra columns ignored when domains is NULL", {
+  frame <- data.frame(
+    region = c("N", "S"),
+    N_h = c(1000, 2000),
+    S_h = c(10, 15),
+    mean_h = c(50, 60)
+  )
+  res <- n_alloc(frame, n = 100)
+  expect_null(res$domains)
 })

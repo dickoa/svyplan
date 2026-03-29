@@ -314,10 +314,10 @@ targets_dom <- data.frame(
   deff       = c(1.5, 2.5, 1.2, 1.8, 2.0, 3.0)
 )
 
-n_multi(targets_dom)
+n_multi(targets_dom, domains = "residence")
 ```
 
-Any column not recognized as a standard parameter (`name`, `p`, `moe`, `deff`, etc.) is automatically treated as a domain variable.
+Domain columns are specified explicitly via the `domains` parameter.
 
 ### MICS/DHS-style relative margin of error
 
@@ -335,7 +335,7 @@ targets_mics <- data.frame(
 )
 targets_mics$moe <- rme * targets_mics$p
 
-n_multi(targets_mics)
+n_multi(targets_mics, domains = "region")
 ```
 
 The MICS template reports sample size in **households**. svyplan returns the number of **individuals** in the target population. To convert, divide by the expected number of eligible individuals per household: `n_hh = ceiling(n / (pb * hh_size))`, where `pb` is the share of the target population in the total population and `hh_size` is the average household size.
@@ -345,7 +345,7 @@ The MICS template reports sample size in **households**. svyplan returns the num
 The `min_n` parameter sets a floor for the per-domain sample size:
 
 ```{r n-multi-min-n}
-n_multi(targets_dom, min_n = 300)
+n_multi(targets_dom, domains = "residence", min_n = 300)
 ```
 
 ### Mixing proportions and means
@@ -582,7 +582,8 @@ frame_domains <- data.frame(
 )
 
 # Minimum total n such that each province meets the CV target
-n_alloc(frame_domains, cv = 0.04, alloc = "power", power_q = 0.3)
+n_alloc(frame_domains, domains = "province",
+        cv = 0.04, alloc = "power", power_q = 0.3)
 ```
 
 `prec_alloc()` computes the achieved precision for any allocation:
