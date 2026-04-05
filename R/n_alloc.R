@@ -6,33 +6,54 @@
 #' urbanicity), cross them into a single variable beforehand so that each row
 #' of `frame` represents one unique stratum.
 #'
-#' @param frame For the default method: data frame with **one row per
-#'   stratum**. Each row describes a population stratum defined by a single
-#'   stratification variable (or a cross of several variables collapsed into
-#'   one). When multiple classification variables exist, build the crossed
-#'   strata before calling `n_alloc` (e.g. with [interaction()]).
+#' @param frame For the default method: a **stratum-level** data frame
+#'   describing the population you want to sample. Each row represents one
+#'   stratum — a subgroup of the population defined by a stratification
+#'   variable such as region, age group, or urbanicity. The values in this
+#'   frame typically come from a census, a population register, or a
+#'   previous survey.
+#'
+#'   When a design stratifies by several variables at once (e.g. region
+#'   \eqn{\times} urbanicity), cross them into a single variable before
+#'   calling `n_alloc` (e.g. with [interaction()]) so that each row maps
+#'   to exactly one population cell.
 #'
 #'   **Required columns:**
 #'   \describe{
-#'     \item{`N_h`}{Population size per stratum (positive finite integer or
-#'       numeric).}
-#'     \item{`S_h` or `var`}{Stratum standard deviation or variance
-#'       (non-negative finite). Provide exactly one.}
+#'     \item{`N`}{Number of units (e.g. households, individuals) in
+#'       each stratum. These are population counts, not sample sizes.
+#'       Must be positive and finite.}
+#'     \item{`sd` **or** `var`}{A measure of how spread out the variable
+#'       of interest is within each stratum. Provide **exactly one**:
+#'       \itemize{
+#'         \item `sd`: the stratum standard deviation
+#'           (\eqn{\sqrt{\text{variance}}}), or
+#'         \item `var`: the stratum variance.
+#'       }
+#'       Both must be non-negative and finite. When all strata have
+#'       equal variability (or variability is unknown), a constant
+#'       column (e.g. `sd = 1`) yields proportional-to-size allocation.}
 #'   }
 #'
 #'   **Optional columns:**
 #'   \describe{
-#'     \item{`stratum`}{Stratum label. If omitted, row numbers are used.
-#'       Must be unique (or unique within each domain when domain columns
-#'       are present).}
-#'     \item{`mean_h` or `p_h`}{Stratum mean or proportion. Required when
-#'       solving for `cv`. When `p_h` is used it must lie in \eqn{[0, 1]}.}
-#'     \item{`cost_h`}{Per-unit cost in each stratum (positive finite).
-#'       Defaults to 1 everywhere.}
-#'     \item{`max_weight`}{Maximum sampling weight \eqn{N_h / n_h}. Use
-#'       `NA` for unconstrained strata.}
-#'     \item{`take_all`}{Logical (or 0/1). If `TRUE`, the entire stratum
-#'       is included (census stratum).}
+#'     \item{`stratum`}{A label identifying each stratum (e.g.
+#'       `"Urban"`, `"Rural"`). If omitted, row numbers are used. Must
+#'       be unique, or unique within each domain when `domains` is set.}
+#'     \item{`mean` **or** `p`}{The stratum population mean or
+#'       proportion of the variable of interest. **Required when solving
+#'       for `cv`**, because the coefficient of variation is defined
+#'       relative to the mean. Use `mean` for continuous variables
+#'       and `p` (in \eqn{[0, 1]}) for binary (yes/no) variables.}
+#'     \item{`cost`}{Per-unit interviewing cost in each stratum
+#'       (positive, finite). Set higher values for strata that are more
+#'       expensive to reach. Defaults to 1 everywhere (equal cost).}
+#'     \item{`max_weight`}{Maximum allowed sampling weight
+#'       \eqn{N_h / n_h}. Caps how under-represented a stratum can be.
+#'       Use `NA` for strata without a cap.}
+#'     \item{`take_all`}{Logical (or 0/1). If `TRUE`, every unit in the
+#'       stratum is included — a census stratum. Useful for small strata
+#'       whose total population is tiny enough to enumerate.}
 #'   }
 #'
 #'   For `svyplan_prec` objects: a precision result from [prec_alloc()].
@@ -43,15 +64,18 @@
 #'   contain one or more strata. When `cv` is the target, precision is
 #'   enforced *within every domain* (see Details).
 #' @param n Total sample size. Specify exactly one of `n`, `cv`, or `budget`.
-#' @param cv Target coefficient of variation (requires `mean_h` or `p_h`
-#'   in `frame`). When domain columns are present, this target is enforced
-#'   in each domain. Specify exactly one of `n`, `cv`, or `budget`.
+#' @param cv Target coefficient of variation (relative standard error).
+#'   For example, `cv = 0.05` means the standard error of the estimated
+#'   population mean or total should be at most 5 percent of the estimate.
+#'   Requires `mean` or `p` in `frame`. When domain columns are
+#'   present, this target is enforced in each domain. Specify exactly one
+#'   of `n`, `cv`, or `budget`.
 #' @param budget Total field budget. Specify exactly one of `n`, `cv`,
 #'   or `budget`.
 #' @param alloc Allocation rule: `"neyman"` (default), `"optimal"`,
 #'   `"proportional"`, or `"power"`.
 #' @param unit_cost Optional scalar or length-`nrow(frame)` vector of
-#'   per-stratum unit costs, overriding `frame$cost_h`.
+#'   per-stratum unit costs, overriding `frame$cost`.
 #' @param alpha Significance level, default 0.05.
 #' @param deff Design effect multiplier (> 0).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1.
@@ -64,10 +88,32 @@
 #'   allocation table in `$detail`.
 #'
 #' @details
-#' ## Frame structure
+#' ## Building the frame
 #'
-#' Each row of `frame` represents one stratum of a **single** stratification
-#' variable. When a design stratifies by several variables (e.g. region
+#' The `frame` is a data frame where **each row is one stratum** of
+#' your target population. It summarizes what you know about each
+#' subgroup *before* sampling. A typical workflow:
+#'
+#' 1. **Identify strata** from a census or register (e.g. provinces,
+#'    urban/rural areas, age groups).
+#' 2. **Look up `N`** — the population count per stratum.
+#' 3. **Estimate `sd`** — the standard deviation of your key variable
+#'    within each stratum (from a pilot survey, a previous census, or
+#'    expert judgement). If unknown, set `sd = 1` everywhere for
+#'    proportional allocation.
+#' 4. **Add `mean` or `p`** if you want to solve for a target CV.
+#'
+#' A minimal frame:
+#'
+#' ```
+#' frame <- data.frame(
+#'   stratum = c("Urban", "Rural"),
+#'   N       = c(50000, 120000),
+#'   sd      = c(12, 20)
+#' )
+#' ```
+#'
+#' When a design stratifies by several variables (e.g. region
 #' \eqn{\times} urbanicity), cross them into one variable first:
 #'
 #' ```
@@ -75,7 +121,7 @@
 #' ```
 #'
 #' This ensures that each row maps to exactly one population cell and that
-#' the allocation formulas apply to the correct \eqn{N_h}, \eqn{S_h} pairs.
+#' the allocation formulas apply to the correct per-stratum `N` and `sd` pairs.
 #'
 #' ## Domains vs. strata
 #'
@@ -117,10 +163,10 @@
 #' @examples
 #' frame <- data.frame(
 #'   stratum = c("A", "B", "C"),
-#'   N_h = c(4000, 3000, 3000),
-#'   S_h = c(10, 15, 8),
-#'   mean_h = c(50, 60, 55),
-#'   cost_h = c(1, 1.5, 1)
+#'   N    = c(4000, 3000, 3000),
+#'   sd   = c(10, 15, 8),
+#'   mean = c(50, 60, 55),
+#'   cost = c(1, 1.5, 1)
 #' )
 #'
 #' n_alloc(frame, n = 600)
@@ -137,9 +183,9 @@
 #' frame_domains <- data.frame(
 #'   province = c("North", "North", "South", "South"),
 #'   stratum = c("Urban", "Rural", "Urban", "Rural"),
-#'   N_h = c(2000, 3000, 1800, 3200),
-#'   S_h = c(12, 18, 10, 16),
-#'   mean_h = c(55, 48, 58, 50)
+#'   N    = c(2000, 3000, 1800, 3200),
+#'   sd   = c(12, 18, 10, 16),
+#'   mean = c(55, 48, 58, 50)
 #' )
 #'
 #' n_alloc(frame_domains, domains = "province",
@@ -231,7 +277,7 @@ n_alloc.default <- function(
   } else if (mode == "cv") {
     check_scalar(cv, "cv")
     if (anyNA(mean_h)) {
-      stop("'mean_h' (or 'p_h') is required in frame when solving for 'cv'",
+      stop("'mean' (or 'p') is required in frame when solving for 'cv'",
            call. = FALSE)
     }
 
@@ -378,7 +424,10 @@ n_alloc.svyplan_prec <- function(
 #'
 #' Compute aggregate precision for a stratum allocation.
 #'
-#' @param x For the default method: a frame data frame with stratum metadata.
+#' @param x For the default method: a stratum-level data frame in the same
+#'   format as the `frame` argument to [n_alloc()] (one row per stratum,
+#'   with at least `N` and `sd` or `var` columns; see [n_alloc()] for
+#'   the full column reference).
 #'   For `svyplan_n` objects: an allocation result from [n_alloc()].
 #' @param ... Additional arguments passed to methods.
 #' @param n Stratum sample sizes, length `nrow(x)` (default method only).
@@ -388,7 +437,7 @@ n_alloc.svyplan_prec <- function(
 #' @param deff Design effect multiplier (> 0).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1.
 #' @param unit_cost Optional scalar or length-`nrow(x)` vector of
-#'   per-stratum unit costs, overriding `x$cost_h`.
+#'   per-stratum unit costs, overriding `x$cost`.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_prec` object with `type = "alloc"`.
@@ -397,9 +446,9 @@ n_alloc.svyplan_prec <- function(
 #'
 #' @examples
 #' frame <- data.frame(
-#'   N_h = c(4000, 3000, 3000),
-#'   S_h = c(10, 15, 8),
-#'   mean_h = c(50, 60, 55)
+#'   N    = c(4000, 3000, 3000),
+#'   sd   = c(10, 15, 8),
+#'   mean = c(50, 60, 55)
 #' )
 #' res <- n_alloc(frame, n = 600)
 #' prec_alloc(res)
@@ -479,8 +528,8 @@ prec_alloc.svyplan_n <- function(x, ...) {
   }
   p <- obj$params
   n_h <- p$n_h
-  if (is.null(n_h) && !is.null(obj$detail) && "n_h" %in% names(obj$detail)) {
-    n_h <- obj$detail$n_h
+  if (is.null(n_h) && !is.null(obj$detail) && "n" %in% names(obj$detail)) {
+    n_h <- obj$detail$n
   }
   if (is.null(n_h)) {
     stop("allocation detail does not contain stratum sample sizes",
@@ -505,18 +554,25 @@ prec_alloc.svyplan_n <- function(x, ...) {
     stop("'frame' must be a non-empty data frame", call. = FALSE)
   }
 
-  if (!"N_h" %in% names(frame)) {
-    stop("'frame' must contain an 'N_h' column", call. = FALSE)
+  if (!"N" %in% names(frame)) {
+    stop("'frame' must contain an 'N' column", call. = FALSE)
   }
-  N_h <- frame$N_h
+  N_h <- frame$N
   if (!is.numeric(N_h) || anyNA(N_h) || any(!is.finite(N_h)) || any(N_h <= 0)) {
-    stop("'N_h' must contain positive finite values", call. = FALSE)
+    stop("'N' must contain positive finite values", call. = FALSE)
   }
 
-  if ("S_h" %in% names(frame)) {
-    S_h <- frame$S_h
+  if ("sd" %in% names(frame) && "var" %in% names(frame)) {
+    stop("'frame' must contain either 'sd' or 'var', not both", call. = FALSE)
+  }
+  if ("mean" %in% names(frame) && "p" %in% names(frame)) {
+    stop("'frame' must contain either 'mean' or 'p', not both", call. = FALSE)
+  }
+
+  if ("sd" %in% names(frame)) {
+    S_h <- frame$sd
     if (!is.numeric(S_h) || anyNA(S_h) || any(!is.finite(S_h)) || any(S_h < 0)) {
-      stop("'S_h' must contain non-negative finite values", call. = FALSE)
+      stop("'sd' must contain non-negative finite values", call. = FALSE)
     }
   } else if ("var" %in% names(frame)) {
     vv <- frame$var
@@ -525,31 +581,31 @@ prec_alloc.svyplan_n <- function(x, ...) {
     }
     S_h <- sqrt(vv)
   } else {
-    stop("'frame' must contain either 'S_h' or 'var'", call. = FALSE)
+    stop("'frame' must contain either 'sd' or 'var'", call. = FALSE)
   }
   if (all(S_h == 0)) {
-    warning("all 'S_h' values are zero; allocation has no variability to distribute",
+    warning("all 'sd' values are zero; allocation has no variability to distribute",
             call. = FALSE)
   }
 
   mean_h <- rep(NA_real_, nrow(frame))
-  if ("mean_h" %in% names(frame)) {
-    mean_h <- frame$mean_h
-  } else if ("p_h" %in% names(frame)) {
-    ph <- frame$p_h
+  if ("mean" %in% names(frame)) {
+    mean_h <- frame$mean
+  } else if ("p" %in% names(frame)) {
+    ph <- frame$p
     if (!is.numeric(ph) || anyNA(ph) || any(!is.finite(ph))) {
-      stop("'p_h' must contain finite numeric values", call. = FALSE)
+      stop("'p' must contain finite numeric values", call. = FALSE)
     }
     if (any(ph < 0 | ph > 1)) {
-      stop("'p_h' must contain values in [0, 1]", call. = FALSE)
+      stop("'p' must contain values in [0, 1]", call. = FALSE)
     }
     mean_h <- ph
   }
   if (any(!is.na(mean_h) & !is.finite(mean_h))) {
-    stop("'mean_h' (or 'p_h') must contain finite values", call. = FALSE)
+    stop("'mean' (or 'p') must contain finite values", call. = FALSE)
   }
   if (!all(is.na(mean_h)) && all(mean_h == 0, na.rm = TRUE)) {
-    warning("all 'mean_h' (or 'p_h') values are zero; CV will be Inf",
+    warning("all 'mean' (or 'p') values are zero; CV will be Inf",
             call. = FALSE)
   }
 
@@ -564,11 +620,11 @@ prec_alloc.svyplan_n <- function(x, ...) {
     } else {
       stop("'unit_cost' must have length 1 or nrow(frame)", call. = FALSE)
     }
-  } else if ("cost_h" %in% names(frame)) {
-    cost_h <- frame$cost_h
+  } else if ("cost" %in% names(frame)) {
+    cost_h <- frame$cost
     if (!is.numeric(cost_h) || anyNA(cost_h) || any(!is.finite(cost_h)) ||
         any(cost_h <= 0)) {
-      stop("'cost_h' must contain positive finite values", call. = FALSE)
+      stop("'cost' must contain positive finite values", call. = FALSE)
     }
   } else {
     cost_h <- rep(1, nrow(frame))
@@ -719,7 +775,7 @@ prec_alloc.svyplan_n <- function(x, ...) {
   cv <- NA_real_
   if (!all(is.na(mean_h))) {
     if (anyNA(mean_h)) {
-      stop("'mean_h' (or 'p_h') must be complete to compute aggregate CV",
+      stop("'mean' (or 'p') must be complete to compute aggregate CV",
            call. = FALSE)
     }
     ybar <- sum(W_h * mean_h)
@@ -734,11 +790,11 @@ prec_alloc.svyplan_n <- function(x, ...) {
 .alloc_detail <- function(prep, n_h, m_h, M_h, resp_rate, deff) {
   out <- data.frame(
     stratum = prep$stratum,
-    N_h = prep$N_h,
-    S_h = prep$S_h,
-    cost_h = prep$cost_h,
-    n_h = n_h,
-    n_h_int = .round_oric(n_h),
+    N = prep$N_h,
+    sd = prep$S_h,
+    cost = prep$cost_h,
+    n = n_h,
+    n_int = .round_oric(n_h),
     weight = prep$N_h / n_h,
     n_eff = n_h * resp_rate / deff,
     .lower = m_h,
@@ -746,7 +802,7 @@ prec_alloc.svyplan_n <- function(x, ...) {
     .binding = abs(n_h - m_h) < 1e-6 | abs(n_h - M_h) < 1e-6
   )
   if (any(prep$take_all)) out$take_all <- prep$take_all
-  if (!all(is.na(prep$mean_h))) out$mean_h <- prep$mean_h
+  if (!all(is.na(prep$mean_h))) out$mean <- prep$mean_h
   out
 }
 

@@ -13,11 +13,11 @@
 #'
 #' @details
 #' `plot.svyplan_strata()` draws a bar chart of per-stratum sampling
-#' fractions (`f_h = n_h / N_h`) using [barplot()]. This shows how
+#' fractions (`f = n / N`) using [barplot()]. This shows how
 #' intensively each stratum is sampled, under Neyman allocation,
 #' high-variance strata get higher fractions. A dashed horizontal line
 #' marks the overall sampling fraction (`n / N`). Defaults:
-#' `col = "grey40"`, `ylab = "Sampling fraction (f_h)"`, `las = 2`.
+#' `col = "grey40"`, `ylab = "Sampling fraction (f)"`, `las = 2`.
 #'
 #' `plot.svyplan_power()` draws the power-vs-sample-size curve using
 #' [plot()]. The solved point is shown as a filled dot, with dashed
@@ -62,7 +62,7 @@ plot.svyplan_strata <- function(x, ...) {
     labels <- paste0("H", strata$stratum)
   }
 
-  f_h <- strata$n_h / strata$N_h
+  f_h <- strata$n / strata$N
   names(f_h) <- labels
 
   method_label <- switch(
@@ -77,13 +77,13 @@ plot.svyplan_strata <- function(x, ...) {
   defaults <- list(
     col = "grey40",
     main = sprintf("%s (%d strata, cv = %.4f)", method_label, x$n_strata, x$cv),
-    ylab = "Sampling fraction (f_h)",
+    ylab = "Sampling fraction (f)",
     las = 2
   )
   args <- modifyList(defaults, list(...))
   do.call(barplot, c(list(height = f_h), args))
 
-  f_overall <- sum(strata$n_h) / sum(strata$N_h)
+  f_overall <- sum(strata$n) / sum(strata$N)
   abline(h = f_overall, lty = 2, col = "grey50")
 
   invisible(x)

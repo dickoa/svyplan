@@ -23,8 +23,10 @@ varcomp(x, ...)
 
 \item{data}{A data frame (required for formula interface).}
 
-\item{prob}{First-stage selection probabilities. A one-sided formula
-(e.g., \code{~pp}) when using the formula interface, or a numeric vector.
+\item{prob}{First-stage selection probabilities (PPS). A one-sided
+formula (e.g., \code{~pp}) when using the formula interface, or a numeric
+vector. Values must be one per PSU (repeated for each unit within the
+PSU) and must sum to 1 across PSUs (tolerance 1e-3).
 \code{NULL} (default) assumes SRS.}
 
 \item{stage_id}{A list of stage-ID vectors (required for vector interface).

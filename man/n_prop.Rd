@@ -29,21 +29,36 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_prop]
 
 \item{...}{Additional arguments passed to methods.}
 
-\item{moe}{Desired margin of error. Specify exactly one of \code{moe} or \code{cv}.}
+\item{moe}{Desired margin of error — the half-width of the confidence
+interval on the proportion scale. For example, \code{moe = 0.05} means
+the 95 percent CI should be no wider than +/- 5 percentage points.
+Specify exactly one of \code{moe} or \code{cv}.}
 
-\item{cv}{Target coefficient of variation. Specify exactly one of \code{moe}
-or \code{cv}.}
+\item{cv}{Target coefficient of variation (relative standard error).
+For example, \code{cv = 0.10} means the standard error should be at
+most 10 percent of the estimate. Use \code{cv} when you want precision
+to scale with the estimate (common in economic surveys); use \code{moe}
+when you want a fixed absolute precision (common in health/DHS
+surveys). Specify exactly one of \code{moe} or \code{cv}.}
 
 \item{alpha}{Significance level, default 0.05.}
 
 \item{N}{Population size. \code{Inf} (default) means no finite population
 correction.}
 
-\item{deff}{Design effect multiplier (> 0). Values < 1 are valid for
-efficient designs (e.g., stratified sampling with Neyman allocation).}
+\item{deff}{Design effect multiplier (> 0). Accounts for the loss of
+precision from a complex design (clustering, unequal weights)
+compared to simple random sampling. A DEFF of 1.5 means 50 percent
+more interviews are needed for the same precision. Estimate from a
+previous survey, use \code{\link[=design_effect]{design_effect()}} to compute it, or apply a
+rule of thumb (1.5--2.0 for typical cluster designs). Values < 1
+are valid for efficient designs (e.g., stratified sampling with
+Neyman allocation).}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
-adjustment). The required sample size is inflated by \code{1 / resp_rate}.}
+adjustment). The required sample size is inflated by \code{1 / resp_rate}.
+Estimate from response rates observed in similar surveys in the same
+population.}
 
 \item{method}{One of \code{"wald"} (default), \code{"wilson"}, or \code{"logodds"}.}
 
@@ -74,9 +89,15 @@ has poor coverage; \code{method = "wilson"} is recommended in those cases.
 For the Wilson and log-odds methods, the design effect is applied as a
 multiplicative factor to the final SRS sample size, which is an
 approximation.
+\subsection{Finite population correction}{
 
-The Wald FPC uses the Cochran (1977, Ch. 3) form with an \code{N/(N-1)} factor
-to account for the Bernoulli finite-population variance.
+Setting \code{N} to a finite value reduces the required sample size when
+the sampling fraction (n/N) is non-negligible. As a rule of thumb,
+FPC has little effect when n/N < 5 percent. The Wald FPC uses the
+Cochran (1977, Ch. 3) form with an \code{N/(N-1)} factor to account for
+the Bernoulli finite-population variance. This differs from
+\code{\link[=n_mean]{n_mean()}}, where no \code{N/(N-1)} adjustment is needed because the
+variance is already defined on \code{N-1} degrees of freedom.
 
 All methods use the normal (z) quantile. This is standard for survey
 sampling where the sample size is large enough for the CLT to apply.
@@ -85,6 +106,7 @@ When called on a \code{svyplan_prec} object, parameters are extracted from the
 stored result. Passing a different \code{method} evaluates the stored precision
 target under that formula; the round-trip will not be exact because the
 precision was computed under the original method.
+}
 }
 \examples{
 # Wald, absolute margin of error

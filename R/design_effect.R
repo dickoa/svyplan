@@ -12,6 +12,33 @@
 #'   `$overall` (numeric scalar).
 #'
 #' @details
+#' The design effect (DEFF) measures how much a complex design inflates
+#' variance compared to a simple random sample of the same size.
+#' DEFF = 1 means no inflation; DEFF = 2 means the variance is doubled
+#' (equivalently, you need twice the sample size for the same precision).
+#'
+#' ## Choosing a method
+#'
+#' **After data collection (diagnostic)** — use survey weights to assess
+#' how much precision was lost due to the complex design:
+#'
+#' - **kish**: Weights only. Quick, outcome-independent summary.
+#'   Good default for an overall DEFF estimate.
+#' - **henry**: Weights + outcome + calibration covariate. Accounts for
+#'   calibration weighting.
+#' - **spencer**: Weights + outcome + selection probabilities. Accounts
+#'   for correlation between weights and the outcome.
+#' - **cr**: Weights + outcome + strata/cluster IDs. Full Chen-Rust
+#'   decomposition for multistage stratified designs; returns
+#'   per-stratum and overall DEFF.
+#'
+#' **Before data collection (planning)** — estimate an expected DEFF
+#' to inflate a simple-random-sample size calculation:
+#'
+#' - **cluster**: Uses `delta` (homogeneity) and `psu_size` to compute
+#'   DEFF = 1 + (psu_size - 1) * delta. Pass the result as the `deff`
+#'   argument to [n_prop()], [n_mean()], or other sizing functions.
+#'
 #' The `"kish"` method uses only weights and produces a single survey-wide
 #' DEFF. The `"henry"`, `"spencer"`, and `"cr"` methods are
 #' **outcome-dependent**: they require `y`, and the resulting DEFF varies
@@ -34,7 +61,8 @@
 #' 5(2), 111--130.
 #'
 #' @seealso [effective_n()] for effective sample size, [varcomp()] for
-#'   estimating inputs to the `"cluster"` method.
+#'   estimating inputs to the `"cluster"` method, [n_cluster()] for
+#'   directly optimizing a multistage design using `delta`.
 #'
 #' @examples
 #' # Kish design effect from weights
@@ -306,7 +334,7 @@ design_effect.default <- function(
         return(list(
           strata = data.frame(
             stratum = strat,
-            n_h = nh,
+            n = nh,
             cv2_w = cv2h,
             deff_w = 1 + cv2h,
             deff_s = na_vec
@@ -317,8 +345,8 @@ design_effect.default <- function(
         return(list(
           strata = data.frame(
             stratum = strat,
-            n_h = nh,
-            rho_h = na_vec,
+            n = nh,
+            rho =na_vec,
             cv2_w = cv2h,
             deff_w = 1 + cv2h,
             deff_c = na_vec,
@@ -422,7 +450,7 @@ design_effect.default <- function(
   singletons <- which(nh <= 1L)
   if (length(singletons) > 0L) {
     warning(
-      "singleton stratum/strata (n_h = 1) at position(s) ",
+      "singleton stratum/strata (n = 1) at position(s) ",
       paste(singletons, collapse = ", "),
       "; contribution set to zero",
       call. = FALSE

@@ -28,11 +28,11 @@ results.
 }
 \details{
 \code{plot.svyplan_strata()} draws a bar chart of per-stratum sampling
-fractions (\code{f_h = n_h / N_h}) using \code{\link[=barplot]{barplot()}}. This shows how
+fractions (\code{f = n / N}) using \code{\link[=barplot]{barplot()}}. This shows how
 intensively each stratum is sampled, under Neyman allocation,
 high-variance strata get higher fractions. A dashed horizontal line
 marks the overall sampling fraction (\code{n / N}). Defaults:
-\code{col = "grey40"}, \code{ylab = "Sampling fraction (f_h)"}, \code{las = 2}.
+\code{col = "grey40"}, \code{ylab = "Sampling fraction (f)"}, \code{las = 2}.
 
 \code{plot.svyplan_power()} draws the power-vs-sample-size curve using
 \code{\link[=plot]{plot()}}. The solved point is shown as a filled dot, with dashed

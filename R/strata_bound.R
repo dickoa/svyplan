@@ -11,8 +11,11 @@
 #'   `certain` is specified). Must be >= 2.
 #' @param n Target total sample size. Specify at most one of `n` or `cv`.
 #'   Required for methods `"lh"` and `"kozak"`.
-#' @param cv Target coefficient of variation. Specify at most one of `n`
-#'   or `cv`. Required for methods `"lh"` and `"kozak"`.
+#' @param cv Target coefficient of variation (relative standard error).
+#'   For example, `cv = 0.05` means the standard error of the estimated
+#'   population total or mean should be at most 5 percent of the estimate.
+#'   Specify at most one of `n` or `cv`. Required for methods `"lh"` and
+#'   `"kozak"`.
 #' @param method Stratification method: `"cumrootf"` (Dalenius-Hodges),
 #'   `"geo"` (geometric), `"lh"` (Lavallée-Hidiroglou), or `"kozak"`
 #'   (random search). Default `"lh"`.
@@ -50,23 +53,27 @@
 #' }
 #'
 #' @details
-#' The four methods differ in approach:
+#' ## Choosing a method
+#'
+#' The four methods differ in approach and use case:
 #'
 #' - **cumrootf**: Dalenius-Hodges (1959) cumulative root frequency rule.
-#'   Non-iterative, does not require `n` or `cv`.
+#'   Non-iterative, does not require `n` or `cv`. Best for a quick
+#'   first look at reasonable boundary positions.
 #' - **geo**: Gunning-Horgan (2004) geometric progression. Non-iterative,
-#'   requires `x > 0`.
-#' - **lh**: Lavallée-Hidiroglou (1988) iterative coordinate-wise
-#'   optimization. Requires `n` or `cv`.
+#'   requires `x > 0`. Works well for right-skewed positive variables
+#'   (e.g. income, revenue) where a log-scale spacing is natural.
+#' - **lh** (default): Lavallée-Hidiroglou (1988) iterative coordinate-wise
+#'   optimization. Requires `n` or `cv`. The recommended choice when you
+#'   know the sample size or target CV: it directly minimizes the
+#'   objective and is fast even on large frames.
 #' - **kozak**: Kozak (2004) random search, escapes local minima. Requires
-#'   `n` or `cv`.
+#'   `n` or `cv`. Use for highly skewed or multimodal data where `"lh"`
+#'   may get trapped in a local optimum. Slower but more robust.
 #'
-#' When `n` or `cv` is available, `"lh"` (the default) directly
-#' minimizes the objective and is fast even on large frames. Use `"kozak"`
-#' for highly skewed or multimodal data where coordinate-wise optimization
-#' may get trapped in local minima. The non-iterative methods (`"cumrootf"`,
-#' `"geo"`) are useful for quick exploratory stratification or when neither
-#' `n` nor `cv` is known yet.
+#' In summary: use `"lh"` by default; switch to `"kozak"` if the
+#' distribution is difficult; fall back to `"cumrootf"` or `"geo"` when
+#' you do not yet have `n` or `cv`.
 #'
 #' Allocation is controlled by the `alloc` parameter. Four methods are
 #' available:
@@ -81,11 +88,12 @@
 #'   (`power_q = 1`, equivalent to Neyman) and near-equal subnational CVs
 #'   (`power_q = 0`).
 #'
-#' Stratum allocations `n_h` are rounded to integers using the ORIC method
-#' (Cont and Heidari, 2015), which preserves `sum(n_h) = n` while minimizing
+#' Stratum allocations are rounded to integers using the ORIC method
+#' (Cont and Heidari, 2015), which preserves `sum(n) = n` while minimizing
 #' rounding distortion.
 #'
-#' @seealso [predict.svyplan_strata] to assign new data to strata.
+#' @seealso [predict.svyplan_strata] to assign new data to strata,
+#'   [n_alloc()] to distribute a sample across an existing set of strata.
 #'
 #' @references
 #' Dalenius, T. and Hodges, J. L. (1959). Minimum variance stratification.
@@ -287,10 +295,10 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     stratum = seq_len(n_strata),
     lower   = alloc_res$lower,
     upper   = alloc_res$upper,
-    N_h     = alloc_res$N_h,
-    W_h     = round(alloc_res$W_h, 6L),
-    S_h     = round(alloc_res$S_h, 4L),
-    n_h     = .round_oric(alloc_res$n_h),
+    N       = alloc_res$N_h,
+    share   = round(alloc_res$W_h, 6L),
+    sd      = round(alloc_res$S_h, 4L),
+    n       = .round_oric(alloc_res$n_h),
     take_all = if (!is.null(certain)) {
       seq_len(n_strata) %in% certain_strata
     } else {
@@ -303,7 +311,7 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
   .new_svyplan_strata(
     boundaries = bk,
     n_strata   = n_strata,
-    n          = sum(strata_df$n_h),
+    n          = sum(strata_df$n),
     cv         = alloc_res$cv,
     strata     = strata_df,
     method     = method,

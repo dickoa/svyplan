@@ -26,6 +26,13 @@
 #' variation. The effective sample size is `n * resp_rate / deff`, with
 #' optional finite population correction.
 #'
+#' ## Round-trip with n_mean
+#'
+#' `prec_mean()` is the inverse of [n_mean()]: if you compute
+#' `res <- n_mean(var = 100, moe = 2)` and then call `prec_mean(res)`,
+#' you will recover `moe = 2`. You can also pass an `svyplan_n` object
+#' directly: `prec_mean(res)`.
+#'
 #' @seealso [n_mean()] for the inverse (compute n from a precision target),
 #'   [prec_prop()] for proportions.
 #'
@@ -35,6 +42,10 @@
 #'
 #' # Without mu (CV will be NA)
 #' prec_mean(var = 100, n = 400)
+#'
+#' # Round-trip from n_mean
+#' res <- n_mean(var = 100, moe = 2)
+#' prec_mean(res)
 #'
 #' @export
 prec_mean <- function(var, ...) {

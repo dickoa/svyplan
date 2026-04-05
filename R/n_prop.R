@@ -6,16 +6,31 @@
 #' @param p For the default method: expected proportion, in (0, 1).
 #'   For `svyplan_prec` objects: a precision result from [prec_prop()].
 #' @param ... Additional arguments passed to methods.
-#' @param moe Desired margin of error. Specify exactly one of `moe` or `cv`.
-#' @param cv Target coefficient of variation. Specify exactly one of `moe`
-#'   or `cv`.
+#' @param moe Desired margin of error — the half-width of the confidence
+#'   interval on the proportion scale. For example, `moe = 0.05` means
+#'   the 95 percent CI should be no wider than +/- 5 percentage points.
+#'   Specify exactly one of `moe` or `cv`.
+#' @param cv Target coefficient of variation (relative standard error).
+#'   For example, `cv = 0.10` means the standard error should be at
+#'   most 10 percent of the estimate. Use `cv` when you want precision
+#'   to scale with the estimate (common in economic surveys); use `moe`
+#'   when you want a fixed absolute precision (common in health/DHS
+#'   surveys). Specify exactly one of `moe` or `cv`.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size. `Inf` (default) means no finite population
 #'   correction.
-#' @param deff Design effect multiplier (> 0). Values < 1 are valid for
-#'   efficient designs (e.g., stratified sampling with Neyman allocation).
+#' @param deff Design effect multiplier (> 0). Accounts for the loss of
+#'   precision from a complex design (clustering, unequal weights)
+#'   compared to simple random sampling. A DEFF of 1.5 means 50 percent
+#'   more interviews are needed for the same precision. Estimate from a
+#'   previous survey, use [design_effect()] to compute it, or apply a
+#'   rule of thumb (1.5--2.0 for typical cluster designs). Values < 1
+#'   are valid for efficient designs (e.g., stratified sampling with
+#'   Neyman allocation).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The required sample size is inflated by `1 / resp_rate`.
+#'   Estimate from response rates observed in similar surveys in the same
+#'   population.
 #' @param method One of `"wald"` (default), `"wilson"`, or `"logodds"`.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
@@ -39,8 +54,15 @@
 #' multiplicative factor to the final SRS sample size, which is an
 #' approximation.
 #'
-#' The Wald FPC uses the Cochran (1977, Ch. 3) form with an `N/(N-1)` factor
-#' to account for the Bernoulli finite-population variance.
+#' ## Finite population correction
+#'
+#' Setting `N` to a finite value reduces the required sample size when
+#' the sampling fraction (n/N) is non-negligible. As a rule of thumb,
+#' FPC has little effect when n/N < 5 percent. The Wald FPC uses the
+#' Cochran (1977, Ch. 3) form with an `N/(N-1)` factor to account for
+#' the Bernoulli finite-population variance. This differs from
+#' [n_mean()], where no `N/(N-1)` adjustment is needed because the
+#' variance is already defined on `N-1` degrees of freedom.
 #'
 #' All methods use the normal (z) quantile. This is standard for survey
 #' sampling where the sample size is large enough for the CLT to apply.

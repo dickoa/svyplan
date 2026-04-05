@@ -26,9 +26,22 @@ prec_multi(targets, ...)
 \method{prec_multi}{svyplan_cluster}(targets, ...)
 }
 \arguments{
-\item{targets}{For the default method: data frame with one row per
-indicator (must contain an \code{n} column; see Details). For \code{svyplan_n}
-or \code{svyplan_cluster} objects: a result from \code{\link[=n_multi]{n_multi()}}.}
+\item{targets}{For the default method: a data frame where \strong{each row
+is one survey indicator}, in the same format as \code{\link[=n_multi]{n_multi()}} but
+with an additional \code{n} column giving the sample size. This lets you
+answer: "given this sample size, what precision do I get for each
+indicator?"
+
+At minimum, each row needs:
+\itemize{
+\item \code{p} \strong{or} \code{var} — what you are measuring (see \code{\link[=n_multi]{n_multi()}}).
+\item \code{n} — the sample size to evaluate.
+}
+
+See the Details section for the full column reference.
+
+For \code{svyplan_n} or \code{svyplan_cluster} objects: a result from
+\code{\link[=n_multi]{n_multi()}}.}
 
 \item{...}{Additional arguments passed to methods.}
 
@@ -66,27 +79,53 @@ Compute the sampling error (SE, MOE, CV) for multiple survey indicators
 given a sample size. This is the inverse of \code{\link[=n_multi]{n_multi()}}.
 }
 \details{
-The \code{targets} data frame supports the following columns:
+\subsection{Building the targets data frame}{
+
+The \code{targets} data frame uses the same structure as \code{\link[=n_multi]{n_multi()}},
+with the addition of a required \code{n} column specifying the sample
+size to evaluate. A minimal example:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{targets <- data.frame(
+  name = c("stunting", "vaccination", "anemia"),
+  p    = c(0.30, 0.70, 0.10),
+  n    = c(400, 400, 400)
+)
+}\if{html}{\out{</div>}}
+
+See \code{\link[=n_multi]{n_multi()}} for a detailed guide on constructing indicator rows
+(choosing between \code{p} and \code{var}, setting per-row design effects, etc.).
+}
+
+\subsection{Column reference}{
 
 \describe{
 \item{\code{name}}{Indicator label (optional).}
-\item{\code{p}}{Expected proportion, in (0, 1). One of \code{p} or \code{var} per row.}
+\item{\code{p}}{Expected proportion, in (0, 1). One of \code{p} or \code{var}
+per row (see \code{\link[=n_multi]{n_multi()}}).}
 \item{\code{var}}{Population variance. One of \code{p} or \code{var} per row.}
-\item{\code{mu}}{Population mean. Required for CV when \code{var} is specified.}
-\item{\code{n}}{Sample size (required). For simple mode, a scalar per
-indicator. For multistage, per-stage sizes can be provided as
-\code{n}, \code{psu_size}, \code{ssu_size} columns.}
+\item{\code{mu}}{Population mean. Required for CV output when \code{var}
+is specified, because CV = SE / mean.}
+\item{\code{n}}{Sample size to evaluate (\strong{required}). In simple mode,
+one number per row. In multistage mode, this is the stage-1
+(PSU) sample size; add \code{psu_size} and optionally \code{ssu_size}
+columns for the per-stage cluster sizes.}
+\item{\code{psu_size}}{Stage-2 sample size per PSU (multistage only).
+Required for 2+ stage designs in multistage mode.}
+\item{\code{ssu_size}}{Stage-3 sample size per SSU (3-stage only).}
 \item{\code{alpha}}{Significance level (default 0.05).}
-\item{\code{deff}}{Design effect multiplier (simple mode only, default 1).}
-\item{\code{N}}{Population size (simple mode only, default Inf).}
-\item{\code{prop_method}}{Optional proportion method for simple mode,
-one of \code{"wald"}, \code{"wilson"}, or \code{"logodds"}. Only used for rows
-with \code{p}; ignored for mean rows and multistage mode.}
+\item{\code{deff}}{Design effect multiplier (simple mode only,
+default 1).}
+\item{\code{N}}{Population size (simple mode only, default \code{Inf}).}
+\item{\code{prop_method}}{Proportion CI method: \code{"wald"} (default),
+\code{"wilson"}, or \code{"logodds"}. Only for rows with \code{p} in
+simple mode.}
 \item{\code{resp_rate}}{Expected response rate (default 1).}
-\item{\code{delta_psu}, \code{delta_ssu}}{Homogeneity measures (multistage).}
-\item{\code{rel_var}}{Unit relvariance. If omitted, derived from \code{p} or
-\code{var}/\code{mu}.}
-\item{\code{k_psu}, \code{k_ssu}}{Ratio parameters (multistage, default 1).}
+\item{\code{delta_psu}, \code{delta_ssu}}{Homogeneity measures
+(multistage).}
+\item{\code{rel_var}}{Unit relvariance. If omitted, derived from \code{p}
+or \code{var}/\code{mu}.}
+\item{\code{k_psu}, \code{k_ssu}}{Ratio parameters (multistage,
+default 1).}
 }
 
 Domain columns are specified via the \code{domains} parameter.
@@ -95,6 +134,7 @@ In simple mode, \code{prec_multi()} delegates proportion rows to \code{\link[=pr
 and mean rows to \code{\link[=prec_mean]{prec_mean()}}. Use \code{prop_method} or a
 \code{targets$prop_method} column to choose \code{"wald"}, \code{"wilson"}, or
 \code{"logodds"} for proportion rows.
+}
 }
 \examples{
 # Simple mode: precision for three indicators at n = 400

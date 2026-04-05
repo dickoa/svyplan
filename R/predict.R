@@ -5,7 +5,9 @@
 #' quantities, suitable for sensitivity analysis or plotting.
 #'
 #' @param object A svyplan object (`svyplan_n`, `svyplan_cluster`,
-#'   `svyplan_power`, or `svyplan_prec`).
+#'   `svyplan_power`, or `svyplan_prec`). For `svyplan_prec`, only
+#'   types `"prop"` and `"mean"` are supported (not `"cluster"` or
+#'   `"multi"`).
 #' @param newdata A data frame of parameter combinations to evaluate.
 #'   Column names must be valid parameters for the object type (see
 #'   Details). Parameters not in `newdata` stay at their original
@@ -65,6 +67,19 @@
 #' # Power curve: how does power vary with sample size?
 #' pw <- power_prop(p1 = 0.30, p2 = 0.35, n = 500, power = NULL)
 #' predict(pw, data.frame(n = seq(100, 1000, 100)))
+#'
+#' # Cluster design: sensitivity to delta (homogeneity)
+#' cl <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+#' predict(cl, data.frame(delta = c(0.01, 0.03, 0.05, 0.10, 0.15)))
+#'
+#' # Allocation: how does the CV change with sample size?
+#' frame <- data.frame(
+#'   N    = c(4000, 3000, 3000),
+#'   sd   = c(10, 15, 8),
+#'   mean = c(50, 60, 55)
+#' )
+#' alloc <- n_alloc(frame, n = 600)
+#' predict(alloc, data.frame(n = seq(200, 1000, 200)))
 #'
 #' @name predict.svyplan
 NULL

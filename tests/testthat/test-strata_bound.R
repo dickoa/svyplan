@@ -84,7 +84,7 @@ test_that("take_all marks only the last stratum as take-all", {
   thr <- as.numeric(quantile(x, 0.95))
   res <- strata_bound(x, n_strata = 3, n = 30, certain = thr, method = "cumrootf")
   expect_equal(which(res$strata$take_all), 3L)
-  expect_equal(res$strata$n_h[3], res$strata$N_h[3])
+  expect_equal(res$strata$n[3], res$strata$N[3])
 })
 
 test_that("cumrootf: uniform data yields reasonable strata", {
@@ -162,22 +162,22 @@ test_that("kozak n matches target approximately", {
   expect_true(abs(res$n - target_n) / target_n < 0.5)
 })
 
-test_that("proportional allocation: n_h proportional to N_h", {
+test_that("proportional allocation: n_h proportional to N", {
   res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf",
                        alloc = "proportional")
   df <- res$strata
-  prop_alloc <- df$n_h / sum(df$n_h)
-  prop_pop <- df$N_h / sum(df$N_h)
+  prop_alloc <- df$n / sum(df$n)
+  prop_pop <- df$N / sum(df$N)
   expect_true(max(abs(prop_alloc - prop_pop)) < 0.15)
 })
 
-test_that("neyman allocation: n_h proportional to N_h * S_h", {
+test_that("neyman allocation: n_h proportional to N * sd", {
   res <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
                        alloc = "neyman")
   df <- res$strata
-  expected_prop <- df$N_h * df$S_h
+  expected_prop <- df$N * df$sd
   expected_prop <- expected_prop / sum(expected_prop)
-  actual_prop <- df$n_h / sum(df$n_h)
+  actual_prop <- df$n / sum(df$n)
   expect_true(cor(actual_prop, expected_prop) > 0.8)
 })
 
@@ -191,7 +191,7 @@ test_that("power allocation works", {
 
 test_that("n_h >= 2 per stratum", {
   res <- strata_bound(x_lnorm, n_strata = 5, n = 50, method = "cumrootf")
-  expect_true(all(res$strata$n_h >= 2))
+  expect_true(all(res$strata$n >= 2))
 })
 
 test_that("take-all stratum works", {
@@ -201,7 +201,7 @@ test_that("take-all stratum works", {
   expect_s3_class(res, "svyplan_strata")
   expect_true(any(res$strata$take_all))
   take_all_row <- res$strata[res$strata$take_all, ]
-  expect_equal(take_all_row$n_h, take_all_row$N_h)
+  expect_equal(take_all_row$n, take_all_row$N)
 })
 
 test_that("output class is svyplan_strata", {
@@ -212,8 +212,8 @@ test_that("output class is svyplan_strata", {
 
 test_that("strata df has correct columns", {
   res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf")
-  expected_cols <- c("stratum", "lower", "upper", "N_h", "W_h", "S_h",
-                     "n_h", "take_all")
+  expected_cols <- c("stratum", "lower", "upper", "N", "share", "sd",
+                     "n", "take_all")
   expect_equal(names(res$strata), expected_cols)
 })
 
@@ -251,12 +251,12 @@ test_that("boundaries partition x into exactly n_strata groups", {
   res <- strata_bound(x_lnorm, n_strata = 4, n = 200, method = "cumrootf")
   bins <- findInterval(x_lnorm, res$boundaries, left.open = TRUE) + 1L
   expect_equal(length(unique(bins)), 4L)
-  expect_equal(sum(res$strata$N_h), length(x_lnorm))
+  expect_equal(sum(res$strata$N), length(x_lnorm))
 })
 
 test_that("sum(n_h) equals n", {
   res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf")
-  expect_equal(sum(res$strata$n_h), res$n)
+  expect_equal(sum(res$strata$n), res$n)
 })
 
 test_that("works on simulated lognormal (realistic skewed data)", {
@@ -267,7 +267,7 @@ test_that("works on simulated lognormal (realistic skewed data)", {
                        n_restart = 5L, maxiter = 50L)
   expect_s3_class(res, "svyplan_strata")
   expect_equal(nrow(res$strata), 5L)
-  expect_true(all(res$strata$N_h > 0))
+  expect_true(all(res$strata$N > 0))
 })
 
 test_that("lh with cv mode works", {
@@ -336,7 +336,7 @@ test_that("power alloc q = 1 matches neyman", {
                            alloc = "neyman")
   res_pow <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
                            alloc = "power", power_q =1)
-  expect_equal(res_pow$strata$n_h, res_ney$strata$n_h)
+  expect_equal(res_pow$strata$n, res_ney$strata$n)
 })
 
 test_that("power alloc q = 0 differs from neyman on skewed data", {
@@ -346,7 +346,7 @@ test_that("power alloc q = 0 differs from neyman on skewed data", {
                            alloc = "neyman")
   res_pow <- strata_bound(x_skew, n_strata = 4, n = 400, method = "cumrootf",
                            alloc = "power", power_q =0)
-  expect_false(identical(res_pow$strata$n_h, res_ney$strata$n_h))
+  expect_false(identical(res_pow$strata$n, res_ney$strata$n))
   expect_equal(res_pow$alloc, "power")
 })
 

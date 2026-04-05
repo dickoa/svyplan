@@ -97,8 +97,10 @@ varcomp <- function(x, ...) {
 #' @describeIn varcomp Method for formula interface.
 #'
 #' @param data A data frame (required for formula interface).
-#' @param prob First-stage selection probabilities. A one-sided formula
-#'   (e.g., `~pp`) when using the formula interface, or a numeric vector.
+#' @param prob First-stage selection probabilities (PPS). A one-sided
+#'   formula (e.g., `~pp`) when using the formula interface, or a numeric
+#'   vector. Values must be one per PSU (repeated for each unit within the
+#'   PSU) and must sum to 1 across PSUs (tolerance 1e-3).
 #'   `NULL` (default) assumes SRS.
 #'
 #' @export

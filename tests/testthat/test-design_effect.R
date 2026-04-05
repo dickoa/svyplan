@@ -301,7 +301,7 @@ test_that("design_effect cr constant y stratified + clustered returns 1", {
   expect_equal(res$overall, 1)
   expect_true(all(is.na(res$strata$deff_s)))
   expect_true(all(is.na(res$strata$deff_c)))
-  expect_true(all(is.na(res$strata$rho_h)))
+  expect_true(all(is.na(res$strata$rho)))
   expect_true(all(!is.na(res$strata$cv2_w)))
 })
 

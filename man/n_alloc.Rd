@@ -28,33 +28,54 @@ n_alloc(frame, ...)
 \method{n_alloc}{svyplan_prec}(frame, n = NULL, cv = NULL, budget = NULL, ...)
 }
 \arguments{
-\item{frame}{For the default method: data frame with \strong{one row per
-stratum}. Each row describes a population stratum defined by a single
-stratification variable (or a cross of several variables collapsed into
-one). When multiple classification variables exist, build the crossed
-strata before calling \code{n_alloc} (e.g. with \code{\link[=interaction]{interaction()}}).
+\item{frame}{For the default method: a \strong{stratum-level} data frame
+describing the population you want to sample. Each row represents one
+stratum — a subgroup of the population defined by a stratification
+variable such as region, age group, or urbanicity. The values in this
+frame typically come from a census, a population register, or a
+previous survey.
+
+When a design stratifies by several variables at once (e.g. region
+\eqn{\times} urbanicity), cross them into a single variable before
+calling \code{n_alloc} (e.g. with \code{\link[=interaction]{interaction()}}) so that each row maps
+to exactly one population cell.
 
 \strong{Required columns:}
 \describe{
-\item{\code{N_h}}{Population size per stratum (positive finite integer or
-numeric).}
-\item{\code{S_h} or \code{var}}{Stratum standard deviation or variance
-(non-negative finite). Provide exactly one.}
+\item{\code{N}}{Number of units (e.g. households, individuals) in
+each stratum. These are population counts, not sample sizes.
+Must be positive and finite.}
+\item{\code{sd} \strong{or} \code{var}}{A measure of how spread out the variable
+of interest is within each stratum. Provide \strong{exactly one}:
+\itemize{
+\item \code{sd}: the stratum standard deviation
+(\eqn{\sqrt{\text{variance}}}), or
+\item \code{var}: the stratum variance.
+}
+Both must be non-negative and finite. When all strata have
+equal variability (or variability is unknown), a constant
+column (e.g. \code{sd = 1}) yields proportional-to-size allocation.}
 }
 
 \strong{Optional columns:}
 \describe{
-\item{\code{stratum}}{Stratum label. If omitted, row numbers are used.
-Must be unique (or unique within each domain when domain columns
-are present).}
-\item{\code{mean_h} or \code{p_h}}{Stratum mean or proportion. Required when
-solving for \code{cv}. When \code{p_h} is used it must lie in \eqn{[0, 1]}.}
-\item{\code{cost_h}}{Per-unit cost in each stratum (positive finite).
-Defaults to 1 everywhere.}
-\item{\code{max_weight}}{Maximum sampling weight \eqn{N_h / n_h}. Use
-\code{NA} for unconstrained strata.}
-\item{\code{take_all}}{Logical (or 0/1). If \code{TRUE}, the entire stratum
-is included (census stratum).}
+\item{\code{stratum}}{A label identifying each stratum (e.g.
+\code{"Urban"}, \code{"Rural"}). If omitted, row numbers are used. Must
+be unique, or unique within each domain when \code{domains} is set.}
+\item{\code{mean} \strong{or} \code{p}}{The stratum population mean or
+proportion of the variable of interest. \strong{Required when solving
+for \code{cv}}, because the coefficient of variation is defined
+relative to the mean. Use \code{mean} for continuous variables
+and \code{p} (in \eqn{[0, 1]}) for binary (yes/no) variables.}
+\item{\code{cost}}{Per-unit interviewing cost in each stratum
+(positive, finite). Set higher values for strata that are more
+expensive to reach. Defaults to 1 everywhere (equal cost).}
+\item{\code{max_weight}}{Maximum allowed sampling weight
+\eqn{N_h / n_h}. Caps how under-represented a stratum can be.
+Use \code{NA} for strata without a cap.}
+\item{\code{take_all}}{Logical (or 0/1). If \code{TRUE}, every unit in the
+stratum is included — a census stratum. Useful for small strata
+whose total population is tiny enough to enumerate.}
 }
 
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_alloc]{prec_alloc()}}.}
@@ -69,9 +90,12 @@ enforced \emph{within every domain} (see Details).}
 
 \item{n}{Total sample size. Specify exactly one of \code{n}, \code{cv}, or \code{budget}.}
 
-\item{cv}{Target coefficient of variation (requires \code{mean_h} or \code{p_h}
-in \code{frame}). When domain columns are present, this target is enforced
-in each domain. Specify exactly one of \code{n}, \code{cv}, or \code{budget}.}
+\item{cv}{Target coefficient of variation (relative standard error).
+For example, \code{cv = 0.05} means the standard error of the estimated
+population mean or total should be at most 5 percent of the estimate.
+Requires \code{mean} or \code{p} in \code{frame}. When domain columns are
+present, this target is enforced in each domain. Specify exactly one
+of \code{n}, \code{cv}, or \code{budget}.}
 
 \item{budget}{Total field budget. Specify exactly one of \code{n}, \code{cv},
 or \code{budget}.}
@@ -80,7 +104,7 @@ or \code{budget}.}
 \code{"proportional"}, or \code{"power"}.}
 
 \item{unit_cost}{Optional scalar or length-\code{nrow(frame)} vector of
-per-stratum unit costs, overriding \code{frame$cost_h}.}
+per-stratum unit costs, overriding \code{frame$cost}.}
 
 \item{alpha}{Significance level, default 0.05.}
 
@@ -107,17 +131,39 @@ urbanicity), cross them into a single variable beforehand so that each row
 of \code{frame} represents one unique stratum.
 }
 \details{
-\subsection{Frame structure}{
+\subsection{Building the frame}{
 
-Each row of \code{frame} represents one stratum of a \strong{single} stratification
-variable. When a design stratifies by several variables (e.g. region
+The \code{frame} is a data frame where \strong{each row is one stratum} of
+your target population. It summarizes what you know about each
+subgroup \emph{before} sampling. A typical workflow:
+\enumerate{
+\item \strong{Identify strata} from a census or register (e.g. provinces,
+urban/rural areas, age groups).
+\item \strong{Look up \code{N}} — the population count per stratum.
+\item \strong{Estimate \code{sd}} — the standard deviation of your key variable
+within each stratum (from a pilot survey, a previous census, or
+expert judgement). If unknown, set \code{sd = 1} everywhere for
+proportional allocation.
+\item \strong{Add \code{mean} or \code{p}} if you want to solve for a target CV.
+}
+
+A minimal frame:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{frame <- data.frame(
+  stratum = c("Urban", "Rural"),
+  N       = c(50000, 120000),
+  sd      = c(12, 20)
+)
+}\if{html}{\out{</div>}}
+
+When a design stratifies by several variables (e.g. region
 \eqn{\times} urbanicity), cross them into one variable first:
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{frame$stratum <- interaction(frame$region, frame$urban, drop = TRUE)
 }\if{html}{\out{</div>}}
 
 This ensures that each row maps to exactly one population cell and that
-the allocation formulas apply to the correct \eqn{N_h}, \eqn{S_h} pairs.
+the allocation formulas apply to the correct per-stratum \code{N} and \code{sd} pairs.
 }
 
 \subsection{Domains vs. strata}{
@@ -155,10 +201,10 @@ allocation under unit costs.
 \examples{
 frame <- data.frame(
   stratum = c("A", "B", "C"),
-  N_h = c(4000, 3000, 3000),
-  S_h = c(10, 15, 8),
-  mean_h = c(50, 60, 55),
-  cost_h = c(1, 1.5, 1)
+  N    = c(4000, 3000, 3000),
+  sd   = c(10, 15, 8),
+  mean = c(50, 60, 55),
+  cost = c(1, 1.5, 1)
 )
 
 n_alloc(frame, n = 600)
@@ -175,9 +221,9 @@ n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n = 40)
 frame_domains <- data.frame(
   province = c("North", "North", "South", "South"),
   stratum = c("Urban", "Rural", "Urban", "Rural"),
-  N_h = c(2000, 3000, 1800, 3200),
-  S_h = c(12, 18, 10, 16),
-  mean_h = c(55, 48, 58, 50)
+  N    = c(2000, 3000, 1800, 3200),
+  sd   = c(12, 18, 10, 16),
+  mean = c(55, 48, 58, 50)
 )
 
 n_alloc(frame_domains, domains = "province",

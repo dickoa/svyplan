@@ -138,8 +138,8 @@ n_multi(targets)
 #>  anemia      1127 *
 ```
 
-Per-domain optimization works by adding domain columns to the targets
-data frame.
+Per-domain optimization works by specifying domain columns via the
+`domains` parameter.
 
 ### MICS/DHS-style relative margin of error
 
@@ -265,7 +265,7 @@ strata_bound(x, n_strata = 4, n = 300, method = "cumrootf")
 #> n = 300, cv = 0.0211
 #> Allocation: neyman
 #> ---
-#>  stratum lower      upper    N_h  W_h   S_h    n_h
+#>  stratum lower      upper    N    share sd     n  
 #>  1          4.92557   400.00 2523 0.505 107.1   44
 #>  2        400.00000  1300.00 1610 0.322 250.3   66
 #>  3       1300.00000  3300.00  647 0.129 544.0   58
@@ -333,9 +333,9 @@ distributes the total sample across strata:
 
 ``` r
 frame <- data.frame(
-  N_h = c(4000, 3000, 3000),
-  S_h = c(10, 15, 8),
-  mean_h = c(50, 60, 55)
+  N = c(4000, 3000, 3000),
+  sd = c(10, 15, 8),
+  mean = c(50, 60, 55)
 )
 
 n_alloc(frame, n = 600, alloc = "neyman")
@@ -348,7 +348,7 @@ Constraints and alternative solve modes are also supported:
 ``` r
 frame_constraints <- transform(
   frame,
-  cost_h = c(1, 1.5, 1),
+  cost = c(1, 1.5, 1),
   max_weight = c(25, 20, NA),
   take_all = c(FALSE, FALSE, TRUE)
 )
@@ -360,19 +360,20 @@ n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n = 40)
 #> (min_n = 40)
 ```
 
-Domain-level CV targets can be enforced by adding domain identifiers:
+Domain-level CV targets can be enforced via the `domains` parameter:
 
 ``` r
 frame_domains <- data.frame(
   province = c("North", "North", "South", "South"),
   stratum = c("Urban", "Rural", "Urban", "Rural"),
-  N_h = c(2000, 3000, 1800, 3200),
-  S_h = c(12, 18, 10, 16),
-  mean_h = c(55, 48, 58, 50)
+  N = c(2000, 3000, 1800, 3200),
+  sd = c(12, 18, 10, 16),
+  mean = c(55, 48, 58, 50)
 )
 
 # Minimum total n such that each province meets the CV target
-n_alloc(frame_domains, cv = 0.04, alloc = "power", power_q = 0.3)
+n_alloc(frame_domains, domains = "province",
+        cv = 0.04, alloc = "power", power_q = 0.3)
 #> Stratum allocation (power, 4 strata)
 #> n = 111, cv = 0.0272, se = 1.4076
 #> Domains: 2

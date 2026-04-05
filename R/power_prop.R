@@ -22,6 +22,10 @@
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The required sample size is inflated by `1 / resp_rate`.
 #' @param alternative Character: `"two.sided"` (default) or `"one.sided"`.
+#'   Use `"two.sided"` when either an increase or decrease matters (the
+#'   usual default). Use `"one.sided"` when only one direction is of
+#'   interest (e.g. "has the intervention *reduced* stunting?"), which
+#'   requires a smaller sample for the same power.
 #' @param ratio Allocation ratio n1/n2 (default 1). Only used when solving
 #'   for n (`n = NULL`). For example, `ratio = 2` means group 1 gets twice
 #'   the sample of group 2.
@@ -47,16 +51,23 @@
 #' }
 #'
 #' @details
-#' Three methods are available:
+#' ## Choosing a method
 #'
 #' \describe{
-#'   \item{`"wald"`}{Standard Wald test. Supports panel overlap.}
+#'   \item{`"wald"` (default)}{Standard Wald test. Appropriate for
+#'     proportions in the 0.2--0.8 range. The only method that
+#'     supports panel `overlap`.}
 #'   \item{`"arcsine"`}{Arcsine-transformed test. The arcsine variance
 #'     \eqn{1/(4n)} is approximately constant in \eqn{p}, making it
-#'     more accurate for rare proportions.}
+#'     more accurate when either proportion is below 0.15 or above 0.85.}
 #'   \item{`"logodds"`}{Log-odds (logit) test with separate null and
-#'     alternative variances. Uses Valliant Eq (4.23)/(4.24).}
+#'     alternative variances. Also suitable for rare or extreme
+#'     proportions. Uses Valliant Eq (4.23)/(4.24).}
 #' }
+#'
+#' For proportions in the 0.2--0.8 range, all three methods give similar
+#' results. For rare or extreme proportions, `"arcsine"` or `"logodds"`
+#' are more reliable.
 #'
 #' @references
 #' Valliant, R., Dever, J. A., & Kreuter, F. (2018). *Practical Tools for
@@ -64,8 +75,8 @@
 #'
 #' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
 #'
-#' @seealso [power_mean()] for continuous outcomes, [n_prop()] for
-#'   estimation precision.
+#' @seealso [power_mean()] for continuous outcomes, [power_did()] for
+#'   difference-in-differences, [n_prop()] for estimation precision.
 #'
 #' @examples
 #' # Sample size to detect a 5pp change from 30%

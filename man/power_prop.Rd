@@ -53,7 +53,11 @@ efficient designs (e.g., stratified sampling with Neyman allocation).}
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The required sample size is inflated by \code{1 / resp_rate}.}
 
-\item{alternative}{Character: \code{"two.sided"} (default) or \code{"one.sided"}.}
+\item{alternative}{Character: \code{"two.sided"} (default) or \code{"one.sided"}.
+Use \code{"two.sided"} when either an increase or decrease matters (the
+usual default). Use \code{"one.sided"} when only one direction is of
+interest (e.g. "has the intervention \emph{reduced} stunting?"), which
+requires a smaller sample for the same power.}
 
 \item{ratio}{Allocation ratio n1/n2 (default 1). Only used when solving
 for n (\code{n = NULL}). For example, \code{ratio = 2} means group 1 gets twice
@@ -89,15 +93,23 @@ two-sample test of proportions. Leave exactly one of \code{n}, \code{power}, or
 \code{p2} as \code{NULL} to solve for that quantity.
 }
 \details{
-Three methods are available:
+\subsection{Choosing a method}{
 
 \describe{
-\item{\code{"wald"}}{Standard Wald test. Supports panel overlap.}
+\item{\code{"wald"} (default)}{Standard Wald test. Appropriate for
+proportions in the 0.2--0.8 range. The only method that
+supports panel \code{overlap}.}
 \item{\code{"arcsine"}}{Arcsine-transformed test. The arcsine variance
 \eqn{1/(4n)} is approximately constant in \eqn{p}, making it
-more accurate for rare proportions.}
+more accurate when either proportion is below 0.15 or above 0.85.}
 \item{\code{"logodds"}}{Log-odds (logit) test with separate null and
-alternative variances. Uses Valliant Eq (4.23)/(4.24).}
+alternative variances. Also suitable for rare or extreme
+proportions. Uses Valliant Eq (4.23)/(4.24).}
+}
+
+For proportions in the 0.2--0.8 range, all three methods give similar
+results. For rare or extreme proportions, \code{"arcsine"} or \code{"logodds"}
+are more reliable.
 }
 }
 \examples{
@@ -129,6 +141,6 @@ Designing and Weighting Survey Samples} (2nd ed.). Springer. Chapter 4.
 Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
 }
 \seealso{
-\code{\link[=power_mean]{power_mean()}} for continuous outcomes, \code{\link[=n_prop]{n_prop()}} for
-estimation precision.
+\code{\link[=power_mean]{power_mean()}} for continuous outcomes, \code{\link[=power_did]{power_did()}} for
+difference-in-differences, \code{\link[=n_prop]{n_prop()}} for estimation precision.
 }

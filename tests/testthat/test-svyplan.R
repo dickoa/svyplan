@@ -273,9 +273,9 @@ test_that("prec_multi uses plan prop_method in simple mode", {
 
 test_that("n_alloc uses plan defaults", {
   frame <- data.frame(
-    N_h = c(4000, 3000, 3000),
-    S_h = c(10, 15, 8),
-    mean_h = c(50, 60, 55)
+    N = c(4000, 3000, 3000),
+    sd = c(10, 15, 8),
+    mean = c(50, 60, 55)
   )
   plan <- svyplan(deff = 1.5, resp_rate = 0.9)
   res <- n_alloc(frame, n = 600, plan = plan)
@@ -285,9 +285,9 @@ test_that("n_alloc uses plan defaults", {
 
 test_that("prec_alloc uses plan defaults", {
   frame <- data.frame(
-    N_h = c(4000, 3000, 3000),
-    S_h = c(10, 15, 8),
-    mean_h = c(50, 60, 55)
+    N = c(4000, 3000, 3000),
+    sd = c(10, 15, 8),
+    mean = c(50, 60, 55)
   )
   plan <- svyplan(deff = 1.5, alpha = 0.10)
   res <- prec_alloc(frame, n = c(200, 200, 200), plan = plan)
@@ -403,9 +403,9 @@ test_that("pipe: plan |> n_multi", {
 
 test_that("pipe: plan |> n_alloc", {
   frame <- data.frame(
-    N_h = c(4000, 3000, 3000),
-    S_h = c(10, 15, 8),
-    mean_h = c(50, 60, 55)
+    N = c(4000, 3000, 3000),
+    sd = c(10, 15, 8),
+    mean = c(50, 60, 55)
   )
   plan <- svyplan(deff = 1.5, resp_rate = 0.9)
   res <- plan |> n_alloc(frame, n = 600)
@@ -415,9 +415,9 @@ test_that("pipe: plan |> n_alloc", {
 
 test_that("pipe: plan |> prec_alloc", {
   frame <- data.frame(
-    N_h = c(4000, 3000, 3000),
-    S_h = c(10, 15, 8),
-    mean_h = c(50, 60, 55)
+    N = c(4000, 3000, 3000),
+    sd = c(10, 15, 8),
+    mean = c(50, 60, 55)
   )
   plan <- svyplan(deff = 1.5, alpha = 0.10)
   res <- plan |> prec_alloc(frame, n = c(200, 200, 200))
@@ -537,9 +537,9 @@ test_that("named pipe: plan |> n_multi(targets = ...) matches all styles", {
 
 test_that("named pipe: plan |> n_alloc(frame = ...) matches all styles", {
   frame <- data.frame(
-    N_h = c(4000, 3000, 3000),
-    S_h = c(10, 15, 8),
-    mean_h = c(50, 60, 55)
+    N = c(4000, 3000, 3000),
+    sd = c(10, 15, 8),
+    mean = c(50, 60, 55)
   )
   plan <- svyplan(deff = 1.5, resp_rate = 0.9)
   res_named_plan <- n_alloc(frame, n = 600, plan = plan)
@@ -551,9 +551,9 @@ test_that("named pipe: plan |> n_alloc(frame = ...) matches all styles", {
 
 test_that("named pipe: plan |> prec_alloc(x = ...) matches all styles", {
   frame <- data.frame(
-    N_h = c(4000, 3000, 3000),
-    S_h = c(10, 15, 8),
-    mean_h = c(50, 60, 55)
+    N = c(4000, 3000, 3000),
+    sd = c(10, 15, 8),
+    mean = c(50, 60, 55)
   )
   plan <- svyplan(deff = 1.5)
   res_named_plan <- prec_alloc(frame, n = c(200, 200, 200), plan = plan)

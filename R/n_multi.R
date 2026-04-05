@@ -4,9 +4,24 @@
 #' multiple survey indicators simultaneously. Supports simple (single-stage)
 #' and multistage cluster designs, with optional domain-level planning.
 #'
-#' @param targets For the default method: data frame with one row per
-#'   indicator (see Details). For `svyplan_prec` objects: a precision
-#'   result from [prec_multi()].
+#' @param targets For the default method: a data frame where **each row
+#'   is one survey indicator** you want to measure — for example,
+#'   a prevalence (proportion) or a population mean. Surveys typically
+#'   track several indicators simultaneously and the sample must be large
+#'   enough for the most demanding one; `n_multi` finds that size.
+#'
+#'   See the Details section for the full column reference. At minimum,
+#'   each row needs:
+#'   \itemize{
+#'     \item **What to measure**: `p` for a proportion (e.g. 0.30 for
+#'       30\% stunting) **or** `var` for a continuous variable's
+#'       population variance. Each row must use exactly one.
+#'     \item **How precise**: `moe` (margin of error, simple mode) **or**
+#'       `cv` (coefficient of variation, either mode). Each row must
+#'       specify exactly one.
+#'   }
+#'
+#'   For `svyplan_prec` objects: a precision result from [prec_multi()].
 #' @param ... Additional arguments passed to methods.
 #' @param domains Character vector of column names in `targets` to treat
 #'   as domain variables, or `NULL` (default) for no domains. All names
@@ -74,28 +89,80 @@
 #'   }
 #'
 #' @details
-#' The `targets` data frame supports the following columns:
+#' ## Building the targets data frame
+#'
+#' Each row of `targets` represents one survey indicator. The two key
+#' decisions per row are:
+#'
+#' 1. **Type of indicator** — is it a proportion (binary variable like
+#'    "stunted yes/no") or a mean (continuous variable like "household
+#'    expenditure")? This determines whether you fill the `p` or `var`
+#'    column.
+#' 2. **Precision target** — do you want an absolute margin of error
+#'    (`moe`, e.g. +/- 5 percentage points) or a relative
+#'    coefficient of variation (`cv`, e.g. 10 percent relative error)?
+#'
+#' A minimal example for three health indicators:
+#'
+#' ```
+#' targets <- data.frame(
+#'   name = c("stunting", "vaccination", "expenditure"),
+#'   p    = c(0.30, 0.70, NA),
+#'   var  = c(NA, NA, 2500),
+#'   moe  = c(0.05, 0.05, 10)
+#' )
+#' ```
+#'
+#' Rows with `p` are treated as proportions; rows with `var` (and `p = NA`)
+#' as means. You cannot have both `p` and `var` non-`NA` in the same row.
+#'
+#' ## Column reference
 #'
 #' \describe{
-#'   \item{`name`}{Indicator label (optional).}
-#'   \item{`p`}{Expected proportion, in (0, 1). One of `p` or `var` per row.}
-#'   \item{`var`}{Population variance. One of `p` or `var` per row.}
-#'   \item{`mu`}{Population mean magnitude (positive). Required when `var` is specified with `cv`.}
-#'   \item{`moe`}{Margin of error (simple mode).}
-#'   \item{`cv`}{Target coefficient of variation (either mode).}
-#'   \item{`alpha`}{Significance level (default 0.05).}
-#'   \item{`deff`}{Design effect multiplier (simple mode only, default 1).}
-#'   \item{`N`}{Population size (simple mode only, default Inf).}
-#'   \item{`prop_method`}{Optional proportion method for simple mode,
-#'     one of `"wald"`, `"wilson"`, or `"logodds"`. Only used for rows
-#'     with `p`; ignored for mean rows and multistage mode.}
-#'   \item{`delta_psu`, `delta_ssu`}{Homogeneity measures (multistage).}
-#'   \item{`rel_var`}{Unit relvariance. If omitted, derived from `p` or
-#'     `var`/`mu`.}
-#'   \item{`k_psu`, `k_ssu`}{Ratio parameters (multistage, default 1).}
-#'   \item{`resp_rate`}{Expected response rate, in (0, 1\]. Default 1 (no
-#'     adjustment). Inflates the required sample size to account for
-#'     non-response.}
+#'   \item{`name`}{Indicator label (optional). If omitted, row numbers
+#'     are used in output.}
+#'   \item{`p`}{Expected proportion, in (0, 1). Use this for binary
+#'     indicators such as prevalences or coverage rates. The value is
+#'     your best prior guess (e.g. from a previous survey or literature).
+#'     One of `p` or `var` per row.}
+#'   \item{`var`}{Population variance of a continuous indicator. Use
+#'     this for means (e.g. income, expenditure, weight). One of `p`
+#'     or `var` per row.}
+#'   \item{`mu`}{Population mean (positive). **Required** when `var` is
+#'     used together with `cv`, because CV = SE / mean.}
+#'   \item{`moe`}{Margin of error — the half-width of the confidence
+#'     interval you want. For proportions, this is on the probability
+#'     scale (e.g. 0.05 for +/- 5 percentage points). For means,
+#'     it is in the same units as the variable (e.g. 10 dollars).
+#'     Simple mode only.}
+#'   \item{`cv`}{Target coefficient of variation (relative standard
+#'     error). For example, 0.10 means the SE should be at most 10\%
+#'     of the estimate. Works in both simple and multistage mode.}
+#'   \item{`alpha`}{Significance level for the confidence interval
+#'     (default 0.05, giving a 95 percent CI).}
+#'   \item{`deff`}{Design effect multiplier (simple mode only,
+#'     default 1). Set > 1 to inflate the sample size for complex
+#'     designs (e.g. 1.5 for a cluster design).}
+#'   \item{`N`}{Population size (simple mode only, default `Inf`).
+#'     A finite value applies a finite population correction, reducing
+#'     the required sample size.}
+#'   \item{`prop_method`}{Proportion CI method for simple mode:
+#'     `"wald"` (default), `"wilson"`, or `"logodds"`. `"wilson"` is
+#'     recommended for rare proportions (below 0.1 or above 0.9).
+#'     Only used for rows with `p`; ignored for mean rows and
+#'     multistage mode.}
+#'   \item{`delta_psu`, `delta_ssu`}{Measure of homogeneity (intra-class
+#'     correlation) within clusters, between 0 and 1. Needed for
+#'     multistage mode. `delta_psu` is required for 2-stage designs;
+#'     both are required for 3-stage designs.}
+#'   \item{`rel_var`}{Unit relvariance. If omitted, derived
+#'     automatically from `p` (as `(1 - p) / p`) or from
+#'     `var` / `mu^2`.}
+#'   \item{`k_psu`, `k_ssu`}{Ratio parameters for cost-variance
+#'     modelling (multistage, default 1).}
+#'   \item{`resp_rate`}{Expected response rate, in (0, 1\]. Default 1
+#'     (no adjustment). A value of 0.90 inflates the sample size by
+#'     `1 / 0.90` to compensate for 10 percent non-response.}
 #' }
 #'
 #' Domain columns are specified via the `domains` parameter. When domains

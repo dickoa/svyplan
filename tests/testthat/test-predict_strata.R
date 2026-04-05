@@ -14,7 +14,7 @@ test_that("predict assigns all observations", {
   x <- rlnorm(500, meanlog = 6, sdlog = 1.5)
   sb <- strata_bound(x, n_strata = 4, n = 100)
   f <- predict(sb, x)
-  expect_equal(as.integer(table(f)), sb$strata$N_h)
+  expect_equal(as.integer(table(f)), sb$strata$N)
 })
 
 test_that("predict accepts custom labels", {

@@ -11,12 +11,26 @@
 #'   For `svyplan_prec` objects: a precision result from [prec_cluster()].
 #' @param ... Additional arguments passed to methods.
 #' @param delta Numeric vector of homogeneity measures (length = stages - 1),
-#'   or a `svyplan_varcomp` object.
-#' @param rel_var Unit relvariance (default 1).
+#'   or a `svyplan_varcomp` object. Delta quantifies how similar units
+#'   within the same cluster are: 0 means no similarity (clusters are as
+#'   variable as the whole population), 1 means perfect similarity (all
+#'   units in a cluster are identical). Typical values in household
+#'   surveys range from 0.01 to 0.10. Higher delta means more clusters
+#'   are needed for the same precision. Use [varcomp()] to estimate
+#'   delta from a previous survey or pilot data.
+#' @param rel_var Unit relvariance (default 1). For most applications,
+#'   the default of 1 is appropriate. Non-unit values arise when working
+#'   with variance components from [varcomp()] that separate the total
+#'   variance into stage-specific pieces.
 #' @param k Ratio parameter(s). Scalar for 2-stage, length-2 vector for
-#'   3-stage (default 1).
-#' @param cv Target coefficient of variation. Specify exactly one of `cv`
-#'   or `budget`.
+#'   3-stage (default 1). Controls how stage costs relate to stage
+#'   variances in the optimization. The default of 1 is appropriate for
+#'   most designs; non-unit values are rarely needed outside specialized
+#'   cost-variance models.
+#' @param cv Target coefficient of variation (relative standard error).
+#'   For example, `cv = 0.05` means the standard error of the estimate
+#'   should be at most 5 percent of the estimate itself. Specify exactly
+#'   one of `cv` or `budget`.
 #' @param budget Total budget. Specify exactly one of `cv` or `budget`.
 #' @param n_psu Fixed number of PSUs (stage-1 sample size). `NULL` (default)
 #'   means optimize. For 2-stage, at most one of `n_psu` or `psu_size` may be
@@ -53,10 +67,38 @@
 #' }
 #'
 #' @details
-#' Stage count is determined by `length(stage_cost)`. Two dispatch dimensions:
+#' ## Getting started
 #'
-#' - **2-stage vs 3-stage** (vector length)
-#' - **budget vs cv** mode (which is non-NULL)
+#' A typical 2-stage household survey workflow:
+#'
+#' 1. **Decide what you know.** You need the cost per cluster visit
+#'    (`stage_cost[1]`, e.g. travel + logistics) and the cost per
+#'    interview (`stage_cost[2]`), plus an estimate of within-cluster
+#'    homogeneity (`delta`). Estimate delta from a pilot or previous
+#'    survey with [varcomp()], or use a plausible range (0.01--0.10
+#'    for most household indicators).
+#' 2. **Choose a mode.** If you have a target precision, set `cv`. If you
+#'    have a fixed budget, set `budget`. Never set both.
+#' 3. **Fix stages or let the optimizer decide.** In MICS/DHS-style
+#'    designs, the number of households per cluster is fixed by
+#'    fieldwork logistics (e.g. `psu_size = 20`); the optimizer then
+#'    solves for how many clusters (`n_psu`) to visit. If no stage is
+#'    fixed, both are optimized jointly.
+#'
+#' ## How it works
+#'
+#' Stage count is determined by `length(stage_cost)`:
+#' - **2-stage** (e.g. clusters then households): `stage_cost` has 2
+#'   elements, `delta` is a scalar.
+#' - **3-stage** (e.g. districts, clusters, households): `stage_cost`
+#'   has 3 elements, `delta` is length 2.
+#'
+#' Two solving modes:
+#' - **CV mode**: minimize total cost subject to achieving the target CV.
+#' - **Budget mode**: minimize the CV (maximize precision) within the
+#'   available budget.
+#'
+#' ## Fixing stage sizes
 #'
 #' One or more stage sizes can be fixed, leaving the remaining stage(s) to be
 #' optimized or derived from the constraint. For 2-stage designs, at most one
@@ -65,6 +107,8 @@
 #'
 #' If `delta` is a `svyplan_varcomp` object, `delta`, `rel_var`, and `k`
 #' are extracted automatically.
+#'
+#' ## Boundary delta values
 #'
 #' Boundary and near-boundary homogeneity values are not supported by the
 #' analytical optimum used here. When `delta` is near 0, most variability is

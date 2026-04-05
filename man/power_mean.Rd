@@ -50,7 +50,10 @@ efficient designs (e.g., stratified sampling with Neyman allocation).}
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The required sample size is inflated by \code{1 / resp_rate}.}
 
-\item{alternative}{Character: \code{"two.sided"} (default) or \code{"one.sided"}.}
+\item{alternative}{Character: \code{"two.sided"} (default) or \code{"one.sided"}.
+Use \code{"two.sided"} when either an increase or decrease matters (the
+usual default). Use \code{"one.sided"} when only one direction is of
+interest, which requires a smaller sample for the same power.}
 
 \item{ratio}{Allocation ratio n1/n2 (default 1). Only used when solving
 for n (\code{n = NULL}). For example, \code{ratio = 2} means group 1 gets twice
@@ -81,6 +84,11 @@ two-sample test of means. Leave exactly one of \code{n}, \code{power}, or \code{
 as \code{NULL} to solve for that quantity.
 }
 \details{
+The \code{var} argument is the within-group population variance. Estimate it
+from a pilot study, a previous survey, or published data for a similar
+population. When uncertain, use a conservative (larger) estimate — this
+inflates the sample size, which is safer than under-powering.
+
 To specify the effect in terms of Cohen's d (standardized effect size),
 convert via \code{effect = d * sqrt(mean(var))}, where \code{d} follows Cohen's
 conventions: 0.2 (small), 0.5 (medium), 0.8 (large).
@@ -121,6 +129,6 @@ Designing and Weighting Survey Samples} (2nd ed.). Springer. Chapter 4.
 Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
 }
 \seealso{
-\code{\link[=power_prop]{power_prop()}} for proportions, \code{\link[=n_mean]{n_mean()}} for estimation
-precision.
+\code{\link[=power_prop]{power_prop()}} for proportions, \code{\link[=power_did]{power_did()}} for
+difference-in-differences, \code{\link[=n_mean]{n_mean()}} for estimation precision.
 }

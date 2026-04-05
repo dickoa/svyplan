@@ -25,24 +25,39 @@ n_mean(var, ...)
 }
 \arguments{
 \item{var}{For the default method: population variance \eqn{S^2}.
+Estimate from a pilot study, a previous survey, or published data
+for a similar population. When uncertain, use a conservative
+(larger) estimate to avoid under-sizing.
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_mean]{prec_mean()}}.}
 
 \item{...}{Additional arguments passed to methods.}
 
-\item{mu}{Population mean magnitude (positive). Required when \code{cv} is specified.}
+\item{mu}{Population mean magnitude (positive). Required when \code{cv} is
+specified, because CV is defined as SE / mean.}
 
-\item{moe}{Desired margin of error. Specify exactly one of \code{moe} or \code{cv}.}
-
-\item{cv}{Target coefficient of variation. Specify exactly one of \code{moe}
+\item{moe}{Desired margin of error — the half-width of the confidence
+interval, in the same units as the variable. For example, if
+measuring income in dollars, \code{moe = 50} means the 95 percent CI
+should be no wider than +/- $50. Specify exactly one of \code{moe}
 or \code{cv}.}
+
+\item{cv}{Target coefficient of variation (relative standard error).
+For example, \code{cv = 0.05} means the standard error should be at
+most 5 percent of the estimate. Use \code{cv} when you want precision
+to scale with the estimate (common in economic surveys); use \code{moe}
+when you want a fixed absolute precision. Requires \code{mu}. Specify
+exactly one of \code{moe} or \code{cv}.}
 
 \item{alpha}{Significance level, default 0.05.}
 
 \item{N}{Population size. \code{Inf} (default) means no finite population
-correction.}
+correction. Setting a finite \code{N} reduces the required sample size
+when the sampling fraction is non-negligible (rule of thumb:
+matters when n/N > 5 percent).}
 
-\item{deff}{Design effect multiplier (> 0). Values < 1 are valid for
-efficient designs (e.g., stratified sampling with Neyman allocation).}
+\item{deff}{Design effect multiplier (> 0). See \code{\link[=n_prop]{n_prop()}} for
+guidance on estimating DEFF. Values < 1 are valid for efficient
+designs (e.g., stratified sampling with Neyman allocation).}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The required sample size is inflated by \code{1 / resp_rate}.}
@@ -64,13 +79,17 @@ multiplied by \code{deff}.
 \item \strong{CV mode}: Computes \code{CVpop = sqrt(var) / mu}, then
 \code{n = CVpop^2 / (cv^2 + CVpop^2 / N)}, multiplied by \code{deff}.
 }
+\subsection{Finite population correction}{
 
-The FPC is the standard Cochran (1977) one-step form. Unlike \code{\link[=n_prop]{n_prop()}},
-no \code{N/(N-1)} adjustment is needed because \code{var} is already defined on
-\code{N-1} degrees of freedom.
+Setting \code{N} to a finite value reduces the required sample size when
+the sampling fraction (n/N) is non-negligible (rule of thumb: matters
+when n/N > 5 percent). Unlike \code{\link[=n_prop]{n_prop()}}, no \code{N/(N-1)} adjustment is
+needed because \code{var} is already defined on \code{N-1} degrees of freedom.
+See \code{\link[=n_prop]{n_prop()}} for a fuller explanation of FPC.
 
 All methods use the normal (z) quantile. This is standard for survey
 sampling where the sample size is large enough for the CLT to apply.
+}
 }
 \examples{
 # MOE mode

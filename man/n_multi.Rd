@@ -27,9 +27,24 @@ n_multi(targets, ...)
 \method{n_multi}{svyplan_prec}(targets, stage_cost = NULL, ...)
 }
 \arguments{
-\item{targets}{For the default method: data frame with one row per
-indicator (see Details). For \code{svyplan_prec} objects: a precision
-result from \code{\link[=prec_multi]{prec_multi()}}.}
+\item{targets}{For the default method: a data frame where \strong{each row
+is one survey indicator} you want to measure — for example,
+a prevalence (proportion) or a population mean. Surveys typically
+track several indicators simultaneously and the sample must be large
+enough for the most demanding one; \code{n_multi} finds that size.
+
+See the Details section for the full column reference. At minimum,
+each row needs:
+\itemize{
+\item \strong{What to measure}: \code{p} for a proportion (e.g. 0.30 for
+30\\% stunting) \strong{or} \code{var} for a continuous variable's
+population variance. Each row must use exactly one.
+\item \strong{How precise}: \code{moe} (margin of error, simple mode) \strong{or}
+\code{cv} (coefficient of variation, either mode). Each row must
+specify exactly one.
+}
+
+For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_multi]{prec_multi()}}.}
 
 \item{...}{Additional arguments passed to methods.}
 
@@ -115,28 +130,81 @@ multiple survey indicators simultaneously. Supports simple (single-stage)
 and multistage cluster designs, with optional domain-level planning.
 }
 \details{
-The \code{targets} data frame supports the following columns:
+\subsection{Building the targets data frame}{
+
+Each row of \code{targets} represents one survey indicator. The two key
+decisions per row are:
+\enumerate{
+\item \strong{Type of indicator} — is it a proportion (binary variable like
+"stunted yes/no") or a mean (continuous variable like "household
+expenditure")? This determines whether you fill the \code{p} or \code{var}
+column.
+\item \strong{Precision target} — do you want an absolute margin of error
+(\code{moe}, e.g. +/- 5 percentage points) or a relative
+coefficient of variation (\code{cv}, e.g. 10 percent relative error)?
+}
+
+A minimal example for three health indicators:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{targets <- data.frame(
+  name = c("stunting", "vaccination", "expenditure"),
+  p    = c(0.30, 0.70, NA),
+  var  = c(NA, NA, 2500),
+  moe  = c(0.05, 0.05, 10)
+)
+}\if{html}{\out{</div>}}
+
+Rows with \code{p} are treated as proportions; rows with \code{var} (and \code{p = NA})
+as means. You cannot have both \code{p} and \code{var} non-\code{NA} in the same row.
+}
+
+\subsection{Column reference}{
 
 \describe{
-\item{\code{name}}{Indicator label (optional).}
-\item{\code{p}}{Expected proportion, in (0, 1). One of \code{p} or \code{var} per row.}
-\item{\code{var}}{Population variance. One of \code{p} or \code{var} per row.}
-\item{\code{mu}}{Population mean magnitude (positive). Required when \code{var} is specified with \code{cv}.}
-\item{\code{moe}}{Margin of error (simple mode).}
-\item{\code{cv}}{Target coefficient of variation (either mode).}
-\item{\code{alpha}}{Significance level (default 0.05).}
-\item{\code{deff}}{Design effect multiplier (simple mode only, default 1).}
-\item{\code{N}}{Population size (simple mode only, default Inf).}
-\item{\code{prop_method}}{Optional proportion method for simple mode,
-one of \code{"wald"}, \code{"wilson"}, or \code{"logodds"}. Only used for rows
-with \code{p}; ignored for mean rows and multistage mode.}
-\item{\code{delta_psu}, \code{delta_ssu}}{Homogeneity measures (multistage).}
-\item{\code{rel_var}}{Unit relvariance. If omitted, derived from \code{p} or
-\code{var}/\code{mu}.}
-\item{\code{k_psu}, \code{k_ssu}}{Ratio parameters (multistage, default 1).}
-\item{\code{resp_rate}}{Expected response rate, in (0, 1]. Default 1 (no
-adjustment). Inflates the required sample size to account for
-non-response.}
+\item{\code{name}}{Indicator label (optional). If omitted, row numbers
+are used in output.}
+\item{\code{p}}{Expected proportion, in (0, 1). Use this for binary
+indicators such as prevalences or coverage rates. The value is
+your best prior guess (e.g. from a previous survey or literature).
+One of \code{p} or \code{var} per row.}
+\item{\code{var}}{Population variance of a continuous indicator. Use
+this for means (e.g. income, expenditure, weight). One of \code{p}
+or \code{var} per row.}
+\item{\code{mu}}{Population mean (positive). \strong{Required} when \code{var} is
+used together with \code{cv}, because CV = SE / mean.}
+\item{\code{moe}}{Margin of error — the half-width of the confidence
+interval you want. For proportions, this is on the probability
+scale (e.g. 0.05 for +/- 5 percentage points). For means,
+it is in the same units as the variable (e.g. 10 dollars).
+Simple mode only.}
+\item{\code{cv}}{Target coefficient of variation (relative standard
+error). For example, 0.10 means the SE should be at most 10\\%
+of the estimate. Works in both simple and multistage mode.}
+\item{\code{alpha}}{Significance level for the confidence interval
+(default 0.05, giving a 95 percent CI).}
+\item{\code{deff}}{Design effect multiplier (simple mode only,
+default 1). Set > 1 to inflate the sample size for complex
+designs (e.g. 1.5 for a cluster design).}
+\item{\code{N}}{Population size (simple mode only, default \code{Inf}).
+A finite value applies a finite population correction, reducing
+the required sample size.}
+\item{\code{prop_method}}{Proportion CI method for simple mode:
+\code{"wald"} (default), \code{"wilson"}, or \code{"logodds"}. \code{"wilson"} is
+recommended for rare proportions (below 0.1 or above 0.9).
+Only used for rows with \code{p}; ignored for mean rows and
+multistage mode.}
+\item{\code{delta_psu}, \code{delta_ssu}}{Measure of homogeneity (intra-class
+correlation) within clusters, between 0 and 1. Needed for
+multistage mode. \code{delta_psu} is required for 2-stage designs;
+both are required for 3-stage designs.}
+\item{\code{rel_var}}{Unit relvariance. If omitted, derived
+automatically from \code{p} (as \code{(1 - p) / p}) or from
+\code{var} / \code{mu^2}.}
+\item{\code{k_psu}, \code{k_ssu}}{Ratio parameters for cost-variance
+modelling (multistage, default 1).}
+\item{\code{resp_rate}}{Expected response rate, in (0, 1]. Default 1
+(no adjustment). A value of 0.90 inflates the sample size by
+\code{1 / 0.90} to compensate for 10 percent non-response.}
 }
 
 Domain columns are specified via the \code{domains} parameter. When domains
@@ -173,6 +241,7 @@ These functions assume sampling fractions are negligible at each stage
 (equivalent to sampling with replacement). No finite population correction
 is applied. This is standard for multistage planning when cluster
 populations are large relative to the sample.
+}
 }
 \examples{
 # Simple mode: three indicators, take the max

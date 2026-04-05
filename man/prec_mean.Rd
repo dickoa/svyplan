@@ -58,6 +58,13 @@ Computes the standard error for the given sample size and design
 parameters, then derives the margin of error and coefficient of
 variation. The effective sample size is \code{n * resp_rate / deff}, with
 optional finite population correction.
+\subsection{Round-trip with n_mean}{
+
+\code{prec_mean()} is the inverse of \code{\link[=n_mean]{n_mean()}}: if you compute
+\code{res <- n_mean(var = 100, moe = 2)} and then call \code{prec_mean(res)},
+you will recover \code{moe = 2}. You can also pass an \code{svyplan_n} object
+directly: \code{prec_mean(res)}.
+}
 }
 \examples{
 # Precision with n = 400
@@ -65,6 +72,10 @@ prec_mean(var = 100, n = 400, mu = 50)
 
 # Without mu (CV will be NA)
 prec_mean(var = 100, n = 400)
+
+# Round-trip from n_mean
+res <- n_mean(var = 100, moe = 2)
+prec_mean(res)
 
 }
 \seealso{

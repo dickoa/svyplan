@@ -23,7 +23,10 @@ prec_alloc(x, ...)
 \method{prec_alloc}{svyplan_n}(x, ...)
 }
 \arguments{
-\item{x}{For the default method: a frame data frame with stratum metadata.
+\item{x}{For the default method: a stratum-level data frame in the same
+format as the \code{frame} argument to \code{\link[=n_alloc]{n_alloc()}} (one row per stratum,
+with at least \code{N} and \code{sd} or \code{var} columns; see \code{\link[=n_alloc]{n_alloc()}} for
+the full column reference).
 For \code{svyplan_n} objects: an allocation result from \code{\link[=n_alloc]{n_alloc()}}.}
 
 \item{...}{Additional arguments passed to methods.}
@@ -40,7 +43,7 @@ domain identifiers, or \code{NULL} (default) for no domains.}
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1.}
 
 \item{unit_cost}{Optional scalar or length-\code{nrow(x)} vector of
-per-stratum unit costs, overriding \code{x$cost_h}.}
+per-stratum unit costs, overriding \code{x$cost}.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -52,9 +55,9 @@ Compute aggregate precision for a stratum allocation.
 }
 \examples{
 frame <- data.frame(
-  N_h = c(4000, 3000, 3000),
-  S_h = c(10, 15, 8),
-  mean_h = c(50, 60, 55)
+  N    = c(4000, 3000, 3000),
+  sd   = c(10, 15, 8),
+  mean = c(50, 60, 55)
 )
 res <- n_alloc(frame, n = 600)
 prec_alloc(res)

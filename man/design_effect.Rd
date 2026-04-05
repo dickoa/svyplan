@@ -60,10 +60,39 @@ Estimate the design effect using various methods. This is an S3 generic
 that dispatches on the class of \code{x}.
 }
 \details{
+The design effect (DEFF) measures how much a complex design inflates
+variance compared to a simple random sample of the same size.
+DEFF = 1 means no inflation; DEFF = 2 means the variance is doubled
+(equivalently, you need twice the sample size for the same precision).
+\subsection{Choosing a method}{
+
+\strong{After data collection (diagnostic)} — use survey weights to assess
+how much precision was lost due to the complex design:
+\itemize{
+\item \strong{kish}: Weights only. Quick, outcome-independent summary.
+Good default for an overall DEFF estimate.
+\item \strong{henry}: Weights + outcome + calibration covariate. Accounts for
+calibration weighting.
+\item \strong{spencer}: Weights + outcome + selection probabilities. Accounts
+for correlation between weights and the outcome.
+\item \strong{cr}: Weights + outcome + strata/cluster IDs. Full Chen-Rust
+decomposition for multistage stratified designs; returns
+per-stratum and overall DEFF.
+}
+
+\strong{Before data collection (planning)} — estimate an expected DEFF
+to inflate a simple-random-sample size calculation:
+\itemize{
+\item \strong{cluster}: Uses \code{delta} (homogeneity) and \code{psu_size} to compute
+DEFF = 1 + (psu_size - 1) * delta. Pass the result as the \code{deff}
+argument to \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}}, or other sizing functions.
+}
+
 The \code{"kish"} method uses only weights and produces a single survey-wide
 DEFF. The \code{"henry"}, \code{"spencer"}, and \code{"cr"} methods are
 \strong{outcome-dependent}: they require \code{y}, and the resulting DEFF varies
 by outcome variable.
+}
 }
 \section{Methods (by class)}{
 \itemize{
@@ -100,5 +129,6 @@ stratification. \emph{Journal of Survey Statistics and Methodology},
 }
 \seealso{
 \code{\link[=effective_n]{effective_n()}} for effective sample size, \code{\link[=varcomp]{varcomp()}} for
-estimating inputs to the \code{"cluster"} method.
+estimating inputs to the \code{"cluster"} method, \code{\link[=n_cluster]{n_cluster()}} for
+directly optimizing a multistage design using \code{delta}.
 }

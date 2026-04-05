@@ -20,6 +20,9 @@
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The required sample size is inflated by `1 / resp_rate`.
 #' @param alternative Character: `"two.sided"` (default) or `"one.sided"`.
+#'   Use `"two.sided"` when either an increase or decrease matters (the
+#'   usual default). Use `"one.sided"` when only one direction is of
+#'   interest, which requires a smaller sample for the same power.
 #' @param ratio Allocation ratio n1/n2 (default 1). Only used when solving
 #'   for n (`n = NULL`). For example, `ratio = 2` means group 1 gets twice
 #'   the sample of group 2.
@@ -41,6 +44,11 @@
 #' }
 #'
 #' @details
+#' The `var` argument is the within-group population variance. Estimate it
+#' from a pilot study, a previous survey, or published data for a similar
+#' population. When uncertain, use a conservative (larger) estimate — this
+#' inflates the sample size, which is safer than under-powering.
+#'
 #' To specify the effect in terms of Cohen's d (standardized effect size),
 #' convert via `effect = d * sqrt(mean(var))`, where `d` follows Cohen's
 #' conventions: 0.2 (small), 0.5 (medium), 0.8 (large).
@@ -60,8 +68,8 @@
 #'
 #' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
 #'
-#' @seealso [power_prop()] for proportions, [n_mean()] for estimation
-#'   precision.
+#' @seealso [power_prop()] for proportions, [power_did()] for
+#'   difference-in-differences, [n_mean()] for estimation precision.
 #'
 #' @examples
 #' # Sample size to detect a difference of 5 with variance 100

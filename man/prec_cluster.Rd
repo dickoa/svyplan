@@ -44,12 +44,19 @@ adjustment). The effective stage-1 size is \code{n * resp_rate}.}
 }
 \value{
 A \code{svyplan_prec} object with components \verb{$se}, \verb{$moe}, and \verb{$cv}.
+Because the cluster model is parameterized with unit relvariance
+(\code{rel_var = S^2 / Y_bar^2}), only \verb{$cv} is computable; \verb{$se} and
+\verb{$moe} are \code{NA}.
 }
 \description{
 Compute the sampling error (SE, MOE, CV) for a given multistage sample
 allocation. This is the inverse of \code{\link[=n_cluster]{n_cluster()}}.
 }
 \details{
+\code{prec_cluster()} is the inverse of \code{\link[=n_cluster]{n_cluster()}}: given per-stage
+sample sizes, it computes the achieved precision. You can pass the
+result of \code{n_cluster()} directly: \code{prec_cluster(n_cluster(...))}.
+
 Stage count is determined by \code{length(n)}.
 
 \strong{2-stage} (Valliant et al., 2018, Eq. 9.2.23):
@@ -60,8 +67,13 @@ Stage count is determined by \code{length(n)}.
   + k_2 (1 + \delta_2 (n_3 - 1)))}}
 }
 \examples{
+# Direct usage
 prec_cluster(n = c(50, 12), delta = 0.05)
 prec_cluster(n = c(50, 12, 8), delta = c(0.01, 0.05))
+
+# Round-trip from n_cluster
+res <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
+prec_cluster(res)
 
 }
 \references{

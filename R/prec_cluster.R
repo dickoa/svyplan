@@ -19,8 +19,15 @@
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_prec` object with components `$se`, `$moe`, and `$cv`.
+#'   Because the cluster model is parameterized with unit relvariance
+#'   (`rel_var = S^2 / Y_bar^2`), only `$cv` is computable; `$se` and
+#'   `$moe` are `NA`.
 #'
 #' @details
+#' `prec_cluster()` is the inverse of [n_cluster()]: given per-stage
+#' sample sizes, it computes the achieved precision. You can pass the
+#' result of `n_cluster()` directly: `prec_cluster(n_cluster(...))`.
+#'
 #' Stage count is determined by `length(n)`.
 #'
 #' **2-stage** (Valliant et al., 2018, Eq. 9.2.23):
@@ -39,8 +46,13 @@
 #'   estimating variance components.
 #'
 #' @examples
+#' # Direct usage
 #' prec_cluster(n = c(50, 12), delta = 0.05)
 #' prec_cluster(n = c(50, 12, 8), delta = c(0.01, 0.05))
+#'
+#' # Round-trip from n_cluster
+#' res <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
+#' prec_cluster(res)
 #'
 #' @export
 prec_cluster <- function(n, ...) {

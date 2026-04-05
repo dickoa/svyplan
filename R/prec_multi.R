@@ -3,9 +3,22 @@
 #' Compute the sampling error (SE, MOE, CV) for multiple survey indicators
 #' given a sample size. This is the inverse of [n_multi()].
 #'
-#' @param targets For the default method: data frame with one row per
-#'   indicator (must contain an `n` column; see Details). For `svyplan_n`
-#'   or `svyplan_cluster` objects: a result from [n_multi()].
+#' @param targets For the default method: a data frame where **each row
+#'   is one survey indicator**, in the same format as [n_multi()] but
+#'   with an additional `n` column giving the sample size. This lets you
+#'   answer: "given this sample size, what precision do I get for each
+#'   indicator?"
+#'
+#'   At minimum, each row needs:
+#'   \itemize{
+#'     \item `p` **or** `var` — what you are measuring (see [n_multi()]).
+#'     \item `n` — the sample size to evaluate.
+#'   }
+#'
+#'   See the Details section for the full column reference.
+#'
+#'   For `svyplan_n` or `svyplan_cluster` objects: a result from
+#'   [n_multi()].
 #' @param ... Additional arguments passed to methods.
 #' @param domains Character vector of column names in `targets` to treat
 #'   as domain variables, or `NULL` (default) for no domains. All names
@@ -30,27 +43,53 @@
 #'   per-indicator precision.
 #'
 #' @details
-#' The `targets` data frame supports the following columns:
+#' ## Building the targets data frame
+#'
+#' The `targets` data frame uses the same structure as [n_multi()],
+#' with the addition of a required `n` column specifying the sample
+#' size to evaluate. A minimal example:
+#'
+#' ```
+#' targets <- data.frame(
+#'   name = c("stunting", "vaccination", "anemia"),
+#'   p    = c(0.30, 0.70, 0.10),
+#'   n    = c(400, 400, 400)
+#' )
+#' ```
+#'
+#' See [n_multi()] for a detailed guide on constructing indicator rows
+#' (choosing between `p` and `var`, setting per-row design effects, etc.).
+#'
+#' ## Column reference
 #'
 #' \describe{
 #'   \item{`name`}{Indicator label (optional).}
-#'   \item{`p`}{Expected proportion, in (0, 1). One of `p` or `var` per row.}
+#'   \item{`p`}{Expected proportion, in (0, 1). One of `p` or `var`
+#'     per row (see [n_multi()]).}
 #'   \item{`var`}{Population variance. One of `p` or `var` per row.}
-#'   \item{`mu`}{Population mean. Required for CV when `var` is specified.}
-#'   \item{`n`}{Sample size (required). For simple mode, a scalar per
-#'     indicator. For multistage, per-stage sizes can be provided as
-#'     `n`, `psu_size`, `ssu_size` columns.}
+#'   \item{`mu`}{Population mean. Required for CV output when `var`
+#'     is specified, because CV = SE / mean.}
+#'   \item{`n`}{Sample size to evaluate (**required**). In simple mode,
+#'     one number per row. In multistage mode, this is the stage-1
+#'     (PSU) sample size; add `psu_size` and optionally `ssu_size`
+#'     columns for the per-stage cluster sizes.}
+#'   \item{`psu_size`}{Stage-2 sample size per PSU (multistage only).
+#'     Required for 2+ stage designs in multistage mode.}
+#'   \item{`ssu_size`}{Stage-3 sample size per SSU (3-stage only).}
 #'   \item{`alpha`}{Significance level (default 0.05).}
-#'   \item{`deff`}{Design effect multiplier (simple mode only, default 1).}
-#'   \item{`N`}{Population size (simple mode only, default Inf).}
-#'   \item{`prop_method`}{Optional proportion method for simple mode,
-#'     one of `"wald"`, `"wilson"`, or `"logodds"`. Only used for rows
-#'     with `p`; ignored for mean rows and multistage mode.}
+#'   \item{`deff`}{Design effect multiplier (simple mode only,
+#'     default 1).}
+#'   \item{`N`}{Population size (simple mode only, default `Inf`).}
+#'   \item{`prop_method`}{Proportion CI method: `"wald"` (default),
+#'     `"wilson"`, or `"logodds"`. Only for rows with `p` in
+#'     simple mode.}
 #'   \item{`resp_rate`}{Expected response rate (default 1).}
-#'   \item{`delta_psu`, `delta_ssu`}{Homogeneity measures (multistage).}
-#'   \item{`rel_var`}{Unit relvariance. If omitted, derived from `p` or
-#'     `var`/`mu`.}
-#'   \item{`k_psu`, `k_ssu`}{Ratio parameters (multistage, default 1).}
+#'   \item{`delta_psu`, `delta_ssu`}{Homogeneity measures
+#'     (multistage).}
+#'   \item{`rel_var`}{Unit relvariance. If omitted, derived from `p`
+#'     or `var`/`mu`.}
+#'   \item{`k_psu`, `k_ssu`}{Ratio parameters (multistage,
+#'     default 1).}
 #' }
 #'
 #' Domain columns are specified via the `domains` parameter.

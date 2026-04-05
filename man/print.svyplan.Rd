@@ -85,12 +85,24 @@
 \item{level}{Confidence level (default 0.95).}
 }
 \value{
-\code{x} (or \code{object}), invisibly.
+\code{x} (or \code{object}), invisibly. \code{confint} returns a 2-column
+matrix with the lower and upper confidence limits.
 }
 \description{
 Print svyplan objects
 }
 \details{
+\subsection{confint}{
+
+\code{confint()} computes a confidence interval for the estimated parameter
+(proportion or mean). For proportions, the interval type matches the
+\code{method} used to compute the sample size (\code{"wald"}, \code{"wilson"}, or
+\code{"logodds"}). For means, a symmetric z-interval is used (requires
+\code{mu} in the original call).
+}
+
+\subsection{Print and coercion}{
+
 For \code{svyplan_cluster} objects, per-stage sizes are ceiled to integers
 for operational use. The total shown by \code{print()}, \code{format()}, and
 \code{as.integer()} is the product of ceiled per-stage sizes — the number of
@@ -99,4 +111,22 @@ interviews to actually conduct. The unrounded continuous optimum
 
 Summary: \code{as.integer(x)} = operational total (what goes in the field),
 \code{as.double(x)} = continuous optimum (what the math solved for).
+}
+}
+\examples{
+# confint on a proportion sample size
+res <- n_prop(p = 0.3, moe = 0.05)
+confint(res)
+
+# confint at 90\% level
+confint(res, level = 0.90)
+
+# confint on a mean (requires mu)
+res_mean <- n_mean(var = 100, mu = 50, moe = 2)
+confint(res_mean)
+
+# confint on a precision result
+prec <- prec_prop(p = 0.3, n = 400)
+confint(prec)
+
 }

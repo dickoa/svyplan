@@ -29,8 +29,11 @@ contain \code{NA}.}
 \item{n}{Target total sample size. Specify at most one of \code{n} or \code{cv}.
 Required for methods \code{"lh"} and \code{"kozak"}.}
 
-\item{cv}{Target coefficient of variation. Specify at most one of \code{n}
-or \code{cv}. Required for methods \code{"lh"} and \code{"kozak"}.}
+\item{cv}{Target coefficient of variation (relative standard error).
+For example, \code{cv = 0.05} means the standard error of the estimated
+population total or mean should be at most 5 percent of the estimate.
+Specify at most one of \code{n} or \code{cv}. Required for methods \code{"lh"} and
+\code{"kozak"}.}
 
 \item{method}{Stratification method: \code{"cumrootf"} (Dalenius-Hodges),
 \code{"geo"} (geometric), \code{"lh"} (Lavallée-Hidiroglou), or \code{"kozak"}
@@ -83,24 +86,28 @@ optimal strata. Supports four methods: cumulative root frequency
 iterative, and Kozak random search.
 }
 \details{
-The four methods differ in approach:
+\subsection{Choosing a method}{
+
+The four methods differ in approach and use case:
 \itemize{
 \item \strong{cumrootf}: Dalenius-Hodges (1959) cumulative root frequency rule.
-Non-iterative, does not require \code{n} or \code{cv}.
+Non-iterative, does not require \code{n} or \code{cv}. Best for a quick
+first look at reasonable boundary positions.
 \item \strong{geo}: Gunning-Horgan (2004) geometric progression. Non-iterative,
-requires \code{x > 0}.
-\item \strong{lh}: Lavallée-Hidiroglou (1988) iterative coordinate-wise
-optimization. Requires \code{n} or \code{cv}.
+requires \code{x > 0}. Works well for right-skewed positive variables
+(e.g. income, revenue) where a log-scale spacing is natural.
+\item \strong{lh} (default): Lavallée-Hidiroglou (1988) iterative coordinate-wise
+optimization. Requires \code{n} or \code{cv}. The recommended choice when you
+know the sample size or target CV: it directly minimizes the
+objective and is fast even on large frames.
 \item \strong{kozak}: Kozak (2004) random search, escapes local minima. Requires
-\code{n} or \code{cv}.
+\code{n} or \code{cv}. Use for highly skewed or multimodal data where \code{"lh"}
+may get trapped in a local optimum. Slower but more robust.
 }
 
-When \code{n} or \code{cv} is available, \code{"lh"} (the default) directly
-minimizes the objective and is fast even on large frames. Use \code{"kozak"}
-for highly skewed or multimodal data where coordinate-wise optimization
-may get trapped in local minima. The non-iterative methods (\code{"cumrootf"},
-\code{"geo"}) are useful for quick exploratory stratification or when neither
-\code{n} nor \code{cv} is known yet.
+In summary: use \code{"lh"} by default; switch to \code{"kozak"} if the
+distribution is difficult; fall back to \code{"cumrootf"} or \code{"geo"} when
+you do not yet have \code{n} or \code{cv}.
 
 Allocation is controlled by the \code{alloc} parameter. Four methods are
 available:
@@ -117,9 +124,10 @@ The parameter \code{power_q} controls the trade-off between national precision
 (\code{power_q = 0}).
 }
 
-Stratum allocations \code{n_h} are rounded to integers using the ORIC method
-(Cont and Heidari, 2015), which preserves \code{sum(n_h) = n} while minimizing
+Stratum allocations are rounded to integers using the ORIC method
+(Cont and Heidari, 2015), which preserves \code{sum(n) = n} while minimizing
 rounding distortion.
+}
 }
 \examples{
 set.seed(42)
@@ -163,5 +171,6 @@ Cont, R. and Heidari, M. (2015). Optimal rounding under integer
 constraints. \emph{arXiv preprint} arXiv:1501.00014.
 }
 \seealso{
-\link{predict.svyplan_strata} to assign new data to strata.
+\link{predict.svyplan_strata} to assign new data to strata,
+\code{\link[=n_alloc]{n_alloc()}} to distribute a sample across an existing set of strata.
 }

@@ -6,9 +6,20 @@
 #' @param level Confidence level (default 0.95).
 #' @param ... Additional arguments (currently unused).
 #'
-#' @return `x` (or `object`), invisibly.
+#' @return `x` (or `object`), invisibly. `confint` returns a 2-column
+#'   matrix with the lower and upper confidence limits.
 #'
 #' @details
+#' ## confint
+#'
+#' `confint()` computes a confidence interval for the estimated parameter
+#' (proportion or mean). For proportions, the interval type matches the
+#' `method` used to compute the sample size (`"wald"`, `"wilson"`, or
+#' `"logodds"`). For means, a symmetric z-interval is used (requires
+#' `mu` in the original call).
+#'
+#' ## Print and coercion
+#'
 #' For `svyplan_cluster` objects, per-stage sizes are ceiled to integers
 #' for operational use. The total shown by `print()`, `format()`, and
 #' `as.integer()` is the product of ceiled per-stage sizes — the number of
@@ -17,6 +28,22 @@
 #'
 #' Summary: `as.integer(x)` = operational total (what goes in the field),
 #' `as.double(x)` = continuous optimum (what the math solved for).
+#'
+#' @examples
+#' # confint on a proportion sample size
+#' res <- n_prop(p = 0.3, moe = 0.05)
+#' confint(res)
+#'
+#' # confint at 90% level
+#' confint(res, level = 0.90)
+#'
+#' # confint on a mean (requires mu)
+#' res_mean <- n_mean(var = 100, mu = 50, moe = 2)
+#' confint(res_mean)
+#'
+#' # confint on a precision result
+#' prec <- prec_prop(p = 0.3, n = 400)
+#' confint(prec)
 #'
 #' @name print.svyplan
 NULL
@@ -743,8 +770,8 @@ print.svyplan_strata <- function(x, ...) {
   }
   cat("---\n")
   df <- x$strata
-  df$W_h <- sprintf("%.3f", df$W_h)
-  df$S_h <- sprintf("%.1f", df$S_h)
+  df$share <- sprintf("%.3f", df$share)
+  df$sd <- sprintf("%.1f", df$sd)
   df$take_all <- NULL
   print(df, row.names = FALSE, right = FALSE)
 }
