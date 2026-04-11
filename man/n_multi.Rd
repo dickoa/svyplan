@@ -173,12 +173,14 @@ One of \code{p} or \code{var} per row.}
 this for means (e.g. income, expenditure, weight). One of \code{p}
 or \code{var} per row.}
 \item{\code{mu}}{Population mean (positive). \strong{Required} when \code{var} is
-used together with \code{cv}, because CV = SE / mean.}
+used together with \code{cv} (because CV = SE / mean) or with \code{moe}
+in multistage mode (for the moe-to-cv conversion).}
 \item{\code{moe}}{Margin of error, the half-width of the confidence
 interval you want. For proportions, this is on the probability
 scale (e.g. 0.05 for +/- 5 percentage points). For means,
 it is in the same units as the variable (e.g. 10 dollars).
-Simple mode only.}
+In multistage mode, converted to \code{cv} internally (see
+Details).}
 \item{\code{cv}}{Target coefficient of variation (relative standard
 error). For example, 0.10 means the SE should be at most 10\\%
 of the estimate. Works in both simple and multistage mode.}

@@ -324,7 +324,8 @@ prec_multi.default <- function(
 #' @keywords internal
 #' @noRd
 .prec_multi_cluster <- function(targets, stage_cost,
-                                domain_cols = character(0)) {
+                                domain_cols = character(0),
+                                mode = "cv") {
   stages <- length(stage_cost)
 
   if (!"alpha" %in% names(targets)) {
@@ -455,14 +456,32 @@ prec_multi.default <- function(
     }
   }
 
-  detail <- data.frame(
-    name = labels,
-    .cv = cv_vec
-  )
+  se_vec <- rep(NA_real_, nr)
+  moe_vec <- rep(NA_real_, nr)
+
+  if (identical(mode, "moe")) {
+    has_p <- "p" %in% names(targets)
+    has_mu <- "mu" %in% names(targets)
+    for (i in seq_len(nr)) {
+      z <- qnorm(1 - targets$alpha[i] / 2)
+      if (has_p && !is.na(targets$p[i])) {
+        moe_vec[i] <- cv_vec[i] * z * targets$p[i]
+      } else if (has_mu && !is.na(targets$mu[i])) {
+        moe_vec[i] <- cv_vec[i] * z * targets$mu[i]
+      }
+      se_vec[i] <- moe_vec[i] / z
+    }
+  }
+
+  detail <- if (identical(mode, "moe")) {
+    data.frame(name = labels, .se = se_vec, .moe = moe_vec, .cv = cv_vec)
+  } else {
+    data.frame(name = labels, .cv = cv_vec)
+  }
 
   .new_svyplan_prec(
-    se = rep(NA_real_, nr),
-    moe = rep(NA_real_, nr),
+    se = se_vec,
+    moe = moe_vec,
     cv = cv_vec,
     type = "multi",
     params = list(targets = targets, stage_cost = stage_cost,
@@ -538,8 +557,9 @@ prec_multi.svyplan_cluster <- function(targets, ...) {
   }
 
   stage_cost <- x$params$stage_cost
-  res <- prec_multi.default(targets = tgt, domains = dom_cols,
-                            stage_cost = stage_cost)
+  mode <- x$params$mode %||% "cv"
+  res <- .prec_multi_cluster(tgt, stage_cost, domain_cols = dom_cols,
+                             mode = mode)
   for (p in c("budget", "n_psu", "psu_size", "ssu_size", "joint", "fixed_cost",
               "min_n", "mode", "prop_method")) {
     if (!is.null(x$params[[p]])) res$params[[p]] <- x$params[[p]]

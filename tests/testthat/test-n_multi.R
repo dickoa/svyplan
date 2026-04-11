@@ -394,6 +394,53 @@ test_that("multistage moe works with budget mode", {
   expect_s3_class(res, "svyplan_cluster")
 })
 
+test_that("prec_multi exposes moe for multistage moe input", {
+  df <- data.frame(
+    p = c(0.30, 0.10),
+    moe = c(0.05, 0.03),
+    delta_psu = c(0.02, 0.05)
+  )
+  s <- nm(df, stage_cost = c(500, 50))
+  p <- prec_multi(s)
+
+  expect_true(all(!is.na(p$moe)))
+  expect_true(all(!is.na(p$se)))
+  expect_true(".moe" %in% names(p$detail))
+  expect_true(".se" %in% names(p$detail))
+
+  z <- qnorm(0.975)
+  expect_equal(p$detail$.moe, p$detail$.cv * z * c(0.30, 0.10))
+  expect_equal(p$detail$.se, p$detail$.moe / z)
+})
+
+test_that("multistage moe round-trips through prec_multi", {
+  df <- data.frame(
+    p = c(0.30, 0.10),
+    moe = c(0.05, 0.03),
+    delta_psu = c(0.02, 0.05)
+  )
+  s1 <- nm(df, stage_cost = c(500, 50))
+  p1 <- prec_multi(s1)
+  s2 <- n_multi(p1)
+
+  expect_s3_class(s2, "svyplan_cluster")
+  expect_equal(s1$n, s2$n, tolerance = 1e-4)
+  expect_equal(s1$cv, s2$cv, tolerance = 1e-4)
+})
+
+test_that("multistage cv mode prec_multi has NA moe (unchanged)", {
+  df <- data.frame(
+    p = c(0.30, 0.10),
+    cv = c(0.10, 0.15),
+    delta_psu = c(0.02, 0.05)
+  )
+  s <- nm(df, stage_cost = c(500, 50))
+  p <- prec_multi(s)
+
+  expect_true(all(is.na(p$moe)))
+  expect_false(".moe" %in% names(p$detail))
+})
+
 test_that("single indicator 2-stage matches n_cluster", {
   df <- data.frame(
     p = 0.3,
