@@ -66,7 +66,7 @@ DEFF = 1 means no inflation; DEFF = 2 means the variance is doubled
 (equivalently, you need twice the sample size for the same precision).
 \subsection{Choosing a method}{
 
-\strong{After data collection (diagnostic)} — use survey weights to assess
+\strong{After data collection (diagnostic)}: use survey weights to assess
 how much precision was lost due to the complex design:
 \itemize{
 \item \strong{kish}: Weights only. Quick, outcome-independent summary.
@@ -80,7 +80,7 @@ decomposition for multistage stratified designs; returns
 per-stratum and overall DEFF.
 }
 
-\strong{Before data collection (planning)} — estimate an expected DEFF
+\strong{Before data collection (planning)}: estimate an expected DEFF
 to inflate a simple-random-sample size calculation:
 \itemize{
 \item \strong{cluster}: Uses \code{delta} (homogeneity) and \code{psu_size} to compute

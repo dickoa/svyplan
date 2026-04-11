@@ -19,7 +19,7 @@
 #'
 #' ## Choosing a method
 #'
-#' **After data collection (diagnostic)** — use survey weights to assess
+#' **After data collection (diagnostic)**: use survey weights to assess
 #' how much precision was lost due to the complex design:
 #'
 #' - **kish**: Weights only. Quick, outcome-independent summary.
@@ -32,7 +32,7 @@
 #'   decomposition for multistage stratified designs; returns
 #'   per-stratum and overall DEFF.
 #'
-#' **Before data collection (planning)** — estimate an expected DEFF
+#' **Before data collection (planning)**: estimate an expected DEFF
 #' to inflate a simple-random-sample size calculation:
 #'
 #' - **cluster**: Uses `delta` (homogeneity) and `psu_size` to compute

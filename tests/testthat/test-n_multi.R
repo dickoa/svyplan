@@ -33,9 +33,9 @@ test_that("n_multi rejects n_psu without stage_cost", {
   expect_error(nm(df, n_psu = 50), "'n_psu' requires 'stage_cost'")
 })
 
-test_that("multistage requires cv column", {
-  df <- data.frame(p = 0.3, moe = 0.05, delta_psu = 0.02)
-  expect_error(nm(df, stage_cost = c(500, 50)), "requires 'cv'")
+test_that("multistage requires cv or moe column", {
+  df <- data.frame(p = 0.3, delta_psu = 0.02)
+  expect_error(nm(df, stage_cost = c(500, 50)), "'moe' or 'cv'")
 })
 
 test_that("multistage requires delta_psu column", {
@@ -323,6 +323,75 @@ test_that("domains with two grouping columns work", {
   )
   res <- nm(df, domains = c("region", "urban"))
   expect_equal(nrow(res$domains), 4L)
+})
+
+test_that("multistage accepts moe for proportions", {
+  df <- data.frame(
+    p = c(0.30, 0.10),
+    moe = c(0.05, 0.03),
+    delta_psu = c(0.02, 0.05)
+  )
+  res <- nm(df, stage_cost = c(500, 50))
+  expect_s3_class(res, "svyplan_cluster")
+  expect_true(all(res$detail$.cv_achieved > 0))
+})
+
+test_that("multistage moe matches equivalent cv", {
+  p <- c(0.30, 0.10)
+  moe <- c(0.05, 0.03)
+  z <- qnorm(0.975)
+
+  df_moe <- data.frame(p = p, moe = moe, delta_psu = c(0.02, 0.05))
+  df_cv <- data.frame(p = p, cv = moe / (z * p), delta_psu = c(0.02, 0.05))
+
+  res_moe <- nm(df_moe, stage_cost = c(500, 50))
+  res_cv <- nm(df_cv, stage_cost = c(500, 50))
+
+  expect_equal(res_moe$n, res_cv$n)
+  expect_equal(res_moe$cv, res_cv$cv)
+  expect_equal(res_moe$cost, res_cv$cost)
+})
+
+test_that("multistage moe works for mean indicators with mu", {
+  df <- data.frame(
+    var = c(2500, 100),
+    mu = c(300, 50),
+    moe = c(10, 2),
+    delta_psu = c(0.02, 0.03)
+  )
+  res <- nm(df, stage_cost = c(500, 50))
+  expect_s3_class(res, "svyplan_cluster")
+})
+
+test_that("multistage moe errors for mean without mu", {
+  df <- data.frame(var = 2500, moe = 10, delta_psu = 0.03)
+  expect_error(
+    nm(df, stage_cost = c(500, 50)),
+    "'mu' is required to convert 'moe' to 'cv'"
+  )
+})
+
+test_that("multistage moe works with mixed p and var", {
+  df <- data.frame(
+    p = c(0.30, NA),
+    var = c(NA, 2500),
+    mu = c(NA, 300),
+    moe = c(0.05, 10),
+    delta_psu = c(0.02, 0.03)
+  )
+  res <- nm(df, stage_cost = c(500, 50))
+  expect_s3_class(res, "svyplan_cluster")
+  expect_equal(nrow(res$detail), 2L)
+})
+
+test_that("multistage moe works with budget mode", {
+  df <- data.frame(
+    p = c(0.30, 0.10),
+    moe = c(0.05, 0.03),
+    delta_psu = c(0.02, 0.05)
+  )
+  res <- nm(df, stage_cost = c(500, 50), budget = 100000)
+  expect_s3_class(res, "svyplan_cluster")
 })
 
 test_that("single indicator 2-stage matches n_cluster", {

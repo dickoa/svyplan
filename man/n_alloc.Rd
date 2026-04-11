@@ -30,7 +30,7 @@ n_alloc(frame, ...)
 \arguments{
 \item{frame}{For the default method: a \strong{stratum-level} data frame
 describing the population you want to sample. Each row represents one
-stratum — a subgroup of the population defined by a stratification
+stratum, a subgroup of the population defined by a stratification
 variable such as region, age group, or urbanicity. The values in this
 frame typically come from a census, a population register, or a
 previous survey.
@@ -74,7 +74,7 @@ expensive to reach. Defaults to 1 everywhere (equal cost).}
 \eqn{N_h / n_h}. Caps how under-represented a stratum can be.
 Use \code{NA} for strata without a cap.}
 \item{\code{take_all}}{Logical (or 0/1). If \code{TRUE}, every unit in the
-stratum is included — a census stratum. Useful for small strata
+stratum is included, a census stratum. Useful for small strata
 whose total population is tiny enough to enumerate.}
 }
 
@@ -139,8 +139,8 @@ subgroup \emph{before} sampling. A typical workflow:
 \enumerate{
 \item \strong{Identify strata} from a census or register (e.g. provinces,
 urban/rural areas, age groups).
-\item \strong{Look up \code{N}} — the population count per stratum.
-\item \strong{Estimate \code{sd}} — the standard deviation of your key variable
+\item \strong{Look up \code{N}}: the population count per stratum.
+\item \strong{Estimate \code{sd}}: the standard deviation of your key variable
 within each stratum (from a pilot survey, a previous census, or
 expert judgement). If unknown, set \code{sd = 1} everywhere for
 proportional allocation.
@@ -172,7 +172,7 @@ Domains are specified via the \code{domains} parameter. Domain columns
 partition strata into sub-populations. Each domain groups
 one or more strata. When \code{cv} is specified, the algorithm finds the
 minimum total \eqn{n} such that the \emph{worst-case} domain CV meets the
-target — i.e. every domain achieves the required precision.
+target, i.e. every domain achieves the required precision.
 
 In \code{n} or \code{budget} mode, domains affect reporting only: per-domain
 precision metrics appear in \verb{$domains} but the allocation itself treats

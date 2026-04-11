@@ -35,7 +35,7 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_mean]
 \item{mu}{Population mean magnitude (positive). Required when \code{cv} is
 specified, because CV is defined as SE / mean.}
 
-\item{moe}{Desired margin of error — the half-width of the confidence
+\item{moe}{Desired margin of error, the half-width of the confidence
 interval, in the same units as the variable. For example, if
 measuring income in dollars, \code{moe = 50} means the 95 percent CI
 should be no wider than +/- $50. Specify exactly one of \code{moe}
@@ -90,6 +90,23 @@ See \code{\link[=n_prop]{n_prop()}} for a fuller explanation of FPC.
 All methods use the normal (z) quantile. This is standard for survey
 sampling where the sample size is large enough for the CLT to apply.
 }
+
+\subsection{Sample size for a total}{
+
+A separate \code{n_total()} function is not needed because the sample size
+for a population total \eqn{\hat{Y} = N \bar{y}} is identical to
+the sample size for the mean. The two are related by a factor of
+\eqn{N}:
+\itemize{
+\item \strong{CV mode}: \eqn{CV(\hat{Y}) = CV(\bar{y})}, so the required
+sample size is the same. Use \code{n_mean(var, mu, cv)} directly.
+\item \strong{MOE mode}: \eqn{MOE(\hat{Y}) = N \times MOE(\bar{y})}, so
+divide the target MOE for the total by \eqn{N}:
+\code{n_mean(var, moe = moe_total / N, N = N)}.
+}
+
+See Examples below.
+}
 }
 \examples{
 # MOE mode
@@ -100,6 +117,13 @@ n_mean(var = 100, mu = 50, cv = 0.05)
 
 # With FPC, design effect, and response rate
 n_mean(var = 100, moe = 2, N = 5000, deff = 1.5, resp_rate = 0.8)
+
+# --- Sample size for a total ---
+# Target: estimate total income (N = 10000) with MOE of 500000
+n_mean(var = 2500, moe = 500000 / 10000, N = 10000)
+
+# CV mode: identical for means and totals
+n_mean(var = 2500, mu = 300, cv = 0.05, N = 10000)
 
 }
 \references{

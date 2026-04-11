@@ -22,7 +22,7 @@
 #'
 #' For `svyplan_cluster` objects, per-stage sizes are ceiled to integers
 #' for operational use. The total shown by `print()`, `format()`, and
-#' `as.integer()` is the product of ceiled per-stage sizes — the number of
+#' `as.integer()` is the product of ceiled per-stage sizes, the number of
 #' interviews to actually conduct. The unrounded continuous optimum
 #' (`x$total_n`) is shown in parentheses and returned by `as.double()`.
 #'

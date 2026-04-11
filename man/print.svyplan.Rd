@@ -105,7 +105,7 @@ Print svyplan objects
 
 For \code{svyplan_cluster} objects, per-stage sizes are ceiled to integers
 for operational use. The total shown by \code{print()}, \code{format()}, and
-\code{as.integer()} is the product of ceiled per-stage sizes — the number of
+\code{as.integer()} is the product of ceiled per-stage sizes, the number of
 interviews to actually conduct. The unrounded continuous optimum
 (\code{x$total_n}) is shown in parentheses and returned by \code{as.double()}.
 

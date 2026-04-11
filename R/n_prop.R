@@ -6,7 +6,7 @@
 #' @param p For the default method: expected proportion, in (0, 1).
 #'   For `svyplan_prec` objects: a precision result from [prec_prop()].
 #' @param ... Additional arguments passed to methods.
-#' @param moe Desired margin of error — the half-width of the confidence
+#' @param moe Desired margin of error, the half-width of the confidence
 #'   interval on the proportion scale. For example, `moe = 0.05` means
 #'   the 95 percent CI should be no wider than +/- 5 percentage points.
 #'   Specify exactly one of `moe` or `cv`.

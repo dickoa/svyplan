@@ -65,6 +65,22 @@ optional finite population correction.
 you will recover \code{moe = 2}. You can also pass an \code{svyplan_n} object
 directly: \code{prec_mean(res)}.
 }
+
+\subsection{Precision of a total}{
+
+A separate \code{prec_total()} is not needed. The precision of the
+estimated total \eqn{\hat{Y} = N \bar{y}} is a rescaling of the
+mean precision:
+\itemize{
+\item \eqn{SE(\hat{Y}) = N \times SE(\bar{y})}
+\item \eqn{MOE(\hat{Y}) = N \times MOE(\bar{y})}
+\item \eqn{CV(\hat{Y}) = CV(\bar{y})}
+}
+
+Call \code{prec_mean()} and multiply \verb{$se} and \verb{$moe} by \eqn{N} for
+the total. The \verb{$cv} component is identical.
+See Examples below.
+}
 }
 \examples{
 # Precision with n = 400
@@ -76,6 +92,14 @@ prec_mean(var = 100, n = 400)
 # Round-trip from n_mean
 res <- n_mean(var = 100, moe = 2)
 prec_mean(res)
+
+# --- Precision of a total ---
+# Precision of a mean, then scale to total
+N <- 10000
+p <- prec_mean(var = 2500, n = 400, mu = 300, N = N)
+p$moe * N   # MOE for the estimated total
+p$se * N    # SE for the estimated total
+p$cv        # CV is the same for mean and total
 
 }
 \seealso{

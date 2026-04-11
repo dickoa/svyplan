@@ -86,7 +86,7 @@ as \code{NULL} to solve for that quantity.
 \details{
 The \code{var} argument is the within-group population variance. Estimate it
 from a pilot study, a previous survey, or published data for a similar
-population. When uncertain, use a conservative (larger) estimate — this
+population. When uncertain, use a conservative (larger) estimate; this
 inflates the sample size, which is safer than under-powering.
 
 To specify the effect in terms of Cohen's d (standardized effect size),

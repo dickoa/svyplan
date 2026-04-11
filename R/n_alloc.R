@@ -8,7 +8,7 @@
 #'
 #' @param frame For the default method: a **stratum-level** data frame
 #'   describing the population you want to sample. Each row represents one
-#'   stratum — a subgroup of the population defined by a stratification
+#'   stratum, a subgroup of the population defined by a stratification
 #'   variable such as region, age group, or urbanicity. The values in this
 #'   frame typically come from a census, a population register, or a
 #'   previous survey.
@@ -52,7 +52,7 @@
 #'       \eqn{N_h / n_h}. Caps how under-represented a stratum can be.
 #'       Use `NA` for strata without a cap.}
 #'     \item{`take_all`}{Logical (or 0/1). If `TRUE`, every unit in the
-#'       stratum is included — a census stratum. Useful for small strata
+#'       stratum is included, a census stratum. Useful for small strata
 #'       whose total population is tiny enough to enumerate.}
 #'   }
 #'
@@ -96,8 +96,8 @@
 #'
 #' 1. **Identify strata** from a census or register (e.g. provinces,
 #'    urban/rural areas, age groups).
-#' 2. **Look up `N`** — the population count per stratum.
-#' 3. **Estimate `sd`** — the standard deviation of your key variable
+#' 2. **Look up `N`**: the population count per stratum.
+#' 3. **Estimate `sd`**: the standard deviation of your key variable
 #'    within each stratum (from a pilot survey, a previous census, or
 #'    expert judgement). If unknown, set `sd = 1` everywhere for
 #'    proportional allocation.
@@ -129,7 +129,7 @@
 #' partition strata into sub-populations. Each domain groups
 #' one or more strata. When `cv` is specified, the algorithm finds the
 #' minimum total \eqn{n} such that the *worst-case* domain CV meets the
-#' target — i.e. every domain achieves the required precision.
+#' target, i.e. every domain achieves the required precision.
 #'
 #' In `n` or `budget` mode, domains affect reporting only: per-domain
 #' precision metrics appear in `$domains` but the allocation itself treats

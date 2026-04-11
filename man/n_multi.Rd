@@ -28,7 +28,7 @@ n_multi(targets, ...)
 }
 \arguments{
 \item{targets}{For the default method: a data frame where \strong{each row
-is one survey indicator} you want to measure — for example,
+is one survey indicator} you want to measure. For example,
 a prevalence (proportion) or a population mean. Surveys typically
 track several indicators simultaneously and the sample must be large
 enough for the most demanding one; \code{n_multi} finds that size.
@@ -39,9 +39,11 @@ each row needs:
 \item \strong{What to measure}: \code{p} for a proportion (e.g. 0.30 for
 30\\% stunting) \strong{or} \code{var} for a continuous variable's
 population variance. Each row must use exactly one.
-\item \strong{How precise}: \code{moe} (margin of error, simple mode) \strong{or}
-\code{cv} (coefficient of variation, either mode). Each row must
-specify exactly one.
+\item \strong{How precise}: \code{moe} (margin of error) \strong{or}
+\code{cv} (coefficient of variation). Each row must
+specify exactly one. Both are accepted in simple and
+multistage modes; in multistage mode, \code{moe} values are
+converted to \code{cv} internally (see Details).
 }
 
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_multi]{prec_multi()}}.}
@@ -135,11 +137,11 @@ and multistage cluster designs, with optional domain-level planning.
 Each row of \code{targets} represents one survey indicator. The two key
 decisions per row are:
 \enumerate{
-\item \strong{Type of indicator} — is it a proportion (binary variable like
+\item \strong{Type of indicator}: is it a proportion (binary variable like
 "stunted yes/no") or a mean (continuous variable like "household
 expenditure")? This determines whether you fill the \code{p} or \code{var}
 column.
-\item \strong{Precision target} — do you want an absolute margin of error
+\item \strong{Precision target}: do you want an absolute margin of error
 (\code{moe}, e.g. +/- 5 percentage points) or a relative
 coefficient of variation (\code{cv}, e.g. 10 percent relative error)?
 }
@@ -172,7 +174,7 @@ this for means (e.g. income, expenditure, weight). One of \code{p}
 or \code{var} per row.}
 \item{\code{mu}}{Population mean (positive). \strong{Required} when \code{var} is
 used together with \code{cv}, because CV = SE / mean.}
-\item{\code{moe}}{Margin of error — the half-width of the confidence
+\item{\code{moe}}{Margin of error, the half-width of the confidence
 interval you want. For proportions, this is on the probability
 scale (e.g. 0.05 for +/- 5 percentage points). For means,
 it is in the same units as the variable (e.g. 10 dollars).
@@ -236,6 +238,19 @@ are specified, the default (\code{joint = FALSE}) gives each domain the full
 budget independently. With \code{joint = TRUE}, a single budget is split
 optimally across domains using L-BFGS-B optimization of budget fractions,
 minimizing the worst-case CV ratio across all domains.
+}
+
+\subsection{MOE in multistage mode}{
+
+Multistage optimization uses CV internally. When \code{moe} values are
+provided, they are converted to \code{cv} before optimization:
+\itemize{
+\item Proportions: \code{cv = moe / (z * p)}
+\item Means: \code{cv = moe / (z * mu)} (requires \code{mu})
+}
+
+where \code{z} is the normal quantile for the row's \code{alpha}.
+This is an exact transformation, not an approximation.
 
 These functions assume sampling fractions are negligible at each stage
 (equivalent to sampling with replacement). No finite population correction
@@ -293,6 +308,15 @@ targets_cl <- data.frame(
   delta_psu = c(0.02, 0.05)
 )
 n_multi(targets_cl, stage_cost = c(500, 50))
+
+# Two-stage with MOE (converted to CV internally)
+targets_moe <- data.frame(
+  name   = c("stunting", "anemia"),
+  p      = c(0.30, 0.10),
+  moe    = c(0.05, 0.03),
+  delta_psu = c(0.02, 0.05)
+)
+n_multi(targets_moe, stage_cost = c(500, 50))
 
 # Joint budget allocation across domains
 targets_jnt <- data.frame(

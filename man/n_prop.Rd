@@ -29,7 +29,7 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_prop]
 
 \item{...}{Additional arguments passed to methods.}
 
-\item{moe}{Desired margin of error — the half-width of the confidence
+\item{moe}{Desired margin of error, the half-width of the confidence
 interval on the proportion scale. For example, \code{moe = 0.05} means
 the 95 percent CI should be no wider than +/- 5 percentage points.
 Specify exactly one of \code{moe} or \code{cv}.}

@@ -5,7 +5,7 @@
 #' and multistage cluster designs, with optional domain-level planning.
 #'
 #' @param targets For the default method: a data frame where **each row
-#'   is one survey indicator** you want to measure — for example,
+#'   is one survey indicator** you want to measure. For example,
 #'   a prevalence (proportion) or a population mean. Surveys typically
 #'   track several indicators simultaneously and the sample must be large
 #'   enough for the most demanding one; `n_multi` finds that size.
@@ -16,9 +16,11 @@
 #'     \item **What to measure**: `p` for a proportion (e.g. 0.30 for
 #'       30\% stunting) **or** `var` for a continuous variable's
 #'       population variance. Each row must use exactly one.
-#'     \item **How precise**: `moe` (margin of error, simple mode) **or**
-#'       `cv` (coefficient of variation, either mode). Each row must
-#'       specify exactly one.
+#'     \item **How precise**: `moe` (margin of error) **or**
+#'       `cv` (coefficient of variation). Each row must
+#'       specify exactly one. Both are accepted in simple and
+#'       multistage modes; in multistage mode, `moe` values are
+#'       converted to `cv` internally (see Details).
 #'   }
 #'
 #'   For `svyplan_prec` objects: a precision result from [prec_multi()].
@@ -94,11 +96,11 @@
 #' Each row of `targets` represents one survey indicator. The two key
 #' decisions per row are:
 #'
-#' 1. **Type of indicator** — is it a proportion (binary variable like
+#' 1. **Type of indicator**: is it a proportion (binary variable like
 #'    "stunted yes/no") or a mean (continuous variable like "household
 #'    expenditure")? This determines whether you fill the `p` or `var`
 #'    column.
-#' 2. **Precision target** — do you want an absolute margin of error
+#' 2. **Precision target**: do you want an absolute margin of error
 #'    (`moe`, e.g. +/- 5 percentage points) or a relative
 #'    coefficient of variation (`cv`, e.g. 10 percent relative error)?
 #'
@@ -130,7 +132,7 @@
 #'     or `var` per row.}
 #'   \item{`mu`}{Population mean (positive). **Required** when `var` is
 #'     used together with `cv`, because CV = SE / mean.}
-#'   \item{`moe`}{Margin of error — the half-width of the confidence
+#'   \item{`moe`}{Margin of error, the half-width of the confidence
 #'     interval you want. For proportions, this is on the probability
 #'     scale (e.g. 0.05 for +/- 5 percentage points). For means,
 #'     it is in the same units as the variable (e.g. 10 dollars).
@@ -194,6 +196,17 @@
 #' budget independently. With `joint = TRUE`, a single budget is split
 #' optimally across domains using L-BFGS-B optimization of budget fractions,
 #' minimizing the worst-case CV ratio across all domains.
+#'
+#' ## MOE in multistage mode
+#'
+#' Multistage optimization uses CV internally. When `moe` values are
+#' provided, they are converted to `cv` before optimization:
+#'
+#' - Proportions: `cv = moe / (z * p)`
+#' - Means: `cv = moe / (z * mu)` (requires `mu`)
+#'
+#' where `z` is the normal quantile for the row's `alpha`.
+#' This is an exact transformation, not an approximation.
 #'
 #' These functions assume sampling fractions are negligible at each stage
 #' (equivalent to sampling with replacement). No finite population correction
@@ -261,6 +274,15 @@
 #'   delta_psu = c(0.02, 0.05)
 #' )
 #' n_multi(targets_cl, stage_cost = c(500, 50))
+#'
+#' # Two-stage with MOE (converted to CV internally)
+#' targets_moe <- data.frame(
+#'   name   = c("stunting", "anemia"),
+#'   p      = c(0.30, 0.10),
+#'   moe    = c(0.05, 0.03),
+#'   delta_psu = c(0.02, 0.05)
+#' )
+#' n_multi(targets_moe, stage_cost = c(500, 50))
 #'
 #' # Joint budget allocation across domains
 #' targets_jnt <- data.frame(
@@ -364,6 +386,10 @@ n_multi.default <- function(
   info <- .validate_targets(targets, multistage, domains = domains)
   targets <- .fill_defaults(targets, multistage, prop_method = prop_method)
 
+  if (multistage) {
+    targets <- .convert_moe_to_cv(targets)
+  }
+
   rv_final <- targets$rel_var[!is.na(targets$rel_var)]
   if (
     length(rv_final) > 0L &&
@@ -385,7 +411,13 @@ n_multi.default <- function(
   mode <- if (!multistage) {
     if ("moe" %in% names(targets) && any(!is.na(targets$moe))) "moe" else "cv"
   } else {
-    if (!is.null(budget)) "budget" else "cv"
+    if (!is.null(budget)) {
+      "budget"
+    } else if ("moe" %in% names(targets) && any(!is.na(targets$moe))) {
+      "moe"
+    } else {
+      "cv"
+    }
   }
 
   if (length(domain_cols) == 0L) {
@@ -518,12 +550,21 @@ n_multi.default <- function(
   }
 
   if (multistage) {
-    if (!has_cv) {
-      stop("multistage mode requires 'cv' column in targets", call. = FALSE)
+    if (!has_cv && !has_moe) {
+      stop("multistage mode requires 'cv' or 'moe' column in targets",
+           call. = FALSE)
     }
-    if (has_moe) {
-      if (any(!is.na(targets$moe))) {
-        stop("multistage mode requires 'cv' (not 'moe')", call. = FALSE)
+    if (has_moe && any(!is.na(targets$moe))) {
+      moe_rows <- !is.na(targets$moe)
+      var_moe <- has_var & moe_rows & !is.na(targets$var)
+      if (any(var_moe)) {
+        if (!"mu" %in% names(targets) || any(is.na(targets$mu[var_moe]))) {
+          stop(
+            "'mu' is required to convert 'moe' to 'cv' for mean indicators ",
+            "in multistage mode",
+            call. = FALSE
+          )
+        }
       }
     }
     if (!"delta_psu" %in% names(targets)) {
@@ -532,9 +573,11 @@ n_multi.default <- function(
         call. = FALSE
       )
     }
-    cv_vals <- targets$cv[!is.na(targets$cv)]
-    if (any(cv_vals <= 0) || any(!is.finite(cv_vals))) {
-      stop("'cv' values must be positive and finite", call. = FALSE)
+    if (has_cv) {
+      cv_vals <- targets$cv[!is.na(targets$cv)]
+      if (length(cv_vals) > 0L && (any(cv_vals <= 0) || any(!is.finite(cv_vals)))) {
+        stop("'cv' values must be positive and finite", call. = FALSE)
+      }
     }
     d1_vals <- targets$delta_psu[!is.na(targets$delta_psu)]
     if (any(d1_vals < 0 | d1_vals > 1)) {
@@ -692,6 +735,39 @@ n_multi.default <- function(
   }
 
   rv
+}
+
+#' Convert moe to cv in multistage targets
+#'
+#' For proportion rows: cv = moe / (z * p).
+#' For mean rows: cv = moe / (z * mu).
+#' Rows that already have cv are left unchanged.
+#' @keywords internal
+#' @noRd
+.convert_moe_to_cv <- function(targets) {
+  has_moe <- "moe" %in% names(targets)
+  if (!has_moe) return(targets)
+
+  moe_rows <- !is.na(targets$moe)
+  if (!any(moe_rows)) return(targets)
+
+  if (!"cv" %in% names(targets)) {
+    targets$cv <- NA_real_
+  }
+
+  has_p <- "p" %in% names(targets)
+  has_var <- "var" %in% names(targets)
+
+  for (i in which(moe_rows)) {
+    z <- qnorm(1 - targets$alpha[i] / 2)
+    if (has_p && !is.na(targets$p[i])) {
+      targets$cv[i] <- targets$moe[i] / (z * targets$p[i])
+    } else if (has_var && !is.na(targets$var[i])) {
+      targets$cv[i] <- targets$moe[i] / (z * targets$mu[i])
+    }
+  }
+
+  targets
 }
 
 #' Simple mode: compute n per indicator, take max

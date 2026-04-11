@@ -34,8 +34,8 @@ indicator?"
 
 At minimum, each row needs:
 \itemize{
-\item \code{p} \strong{or} \code{var} — what you are measuring (see \code{\link[=n_multi]{n_multi()}}).
-\item \code{n} — the sample size to evaluate.
+\item \code{p} \strong{or} \code{var}: what you are measuring (see \code{\link[=n_multi]{n_multi()}}).
+\item \code{n}: the sample size to evaluate.
 }
 
 See the Details section for the full column reference.

@@ -33,6 +33,20 @@
 #' you will recover `moe = 2`. You can also pass an `svyplan_n` object
 #' directly: `prec_mean(res)`.
 #'
+#' ## Precision of a total
+#'
+#' A separate `prec_total()` is not needed. The precision of the
+#' estimated total \eqn{\hat{Y} = N \bar{y}} is a rescaling of the
+#' mean precision:
+#'
+#' - \eqn{SE(\hat{Y}) = N \times SE(\bar{y})}
+#' - \eqn{MOE(\hat{Y}) = N \times MOE(\bar{y})}
+#' - \eqn{CV(\hat{Y}) = CV(\bar{y})}
+#'
+#' Call `prec_mean()` and multiply `$se` and `$moe` by \eqn{N} for
+#' the total. The `$cv` component is identical.
+#' See Examples below.
+#'
 #' @seealso [n_mean()] for the inverse (compute n from a precision target),
 #'   [prec_prop()] for proportions.
 #'
@@ -46,6 +60,14 @@
 #' # Round-trip from n_mean
 #' res <- n_mean(var = 100, moe = 2)
 #' prec_mean(res)
+#'
+#' # --- Precision of a total ---
+#' # Precision of a mean, then scale to total
+#' N <- 10000
+#' p <- prec_mean(var = 2500, n = 400, mu = 300, N = N)
+#' p$moe * N   # MOE for the estimated total
+#' p$se * N    # SE for the estimated total
+#' p$cv        # CV is the same for mean and total
 #'
 #' @export
 prec_mean <- function(var, ...) {

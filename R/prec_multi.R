@@ -11,8 +11,8 @@
 #'
 #'   At minimum, each row needs:
 #'   \itemize{
-#'     \item `p` **or** `var` — what you are measuring (see [n_multi()]).
-#'     \item `n` — the sample size to evaluate.
+#'     \item `p` **or** `var`: what you are measuring (see [n_multi()]).
+#'     \item `n`: the sample size to evaluate.
 #'   }
 #'
 #'   See the Details section for the full column reference.
