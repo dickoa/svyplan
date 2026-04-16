@@ -473,11 +473,12 @@ prec_multi.default <- function(
     }
   }
 
-  detail <- if (identical(mode, "moe")) {
-    data.frame(name = labels, .se = se_vec, .moe = moe_vec, .cv = cv_vec)
-  } else {
-    data.frame(name = labels, .cv = cv_vec)
-  }
+  detail <- data.frame(
+    name = labels,
+    .se = se_vec,
+    .moe = moe_vec,
+    .cv = cv_vec
+  )
 
   .new_svyplan_prec(
     se = se_vec,

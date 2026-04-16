@@ -350,6 +350,17 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
       )
       total_cost <- budget
     } else {
+      cv_floor <- sqrt(rel_var * k * delta / (n_psu * resp_rate))
+      if (cv_floor >= cv) {
+        required_n_psu <- ceiling(rel_var * k * delta / (cv^2 * resp_rate))
+        stop(
+          sprintf(
+            "n_cluster(): target CV %.4g is below the achievable floor %.4g at n_psu = %d; increase n_psu to at least %d, or relax target CV above %.4g",
+            cv, cv_floor, as.integer(n_psu), required_n_psu, cv_floor
+          ),
+          call. = FALSE
+        )
+      }
       n2_opt <- (1 - delta) / (cv^2 * n1_eff / (rel_var * k) - delta)
       if (n2_opt <= 0) {
         stop(
@@ -502,6 +513,17 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
       cv_achieved <- .cv3(n1_eff, n2, n3)
       total_cost <- budget
     } else {
+      cv_floor <- sqrt(rel_var * k1 * delta1 / n1_eff)
+      if (cv_floor >= cv) {
+        required_n_psu <- ceiling(rel_var * k1 * delta1 / (cv^2 * resp_rate))
+        stop(
+          sprintf(
+            "n_cluster(): target CV %.4g is below the achievable floor %.4g at n_psu = %d; increase n_psu to at least %d, or relax target CV above %.4g",
+            cv, cv_floor, as.integer(n_psu), required_n_psu, cv_floor
+          ),
+          call. = FALSE
+        )
+      }
       n2 <- k2 * (1 + delta2 * (n3 - 1)) /
         (n3 * (cv^2 * n1_eff / rel_var - k1 * delta1))
       if (n2 <= 0) {
@@ -527,6 +549,19 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
       cv_achieved <- .cv3(n1_eff, n2, n3)
       total_cost <- budget
     } else {
+      cv_floor <- sqrt(rel_var * (k1 * delta1 + k2 * delta2 / n2) / n1_eff)
+      if (cv_floor >= cv) {
+        required_n_psu <- ceiling(
+          rel_var * (k1 * delta1 + k2 * delta2 / n2) / (cv^2 * resp_rate)
+        )
+        stop(
+          sprintf(
+            "n_cluster(): target CV %.4g is below the achievable floor %.4g at n_psu = %d, psu_size = %.0f; increase n_psu to at least %d, or relax target CV above %.4g",
+            cv, cv_floor, as.integer(n_psu), n2, required_n_psu, cv_floor
+          ),
+          call. = FALSE
+        )
+      }
       denom <- n2 * (cv^2 * n1_eff / rel_var - k1 * delta1) - k2 * delta2
       n3 <- k2 * (1 - delta2) / denom
       if (n3 <= 0) {

@@ -274,6 +274,8 @@ test_that("power_did: plot runs without error", {
     treat = c(0.50, 0.55), control = c(0.50, 0.48),
     outcome = "prop", effect = 0.07
   )
+  pdf(tempfile())
+  on.exit(dev.off())
   expect_no_error(plot(res))
 })
 
@@ -391,6 +393,8 @@ test_that("power_did: plot for did_mean", {
     treat = c(50, 55), control = c(50, 52),
     outcome = "mean", var = 100, effect = 5
   )
+  pdf(tempfile())
+  on.exit(dev.off())
   expect_no_error(plot(res))
 })
 

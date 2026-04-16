@@ -204,6 +204,71 @@ check_delta <- function(delta, expected_length = NULL) {
   invisible(TRUE)
 }
 
+#' Asymptotic CV floor for a multistage cluster design at fixed `n_psu`
+#'
+#' As the free stage sizes grow, CV approaches an irreducible between-PSU
+#' variance floor. When both `n_psu` and `psu_size` are fixed, the floor
+#' is tighter (includes the between-SSU component scaled by 1/psu_size).
+#' @keywords internal
+#' @noRd
+.multistage_cv_floor <- function(rel_var, k_psu, delta_psu,
+                                 k_ssu = NULL, delta_ssu = NULL,
+                                 rr, n_psu, psu_size = NULL) {
+  comp <- k_psu * delta_psu
+  if (!is.null(psu_size) && !is.null(k_ssu) && !is.null(delta_ssu)) {
+    comp <- comp + k_ssu * delta_ssu / psu_size
+  }
+  sqrt(rel_var * comp / (n_psu * rr))
+}
+
+#' Check target CV against the achievable floor; error with diagnostic
+#'
+#' @keywords internal
+#' @noRd
+.check_multistage_feasibility <- function(cv_t, cv_floor, n_psu,
+                                          rel_var, k_psu, delta_psu,
+                                          k_ssu = NULL, delta_ssu = NULL,
+                                          psu_size = NULL,
+                                          rr,
+                                          labels = NULL,
+                                          context = "n_multi()") {
+  bad <- cv_floor >= cv_t
+  if (!any(bad)) {
+    return(invisible(TRUE))
+  }
+
+  if (is.null(labels)) {
+    labels <- as.character(seq_along(cv_t))
+  }
+  idx <- which(bad)[1L]
+  comp_j <- k_psu[idx] * delta_psu[idx]
+  if (!is.null(psu_size) && !is.null(k_ssu) && !is.null(delta_ssu)) {
+    comp_j <- comp_j + k_ssu[idx] * delta_ssu[idx] / psu_size
+  }
+  required_n_psu <- ceiling(
+    rel_var[idx] * comp_j / (cv_t[idx]^2 * rr[idx])
+  )
+  more <- if (sum(bad) > 1L) {
+    sprintf(" (%d other indicator(s) also infeasible)", sum(bad) - 1L)
+  } else {
+    ""
+  }
+  stop(
+    sprintf(
+      "%s: target CV %.4g for indicator '%s' is below the achievable floor %.4g at n_psu = %d; increase n_psu to at least %d, or relax target CV above %.4g%s",
+      context,
+      cv_t[idx],
+      labels[idx],
+      cv_floor[idx],
+      n_psu,
+      required_n_psu,
+      cv_floor[idx],
+      more
+    ),
+    call. = FALSE
+  )
+}
+
 #' Reorder a named stage-indexed vector
 #'
 #'

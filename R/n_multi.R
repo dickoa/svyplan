@@ -777,7 +777,9 @@ n_multi.default <- function(
 #' @noRd
 .n_multi_simple <- function(targets, domain_cols = character(0), mode = "moe",
                            prop_method = "wald") {
-  n_vec <- .compute_simple_n(targets)
+  simple <- .compute_simple_n(targets)
+  n_vec <- simple$n
+  cv_target_vec <- simple$cv_target
 
   idx <- which.max(n_vec)
   n_max <- n_vec[idx]
@@ -789,9 +791,13 @@ n_multi.default <- function(
   }
   binding_name <- labels[idx]
 
+  cv_achieved_vec <- cv_target_vec * sqrt(n_vec / n_max)
+
   detail <- data.frame(
     name = labels,
     .n = n_vec,
+    .cv_target = cv_target_vec,
+    .cv_achieved = cv_achieved_vec,
     .binding = seq_len(nrow(targets)) == idx
   )
 
@@ -807,11 +813,16 @@ n_multi.default <- function(
 }
 
 #' Compute per-indicator n by delegating to the single-indicator engines
+#'
+#' Returns list with `n` (per-indicator sample size) and `cv_target` (the CV
+#' each indicator achieves at its own n; equals the target CV for cv-mode and
+#' the CV implied by the target MOE for moe-mode).
 #' @keywords internal
 #' @noRd
 .compute_simple_n <- function(targets) {
   nr <- nrow(targets)
   n_vec <- numeric(nr)
+  cv_vec <- numeric(nr)
 
   has_p <- "p" %in% names(targets)
   has_moe <- "moe" %in% names(targets)
@@ -845,9 +856,10 @@ n_multi.default <- function(
       )
     }
     n_vec[i] <- res_i$n
+    cv_vec[i] <- if (!is.null(res_i$cv)) res_i$cv else NA_real_
   }
 
-  n_vec
+  list(n = n_vec, cv_target = cv_vec)
 }
 
 #' Multistage cluster mode dispatcher
@@ -964,8 +976,12 @@ n_multi.default <- function(
   n_vec <- c(n_psu = n1_opt, psu_size = psu_size_opt)
   total_n <- prod(n_vec)
 
+  n1_per <- n1_required(psu_size_opt)
+  n_per <- n1_per * psu_size_opt
+
   detail <- data.frame(
     name = labels,
+    .n = n_per,
     .cv_target = cv_t,
     .cv_achieved = cv_achieved,
     .binding = seq_len(nr) == binding_idx
@@ -1083,12 +1099,14 @@ n_multi.default <- function(
 
       init_ssu_size <- max(2, sqrt(C2 / C3))
       init_psu_size <- max(2, sqrt(C1 / C2))
+      upper_ps <- max(1000, 10 * init_psu_size)
+      upper_ss <- max(1000, 10 * init_ssu_size)
       opt <- optim(
         par = c(init_psu_size, init_ssu_size),
         fn = cost_fn,
         method = "L-BFGS-B",
         lower = c(1, 1),
-        upper = c(Inf, Inf)
+        upper = c(upper_ps, upper_ss)
       )
       if (opt$convergence != 0L) {
         warning(
@@ -1096,6 +1114,17 @@ n_multi.default <- function(
           opt$convergence,
           "): ",
           "allocation may be approximate",
+          call. = FALSE
+        )
+      }
+      if (opt$par[1L] >= upper_ps * (1 - 1e-6) ||
+        opt$par[2L] >= upper_ss * (1 - 1e-6)) {
+        warning(
+          sprintf(
+            "optimal stage size reached the search upper bound (psu_size <= %.0f, ssu_size <= %.0f); result may be unreliable -- review stage costs and target CVs",
+            upper_ps,
+            upper_ss
+          ),
           call. = FALSE
         )
       }
@@ -1110,6 +1139,16 @@ n_multi.default <- function(
     } else if (n_free == 2L) {
       if (solve_for == "n2" && is.null(ssu_size)) {
         n1_opt <- n_psu
+
+        cv_floor <- .multistage_cv_floor(
+          rel_var, k_psu, delta_psu,
+          rr = rr, n_psu = n_psu
+        )
+        .check_multistage_feasibility(
+          cv_t, cv_floor, n_psu,
+          rel_var, k_psu, delta_psu,
+          rr = rr, labels = labels, context = "n_multi()"
+        )
 
         psu_size_required_fn <- function(ss) {
           psu_size_per <- vapply(
@@ -1197,6 +1236,15 @@ n_multi.default <- function(
       } else {
         n1_opt <- n_psu
         ssu_size_opt <- ssu_size
+        cv_floor <- .multistage_cv_floor(
+          rel_var, k_psu, delta_psu,
+          rr = rr, n_psu = n_psu
+        )
+        .check_multistage_feasibility(
+          cv_t, cv_floor, n_psu,
+          rel_var, k_psu, delta_psu,
+          rr = rr, labels = labels, context = "n_multi()"
+        )
         psu_size_required_fn2 <- function(j) {
           denom <- cv_t[j]^2 * n_psu * rr[j] / (rel_var[j] * k_ssu[j]) -
             k_psu[j] * delta_psu[j] / k_ssu[j]
@@ -1228,6 +1276,15 @@ n_multi.default <- function(
       } else if (solve_for == "n2") {
         n1_opt <- n_psu
         ssu_size_opt <- ssu_size
+        cv_floor <- .multistage_cv_floor(
+          rel_var, k_psu, delta_psu,
+          rr = rr, n_psu = n_psu
+        )
+        .check_multistage_feasibility(
+          cv_t, cv_floor, n_psu,
+          rel_var, k_psu, delta_psu,
+          rr = rr, labels = labels, context = "n_multi()"
+        )
         psu_per <- vapply(
           seq_len(nr),
           function(j) {
@@ -1252,6 +1309,18 @@ n_multi.default <- function(
       } else {
         n1_opt <- n_psu
         psu_size_opt <- psu_size
+        cv_floor <- .multistage_cv_floor(
+          rel_var, k_psu, delta_psu,
+          k_ssu = k_ssu, delta_ssu = delta_ssu,
+          rr = rr, n_psu = n_psu, psu_size = psu_size
+        )
+        .check_multistage_feasibility(
+          cv_t, cv_floor, n_psu,
+          rel_var, k_psu, delta_psu,
+          k_ssu = k_ssu, delta_ssu = delta_ssu,
+          psu_size = psu_size,
+          rr = rr, labels = labels, context = "n_multi()"
+        )
         ssu_per <- vapply(
           seq_len(nr),
           function(j) {
@@ -1309,8 +1378,12 @@ n_multi.default <- function(
   n_vec <- c(n_psu = n1_opt, psu_size = psu_size_opt, ssu_size = ssu_size_opt)
   total_n <- prod(n_vec)
 
+  n1_per <- n1_required(psu_size_opt, ssu_size_opt)
+  n_per <- n1_per * psu_size_opt * ssu_size_opt
+
   detail <- data.frame(
     name = labels,
+    .n = n_per,
     .cv_target = cv_t,
     .cv_achieved = cv_achieved,
     .binding = seq_len(nr) == binding_idx
@@ -1739,11 +1812,14 @@ n_multi.default <- function(
     )
     w_opt <- c(opt$minimum, 1 - opt$minimum)
   } else {
-    init_w <- rep(1 / nd, nd - 1L)
-    init_w <- pmax(init_w, lower_bounds[-nd])
-    if (sum(init_w) >= 1 - lower_bounds[nd]) {
-      init_w <- lower_bounds[-nd] / sum(lower_bounds) * (1 - lower_bounds[nd])
+    slack <- 1 - sum(lower_bounds)
+    if (slack < 0) {
+      stop(
+        "cumulative lower bounds exceed 1; joint allocation is infeasible",
+        call. = FALSE
+      )
     }
+    init_w <- lower_bounds[-nd] + slack / nd
     opt <- optim(
       par = init_w,
       fn = outer_obj,
@@ -1950,18 +2026,31 @@ n_multi.default <- function(
     }
     init_ps <- max(2, sqrt(C1 / C2))
     init_ss <- max(2, sqrt(C2 / C3))
+    upper_ps <- max(1000, 10 * init_ps)
+    upper_ss <- max(1000, 10 * init_ss)
     opt <- optim(
       par = c(init_ps, init_ss),
       fn = obj_fn_2d,
       method = "L-BFGS-B",
       lower = c(1, 1),
-      upper = c(Inf, Inf)
+      upper = c(upper_ps, upper_ss)
     )
     if (opt$convergence != 0L) {
       warning(
         "L-BFGS-B did not converge (code ",
         opt$convergence,
         "): allocation may be approximate",
+        call. = FALSE
+      )
+    }
+    if (opt$par[1L] >= upper_ps * (1 - 1e-6) ||
+      opt$par[2L] >= upper_ss * (1 - 1e-6)) {
+      warning(
+        sprintf(
+          "optimal stage size reached the search upper bound (psu_size <= %.0f, ssu_size <= %.0f); result may be unreliable -- review stage costs and target CVs",
+          upper_ps,
+          upper_ss
+        ),
         call. = FALSE
       )
     }

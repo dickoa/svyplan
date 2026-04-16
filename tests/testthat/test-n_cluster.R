@@ -258,10 +258,14 @@ test_that("n_cluster rejects invalid k", {
   )
 })
 
-test_that("n_cluster fixed-m CV error says 'too small'", {
+test_that("n_cluster fixed-m CV error reports actionable floor diagnostic", {
   expect_error(
     n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.001, n_psu = 5),
-    "too small"
+    "below the achievable floor"
+  )
+  expect_error(
+    n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.001, n_psu = 5),
+    "increase n_psu to at least"
   )
   expect_error(
     n_cluster(
@@ -270,7 +274,7 @@ test_that("n_cluster fixed-m CV error says 'too small'", {
       cv = 0.001,
       n_psu = 5
     ),
-    "too small"
+    "below the achievable floor"
   )
 })
 

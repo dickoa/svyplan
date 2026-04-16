@@ -211,6 +211,55 @@ test_that("multiple proportions: max is selected", {
   expect_false(res$detail$.binding[1])
 })
 
+test_that("detail schema: simple and multistage share unified columns", {
+  df_simple <- data.frame(
+    p = c(0.30, 0.10),
+    moe = c(0.05, 0.03)
+  )
+  df_multi <- data.frame(
+    p = c(0.30, 0.10),
+    cv = c(0.10, 0.15),
+    delta_psu = c(0.02, 0.05)
+  )
+  res_s <- nm(df_simple)
+  res_m <- nm(df_multi, stage_cost = c(500, 50))
+
+  expected <- c("name", ".n", ".cv_target", ".cv_achieved", ".binding")
+  expect_setequal(names(res_s$detail), expected)
+  expect_setequal(names(res_m$detail), expected)
+})
+
+test_that("detail simple: .cv_achieved equals target at binding, below elsewhere", {
+  df <- data.frame(
+    p = c(0.30, 0.10),
+    moe = c(0.05, 0.03)
+  )
+  res <- nm(df)
+  bind <- which(res$detail$.binding)
+  expect_equal(
+    res$detail$.cv_achieved[bind],
+    res$detail$.cv_target[bind],
+    tolerance = 1e-6
+  )
+  non_binding <- setdiff(seq_len(nrow(res$detail)), bind)
+  expect_true(all(
+    res$detail$.cv_achieved[non_binding] < res$detail$.cv_target[non_binding]
+  ))
+})
+
+test_that("detail multistage: .n[binding] matches total_n, others lower", {
+  df <- data.frame(
+    p = c(0.30, 0.10),
+    cv = c(0.10, 0.15),
+    delta_psu = c(0.02, 0.05)
+  )
+  res <- nm(df, stage_cost = c(500, 50))
+  bind <- which(res$detail$.binding)
+  expect_equal(res$detail$.n[bind], res$total_n, tolerance = 1e-6)
+  non_binding <- setdiff(seq_len(nrow(res$detail)), bind)
+  expect_true(all(res$detail$.n[non_binding] <= res$detail$.n[bind]))
+})
+
 test_that("mixed proportion + mean indicators work", {
   df <- data.frame(
     name = c("prop_ind", "mean_ind"),
@@ -428,7 +477,7 @@ test_that("multistage moe round-trips through prec_multi", {
   expect_equal(s1$cv, s2$cv, tolerance = 1e-4)
 })
 
-test_that("multistage cv mode prec_multi has NA moe (unchanged)", {
+test_that("multistage cv mode prec_multi: .moe column present with NA values", {
   df <- data.frame(
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
@@ -438,7 +487,8 @@ test_that("multistage cv mode prec_multi has NA moe (unchanged)", {
   p <- prec_multi(s)
 
   expect_true(all(is.na(p$moe)))
-  expect_false(".moe" %in% names(p$detail))
+  expect_true(".moe" %in% names(p$detail))
+  expect_true(all(is.na(p$detail$.moe)))
 })
 
 test_that("single indicator 2-stage matches n_cluster", {
@@ -1371,6 +1421,32 @@ test_that("min_n: joint feasibility error when budget too small for all domains"
   )
 })
 
+test_that("joint init_w: feasibility-respecting centroid start with >= 3 heterogeneous domains", {
+  df <- data.frame(
+    p = c(0.3, 0.1, 0.2),
+    cv = c(0.12, 0.15, 0.10),
+    delta_psu = c(0.02, 0.05, 0.03),
+    region = c("A", "B", "C")
+  )
+  res_full <- suppressWarnings(nm(
+    df,
+    stage_cost = c(500, 50),
+    budget = 200000,
+    joint = TRUE,
+    domains = "region"
+  ))
+  floor_val <- ceiling(max(res_full$domains$.total_n) * 0.7)
+  res <- suppressWarnings(nm(
+    df,
+    stage_cost = c(500, 50),
+    budget = 200000,
+    joint = TRUE,
+    min_n = floor_val,
+    domains = "region"
+  ))
+  expect_true(all(res$domains$.total_n >= floor_val - 1))
+})
+
 test_that("min_n: non-joint multistage warns when total_n < min_n", {
   df <- data.frame(
     p = c(0.3, 0.1),
@@ -1692,6 +1768,42 @@ test_that("n_multi 2-stage psu_size with domains", {
   res <- nm(df, stage_cost = c(500, 50), psu_size = 15, domains = "domain")
   expect_true(!is.null(res$domains))
   expect_true(all(res$domains$psu_size == 15))
+})
+
+test_that("n_multi 3-stage CV infeasibility reports indicator and floor", {
+  df <- data.frame(
+    name = c("feasible", "infeasible"),
+    p = c(0.30, 0.30),
+    cv = c(0.10, 0.001),
+    delta_psu = c(0.02, 0.05),
+    delta_ssu = c(0.02, 0.02)
+  )
+  expect_error(
+    nm(df, stage_cost = c(500, 50, 5), n_psu = 5),
+    "'infeasible'"
+  )
+  expect_error(
+    nm(df, stage_cost = c(500, 50, 5), n_psu = 5),
+    "below the achievable floor"
+  )
+  expect_error(
+    nm(df, stage_cost = c(500, 50, 5), n_psu = 5),
+    "increase n_psu to at least"
+  )
+})
+
+test_that("n_multi 3-stage CV infeasibility counts additional indicators", {
+  df <- data.frame(
+    name = c("bad1", "bad2", "bad3"),
+    p = c(0.3, 0.3, 0.3),
+    cv = c(0.001, 0.001, 0.001),
+    delta_psu = c(0.05, 0.05, 0.05),
+    delta_ssu = c(0.02, 0.02, 0.02)
+  )
+  expect_error(
+    nm(df, stage_cost = c(500, 50, 5), n_psu = 5),
+    "other indicator"
+  )
 })
 
 test_that("n_multi 3-stage budget infeasibility with fixed stages", {

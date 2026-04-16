@@ -132,10 +132,10 @@ n_multi(targets)
 #> Multi-indicator sample size
 #> n = 1127 (binding: anemia)
 #> ---
-#>  name        .n   .binding
-#>  stunting     577         
-#>  vaccination  485         
-#>  anemia      1127 *
+#>  name        .n   .cv_target .cv_achieved .binding
+#>  stunting     577 0.10204269 0.07297042           
+#>  vaccination  485 0.03644382 0.02388518           
+#>  anemia      1127 0.12755336 0.12755336   *
 ```
 
 Per-domain optimization works by specifying domain columns via the
@@ -161,10 +161,10 @@ n_multi(targets_rme)
 #> Multi-indicator sample size
 #> n = 4891 (binding: anemia)
 #> ---
-#>  name        .n   .binding
-#>  stunting    1601         
-#>  vaccination  172         
-#>  anemia      4891 *
+#>  name        .n   .cv_target .cv_achieved .binding
+#>  stunting    1601 0.06122561 0.03502580           
+#>  vaccination  172 0.06122561 0.01146488           
+#>  anemia      4891 0.06122561 0.06122561   *
 ```
 
 The MICS template reports sample size in **households**. svyplan returns

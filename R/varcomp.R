@@ -290,7 +290,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL) {
     .varcomp_2stage_pps(y, stage_id[[1L]], prob)
   } else if (stages == 3L && !has_prob) {
     M <- length(unique(stage_id[[1L]]))
-    .varcomp_3stage_pps(y, stage_id[[1L]], stage_id[[2L]], rep(1 / M, length(y)))
+    .varcomp_3stage_pps(y, stage_id[[1L]], stage_id[[2L]], rep(1 / M, M))
   } else {
     .varcomp_3stage_pps(y, stage_id[[1L]], stage_id[[2L]], prob)
   }
