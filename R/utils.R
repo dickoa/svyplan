@@ -134,7 +134,10 @@ check_stage_cost <- function(stage_cost) {
     stop("'stage_cost' must contain finite values only", call. = FALSE)
   }
   if (length(stage_cost) > 3L) {
-    stop("4+ stage optimization is not yet supported", call. = FALSE)
+    stop(
+      "4+ stage optimization is not supported; plan the first three stages and fold deeper stages (e.g. persons within households) into the 'deff' passed to n_prop() or n_mean()",
+      call. = FALSE
+    )
   }
   invisible(TRUE)
 }
@@ -689,8 +692,8 @@ check_resp_rate <- function(resp_rate) {
 #' @keywords internal
 #' @noRd
 .n2_upper_bound <- function(N_pair, ratio, resp_rate) {
-  b1 <- if (is.infinite(N_pair[1])) Inf else N_pair[1] / (ratio * resp_rate)
-  b2 <- if (is.infinite(N_pair[2])) Inf else N_pair[2] / resp_rate
+  b1 <- if (is.infinite(N_pair[1])) Inf else N_pair[1] / ratio
+  b2 <- N_pair[2]
   min(b1, b2)
 }
 
@@ -759,6 +762,91 @@ check_resp_rate <- function(resp_rate) {
     return(1)
   }
   max(0, 1 - n / N)
+}
+
+#' Shared precision engine for proportions
+#'
+#' One documented variance equation: n_net = n * resp_rate responding
+#' units drive both the leading term and the FPC's sampling fraction;
+#' deff multiplies the SRSWOR variance at n_net, so
+#' se^2 = deff * p * q * fpc(n_net) / n_net with fpc(n) = (N - n)/(N - 1).
+#' Wilson and log-odds are computed at the effective size
+#' n_eff = n_net / deff; Wilson has no finite-N form, so N is ignored.
+#' @keywords internal
+#' @noRd
+.prec_engine_prop <- function(p, n, alpha, N, deff, resp_rate, method) {
+  z <- qnorm(1 - alpha / 2)
+  q <- 1 - p
+  n_net <- n * resp_rate
+  n_eff <- n_net / deff
+
+  if (method == "wald") {
+    fpc <- if (is.infinite(N)) 1 else (N - n_net) / (N - 1)
+    fpc <- .clamp_fpc(fpc, n_net, N)
+    se <- sqrt(p * q * fpc / n_eff)
+    moe <- z * se
+  } else if (method == "wilson") {
+    moe <- z * sqrt(p * q / n_eff + z^2 / (4 * n_eff^2)) / (1 + z^2 / n_eff)
+    se <- moe / z
+  } else {
+    moe <- .logodds_moe(p, n_net, alpha, N, deff)
+    se <- moe / z
+  }
+  list(se = se, moe = moe, cv = se / p)
+}
+
+#' Shared precision engine for means
+#'
+#' Same convention as .prec_engine_prop(), with fpc(n) = 1 - n / N.
+#' @keywords internal
+#' @noRd
+.prec_engine_mean <- function(var, mu, n, alpha, N, deff, resp_rate) {
+  z <- qnorm(1 - alpha / 2)
+  n_net <- n * resp_rate
+  n_eff <- n_net / deff
+  fpc <- if (is.infinite(N)) 1 else 1 - n_net / N
+  fpc <- .clamp_fpc(fpc, n_net, N)
+  se <- sqrt(var * fpc / n_eff)
+  list(se = se, moe = z * se,
+       cv = if (!is.null(mu)) se / mu else NA_real_)
+}
+
+#' Collision-free key for domain grouping and matching
+#'
+#' Length-prefixed encoding of each column value, so pasted keys are
+#' injective regardless of separators inside the values. Keys built from
+#' different data frames are comparable. Missing domain values error.
+#' @keywords internal
+#' @noRd
+.domain_key <- function(df, cols) {
+  vals <- lapply(cols, function(col) {
+    v <- df[[col]]
+    if (anyNA(v)) {
+      stop(
+        sprintf("domain column '%s' must not contain missing values", col),
+        call. = FALSE
+      )
+    }
+    v <- as.character(v)
+    paste0(nchar(v), "_", v)
+  })
+  do.call(paste, c(vals, list(sep = ":")))
+}
+
+#' Error when a gross sample cannot be drawn from a finite frame
+#' @keywords internal
+#' @noRd
+.check_attainable <- function(n, N, resp_rate) {
+  if (!is.infinite(N) && n > N * (1 + 1e-9)) {
+    stop(
+      sprintf(
+        "required sample (%s units drawn) exceeds the population (N = %s): even a census yields about %s respondents at resp_rate = %s; the target is unattainable",
+        round(n, 1), N, round(N * resp_rate), resp_rate
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }
 
 #' Validate computed variance term before sqrt
@@ -873,6 +961,14 @@ check_resp_rate <- function(resp_rate) {
   if (length(defaults) == 0L) return(NULL)
 
   target_fmls <- setdiff(names(formals(fn)), c("...", "plan"))
+  if (!is.null(defaults$prop_method) && "method" %in% target_fmls &&
+      !"prop_method" %in% target_fmls) {
+    choices <- tryCatch(eval(formals(fn)$method), error = function(e) NULL)
+    has_choices <- is.character(choices) && length(choices) > 1L
+    if (!has_choices || defaults$prop_method %in% choices) {
+      defaults$method <- defaults$prop_method
+    }
+  }
   applicable <- defaults[names(defaults) %in% target_fmls]
   if (length(applicable) == 0L) return(NULL)
 
@@ -885,17 +981,46 @@ check_resp_rate <- function(resp_rate) {
   args
 }
 
-#' Clamp FPC to 0 when n_eff >= N (census)
+#' Merge round-trip overrides from ... into stored arguments
+#'
+#' Named dots override the stored values; a NULL value unsets the stored
+#' one (mode switching). Unknown names error instead of being dropped.
 #' @keywords internal
 #' @noRd
-.clamp_fpc <- function(fpc, n_eff, N) {
+.roundtrip_args <- function(args, dots, fn) {
+  if (length(dots) == 0L) {
+    return(args)
+  }
+  nms <- names(dots) %||% rep("", length(dots))
+  if (any(!nzchar(nms))) {
+    stop("arguments passed via ... must be named", call. = FALSE)
+  }
+  unknown <- setdiff(nms, setdiff(names(formals(fn)), "..."))
+  if (length(unknown) > 0L) {
+    stop(
+      sprintf(
+        "unused argument%s: %s",
+        if (length(unknown) > 1L) "s" else "",
+        paste0("'", unknown, "'", collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  args[nms] <- dots
+  args
+}
+
+#' Clamp FPC to 0 when the net sample reaches N (census)
+#' @keywords internal
+#' @noRd
+.clamp_fpc <- function(fpc, n_net, N) {
   if (is.infinite(N)) {
     return(fpc)
   }
-  if (n_eff >= N) {
+  if (n_net >= N) {
     warning(
-      "effective sample size (",
-      round(n_eff, 1),
+      "net sample size (",
+      round(n_net, 1),
       ") >= population size (",
       N,
       "); FPC set to 0 (census)",

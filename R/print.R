@@ -29,6 +29,15 @@
 #' Summary: `as.integer(x)` = operational total (what goes in the field),
 #' `as.double(x)` = continuous optimum (what the math solved for).
 #'
+#' `as.data.frame()` returns the tabular form of a result, intended as
+#' the stable handoff to downstream packages (e.g. samplyr). For
+#' `svyplan_n`: the stratum allocation table (`$detail`) for
+#' `n_alloc()` results, the per-domain table (`$domains`, falling back
+#' to `$detail`) for `n_multi()` results, and a one-row summary
+#' (`n`, `n_int`, `se`, `moe`, `cv`) otherwise. For `svyplan_cluster`:
+#' the per-domain table when domains are present, otherwise a stage
+#' table with columns `stage`, `n`, and `n_int`.
+#'
 #' @examples
 #' # confint on a proportion sample size
 #' res <- n_prop(p = 0.3, moe = 0.05)
@@ -385,6 +394,17 @@ print.svyplan_prec <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 print.svyplan_varcomp <- function(x, ...) {
+  if (!is.null(x$strata)) {
+    cat(sprintf(
+      "Variance components (%d-stage, %d strata)\n",
+      x$stages, nrow(x$strata)
+    ))
+    tab <- x$strata
+    num <- vapply(tab, is.numeric, logical(1L))
+    tab[num] <- lapply(tab[num], function(v) sprintf("%.4f", v))
+    print(tab, row.names = FALSE, right = FALSE)
+    return(invisible(x))
+  }
   cat(sprintf("Variance components (%d-stage)\n", x$stages))
   cat(sprintf("varb = %.4f", x$varb))
   varw_names <- names(x$varw)
@@ -722,6 +742,49 @@ as.double.svyplan_cluster <- function(x, ...) {
 
 #' @rdname print.svyplan
 #' @export
+as.data.frame.svyplan_n <- function(x, ...) {
+  if (identical(x$type, "alloc")) {
+    return(x$detail)
+  }
+  if (identical(x$type, "multi")) {
+    return(x$domains %||% x$detail)
+  }
+  data.frame(
+    n = x$n,
+    n_int = as.integer(ceiling(x$n)),
+    se = x$se,
+    moe = x$moe,
+    cv = x$cv
+  )
+}
+
+#' @rdname print.svyplan
+#' @export
+as.data.frame.svyplan_varcomp <- function(x, ...) {
+  if (is.null(x$strata)) {
+    stop(
+      "as.data.frame is only defined for stratified varcomp results (strata argument)",
+      call. = FALSE
+    )
+  }
+  x$strata
+}
+
+#' @rdname print.svyplan
+#' @export
+as.data.frame.svyplan_cluster <- function(x, ...) {
+  if (!is.null(x$domains)) {
+    return(x$domains)
+  }
+  data.frame(
+    stage = names(x$n),
+    n = as.numeric(x$n),
+    n_int = as.integer(ceiling(x$n))
+  )
+}
+
+#' @rdname print.svyplan
+#' @export
 as.integer.svyplan_power <- function(x, ...) {
   as.integer(ceiling(x$n))
 }
@@ -781,11 +844,15 @@ print.svyplan_strata <- function(x, ...) {
 .print_alloc_n <- function(x) {
   p <- x$params
   alloc <- p$alloc %||% x$method
-  H <- if (!is.null(x$detail)) nrow(x$detail) else NA
+  detail <- x$detail
+  cluster <- !is.null(detail) && "n_psu" %in% names(detail)
+  H <- if (!is.null(detail)) nrow(detail) else NA
   cat(sprintf("Stratum allocation (%s", alloc))
+  if (cluster) cat(", two-stage")
   if (!is.na(H)) cat(sprintf(", %d strata", H))
   cat(")\n")
   cat(sprintf("n = %d", ceiling(x$n)))
+  if (cluster) cat(sprintf(", n_psu = %d", sum(detail$n_psu_int)))
   if (!is.na(x$cv)) cat(sprintf(", cv = %.4f", x$cv))
   if (!is.na(x$se)) cat(sprintf(", se = %.4f", x$se))
   cat("\n")

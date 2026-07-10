@@ -103,15 +103,10 @@ prec_mean.default <- function(
     check_scalar(mu, "mu")
   }
 
-  n_eff <- n * resp_rate / deff
-  z <- qnorm(1 - alpha / 2)
-
-  fpc <- if (is.infinite(N)) 1 else 1 - n_eff / N
-  fpc <- .clamp_fpc(fpc, n_eff, N)
-
-  se <- sqrt(var * fpc / n_eff)
-  moe <- z * se
-  cv_val <- if (!is.null(mu)) se / mu else NA_real_
+  prec <- .prec_engine_mean(var, mu, n, alpha, N, deff, resp_rate)
+  se <- prec$se
+  moe <- prec$moe
+  cv_val <- prec$cv
 
   params <- list(
     var = var,
@@ -143,7 +138,7 @@ prec_mean.svyplan_n <- function(var, ...) {
     stop("prec_mean requires a svyplan_n of type 'mean'", call. = FALSE)
   }
   par <- x$params
-  prec_mean.default(
+  args <- list(
     var = par$var,
     n = x$n,
     mu = par$mu,
@@ -152,4 +147,5 @@ prec_mean.svyplan_n <- function(var, ...) {
     deff = par$deff,
     resp_rate = par$resp_rate %||% 1
   )
+  do.call(prec_mean.default, .roundtrip_args(args, list(...), prec_mean.default))
 }

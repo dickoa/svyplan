@@ -283,3 +283,35 @@ test_that("n_alloc domain round-trip preserves domain_cols", {
   p1 <- prec_alloc(s1)
   expect_equal(p1$params$domain_cols, "region")
 })
+
+test_that("round-trip methods honor ... overrides", {
+  x <- n_prop(p = 0.3, moe = 0.05, deff = 1.5)
+  p1 <- prec_prop(x, deff = 3)
+  p2 <- prec_prop(p = 0.3, n = x$n, deff = 3)
+  expect_equal(p1$moe, p2$moe)
+
+  pr <- prec_prop(p = 0.3, n = 400)
+  n1 <- n_prop(pr, deff = 2)
+  n2 <- n_prop(p = 0.3, moe = pr$moe, deff = 2)
+  expect_equal(n1$n, n2$n)
+
+  xm <- n_mean(var = 100, moe = 2)
+  m1 <- prec_mean(xm, resp_rate = 0.8)
+  m2 <- prec_mean(var = 100, n = xm$n, resp_rate = 0.8)
+  expect_equal(m1$se, m2$se)
+
+  cl <- n_cluster(cv = 0.05, delta = 0.05, rel_var = 1,
+                  stage_cost = c(500, 50))
+  c1 <- prec_cluster(cl, resp_rate = 0.9)
+  c2 <- prec_cluster(n = cl$n, delta = 0.05, rel_var = 1, resp_rate = 0.9)
+  expect_equal(c1$cv, c2$cv)
+})
+
+test_that("round-trip methods error on unknown ... arguments", {
+  x <- n_prop(p = 0.3, moe = 0.05)
+  expect_error(prec_prop(x, def = 2), "unused argument")
+  pr <- prec_prop(p = 0.3, n = 400)
+  expect_error(n_prop(pr, foo = 1), "unused argument")
+  xm <- n_mean(var = 100, moe = 2)
+  expect_error(prec_mean(xm, bar = 1), "unused argument")
+})

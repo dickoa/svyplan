@@ -51,7 +51,12 @@ n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2)  # deff = 2 wins
 }\if{html}{\out{</div>}}
 
 Defaults are applied only when their names match the called function's
-formals. Irrelevant defaults are silently ignored.
+formals. Irrelevant defaults are silently ignored. \code{prop_method} must
+be \code{"wald"}, \code{"wilson"}, or \code{"logodds"} (validated at construction)
+and also fills the \code{method} argument of \code{\link[=n_prop]{n_prop()}}, \code{\link[=prec_prop]{prec_prop()}}, and
+\code{\link[=power_prop]{power_prop()}} when its value is valid for that function (so
+\code{svyplan(prop_method = "wilson")} applies to \code{n_prop()} but is ignored
+by \code{power_prop()}, which has no Wilson method).
 
 Estimand-specific values (\code{p}, \code{var}, \code{mu}, \code{moe}, \code{cv}, \code{n}, \code{power},
 \code{effect}) should be passed directly to each function, not stored in

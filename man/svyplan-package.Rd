@@ -12,12 +12,17 @@ Useful links:
 \itemize{
   \item \url{https://dickoa.gitlab.io/svyplan}
   \item \url{https://gitlab.com/dickoa/svyplan}
-  \item Report bugs at \url{https://gitlab.com/dickoa/svyplan/-/issues}
+  \item Report bugs at \url{https://gitlab.com/dickoa/svyplan/-/work_items}
 }
 
 }
 \author{
 \strong{Maintainer}: Ahmadou Dicko \email{mail@ahmadoudicko.com} (\href{https://orcid.org/0000-0002-9654-7582}{ORCID})
+
+Authors:
+\itemize{
+  \item Ahmadou Dicko \email{mail@ahmadoudicko.com} (\href{https://orcid.org/0000-0002-9654-7582}{ORCID})
+}
 
 }
 \keyword{internal}

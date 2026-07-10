@@ -80,6 +80,12 @@ prec_cluster.default <- function(
     stop("'delta' is required (directly or via plan)", call. = FALSE)
   if (inherits(delta, "svyplan_varcomp")) {
     vc <- delta
+    if (!is.null(vc$strata)) {
+      stop(
+        "stratified varcomp: merge its $strata columns into an n_alloc() frame, or pass one stratum's values",
+        call. = FALSE
+      )
+    }
     delta <- vc$delta
     rel_var <- vc$rel_var
     k <- vc$k
@@ -89,7 +95,10 @@ prec_cluster.default <- function(
     stop("'n' must be a numeric vector of length >= 2", call. = FALSE)
   }
   if (length(n) > 3L) {
-    stop("4+ stage CV calculation is not yet supported", call. = FALSE)
+    stop(
+      "4+ stage CV calculation is not supported; evaluate the first three stages and fold deeper stages (e.g. persons within households) into the 'deff' passed to prec_prop() or prec_mean()",
+      call. = FALSE
+    )
   }
   n <- .reorder_n_vec(n)
   if (anyNA(n)) {
@@ -152,12 +161,16 @@ prec_cluster.default <- function(
 prec_cluster.svyplan_cluster <- function(n, ...) {
   x <- n
   p <- x$params
-  out <- prec_cluster.default(
+  args <- list(
     n = x$n,
     delta = p$delta,
     rel_var = p$rel_var,
     k = p$k,
     resp_rate = p$resp_rate %||% 1
+  )
+  out <- do.call(
+    prec_cluster.default,
+    .roundtrip_args(args, list(...), prec_cluster.default)
   )
   # Carry stage_cost metadata for round-trip to n_cluster.svyplan_prec
   out$params$stage_cost <- p$stage_cost

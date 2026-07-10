@@ -136,3 +136,58 @@ test_that("format.svyplan_power handles vector n", {
   fmt <- format(res)
   expect_match(fmt, ",")
 })
+
+test_that("as.data.frame.svyplan_n returns the alloc detail table", {
+  frame <- data.frame(
+    stratum = c("A", "B"),
+    N = c(100, 200),
+    sd = c(5, 10)
+  )
+  res <- n_alloc(frame, n = 50, alloc = "neyman")
+  df <- as.data.frame(res)
+  expect_identical(df, res$detail)
+  expect_true(all(c("stratum", "n", "n_int", "weight") %in% names(df)))
+})
+
+test_that("as.data.frame.svyplan_n returns domains for n_multi", {
+  targets <- data.frame(
+    indicator = "stunting",
+    domain = c("urban", "rural"),
+    p = c(0.25, 0.35),
+    cv = 0.08
+  )
+  res <- n_multi(targets, domains = "domain")
+  expect_identical(as.data.frame(res), res$domains)
+
+  no_dom <- n_multi(data.frame(indicator = "x", p = 0.3, cv = 0.08))
+  expect_identical(as.data.frame(no_dom), no_dom$detail)
+})
+
+test_that("as.data.frame.svyplan_n returns one-row summary otherwise", {
+  res <- n_prop(p = 0.3, moe = 0.05)
+  df <- as.data.frame(res)
+  expect_equal(nrow(df), 1L)
+  expect_equal(df$n, res$n)
+  expect_equal(df$n_int, as.integer(res))
+})
+
+test_that("as.data.frame.svyplan_cluster returns the stage table", {
+  res <- n_cluster(cv = 0.05, delta = 0.05, unit_var = 1,
+                   stage_cost = c(500, 50))
+  df <- as.data.frame(res)
+  expect_equal(df$stage, c("n_psu", "psu_size"))
+  expect_equal(df$n, as.numeric(res$n))
+  expect_equal(df$n_int, as.integer(ceiling(res$n)))
+})
+
+test_that("as.data.frame.svyplan_cluster returns domains when present", {
+  targets <- data.frame(
+    indicator = "s",
+    domain = c("u", "r"),
+    p = c(0.25, 0.35),
+    cv = 0.08,
+    delta_psu = 0.05
+  )
+  res <- n_multi(targets, domains = "domain", stage_cost = c(500, 50))
+  expect_identical(as.data.frame(res), res$domains)
+})

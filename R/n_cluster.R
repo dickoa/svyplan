@@ -194,6 +194,12 @@ n_cluster.default <- function(
 
   if (inherits(delta, "svyplan_varcomp")) {
     vc <- delta
+    if (!is.null(vc$strata)) {
+      stop(
+        "stratified varcomp: merge its $strata columns into an n_alloc() frame, or pass one stratum's values",
+        call. = FALSE
+      )
+    }
     delta <- vc$delta
     rel_var <- vc$rel_var
     k <- vc$k
@@ -230,6 +236,12 @@ n_cluster.default <- function(
   if (!is.null(n_psu)) check_scalar(n_psu, "n_psu")
   if (!is.null(psu_size)) check_scalar(psu_size, "psu_size")
   if (!is.null(ssu_size)) check_scalar(ssu_size, "ssu_size")
+  for (nm in c("n_psu", "psu_size", "ssu_size")) {
+    v <- get(nm)
+    if (!is.null(v) && v < 1) {
+      stop(sprintf("'%s' must be at least 1", nm), call. = FALSE)
+    }
+  }
   if (stages == 2L && !is.null(ssu_size)) {
     stop("'ssu_size' is not applicable for 2-stage designs", call. = FALSE)
   }
@@ -282,7 +294,7 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
   if (is.null(cv) && is.null(budget)) {
     cv <- x$cv
   }
-  n_cluster.default(
+  args <- list(
     stage_cost = p$stage_cost,
     delta = p$delta,
     rel_var = p$rel_var,
@@ -295,6 +307,7 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
     resp_rate = p$resp_rate %||% 1,
     fixed_cost = p$fixed_cost %||% 0
   )
+  do.call(n_cluster.default, .roundtrip_args(args, list(...), n_cluster.default))
 }
 
 #' @keywords internal
@@ -317,6 +330,13 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
 
   if (is.null(n_psu) && is.null(psu_size)) {
     n2_opt <- sqrt(C1 / C2 * (1 - delta) / delta)
+    if (n2_opt < 1) {
+      warning(
+        "cost-optimal psu_size is below 1 (high 'delta' relative to stage costs); clamped to 1",
+        call. = FALSE
+      )
+      n2_opt <- 1
+    }
 
     if (!is.null(budget)) {
       n1_opt <- var_budget / (C1 + C2 * n2_opt)
@@ -339,9 +359,9 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
     n1_eff <- n_psu * resp_rate
     if (!is.null(budget)) {
       n2_opt <- (var_budget - C1 * n_psu) / (C2 * n_psu)
-      if (n2_opt <= 0) {
+      if (n2_opt < 1) {
         stop(
-          "budget is too small for the given fixed stage-1 size",
+          "budget affords fewer than one unit per PSU for the given fixed stage-1 size",
           call. = FALSE
         )
       }
@@ -368,8 +388,13 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
           call. = FALSE
         )
       }
+      if (n2_opt < 1) {
+        n2_opt <- 1
+        cv_achieved <- sqrt(rel_var * k / n1_eff)
+      } else {
+        cv_achieved <- cv
+      }
       total_cost <- fixed_cost + C1 * n_psu + C2 * n_psu * n2_opt
-      cv_achieved <- cv
     }
   } else {
     n2_opt <- psu_size
@@ -389,6 +414,16 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
       total_cost <- fixed_cost + C1 * n1_opt + C2 * n1_opt * n2_opt
       cv_achieved <- cv
     }
+  }
+
+  if (!is.null(budget) && n1_opt < 1) {
+    stop(
+      sprintf(
+        "'budget' is too small for any realizable design: one PSU of size %.3g costs %.4g plus fixed_cost = %.4g",
+        n2_opt, C1 + C2 * n2_opt, fixed_cost
+      ),
+      call. = FALSE
+    )
   }
 
   n_vec <- c(n_psu = n1_opt, psu_size = n2_opt)
@@ -469,13 +504,21 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
   n3 <- if (!is.null(ssu_size)) {
     ssu_size
   } else if (solve_for != "n3") {
-    sqrt((1 - delta2) / delta2 * C2 / C3)
+    n3_free <- sqrt((1 - delta2) / delta2 * C2 / C3)
+    if (n3_free < 1) {
+      warning(
+        "cost-optimal ssu_size is below 1 (high 'delta_ssu' relative to stage costs); clamped to 1",
+        call. = FALSE
+      )
+      n3_free <- 1
+    }
+    n3_free
   }
 
   n2 <- if (!is.null(psu_size)) {
     psu_size
   } else if (solve_for != "n2") {
-    if (!is.null(ssu_size)) {
+    n2_free <- if (!is.null(ssu_size)) {
       sqrt(
         k2 * (1 + delta2 * (n3 - 1)) * C1 /
           (n3 * k1 * delta1 * (C2 + C3 * n3))
@@ -483,6 +526,14 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
     } else {
       1 / n3 * sqrt((1 - delta2) / delta1 * C1 / C3 * k2 / k1)
     }
+    if (n2_free < 1) {
+      warning(
+        "cost-optimal psu_size is below 1 (high 'delta_psu' relative to stage costs); clamped to 1",
+        call. = FALSE
+      )
+      n2_free <- 1
+    }
+    n2_free
   }
 
   n1 <- n_psu
@@ -504,9 +555,9 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
     n1_eff <- n_psu * resp_rate
     if (!is.null(budget)) {
       n2 <- (var_budget / n_psu - C1) / (C2 + C3 * n3)
-      if (n2 <= 0) {
+      if (n2 < 1) {
         stop(
-          "budget is too small for the given fixed stage sizes",
+          "budget affords fewer than one SSU per PSU for the given fixed stage sizes",
           call. = FALSE
         )
       }
@@ -532,17 +583,22 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
           call. = FALSE
         )
       }
+      if (n2 < 1) {
+        n2 <- 1
+        cv_achieved <- .cv3(n1_eff, 1, n3)
+      } else {
+        cv_achieved <- cv
+      }
       total_cost <- fixed_cost +
         C1 * n_psu + C2 * n_psu * n2 + C3 * n_psu * n2 * n3
-      cv_achieved <- cv
     }
   } else {
     n1_eff <- n_psu * resp_rate
     if (!is.null(budget)) {
       n3 <- (var_budget - C1 * n_psu - C2 * n_psu * n2) / (C3 * n_psu * n2)
-      if (n3 <= 0) {
+      if (n3 < 1) {
         stop(
-          "budget is too small for the given fixed stage sizes",
+          "budget affords fewer than one unit per SSU for the given fixed stage sizes",
           call. = FALSE
         )
       }
@@ -570,10 +626,25 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
           call. = FALSE
         )
       }
+      if (n3 < 1) {
+        n3 <- 1
+        cv_achieved <- .cv3(n1_eff, n2, 1)
+      } else {
+        cv_achieved <- cv
+      }
       total_cost <- fixed_cost +
         C1 * n_psu + C2 * n_psu * n2 + C3 * n_psu * n2 * n3
-      cv_achieved <- cv
     }
+  }
+
+  if (!is.null(budget) && n1 < 1) {
+    stop(
+      sprintf(
+        "'budget' is too small for any realizable design: one PSU with psu_size = %.3g and ssu_size = %.3g costs %.4g plus fixed_cost = %.4g",
+        n2, n3, C1 + C2 * n2 + C3 * n2 * n3, fixed_cost
+      ),
+      call. = FALSE
+    )
   }
 
   n_vec <- c(n_psu = n1, psu_size = n2, ssu_size = n3)

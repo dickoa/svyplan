@@ -351,3 +351,20 @@ test_that("format handles vector n", {
   fmt <- format(res)
   expect_match(fmt, ",")
 })
+
+test_that("arcsine MDE round-trips to the requested power", {
+  res <- power_prop(p1 = 0.5, n = 400, power = 0.80, method = "arcsine")
+  for (p2 in c(0.5 - res$effect, 0.5 + res$effect)) {
+    chk <- power_prop(p1 = 0.5, p2 = p2, n = 400, power = NULL,
+                      method = "arcsine")
+    expect_equal(chk$power, 0.80, tolerance = 1e-4)
+  }
+})
+
+test_that("arcsine MDE rejects reflected roots", {
+  res <- power_prop(p1 = 0.05, n = 20, power = 0.80, method = "arcsine")
+  expect_gt(res$effect, 0.05)
+  chk <- power_prop(p1 = 0.05, p2 = 0.05 + res$effect, n = 20,
+                    power = NULL, method = "arcsine")
+  expect_equal(chk$power, 0.80, tolerance = 1e-4)
+})

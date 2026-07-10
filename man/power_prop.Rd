@@ -72,7 +72,7 @@ Defined as the fraction of group 1 that also appears in group 2
 \item{method}{Variance method: \code{"wald"} (default), \code{"arcsine"}, or
 \code{"logodds"}. Arcsine and log-odds transforms are variance-stabilizing
 and perform better for rare or extreme proportions (Valliant,
-2018, \ifelse{html}{\out{&sect;}}{\enc{§}{S}}4.3.4--4.3.5).}
+2018, sections 4.3.4--4.3.5).}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }

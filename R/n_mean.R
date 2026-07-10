@@ -141,18 +141,14 @@ n_mean.default <- function(
   z <- qnorm(1 - alpha / 2)
 
   if (!is.null(moe)) {
-    n <- z^2 * var / (moe^2 + z^2 * var / N)
+    n <- z^2 * deff * var / (moe^2 + z^2 * deff * var / N)
   } else {
-    CVpop <- sqrt(var) / mu
-    n <- CVpop^2 / (cv^2 + CVpop^2 / N)
+    CVpop2 <- var / mu^2
+    n <- deff * CVpop2 / (cv^2 + deff * CVpop2 / N)
   }
 
-  n <- n * deff
   n <- .apply_resp_rate(n, resp_rate)
-
-  if (!is.infinite(N) && n > N) {
-    warning("Calculated sample size exceeds population size N.", call. = FALSE)
-  }
+  .check_attainable(n, N, resp_rate)
 
   params <- list(
     var = var,
@@ -189,7 +185,7 @@ n_mean.svyplan_prec <- function(var, moe = NULL, cv = NULL, ...) {
   if (is.null(moe) && is.null(cv)) {
     moe <- x$moe
   }
-  n_mean.default(
+  args <- list(
     var = par$var,
     mu = par$mu,
     moe = moe,
@@ -199,4 +195,5 @@ n_mean.svyplan_prec <- function(var, moe = NULL, cv = NULL, ...) {
     deff = par$deff,
     resp_rate = par$resp_rate
   )
+  do.call(n_mean.default, .roundtrip_args(args, list(...), n_mean.default))
 }

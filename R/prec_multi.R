@@ -512,8 +512,8 @@ prec_multi.svyplan_n <- function(targets, ...) {
   dom_cols <- x$params$domain_cols %||% character(0)
   if (!is.null(x$domains) && length(dom_cols) > 0L) {
     dom <- x$domains
-    tgt_key <- interaction(tgt[dom_cols], drop = FALSE, sep = ":")
-    dom_key <- interaction(dom[dom_cols], drop = FALSE, sep = ":")
+    tgt_key <- .domain_key(tgt, dom_cols)
+    dom_key <- .domain_key(dom, dom_cols)
     dom_idx <- match(tgt_key, dom_key)
     tgt$n <- dom$.n[dom_idx]
   }
@@ -547,8 +547,8 @@ prec_multi.svyplan_cluster <- function(targets, ...) {
   dom_cols <- x$params$domain_cols %||% character(0)
   if (!is.null(x$domains) && length(dom_cols) > 0L) {
     dom <- x$domains
-    tgt_key <- interaction(tgt[dom_cols], drop = FALSE, sep = ":")
-    dom_key <- interaction(dom[dom_cols], drop = FALSE, sep = ":")
+    tgt_key <- .domain_key(tgt, dom_cols)
+    dom_key <- .domain_key(dom, dom_cols)
     dom_idx <- match(tgt_key, dom_key)
     tgt$n <- dom$n_psu[dom_idx]
     if (x$stages >= 2L) {

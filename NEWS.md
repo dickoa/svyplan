@@ -1,4 +1,4 @@
-# svyplan 0.8.5
+# svyplan 0.8.7
 
 Initial CRAN release.
 
@@ -14,7 +14,10 @@ Initial CRAN release.
 * `n_alloc()`: stratified sample allocation given a frame with stratum
   sizes and variabilities. Three solve modes: fixed total `n`, target `cv`,
   or `budget` constraint. Four allocation methods: proportional, Neyman,
-  optimal (cost-weighted), and Bankier power allocation.
+  optimal (cost-weighted), and Bankier power allocation. A `delta_psu`
+  frame column switches to a stratified two-stage design (PSUs then
+  elements per stratum) with cost-optimal or fixed per-stratum takes;
+  all solve modes, methods, and constraints apply unchanged.
 
 ## Precision analysis
 
@@ -30,8 +33,11 @@ Initial CRAN release.
   of `n_alloc()`.
 
 All `n_*` and `prec_*` functions are S3 generics with bidirectional
-round-trip: passing a precision object to the corresponding `n_*` funct!i!on
-recovers the sample size, and vice versa.
+round-trip: passing a precision object to the corresponding `n_*` function
+recovers the sample size, and vice versa. Round-trip methods accept named
+`...` overrides of any stored argument (e.g. `prec_prop(x, deff = 2)`);
+a `NULL` value unsets a stored argument, and unknown names raise an error
+instead of being silently ignored.
 
 ## Power analysis
 
@@ -70,7 +76,15 @@ recovers the sample size, and vice versa.
 
 * `varcomp()`: variance component estimation from frame data via nested
   ANOVA (SRS and PPS). S3 generic with methods for formulas, numeric
-  vectors, and `survey::svydesign` objects.
+  vectors, and `survey::svydesign` objects. The `svydesign` method
+  treats design weights as inverse inclusion probabilities: cluster
+  sizes and totals are estimated by summed weights and the estimation
+  variance of the weighted totals is subtracted from the between-stage
+  terms, so unequal-probability samples from a previous round give
+  approximately design-unbiased components (unit weights recover the
+  frame formulas exactly). A `strata` argument estimates components per
+  stratum, returning a table whose columns match the `n_alloc()` frame
+  contract.
 * `design_effect()`: S3 generic for design effect estimation (Kish, Henry,
   Spencer, Chen-Rust decomposition, and cluster planning mode).
 * `effective_n()`: S3 generic for effective sample size.
@@ -104,17 +118,25 @@ recovers the sample size, and vice versa.
   (`prec_multi.svyplan_n`, `prec_multi.svyplan_cluster`,
   `n_multi.svyplan_prec`) read these fields directly instead of
   reverse-engineering domain columns from output tables.
-* `svyplan()` no longer accepts `method` as a plan default. The `method`
-  parameter is ambiguous across function families (`n_prop`: wald/wilson/logodds;
-  `power_prop`: wald/arcsine/logodds) and cannot be validated at construction
-  time. Pass `method` directly to individual functions instead. Use
-  `prop_method` for `n_multi()`/`prec_multi()` defaults.
+* `svyplan()` does not accept `method` as a plan default (its meaning is
+  ambiguous across function families). The `prop_method` default
+  (validated at construction: `"wald"`, `"wilson"`, or `"logodds"`) covers
+  `n_multi()`/`prec_multi()` and also fills the `method` argument of
+  `n_prop()`, `prec_prop()`, and `power_prop()` when the value is valid
+  for that function.
 
 ## Common features
 
 * All sample size, precision, and power functions accept `deff` (design
   effect), `N` (finite population correction), and `resp_rate` (response
-  rate adjustment).
+  rate adjustment). One shared variance equation is used throughout:
+  with `n_net = n * resp_rate` responding units, `deff` multiplies the
+  SRS variance at `n_net` and the finite population correction uses the
+  actual sampling fraction `n_net / N` (so a census has zero sampling
+  variance under any design effect). The Wilson proportion method has no
+  finite-population form and ignores `N`. Targets that would require
+  drawing more than `N` units from a finite frame raise an error instead
+  of returning an impossible sample size.
 * All functions accept `plan`, a `svyplan()` profile providing shared
   design defaults.
 * `predict()` methods for sensitivity analysis: evaluate any result at new
@@ -143,13 +165,43 @@ All classes have print and format methods.
   3-stage) presence, type, NA, and range.
 * `prec_cluster()` now validates that `rel_var` and `k` are positive and
   finite.
-* `varcomp()` now rejects NA and empty outcome vectors.
+* `varcomp()` now rejects NA and empty outcome vectors, and data with a
+  single PSU (overall or within a stratum) with a clear error naming
+  the stratum.
 * `confint()` methods for `svyplan_n` and `svyplan_prec` now validate that
   `level` is in (0, 1).
 * `design_effect()` CR method now rejects mismatched vector lengths for
   `y`, `strvar`, and `clvar`.
 * Weight validators (`design_effect()`, `effective_n()`) now reject
   non-finite values (`Inf`, `-Inf`).
+
+## Feasibility and integer designs
+
+* Integer allocations are rounded to match the solve mode: a target-`cv`
+  solve rounds each stratum up (the integer design meets the target), a
+  `budget` solve floors and then adds units by variance reduction per
+  unit cost (the integer design stays within budget), and a fixed-`n`
+  solve preserves the total (ORIC rounding).
+* `n_cluster()` enforces realizable designs: fixed stage sizes must be
+  at least 1, cost-optimal stage sizes below 1 are clamped to 1 with a
+  warning, solved stage sizes below 1 are clamped with the achieved CV
+  reported, and budgets too small for a single PSU raise an error.
+* Domain identifiers are collision-free (values containing the display
+  separator cannot merge distinct domains) and missing domain values
+  raise an error instead of being silently dropped.
+* `design_effect(method = "cr")` requires weights on the population
+  scale (inverse inclusion probabilities) and rejects data where no
+  cluster has within-cluster replication.
+* `varcomp()` rejects non-finite outcomes, missing stage identifiers,
+  and out-of-range PPS probabilities; per-observation probabilities must
+  be constant within PSU, and named per-PSU probabilities are matched by
+  PSU identifier.
+* Three-stage `n_multi()` requires `delta_ssu` (matching `prec_multi()`),
+  and simple-mode achieved precision is recomputed per indicator with the
+  indicator's own method instead of sqrt-n rescaling.
+* `strata_bound()` validates `unit_cost` length (1 or `n_strata`) and
+  gives a targeted error when `cumrootf` cannot form the requested
+  number of strata on concentrated data.
 
 ## Display
 
@@ -162,3 +214,7 @@ All classes have print and format methods.
 * New `as.double.svyplan_cluster()` method returns the continuous total
   (`x$total_n`). Use `as.integer()` for the operational total (fieldwork)
   and `as.double()` for the continuous optimum (mathematical solution).
+* New `as.data.frame()` methods for `svyplan_n` and `svyplan_cluster`
+  return the tabular form of a result (allocation detail, per-domain
+  table, or stage table), the supported handoff to sampling packages
+  such as samplyr.

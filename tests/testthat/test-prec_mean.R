@@ -34,9 +34,9 @@ test_that("prec_mean with deff and resp_rate", {
 test_that("prec_mean with combined deff, FPC, resp_rate", {
   result <- prec_mean(var = 100, n = 400, mu = 50,
                       deff = 1.5, N = 5000, resp_rate = 0.9)
-  n_eff <- 400 * 0.9 / 1.5
-  fpc <- 1 - n_eff / 5000
-  se_exp <- sqrt(100 * fpc / n_eff)
+  n_net <- 400 * 0.9
+  fpc <- 1 - n_net / 5000
+  se_exp <- sqrt(1.5 * 100 * fpc / n_net)
   expect_equal(result$se, se_exp, tolerance = 1e-6)
   expect_equal(result$moe, qnorm(0.975) * se_exp, tolerance = 1e-6)
   expect_equal(result$cv, se_exp / 50, tolerance = 1e-6)

@@ -39,7 +39,12 @@
 #' ```
 #'
 #' Defaults are applied only when their names match the called function's
-#' formals. Irrelevant defaults are silently ignored.
+#' formals. Irrelevant defaults are silently ignored. `prop_method` must
+#' be `"wald"`, `"wilson"`, or `"logodds"` (validated at construction)
+#' and also fills the `method` argument of [n_prop()], [prec_prop()], and
+#' [power_prop()] when its value is valid for that function (so
+#' `svyplan(prop_method = "wilson")` applies to `n_prop()` but is ignored
+#' by `power_prop()`, which has no Wilson method).
 #'
 #' Estimand-specific values (`p`, `var`, `mu`, `moe`, `cv`, `n`, `power`,
 #' `effect`) should be passed directly to each function, not stored in
@@ -151,6 +156,14 @@ update.svyplan <- function(object, ...) {
     )
   }
 
+  if ("prop_method" %in% nms) {
+    pm <- defaults$prop_method
+    if (!is.character(pm) || length(pm) != 1L ||
+        !pm %in% c("wald", "wilson", "logodds")) {
+      stop("'prop_method' must be one of \"wald\", \"wilson\", \"logodds\"",
+           call. = FALSE)
+    }
+  }
   if ("alpha" %in% nms) check_alpha(defaults$alpha)
   if ("N" %in% nms && any(is.finite(defaults$N))) check_population_size(defaults$N)
   if ("deff" %in% nms) check_deff(defaults$deff)

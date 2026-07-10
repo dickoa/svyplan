@@ -161,7 +161,7 @@ test_that("n_cluster validates inputs", {
       delta = c(0.01, 0.02, 0.03),
       budget = 100000
     ),
-    "not yet supported"
+    "fold deeper stages"
   )
 })
 
@@ -755,16 +755,28 @@ test_that("n_cluster 3-stage n_psu + psu_size budget mode", {
 test_that("n_cluster 3-stage n_psu + psu_size CV mode", {
   result <- n_cluster(
     stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
-    cv = 0.05, n_psu = 50, psu_size = 10
+    cv = 0.0465, n_psu = 50, psu_size = 10
   )
   n1_eff <- 50
-  denom <- 10 * (0.05^2 * n1_eff / 1 - 1 * 0.01) - 1 * 0.05
+  denom <- 10 * (0.0465^2 * n1_eff / 1 - 1 * 0.01) - 1 * 0.05
   n3_expected <- 1 * (1 - 0.05) / denom
 
   expect_equal(result$n[["n_psu"]], 50, tolerance = 1e-6)
   expect_equal(result$n[["psu_size"]], 10, tolerance = 1e-6)
   expect_equal(result$n[["ssu_size"]], n3_expected, tolerance = 1e-6)
-  expect_equal(result$cv, 0.05, tolerance = 1e-6)
+  expect_gte(result$n[["ssu_size"]], 1)
+  expect_equal(result$cv, 0.0465, tolerance = 1e-6)
+})
+
+test_that("n_cluster clamps sub-unit stage sizes to 1 and reports achieved cv", {
+  result <- n_cluster(
+    stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+    cv = 0.05, n_psu = 50, psu_size = 10
+  )
+  expect_equal(result$n[["ssu_size"]], 1)
+  cv_expected <- sqrt(1 / (50 * 10) * (0.01 * 10 + 1))
+  expect_equal(result$cv, cv_expected, tolerance = 1e-8)
+  expect_lt(result$cv, 0.05)
 })
 
 test_that("n_cluster params store ssu_size", {
@@ -812,4 +824,30 @@ test_that("prec_cluster accepts named delta and reorders", {
     delta = c(delta_ssu = 0.05, delta_psu = 0.01)
   )
   expect_equal(swapped$cv, ref$cv)
+})
+
+test_that("budget mode rejects budgets below one realizable PSU", {
+  expect_error(
+    suppressWarnings(n_cluster(stage_cost = c(1, 1000), delta = 0.9, budget = 100)),
+    "too small for any realizable design"
+  )
+  expect_error(
+    n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), budget = 600),
+    "too small for any realizable design"
+  )
+})
+
+test_that("cost-optimal psu_size below 1 is clamped with a warning", {
+  expect_warning(
+    res <- n_cluster(stage_cost = c(1, 1000), delta = 0.9, budget = 5000),
+    "clamped to 1"
+  )
+  expect_equal(res$n[["psu_size"]], 1)
+  expect_gte(res$n[["n_psu"]], 1)
+})
+
+test_that("fixed stage sizes below 1 are rejected", {
+  expect_error(n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05,
+                         psu_size = 0.5),
+               "'psu_size' must be at least 1")
 })

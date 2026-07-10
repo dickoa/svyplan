@@ -16,7 +16,7 @@ n_prop(p, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  method = "wald",
+  method = c("wald", "wilson", "logodds"),
   plan = NULL,
   ...
 )
@@ -103,7 +103,9 @@ All methods use the normal (z) quantile. This is standard for survey
 sampling where the sample size is large enough for the CLT to apply.
 
 When called on a \code{svyplan_prec} object, parameters are extracted from the
-stored result. Passing a different \code{method} evaluates the stored precision
+stored result. Any argument of the default method (e.g. \code{method}, \code{deff},
+\code{N}) can be overridden through \code{...}; unknown argument names are an
+error. Passing a different \code{method} evaluates the stored precision
 target under that formula; the round-trip will not be exact because the
 precision was computed under the original method.
 }

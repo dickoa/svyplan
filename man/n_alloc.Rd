@@ -121,7 +121,29 @@ per-stratum unit costs, overriding \code{frame$cost}.}
 }
 \value{
 A \code{svyplan_n} object with \code{type = "alloc"} and a stratum-level
-allocation table in \verb{$detail}.
+allocation table in \verb{$detail} (also available via \code{as.data.frame()}),
+with columns:
+\describe{
+\item{\code{stratum}, \code{N}, \code{sd}, \code{cost}}{Stratum identifiers and inputs
+carried over from the frame. In cluster mode \code{cost} is the
+derived effective per-element cost
+\code{cost_psu / psu_size + cost_ssu} (1 when no stage costs were
+given), while \code{sd} stays the input stratum SD.}
+\item{\code{n}}{Allocated sample size (continuous).}
+\item{\code{n_int}}{Integer allocation, rounded so the total is
+preserved (ORIC rounding).}
+\item{\code{weight}}{Design weight \code{N / n}.}
+\item{\code{n_eff}}{Effective sample size \code{n * resp_rate / deff}.}
+\item{\code{.lower}, \code{.upper}}{Bounds applied to the stratum
+(from \code{min_n}, \code{max_weight}, \code{take_all}, or \code{N}).}
+\item{\code{.binding}}{Whether the allocation sits on one of its
+bounds.}
+\item{\code{take_all}, \code{mean}}{Present when take-all strata or stratum
+means were supplied.}
+\item{\code{psu_size}, \code{n_psu}, \code{n_psu_int}}{Cluster mode only: the
+per-stratum take, the implied number of PSUs (\code{n / psu_size}),
+and its ceiling.}
+}
 }
 \description{
 Distribute a total sample size across strata defined by a single
@@ -164,6 +186,46 @@ When a design stratifies by several variables (e.g. region
 
 This ensures that each row maps to exactly one population cell and that
 the allocation formulas apply to the correct per-stratum \code{N} and \code{sd} pairs.
+}
+
+\subsection{Cluster designs within strata}{
+
+Adding a \code{delta_psu} column to the frame turns the allocation into a
+stratified \strong{two-stage} design (e.g. enumeration areas then
+households within each stratum). Under the cluster variance model
+the problem reduces to the element allocation above with the stratum
+SD inflated to \code{sd * sqrt(k_psu * (1 + delta_psu * (psu_size - 1)))}
+and, when stage costs are given, a per-element cost of
+\code{cost_psu / psu_size + cost_ssu}. All solve modes, allocation
+methods, and constraints work unchanged; \code{n}, \code{cv}, and \code{budget}
+keep their meanings.
+
+Cluster-mode columns:
+\itemize{
+\item \code{delta_psu} (required): within-PSU homogeneity per stratum,
+e.g. from \code{\link[=varcomp]{varcomp()}} with \code{strata}.
+\item \code{k_psu} (optional, default 1): variance ratio per stratum.
+\item \code{psu_size} (optional): fixes the per-stratum take; \code{NA} entries
+are replaced by the cost-optimal take
+\code{sqrt(cost_psu / cost_ssu * (1 - delta_psu) / delta_psu)}.
+\item \code{cost_psu}, \code{cost_ssu} (together): per-PSU and per-element costs;
+required for \code{budget} mode or when \code{psu_size} is not fixed. They
+replace \code{cost}/\code{unit_cost}, which are not allowed in this mode.
+}
+
+The finite population correction stays at the element level, an
+approximation consistent with \code{\link[=n_cluster]{n_cluster()}}'s variance model.
+
+Because \code{delta_psu} already accounts for the clustering, leave
+\code{deff} at 1 unless it captures a \emph{different} source of design
+effect (e.g. weighting loss); a clustering \code{deff} on top of
+\code{delta_psu} would double-count. The constraints \code{min_n},
+\code{max_weight}, and \code{take_all} stay in element units. For fielding,
+use \code{n_psu_int} PSUs with \code{ceiling(psu_size)} elements each;
+\code{n_psu_int} is derived from the continuous \code{n}, so
+\code{n_psu_int * psu_size} can differ slightly from \code{n_int} and the
+integerized cost can exceed a \code{budget} target by up to one PSU per
+stratum.
 }
 
 \subsection{Domains vs. strata}{
@@ -228,6 +290,19 @@ frame_domains <- data.frame(
 
 n_alloc(frame_domains, domains = "province",
        cv = 0.04, alloc = "power", power_q = 0.3)
+
+# Stratified two-stage design (EAs then households per stratum)
+frame_cluster <- data.frame(
+  stratum   = c("Urban", "Rural"),
+  N         = c(50000, 150000),
+  sd        = c(0.45, 0.48),
+  mean      = c(0.35, 0.25),
+  delta_psu = c(0.03, 0.08),
+  cost_psu  = c(300, 600),
+  cost_ssu  = c(40, 60)
+)
+
+n_alloc(frame_cluster, cv = 0.05)
 
 }
 \references{

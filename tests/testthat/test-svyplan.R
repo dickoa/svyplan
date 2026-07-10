@@ -617,3 +617,30 @@ test_that("first-arg plan + named plan= errors", {
     "multiple svyplan objects"
   )
 })
+
+test_that("plan prop_method applies to method in the prop family", {
+  pl <- svyplan(prop_method = "wilson")
+  expect_equal(
+    n_prop(p = 0.3, moe = 0.05, plan = pl)$n,
+    n_prop(p = 0.3, moe = 0.05, method = "wilson")$n
+  )
+  expect_equal(
+    prec_prop(p = 0.3, n = 400, plan = pl)$moe,
+    prec_prop(p = 0.3, n = 400, method = "wilson")$moe
+  )
+  expect_equal(
+    n_prop(p = 0.3, moe = 0.05, plan = pl, method = "logodds")$n,
+    n_prop(p = 0.3, moe = 0.05, method = "logodds")$n
+  )
+})
+
+test_that("plan prop_method outside a function's choices is ignored", {
+  pl <- svyplan(prop_method = "wilson")
+  res <- power_prop(p1 = 0.15, p2 = 0.18, plan = pl)
+  expect_equal(res$n, power_prop(p1 = 0.15, p2 = 0.18)$n)
+  pl2 <- svyplan(prop_method = "logodds")
+  expect_equal(
+    power_prop(p1 = 0.15, p2 = 0.18, plan = pl2)$n,
+    power_prop(p1 = 0.15, p2 = 0.18, method = "logodds")$n
+  )
+})

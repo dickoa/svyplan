@@ -23,15 +23,23 @@
 #' @details
 #' Computes the standard error for the given sample size and design
 #' parameters, then derives the margin of error and coefficient of
-#' variation. The effective sample size is `n * resp_rate / deff`, with
-#' optional finite population correction.
+#' variation. The variance equation is
+#' `se^2 = deff * p * (1 - p) * fpc(n_net) / n_net`, where
+#' `n_net = n * resp_rate` is the expected number of responding units:
+#' `deff` multiplies the SRS variance at the realized sample size, and
+#' the finite population correction uses the actual sampling fraction
+#' `n_net / N`. Equivalently, `se^2 = p * (1 - p) * fpc(n_net) / n_eff`
+#' with the effective sample size `n_eff = n_net / deff`.
 #'
 #' The Wald FPC uses the Cochran (1977, Ch. 3) form: the finite-population
-#' correction for a Bernoulli proportion is `(N - n_eff) / (N - 1)`, not
-#' the simpler `1 - n_eff / N` used for means.
+#' correction for a Bernoulli proportion is `(N - n_net) / (N - 1)`, not
+#' the simpler `1 - n_net / N` used for means. The Wilson method has no
+#' finite-population form; it is evaluated at `n_eff` and ignores `N`.
 #'
 #' When called on a `svyplan_n` object, parameters are extracted from the
-#' stored result. Passing a different `method` evaluates the stored sample
+#' stored result. Any argument of the default method (e.g. `method`, `deff`,
+#' `N`) can be overridden through `...`; unknown argument names are an
+#' error. Passing a different `method` evaluates the stored sample
 #' size under that formula; the round-trip will not be exact because `n`
 #' was determined under the original method.
 #'
@@ -63,7 +71,7 @@ prec_prop.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  method = "wald",
+  method = c("wald", "wilson", "logodds"),
   plan = NULL,
   ...
 ) {
@@ -75,25 +83,12 @@ prec_prop.default <- function(
   check_population_size(N)
   check_deff(deff)
   check_resp_rate(resp_rate)
-  method <- match.arg(method, c("wald", "wilson", "logodds"))
+  method <- match.arg(method)
 
-  n_eff <- n * resp_rate / deff
-  z <- qnorm(1 - alpha / 2)
-  q <- 1 - p
-
-  if (method == "wald") {
-    fpc <- if (is.infinite(N)) 1 else (N - n_eff) / (N - 1)
-    fpc <- .clamp_fpc(fpc, n_eff, N)
-    se <- sqrt(p * q * fpc / n_eff)
-    moe <- z * se
-  } else if (method == "wilson") {
-    moe <- z * sqrt(p * q / n_eff + z^2 / (4 * n_eff^2)) / (1 + z^2 / n_eff)
-    se <- moe / z
-  } else {
-    moe <- .logodds_moe(p, n_eff, alpha, N)
-    se <- moe / z
-  }
-  cv_val <- se / p
+  prec <- .prec_engine_prop(p, n, alpha, N, deff, resp_rate, method)
+  se <- prec$se
+  moe <- prec$moe
+  cv_val <- prec$cv
 
   params <- list(
     p = p,
@@ -122,28 +117,28 @@ prec_prop.svyplan_n <- function(p, ...) {
   if (x$type != "proportion") {
     stop("prec_prop requires a svyplan_n of type 'proportion'", call. = FALSE)
   }
-  dots <- list(...)
   par <- x$params
-  prec_prop.default(
+  args <- list(
     p = par$p,
     n = x$n,
     alpha = par$alpha,
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate %||% 1,
-    method = dots$method %||% x$method %||% "wald"
+    method = x$method %||% "wald"
   )
+  do.call(prec_prop.default, .roundtrip_args(args, list(...), prec_prop.default))
 }
 
-#' Invert log-odds n formula to get MOE for a given n_eff.
+#' Invert log-odds n formula to get MOE for a given net sample size.
 #' @keywords internal
 #' @noRd
-.logodds_moe <- function(p, n_eff, alpha, N) {
-  if (!is.infinite(N) && n_eff >= N) {
-    warning("effective sample size >= population size; moe is 0", call. = FALSE)
+.logodds_moe <- function(p, n_net, alpha, N, deff = 1) {
+  if (!is.infinite(N) && n_net >= N) {
+    warning("net sample size >= population size; moe is 0", call. = FALSE)
     return(0)
   }
-  f <- function(e) .n_prop_logodds_raw(p, e, alpha, N) - n_eff
+  f <- function(e) .n_prop_logodds_raw(p, e, alpha, N, deff) - n_net
   lo <- 1e-6
   hi <- 0.5 - 1e-6
   f_lo <- f(lo)
@@ -156,8 +151,8 @@ prec_prop.svyplan_n <- function(p, ...) {
       hi,
       "] for p = ",
       p,
-      ", n_eff = ",
-      round(n_eff, 2),
+      ", n_net = ",
+      round(n_net, 2),
       ", N = ",
       N,
       call. = FALSE
@@ -175,8 +170,8 @@ prec_prop.svyplan_n <- function(p, ...) {
       stop(
         "log-odds MOE inversion failed for p = ",
         p,
-        ", n_eff = ",
-        round(n_eff, 2),
+        ", n_net = ",
+        round(n_net, 2),
         ": ",
         conditionMessage(e),
         call. = FALSE

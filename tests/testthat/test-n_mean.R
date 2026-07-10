@@ -77,3 +77,14 @@ test_that("mean cv is NA when mu not provided", {
 test_that("n_mean rejects N = 1", {
   expect_error(n_mean(var = 100, moe = 2, N = 1), "greater than 1")
 })
+
+test_that("deff multiplies the SRS variance at the actual net n (finite N)", {
+  z <- qnorm(0.975)
+  for (deff in c(0.8, 2)) {
+    got <- n_mean(var = 100, moe = 2, N = 500, deff = deff)$n
+    expected <- z^2 * deff * 100 / (2^2 + z^2 * deff * 100 / 500)
+    expect_equal(got, expected, tolerance = 1e-10)
+    pm <- prec_mean(var = 100, n = got, N = 500, deff = deff)
+    expect_equal(pm$moe, 2, tolerance = 1e-8)
+  }
+})

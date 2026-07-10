@@ -2,7 +2,7 @@
 #'
 #' Determine where to cut a continuous stratification variable to form
 #' optimal strata. Supports four methods: cumulative root frequency
-#' (Dalenius-Hodges), geometric progression, Lavallée-Hidiroglou
+#' (Dalenius-Hodges), geometric progression, Lavallee-Hidiroglou
 #' iterative, and Kozak random search.
 #'
 #' @param x Numeric vector: stratification variable values. Must not
@@ -17,7 +17,7 @@
 #'   Specify at most one of `n` or `cv`. Required for methods `"lh"` and
 #'   `"kozak"`.
 #' @param method Stratification method: `"cumrootf"` (Dalenius-Hodges),
-#'   `"geo"` (geometric), `"lh"` (Lavallée-Hidiroglou), or `"kozak"`
+#'   `"geo"` (geometric), `"lh"` (Lavallee-Hidiroglou), or `"kozak"`
 #'   (random search). Default `"lh"`.
 #' @param alloc Allocation rule: `"proportional"`, `"neyman"`,
 #'   `"optimal"`, or `"power"` (Bankier compromise). Default `"neyman"`.
@@ -63,7 +63,7 @@
 #' - **geo**: Gunning-Horgan (2004) geometric progression. Non-iterative,
 #'   requires `x > 0`. Works well for right-skewed positive variables
 #'   (e.g. income, revenue) where a log-scale spacing is natural.
-#' - **lh** (default): Lavallée-Hidiroglou (1988) iterative coordinate-wise
+#' - **lh** (default): Lavallee-Hidiroglou (1988) iterative coordinate-wise
 #'   optimization. Requires `n` or `cv`. The recommended choice when you
 #'   know the sample size or target CV: it directly minimizes the
 #'   objective and is fast even on large frames.
@@ -217,6 +217,13 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     if (!is.numeric(unit_cost) || anyNA(unit_cost) || any(unit_cost <= 0)) {
       stop("'unit_cost' must be positive numeric", call. = FALSE)
     }
+    if (!length(unit_cost) %in% c(1L, n_strata)) {
+      stop(
+        sprintf("'unit_cost' must have length 1 or %d (one per stratum)",
+                n_strata),
+        call. = FALSE
+      )
+    }
     cost_h <- rep_len(unit_cost, n_strata)
   }
 
@@ -298,7 +305,11 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     N       = alloc_res$N_h,
     share   = round(alloc_res$W_h, 6L),
     sd      = round(alloc_res$S_h, 4L),
-    n       = .round_oric(alloc_res$n_h),
+    n       = if (has_cv) {
+      as.integer(pmin(ceiling(alloc_res$n_h - 1e-9), alloc_res$N_h))
+    } else {
+      .round_oric(alloc_res$n_h)
+    },
     take_all = if (!is.null(certain)) {
       seq_len(n_strata) %in% certain_strata
     } else {

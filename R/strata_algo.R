@@ -290,7 +290,17 @@
   targets <- total * seq_len(L - 1L) / L
   idx <- vapply(targets, function(t) which.min(abs(csf - t)), integer(1L))
   idx <- pmin(idx, length(h$breaks) - 1L)
-  unique(h$breaks[idx + 1L])
+  bk <- unique(h$breaks[idx + 1L])
+  if (length(bk) < L - 1L) {
+    stop(
+      sprintf(
+        "'cumrootf' cannot form %d strata: the distribution of 'x' is too concentrated (only %d distinct usable boundaries); reduce 'n_strata' or use method = \"kozak\"",
+        L, length(bk)
+      ),
+      call. = FALSE
+    )
+  }
+  bk
 }
 
 #' Geometric progression boundaries
@@ -303,7 +313,7 @@
   b0 * r^seq_len(L - 1L)
 }
 
-#' Lavallée-Hidiroglou iterative boundary optimization
+#' Lavallee-Hidiroglou iterative boundary optimization
 #' @keywords internal
 #' @noRd
 .strata_lh <- function(

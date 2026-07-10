@@ -9,11 +9,11 @@
 \usage{
 varcomp(x, ...)
 
-\method{varcomp}{formula}(x, ..., data = NULL, prob = NULL)
+\method{varcomp}{formula}(x, ..., data = NULL, prob = NULL, strata = NULL)
 
-\method{varcomp}{default}(x, ..., stage_id = NULL, prob = NULL)
+\method{varcomp}{default}(x, ..., stage_id = NULL, prob = NULL, strata = NULL)
 
-\method{varcomp}{survey.design}(x, ..., prob = NULL)
+\method{varcomp}{survey.design}(x, ..., prob = NULL, strata = NULL)
 }
 \arguments{
 \item{x}{A formula, numeric vector, or survey design object
@@ -25,9 +25,15 @@ varcomp(x, ...)
 
 \item{prob}{First-stage selection probabilities (PPS). A one-sided
 formula (e.g., \code{~pp}) when using the formula interface, or a numeric
-vector. Values must be one per PSU (repeated for each unit within the
-PSU) and must sum to 1 across PSUs (tolerance 1e-3).
-\code{NULL} (default) assumes SRS.}
+vector: either one value per observation (constant within each PSU)
+or one value per PSU. A one-per-PSU vector is matched by name when
+named; unnamed values are taken in sorted order of the unique PSU
+identifiers. Values must be strictly between 0 and 1 and sum to 1
+across PSUs (tolerance 1e-3). \code{NULL} (default) assumes SRS.}
+
+\item{strata}{Optional stratification: a one-sided formula (formula
+and survey.design interfaces) or a vector (default interface).
+Components are then estimated per stratum; see Details.}
 
 \item{stage_id}{A list of stage-ID vectors (required for vector interface).
 Length determines the number of stage boundaries (stages - 1).}
@@ -44,6 +50,8 @@ length 2 (\code{delta_psu}, \code{delta_ssu}) for 3-stage.}
 (\code{k_psu}, \code{k_ssu} for 3-stage).}
 \item{\code{rel_var}}{Unit relvariance (scalar).}
 \item{\code{stages}}{Number of stages (2 or 3).}
+\item{\code{strata}}{Per-stratum component table when \code{strata} is
+supplied, otherwise \code{NULL} (see Details).}
 }
 }
 \description{
@@ -60,8 +68,21 @@ LHS is the analysis variable, RHS terms express nesting using
 outermost stage comes first; with \code{\%in\%} the innermost comes
 first. Be careful not to reverse the order.
 \item \strong{Numeric vector}: \code{varcomp(y, stage_id = list(cluster_ids))}.
-\item \strong{survey.design}: \code{varcomp(design, ~y)}. Cluster structure is
-extracted from the design object. Requires the survey package.
+\item \strong{survey.design}: \code{varcomp(design, ~y)}. Cluster structure and
+design weights are extracted from the design object. Requires the
+survey package. Weights are treated as inverse inclusion
+probabilities: cluster sizes and totals are estimated by summed
+weights, and the estimation variance of the weighted cluster
+totals is subtracted from the between-stage variance terms, so
+unequal-probability samples from a previous round give
+approximately design-unbiased components. Unit weights recover the
+frame formulas exactly. The weight \emph{scale} matters: within each
+cluster the summed weights should estimate the cluster population
+size, since the implied sampling fraction drives the correction.
+The correction assumes noninformative (SRS-like) subsampling
+within clusters; informative within-cluster sampling remains
+approximate. For a PPS first stage, also pass the PSU selection
+probabilities via \code{prob}.
 }
 
 When \code{prob} is \code{NULL}, SRS first-stage is assumed. When provided, PPS
@@ -77,6 +98,15 @@ which can be negative.
 Clusters containing a single observation have undefined within-cluster
 variance. In this case, the within-cluster variance is imputed as the
 mean variance of the remaining clusters.
+
+With \code{strata}, components are estimated separately within each
+stratum and returned as a per-stratum table in \verb{$strata} (also via
+\code{as.data.frame()}); the pooled fields (\code{varb}, \code{delta}, ...) are not
+filled. The table's columns (\code{sd}, \code{mean}, \code{delta_psu}, \code{k_psu})
+match the \code{\link[=n_alloc]{n_alloc()}} frame contract, so after adding stratum \code{N}
+it feeds a stratified two-stage allocation directly. When \code{prob} is
+combined with \code{strata}, supply one value per observation, summing
+to 1 within each stratum.
 }
 \section{Methods (by class)}{
 \itemize{
@@ -86,7 +116,7 @@ mean variance of the remaining clusters.
 
 \item \code{varcomp(survey.design)}: Method for survey design objects. Pass a one-sided
 formula (e.g., \code{~y}) to specify the outcome variable. Cluster
-structure is extracted from the design.
+structure and design weights are extracted from the design.
 
 }}
 \examples{
@@ -101,6 +131,15 @@ vc2
 
 # Feed into n_cluster
 n_cluster(stage_cost = c(500, 50), delta = vc2, budget = 100000)
+
+# Per-stratum components for a stratified two-stage plan
+set.seed(42)
+frame_s <- data.frame(
+  income = rnorm(400, 50000, 10000),
+  district = rep(1:40, each = 10),
+  region = rep(c("North", "South"), each = 200)
+)
+varcomp(income ~ district, data = frame_s, strata = ~region)
 
 # 3-stage SRS using formula: villages nested within districts
 # "/" expresses nesting (outermost stage first, see ?formula)

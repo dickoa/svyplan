@@ -15,7 +15,7 @@ prec_prop(p, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  method = "wald",
+  method = c("wald", "wilson", "logodds"),
   plan = NULL,
   ...
 )
@@ -56,15 +56,23 @@ population proportion given a sample size. This is the inverse of
 \details{
 Computes the standard error for the given sample size and design
 parameters, then derives the margin of error and coefficient of
-variation. The effective sample size is \code{n * resp_rate / deff}, with
-optional finite population correction.
+variation. The variance equation is
+\code{se^2 = deff * p * (1 - p) * fpc(n_net) / n_net}, where
+\code{n_net = n * resp_rate} is the expected number of responding units:
+\code{deff} multiplies the SRS variance at the realized sample size, and
+the finite population correction uses the actual sampling fraction
+\code{n_net / N}. Equivalently, \code{se^2 = p * (1 - p) * fpc(n_net) / n_eff}
+with the effective sample size \code{n_eff = n_net / deff}.
 
 The Wald FPC uses the Cochran (1977, Ch. 3) form: the finite-population
-correction for a Bernoulli proportion is \code{(N - n_eff) / (N - 1)}, not
-the simpler \code{1 - n_eff / N} used for means.
+correction for a Bernoulli proportion is \code{(N - n_net) / (N - 1)}, not
+the simpler \code{1 - n_net / N} used for means. The Wilson method has no
+finite-population form; it is evaluated at \code{n_eff} and ignores \code{N}.
 
 When called on a \code{svyplan_n} object, parameters are extracted from the
-stored result. Passing a different \code{method} evaluates the stored sample
+stored result. Any argument of the default method (e.g. \code{method}, \code{deff},
+\code{N}) can be overridden through \code{...}; unknown argument names are an
+error. Passing a different \code{method} evaluates the stored sample
 size under that formula; the round-trip will not be exact because \code{n}
 was determined under the original method.
 }

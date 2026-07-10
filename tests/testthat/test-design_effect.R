@@ -506,3 +506,22 @@ test_that("cr rejects y with Inf", {
     "'y'.*finite"
   )
 })
+
+test_that("CR rejects weights below the population scale", {
+  set.seed(42)
+  y <- rnorm(100)
+  cl <- rep(1:25, each = 4)
+  expect_error(
+    design_effect(rep(1 / 100, 100), y = y, cluster_id = cl, method = "cr"),
+    "population scale"
+  )
+})
+
+test_that("CR rejects data with no within-cluster replication", {
+  set.seed(1)
+  expect_error(
+    design_effect(rep(100, 10), y = rnorm(10), cluster_id = 1:10,
+                  method = "cr"),
+    "single observation"
+  )
+})

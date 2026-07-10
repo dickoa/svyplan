@@ -592,6 +592,45 @@ n_alloc(frame_domains, domains = "province",
 prec_alloc(frame, n = c(200, 250, 150))
 ```
 
+### Stratified two-stage designs
+
+Most household surveys stratify first and cluster within each stratum,
+sampling enumeration areas and then households. Adding a `delta_psu`
+column to the frame switches `n_alloc()` to this design. The per-stratum
+homogeneity can come straight from `varcomp()` with `strata`, whose
+output columns are named to match the frame:
+
+```{r n-alloc-cluster-varcomp}
+set.seed(3)
+listing <- data.frame(
+  region = rep(c("North", "South"), each = 600),
+  ea = rep(1:60, each = 20),
+  income = rnorm(1200, rep(c(50, 70), each = 600), 15) +
+    rep(rnorm(60, 0, 6), each = 20)
+)
+vc_region <- varcomp(income ~ ea, data = listing, strata = ~region)
+vc_region
+```
+
+```{r n-alloc-cluster}
+frame_2stage <- merge(
+  data.frame(stratum = c("North", "South"), N = c(40000, 60000)),
+  as.data.frame(vc_region)[, c("stratum", "sd", "mean", "delta_psu", "k_psu")],
+  by = "stratum"
+)
+frame_2stage$cost_psu <- c(400, 550)
+frame_2stage$cost_ssu <- c(45, 60)
+
+res_2stage <- n_alloc(frame_2stage, cv = 0.02)
+res_2stage
+res_2stage$detail[, c("stratum", "n_int", "psu_size", "n_psu_int")]
+```
+
+Each stratum gets its cost-optimal cluster take (fix it instead with a
+`psu_size` column), and the PSU counts fall out of the element
+allocation. Budget mode and every constraint from the previous section
+work the same way here.
+
 ## Power analysis
 
 Precision analysis answers "how precisely can we estimate a level?" Power analysis answers a different question: "can we detect a change or difference between two groups or time points?"

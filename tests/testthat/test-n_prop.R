@@ -128,3 +128,30 @@ test_that("n_prop logodds rejects moe >= 0.5", {
   expect_error(n_prop(p = 0.3, moe = 0.6, method = "logodds"),
                "moe.*< 0.5")
 })
+
+test_that("deff multiplies the SRS variance at the actual net n (finite N)", {
+  z <- qnorm(0.975)
+  for (deff in c(0.8, 2)) {
+    got <- n_prop(p = 0.5, moe = 0.1, N = 100, deff = deff)$n
+    expected <- z^2 * deff * 0.25 * 100 / (0.1^2 * 99 + z^2 * deff * 0.25)
+    expect_equal(got, expected, tolerance = 1e-10)
+    pr <- prec_prop(p = 0.5, n = got, N = 100, deff = deff)
+    expect_equal(pr$moe, 0.1, tolerance = 1e-8)
+  }
+})
+
+test_that("a census has zero sampling variance regardless of deff", {
+  expect_warning(pr <- prec_prop(p = 0.5, n = 100, N = 100, deff = 2),
+                 "census")
+  expect_equal(pr$se, 0)
+  expect_warning(pm <- prec_mean(var = 100, n = 100, N = 100, deff = 2),
+                 "census")
+  expect_equal(pm$se, 0)
+})
+
+test_that("unattainable finite-population targets error", {
+  expect_error(n_mean(var = 100, moe = 1, N = 100, deff = 2, resp_rate = 0.8),
+               "unattainable")
+  expect_error(n_prop(p = 0.5, moe = 0.02, N = 100, resp_rate = 0.5),
+               "unattainable")
+})

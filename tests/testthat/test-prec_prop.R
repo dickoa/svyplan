@@ -79,7 +79,7 @@ test_that("prec_prop logodds extreme p round-trip", {
 test_that("prec_prop logodds census returns moe = 0 with warning", {
   expect_warning(
     res <- prec_prop(p = 0.5, n = 50, N = 50, method = "logodds"),
-    "effective sample size >= population size"
+    "net sample size >= population size"
   )
   expect_equal(res$moe, 0)
 })

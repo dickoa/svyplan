@@ -68,7 +68,9 @@
 #' sampling where the sample size is large enough for the CLT to apply.
 #'
 #' When called on a `svyplan_prec` object, parameters are extracted from the
-#' stored result. Passing a different `method` evaluates the stored precision
+#' stored result. Any argument of the default method (e.g. `method`, `deff`,
+#' `N`) can be overridden through `...`; unknown argument names are an
+#' error. Passing a different `method` evaluates the stored precision
 #' target under that formula; the round-trip will not be exact because the
 #' precision was computed under the original method.
 #'
@@ -120,7 +122,7 @@ n_prop.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  method = "wald",
+  method = c("wald", "wilson", "logodds"),
   plan = NULL,
   ...
 ) {
@@ -134,21 +136,17 @@ n_prop.default <- function(
   check_population_size(N)
   check_deff(deff)
   check_resp_rate(resp_rate)
-  method <- match.arg(method, c("wald", "wilson", "logodds"))
+  method <- match.arg(method)
 
   n <- switch(
     method,
-    wald = .n_prop_wald(p, moe, cv, alpha, N),
-    wilson = .n_prop_wilson(p, moe, cv, alpha),
-    logodds = .n_prop_logodds(p, moe, cv, alpha, N)
+    wald = .n_prop_wald(p, moe, cv, alpha, N, deff),
+    wilson = .n_prop_wilson(p, moe, cv, alpha) * deff,
+    logodds = .n_prop_logodds(p, moe, cv, alpha, N, deff)
   )
 
-  n <- n * deff
   n <- .apply_resp_rate(n, resp_rate)
-
-  if (!is.infinite(N) && n > N) {
-    warning("Calculated sample size exceeds population size N.", call. = FALSE)
-  }
+  .check_attainable(n, N, resp_rate)
 
   params <- list(
     p = p,
@@ -174,15 +172,15 @@ n_prop.default <- function(
 
 #' @keywords internal
 #' @noRd
-.n_prop_wald <- function(p, moe, cv, alpha, N) {
+.n_prop_wald <- function(p, moe, cv, alpha, N, deff = 1) {
   z <- qnorm(1 - alpha / 2)
   q <- 1 - p
   a <- ifelse(is.infinite(N), 1, N / (N - 1))
 
   if (!is.null(moe)) {
-    n0 <- a * z^2 * p * q / (moe^2 + z^2 * p * q / (N - 1))
+    n0 <- a * z^2 * deff * p * q / (moe^2 + z^2 * deff * p * q / (N - 1))
   } else {
-    n0 <- a * q / p / (cv^2 + q / p / (N - 1))
+    n0 <- a * deff * q / p / (cv^2 + deff * q / p / (N - 1))
   }
 
   n0
@@ -211,21 +209,21 @@ n_prop.default <- function(
 
 #' @keywords internal
 #' @noRd
-.n_prop_logodds <- function(p, moe, cv, alpha, N) {
+.n_prop_logodds <- function(p, moe, cv, alpha, N, deff = 1) {
   if (is.null(moe)) {
     stop("Log-odds method requires 'moe' (not 'cv')", call. = FALSE)
   }
   if (moe >= 0.5) {
     stop("log-odds method requires 'moe' < 0.5", call. = FALSE)
   }
-  .n_prop_logodds_raw(p, moe, alpha, N)
+  .n_prop_logodds_raw(p, moe, alpha, N, deff)
 }
 
 #' Core log-odds n formula (no cv check).
 #' Used by both .n_prop_logodds() and .logodds_moe().
 #' @keywords internal
 #' @noRd
-.n_prop_logodds_raw <- function(p, e, alpha, N) {
+.n_prop_logodds_raw <- function(p, e, alpha, N, deff = 1) {
   z <- qnorm(1 - alpha / 2)
   q <- 1 - p
   kk <- q / p
@@ -235,7 +233,7 @@ n_prop.default <- function(
   x <- e * (1 + kk^2) + sqrt(rad)
   x <- x / (kk * (1 - 2 * e))
 
-  inv_n <- a * (sqrt(p * q) / z * log(x))^2 + 1 / N
+  inv_n <- a * (sqrt(p * q) / z * log(x))^2 / deff + 1 / N
   1 / inv_n
 }
 
@@ -246,12 +244,11 @@ n_prop.svyplan_prec <- function(p, moe = NULL, cv = NULL, ...) {
   if (x$type != "proportion") {
     stop("n_prop requires a svyplan_prec of type 'proportion'", call. = FALSE)
   }
-  dots <- list(...)
   par <- x$params
   if (is.null(moe) && is.null(cv)) {
     moe <- x$moe
   }
-  n_prop.default(
+  args <- list(
     p = par$p,
     moe = moe,
     cv = cv,
@@ -259,6 +256,7 @@ n_prop.svyplan_prec <- function(p, moe = NULL, cv = NULL, ...) {
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate,
-    method = dots$method %||% x$method %||% "wald"
+    method = x$method %||% "wald"
   )
+  do.call(n_prop.default, .roundtrip_args(args, list(...), n_prop.default))
 }

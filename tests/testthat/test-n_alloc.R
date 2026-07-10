@@ -514,3 +514,199 @@ test_that("n_alloc: extra columns ignored when domains is NULL", {
   res <- n_alloc(frame, n = 100)
   expect_null(res$domains)
 })
+
+test_that("cluster mode matches n_cluster closed forms for one stratum", {
+  fr <- data.frame(
+    stratum = "A", N = 1e9, sd = 0.458, mean = 0.3,
+    delta_psu = 0.05, cost_psu = 500, cost_ssu = 50
+  )
+  res <- n_alloc(fr, cv = 0.05)
+  nc <- n_cluster(cv = 0.05, delta = 0.05, rel_var = (0.458 / 0.3)^2,
+                  stage_cost = c(500, 50))
+  expect_equal(res$detail$psu_size, nc$n[["psu_size"]], tolerance = 1e-6)
+  expect_equal(res$detail$n_psu, nc$n[["n_psu"]], tolerance = 1e-4)
+  expect_equal(res$n, nc$total_n, tolerance = 1e-4)
+
+  resb <- n_alloc(fr, budget = 100000)
+  ncb <- n_cluster(budget = 100000, delta = 0.05,
+                   rel_var = (0.458 / 0.3)^2, stage_cost = c(500, 50))
+  expect_equal(resb$cv, ncb$cv, tolerance = 1e-4)
+})
+
+test_that("cluster mode aggregate CV matches the hand formula", {
+  fr <- data.frame(
+    stratum = c("Urban", "Rural"),
+    N = c(50000, 150000),
+    sd = c(0.45, 0.48),
+    mean = c(0.35, 0.25),
+    delta_psu = c(0.03, 0.08),
+    cost_psu = c(300, 600),
+    cost_ssu = c(40, 60)
+  )
+  res <- n_alloc(fr, cv = 0.05)
+  d <- res$detail
+  W <- fr$N / sum(fr$N)
+  S_eff <- fr$sd * sqrt(1 + fr$delta_psu * (d$psu_size - 1))
+  V <- sum(W^2 * S_eff^2 * (1 - d$n_eff / fr$N) / d$n_eff)
+  expect_equal(sqrt(V) / sum(W * fr$mean), 0.05, tolerance = 1e-8)
+  expect_equal(res$cv, 0.05, tolerance = 1e-8)
+  expect_true(all(c("psu_size", "n_psu", "n_psu_int") %in% names(d)))
+  expect_equal(d$sd, fr$sd)
+})
+
+test_that("cluster mode respects a fixed psu_size column", {
+  fr <- data.frame(
+    stratum = c("A", "B"), N = c(4e4, 6e4), sd = c(10, 14),
+    mean = c(50, 60), delta_psu = c(0.05, 0.05),
+    psu_size = c(20, 10)
+  )
+  res <- n_alloc(fr, cv = 0.02)
+  expect_equal(res$detail$psu_size, c(20, 10))
+
+  fr$psu_size <- c(20, NA)
+  fr$cost_psu <- c(300, 300)
+  fr$cost_ssu <- c(30, 30)
+  res2 <- n_alloc(fr, cv = 0.02)
+  expect_equal(res2$detail$psu_size[1], 20)
+  expect_equal(res2$detail$psu_size[2],
+               sqrt(300 / 30 * 0.95 / 0.05), tolerance = 1e-8)
+})
+
+test_that("cluster mode works with constraints and n mode", {
+  fr <- data.frame(
+    stratum = c("A", "B", "C"), N = c(2e4, 3e4, 5e4),
+    sd = c(8, 12, 10), mean = c(40, 55, 48),
+    delta_psu = rep(0.05, 3), psu_size = rep(12, 3),
+    take_all = c(FALSE, FALSE, FALSE)
+  )
+  res <- n_alloc(fr, n = 3000, min_n = 500)
+  expect_equal(sum(res$detail$n), 3000, tolerance = 1e-6)
+  expect_true(all(res$detail$n >= 500 - 1e-8))
+  expect_equal(res$detail$n_psu, res$detail$n / 12)
+})
+
+test_that("cluster mode round-trips through prec_alloc", {
+  fr <- data.frame(
+    stratum = c("A", "B"), N = c(5e4, 1.5e5), sd = c(0.45, 0.48),
+    mean = c(0.35, 0.25), delta_psu = c(0.03, 0.08),
+    cost_psu = c(300, 600), cost_ssu = c(40, 60)
+  )
+  res <- n_alloc(fr, cv = 0.05)
+  prec <- prec_alloc(res)
+  expect_equal(prec$cv, res$cv, tolerance = 1e-8)
+  back <- n_alloc(prec)
+  expect_equal(back$detail$n, res$detail$n, tolerance = 1e-6)
+})
+
+test_that("cluster mode validates its columns", {
+  fr <- data.frame(stratum = "A", N = 1e4, sd = 10, mean = 50,
+                   delta_psu = 0.05)
+  expect_error(n_alloc(fr, cv = 0.02),
+               "'cost_psu' and 'cost_ssu' are required")
+  fr$cost_psu <- 300
+  expect_error(n_alloc(fr, cv = 0.02), "supplied together")
+  fr$cost_ssu <- 30
+  fr$cost <- 5
+  expect_error(n_alloc(fr, cv = 0.02), "instead of 'cost'")
+  fr$cost <- NULL
+  expect_error(n_alloc(fr, cv = 0.02, unit_cost = 5), "instead of 'cost'")
+  fr$delta_psu <- 1.5
+  expect_error(n_alloc(fr, cv = 0.02), "delta")
+  fr$delta_psu <- 0.05
+  fr$psu_size <- 0.5
+  expect_error(n_alloc(fr, cv = 0.02), "psu_size")
+})
+
+test_that("cluster mode k_psu requires an exact column name", {
+  fr <- data.frame(
+    stratum = c("a", "b"), N = c(5000, 8000), sd = c(10, 12),
+    mean = c(50, 60), delta_psu = c(0.05, 0.05), psu_size = c(12, 12)
+  )
+  base <- n_alloc(fr, n = 600)
+  fr$k_psu_backup <- c(2, 9)
+  same <- n_alloc(fr, n = 600)
+  expect_equal(same$detail$n, base$detail$n)
+
+  fr$k_psu_backup <- NULL
+  fr$k_psu <- c(2, 9)
+  with_k <- n_alloc(fr, n = 600)
+  expect_false(isTRUE(all.equal(with_k$cv, base$cv)))
+  S_eff <- fr$sd * sqrt(fr$k_psu * (1 + fr$delta_psu * (fr$psu_size - 1)))
+  d <- with_k$detail
+  W <- fr$N / sum(fr$N)
+  V <- sum(W^2 * S_eff^2 * (1 - d$n_eff / fr$N) / d$n_eff)
+  expect_equal(with_k$cv, sqrt(V) / sum(W * fr$mean), tolerance = 1e-8)
+})
+
+test_that("cluster mode budget solve requires stage costs", {
+  fr <- data.frame(
+    stratum = c("a", "b"), N = c(5000, 8000), sd = c(10, 12),
+    mean = c(50, 60), delta_psu = c(0.05, 0.05), psu_size = c(12, 12)
+  )
+  expect_error(n_alloc(fr, budget = 10000),
+               "requires 'cost_psu' and 'cost_ssu'")
+  fr$cost_psu <- 300
+  fr$cost_ssu <- 30
+  expect_silent(n_alloc(fr, budget = 100000))
+})
+
+test_that("cluster columns without delta_psu are rejected", {
+  fr <- data.frame(
+    stratum = c("a", "b"), N = c(5000, 8000), sd = c(10, 12),
+    cost_psu = c(300, 300), cost_ssu = c(30, 30)
+  )
+  expect_error(n_alloc(fr, n = 500), "require a 'delta_psu' column")
+  fr2 <- data.frame(
+    stratum = c("a", "b"), N = c(5000, 8000), sd = c(10, 12),
+    k_psu = c(1, 2)
+  )
+  expect_error(n_alloc(fr2, n = 500), "require a 'delta_psu' column")
+})
+
+test_that("cluster mode guards psu_size against the stratum population", {
+  fr <- data.frame(
+    stratum = c("a", "b"), N = c(300, 8000), sd = c(10, 12),
+    mean = c(50, 60), delta_psu = c(0.05, 0.05), psu_size = c(500, 12)
+  )
+  expect_error(n_alloc(fr, n = 200), "exceeds the stratum population")
+
+  fr$psu_size <- c(NA, 12)
+  fr$delta_psu <- c(1e-6, 0.05)
+  fr$cost_psu <- c(30000, 300)
+  fr$cost_ssu <- c(3, 30)
+  expect_warning(res <- n_alloc(fr, n = 200), "clamped to 'N'")
+  expect_equal(res$detail$psu_size[1], 300)
+})
+
+test_that("budget-mode integer allocation stays within budget", {
+  fr <- data.frame(N = rep(100, 3), sd = c(1, 5, 10), mean = rep(5, 3),
+                   cost = c(1, 10, 100))
+  x <- n_alloc(fr, budget = 180, alloc = "optimal")
+  expect_lte(sum(x$detail$n_int * fr$cost), 180)
+  expect_equal(sum(x$detail$n * fr$cost), 180, tolerance = 1e-6)
+})
+
+test_that("cv-mode integer allocation meets the cv target", {
+  fr <- data.frame(N = c(4000, 3000, 3000), sd = c(10, 15, 8),
+                   mean = c(50, 60, 55))
+  x <- n_alloc(fr, cv = 0.02)
+  d <- x$detail
+  W <- d$N / sum(d$N)
+  v_int <- sum(W^2 * d$sd^2 * (1 - d$n_int / d$N) / d$n_int)
+  cv_int <- sqrt(v_int) / sum(W * d$mean)
+  expect_lte(cv_int, 0.02 + 1e-10)
+})
+
+test_that("missing domain values are rejected", {
+  fr <- data.frame(stratum = c("a", "b"), N = c(5000, 8000), sd = c(10, 12),
+                   region = c("N", NA))
+  expect_error(n_alloc(fr, n = 500, domains = "region"),
+               "must not contain missing values")
+})
+
+test_that("domain values containing the separator do not collide", {
+  fr <- data.frame(stratum = c("s1", "s2"), N = c(5000, 8000), sd = c(10, 12),
+                   d1 = c("a:b", "a"), d2 = c("c", "b:c"))
+  x <- n_alloc(fr, n = 500, domains = c("d1", "d2"))
+  expect_equal(nrow(x$domains), 2L)
+})

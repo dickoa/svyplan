@@ -394,3 +394,13 @@ test_that("predict.svyplan_power supports varying alternative", {
   expect_equal(nrow(res), 2L)
   expect_true(res$power[2] > res$power[1])
 })
+
+test_that("predict works for cluster-mode n_alloc objects", {
+  fr <- data.frame(stratum = c("A", "B"), N = c(50000, 150000),
+                   sd = c(0.45, 0.48), mean = c(0.35, 0.25),
+                   delta_psu = c(0.03, 0.08), psu_size = c(12, 12))
+  x <- n_alloc(fr, n = 1000)
+  p <- predict(x, data.frame(n = c(1000, 1100)))
+  expect_equal(nrow(p), 2L)
+  expect_equal(p$cv[1], x$cv, tolerance = 1e-10)
+})

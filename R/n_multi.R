@@ -385,7 +385,8 @@ n_multi.default <- function(
     }
   }
 
-  info <- .validate_targets(targets, multistage, domains = domains)
+  info <- .validate_targets(targets, multistage, domains = domains,
+                            stages = if (multistage) stages else NULL)
   targets <- .fill_defaults(targets, multistage, prop_method = prop_method)
 
   if (multistage) {
@@ -454,7 +455,8 @@ n_multi.default <- function(
 #' @return List with `indicator_type` (per-row "p" or "var") and `domain_cols`.
 #' @keywords internal
 #' @noRd
-.validate_targets <- function(targets, multistage, domains = NULL) {
+.validate_targets <- function(targets, multistage, domains = NULL,
+                              stages = NULL) {
   if (!is.null(domains)) {
     if (!is.character(domains) || anyNA(domains)) {
       stop("'domains' must be a character vector without NAs", call. = FALSE)
@@ -574,6 +576,18 @@ n_multi.default <- function(
         "multistage mode requires 'delta_psu' column in targets",
         call. = FALSE
       )
+    }
+    if (isTRUE(stages == 3L)) {
+      if (!"delta_ssu" %in% names(targets)) {
+        stop(
+          "3-stage mode requires a 'delta_ssu' column in targets",
+          call. = FALSE
+        )
+      }
+      if (anyNA(targets$delta_ssu) || any(!is.finite(targets$delta_ssu))) {
+        stop("'delta_ssu' must contain finite non-missing values",
+             call. = FALSE)
+      }
     }
     if (has_cv) {
       cv_vals <- targets$cv[!is.na(targets$cv)]
@@ -791,7 +805,23 @@ n_multi.default <- function(
   }
   binding_name <- labels[idx]
 
-  cv_achieved_vec <- cv_target_vec * sqrt(n_vec / n_max)
+  has_p <- "p" %in% names(targets)
+  has_mu <- "mu" %in% names(targets)
+  cv_achieved_vec <- vapply(seq_len(nrow(targets)), function(i) {
+    prec <- suppressWarnings(
+      if (has_p && !is.na(targets$p[i])) {
+        .prec_engine_prop(targets$p[i], n_max, targets$alpha[i],
+                          targets$N[i], targets$deff[i],
+                          targets$resp_rate[i], targets$prop_method[i])
+      } else {
+        .prec_engine_mean(targets$var[i],
+                          if (has_mu) targets$mu[i] else NULL,
+                          n_max, targets$alpha[i], targets$N[i],
+                          targets$deff[i], targets$resp_rate[i])
+      }
+    )
+    prec$cv
+  }, numeric(1L))
 
   detail <- data.frame(
     name = labels,
@@ -941,7 +971,7 @@ n_multi.default <- function(
         n1 * (C1 + C2 * psu_size)
       }
 
-      upper <- max(10, 10 * sqrt(C1 / C2))
+      upper <- max(10, sqrt(C1 / C2 * (1 - delta) / delta))
       opt <- optimize(cost_fn, interval = c(1, upper))
       psu_size_opt <- opt$minimum
 
@@ -1203,7 +1233,18 @@ n_multi.default <- function(
           n1 <- max(n1_required(ps, ssu_size_opt))
           n1 * (C1 + C2 * ps + C3 * ps * ssu_size_opt)
         }
-        upper <- max(10, 10 * sqrt(C1 / (C2 + C3 * ssu_size_opt)))
+        psu_size_analytic <- vapply(
+          seq_len(nr),
+          function(j) {
+            sqrt(
+              C1 * k_ssu[j] * (1 + delta_ssu[j] * (ssu_size_opt - 1)) /
+                (k_psu[j] * delta_psu[j] * ssu_size_opt *
+                   (C2 + C3 * ssu_size_opt))
+            )
+          },
+          numeric(1L)
+        )
+        upper <- max(10, psu_size_analytic)
         opt <- optimize(cost_fn_ss, interval = c(1, upper))
         psu_size_opt <- opt$minimum
         n1_vals <- n1_required(psu_size_opt, ssu_size_opt)
@@ -1432,8 +1473,9 @@ n_multi.default <- function(
   mode = "moe",
   prop_method = "wald"
 ) {
-  domain_keys <- interaction(targets[domain_cols], drop = TRUE, sep = ":")
-  domain_levels <- levels(domain_keys)
+  key <- .domain_key(targets, domain_cols)
+  domain_levels <- unique(key)
+  domain_keys <- factor(key, levels = domain_levels)
   split_idx <- split(seq_len(nrow(targets)), domain_keys)
 
   if (multistage && joint && !is.null(budget) && length(domain_levels) > 1L) {
@@ -1752,11 +1794,16 @@ n_multi.default <- function(
     )
     for (d in seq_len(nd)) {
       if (full_total[d] < min_n) {
+        lab <- paste(
+          unlist(lapply(targets[split_idx[[domain_levels[d]]][1L],
+                                domain_cols, drop = FALSE], as.character)),
+          collapse = ":"
+        )
         stop(
           sprintf(
             "min_n = %g not achievable for domain '%s' (max total_n = %.0f at full budget)",
             min_n,
-            domain_levels[d],
+            lab,
             full_total[d]
           ),
           call. = FALSE

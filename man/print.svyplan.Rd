@@ -18,6 +18,9 @@
 \alias{as.double.svyplan_n}
 \alias{as.integer.svyplan_cluster}
 \alias{as.double.svyplan_cluster}
+\alias{as.data.frame.svyplan_n}
+\alias{as.data.frame.svyplan_varcomp}
+\alias{as.data.frame.svyplan_cluster}
 \alias{as.integer.svyplan_power}
 \alias{as.double.svyplan_power}
 \alias{print.svyplan_strata}
@@ -58,6 +61,12 @@
 \method{as.integer}{svyplan_cluster}(x, ...)
 
 \method{as.double}{svyplan_cluster}(x, ...)
+
+\method{as.data.frame}{svyplan_n}(x, ...)
+
+\method{as.data.frame}{svyplan_varcomp}(x, ...)
+
+\method{as.data.frame}{svyplan_cluster}(x, ...)
 
 \method{as.integer}{svyplan_power}(x, ...)
 
@@ -111,6 +120,15 @@ interviews to actually conduct. The unrounded continuous optimum
 
 Summary: \code{as.integer(x)} = operational total (what goes in the field),
 \code{as.double(x)} = continuous optimum (what the math solved for).
+
+\code{as.data.frame()} returns the tabular form of a result, intended as
+the stable handoff to downstream packages (e.g. samplyr). For
+\code{svyplan_n}: the stratum allocation table (\verb{$detail}) for
+\code{n_alloc()} results, the per-domain table (\verb{$domains}, falling back
+to \verb{$detail}) for \code{n_multi()} results, and a one-row summary
+(\code{n}, \code{n_int}, \code{se}, \code{moe}, \code{cv}) otherwise. For \code{svyplan_cluster}:
+the per-domain table when domains are present, otherwise a stage
+table with columns \code{stage}, \code{n}, and \code{n_int}.
 }
 }
 \examples{

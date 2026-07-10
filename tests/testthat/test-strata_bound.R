@@ -377,3 +377,31 @@ test_that("alloc field stores method name for all methods", {
     expect_null(res$params$power_q)
   }
 })
+
+test_that("cumrootf on concentrated discrete data gives a targeted error", {
+  expect_error(
+    strata_bound(rep(1:4, c(100, 1, 1, 1)), n_strata = 4, n = 20,
+                 method = "cumrootf"),
+    "too concentrated"
+  )
+})
+
+test_that("unit_cost length must be 1 or n_strata", {
+  set.seed(1)
+  x <- rlnorm(200)
+  expect_error(
+    strata_bound(x, n_strata = 3, n = 30, method = "cumrootf",
+                 alloc = "optimal", unit_cost = c(1, 2)),
+    "length 1 or 3"
+  )
+})
+
+test_that("cv-mode integer allocation meets the cv target", {
+  set.seed(123)
+  aux <- rlnorm(100)
+  x <- strata_bound(aux, n_strata = 2, cv = 0.211, method = "cumrootf")
+  d <- x$strata
+  W <- d$N / sum(d$N)
+  cv_int <- sqrt(sum(W^2 * d$sd^2 * (1 - d$n / d$N) / d$n)) / mean(aux)
+  expect_lte(cv_int, 0.211 * 1.01)
+})

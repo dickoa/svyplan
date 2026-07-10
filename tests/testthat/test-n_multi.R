@@ -1834,3 +1834,52 @@ test_that("extra columns ignored when domains is NULL", {
   res <- n_multi(df)
   expect_null(res$domains)
 })
+
+test_that("2-stage single indicator matches n_cluster optimum at low delta", {
+  nc <- n_cluster(cv = 0.05, delta = 0.005, unit_var = 1,
+                  stage_cost = c(500, 50))
+  ind <- data.frame(indicator = "x", p = 0.5, cv = 0.05, delta_psu = 0.005)
+  nm <- n_multi(ind, stage_cost = c(500, 50))
+  expect_equal(nm$n[["psu_size"]], nc$n[["psu_size"]], tolerance = 1e-4)
+  expect_equal(nm$n[["n_psu"]], nc$n[["n_psu"]], tolerance = 1e-4)
+})
+
+test_that("3-stage fixed ssu_size matches n_cluster optimum at low delta", {
+  nc <- n_cluster(cv = 0.05, delta = c(0.005, 0.02), unit_var = 1,
+                  stage_cost = c(500, 100, 20), ssu_size = 5)
+  ind <- data.frame(indicator = "x", p = 0.5, cv = 0.05,
+                    delta_psu = 0.005, delta_ssu = 0.02)
+  nm <- n_multi(ind, stage_cost = c(500, 100, 20), ssu_size = 5)
+  expect_equal(nm$n[["psu_size"]], nc$n[["psu_size"]], tolerance = 1e-4)
+})
+
+test_that("3-stage mode requires delta_ssu", {
+  expect_error(
+    n_multi(data.frame(p = 0.3, cv = 0.1, delta_psu = 0.02),
+            stage_cost = c(500, 100, 50)),
+    "requires a 'delta_ssu' column"
+  )
+})
+
+test_that("missing domain values are rejected in n_multi", {
+  tg <- data.frame(region = c("N", NA), p = c(0.3, 0.4), cv = c(0.1, 0.1),
+                   delta_psu = c(0.02, 0.02))
+  expect_error(n_multi(tg, stage_cost = c(500, 50), domains = "region"),
+               "must not contain missing values")
+})
+
+test_that("domain values containing the separator do not collide in n_multi", {
+  tg <- data.frame(d1 = c("a:b", "a"), d2 = c("c", "b:c"), p = c(0.3, 0.1),
+                   cv = c(0.10, 0.15), delta_psu = c(0.02, 0.05))
+  x <- n_multi(tg, stage_cost = c(500, 50), domains = c("d1", "d2"))
+  expect_equal(nrow(x$domains), 2L)
+})
+
+test_that("achieved precision is method-consistent for nonbinding rows", {
+  tg <- data.frame(name = c("rare", "common"), p = c(0.01, 0.5),
+                   moe = c(0.005, 0.01), prop_method = c("wilson", "wald"))
+  x <- n_multi(tg)
+  expect_equal(x$detail$.cv_achieved[1],
+               prec_prop(p = 0.01, n = x$n, method = "wilson")$cv,
+               tolerance = 1e-10)
+})

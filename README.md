@@ -386,6 +386,11 @@ n_alloc(frame_domains, domains = "province",
 `prec_alloc()` computes the precision for a given allocation (inverse of
 `n_alloc()`).
 
+Adding a `delta_psu` column to the frame (for example from `varcomp()`
+with its `strata` argument) turns the allocation into a stratified
+two-stage design, with cost-optimal or fixed cluster takes per stratum.
+See `?n_alloc` and the vignette for the full workflow.
+
 ## Design effects
 
 ``` r

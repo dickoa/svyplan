@@ -144,6 +144,12 @@ design_effect.default <- function(
   }
 
   if (inherits(delta, "svyplan_varcomp")) {
+    if (!is.null(delta$strata)) {
+      stop(
+        "stratified varcomp: pass one stratum's delta (see the $strata table)",
+        call. = FALSE
+      )
+    }
     delta <- delta$delta[1L]
   }
 
@@ -296,6 +302,12 @@ design_effect.default <- function(
   }
   if (!is.null(cluster_id) && length(cluster_id) != n) {
     stop("'cluster_id' must have the same length as weights", call. = FALSE)
+  }
+  if (mean(w) < 1) {
+    stop(
+      "the CR method requires weights on the population scale (inverse inclusion probabilities, typically >= 1); normalized weights are not valid",
+      call. = FALSE
+    )
   }
   sig2 <- n / (n - 1) * sum(w * (y - sum(w * y) / sum(w))^2) / (sum(w) - 1)
 
@@ -484,6 +496,15 @@ design_effect.default <- function(
       if (stages[i] == 1L) {
         next
       }
+      if (nh_star[i] <= 1 + 1e-8) {
+        stop(
+          sprintf(
+            "stratum '%s': every cluster contains a single observation; the cluster component of the CR design effect is not estimable",
+            strat[i]
+          ),
+          call. = FALSE
+        )
+      }
       strdeff_i <- .stratum_cluster_deff(
         w_grp[[i]],
         y_grp[[i]],
@@ -532,6 +553,12 @@ design_effect.default <- function(
   } else {
     cl_wt_sums <- vapply(split(w, cluster_id), sum, numeric(1L))
     nh_star <- sum(cl_wt_sums^2) / sum(w^2)
+    if (nh_star <= 1 + 1e-8) {
+      stop(
+        "every cluster contains a single observation; the cluster component of the CR design effect is not estimable",
+        call. = FALSE
+      )
+    }
 
     strdeff <- .stratum_cluster_deff(w, y, cluster_id, sig2, n)
     if (is.na(strdeff)) {

@@ -36,7 +36,7 @@ Specify at most one of \code{n} or \code{cv}. Required for methods \code{"lh"} a
 \code{"kozak"}.}
 
 \item{method}{Stratification method: \code{"cumrootf"} (Dalenius-Hodges),
-\code{"geo"} (geometric), \code{"lh"} (Lavallée-Hidiroglou), or \code{"kozak"}
+\code{"geo"} (geometric), \code{"lh"} (Lavallee-Hidiroglou), or \code{"kozak"}
 (random search). Default \code{"lh"}.}
 
 \item{alloc}{Allocation rule: \code{"proportional"}, \code{"neyman"},
@@ -82,7 +82,7 @@ A \code{svyplan_strata} object with components:
 \description{
 Determine where to cut a continuous stratification variable to form
 optimal strata. Supports four methods: cumulative root frequency
-(Dalenius-Hodges), geometric progression, Lavallée-Hidiroglou
+(Dalenius-Hodges), geometric progression, Lavallee-Hidiroglou
 iterative, and Kozak random search.
 }
 \details{
@@ -96,7 +96,7 @@ first look at reasonable boundary positions.
 \item \strong{geo}: Gunning-Horgan (2004) geometric progression. Non-iterative,
 requires \code{x > 0}. Works well for right-skewed positive variables
 (e.g. income, revenue) where a log-scale spacing is natural.
-\item \strong{lh} (default): Lavallée-Hidiroglou (1988) iterative coordinate-wise
+\item \strong{lh} (default): Lavallee-Hidiroglou (1988) iterative coordinate-wise
 optimization. Requires \code{n} or \code{cv}. The recommended choice when you
 know the sample size or target CV: it directly minimizes the
 objective and is fast even on large frames.

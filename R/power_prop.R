@@ -36,7 +36,7 @@
 #' @param method Variance method: `"wald"` (default), `"arcsine"`, or
 #'   `"logodds"`. Arcsine and log-odds transforms are variance-stabilizing
 #'   and perform better for rare or extreme proportions (Valliant,
-#'   2018, \ifelse{html}{\out{&sect;}}{\enc{§}{S}}4.3.4--4.3.5).
+#'   2018, sections 4.3.4--4.3.5).
 #' @param plan Optional [svyplan()] object providing design defaults.
 #' @param ... Additional arguments passed to methods.
 #'
@@ -384,12 +384,16 @@ power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
   mde_phi <- (z_a + z_b) * se_phi
 
   phi1 <- asin(sqrt(p1))
-  p2_up <- sin(phi1 - mde_phi)^2
-  p2_dn <- sin(phi1 + mde_phi)^2
 
   roots <- list()
-  if (p2_up > 0 && p2_up < 1 && p2_up != p1) roots <- c(roots, list(p2_up))
-  if (p2_dn > 0 && p2_dn < 1 && p2_dn != p1) roots <- c(roots, list(p2_dn))
+  if (phi1 - mde_phi >= 0) {
+    p2_dn <- sin(phi1 - mde_phi)^2
+    if (p2_dn > 0 && p2_dn < 1 && p2_dn != p1) roots <- c(roots, list(p2_dn))
+  }
+  if (phi1 + mde_phi <= pi / 2) {
+    p2_up <- sin(phi1 + mde_phi)^2
+    if (p2_up > 0 && p2_up < 1 && p2_up != p1) roots <- c(roots, list(p2_up))
+  }
 
   if (length(roots) == 0L)
     stop("no detectable alternative exists for the given n and power", call. = FALSE)

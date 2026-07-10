@@ -85,7 +85,29 @@
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_n` object with `type = "alloc"` and a stratum-level
-#'   allocation table in `$detail`.
+#'   allocation table in `$detail` (also available via `as.data.frame()`),
+#'   with columns:
+#'   \describe{
+#'     \item{`stratum`, `N`, `sd`, `cost`}{Stratum identifiers and inputs
+#'       carried over from the frame. In cluster mode `cost` is the
+#'       derived effective per-element cost
+#'       `cost_psu / psu_size + cost_ssu` (1 when no stage costs were
+#'       given), while `sd` stays the input stratum SD.}
+#'     \item{`n`}{Allocated sample size (continuous).}
+#'     \item{`n_int`}{Integer allocation, rounded so the total is
+#'       preserved (ORIC rounding).}
+#'     \item{`weight`}{Design weight `N / n`.}
+#'     \item{`n_eff`}{Effective sample size `n * resp_rate / deff`.}
+#'     \item{`.lower`, `.upper`}{Bounds applied to the stratum
+#'       (from `min_n`, `max_weight`, `take_all`, or `N`).}
+#'     \item{`.binding`}{Whether the allocation sits on one of its
+#'       bounds.}
+#'     \item{`take_all`, `mean`}{Present when take-all strata or stratum
+#'       means were supplied.}
+#'     \item{`psu_size`, `n_psu`, `n_psu_int`}{Cluster mode only: the
+#'       per-stratum take, the implied number of PSUs (`n / psu_size`),
+#'       and its ceiling.}
+#'   }
 #'
 #' @details
 #' ## Building the frame
@@ -122,6 +144,43 @@
 #'
 #' This ensures that each row maps to exactly one population cell and that
 #' the allocation formulas apply to the correct per-stratum `N` and `sd` pairs.
+#'
+#' ## Cluster designs within strata
+#'
+#' Adding a `delta_psu` column to the frame turns the allocation into a
+#' stratified **two-stage** design (e.g. enumeration areas then
+#' households within each stratum). Under the cluster variance model
+#' the problem reduces to the element allocation above with the stratum
+#' SD inflated to `sd * sqrt(k_psu * (1 + delta_psu * (psu_size - 1)))`
+#' and, when stage costs are given, a per-element cost of
+#' `cost_psu / psu_size + cost_ssu`. All solve modes, allocation
+#' methods, and constraints work unchanged; `n`, `cv`, and `budget`
+#' keep their meanings.
+#'
+#' Cluster-mode columns:
+#' - `delta_psu` (required): within-PSU homogeneity per stratum,
+#'   e.g. from [varcomp()] with `strata`.
+#' - `k_psu` (optional, default 1): variance ratio per stratum.
+#' - `psu_size` (optional): fixes the per-stratum take; `NA` entries
+#'   are replaced by the cost-optimal take
+#'   `sqrt(cost_psu / cost_ssu * (1 - delta_psu) / delta_psu)`.
+#' - `cost_psu`, `cost_ssu` (together): per-PSU and per-element costs;
+#'   required for `budget` mode or when `psu_size` is not fixed. They
+#'   replace `cost`/`unit_cost`, which are not allowed in this mode.
+#'
+#' The finite population correction stays at the element level, an
+#' approximation consistent with [n_cluster()]'s variance model.
+#'
+#' Because `delta_psu` already accounts for the clustering, leave
+#' `deff` at 1 unless it captures a *different* source of design
+#' effect (e.g. weighting loss); a clustering `deff` on top of
+#' `delta_psu` would double-count. The constraints `min_n`,
+#' `max_weight`, and `take_all` stay in element units. For fielding,
+#' use `n_psu_int` PSUs with `ceiling(psu_size)` elements each;
+#' `n_psu_int` is derived from the continuous `n`, so
+#' `n_psu_int * psu_size` can differ slightly from `n_int` and the
+#' integerized cost can exceed a `budget` target by up to one PSU per
+#' stratum.
 #'
 #' ## Domains vs. strata
 #'
@@ -190,6 +249,19 @@
 #'
 #' n_alloc(frame_domains, domains = "province",
 #'        cv = 0.04, alloc = "power", power_q = 0.3)
+#'
+#' # Stratified two-stage design (EAs then households per stratum)
+#' frame_cluster <- data.frame(
+#'   stratum   = c("Urban", "Rural"),
+#'   N         = c(50000, 150000),
+#'   sd        = c(0.45, 0.48),
+#'   mean      = c(0.35, 0.25),
+#'   delta_psu = c(0.03, 0.08),
+#'   cost_psu  = c(300, 600),
+#'   cost_ssu  = c(40, 60)
+#' )
+#'
+#' n_alloc(frame_cluster, cv = 0.05)
 #'
 #' @export
 n_alloc <- function(frame, ...) {
@@ -261,6 +333,13 @@ n_alloc.default <- function(
   if (!is.finite(sum(a_h)) || sum(a_h) <= 0) a_h <- N_h
 
   mode <- if (!is.null(n)) "n" else if (!is.null(cv)) "cv" else "budget"
+  if (mode == "budget" && isTRUE(prep$cluster) &&
+      !isTRUE(prep$has_stage_costs)) {
+    stop(
+      "'budget' mode with 'delta_psu' requires 'cost_psu' and 'cost_ssu' columns",
+      call. = FALSE
+    )
+  }
   target_total <- NA_real_
 
   if (mode == "n") {
@@ -348,7 +427,8 @@ n_alloc.default <- function(
 
   detail <- .alloc_detail(
     prep = prep, n_h = n_h, m_h = m_h, M_h = M_h,
-    resp_rate = resp_rate, deff = deff
+    resp_rate = resp_rate, deff = deff,
+    mode = mode, budget = budget
   )
   domain_summary <- .alloc_domain_summary(
     prep = prep, n_h = n_h,
@@ -406,18 +486,21 @@ n_alloc.svyplan_prec <- function(
     n <- p$achieved$n
   }
 
-  n_alloc.default(
+  args <- list(
     frame = p$frame,
     domains = p$domain_cols,
     n = n, cv = cv, budget = budget,
     alloc = p$alloc %||% "neyman",
-    unit_cost = p$cost_h,
     alpha = p$alpha,
     deff = p$deff,
     resp_rate = p$resp_rate,
     min_n = p$min_n,
     power_q = p$power_q %||% 0.5
   )
+  if (!.alloc_is_cluster(p$frame)) {
+    args$unit_cost <- p$cost_h
+  }
+  do.call(n_alloc.default, .roundtrip_args(args, list(...), n_alloc.default))
 }
 
 #' Precision for a Constrained Allocation
@@ -536,15 +619,18 @@ prec_alloc.svyplan_n <- function(x, ...) {
          call. = FALSE)
   }
 
-  prec_alloc.default(
+  args <- list(
     x = p$frame,
     n = n_h,
     domains = p$domain_cols,
     alpha = p$alpha,
     deff = p$deff,
-    resp_rate = p$resp_rate,
-    unit_cost = p$cost_h
+    resp_rate = p$resp_rate
   )
+  if (!.alloc_is_cluster(p$frame)) {
+    args$unit_cost <- p$cost_h
+  }
+  do.call(prec_alloc.default, .roundtrip_args(args, list(...), prec_alloc.default))
 }
 
 #' @keywords internal
@@ -675,21 +761,19 @@ prec_alloc.svyplan_n <- function(x, ...) {
   domain_idx <- list()
   domain_values <- NULL
   if (length(domain_cols) > 0L) {
-    key <- if (length(domain_cols) == 1L) {
-      as.character(frame[[domain_cols]])
-    } else {
-      as.character(interaction(frame[domain_cols], drop = TRUE, sep = ":"))
-    }
+    key <- .domain_key(frame, domain_cols)
     lev <- unique(key)
     domain_idx <- setNames(lapply(lev, function(k) which(key == k)), lev)
     domain_values <- frame[match(lev, key), domain_cols, drop = FALSE]
     rownames(domain_values) <- NULL
 
-    for (d in names(domain_idx)) {
-      s_d <- stratum[domain_idx[[d]]]
+    for (i in seq_along(domain_idx)) {
+      s_d <- stratum[domain_idx[[i]]]
       if (anyDuplicated(s_d)) {
+        lab <- paste(unlist(lapply(domain_values[i, , drop = FALSE],
+                                   as.character)), collapse = ":")
         stop(
-          sprintf("duplicate stratum labels in domain '%s': %s", d,
+          sprintf("duplicate stratum labels in domain '%s': %s", lab,
                   paste(s_d[duplicated(s_d)], collapse = ", ")),
           call. = FALSE
         )
@@ -705,7 +789,7 @@ prec_alloc.svyplan_n <- function(x, ...) {
     }
   }
 
-  list(
+  prep <- list(
     frame = frame,
     N_h = as.numeric(N_h),
     S_h = as.numeric(S_h),
@@ -718,6 +802,123 @@ prec_alloc.svyplan_n <- function(x, ...) {
     domain_idx = domain_idx,
     domain_values = domain_values
   )
+  .alloc_cluster_prep(prep, frame, unit_cost)
+}
+
+#' Two-stage-within-strata transformation
+#'
+#' When the frame carries a 'delta_psu' column, the stratified two-stage
+#' variance model reduces to the element model with an inflated stratum
+#' SD, S_h * sqrt(k_h (1 + delta_h (psu_size_h - 1))), and an effective
+#' per-element cost, cost_psu / psu_size + cost_ssu. Downstream
+#' allocation, constraints, and metrics then apply unchanged.
+#' @keywords internal
+#' @noRd
+.alloc_cluster_prep <- function(prep, frame, unit_cost) {
+  if (!.alloc_is_cluster(frame)) {
+    orphan <- intersect(c("k_psu", "psu_size", "cost_psu", "cost_ssu"),
+                        names(frame))
+    if (length(orphan) > 0L) {
+      stop(
+        sprintf("cluster column(s) %s require a 'delta_psu' column",
+                paste(sQuote(orphan), collapse = ", ")),
+        call. = FALSE
+      )
+    }
+    prep$cluster <- FALSE
+    return(prep)
+  }
+
+  if ("cost" %in% names(frame) || !is.null(unit_cost)) {
+    stop(
+      "with 'delta_psu' in the frame, use 'cost_psu'/'cost_ssu' columns instead of 'cost'/'unit_cost'",
+      call. = FALSE
+    )
+  }
+
+  H <- nrow(frame)
+  delta <- frame$delta_psu
+  if (!is.numeric(delta) || anyNA(delta) || any(!is.finite(delta))) {
+    stop("'delta_psu' must contain finite numeric values", call. = FALSE)
+  }
+  .check_cluster_delta_open(delta, context = "n_alloc()")
+
+  k <- if ("k_psu" %in% names(frame)) frame[["k_psu"]] else rep(1, H)
+  if (!is.numeric(k) || anyNA(k) || any(!is.finite(k)) || any(k <= 0)) {
+    stop("'k_psu' must contain positive finite values", call. = FALSE)
+  }
+
+  has_costs <- any(c("cost_psu", "cost_ssu") %in% names(frame))
+  if (has_costs) {
+    if (!all(c("cost_psu", "cost_ssu") %in% names(frame))) {
+      stop("'cost_psu' and 'cost_ssu' must be supplied together",
+           call. = FALSE)
+    }
+    for (col in c("cost_psu", "cost_ssu")) {
+      cc <- frame[[col]]
+      if (!is.numeric(cc) || anyNA(cc) || any(!is.finite(cc)) ||
+          any(cc <= 0)) {
+        stop(sprintf("'%s' must contain positive finite values", col),
+             call. = FALSE)
+      }
+    }
+  }
+
+  psu_size_h <- rep(NA_real_, H)
+  if ("psu_size" %in% names(frame)) {
+    ps <- frame$psu_size
+    if (!is.numeric(ps) || any(!is.na(ps) & (!is.finite(ps) | ps < 1))) {
+      stop("'psu_size' must contain values >= 1 (NA for cost-optimal)",
+           call. = FALSE)
+    }
+    psu_size_h <- as.numeric(ps)
+  }
+
+  need_opt <- is.na(psu_size_h)
+  if (any(need_opt)) {
+    if (!has_costs) {
+      stop(
+        "'cost_psu' and 'cost_ssu' are required when 'psu_size' is not fixed for every stratum",
+        call. = FALSE
+      )
+    }
+    psu_size_h[need_opt] <- sqrt(
+      frame$cost_psu[need_opt] / frame$cost_ssu[need_opt] *
+        (1 - delta[need_opt]) / delta[need_opt]
+    )
+  }
+
+  too_big <- psu_size_h > prep$N_h
+  if (any(too_big & !need_opt)) {
+    stop(
+      sprintf("'psu_size' exceeds the stratum population for: %s",
+              paste(prep$stratum[too_big & !need_opt], collapse = ", ")),
+      call. = FALSE
+    )
+  }
+  if (any(too_big & need_opt)) {
+    psu_size_h[too_big & need_opt] <- prep$N_h[too_big & need_opt]
+    warning(
+      "cost-optimal 'psu_size' exceeds the stratum population; clamped to 'N'",
+      call. = FALSE
+    )
+  }
+
+  prep$S_raw_h <- prep$S_h
+  prep$S_h <- prep$S_h * sqrt(k * (1 + delta * (psu_size_h - 1)))
+  if (has_costs) {
+    prep$cost_h <- frame$cost_psu / psu_size_h + frame$cost_ssu
+  }
+  prep$cluster <- TRUE
+  prep$has_stage_costs <- has_costs
+  prep$psu_size_h <- psu_size_h
+  prep
+}
+
+#' @keywords internal
+#' @noRd
+.alloc_is_cluster <- function(frame) {
+  "delta_psu" %in% names(frame)
 }
 
 #' @keywords internal
@@ -751,12 +952,13 @@ prec_alloc.svyplan_n <- function(x, ...) {
 #' @noRd
 .alloc_metrics <- function(N_h, S_h, mean_h, n_h, alpha, deff,
                            resp_rate, cost_h) {
-  n_eff <- n_h * resp_rate / deff
+  n_net <- n_h * resp_rate
+  n_eff <- n_net / deff
   W_h <- N_h / sum(N_h)
 
   term <- numeric(length(n_h))
   good <- n_eff > 0
-  fpc <- pmax(0, 1 - n_eff / N_h)
+  fpc <- pmax(0, 1 - n_net / N_h)
   term[good] <- W_h[good]^2 * S_h[good]^2 * fpc[good] / n_eff[good]
 
   zero_ok <- !good & S_h == 0
@@ -787,23 +989,61 @@ prec_alloc.svyplan_n <- function(x, ...) {
 
 #' @keywords internal
 #' @noRd
-.alloc_detail <- function(prep, n_h, m_h, M_h, resp_rate, deff) {
+.alloc_detail <- function(prep, n_h, m_h, M_h, resp_rate, deff,
+                          mode = "n", budget = NULL) {
+  n_int <- switch(
+    mode,
+    cv = as.integer(pmin(ceiling(n_h - 1e-9), floor(M_h + 1e-9))),
+    budget = .round_within_budget(n_h, prep$cost_h, budget, m_h, M_h,
+                                  prep$N_h, prep$S_h),
+    .round_oric(n_h)
+  )
   out <- data.frame(
     stratum = prep$stratum,
     N = prep$N_h,
-    sd = prep$S_h,
+    sd = prep$S_raw_h %||% prep$S_h,
     cost = prep$cost_h,
     n = n_h,
-    n_int = .round_oric(n_h),
+    n_int = n_int,
     weight = prep$N_h / n_h,
     n_eff = n_h * resp_rate / deff,
     .lower = m_h,
     .upper = M_h,
     .binding = abs(n_h - m_h) < 1e-6 | abs(n_h - M_h) < 1e-6
   )
+  if (isTRUE(prep$cluster)) {
+    out$psu_size <- prep$psu_size_h
+    out$n_psu <- n_h / prep$psu_size_h
+    out$n_psu_int <- as.integer(ceiling(out$n_psu))
+  }
   if (any(prep$take_all)) out$take_all <- prep$take_all
   if (!all(is.na(prep$mean_h))) out$mean <- prep$mean_h
   out
+}
+
+#' Integerize a budget-mode allocation without exceeding the budget
+#'
+#' Floors the continuous allocation (respecting integer lower bounds),
+#' then greedily adds units where the variance reduction per unit cost
+#' is largest while the budget allows.
+#' @keywords internal
+#' @noRd
+.round_within_budget <- function(n_h, cost_h, budget, m_h, M_h, N_h, S_h) {
+  lower <- ceiling(pmax(m_h, 1) - 1e-9)
+  upper <- floor(M_h + 1e-9)
+  n_int <- pmin(pmax(floor(n_h + 1e-9), lower), upper)
+  W2S2 <- (N_h / sum(N_h))^2 * S_h^2
+  repeat {
+    spare <- budget - sum(n_int * cost_h)
+    can <- which(n_int < upper & cost_h <= spare + 1e-9)
+    if (length(can) == 0L) {
+      break
+    }
+    gain <- W2S2[can] * (1 / n_int[can] - 1 / (n_int[can] + 1)) / cost_h[can]
+    j <- can[which.max(gain)]
+    n_int[j] <- n_int[j] + 1L
+  }
+  as.integer(n_int)
 }
 
 #' @keywords internal

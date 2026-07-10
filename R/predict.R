@@ -164,17 +164,20 @@ predict.svyplan_n <- function(object, newdata, ...) {
         stop("each predict row must define exactly one of n/cv/budget",
              call. = FALSE)
       }
-      res <- n_alloc.default(
+      alloc_args <- list(
         frame = base$frame,
         n = p$n, cv = p$cv, budget = p$budget,
         alloc = base$alloc %||% "neyman",
-        unit_cost = base$cost_h,
         alpha = p$alpha,
         deff = p$deff,
         resp_rate = p$resp_rate,
         min_n = p$min_n,
         power_q = p$power_q
       )
+      if (!.alloc_is_cluster(base$frame)) {
+        alloc_args$unit_cost <- base$cost_h
+      }
+      res <- do.call(n_alloc.default, alloc_args)
       data.frame(
         n = res$n, se = res$se, moe = res$moe, cv = res$cv,
         cost = res$params$achieved$cost
