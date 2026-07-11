@@ -368,3 +368,30 @@ test_that("arcsine MDE rejects reflected roots", {
                     power = NULL, method = "arcsine")
   expect_equal(chk$power, 0.80, tolerance = 1e-4)
 })
+
+test_that("supplied-n power and mde modes reject gross draws above N", {
+  expect_error(
+    power_prop(p1 = 0.3, p2 = 0.4, n = 120, power = NULL, N = 100,
+               resp_rate = 0.8),
+    "cannot draw"
+  )
+  expect_error(
+    power_prop(p1 = 0.3, n = 120, power = 0.8, N = 100),
+    "cannot draw"
+  )
+  expect_error(
+    power_mean(effect = 0.1, var = 1, n = 120, power = NULL, N = 100,
+               resp_rate = 0.8),
+    "cannot draw"
+  )
+  expect_error(
+    power_mean(effect = 0.1, var = 1, n = c(50, 120), power = NULL,
+               N = c(200, 100)),
+    "for group 2"
+  )
+  expect_error(
+    power_did(treat = c(0.3, 0.4), control = c(0.3, 0.3), outcome = "prop",
+              effect = 0.1, n = 120, power = NULL, N = 100),
+    "treatment group"
+  )
+})

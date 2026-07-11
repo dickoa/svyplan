@@ -90,15 +90,19 @@ in CV mode, \code{fixed_cost} is added to the variable cost.}
 A \code{svyplan_cluster} object with components:
 \describe{
 \item{\code{n}}{Named numeric vector of continuous per-stage sample sizes
-(e.g. \code{c(n_psu = 84.1, psu_size = 13.8)}). Use \code{ceiling()} for
-operational (integer) values.}
+(e.g. \code{c(n_psu = 84.1, psu_size = 13.8)}), the mathematical
+optimum.}
 \item{\code{stages}}{Number of stages (2 or 3).}
-\item{\code{total_n}}{Continuous total sample size (\code{prod(n)}). Use
-\code{as.integer()} for the operational total (product of ceiled stages),
-or \code{as.double()} for this continuous value.}
-\item{\code{cv}}{Achieved coefficient of variation (based on continuous
-optimum).}
-\item{\code{cost}}{Total cost.}
+\item{\code{total_n}}{Continuous total sample size (\code{prod(n)}).}
+\item{\code{cv}}{Coefficient of variation of the continuous optimum.}
+\item{\code{cost}}{Cost of the continuous optimum.}
+\item{\code{operational}}{The whole-unit field design, found by a
+discrete search: \code{n} (named integer stage sizes), \code{total_n},
+\code{cost}, and \code{cv}, all recomputed from the integer design. In
+\code{budget} mode its cost never exceeds the budget; in \code{cv} mode it
+meets the target at the lowest cost among the designs searched.
+\code{as.integer()} returns \code{operational$n}; \code{as.double()} returns the
+continuous \code{n}.}
 \item{\code{params}}{List of input parameters.}
 }
 }

@@ -71,7 +71,10 @@ A \code{svyplan_strata} object with components:
 \item{boundaries}{Numeric vector of cutpoints (length \code{n_strata - 1}).}
 \item{n_strata}{Number of strata.}
 \item{n}{Total sample size.}
-\item{cv}{Achieved coefficient of variation.}
+\item{cv}{Coefficient of variation achieved by the integer
+allocation in \verb{$strata$n} (the continuous optimum's cv is kept in
+\code{params$cv_continuous}, and the requested target, if any, in
+\code{params$cv_target}).}
 \item{strata}{Data frame with per-stratum summaries.}
 \item{method}{Algorithm used.}
 \item{alloc}{Allocation method name (character).}

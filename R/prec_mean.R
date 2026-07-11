@@ -6,7 +6,7 @@
 #' @param var For the default method: population variance \eqn{S^2}.
 #'   For `svyplan_n` objects: a sample size result from [n_mean()].
 #' @param ... Additional arguments passed to methods.
-#' @param n Sample size.
+#' @param n Sample size (gross units drawn; must not exceed a finite `N`).
 #' @param mu Population mean magnitude (positive). Required for the CV component.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size. `Inf` (default) means no finite population
@@ -99,6 +99,7 @@ prec_mean.default <- function(
   check_population_size(N)
   check_deff(deff)
   check_resp_rate(resp_rate)
+  .check_gross_n(n, N)
   if (!is.null(mu)) {
     check_scalar(mu, "mu")
   }

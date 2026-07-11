@@ -276,3 +276,9 @@ test_that("prec_multi 3-stage rejects NA delta_ssu", {
     "delta_ssu.*NA"
   )
 })
+
+test_that("prec_multi rejects gross n above a finite row N with the label", {
+  tg <- data.frame(name = c("ok", "bad"), p = c(0.3, 0.4),
+                   n = c(50, 120), N = c(Inf, 100))
+  expect_error(prec_multi(tg), "for bad")
+})

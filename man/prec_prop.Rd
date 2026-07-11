@@ -28,7 +28,7 @@ For \code{svyplan_n} objects: a sample size result from \code{\link[=n_prop]{n_p
 
 \item{...}{Additional arguments passed to methods.}
 
-\item{n}{Sample size.}
+\item{n}{Sample size (gross units drawn; must not exceed a finite \code{N}).}
 
 \item{alpha}{Significance level, default 0.05.}
 

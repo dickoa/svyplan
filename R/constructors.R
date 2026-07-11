@@ -67,7 +67,8 @@
   targets = NULL,
   detail = NULL,
   binding = NULL,
-  domains = NULL
+  domains = NULL,
+  operational = NULL
 ) {
   structure(
     list(
@@ -78,6 +79,7 @@
       moe = NA_real_,
       cv = cv,
       cost = cost,
+      operational = operational,
       params = params,
       targets = targets,
       detail = detail,

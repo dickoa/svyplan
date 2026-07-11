@@ -710,3 +710,88 @@ test_that("domain values containing the separator do not collide", {
   x <- n_alloc(fr, n = 500, domains = c("d1", "d2"))
   expect_equal(nrow(x$domains), 2L)
 })
+
+test_that("fractional lower bounds are integerized before feasibility", {
+  fr <- data.frame(N = 100, sd = 1, mean = 1, cost = 1)
+  expect_error(n_alloc(fr, budget = 1.7, min_n = 1.5),
+               "integer lower bounds")
+  x <- n_alloc(fr, budget = 3, min_n = 1.5)
+  expect_gte(min(x$detail$n_int), 2)
+  expect_lte(sum(x$detail$n_int * fr$cost), 3)
+})
+
+test_that("fixed-total rounding respects integer bounds or errors", {
+  fr <- data.frame(N = c(100, 100), sd = c(1, 1), mean = c(1, 1))
+  expect_error(n_alloc(fr, n = 3, min_n = 1.5), "no integer allocation")
+  x <- n_alloc(fr, n = 4, min_n = 1.5)
+  expect_equal(x$detail$n_int, c(2L, 2L))
+  expect_equal(sum(x$detail$n_int), 4L)
+})
+
+test_that("operational element metrics match the integer allocation", {
+  fr <- data.frame(N = rep(100, 3), sd = c(1, 5, 10), mean = rep(5, 3),
+                   cost = c(1, 10, 100))
+  x <- n_alloc(fr, budget = 180, alloc = "optimal")
+  op <- x$operational
+  d <- x$detail
+  expect_equal(op$n, sum(d$n_int))
+  expect_equal(op$cost, sum(d$n_int * fr$cost))
+  expect_lte(op$cost, 180)
+  W <- d$N / sum(d$N)
+  cv_chk <- sqrt(sum(W^2 * d$sd^2 * (1 - d$n_int / d$N) / d$n_int)) /
+    sum(W * d$mean)
+  expect_equal(op$cv, cv_chk, tolerance = 1e-10)
+  expect_identical(as.integer(x), as.integer(op$n))
+})
+
+test_that("cluster-mode operational design uses whole PSUs within budget", {
+  fr <- data.frame(N = 1000, sd = 10, mean = 50, delta_psu = 0.05,
+                   cost_psu = 500, cost_ssu = 50)
+  x <- n_alloc(fr, budget = 1200)
+  d <- x$detail
+  op <- x$operational
+  expect_true(all(d$n_psu_int == round(d$n_psu_int)))
+  expect_true(all(d$psu_size_int == round(d$psu_size_int)))
+  expect_equal(d$n_int, d$n_psu_int * d$psu_size_int)
+  expect_equal(op$cost,
+               sum(d$n_psu_int * (fr$cost_psu + fr$cost_ssu * d$psu_size_int)))
+  expect_lte(op$cost, 1200)
+  expect_error(n_alloc(fr, budget = 500), "cannot fund one whole PSU")
+})
+
+test_that("cluster-mode operational cv design meets the target", {
+  fr <- data.frame(stratum = c("U", "R"), N = c(50000, 150000),
+                   sd = c(0.45, 0.48), mean = c(0.35, 0.25),
+                   delta_psu = c(0.03, 0.08), cost_psu = c(300, 600),
+                   cost_ssu = c(40, 60))
+  x <- n_alloc(fr, cv = 0.05)
+  op <- x$operational
+  expect_lte(op$cv, 0.05 + 1e-10)
+  d <- x$detail
+  expect_equal(d$n_int, d$n_psu_int * d$psu_size_int)
+})
+
+test_that("randomized operational invariants hold", {
+  set.seed(2026)
+  for (r in seq_len(20)) {
+    H <- sample(2:4, 1)
+    fr <- data.frame(
+      N = sample(500:5000, H),
+      sd = runif(H, 1, 20),
+      mean = runif(H, 20, 80),
+      cost = sample(1:50, H)
+    )
+    budget <- sum(fr$cost) * runif(1, 3, 30)
+    x <- try(n_alloc(fr, budget = budget), silent = TRUE)
+    if (!inherits(x, "try-error")) {
+      expect_lte(x$operational$cost, budget + 1e-8)
+    }
+    target <- runif(1, 0.01, 0.08)
+    y <- try(n_alloc(fr, cv = target), silent = TRUE)
+    if (!inherits(y, "try-error")) {
+      expect_lte(y$operational$cv, target + 1e-10)
+      expect_true(all(y$detail$n_int >= 1))
+      expect_true(all(y$detail$n_int <= fr$N))
+    }
+  }
+})

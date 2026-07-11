@@ -20,14 +20,18 @@
 #'
 #' ## Print and coercion
 #'
-#' For `svyplan_cluster` objects, per-stage sizes are ceiled to integers
-#' for operational use. The total shown by `print()`, `format()`, and
-#' `as.integer()` is the product of ceiled per-stage sizes, the number of
-#' interviews to actually conduct. The unrounded continuous optimum
-#' (`x$total_n`) is shown in parentheses and returned by `as.double()`.
+#' Constrained designs (`n_cluster()`, `n_alloc()`, multistage
+#' `n_multi()`) carry two representations: the continuous mathematical
+#' optimum in the top-level fields (`n`, `cv`, `cost`, ...) and the
+#' whole-unit field design in `$operational`, whose cost and precision
+#' are recomputed from the integer design. `print()` leads with the
+#' field design and shows the continuous optimum as a diagnostic.
 #'
-#' Summary: `as.integer(x)` = operational total (what goes in the field),
-#' `as.double(x)` = continuous optimum (what the math solved for).
+#' `as.integer(x)` returns the operational design in the same shape as
+#' `x$n`: the named integer stage vector for `svyplan_cluster` objects,
+#' the operational total for allocation results, and the ceiled scalar
+#' otherwise. `as.double(x)` returns the continuous counterpart of the
+#' same shape.
 #'
 #' `as.data.frame()` returns the tabular form of a result, intended as
 #' the stable handoff to downstream packages (e.g. samplyr). For
@@ -179,8 +183,9 @@ print.svyplan_cluster <- function(x, ...) {
 #' @noRd
 .print_single_cluster <- function(x) {
   cat(sprintf("Optimal %d-stage allocation\n", x$stages))
-  n_display <- ceiling(x$n)
-  total_display <- prod(n_display)
+  op <- x$operational
+  n_display <- if (!is.null(op)) op$n else ceiling(x$n)
+  total_display <- if (!is.null(op)) op$total_n else prod(n_display)
   stage_labels <- names(x$n)
   if (is.null(stage_labels)) {
     stage_labels <- paste0("stage", seq_along(n_display))
@@ -192,27 +197,38 @@ print.svyplan_cluster <- function(x, ...) {
     },
     character(1L)
   )
+  cat("field design: ")
   cat(paste(stage_parts, collapse = " | "))
-  unrounded <- .fmt_continuous_n(x$total_n)
   resp_rate <- x$params$resp_rate
   if (!is.null(resp_rate) && resp_rate < 1) {
     net_total <- ceiling(total_display * resp_rate)
     cat(sprintf(
-      " -> total n = %s (unrounded: %s, net: %s)\n",
-      .fmt_count_n(total_display), unrounded, .fmt_count_n(net_total)
+      " -> total n = %s (net: %s)\n",
+      .fmt_count_n(total_display), .fmt_count_n(net_total)
     ))
   } else {
-    cat(sprintf(
-      " -> total n = %s (unrounded: %s)\n",
-      .fmt_count_n(total_display), unrounded
-    ))
+    cat(sprintf(" -> total n = %s\n", .fmt_count_n(total_display)))
   }
   fc <- x$params$fixed_cost
+  op_cv <- if (!is.null(op)) op$cv else x$cv
+  op_cost <- if (!is.null(op)) op$cost else x$cost
   if (!is.null(fc) && fc > 0) {
-    cat(sprintf("cv = %.4f, cost = %.0f (fixed: %.0f)\n", x$cv, x$cost, fc))
+    cat(sprintf("cv = %.4f, cost = %.0f (fixed: %.0f)\n",
+                op_cv, op_cost, fc))
   } else {
-    cat(sprintf("cv = %.4f, cost = %.0f\n", x$cv, x$cost))
+    cat(sprintf("cv = %.4f, cost = %.0f\n", op_cv, op_cost))
   }
+  cont_parts <- vapply(
+    seq_along(x$n),
+    function(i) {
+      sprintf("%s = %s", stage_labels[i], .fmt_continuous_n(x$n[i]))
+    },
+    character(1L)
+  )
+  cat(sprintf(
+    "continuous optimum: %s (cv = %.4f, cost = %.0f)\n",
+    paste(cont_parts, collapse = " | "), x$cv, x$cost
+  ))
 
   if (!is.null(x$domains)) {
     cat(sprintf("Domains: %d\n", nrow(x$domains)))
@@ -268,8 +284,9 @@ print.svyplan_cluster <- function(x, ...) {
     print(dom, row.names = FALSE, right = FALSE)
   } else {
     cat(sprintf("Multi-indicator optimal allocation (%d-stage)\n", x$stages))
-    n_display <- ceiling(x$n)
-    total_display <- prod(n_display)
+    op <- x$operational
+    n_display <- if (!is.null(op)) op$n else ceiling(x$n)
+    total_display <- if (!is.null(op)) op$total_n else prod(n_display)
     stage_labels <- names(x$n)
     if (is.null(stage_labels)) {
       stage_labels <- paste0("stage", seq_along(n_display))
@@ -281,30 +298,34 @@ print.svyplan_cluster <- function(x, ...) {
       },
       character(1L)
     )
+    cat("field design: ")
     cat(paste(stage_parts, collapse = " | "))
-    unrounded <- .fmt_continuous_n(x$total_n)
-    cat(sprintf(
-      " -> total n = %s (unrounded: %s)\n",
-      .fmt_count_n(total_display),
-      unrounded
-    ))
+    cat(sprintf(" -> total n = %s\n", .fmt_count_n(total_display)))
+    op_cv <- if (!is.null(op)) op$cv else x$cv
+    op_cost <- if (!is.null(op)) op$cost else x$cost
     fc <- x$params$fixed_cost
     if (!is.null(fc) && fc > 0) {
       cat(sprintf(
-        "cv = %.4f, cost = %.0f (fixed: %.0f, binding: %s)\n",
-        x$cv,
-        x$cost,
-        fc,
-        x$binding
+        "worst cv = %.4f, cost = %.0f (fixed: %.0f, binding: %s)\n",
+        op_cv, op_cost, fc, x$binding
       ))
     } else {
       cat(sprintf(
-        "cv = %.4f, cost = %.0f (binding: %s)\n",
-        x$cv,
-        x$cost,
-        x$binding
+        "worst cv = %.4f, cost = %.0f (binding: %s)\n",
+        op_cv, op_cost, x$binding
       ))
     }
+    cont_parts <- vapply(
+      seq_along(x$n),
+      function(i) {
+        sprintf("%s = %s", stage_labels[i], .fmt_continuous_n(x$n[i]))
+      },
+      character(1L)
+    )
+    cat(sprintf(
+      "continuous optimum: %s (cv = %.4f, cost = %.0f)\n",
+      paste(cont_parts, collapse = " | "), x$cv, x$cost
+    ))
     cat("---\n")
     d <- x$detail
     d$.cv_achieved <- sprintf("%.4f", d$.cv_achieved)
@@ -536,11 +557,16 @@ format.svyplan_n <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 format.svyplan_cluster <- function(x, ...) {
+  total <- if (!is.null(x$operational)) {
+    x$operational$total_n
+  } else {
+    prod(ceiling(x$n))
+  }
   paste0(
     "svyplan_cluster [",
     x$stages,
     "-stage, total_n=",
-    .fmt_count_n(prod(ceiling(x$n))),
+    .fmt_count_n(total),
     " (unrounded: ",
     .fmt_continuous_n(x$total_n),
     ")]"
@@ -719,6 +745,9 @@ confint.svyplan_prec <- function(object, parm, level = 0.95, ...) {
 #' @rdname print.svyplan
 #' @export
 as.integer.svyplan_n <- function(x, ...) {
+  if (!is.null(x$operational)) {
+    return(as.integer(x$operational$n))
+  }
   as.integer(ceiling(x$n))
 }
 
@@ -731,13 +760,16 @@ as.double.svyplan_n <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 as.integer.svyplan_cluster <- function(x, ...) {
-  as.integer(prod(ceiling(x$n)))
+  if (!is.null(x$operational)) {
+    return(as.integer(x$operational$n))
+  }
+  as.integer(ceiling(x$n))
 }
 
 #' @rdname print.svyplan
 #' @export
 as.double.svyplan_cluster <- function(x, ...) {
-  x$total_n
+  x$n
 }
 
 #' @rdname print.svyplan
@@ -851,11 +883,24 @@ print.svyplan_strata <- function(x, ...) {
   if (cluster) cat(", two-stage")
   if (!is.na(H)) cat(sprintf(", %d strata", H))
   cat(")\n")
-  cat(sprintf("n = %d", ceiling(x$n)))
-  if (cluster) cat(sprintf(", n_psu = %d", sum(detail$n_psu_int)))
-  if (!is.na(x$cv)) cat(sprintf(", cv = %.4f", x$cv))
-  if (!is.na(x$se)) cat(sprintf(", se = %.4f", x$se))
-  cat("\n")
+  op <- x$operational
+  if (!is.null(op)) {
+    cat(sprintf("field design: n = %d", op$n))
+    if (cluster) cat(sprintf(", n_psu = %d", sum(detail$n_psu_int)))
+    if (!is.na(op$cv)) cat(sprintf(", cv = %.4f", op$cv))
+    if (!is.na(op$cost)) cat(sprintf(", cost = %.0f", op$cost))
+    cat("\n")
+    cat(sprintf("continuous optimum: n = %s", .fmt_continuous_n(x$n)))
+    if (!is.na(x$cv)) cat(sprintf(", cv = %.4f", x$cv))
+    if (!is.na(x$se)) cat(sprintf(", se = %.4f", x$se))
+    cat("\n")
+  } else {
+    cat(sprintf("n = %d", ceiling(x$n)))
+    if (cluster) cat(sprintf(", n_psu = %d", sum(detail$n_psu_int)))
+    if (!is.na(x$cv)) cat(sprintf(", cv = %.4f", x$cv))
+    if (!is.na(x$se)) cat(sprintf(", se = %.4f", x$se))
+    cat("\n")
+  }
   parts <- character(0L)
   if (!is.null(p$min_n) && p$min_n > 0)
     parts <- c(parts, sprintf("min_n = %g", p$min_n))

@@ -36,7 +36,8 @@ below \code{p1} and returns the alternative closest to \code{p1} that achieves t
 target power. When \code{p1} is near 0 or 1, the MDE may only be detectable
 in one direction.}
 
-\item{n}{Per-group sample size. Scalar (equal groups) or length-2 vector
+\item{n}{Per-group sample size (gross units drawn; must not exceed the
+corresponding finite \code{N}). Scalar (equal groups) or length-2 vector
 \code{c(n1, n2)} for unequal groups. Leave \code{NULL} to solve for sample size.}
 
 \item{power}{Target power, in (0, 1). Leave \code{NULL} to solve for power.}

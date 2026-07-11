@@ -234,6 +234,8 @@ power_did.default <- function(
     params$effect <- effect
     params$n <- n
     n_vec <- if (length(n) == 1L) c(n, n) else n
+    .check_gross_n(n_vec, N_pair,
+                   label = c("the treatment group", "the control group"))
     n_eff <- n_vec * resp_rate
 
     pw <- .power_did_power_core(
@@ -255,6 +257,8 @@ power_did.default <- function(
     params$n <- n
     params$power <- power
     n_vec <- if (length(n) == 1L) c(n, n) else n
+    .check_gross_n(n_vec, N_pair,
+                   label = c("the treatment group", "the control group"))
     n_eff <- n_vec * resp_rate
 
     mde <- .power_did_mde_core(

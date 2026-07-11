@@ -10,7 +10,8 @@
 #'   below `p1` and returns the alternative closest to `p1` that achieves the
 #'   target power. When `p1` is near 0 or 1, the MDE may only be detectable
 #'   in one direction.
-#' @param n Per-group sample size. Scalar (equal groups) or length-2 vector
+#' @param n Per-group sample size (gross units drawn; must not exceed the
+#'   corresponding finite `N`). Scalar (equal groups) or length-2 vector
 #'   `c(n1, n2)` for unequal groups. Leave `NULL` to solve for sample size.
 #' @param power Target power, in (0, 1). Leave `NULL` to solve for power.
 #' @param alpha Significance level, default 0.05.
@@ -172,6 +173,8 @@ power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
     if (p1 == p2) stop("'p1' and 'p2' must differ", call. = FALSE)
     params$p2 <- p2
     params$n <- n
+    .check_gross_n(if (length(n) == 1L) c(n, n) else n, N_pair,
+                   label = c("group 1", "group 2"))
     n_eff <- n * resp_rate
 
     res <- switch(method,
@@ -188,6 +191,8 @@ power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
   } else {
     params$n <- n
     params$power <- power
+    .check_gross_n(if (length(n) == 1L) c(n, n) else n, N_pair,
+                   label = c("group 1", "group 2"))
     n_eff <- n * resp_rate
 
     res <- switch(method,

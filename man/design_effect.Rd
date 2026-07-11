@@ -24,7 +24,10 @@ design_effect(x = NULL, ...)
 }
 \arguments{
 \item{x}{A numeric vector of survey weights (for diagnostic methods),
-or \code{NULL} (for the \code{"cluster"} planning method).}
+or \code{NULL} (for the \code{"cluster"} planning method). The \code{"cr"} method
+requires weights on the population scale (inverse inclusion
+probabilities): the sum of weights must exceed the sample size,
+overall and within every stratum; normalized weights are rejected.}
 
 \item{...}{Additional arguments passed to methods.}
 

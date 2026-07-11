@@ -1883,3 +1883,15 @@ test_that("achieved precision is method-consistent for nonbinding rows", {
                prec_prop(p = 0.01, n = x$n, method = "wilson")$cv,
                tolerance = 1e-10)
 })
+
+test_that("n_multi cluster results carry honest operational metrics", {
+  tg <- data.frame(p = c(0.3, 0.15), cv = c(0.1, 0.12),
+                   delta_psu = c(0.02, 0.05))
+  x <- n_multi(tg, stage_cost = c(500, 50))
+  op <- x$operational
+  expect_true(all(op$n == round(op$n)))
+  expect_equal(op$total_n, prod(op$n))
+  expect_equal(op$cost, op$n[[1]] * (500 + 50 * op$n[[2]]), tolerance = 1e-10)
+  expect_lte(op$cv, max(tg$cv) + 1e-10)
+  expect_identical(as.integer(x), as.integer(op$n))
+})

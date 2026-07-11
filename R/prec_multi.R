@@ -269,6 +269,13 @@ prec_multi.default <- function(
   nr <- nrow(targets)
   has_mu <- "mu" %in% names(targets)
 
+  row_labels <- if ("name" %in% names(targets)) {
+    targets$name
+  } else {
+    paste("indicator", seq_len(nr))
+  }
+  .check_gross_n(targets$n, targets$N, label = row_labels)
+
   se_vec <- numeric(nr)
   moe_vec <- numeric(nr)
   cv_vec <- numeric(nr)

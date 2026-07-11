@@ -136,7 +136,10 @@ instead of being silently ignored.
   variance under any design effect). The Wilson proportion method has no
   finite-population form and ignores `N`. Targets that would require
   drawing more than `N` units from a finite frame raise an error instead
-  of returning an impossible sample size.
+  of returning an impossible sample size, and the precision and power
+  evaluators (`prec_prop()`, `prec_mean()`, `prec_multi()`, supplied-`n`
+  `power_*()`) likewise reject a supplied gross `n` above the frame size
+  of any group or indicator.
 * All functions accept `plan`, a `svyplan()` profile providing shared
   design defaults.
 * `predict()` methods for sensitivity analysis: evaluate any result at new
@@ -177,11 +180,31 @@ All classes have print and format methods.
 
 ## Feasibility and integer designs
 
-* Integer allocations are rounded to match the solve mode: a target-`cv`
+* Constrained designs separate the continuous mathematical optimum
+  (top-level fields) from the whole-unit field design (`$operational`,
+  with cost, cv, and se recomputed from the integer design). `print()`
+  leads with the field design; `as.integer()` returns the operational
+  design in the same shape as `n` (stage vector for cluster plans,
+  total for allocations) and `as.double()` its continuous counterpart.
+* `n_cluster()` finds the operational design by discrete search
+  (enumerated whole stage sizes): budget-mode field designs never
+  exceed the budget and cv-mode field designs meet the target with
+  whole units.
+* Cluster-mode `n_alloc()` integerizes at the PSU level: whole PSUs
+  (`n_psu_int`) and whole takes (`psu_size_int`) per stratum, with the
+  field cost `n_psu_int * (cost_psu + cost_ssu * psu_size_int)` kept
+  within budget-mode budgets, and a targeted error when the budget
+  cannot fund one PSU per stratum.
+* Element allocations are rounded to match the solve mode: a target-`cv`
   solve rounds each stratum up (the integer design meets the target), a
   `budget` solve floors and then adds units by variance reduction per
   unit cost (the integer design stays within budget), and a fixed-`n`
-  solve preserves the total (ORIC rounding).
+  solve preserves the total with bounded largest-remainder rounding.
+  Bounds are integerized first (`ceiling` of lower bounds, `floor` of
+  upper bounds); infeasible integer designs raise clear errors instead
+  of silently violating `min_n`, `max_weight`, or the budget.
+* `strata_bound()` reports the cv achieved by its integer allocation
+  (the continuous optimum's cv is kept in `params$cv_continuous`).
 * `n_cluster()` enforces realizable designs: fixed stage sizes must be
   at least 1, cost-optimal stage sizes below 1 are clamped to 1 with a
   warning, solved stage sizes below 1 are clamped with the achieved CV
@@ -190,8 +213,11 @@ All classes have print and format methods.
   separator cannot merge distinct domains) and missing domain values
   raise an error instead of being silently dropped.
 * `design_effect(method = "cr")` requires weights on the population
-  scale (inverse inclusion probabilities) and rejects data where no
-  cluster has within-cluster replication.
+  scale (inverse inclusion probabilities): the sum of weights must
+  exceed the sample size, overall and within every stratum (the
+  offending stratum is named). Data where no cluster has within-cluster
+  replication are rejected, and the returned components are validated
+  as finite and non-negative.
 * `varcomp()` rejects non-finite outcomes, missing stage identifiers,
   and out-of-range PPS probabilities; per-observation probabilities must
   be constant within PSU, and named per-PSU probabilities are matched by
@@ -199,9 +225,12 @@ All classes have print and format methods.
 * Three-stage `n_multi()` requires `delta_ssu` (matching `prec_multi()`),
   and simple-mode achieved precision is recomputed per indicator with the
   indicator's own method instead of sqrt-n rescaling.
-* `strata_bound()` validates `unit_cost` length (1 or `n_strata`) and
-  gives a targeted error when `cumrootf` cannot form the requested
-  number of strata on concentrated data.
+* `strata_bound()` validates `unit_cost` length (1 or `n_strata`).
+  When the cumulative-root-frequency boundaries degenerate on
+  concentrated or discrete data, `cumrootf` falls back (with a warning)
+  to boundaries between adjacent distinct values, so any input with at
+  least `n_strata` distinct values yields nonempty strata; fewer
+  distinct values than strata is a targeted error.
 
 ## Display
 
@@ -217,4 +246,4 @@ All classes have print and format methods.
 * New `as.data.frame()` methods for `svyplan_n` and `svyplan_cluster`
   return the tabular form of a result (allocation detail, per-domain
   table, or stage table), the supported handoff to sampling packages
-  such as samplyr.
+  such as `samplyr`.

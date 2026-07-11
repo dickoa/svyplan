@@ -7,7 +7,7 @@
 #' @param p For the default method: expected proportion, in (0, 1).
 #'   For `svyplan_n` objects: a sample size result from [n_prop()].
 #' @param ... Additional arguments passed to methods.
-#' @param n Sample size.
+#' @param n Sample size (gross units drawn; must not exceed a finite `N`).
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size. `Inf` (default) means no finite population
 #'   correction.
@@ -83,6 +83,7 @@ prec_prop.default <- function(
   check_population_size(N)
   check_deff(deff)
   check_resp_rate(resp_rate)
+  .check_gross_n(n, N)
   method <- match.arg(method)
 
   prec <- .prec_engine_prop(p, n, alpha, N, deff, resp_rate, method)

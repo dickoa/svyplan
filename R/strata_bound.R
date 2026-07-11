@@ -44,7 +44,10 @@
 #'   \item{boundaries}{Numeric vector of cutpoints (length `n_strata - 1`).}
 #'   \item{n_strata}{Number of strata.}
 #'   \item{n}{Total sample size.}
-#'   \item{cv}{Achieved coefficient of variation.}
+#'   \item{cv}{Coefficient of variation achieved by the integer
+#'     allocation in `$strata$n` (the continuous optimum's cv is kept in
+#'     `params$cv_continuous`, and the requested target, if any, in
+#'     `params$cv_target`).}
 #'   \item{strata}{Data frame with per-stratum summaries.}
 #'   \item{method}{Algorithm used.}
 #'   \item{alloc}{Allocation method name (character).}
@@ -308,7 +311,12 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     n       = if (has_cv) {
       as.integer(pmin(ceiling(alloc_res$n_h - 1e-9), alloc_res$N_h))
     } else {
-      .round_oric(alloc_res$n_h)
+      lo_i <- as.integer(pmin(2, alloc_res$N_h))
+      hi_i <- as.integer(alloc_res$N_h)
+      if (!is.null(certain_strata)) {
+        lo_i[certain_strata] <- hi_i[certain_strata]
+      }
+      .round_oric_bounded(alloc_res$n_h, lo_i, hi_i)
     },
     take_all = if (!is.null(certain)) {
       seq_len(n_strata) %in% certain_strata
@@ -319,11 +327,18 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
 
   conv <- if (method %in% c("lh", "kozak")) converged else NA
 
+  n_int <- strata_df$n
+  V_int <- sum(
+    alloc_res$W_h^2 * alloc_res$S_h^2 / n_int * (1 - n_int / alloc_res$N_h)
+  )
+  ybar <- sum(alloc_res$W_h * alloc_res$mean_h)
+  cv_int <- if (ybar == 0) Inf else sqrt(V_int) / abs(ybar)
+
   .new_svyplan_strata(
     boundaries = bk,
     n_strata   = n_strata,
     n          = sum(strata_df$n),
-    cv         = alloc_res$cv,
+    cv         = cv_int,
     strata     = strata_df,
     method     = method,
     alloc      = alloc,
@@ -331,7 +346,9 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
       N         = length(x),
       power_q   = if (alloc == "power") power_q else NULL,
       maxiter   = if (method %in% c("lh", "kozak")) maxiter else NULL,
-      n_restart = if (method == "kozak") n_restart else NULL
+      n_restart = if (method == "kozak") n_restart else NULL,
+      cv_continuous = alloc_res$cv,
+      cv_target = if (has_cv) cv else NULL
     ),
     converged  = conv
   )

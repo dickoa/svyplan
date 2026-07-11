@@ -525,3 +525,31 @@ test_that("CR rejects data with no within-cluster replication", {
     "single observation"
   )
 })
+
+test_that("CR rejects weights at or below the sample-size scale", {
+  set.seed(1)
+  n <- 20
+  y <- rnorm(n)
+  cl <- rep(1:5, each = 4)
+  expect_error(design_effect(rep(1, n), y = y, cluster_id = cl, method = "cr"),
+               "must exceed the sample size")
+  expect_error(design_effect(rep(0.9, n), y = y, cluster_id = cl,
+                             method = "cr"),
+               "must exceed the sample size")
+  res <- design_effect(rep(1.5, n), y = y, cluster_id = cl, method = "cr")
+  expect_true(is.finite(res$overall) && res$overall >= 0)
+})
+
+test_that("CR names an invalidly scaled stratum", {
+  set.seed(2)
+  y <- rnorm(20)
+  stratum <- rep(c("bad", "good"), each = 10)
+  w <- c(rep(0.05, 10), rep(10, 10))
+  expect_error(design_effect(w, y = y, strata_id = stratum, method = "cr"),
+               "stratum 'bad'")
+  w_ok <- c(rep(5, 10), rep(10, 10))
+  res <- design_effect(w_ok, y = y, strata_id = stratum, method = "cr")
+  expect_true(all(is.finite(res$strata$deff_s)))
+  expect_true(all(res$strata$deff_s >= 0))
+  expect_true(is.finite(res$overall) && res$overall >= 0)
+})

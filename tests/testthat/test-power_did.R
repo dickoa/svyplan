@@ -242,9 +242,16 @@ test_that("power_did: census guard with finite N", {
   expect_warning(
     power_did(
       treat = c(50, 55), control = c(50, 52),
-      outcome = "mean", var = 100, effect = 5, power = NULL, n = 5000, N = 100
+      outcome = "mean", var = 100, effect = 5, power = NULL, n = 100, N = 100
     ),
     "census"
+  )
+  expect_error(
+    power_did(
+      treat = c(50, 55), control = c(50, 52),
+      outcome = "mean", var = 100, effect = 5, power = NULL, n = 5000, N = 100
+    ),
+    "cannot draw"
   )
 })
 

@@ -196,6 +196,7 @@ power_mean.default <- function(effect = NULL, var, n = NULL, power = 0.80,
     params$effect <- effect
     params$n <- n
     n_vec <- if (length(n) == 1L) c(n, n) else n
+    .check_gross_n(n_vec, N_pair, label = c("group 1", "group 2"))
     n_eff <- n_vec * resp_rate
 
     if (any(!is.infinite(N_pair) & n_eff >= N_pair)) {
@@ -232,6 +233,7 @@ power_mean.default <- function(effect = NULL, var, n = NULL, power = 0.80,
     params$power <- power
     z_b <- qnorm(power)
     n_vec <- if (length(n) == 1L) c(n, n) else n
+    .check_gross_n(n_vec, N_pair, label = c("group 1", "group 2"))
     n_eff <- n_vec * resp_rate
 
     fpc1 <- .fpc_factor(n_eff[1], N_pair[1])

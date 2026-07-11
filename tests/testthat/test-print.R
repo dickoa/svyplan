@@ -43,9 +43,11 @@ test_that("as.double.svyplan_n returns raw n", {
   expect_equal(as.double(result), result$n)
 })
 
-test_that("as.integer.svyplan_cluster returns product of ceiled stages", {
+test_that("as.integer.svyplan_cluster returns the operational stage vector", {
   result <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
-  expect_equal(as.integer(result), as.integer(prod(ceiling(result$n))))
+  expect_identical(as.integer(result), as.integer(result$operational$n))
+  expect_length(as.integer(result), 2L)
+  expect_lte(result$operational$cost, 100000)
 })
 
 test_that("print returns invisible(x)", {
@@ -66,18 +68,18 @@ test_that("print hides fixed_cost when 0", {
   expect_false(any(grepl("fixed", out)))
 })
 
-test_that("print shows unrounded total for cluster", {
+test_that("print shows field design and continuous optimum for cluster", {
   x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
   out <- capture.output(print(x))
-  expected_unrounded <- format(signif(x$total_n, 8), trim = TRUE, scientific = FALSE)
-  expect_true(any(grepl("unrounded", out)))
-  expect_true(any(grepl(expected_unrounded, out, fixed = TRUE)))
+  expect_true(any(grepl("field design", out)))
+  expect_true(any(grepl("continuous optimum", out)))
+  expect_true(any(grepl(sprintf("total n = %d", x$operational$total_n), out)))
 })
 
-test_that("as.double.svyplan_cluster returns continuous total_n", {
+test_that("as.double.svyplan_cluster returns the continuous stage vector", {
   x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
-  expect_equal(as.double(x), x$total_n)
-  expect_true(as.double(x) < as.integer(x))
+  expect_equal(as.double(x), x$n)
+  expect_length(as.double(x), length(as.integer(x)))
 })
 
 test_that("format.svyplan_cluster shows unrounded", {

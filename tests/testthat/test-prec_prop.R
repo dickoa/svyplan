@@ -83,3 +83,12 @@ test_that("prec_prop logodds census returns moe = 0 with warning", {
   )
   expect_equal(res$moe, 0)
 })
+
+test_that("supplied gross n above a finite N is rejected", {
+  expect_error(prec_prop(p = 0.5, n = 120, N = 100, resp_rate = 0.8),
+               "cannot draw 120 units")
+  expect_error(prec_mean(var = 1, n = 120, N = 100, resp_rate = 0.8),
+               "cannot draw 120 units")
+  expect_warning(res <- prec_prop(p = 0.5, n = 100, N = 100), "census")
+  expect_equal(res$se, 0)
+})

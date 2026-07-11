@@ -54,15 +54,19 @@
 #' @return A `svyplan_cluster` object with components:
 #' \describe{
 #'   \item{`n`}{Named numeric vector of continuous per-stage sample sizes
-#'     (e.g. `c(n_psu = 84.1, psu_size = 13.8)`). Use `ceiling()` for
-#'     operational (integer) values.}
+#'     (e.g. `c(n_psu = 84.1, psu_size = 13.8)`), the mathematical
+#'     optimum.}
 #'   \item{`stages`}{Number of stages (2 or 3).}
-#'   \item{`total_n`}{Continuous total sample size (`prod(n)`). Use
-#'     `as.integer()` for the operational total (product of ceiled stages),
-#'     or `as.double()` for this continuous value.}
-#'   \item{`cv`}{Achieved coefficient of variation (based on continuous
-#'     optimum).}
-#'   \item{`cost`}{Total cost.}
+#'   \item{`total_n`}{Continuous total sample size (`prod(n)`).}
+#'   \item{`cv`}{Coefficient of variation of the continuous optimum.}
+#'   \item{`cost`}{Cost of the continuous optimum.}
+#'   \item{`operational`}{The whole-unit field design, found by a
+#'     discrete search: `n` (named integer stage sizes), `total_n`,
+#'     `cost`, and `cv`, all recomputed from the integer design. In
+#'     `budget` mode its cost never exceeds the budget; in `cv` mode it
+#'     meets the target at the lowest cost among the designs searched.
+#'     `as.integer()` returns `operational$n`; `as.double()` returns the
+#'     continuous `n`.}
 #'   \item{`params`}{List of input parameters.}
 #' }
 #'
@@ -310,6 +314,170 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
   do.call(n_cluster.default, .roundtrip_args(args, list(...), n_cluster.default))
 }
 
+#' Discrete (integer) 2-stage design
+#'
+#' Enumerates whole psu_size values (or uses rounded fixed sizes),
+#' computes the largest affordable whole n_psu in budget mode or the
+#' smallest sufficient whole n_psu in cv mode, and returns the best
+#' integer design with its own recomputed cost and cv. Budget-mode
+#' designs never exceed the budget; cv-mode designs meet the target.
+#' @keywords internal
+#' @noRd
+.op_cluster_2stage <- function(stage_cost, delta, rel_var, k, cv, budget,
+                               n_psu, psu_size, resp_rate, fixed_cost,
+                               cont_m) {
+  C1 <- stage_cost[1L]
+  C2 <- stage_cost[2L]
+  vb <- if (!is.null(budget)) budget - fixed_cost else NULL
+  cv_fn <- function(a, m) {
+    sqrt(rel_var * k * (1 + delta * (m - 1)) / (a * resp_rate * m))
+  }
+
+  m_cand <- if (!is.null(psu_size)) {
+    max(1L, as.integer(round(psu_size)))
+  } else {
+    seq_len(max(100L, min(10L * as.integer(ceiling(cont_m)) + 1L, 100000L)))
+  }
+
+  if (!is.null(budget)) {
+    if (!is.null(n_psu)) {
+      a <- max(1L, as.integer(round(n_psu)))
+      m <- as.integer(floor((vb / a - C1) / C2))
+      if (m < 1L) {
+        stop("no whole-unit design fits the budget for the given fixed stage-1 size",
+             call. = FALSE)
+      }
+      a_cand <- a
+      m_best <- m
+    } else {
+      a_cand <- as.integer(floor(vb / (C1 + C2 * m_cand)))
+      keep <- a_cand >= 1L
+      m_cand <- m_cand[keep]
+      a_cand <- a_cand[keep]
+      if (length(m_cand) == 0L) {
+        stop("no whole-unit design fits the budget", call. = FALSE)
+      }
+      cvs <- cv_fn(a_cand, m_cand)
+      j <- which.min(cvs + 1e-12 * m_cand)
+      m_best <- m_cand[j]
+      a_cand <- a_cand[j]
+    }
+    a_best <- a_cand
+  } else {
+    if (!is.null(n_psu)) {
+      a_best <- max(1L, as.integer(round(n_psu)))
+      need <- rel_var * k * (1 - delta) /
+        (cv^2 * a_best * resp_rate - rel_var * k * delta)
+      if (!is.finite(need) || need <= 0) {
+        stop("target CV is not achievable with whole units at the given fixed stage-1 size",
+             call. = FALSE)
+      }
+      m_best <- max(1L, as.integer(ceiling(need - 1e-9)))
+    } else {
+      a_cand <- vapply(m_cand, function(m) {
+        as.integer(ceiling(
+          rel_var * k * (1 + delta * (m - 1)) /
+            (m * cv^2 * resp_rate) - 1e-9
+        ))
+      }, integer(1L))
+      a_cand <- pmax(a_cand, 1L)
+      costs <- a_cand * (C1 + C2 * m_cand)
+      j <- which.min(costs + 1e-9 * (a_cand * m_cand) + 1e-12 * m_cand)
+      m_best <- m_cand[j]
+      a_best <- a_cand[j]
+    }
+  }
+
+  list(
+    n = c(n_psu = a_best, psu_size = m_best),
+    total_n = a_best * m_best,
+    cost = fixed_cost + a_best * (C1 + C2 * m_best),
+    cv = cv_fn(a_best, m_best)
+  )
+}
+
+#' Discrete (integer) 3-stage design via bounded enumeration
+#' @keywords internal
+#' @noRd
+.op_cluster_3stage <- function(stage_cost, delta, rel_var, k, cv, budget,
+                               n_psu, psu_size, ssu_size, resp_rate,
+                               fixed_cost, cont_m, cont_q) {
+  C1 <- stage_cost[1L]
+  C2 <- stage_cost[2L]
+  C3 <- stage_cost[3L]
+  delta1 <- delta[1L]
+  delta2 <- delta[2L]
+  k1 <- k[1L]
+  k2 <- k[2L]
+  vb <- if (!is.null(budget)) budget - fixed_cost else NULL
+  cv_fn <- function(a, m, q) {
+    sqrt(
+      rel_var / (a * resp_rate * m * q) *
+        (k1 * delta1 * m * q + k2 * (1 + delta2 * (q - 1)))
+    )
+  }
+
+  window <- function(fixed, cont) {
+    if (!is.null(fixed)) {
+      max(1L, as.integer(round(fixed)))
+    } else {
+      seq_len(max(60L, min(6L * as.integer(ceiling(cont)) + 1L, 400L)))
+    }
+  }
+  m_cand <- window(psu_size, cont_m)
+  q_cand <- window(ssu_size, cont_q)
+  grid <- expand.grid(m = m_cand, q = q_cand)
+  per_psu <- C1 + C2 * grid$m + C3 * grid$m * grid$q
+
+  if (!is.null(budget)) {
+    a <- if (!is.null(n_psu)) {
+      rep(max(1L, as.integer(round(n_psu))), nrow(grid))
+    } else {
+      as.integer(floor(vb / per_psu))
+    }
+    keep <- a >= 1L & a * per_psu <= vb + 1e-8
+    if (!any(keep)) {
+      stop("no whole-unit design fits the budget", call. = FALSE)
+    }
+    grid <- grid[keep, ]
+    a <- a[keep]
+    cvs <- cv_fn(a, grid$m, grid$q)
+    j <- which.min(cvs + 1e-12 * (grid$m + grid$q))
+  } else {
+    need <- rel_var *
+      (k1 * delta1 * grid$m * grid$q + k2 * (1 + delta2 * (grid$q - 1))) /
+      (grid$m * grid$q * cv^2 * resp_rate)
+    a <- if (!is.null(n_psu)) {
+      a0 <- rep(max(1L, as.integer(round(n_psu))), nrow(grid))
+      keep <- ceiling(need - 1e-9) <= a0
+      if (!any(keep)) {
+        stop("target CV is not achievable with whole units at the given fixed stage-1 size",
+             call. = FALSE)
+      }
+      grid <- grid[keep, ]
+      need <- need[keep]
+      a0[keep]
+    } else {
+      pmax(as.integer(ceiling(need - 1e-9)), 1L)
+    }
+    per_psu <- C1 + C2 * grid$m + C3 * grid$m * grid$q
+    costs <- a * per_psu
+    j <- which.min(costs + 1e-9 * (a * grid$m * grid$q) +
+                     1e-12 * (grid$m + grid$q))
+  }
+
+  a_best <- a[j]
+  m_best <- as.integer(grid$m[j])
+  q_best <- as.integer(grid$q[j])
+  list(
+    n = c(n_psu = a_best, psu_size = m_best, ssu_size = q_best),
+    total_n = a_best * m_best * q_best,
+    cost = fixed_cost +
+      a_best * (C1 + C2 * m_best + C3 * m_best * q_best),
+    cv = cv_fn(a_best, m_best, q_best)
+  )
+}
+
 #' @keywords internal
 #' @noRd
 .n_cluster_2stage <- function(
@@ -426,6 +594,11 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
     )
   }
 
+  operational <- .op_cluster_2stage(
+    stage_cost, delta, rel_var, k, cv, budget, n_psu, psu_size,
+    resp_rate, fixed_cost, cont_m = n2_opt
+  )
+
   n_vec <- c(n_psu = n1_opt, psu_size = n2_opt)
   total_n <- prod(n_vec)
 
@@ -458,7 +631,8 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
     total_n = total_n,
     cv = cv_achieved,
     cost = total_cost,
-    params = params
+    params = params,
+    operational = operational
   )
 }
 
@@ -647,6 +821,11 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
     )
   }
 
+  operational <- .op_cluster_3stage(
+    stage_cost, delta, rel_var, k, cv, budget, n_psu, psu_size, ssu_size,
+    resp_rate, fixed_cost, cont_m = n2, cont_q = n3
+  )
+
   n_vec <- c(n_psu = n1, psu_size = n2, ssu_size = n3)
   total_n <- prod(n_vec)
 
@@ -670,6 +849,7 @@ n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
     total_n = total_n,
     cv = cv_achieved,
     cost = total_cost,
-    params = params
+    params = params,
+    operational = operational
   )
 }

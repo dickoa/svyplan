@@ -378,12 +378,19 @@ test_that("alloc field stores method name for all methods", {
   }
 })
 
-test_that("cumrootf on concentrated discrete data gives a targeted error", {
-  expect_error(
-    strata_bound(rep(1:4, c(100, 1, 1, 1)), n_strata = 4, n = 20,
-                 method = "cumrootf"),
-    "too concentrated"
+test_that("cumrootf falls back to distinct-value boundaries on discrete data", {
+  expect_warning(
+    x <- strata_bound(rep(1:4, c(100, 1, 1, 1)), n_strata = 4, n = 20,
+                      method = "cumrootf"),
+    "adjacent distinct values"
   )
+  d <- x$strata
+  expect_equal(nrow(d), 4L)
+  expect_true(all(d$N >= 1))
+  expect_equal(sum(d$N), 103)
+  expect_length(x$boundaries, 3L)
+  expect_true(all(diff(x$boundaries) > 0))
+  expect_equal(sum(d$n), 20L)
 })
 
 test_that("unit_cost length must be 1 or n_strata", {
@@ -404,4 +411,36 @@ test_that("cv-mode integer allocation meets the cv target", {
   W <- d$N / sum(d$N)
   cv_int <- sqrt(sum(W^2 * d$sd^2 * (1 - d$n / d$N) / d$n)) / mean(aux)
   expect_lte(cv_int, 0.211 * 1.01)
+})
+
+test_that("strata cv describes the integer allocation", {
+  set.seed(123)
+  aux <- rlnorm(100)
+  x <- strata_bound(aux, n_strata = 2, cv = 0.211, method = "cumrootf")
+  d <- x$strata
+  W <- d$N / sum(d$N)
+  cv_chk <- sqrt(sum(W^2 * d$sd^2 * (1 - d$n / d$N) / d$n)) / mean(aux)
+  expect_equal(x$cv, cv_chk, tolerance = 1e-4)
+  expect_lte(x$cv, 0.211 + 1e-10)
+  expect_equal(x$params$cv_target, 0.211)
+  y <- strata_bound(aux, n_strata = 3, n = 30, method = "cumrootf")
+  expect_equal(sum(y$strata$n), 30L)
+  expect_true(all(y$strata$n >= 2))
+})
+
+test_that("kozak handles highly discrete data without NA crashes", {
+  set.seed(7)
+  x <- strata_bound(rep(1:6, c(200, 1, 1, 1, 1, 1)), n_strata = 4, n = 30,
+                    method = "kozak")
+  expect_equal(nrow(x$strata), 4L)
+  expect_true(all(x$strata$N >= 1))
+  expect_equal(sum(x$strata$n), 30L)
+})
+
+test_that("cumrootf errors when distinct values are fewer than strata", {
+  expect_error(
+    strata_bound(rep(1:3, c(50, 3, 2)), n_strata = 4, n = 20,
+                 method = "cumrootf"),
+    "unique values"
+  )
 })

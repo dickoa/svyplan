@@ -112,14 +112,18 @@ Print svyplan objects
 
 \subsection{Print and coercion}{
 
-For \code{svyplan_cluster} objects, per-stage sizes are ceiled to integers
-for operational use. The total shown by \code{print()}, \code{format()}, and
-\code{as.integer()} is the product of ceiled per-stage sizes, the number of
-interviews to actually conduct. The unrounded continuous optimum
-(\code{x$total_n}) is shown in parentheses and returned by \code{as.double()}.
+Constrained designs (\code{n_cluster()}, \code{n_alloc()}, multistage
+\code{n_multi()}) carry two representations: the continuous mathematical
+optimum in the top-level fields (\code{n}, \code{cv}, \code{cost}, ...) and the
+whole-unit field design in \verb{$operational}, whose cost and precision
+are recomputed from the integer design. \code{print()} leads with the
+field design and shows the continuous optimum as a diagnostic.
 
-Summary: \code{as.integer(x)} = operational total (what goes in the field),
-\code{as.double(x)} = continuous optimum (what the math solved for).
+\code{as.integer(x)} returns the operational design in the same shape as
+\code{x$n}: the named integer stage vector for \code{svyplan_cluster} objects,
+the operational total for allocation results, and the ceiled scalar
+otherwise. \code{as.double(x)} returns the continuous counterpart of the
+same shape.
 
 \code{as.data.frame()} returns the tabular form of a result, intended as
 the stable handoff to downstream packages (e.g. samplyr). For

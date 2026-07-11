@@ -833,6 +833,34 @@ check_resp_rate <- function(resp_rate) {
   do.call(paste, c(vals, list(sep = ":")))
 }
 
+#' Error when a supplied gross sample exceeds a finite frame
+#'
+#' Vectorized over groups/indicators; `label` names the offender.
+#' @keywords internal
+#' @noRd
+.check_gross_n <- function(n, N, label = NULL) {
+  len <- max(length(n), length(N))
+  n <- rep_len(n, len)
+  N <- rep_len(N, len)
+  bad <- is.finite(N) & n > N * (1 + 1e-9)
+  if (any(bad)) {
+    i <- which(bad)[1L]
+    where <- if (!is.null(label)) {
+      sprintf(" for %s", rep_len(label, len)[i])
+    } else {
+      ""
+    }
+    stop(
+      sprintf(
+        "'n' exceeds the population%s: cannot draw %s units without replacement from N = %s",
+        where, round(n[i], 1), N[i]
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 #' Error when a gross sample cannot be drawn from a finite frame
 #' @keywords internal
 #' @noRd

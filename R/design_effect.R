@@ -4,7 +4,10 @@
 #' that dispatches on the class of `x`.
 #'
 #' @param x A numeric vector of survey weights (for diagnostic methods),
-#'   or `NULL` (for the `"cluster"` planning method).
+#'   or `NULL` (for the `"cluster"` planning method). The `"cr"` method
+#'   requires weights on the population scale (inverse inclusion
+#'   probabilities): the sum of weights must exceed the sample size,
+#'   overall and within every stratum; normalized weights are rejected.
 #' @param ... Additional arguments passed to methods.
 #'
 #' @return For `"kish"`, `"cluster"`, `"henry"`, `"spencer"`: a numeric
@@ -303,9 +306,9 @@ design_effect.default <- function(
   if (!is.null(cluster_id) && length(cluster_id) != n) {
     stop("'cluster_id' must have the same length as weights", call. = FALSE)
   }
-  if (mean(w) < 1) {
+  if (sum(w) <= n) {
     stop(
-      "the CR method requires weights on the population scale (inverse inclusion probabilities, typically >= 1); normalized weights are not valid",
+      "the CR method requires weights on the population scale (inverse inclusion probabilities): the sum of weights must exceed the sample size",
       call. = FALSE
     )
   }
@@ -388,11 +391,19 @@ design_effect.default <- function(
     }
   }
 
-  if (!is.null(strata_id)) {
+  out <- if (!is.null(strata_id)) {
     .deff_cr_stratified(w, y, strata_id, cluster_id, stages, n, sig2)
   } else {
     .deff_cr_unstratified(w, y, cluster_id, n, sig2)
   }
+  comp <- unlist(out$strata[vapply(out$strata, is.numeric, logical(1L))])
+  if (any(!is.finite(c(comp, out$overall))) || out$overall < 0) {
+    stop(
+      "the CR design effect produced non-finite or negative components; check the weight scale, strata, and cluster structure",
+      call. = FALSE
+    )
+  }
+  out
 }
 
 #' Linearization deff for a single stratum with clusters
@@ -435,7 +446,19 @@ design_effect.default <- function(
   }
 
   w_grp <- split(w, str_idx)
-  Wh <- vapply(w_grp, sum, numeric(1L)) / sum(w)
+  sw_h <- vapply(w_grp, sum, numeric(1L))
+  bad_scale <- sw_h <= nh
+  if (any(bad_scale)) {
+    i <- which(bad_scale)[1L]
+    stop(
+      sprintf(
+        "stratum '%s': the sum of weights (%.4g) must exceed the stratum sample size (%d); CR weights must be on the population scale in every stratum",
+        strat[i], sw_h[i], nh[i]
+      ),
+      call. = FALSE
+    )
+  }
+  Wh <- sw_h / sum(w)
 
   y_grp <- split(y, str_idx)
   cv2h <- sig2h <- deff_s <- numeric(H)

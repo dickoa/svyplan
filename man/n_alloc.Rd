@@ -130,8 +130,14 @@ derived effective per-element cost
 \code{cost_psu / psu_size + cost_ssu} (1 when no stage costs were
 given), while \code{sd} stays the input stratum SD.}
 \item{\code{n}}{Allocated sample size (continuous).}
-\item{\code{n_int}}{Integer allocation, rounded so the total is
-preserved (ORIC rounding).}
+\item{\code{n_int}}{Integer allocation. In \code{n} mode the requested
+total is preserved (bounded largest-remainder rounding); in
+\code{cv} mode each stratum is rounded up so the integer design
+meets the target; in \code{budget} mode units are added by variance
+reduction per unit cost so the integer design stays within
+budget. Always inside the integerized bounds
+(\code{ceiling(.lower)}, \code{floor(.upper)}); an error is raised when
+no integer allocation can satisfy them.}
 \item{\code{weight}}{Design weight \code{N / n}.}
 \item{\code{n_eff}}{Effective sample size \code{n * resp_rate / deff}.}
 \item{\code{.lower}, \code{.upper}}{Bounds applied to the stratum
@@ -140,10 +146,19 @@ preserved (ORIC rounding).}
 bounds.}
 \item{\code{take_all}, \code{mean}}{Present when take-all strata or stratum
 means were supplied.}
-\item{\code{psu_size}, \code{n_psu}, \code{n_psu_int}}{Cluster mode only: the
-per-stratum take, the implied number of PSUs (\code{n / psu_size}),
-and its ceiling.}
+\item{\code{psu_size}, \code{n_psu}}{Cluster mode only: the continuous
+per-stratum take and implied number of PSUs (\code{n / psu_size}).}
+\item{\code{n_psu_int}, \code{psu_size_int}}{Cluster mode only: the
+whole-unit field design (whole PSUs and whole takes), chosen so
+that \code{budget} designs stay within budget and \code{cv} designs meet
+the target; \code{n_int = n_psu_int * psu_size_int}.}
 }
+
+The result also carries an \verb{$operational} list describing the
+integer field design: \code{n} (total), \code{cost}, \code{se}, \code{moe}, and \code{cv},
+all recomputed from the integer allocation. Top-level \code{n}, \code{se},
+\code{moe}, and \code{cv} describe the continuous optimum;
+\code{as.integer()} returns the operational total.
 }
 \description{
 Distribute a total sample size across strata defined by a single
@@ -221,11 +236,10 @@ Because \code{delta_psu} already accounts for the clustering, leave
 effect (e.g. weighting loss); a clustering \code{deff} on top of
 \code{delta_psu} would double-count. The constraints \code{min_n},
 \code{max_weight}, and \code{take_all} stay in element units. For fielding,
-use \code{n_psu_int} PSUs with \code{ceiling(psu_size)} elements each;
-\code{n_psu_int} is derived from the continuous \code{n}, so
-\code{n_psu_int * psu_size} can differ slightly from \code{n_int} and the
-integerized cost can exceed a \code{budget} target by up to one PSU per
-stratum.
+use the whole-unit design in \code{n_psu_int} and \code{psu_size_int}
+(\code{n_int = n_psu_int * psu_size_int}); its actual field cost and
+precision are reported in \verb{$operational} and, in \code{budget} mode,
+never exceed the budget.
 }
 
 \subsection{Domains vs. strata}{

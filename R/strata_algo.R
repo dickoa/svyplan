@@ -279,7 +279,7 @@
 #' Dalenius-Hodges cumulative sqrt(f) rule
 #' @keywords internal
 #' @noRd
-.strata_cumrootf <- function(x, L, nclass = NULL) {
+.strata_cumrootf <- function(x, L, nclass = NULL, warn = TRUE) {
   if (is.null(nclass)) {
     nclass <- nclass.FD(x)
   }
@@ -292,15 +292,47 @@
   idx <- pmin(idx, length(h$breaks) - 1L)
   bk <- unique(h$breaks[idx + 1L])
   if (length(bk) < L - 1L) {
+    bk <- .strata_cumrootf_discrete(x, L, warn = warn)
+  }
+  bk
+}
+
+#' Fallback boundaries for concentrated or discrete distributions
+#'
+#' Applies the cumulative-root-frequency rule to the distinct observed
+#' values and forces strictly increasing cuts, so any input with at
+#' least `L` distinct values yields `L` nonempty strata. Boundaries are
+#' placed midway between adjacent distinct values.
+#' @keywords internal
+#' @noRd
+.strata_cumrootf_discrete <- function(x, L, warn = TRUE) {
+  ux <- sort(unique(x))
+  nu <- length(ux)
+  if (nu < L) {
     stop(
       sprintf(
-        "'cumrootf' cannot form %d strata: the distribution of 'x' is too concentrated (only %d distinct usable boundaries); reduce 'n_strata' or use method = \"kozak\"",
-        L, length(bk)
+        "'cumrootf' cannot form %d strata from %d distinct values; reduce 'n_strata'",
+        L, nu
       ),
       call. = FALSE
     )
   }
-  bk
+  if (warn) {
+    warning(
+      "cumulative-root-frequency boundaries are degenerate for this distribution; boundaries placed between adjacent distinct values",
+      call. = FALSE
+    )
+  }
+  counts <- tabulate(match(x, ux), nbins = nu)
+  csf <- cumsum(sqrt(counts))
+  targets <- csf[nu] * seq_len(L - 1L) / L
+  idx <- vapply(targets, function(t) which.min(abs(csf - t)), integer(1L))
+  for (j in seq_along(idx)) {
+    lo <- if (j == 1L) 1L else idx[j - 1L] + 1L
+    hi <- nu - (L - 1L) + j - 1L
+    idx[j] <- min(max(idx[j], lo), hi)
+  }
+  (ux[idx] + ux[idx + 1L]) / 2
 }
 
 #' Geometric progression boundaries
@@ -501,7 +533,7 @@
     }
   }
 
-  init_bk <- .strata_cumrootf(x_sort, L)
+  init_bk <- .strata_cumrootf(x_sort, L, warn = FALSE)
   if (length(init_bk) < L - 1L) {
     quant_p <- seq(0, 1, length.out = L + 1L)[2:L]
     init_bk <- unname(quantile(x_sort, probs = quant_p))
@@ -533,6 +565,9 @@
     }
     cur_pidx <- c(0L, uniq_pidx[cur_idx], N)
     cur_obj <- obj_from_pidx(cur_pidx)
+    if (!is.finite(cur_obj)) {
+      cur_obj <- Inf
+    }
 
     for (step in seq_len(maxiter)) {
       ri <- ri + 1L
@@ -553,7 +588,7 @@
       new_pidx[h + 1L] <- uniq_pidx[new_h]
       new_obj <- obj_from_pidx(new_pidx)
 
-      if (new_obj < cur_obj) {
+      if (is.finite(new_obj) && new_obj < cur_obj) {
         cur_idx[h] <- new_h
         cur_pidx <- new_pidx
         cur_obj <- new_obj
@@ -566,6 +601,43 @@
     }
   }
   list(bk = x_uniq[best_idx], converged = NA)
+}
+
+#' Largest-remainder rounding constrained to integer bounds
+#'
+#' Preserves the (rounded) total while keeping every element inside
+#' `[lo, hi]`. Errors when no integer vector can satisfy both.
+#' @keywords internal
+#' @noRd
+.round_oric_bounded <- function(x, lo, hi, total = NULL) {
+  T <- as.integer(round(if (is.null(total)) sum(x) else total))
+  lo <- as.integer(lo)
+  hi <- as.integer(hi)
+  if (sum(lo) > T || sum(hi) < T) {
+    stop(
+      sprintf(
+        "no integer allocation preserves the total (%d) within the integer bounds (feasible totals: %d to %d); relax the constraints or change the target",
+        T, sum(lo), sum(hi)
+      ),
+      call. = FALSE
+    )
+  }
+  m <- pmin(pmax(as.integer(floor(x)), lo), hi)
+  d <- T - sum(m)
+  while (d != 0L) {
+    if (d > 0L) {
+      cand <- which(m < hi)
+      j <- cand[which.max(x[cand] - m[cand])]
+      m[j] <- m[j] + 1L
+      d <- d - 1L
+    } else {
+      cand <- which(m > lo)
+      j <- cand[which.max(m[cand] - x[cand])]
+      m[j] <- m[j] - 1L
+      d <- d + 1L
+    }
+  }
+  m
 }
 
 #' @keywords internal

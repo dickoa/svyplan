@@ -94,8 +94,14 @@
 #'       `cost_psu / psu_size + cost_ssu` (1 when no stage costs were
 #'       given), while `sd` stays the input stratum SD.}
 #'     \item{`n`}{Allocated sample size (continuous).}
-#'     \item{`n_int`}{Integer allocation, rounded so the total is
-#'       preserved (ORIC rounding).}
+#'     \item{`n_int`}{Integer allocation. In `n` mode the requested
+#'       total is preserved (bounded largest-remainder rounding); in
+#'       `cv` mode each stratum is rounded up so the integer design
+#'       meets the target; in `budget` mode units are added by variance
+#'       reduction per unit cost so the integer design stays within
+#'       budget. Always inside the integerized bounds
+#'       (`ceiling(.lower)`, `floor(.upper)`); an error is raised when
+#'       no integer allocation can satisfy them.}
 #'     \item{`weight`}{Design weight `N / n`.}
 #'     \item{`n_eff`}{Effective sample size `n * resp_rate / deff`.}
 #'     \item{`.lower`, `.upper`}{Bounds applied to the stratum
@@ -104,10 +110,19 @@
 #'       bounds.}
 #'     \item{`take_all`, `mean`}{Present when take-all strata or stratum
 #'       means were supplied.}
-#'     \item{`psu_size`, `n_psu`, `n_psu_int`}{Cluster mode only: the
-#'       per-stratum take, the implied number of PSUs (`n / psu_size`),
-#'       and its ceiling.}
+#'     \item{`psu_size`, `n_psu`}{Cluster mode only: the continuous
+#'       per-stratum take and implied number of PSUs (`n / psu_size`).}
+#'     \item{`n_psu_int`, `psu_size_int`}{Cluster mode only: the
+#'       whole-unit field design (whole PSUs and whole takes), chosen so
+#'       that `budget` designs stay within budget and `cv` designs meet
+#'       the target; `n_int = n_psu_int * psu_size_int`.}
 #'   }
+#'
+#'   The result also carries an `$operational` list describing the
+#'   integer field design: `n` (total), `cost`, `se`, `moe`, and `cv`,
+#'   all recomputed from the integer allocation. Top-level `n`, `se`,
+#'   `moe`, and `cv` describe the continuous optimum;
+#'   `as.integer()` returns the operational total.
 #'
 #' @details
 #' ## Building the frame
@@ -176,11 +191,10 @@
 #' effect (e.g. weighting loss); a clustering `deff` on top of
 #' `delta_psu` would double-count. The constraints `min_n`,
 #' `max_weight`, and `take_all` stay in element units. For fielding,
-#' use `n_psu_int` PSUs with `ceiling(psu_size)` elements each;
-#' `n_psu_int` is derived from the continuous `n`, so
-#' `n_psu_int * psu_size` can differ slightly from `n_int` and the
-#' integerized cost can exceed a `budget` target by up to one PSU per
-#' stratum.
+#' use the whole-unit design in `n_psu_int` and `psu_size_int`
+#' (`n_int = n_psu_int * psu_size_int`); its actual field cost and
+#' precision are reported in `$operational` and, in `budget` mode,
+#' never exceed the budget.
 #'
 #' ## Domains vs. strata
 #'
@@ -324,6 +338,16 @@ n_alloc.default <- function(
   )
   m_h <- bounds$m_h
   M_h <- bounds$M_h
+  lo_i <- as.integer(ceiling(m_h - 1e-9))
+  hi_i <- as.integer(floor(M_h + 1e-9))
+  if (any(lo_i > hi_i)) {
+    bad <- prep$stratum[lo_i > hi_i]
+    stop(
+      sprintf("no integer sample size satisfies the bounds for stratum: %s",
+              paste(bad, collapse = ", ")),
+      call. = FALSE
+    )
+  }
 
   lo <- sum(m_h)
   hi <- sum(M_h)
@@ -351,6 +375,15 @@ n_alloc.default <- function(
     if (n > hi + tol) {
       stop("'n' exceeds the maximum feasible total (census bound)",
            call. = FALSE)
+    }
+    if (round(n) < sum(lo_i) || round(n) > sum(hi_i)) {
+      stop(
+        sprintf(
+          "no integer allocation reaches total %d within the integer bounds (feasible totals: %d to %d)",
+          as.integer(round(n)), sum(lo_i), sum(hi_i)
+        ),
+        call. = FALSE
+      )
     }
     target_total <- n
   } else if (mode == "cv") {
@@ -395,6 +428,15 @@ n_alloc.default <- function(
     check_scalar(budget, "budget")
     cost_lo <- sum(m_h * cost_h)
     cost_hi <- sum(M_h * cost_h)
+    if (budget < sum(lo_i * cost_h) - tol) {
+      stop(
+        sprintf(
+          "'budget' cannot fund the integer lower bounds (minimum integer cost = %.4g)",
+          sum(lo_i * cost_h)
+        ),
+        call. = FALSE
+      )
+    }
 
     if (budget < cost_lo - tol) {
       stop("'budget' is below the minimum feasible cost under constraints",
@@ -428,7 +470,7 @@ n_alloc.default <- function(
   detail <- .alloc_detail(
     prep = prep, n_h = n_h, m_h = m_h, M_h = M_h,
     resp_rate = resp_rate, deff = deff,
-    mode = mode, budget = budget
+    mode = mode, budget = budget, lo_i = lo_i, hi_i = hi_i
   )
   domain_summary <- .alloc_domain_summary(
     prep = prep, n_h = n_h,
@@ -451,6 +493,19 @@ n_alloc.default <- function(
   )
   params[[mode]] <- switch(mode, n = n, cv = cv, budget = budget)
 
+  if (isTRUE(prep$cluster)) {
+    opc <- .alloc_operational_cluster(
+      prep, detail, n_h, mode, budget,
+      alpha = alpha, deff = deff, resp_rate = resp_rate
+    )
+    detail <- opc$detail
+    operational <- opc$operational
+  } else {
+    operational <- .alloc_operational_element(
+      prep, detail, alpha = alpha, deff = deff, resp_rate = resp_rate
+    )
+  }
+
   obj <- .new_svyplan_n(
     n = sum(n_h),
     type = "alloc",
@@ -463,6 +518,7 @@ n_alloc.default <- function(
   obj$se <- metrics$se
   obj$moe <- metrics$moe
   obj$cv <- metrics$cv
+  obj$operational <- operational
 
   obj
 }
@@ -908,10 +964,14 @@ prec_alloc.svyplan_n <- function(x, ...) {
   prep$S_h <- prep$S_h * sqrt(k * (1 + delta * (psu_size_h - 1)))
   if (has_costs) {
     prep$cost_h <- frame$cost_psu / psu_size_h + frame$cost_ssu
+    prep$cost_psu_h <- frame$cost_psu
+    prep$cost_ssu_h <- frame$cost_ssu
   }
   prep$cluster <- TRUE
   prep$has_stage_costs <- has_costs
   prep$psu_size_h <- psu_size_h
+  prep$delta_psu_h <- delta
+  prep$k_psu_h <- k
   prep
 }
 
@@ -990,13 +1050,20 @@ prec_alloc.svyplan_n <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .alloc_detail <- function(prep, n_h, m_h, M_h, resp_rate, deff,
-                          mode = "n", budget = NULL) {
+                          mode = "n", budget = NULL,
+                          lo_i = NULL, hi_i = NULL) {
+  if (is.null(lo_i)) {
+    lo_i <- as.integer(ceiling(pmax(ifelse(is.na(m_h), 0, m_h), 0) - 1e-9))
+  }
+  if (is.null(hi_i)) {
+    hi_i <- as.integer(floor(M_h + 1e-9))
+  }
   n_int <- switch(
     mode,
-    cv = as.integer(pmin(ceiling(n_h - 1e-9), floor(M_h + 1e-9))),
-    budget = .round_within_budget(n_h, prep$cost_h, budget, m_h, M_h,
+    cv = pmin(pmax(as.integer(ceiling(n_h - 1e-9)), lo_i), hi_i),
+    budget = .round_within_budget(n_h, prep$cost_h, budget, lo_i, hi_i,
                                   prep$N_h, prep$S_h),
-    .round_oric(n_h)
+    .round_oric_bounded(n_h, lo_i, hi_i)
   )
   out <- data.frame(
     stratum = prep$stratum,
@@ -1028,10 +1095,9 @@ prec_alloc.svyplan_n <- function(x, ...) {
 #' is largest while the budget allows.
 #' @keywords internal
 #' @noRd
-.round_within_budget <- function(n_h, cost_h, budget, m_h, M_h, N_h, S_h) {
-  lower <- ceiling(pmax(m_h, 1) - 1e-9)
-  upper <- floor(M_h + 1e-9)
-  n_int <- pmin(pmax(floor(n_h + 1e-9), lower), upper)
+.round_within_budget <- function(n_h, cost_h, budget, lower, upper,
+                                 N_h, S_h) {
+  n_int <- pmin(pmax(as.integer(floor(n_h + 1e-9)), lower), upper)
   W2S2 <- (N_h / sum(N_h))^2 * S_h^2
   repeat {
     spare <- budget - sum(n_int * cost_h)
@@ -1044,6 +1110,133 @@ prec_alloc.svyplan_n <- function(x, ...) {
     n_int[j] <- n_int[j] + 1L
   }
   as.integer(n_int)
+}
+
+#' Operational (integer) design for an element allocation
+#'
+#' Recomputes cost and precision from the integer allocation so the
+#' operational metrics describe the fieldable design, not the
+#' continuous optimum.
+#' @keywords internal
+#' @noRd
+.alloc_operational_element <- function(prep, detail, alpha, deff, resp_rate) {
+  n_int <- detail$n_int
+  m <- .alloc_metrics(
+    N_h = prep$N_h, S_h = prep$S_h, mean_h = prep$mean_h, n_h = n_int,
+    alpha = alpha, deff = deff, resp_rate = resp_rate, cost_h = prep$cost_h
+  )
+  list(
+    n = sum(n_int),
+    cost = sum(n_int * prep$cost_h),
+    se = m$se, moe = m$moe, cv = m$cv
+  )
+}
+
+#' Operational (integer) design for a stratified two-stage allocation
+#'
+#' Chooses a whole per-stratum take b_h (floor/ceiling candidate with the
+#' lowest variance-cost product when stage costs are known) and a whole
+#' PSU count a_h per stratum. In cv mode a_h matches or beats each
+#' stratum's continuous variance contribution; in budget mode PSUs are
+#' removed/added greedily so the field cost sum(a_h * (cost_psu +
+#' cost_ssu * b_h)) never exceeds the budget; in n mode a_h approximates
+#' the continuous element total. Returns the design plus recomputed
+#' metrics and updates the detail integers.
+#' @keywords internal
+#' @noRd
+.alloc_operational_cluster <- function(prep, detail, n_h, mode, budget,
+                                       alpha, deff, resp_rate) {
+  H <- length(n_h)
+  ps <- prep$psu_size_h
+  delta <- prep$delta_psu_h
+  k <- prep$k_psu_h
+  S_raw <- prep$S_raw_h
+  W <- prep$N_h / sum(prep$N_h)
+  infl <- function(b) k * (1 + delta * (b - 1))
+
+  b_h <- vapply(seq_len(H), function(h) {
+    cand <- unique(c(max(1L, as.integer(floor(ps[h]))),
+                     as.integer(ceiling(ps[h]))))
+    if (length(cand) == 1L) {
+      return(cand)
+    }
+    if (isTRUE(prep$has_stage_costs)) {
+      score <- (k[h] * (1 + delta[h] * (cand - 1))) *
+        (prep$cost_psu_h[h] / cand + prep$cost_ssu_h[h])
+      cand[which.min(score)]
+    } else {
+      max(1L, as.integer(round(ps[h])))
+    }
+  }, integer(1L))
+
+  psu_cost <- if (isTRUE(prep$has_stage_costs)) {
+    prep$cost_psu_h + prep$cost_ssu_h * b_h
+  } else {
+    rep(NA_real_, H)
+  }
+  S_op <- S_raw * sqrt(k * (1 + delta * (b_h - 1)))
+  Cj <- W^2 * S_op^2 * deff / (b_h * resp_rate)
+
+  if (mode == "cv") {
+    a_h <- as.integer(ceiling(
+      n_h * (1 + delta * (b_h - 1)) / (1 + delta * (ps - 1)) / b_h - 1e-9
+    ))
+    a_h <- pmax(a_h, 1L)
+  } else if (mode == "budget") {
+    min_cost <- sum(psu_cost)
+    if (budget < min_cost - 1e-8) {
+      stop(
+        sprintf(
+          "'budget' cannot fund one whole PSU per stratum (minimum field cost = %.4g)",
+          min_cost
+        ),
+        call. = FALSE
+      )
+    }
+    a_h <- pmax(1L, as.integer(floor(n_h / ps + 1e-9)))
+    repeat {
+      if (sum(a_h * psu_cost) - budget <= 1e-8) {
+        break
+      }
+      cand <- which(a_h > 1L)
+      loss <- Cj[cand] * (1 / (a_h[cand] - 1L) - 1 / a_h[cand]) /
+        psu_cost[cand]
+      j <- cand[which.min(loss)]
+      a_h[j] <- a_h[j] - 1L
+    }
+    repeat {
+      spare <- budget - sum(a_h * psu_cost)
+      cand <- which(psu_cost <= spare + 1e-8 &
+                      (a_h + 1L) * b_h <= prep$N_h)
+      if (length(cand) == 0L) {
+        break
+      }
+      gain <- Cj[cand] * (1 / a_h[cand] - 1 / (a_h[cand] + 1L)) /
+        psu_cost[cand]
+      j <- cand[which.max(gain)]
+      a_h[j] <- a_h[j] + 1L
+    }
+  } else {
+    a_h <- pmax(1L, as.integer(round(n_h / b_h)))
+  }
+
+  e_h <- a_h * b_h
+  m <- .alloc_metrics(
+    N_h = prep$N_h, S_h = S_op, mean_h = prep$mean_h, n_h = e_h,
+    alpha = alpha, deff = deff, resp_rate = resp_rate, cost_h = prep$cost_h
+  )
+  detail$n_int <- as.integer(e_h)
+  detail$n_psu_int <- a_h
+  detail$psu_size_int <- b_h
+  list(
+    operational = list(
+      n = sum(e_h),
+      cost = if (isTRUE(prep$has_stage_costs)) sum(a_h * psu_cost)
+             else NA_real_,
+      se = m$se, moe = m$moe, cv = m$cv
+    ),
+    detail = detail
+  )
 }
 
 #' @keywords internal

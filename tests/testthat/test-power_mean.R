@@ -230,9 +230,13 @@ test_that("finite vector N solve-n round-trips to target power", {
 
 test_that("power_mean census guard with unequal n", {
   expect_warning(
-    res <- power_mean(effect = 5, var = 100, n = c(500, 500),
+    res <- power_mean(effect = 5, var = 100, n = c(400, 400),
                        power = NULL, N = 400),
     "census"
   )
   expect_equal(res$power, 1)
+  expect_error(
+    power_mean(effect = 5, var = 100, n = c(500, 500), power = NULL, N = 400),
+    "cannot draw"
+  )
 })

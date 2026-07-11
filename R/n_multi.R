@@ -62,7 +62,9 @@
 #'   (`stage_cost`, `fixed_cost`).
 #'
 #' @return A `svyplan_n` object (simple mode) or `svyplan_cluster` object
-#'   (multistage mode).
+#'   (multistage mode). Multistage results without domains also carry an
+#'   `$operational` list with the ceiled whole-unit stage sizes and the
+#'   cost and worst-case cv recomputed from that integer design.
 #'
 #'   **Without domains**, the object contains:
 #'   \describe{
@@ -1005,6 +1007,14 @@ n_multi.default <- function(
 
   n_vec <- c(n_psu = n1_opt, psu_size = psu_size_opt)
   total_n <- prod(n_vec)
+  op_n <- as.integer(ceiling(n_vec - 1e-9))
+  op_cvs <- cv_achieved_fn(op_n[[1L]], op_n[[2L]])
+  operational <- list(
+    n = c(n_psu = op_n[[1L]], psu_size = op_n[[2L]]),
+    total_n = prod(op_n),
+    cost = fixed_cost + op_n[[1L]] * (C1 + C2 * op_n[[2L]]),
+    cv = max(op_cvs)
+  )
 
   n1_per <- n1_required(psu_size_opt)
   n_per <- n1_per * psu_size_opt
@@ -1041,7 +1051,8 @@ n_multi.default <- function(
     params = params,
     targets = targets,
     detail = detail,
-    binding = labels[binding_idx]
+    binding = labels[binding_idx],
+    operational = operational
   )
 }
 
@@ -1418,6 +1429,15 @@ n_multi.default <- function(
 
   n_vec <- c(n_psu = n1_opt, psu_size = psu_size_opt, ssu_size = ssu_size_opt)
   total_n <- prod(n_vec)
+  op_n <- as.integer(ceiling(n_vec - 1e-9))
+  op_cvs <- cv_achieved_fn(op_n[[1L]], op_n[[2L]], op_n[[3L]])
+  operational <- list(
+    n = c(n_psu = op_n[[1L]], psu_size = op_n[[2L]], ssu_size = op_n[[3L]]),
+    total_n = prod(op_n),
+    cost = fixed_cost + op_n[[1L]] *
+      (C1 + C2 * op_n[[2L]] + C3 * op_n[[2L]] * op_n[[3L]]),
+    cv = max(op_cvs)
+  )
 
   n1_per <- n1_required(psu_size_opt, ssu_size_opt)
   n_per <- n1_per * psu_size_opt * ssu_size_opt
@@ -1451,7 +1471,8 @@ n_multi.default <- function(
     params = params,
     targets = targets,
     detail = detail,
-    binding = labels[binding_idx]
+    binding = labels[binding_idx],
+    operational = operational
   )
 }
 

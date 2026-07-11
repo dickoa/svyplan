@@ -375,9 +375,10 @@ test_that("fixed_cost validation rejects bad inputs", {
   )
 })
 
-test_that("as.integer equals product of ceiled stage sizes", {
+test_that("as.integer returns the operational stage vector", {
   res <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
-  expect_equal(as.integer(res), as.integer(prod(ceiling(res$n))))
+  expect_identical(as.integer(res), as.integer(res$operational$n))
+  expect_named(res$operational$n, c("n_psu", "psu_size"))
 })
 
 test_that("fixed_cost round-trip n_cluster -> prec_cluster -> n_cluster", {
@@ -394,13 +395,13 @@ test_that("fixed_cost round-trip n_cluster -> prec_cluster -> n_cluster", {
   expect_equal(back$params$fixed_cost, 5000)
 })
 
-test_that("cluster display total equals product of ceiled stage sizes", {
+test_that("cluster display totals come from the operational design", {
   x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
-  expect_equal(as.integer(x), as.integer(prod(ceiling(x$n))))
-  expect_match(format(x), as.character(prod(ceiling(x$n))))
+  op <- x$operational
+  expect_equal(op$total_n, prod(op$n))
+  expect_match(format(x), as.character(op$total_n))
   out <- capture.output(print(x))
-  total_str <- as.character(prod(ceiling(x$n)))
-  expect_true(any(grepl(total_str, out)))
+  expect_true(any(grepl(sprintf("total n = %d", op$total_n), out)))
 })
 
 test_that("n_cluster accepts named delta vector in correct order", {
@@ -850,4 +851,47 @@ test_that("fixed stage sizes below 1 are rejected", {
   expect_error(n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05,
                          psu_size = 0.5),
                "'psu_size' must be at least 1")
+})
+
+test_that("operational budget designs never exceed the budget", {
+  grid <- expand.grid(C1 = c(50, 500, 2000), C2 = c(10, 50),
+                      delta = c(0.02, 0.3), budget = c(1500, 25000))
+  for (i in seq_len(nrow(grid))) {
+    g <- grid[i, ]
+    x <- suppressWarnings(try(
+      n_cluster(stage_cost = c(g$C1, g$C2), delta = g$delta, budget = g$budget),
+      silent = TRUE
+    ))
+    if (inherits(x, "try-error")) next
+    op <- x$operational
+    expect_lte(op$cost, g$budget + 1e-8)
+    expect_true(all(op$n >= 1))
+    expect_equal(op$cv, prec_cluster(n = op$n, delta = g$delta)$cv,
+                 tolerance = 1e-10)
+  }
+})
+
+test_that("operational cv designs meet the target at whole units", {
+  for (target in c(0.03, 0.05, 0.1)) {
+    x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = target)
+    op <- x$operational
+    expect_lte(op$cv, target + 1e-10)
+    expect_true(all(op$n == round(op$n)))
+    x3 <- n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+                    cv = target)
+    op3 <- x3$operational
+    expect_lte(op3$cv, target + 1e-10)
+    expect_gte(x3$cost, 0.99 * op3$cost - 2 * (500 + 100 + 50))
+  }
+})
+
+test_that("3-stage operational budget design fits and beats naive ceiling", {
+  x <- n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
+                 budget = 20000)
+  op <- x$operational
+  expect_lte(op$cost, 20000)
+  expect_equal(op$total_n, prod(op$n))
+  naive <- ceiling(x$n)
+  naive_cost <- naive[[1]] * (500 + 100 * naive[[2]] + 50 * naive[[2]] * naive[[3]])
+  expect_true(naive_cost > 20000 || op$cv <= x$cv * 1.5)
 })
