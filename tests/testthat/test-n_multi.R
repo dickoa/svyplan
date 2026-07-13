@@ -5,6 +5,43 @@ test_that("n_multi rejects non-data-frame", {
   expect_error(nm(data.frame()), "non-empty data frame")
 })
 
+test_that("2-stage operational budget design never exceeds the budget", {
+  targets <- data.frame(name = "x", p = 0.5, cv = 0.1, delta_psu = 0.05)
+  x <- n_multi(targets, stage_cost = c(500, 50), budget = 1200)
+
+  expect_lte(x$operational$cost, 1200 + 1e-8)
+  expect_true(all(x$operational$n == as.integer(x$operational$n)))
+  expect_equal(
+    x$operational$cost,
+    unname(x$operational$n[1] * (500 + 50 * x$operational$n[2]))
+  )
+})
+
+test_that("multi-indicator operational CV designs meet every target", {
+  targets <- data.frame(
+    name = c("a", "b"), p = c(0.3, 0.5), cv = c(0.08, 0.06),
+    delta_psu = c(0.03, 0.08)
+  )
+  x <- n_multi(targets, stage_cost = c(500, 50))
+
+  expect_true(all(x$operational$cv_by_target <= targets$cv + 1e-10))
+})
+
+test_that("3-stage operational designs preserve budget and precision constraints", {
+  targets <- data.frame(
+    p = c(0.3, 0.5), cv = c(0.10, 0.08),
+    delta_psu = c(0.03, 0.08), delta_ssu = c(0.05, 0.10)
+  )
+  costs <- c(500, 100, 20)
+
+  budget <- n_multi(targets, stage_cost = costs, budget = 5000)
+  expect_lte(budget$operational$cost, 5000 + 1e-8)
+  expect_true(all(budget$operational$n == as.integer(budget$operational$n)))
+
+  precision <- n_multi(targets, stage_cost = costs)
+  expect_true(all(precision$operational$cv_by_target <= targets$cv + 1e-10))
+})
+
 test_that("n_multi requires p or var column", {
   expect_error(nm(data.frame(moe = 0.05)), "must contain 'p' or 'var'")
 })

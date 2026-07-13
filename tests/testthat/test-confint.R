@@ -8,6 +8,17 @@ test_that("confint.svyplan_n works for proportion", {
   expect_equal(mid, 0.3, tolerance = 1e-6)
 })
 
+test_that("proportion confint uses the net sample, not n/deff, in the FPC", {
+  result <- n_prop(p = 0.5, moe = 0.1, N = 100, deff = 2)
+  ci <- confint(result)
+
+  expect_equal(unname(diff(ci[1, ]) / 2), result$moe, tolerance = 1e-10)
+
+  prec <- prec_prop(p = 0.5, n = result$n, N = 100, deff = 2)
+  expect_equal(unname(diff(confint(prec)[1, ]) / 2), prec$moe,
+               tolerance = 1e-10)
+})
+
 test_that("confint.svyplan_n works for mean", {
   result <- n_mean(var = 100, moe = 2, mu = 50)
   ci <- confint(result)

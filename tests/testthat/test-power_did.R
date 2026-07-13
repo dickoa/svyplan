@@ -239,13 +239,19 @@ test_that("power_did: resp_rate inflates n", {
 })
 
 test_that("power_did: census guard with finite N", {
-  expect_warning(
-    power_did(
-      treat = c(50, 55), control = c(50, 52),
-      outcome = "mean", var = 100, effect = 5, power = NULL, n = 100, N = 100
-    ),
-    "census"
+  full <- power_did(
+    treat = c(50, 55), control = c(50, 52),
+    outcome = "mean", var = 100, effect = 5, power = NULL, n = 100, N = 100
   )
+  expect_equal(full$power, 1)
+
+  partial <- power_did(
+    treat = c(50, 55), control = c(50, 52), outcome = "mean",
+    var = 100, effect = 5, power = NULL,
+    n = c(100, 20), N = c(100, 100)
+  )
+  expect_lt(partial$power, 1)
+
   expect_error(
     power_did(
       treat = c(50, 55), control = c(50, 52),

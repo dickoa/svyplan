@@ -608,13 +608,18 @@ format.svyplan_power <- function(x, ...) {
   resp_rate = 1,
   method = "wald"
 ) {
-  n_eff <- n * resp_rate / deff
+  # The number entering the FPC is the net number of responding units.
+  # The design effect inflates variance; it does not reduce the sampling
+  # fraction.  Transformed intervals still use n_eff in their large-sample
+  # variance, consistently with .prec_engine_prop().
+  n_net <- n * resp_rate
+  n_eff <- n_net / deff
   z <- qnorm(1 - alpha / 2)
   method <- match.arg(method, c("wald", "wilson", "logodds"))
 
   if (method == "wald") {
-    fpc <- if (is.infinite(N)) 1 else (N - n_eff) / (N - 1)
-    fpc <- .clamp_fpc(fpc, n_eff, N)
+    fpc <- if (is.infinite(N)) 1 else (N - n_net) / (N - 1)
+    fpc <- .clamp_fpc(fpc, n_net, N)
     se <- sqrt(p * (1 - p) * fpc / n_eff)
     lo <- p - z * se
     hi <- p + z * se
@@ -625,8 +630,8 @@ format.svyplan_power <- function(x, ...) {
     lo <- center - half
     hi <- center + half
   } else {
-    fpc <- if (is.infinite(N)) 1 else (N - n_eff) / (N - 1)
-    fpc <- .clamp_fpc(fpc, n_eff, N)
+    fpc <- if (is.infinite(N)) 1 else (N - n_net) / (N - 1)
+    fpc <- .clamp_fpc(fpc, n_net, N)
     eta <- qlogis(p)
     se_eta <- sqrt(fpc / (n_eff * p * (1 - p)))
     lo <- plogis(eta - z * se_eta)
@@ -996,5 +1001,12 @@ predict.svyplan_strata <- function(object, newdata, labels = NULL, ...) {
       call. = FALSE
     )
   }
-  cut(newdata, breaks = breaks, include.lowest = TRUE, labels = labels)
+  out <- cut(newdata, breaks = breaks, include.lowest = TRUE, labels = labels)
+  certain <- object$params$certain %||% NULL
+  if (!is.null(certain)) {
+    # cut() uses right-closed intervals, whereas the take-all contract is
+    # x >= certain.  Preserve the training assignment at equality.
+    out[newdata >= certain] <- levels(out)[object$n_strata]
+  }
+  out
 }

@@ -267,13 +267,19 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     bk <- bk[seq_len(n_strata - 1L)]
   }
 
+  certain_strata <- if (!is.null(certain)) n_strata else NULL
+
   if (has_cv && !has_n) {
-    n_total <- .strata_n_for_cv(x, bk, cv, alloc, power_q, cost_h)
+    n_total <- .strata_n_for_cv(
+      x, bk, cv, alloc, power_q, cost_h, certain_idx = certain_strata
+    )
+    if (!is.finite(n_total)) {
+      stop("target 'cv' is unattainable for the computed strata",
+           call. = FALSE)
+    }
   } else if (!has_n) {
     n_total <- length(x) / 2
   }
-
-  certain_strata <- if (!is.null(certain)) n_strata else NULL
 
   alloc_res <- .strata_alloc(x, bk, n_total, alloc, power_q, cost_h, certain_strata)
 
@@ -348,7 +354,8 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
       maxiter   = if (method %in% c("lh", "kozak")) maxiter else NULL,
       n_restart = if (method == "kozak") n_restart else NULL,
       cv_continuous = alloc_res$cv,
-      cv_target = if (has_cv) cv else NULL
+      cv_target = if (has_cv) cv else NULL,
+      certain = certain
     ),
     converged  = conv
   )

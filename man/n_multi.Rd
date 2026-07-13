@@ -99,8 +99,10 @@ on a per-row basis.}
 \value{
 A \code{svyplan_n} object (simple mode) or \code{svyplan_cluster} object
 (multistage mode). Multistage results without domains also carry an
-\verb{$operational} list with the ceiled whole-unit stage sizes and the
-cost and worst-case cv recomputed from that integer design.
+\verb{$operational} list with a constraint-preserving whole-unit design.
+In budget mode it is selected from affordable integer stage sizes and
+never exceeds the budget; in precision mode it meets every indicator's
+target. Cost and achieved CVs are recomputed from that integer design.
 
 \strong{Without domains}, the object contains:
 \describe{

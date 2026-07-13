@@ -351,14 +351,6 @@ power_did.default <- function(
   effect, n_eff, var_terms, alpha, N_pair, deff, alternative
 ) {
   if (length(n_eff) == 1L) n_eff <- c(n_eff, n_eff)
-  if (any(!is.infinite(N_pair) & n_eff >= N_pair)) {
-    warning(
-      "effective sample size >= population size; returning power = 1 (census)",
-      call. = FALSE
-    )
-    return(1)
-  }
-
   z_a <- .z_alpha(alpha, alternative)
   fpc1 <- .fpc_factor(n_eff[1], N_pair[1])
   fpc2 <- .fpc_factor(n_eff[2], N_pair[2])

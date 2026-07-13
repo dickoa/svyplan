@@ -228,13 +228,19 @@ test_that("finite vector N solve-n round-trips to target power", {
   expect_equal(res_pw$power, 0.80, tolerance = 1e-4)
 })
 
-test_that("power_mean census guard with unequal n", {
-  expect_warning(
-    res <- power_mean(effect = 5, var = 100, n = c(400, 400),
-                       power = NULL, N = 400),
-    "census"
-  )
+test_that("power_mean handles full and partial censuses componentwise", {
+  res <- power_mean(effect = 5, var = 100, n = c(400, 400),
+                    power = NULL, N = 400)
   expect_equal(res$power, 1)
+
+  partial <- power_mean(effect = 0.1, var = 1, n = c(100, 10),
+                        power = NULL, N = c(100, 100))
+  se <- sqrt((1 - 10 / 100) / 10)
+  expected <- pnorm(0.1 / se - qnorm(0.975)) +
+    pnorm(-0.1 / se - qnorm(0.975))
+  expect_equal(partial$power, expected, tolerance = 1e-12)
+  expect_lt(partial$power, 1)
+
   expect_error(
     power_mean(effect = 5, var = 100, n = c(500, 500), power = NULL, N = 400),
     "cannot draw"

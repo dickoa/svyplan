@@ -149,6 +149,28 @@ test_that("power_prop unequal n power computation", {
   expect_equal(length(res$n), 2L)
 })
 
+test_that("power_prop handles partial and full censuses for every method", {
+  for (method in c("wald", "arcsine", "logodds")) {
+    partial <- power_prop(
+      p1 = 0.4, p2 = 0.5, n = c(100, 10), power = NULL,
+      N = c(100, 100), method = method
+    )
+    expect_gt(partial$power, 0)
+    expect_lt(partial$power, 1)
+
+    full <- power_prop(
+      p1 = 0.4, p2 = 0.5, n = 100, power = NULL,
+      N = 100, method = method
+    )
+    expect_equal(full$power, 1)
+
+    mde <- power_prop(
+      p1 = 0.4, n = 100, power = 0.8, N = 100, method = method
+    )
+    expect_equal(mde$effect, 0)
+  }
+})
+
 test_that("power_prop overlap + ratio reduces n", {
   res0 <- power_prop(p1 = 0.3, p2 = 0.35, ratio = 2)
   res_ov <- power_prop(p1 = 0.3, p2 = 0.35, ratio = 2,

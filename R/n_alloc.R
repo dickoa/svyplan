@@ -496,7 +496,8 @@ n_alloc.default <- function(
   if (isTRUE(prep$cluster)) {
     opc <- .alloc_operational_cluster(
       prep, detail, n_h, mode, budget,
-      alpha = alpha, deff = deff, resp_rate = resp_rate
+      alpha = alpha, deff = deff, resp_rate = resp_rate,
+      target_cv = if (mode == "cv") cv else NULL
     )
     detail <- opc$detail
     operational <- opc$operational
@@ -969,6 +970,7 @@ prec_alloc.svyplan_n <- function(x, ...) {
   }
   prep$cluster <- TRUE
   prep$has_stage_costs <- has_costs
+  prep$psu_size_fixed_h <- !need_opt
   prep$psu_size_h <- psu_size_h
   prep$delta_psu_h <- delta
   prep$k_psu_h <- k
@@ -1145,29 +1147,86 @@ prec_alloc.svyplan_n <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .alloc_operational_cluster <- function(prep, detail, n_h, mode, budget,
-                                       alpha, deff, resp_rate) {
+                                       alpha, deff, resp_rate,
+                                       target_cv = NULL) {
   H <- length(n_h)
   ps <- prep$psu_size_h
   delta <- prep$delta_psu_h
   k <- prep$k_psu_h
   S_raw <- prep$S_raw_h
   W <- prep$N_h / sum(prep$N_h)
-  infl <- function(b) k * (1 + delta * (b - 1))
-
+  lo_i <- as.integer(ceiling(detail$.lower - 1e-9))
+  hi_i <- as.integer(floor(detail$.upper + 1e-9))
   b_h <- vapply(seq_len(H), function(h) {
-    cand <- unique(c(max(1L, as.integer(floor(ps[h]))),
-                     as.integer(ceiling(ps[h]))))
-    if (length(cand) == 1L) {
-      return(cand)
+    centre <- max(1L, as.integer(round(ps[h])))
+    cand <- unique(c(
+      max(1L, as.integer(floor(ps[h]))),
+      max(1L, as.integer(ceiling(ps[h]))),
+      seq.int(max(1L, centre - 50L), min(hi_i[h], centre + 50L)),
+      1L
+    ))
+    # A take-all or other exact bound must be representable as a product
+    # of whole PSUs and a whole, common take.  Including the exact bound
+    # guarantees a feasible divisor when it is an integer.
+    if (lo_i[h] == hi_i[h]) {
+      cand <- unique(c(cand, hi_i[h]))
+    }
+    cand <- cand[cand >= 1L & cand <= hi_i[h]]
+    feasible <- vapply(cand, function(b) {
+      ceiling(lo_i[h] / b) <= floor(hi_i[h] / b)
+    }, logical(1L))
+    cand <- cand[feasible]
+    if (length(cand) == 0L) {
+      stop(sprintf("no whole-cluster design satisfies the bounds for stratum '%s'",
+                   prep$stratum[h]), call. = FALSE)
+    }
+
+    # Fixed cluster sizes are rounded to the nearest whole size whenever
+    # that is compatible with the hard element bounds.  Only exact bounds
+    # (notably take-all) may require a divisor farther away.
+    if (isTRUE(prep$psu_size_fixed_h[h])) {
+      near <- cand[cand %in% unique(c(floor(ps[h]), ceiling(ps[h])))]
+      if (length(near) > 0L) cand <- near
     }
     if (isTRUE(prep$has_stage_costs)) {
       score <- (k[h] * (1 + delta[h] * (cand - 1))) *
         (prep$cost_psu_h[h] / cand + prep$cost_ssu_h[h])
       cand[which.min(score)]
     } else {
-      max(1L, as.integer(round(ps[h])))
+      cand[which.min(abs(cand - ps[h]))]
     }
   }, integer(1L))
+
+  e_target <- NULL
+  if (mode == "n") {
+    # Preserve the requested element total exactly first, then factor each
+    # stratum's integer element count into whole PSUs and a common whole take.
+    # Every positive integer has divisor 1, so this cannot violate bounds merely
+    # because a preferred cluster size does not divide the allocated elements.
+    e_target <- .round_oric_bounded(n_h, lo_i, hi_i)
+    b_h <- vapply(seq_len(H), function(h) {
+      e <- e_target[h]
+      root <- seq_len(max(1L, as.integer(floor(sqrt(e)))))
+      small <- root[e %% root == 0L]
+      divisors <- sort(unique(c(small, e %/% small)))
+      if (isTRUE(prep$psu_size_fixed_h[h])) {
+        return(divisors[which.min(abs(divisors - ps[h]))])
+      }
+      if (isTRUE(prep$has_stage_costs)) {
+        score <- (k[h] * (1 + delta[h] * (divisors - 1))) *
+          (prep$cost_psu_h[h] / divisors + prep$cost_ssu_h[h])
+        return(divisors[which.min(score)])
+      }
+      divisors[which.min(abs(divisors - ps[h]))]
+    }, integer(1L))
+  }
+
+  a_min <- as.integer(ceiling(lo_i / b_h))
+  a_max <- as.integer(floor(hi_i / b_h))
+  if (any(a_min > a_max)) {
+    stop("no whole-cluster design satisfies the integer allocation bounds",
+         call. = FALSE)
+  }
 
   psu_cost <- if (isTRUE(prep$has_stage_costs)) {
     prep$cost_psu_h + prep$cost_ssu_h * b_h
@@ -1181,24 +1240,28 @@ prec_alloc.svyplan_n <- function(x, ...) {
     a_h <- as.integer(ceiling(
       n_h * (1 + delta * (b_h - 1)) / (1 + delta * (ps - 1)) / b_h - 1e-9
     ))
-    a_h <- pmax(a_h, 1L)
+    a_h <- pmin(pmax(a_h, a_min), a_max)
   } else if (mode == "budget") {
-    min_cost <- sum(psu_cost)
+    min_cost <- sum(a_min * psu_cost)
     if (budget < min_cost - 1e-8) {
       stop(
         sprintf(
-          "'budget' cannot fund one whole PSU per stratum (minimum field cost = %.4g)",
+          "'budget' cannot fund one whole PSU per stratum while satisfying the lower bounds (minimum field cost = %.4g)",
           min_cost
         ),
         call. = FALSE
       )
     }
-    a_h <- pmax(1L, as.integer(floor(n_h / ps + 1e-9)))
+    a_h <- pmin(pmax(as.integer(floor(n_h / b_h + 1e-9)), a_min), a_max)
     repeat {
       if (sum(a_h * psu_cost) - budget <= 1e-8) {
         break
       }
-      cand <- which(a_h > 1L)
+      cand <- which(a_h > a_min)
+      if (length(cand) == 0L) {
+        stop("no whole-cluster design satisfies both the budget and lower bounds",
+             call. = FALSE)
+      }
       loss <- Cj[cand] * (1 / (a_h[cand] - 1L) - 1 / a_h[cand]) /
         psu_cost[cand]
       j <- cand[which.min(loss)]
@@ -1206,8 +1269,7 @@ prec_alloc.svyplan_n <- function(x, ...) {
     }
     repeat {
       spare <- budget - sum(a_h * psu_cost)
-      cand <- which(psu_cost <= spare + 1e-8 &
-                      (a_h + 1L) * b_h <= prep$N_h)
+      cand <- which(psu_cost <= spare + 1e-8 & a_h < a_max)
       if (length(cand) == 0L) {
         break
       }
@@ -1217,7 +1279,7 @@ prec_alloc.svyplan_n <- function(x, ...) {
       a_h[j] <- a_h[j] + 1L
     }
   } else {
-    a_h <- pmax(1L, as.integer(round(n_h / b_h)))
+    a_h <- as.integer(e_target / b_h)
   }
 
   e_h <- a_h * b_h
@@ -1228,12 +1290,35 @@ prec_alloc.svyplan_n <- function(x, ...) {
   detail$n_int <- as.integer(e_h)
   detail$n_psu_int <- a_h
   detail$psu_size_int <- b_h
+
+  if (any(e_h < lo_i | e_h > hi_i)) {
+    stop("internal error: operational cluster allocation violates its bounds",
+         call. = FALSE)
+  }
+  if (!is.null(target_cv)) {
+    op_cv <- if (length(prep$domain_idx) == 0L) {
+      m$cv
+    } else {
+      prep_op <- prep
+      prep_op$S_h <- S_op
+      .alloc_domain_cv_max(prep_op, e_h, alpha, deff, resp_rate)
+    }
+    if (!is.finite(op_cv) || op_cv > target_cv + 1e-8) {
+      stop(
+        sprintf("no whole-cluster design found that attains target CV %.4g under the integer bounds",
+                target_cv),
+        call. = FALSE
+      )
+    }
+  } else {
+    op_cv <- m$cv
+  }
   list(
     operational = list(
       n = sum(e_h),
       cost = if (isTRUE(prep$has_stage_costs)) sum(a_h * psu_cost)
              else NA_real_,
-      se = m$se, moe = m$moe, cv = m$cv
+      se = m$se, moe = m$moe, cv = op_cv
     ),
     detail = detail
   )

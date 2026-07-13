@@ -110,6 +110,12 @@
     x_range <- range(x)
     breaks <- c(x_range[1L], bk, x_range[2L])
     bins <- findInterval(x, bk, left.open = TRUE) + 1L
+    if (!is.null(certain_idx)) {
+      # Ordinary cutpoints define right-closed strata, but the documented
+      # take-all rule is x >= certain.  Move equality at that threshold into
+      # the certain stratum explicitly.
+      bins[x >= bk[certain_idx - 1L]] <- certain_idx
+    }
     N_h <- tabulate(bins, nbins = L)
     N <- length(x)
     W_h <- N_h / N
@@ -220,6 +226,9 @@
     mean_h <- stats$mean_h
   } else {
     bins <- findInterval(x, bk, left.open = TRUE) + 1L
+    if (!is.null(certain_idx)) {
+      bins[x >= bk[certain_idx - 1L]] <- certain_idx
+    }
     N_h <- tabulate(bins, nbins = L)
     if (any(N_h == 0L)) {
       return(Inf)
@@ -260,17 +269,26 @@
   }
 
   active <- N_h > 0
-  lo <- 2 * L
+  lo <- sum(m_h)
   hi <- N
-  for (i in seq_len(60L)) {
-    mid <- (lo + hi) / 2
-    n_h <- .rna_alloc(a_h, mid, m_h, M_h)
-    V <- sum(
+  variance_at <- function(n_total) {
+    n_h <- .rna_alloc(a_h, n_total, m_h, M_h)
+    sum(
       W_h[active]^2 *
         S_h[active]^2 /
         n_h[active] *
         (1 - n_h[active] / N_h[active])
     )
+  }
+  if (variance_at(lo) <= target_V) {
+    return(lo)
+  }
+  if (variance_at(hi) > target_V) {
+    return(Inf)
+  }
+  for (i in seq_len(60L)) {
+    mid <- (lo + hi) / 2
+    V <- variance_at(mid)
     if (V > target_V) lo <- mid else hi <- mid
   }
   (lo + hi) / 2

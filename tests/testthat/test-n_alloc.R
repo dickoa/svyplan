@@ -771,6 +771,42 @@ test_that("cluster-mode operational cv design meets the target", {
   expect_equal(d$n_int, d$n_psu_int * d$psu_size_int)
 })
 
+test_that("cluster operational designs enforce lower and take-all bounds", {
+  constrained <- data.frame(
+    N = 80, sd = 1, mean = 1, delta_psu = 0.1, psu_size = 7,
+    cost_psu = 500, cost_ssu = 50
+  )
+  expect_error(
+    n_alloc(constrained, budget = 2200, min_n = 17),
+    "cannot fund.*lower bounds"
+  )
+
+  census <- data.frame(
+    N = 5, sd = 1, mean = 1, delta_psu = 0.05,
+    psu_size = 2, take_all = TRUE
+  )
+  x <- n_alloc(census, n = 5)
+  expect_equal(x$detail$n_int, 5L)
+  expect_equal(x$detail$n_int,
+               x$detail$n_psu_int * x$detail$psu_size_int)
+  expect_equal(x$operational$cv, 0)
+})
+
+test_that("cluster n-mode preserves the requested integer total within bounds", {
+  fr <- data.frame(
+    stratum = c("a", "b", "c"), N = c(61, 83, 97),
+    sd = c(1, 2, 3), mean = c(4, 5, 6),
+    delta_psu = c(0.03, 0.08, 0.12), psu_size = c(7, 9, 11)
+  )
+  x <- n_alloc(fr, n = 73, min_n = 8)
+  d <- x$detail
+
+  expect_equal(sum(d$n_int), 73L)
+  expect_equal(d$n_int, d$n_psu_int * d$psu_size_int)
+  expect_true(all(d$n_int >= ceiling(d$.lower - 1e-9)))
+  expect_true(all(d$n_int <= floor(d$.upper + 1e-9)))
+})
+
 test_that("randomized operational invariants hold", {
   set.seed(2026)
   for (r in seq_len(20)) {
@@ -792,6 +828,37 @@ test_that("randomized operational invariants hold", {
       expect_lte(y$operational$cv, target + 1e-10)
       expect_true(all(y$detail$n_int >= 1))
       expect_true(all(y$detail$n_int <= fr$N))
+    }
+  }
+})
+
+test_that("randomized clustered operational invariants hold", {
+  set.seed(713)
+  for (r in seq_len(20)) {
+    H <- sample(1:4, 1)
+    fr <- data.frame(
+      stratum = letters[seq_len(H)],
+      N = sample(30:500, H),
+      sd = runif(H, 0.2, 3),
+      mean = runif(H, 2, 10),
+      delta_psu = runif(H, 0.01, 0.25),
+      psu_size = sample(2:12, H, replace = TRUE),
+      cost_psu = runif(H, 100, 600),
+      cost_ssu = runif(H, 5, 60)
+    )
+    min_n <- sample(1:min(15, min(fr$N)), 1)
+    min_cost <- sum(
+      ceiling(min_n / fr$psu_size) *
+        (fr$cost_psu + fr$cost_ssu * fr$psu_size)
+    )
+    budget <- min_cost * runif(1, 1, 3)
+    x <- try(n_alloc(fr, budget = budget, min_n = min_n), silent = TRUE)
+    if (!inherits(x, "try-error")) {
+      d <- x$detail
+      expect_true(all(d$n_int >= ceiling(d$.lower - 1e-9)))
+      expect_true(all(d$n_int <= floor(d$.upper + 1e-9)))
+      expect_equal(d$n_int, d$n_psu_int * d$psu_size_int)
+      expect_lte(x$operational$cost, budget + 1e-8)
     }
   }
 })

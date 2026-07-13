@@ -63,8 +63,10 @@
 #'
 #' @return A `svyplan_n` object (simple mode) or `svyplan_cluster` object
 #'   (multistage mode). Multistage results without domains also carry an
-#'   `$operational` list with the ceiled whole-unit stage sizes and the
-#'   cost and worst-case cv recomputed from that integer design.
+#'   `$operational` list with a constraint-preserving whole-unit design.
+#'   In budget mode it is selected from affordable integer stage sizes and
+#'   never exceeds the budget; in precision mode it meets every indicator's
+#'   target. Cost and achieved CVs are recomputed from that integer design.
 #'
 #'   **Without domains**, the object contains:
 #'   \describe{
@@ -913,6 +915,171 @@ n_multi.default <- function(
   }
 }
 
+#' Candidate whole stage sizes around a continuous optimum
+#' @keywords internal
+#' @noRd
+.multi_stage_candidates <- function(fixed, continuous, upper = Inf,
+                                    base_limit = 400L) {
+  if (!is.null(fixed)) {
+    return(max(1L, as.integer(round(fixed))))
+  }
+  upper_i <- if (is.finite(upper)) {
+    max(1L, as.integer(floor(upper + 1e-9)))
+  } else {
+    .Machine$integer.max
+  }
+  base <- seq_len(min(base_limit, upper_i))
+  centre <- max(1L, as.integer(round(continuous)))
+  local <- seq.int(max(1L, centre - 20L), min(upper_i, centre + 20L))
+  unique(c(base, local))
+}
+
+#' Constraint-preserving whole-unit design for two-stage n_multi
+#' @keywords internal
+#' @noRd
+.op_multi_2stage <- function(n1_required, cv_fn, cv_t, stage_cost, budget,
+                             n_psu, psu_size, fixed_cost, cont_m) {
+  C1 <- stage_cost[1L]
+  C2 <- stage_cost[2L]
+  variable_budget <- if (is.null(budget)) NULL else budget - fixed_cost
+
+  upper_m <- if (is.null(variable_budget)) {
+    Inf
+  } else if (!is.null(n_psu)) {
+    (variable_budget / max(1L, as.integer(round(n_psu))) - C1) / C2
+  } else {
+    (variable_budget - C1) / C2
+  }
+  m_cand <- .multi_stage_candidates(
+    psu_size, cont_m, upper = upper_m, base_limit = 100000L
+  )
+
+  if (!is.null(budget)) {
+    a <- if (!is.null(n_psu)) {
+      rep(max(1L, as.integer(round(n_psu))), length(m_cand))
+    } else {
+      as.integer(floor(variable_budget / (C1 + C2 * m_cand)))
+    }
+    cost <- a * (C1 + C2 * m_cand)
+    keep <- a >= 1L & cost <= variable_budget + 1e-8
+    if (!any(keep)) {
+      stop("no whole-unit n_multi design fits the budget", call. = FALSE)
+    }
+    a <- a[keep]
+    m_cand <- m_cand[keep]
+    cost <- cost[keep]
+    ratios <- vapply(seq_along(a), function(i) {
+      max(cv_fn(a[i], m_cand[i]) / cv_t)
+    }, numeric(1L))
+    j <- which.min(ratios + 1e-12 * m_cand)
+  } else {
+    need <- vapply(m_cand, function(m) max(n1_required(m)), numeric(1L))
+    if (!is.null(n_psu)) {
+      a <- rep(max(1L, as.integer(round(n_psu))), length(m_cand))
+      keep <- a + 1e-9 >= need
+      if (!any(keep)) {
+        stop("target CV is not achievable with the fixed whole PSU count",
+             call. = FALSE)
+      }
+      a <- a[keep]
+      m_cand <- m_cand[keep]
+    } else {
+      a <- pmax(1L, as.integer(ceiling(need - 1e-9)))
+    }
+    cost <- a * (C1 + C2 * m_cand)
+    j <- which.min(cost + 1e-9 * a * m_cand + 1e-12 * m_cand)
+  }
+
+  a_best <- a[j]
+  m_best <- m_cand[j]
+  cvs <- cv_fn(a_best, m_best)
+  list(
+    n = c(n_psu = a_best, psu_size = m_best),
+    total_n = a_best * m_best,
+    cost = fixed_cost + a_best * (C1 + C2 * m_best),
+    cv = max(cvs),
+    cv_by_target = cvs
+  )
+}
+
+#' Constraint-preserving whole-unit design for three-stage n_multi
+#' @keywords internal
+#' @noRd
+.op_multi_3stage <- function(n1_required, cv_fn, cv_t, stage_cost, budget,
+                             n_psu, psu_size, ssu_size, fixed_cost,
+                             cont_m, cont_q) {
+  C1 <- stage_cost[1L]
+  C2 <- stage_cost[2L]
+  C3 <- stage_cost[3L]
+  variable_budget <- if (is.null(budget)) NULL else budget - fixed_cost
+  a_fixed <- if (is.null(n_psu)) NULL else max(1L, as.integer(round(n_psu)))
+  a_min <- a_fixed %||% 1L
+
+  if (is.null(variable_budget)) {
+    upper_m <- upper_q <- Inf
+  } else {
+    per <- variable_budget / a_min
+    upper_m <- (per - C1) / (C2 + C3)
+    upper_q <- (per - C1 - C2) / C3
+  }
+  m_cand <- .multi_stage_candidates(psu_size, cont_m, upper_m)
+  q_cand <- .multi_stage_candidates(ssu_size, cont_q, upper_q)
+  grid <- expand.grid(m = m_cand, q = q_cand)
+  per_psu <- C1 + C2 * grid$m + C3 * grid$m * grid$q
+
+  if (!is.null(budget)) {
+    a <- if (is.null(a_fixed)) {
+      as.integer(floor(variable_budget / per_psu))
+    } else {
+      rep(a_fixed, nrow(grid))
+    }
+    cost <- a * per_psu
+    keep <- a >= 1L & cost <= variable_budget + 1e-8
+    if (!any(keep)) {
+      stop("no whole-unit n_multi design fits the budget", call. = FALSE)
+    }
+    grid <- grid[keep, , drop = FALSE]
+    a <- a[keep]
+    cost <- cost[keep]
+    ratios <- vapply(seq_along(a), function(i) {
+      max(cv_fn(a[i], grid$m[i], grid$q[i]) / cv_t)
+    }, numeric(1L))
+    j <- which.min(ratios + 1e-12 * (grid$m + grid$q))
+  } else {
+    need <- vapply(seq_len(nrow(grid)), function(i) {
+      max(n1_required(grid$m[i], grid$q[i]))
+    }, numeric(1L))
+    if (is.null(a_fixed)) {
+      a <- pmax(1L, as.integer(ceiling(need - 1e-9)))
+    } else {
+      a <- rep(a_fixed, nrow(grid))
+      keep <- a + 1e-9 >= need
+      if (!any(keep)) {
+        stop("target CV is not achievable with the fixed whole PSU count",
+             call. = FALSE)
+      }
+      grid <- grid[keep, , drop = FALSE]
+      per_psu <- per_psu[keep]
+      a <- a[keep]
+    }
+    cost <- a * (C1 + C2 * grid$m + C3 * grid$m * grid$q)
+    j <- which.min(cost + 1e-9 * a * grid$m * grid$q +
+                     1e-12 * (grid$m + grid$q))
+  }
+
+  a_best <- a[j]
+  m_best <- as.integer(grid$m[j])
+  q_best <- as.integer(grid$q[j])
+  cvs <- cv_fn(a_best, m_best, q_best)
+  list(
+    n = c(n_psu = a_best, psu_size = m_best, ssu_size = q_best),
+    total_n = a_best * m_best * q_best,
+    cost = fixed_cost + a_best * (C1 + C2 * m_best + C3 * m_best * q_best),
+    cv = max(cvs),
+    cv_by_target = cvs
+  )
+}
+
 #' 2-stage multi-indicator optimization
 #' @keywords internal
 #' @noRd
@@ -1007,13 +1174,9 @@ n_multi.default <- function(
 
   n_vec <- c(n_psu = n1_opt, psu_size = psu_size_opt)
   total_n <- prod(n_vec)
-  op_n <- as.integer(ceiling(n_vec - 1e-9))
-  op_cvs <- cv_achieved_fn(op_n[[1L]], op_n[[2L]])
-  operational <- list(
-    n = c(n_psu = op_n[[1L]], psu_size = op_n[[2L]]),
-    total_n = prod(op_n),
-    cost = fixed_cost + op_n[[1L]] * (C1 + C2 * op_n[[2L]]),
-    cv = max(op_cvs)
+  operational <- .op_multi_2stage(
+    n1_required, cv_achieved_fn, cv_t, stage_cost, budget,
+    n_psu, psu_size, fixed_cost, cont_m = psu_size_opt
   )
 
   n1_per <- n1_required(psu_size_opt)
@@ -1429,14 +1592,10 @@ n_multi.default <- function(
 
   n_vec <- c(n_psu = n1_opt, psu_size = psu_size_opt, ssu_size = ssu_size_opt)
   total_n <- prod(n_vec)
-  op_n <- as.integer(ceiling(n_vec - 1e-9))
-  op_cvs <- cv_achieved_fn(op_n[[1L]], op_n[[2L]], op_n[[3L]])
-  operational <- list(
-    n = c(n_psu = op_n[[1L]], psu_size = op_n[[2L]], ssu_size = op_n[[3L]]),
-    total_n = prod(op_n),
-    cost = fixed_cost + op_n[[1L]] *
-      (C1 + C2 * op_n[[2L]] + C3 * op_n[[2L]] * op_n[[3L]]),
-    cv = max(op_cvs)
+  operational <- .op_multi_3stage(
+    n1_required, cv_achieved_fn, cv_t, stage_cost, budget,
+    n_psu, psu_size, ssu_size, fixed_cost,
+    cont_m = psu_size_opt, cont_q = ssu_size_opt
   )
 
   n1_per <- n1_required(psu_size_opt, ssu_size_opt)

@@ -87,6 +87,26 @@ test_that("take_all marks only the last stratum as take-all", {
   expect_equal(res$strata$n[3], res$strata$N[3])
 })
 
+test_that("certain includes equality and CV sizing accounts for the census stratum", {
+  x <- c(1:89, rep(90, 5), 91:100)
+  res <- strata_bound(
+    x, n_strata = 3, cv = 0.05, method = "cumrootf", certain = 90
+  )
+
+  expect_equal(res$strata$N[3], sum(x >= 90))
+  expect_equal(res$strata$n[3], res$strata$N[3])
+  expect_lte(res$cv, 0.05 + 1e-10)
+})
+
+test_that("certain CV regression meets its requested precision", {
+  res <- strata_bound(
+    1:100, n_strata = 3, cv = 0.05,
+    method = "cumrootf", certain = 90
+  )
+  expect_equal(res$strata$N[3], 11L)
+  expect_lte(res$cv, 0.05 + 1e-10)
+})
+
 test_that("cumrootf: uniform data yields reasonable strata", {
   res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf")
   expect_s3_class(res, "svyplan_strata")

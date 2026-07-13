@@ -165,8 +165,6 @@ power_mean.default <- function(effect = NULL, var, n = NULL, power = 0.80,
         n_vec <- if (r == 1) c(n2, n2) else c(r * n2, n2)
         n_eff <- n_vec * resp_rate
 
-        if (any(!is.infinite(N_pair) & n_eff >= N_pair)) return(1)
-
         fpc1 <- .fpc_factor(n_eff[1], N_pair[1])
         fpc2 <- .fpc_factor(n_eff[2], N_pair[2])
         V_d <- deff * (var_pair[1] * fpc1 / n_eff[1] +
@@ -199,30 +197,24 @@ power_mean.default <- function(effect = NULL, var, n = NULL, power = 0.80,
     .check_gross_n(n_vec, N_pair, label = c("group 1", "group 2"))
     n_eff <- n_vec * resp_rate
 
-    if (any(!is.infinite(N_pair) & n_eff >= N_pair)) {
-      warning("effective sample size >= population size; returning power = 1 (census)",
-              call. = FALSE)
+    fpc1 <- .fpc_factor(n_eff[1], N_pair[1])
+    fpc2 <- .fpc_factor(n_eff[2], N_pair[2])
+    V_d <- deff * (var_pair[1] * fpc1 / n_eff[1] +
+                   var_pair[2] * fpc2 / n_eff[2])
+    if (overlap > 0 && fpc1 > 0 && fpc2 > 0) {
+      fpc_ov <- .fpc_factor(n_eff[2], N_pair[2])
+      V_d <- V_d - 2 * overlap * rho * sqrt(var_pair[1] * var_pair[2]) *
+             deff * fpc_ov / n_eff[2]
+    }
+    V_d <- .safe_variance(V_d, "difference variance")
+    if (V_d == 0) {
       pw <- 1
     } else {
-      fpc1 <- .fpc_factor(n_eff[1], N_pair[1])
-      fpc2 <- .fpc_factor(n_eff[2], N_pair[2])
-      V_d <- deff * (var_pair[1] * fpc1 / n_eff[1] +
-                     var_pair[2] * fpc2 / n_eff[2])
-      if (overlap > 0) {
-        fpc_ov <- .fpc_factor(n_eff[2], N_pair[2])
-        V_d <- V_d - 2 * overlap * rho * sqrt(var_pair[1] * var_pair[2]) *
-               deff * fpc_ov / n_eff[2]
-      }
-      V_d <- .safe_variance(V_d, "difference variance")
-      if (V_d == 0) {
-        pw <- 1
-      } else {
-        se <- sqrt(V_d)
-        pw <- pnorm(abs(effect) / se - z_a)
-        if (alternative == "two.sided")
-          pw <- pw + pnorm(-abs(effect) / se - z_a)
-        pw <- min(pw, 1)
-      }
+      se <- sqrt(V_d)
+      pw <- pnorm(abs(effect) / se - z_a)
+      if (alternative == "two.sided")
+        pw <- pw + pnorm(-abs(effect) / se - z_a)
+      pw <- min(pw, 1)
     }
 
     .new_svyplan_power(n = n, power = pw, effect = effect,
@@ -240,7 +232,7 @@ power_mean.default <- function(effect = NULL, var, n = NULL, power = 0.80,
     fpc2 <- .fpc_factor(n_eff[2], N_pair[2])
     V_d <- deff * (var_pair[1] * fpc1 / n_eff[1] +
                    var_pair[2] * fpc2 / n_eff[2])
-    if (overlap > 0) {
+    if (overlap > 0 && fpc1 > 0 && fpc2 > 0) {
       fpc_ov <- .fpc_factor(n_eff[2], N_pair[2])
       V_d <- V_d - 2 * overlap * rho * sqrt(var_pair[1] * var_pair[2]) *
              deff * fpc_ov / n_eff[2]

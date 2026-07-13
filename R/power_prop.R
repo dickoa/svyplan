@@ -255,11 +255,6 @@ power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
 .power_prop_power_wald <- function(p1, p2, n_eff, alpha, N_pair, deff,
                                    alternative, overlap, rho) {
   n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
-  if (any(!is.infinite(N_pair) & n_vec >= N_pair)) {
-    warning("effective sample size >= population size; returning power = 1 (census)",
-            call. = FALSE)
-    return(1)
-  }
 
   z_a <- .z_alpha(alpha, alternative)
   q1 <- 1 - p1; q2 <- 1 - p2
@@ -268,7 +263,7 @@ power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
   fpc1 <- .fpc_factor(n_vec[1], N_pair[1])
   fpc2 <- .fpc_factor(n_vec[2], N_pair[2])
   V_d <- deff * (p1 * q1 * fpc1 / n_vec[1] + p2 * q2 * fpc2 / n_vec[2])
-  if (overlap > 0) {
+  if (overlap > 0 && fpc1 > 0 && fpc2 > 0) {
     fpc_ov <- .fpc_factor(n_vec[2], N_pair[2])
     V_d <- V_d - 2 * overlap * rho * sqrt(p1 * q1 * p2 * q2) *
            deff * fpc_ov / n_vec[2]
@@ -285,6 +280,11 @@ power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
 
 .power_prop_mde_wald <- function(p1, n_eff, power, alpha, N_pair, deff,
                                   alternative, overlap, rho) {
+  n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
+  if (all(vapply(seq_len(2L), function(i) {
+    .fpc_factor(n_vec[i], N_pair[i]) == 0
+  }, logical(1L)))) return(p1)
+
   target_fn <- function(p2) {
     .power_prop_power_wald(p1, p2, n_eff, alpha, N_pair, deff,
                            alternative, overlap, rho) - power
@@ -357,11 +357,6 @@ power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
 .power_prop_power_arcsine <- function(p1, p2, n_eff, alpha, N_pair, deff,
                                       alternative) {
   n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
-  if (any(!is.infinite(N_pair) & n_vec >= N_pair)) {
-    warning("effective sample size >= population size; returning power = 1 (census)",
-            call. = FALSE)
-    return(1)
-  }
 
   z_a <- .z_alpha(alpha, alternative)
   delta_phi <- asin(sqrt(p1)) - asin(sqrt(p2))
@@ -369,6 +364,8 @@ power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
   fpc1 <- .fpc_factor(n_vec[1], N_pair[1])
   fpc2 <- .fpc_factor(n_vec[2], N_pair[2])
   se_phi <- sqrt(deff * (fpc1 / (4 * n_vec[1]) + fpc2 / (4 * n_vec[2])))
+
+  if (se_phi == 0) return(1)
 
   z_test <- abs(delta_phi) / se_phi - z_a
   pw <- pnorm(z_test)
@@ -386,6 +383,7 @@ power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
   fpc1 <- .fpc_factor(n_vec[1], N_pair[1])
   fpc2 <- .fpc_factor(n_vec[2], N_pair[2])
   se_phi <- sqrt(deff * (fpc1 / (4 * n_vec[1]) + fpc2 / (4 * n_vec[2])))
+  if (se_phi == 0) return(p1)
   mde_phi <- (z_a + z_b) * se_phi
 
   phi1 <- asin(sqrt(p1))
@@ -449,11 +447,6 @@ power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
 .power_prop_power_logodds <- function(p1, p2, n_eff, alpha, N_pair, deff,
                                       alternative) {
   n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
-  if (any(!is.infinite(N_pair) & n_vec >= N_pair)) {
-    warning("effective sample size >= population size; returning power = 1 (census)",
-            call. = FALSE)
-    return(1)
-  }
 
   z_a <- .z_alpha(alpha, alternative)
   q1 <- 1 - p1; q2 <- 1 - p2
@@ -469,6 +462,8 @@ power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
   VA <- deff * (fpc1 / (n_vec[1] * p1 * q1) +
                 fpc2 / (n_vec[2] * p2 * q2))
 
+  if (VA == 0) return(1)
+
   z_test <- (abs(delta_phi) - z_a * sqrt(V0)) / sqrt(VA)
   pw <- pnorm(z_test)
   if (alternative == "two.sided")
@@ -478,6 +473,11 @@ power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
 
 .power_prop_mde_logodds <- function(p1, n_eff, power, alpha, N_pair, deff,
                                      alternative) {
+  n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
+  if (all(vapply(seq_len(2L), function(i) {
+    .fpc_factor(n_vec[i], N_pair[i]) == 0
+  }, logical(1L)))) return(p1)
+
   target_fn <- function(p2) {
     .power_prop_power_logodds(p1, p2, n_eff, alpha, N_pair, deff,
                               alternative) - power
