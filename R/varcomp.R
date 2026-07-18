@@ -34,22 +34,44 @@
 #' - **Numeric vector**: `varcomp(y, stage_id = list(cluster_ids))`.
 #' - **survey.design**: `varcomp(design, ~y)`. Cluster structure and
 #'   design weights are extracted from the design object. Requires the
-#'   survey package. Weights are treated as inverse inclusion
-#'   probabilities: cluster sizes and totals are estimated by summed
-#'   weights, and the estimation variance of the weighted cluster
-#'   totals is subtracted from the between-stage variance terms, so
-#'   unequal-probability samples from a previous round give
-#'   approximately design-unbiased components. Unit weights recover the
-#'   frame formulas exactly. The weight *scale* matters: within each
-#'   cluster the summed weights should estimate the cluster population
-#'   size, since the implied sampling fraction drives the correction.
-#'   The correction assumes noninformative (SRS-like) subsampling
-#'   within clusters; informative within-cluster sampling remains
-#'   approximate. For a PPS first stage, also pass the PSU selection
+#'   survey package. For a PPS first stage, also pass the PSU selection
 #'   probabilities via `prob`.
 #'
+#' The formula and vector interfaces compute frame components: `data`
+#' is treated as a complete population. To estimate components from a
+#' sample instead, supply `weights` (formula and vector interfaces) or
+#' use the survey.design method. Weights are treated as inverse
+#' inclusion probabilities: cluster sizes and totals are estimated by
+#' summed weights, and the estimation variance of the weighted cluster
+#' totals is subtracted from the between-stage variance terms, so
+#' unequal-probability samples from a previous round give approximately
+#' design-unbiased components. Unit weights recover the frame formulas
+#' exactly. The weight *scale* matters: within each cluster the summed
+#' weights should estimate the cluster population size, since the
+#' implied sampling fraction drives the correction. For a multi-stage
+#' sample this means the *within-cluster* weights (the product of the
+#' stage-2 and later weights), not the full design weight, whose
+#' stage-1 factor would overstate every cluster size. The correction
+#' assumes noninformative (SRS-like) subsampling within clusters;
+#' informative within-cluster sampling remains approximate. In the
+#' 3-stage weighted case the between-PSU correction removes
+#' element-stage estimation noise but not SSU-stage subsampling noise,
+#' so when few SSUs are sampled per PSU the between-PSU component (and
+#' `delta_psu`) is conservative: biased upward, never downward.
+#'
 #' When `prob` is `NULL`, SRS first-stage is assumed. When provided, PPS
-#' variance estimation is used.
+#' variance estimation is used. `prob` must sum to 1 across the PSUs
+#' present in the data. On a complete frame these are the one-draw
+#' selection probabilities themselves. In a sample containing only some
+#' of the PSUs, renormalize over the sampled PSUs:
+#' `prob = pp[sampled] / sum(pp[sampled])`. For a fixed-size PPS design
+#' the stage-1 inclusion probabilities are proportional to the one-draw
+#' probabilities, so shares derived from inverse stage-1 weights,
+#' `pi1 / sum(pi1)`, are identical and can be used when the frame is
+#' not at hand. Certainty (take-all) PSUs have no place in the PPS
+#' path: they contribute no between-PSU variance and should be treated
+#' as separate strata, with `prob` renormalized over the remaining
+#' PSUs.
 #'
 #' The returned `delta` is the measure of homogeneity
 #' \eqn{\delta = V_b / (V_b + V_w)}{delta = Vb / (Vb + Vw)} following
@@ -93,6 +115,18 @@
 #'
 #' # Feed into n_cluster
 #' n_cluster(stage_cost = c(500, 50), delta = vc2, budget = 100000)
+#'
+#' # Estimate components from a two-stage sample: within-cluster
+#' # weights (summing to each cluster's population size) and, for a
+#' # PPS first stage, one-draw probabilities renormalized over the
+#' # sampled clusters
+#' sampled <- unlist(lapply(split(seq_len(200), frame2$district)[1:8],
+#'                          sample, size = 4))
+#' samp <- frame2[sampled, ]
+#' samp$w <- 10 / 4
+#' pp <- rep(1 / 20, 8)
+#' varcomp(income ~ district, data = samp, weights = ~w,
+#'         prob = pp / sum(pp))
 #'
 #' # Per-stratum components for a stratified two-stage plan
 #' set.seed(42)
@@ -140,9 +174,18 @@ varcomp <- function(x, ...) {
 #' @param strata Optional stratification: a one-sided formula (formula
 #'   and survey.design interfaces) or a vector (default interface).
 #'   Components are then estimated per stratum; see Details.
+#' @param weights Optional sampling weights for estimating components
+#'   from a sample rather than a frame: a one-sided formula (e.g.,
+#'   `~w`) when using the formula interface, or a numeric vector with
+#'   one positive value per observation. Within each cluster the
+#'   summed weights must estimate the cluster population size; for a
+#'   multi-stage sample use the within-cluster weights, not the full
+#'   design weight (see Details). `NULL` (default) computes frame
+#'   components.
 #'
 #' @export
-varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL) {
+varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL,
+                            weights = NULL) {
   if (inherits(strata, "formula")) {
     strata_name <- all.vars(strata)
     if (length(strata_name) != 1L) {
@@ -155,7 +198,25 @@ varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL) {
            call. = FALSE)
     }
   }
-  .varcomp_formula(x, data = data, prob = prob, strata = strata)
+  if (inherits(weights, "formula")) {
+    w_name <- all.vars(weights)
+    if (length(w_name) != 1L) {
+      stop("'weights' formula must reference exactly one variable",
+           call. = FALSE)
+    }
+    weights <- data[[w_name]]
+    if (is.null(weights)) {
+      stop(sprintf("variable '%s' not found in 'data'", w_name),
+           call. = FALSE)
+    }
+  }
+  if (is.null(weights) && inherits(data, "tbl_sample")) {
+    warning(
+      "'data' is a samplyr sample but the formula interface treats it as a complete population frame; pass within-cluster 'weights' (and 'prob' for a PPS first stage) for design-based components",
+      call. = FALSE
+    )
+  }
+  .varcomp_formula(x, data = data, prob = prob, strata = strata, w = weights)
 }
 
 #' @describeIn varcomp Default method for numeric vectors.
@@ -165,9 +226,10 @@ varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL) {
 #'
 #' @export
 varcomp.default <- function(x, ..., stage_id = NULL, prob = NULL,
-                            strata = NULL) {
+                            strata = NULL, weights = NULL) {
   if (is.numeric(x)) {
-    .varcomp_vector(x, stage_id = stage_id, prob = prob, strata = strata)
+    .varcomp_vector(x, stage_id = stage_id, prob = prob, strata = strata,
+                    w = weights)
   } else {
     stop("'x' must be a formula, numeric vector, or survey design object",
          call. = FALSE)
@@ -204,14 +266,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
          call. = FALSE)
   }
 
-  w <- as.numeric(stats::weights(x))
-  if (anyNA(w) || any(!is.finite(w)) || any(w <= 0)) {
-    stop("design weights must be positive and finite", call. = FALSE)
-  }
-  rng <- range(w)
-  if ((rng[2L] - rng[1L]) / rng[2L] <= 1e-8 && abs(rng[1L] - 1) <= 1e-8) {
-    w <- NULL
-  }
+  w <- .varcomp_check_w(as.numeric(stats::weights(x)), "design weights")
 
   y_name <- all.vars(formula)
   if (length(y_name) != 1L) {
@@ -236,10 +291,29 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
   .varcomp_dispatch(y, stage_id, prob, w, strata)
 }
 
+#' Validate sampling weights; unit weights collapse to NULL so the
+#' exact frame formulas apply
+#' @keywords internal
+#' @noRd
+.varcomp_check_w <- function(w, what = "'weights'") {
+  if (is.null(w)) {
+    return(NULL)
+  }
+  if (!is.numeric(w) || length(w) == 0L || anyNA(w) ||
+      any(!is.finite(w)) || any(w <= 0)) {
+    stop(sprintf("%s must be positive and finite", what), call. = FALSE)
+  }
+  rng <- range(w)
+  if ((rng[2L] - rng[1L]) / rng[2L] <= 1e-8 && abs(rng[1L] - 1) <= 1e-8) {
+    return(NULL)
+  }
+  w
+}
+
 #' Parse formula interface and dispatch
 #' @keywords internal
 #' @noRd
-.varcomp_formula <- function(formula, data, prob, strata = NULL) {
+.varcomp_formula <- function(formula, data, prob, strata = NULL, w = NULL) {
   if (is.null(data)) {
     stop("'data' is required for the formula interface", call. = FALSE)
   }
@@ -314,17 +388,17 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
     }
   }
 
-  .varcomp_dispatch(y, stage_id, pp, strata = strata)
+  .varcomp_dispatch(y, stage_id, pp, .varcomp_check_w(w), strata)
 }
 
 #' Vector interface
 #' @keywords internal
 #' @noRd
-.varcomp_vector <- function(x, stage_id, prob, strata = NULL) {
+.varcomp_vector <- function(x, stage_id, prob, strata = NULL, w = NULL) {
   if (is.null(stage_id) || !is.list(stage_id)) {
     stop("'stage_id' must be a list of ID vectors", call. = FALSE)
   }
-  .varcomp_dispatch(x, stage_id, prob, strata = strata)
+  .varcomp_dispatch(x, stage_id, prob, .varcomp_check_w(w), strata)
 }
 
 #' Dispatch to correct variance component estimator
@@ -342,6 +416,10 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
   }
   if (length(stage_id) == 0L) {
     stop("'stage_id' must not be empty", call. = FALSE)
+  }
+  if (!is.null(w) && length(w) != length(y)) {
+    stop("'weights' must have the same length as the outcome vector",
+         call. = FALSE)
   }
   for (i in seq_along(stage_id)) {
     if (length(stage_id[[i]]) != length(y)) {

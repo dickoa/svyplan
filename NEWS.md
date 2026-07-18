@@ -82,9 +82,14 @@ instead of being silently ignored.
   variance of the weighted totals is subtracted from the between-stage
   terms, so unequal-probability samples from a previous round give
   approximately design-unbiased components (unit weights recover the
-  frame formulas exactly). A `strata` argument estimates components per
-  stratum, returning a table whose columns match the `n_alloc()` frame
-  contract.
+  frame formulas exactly). The formula and vector interfaces accept the
+  same weights directly via a `weights` argument, so sample-based
+  estimation does not require constructing a `svydesign` object; the
+  documentation specifies the within-cluster weight scale and the
+  renormalization of `prob` over sampled PSUs. The formula interface
+  warns when `data` is a samplyr sample and no weights are supplied.
+  A `strata` argument estimates components per stratum, returning a
+  table whose columns match the `n_alloc()` frame contract.
 * `design_effect()`: S3 generic for design effect estimation (Kish, Henry,
   Spencer, Chen-Rust decomposition, and cluster planning mode).
 * `effective_n()`: S3 generic for effective sample size.

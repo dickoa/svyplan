@@ -647,3 +647,80 @@ test_that("named per-PSU probabilities are matched by PSU id", {
     "must match the PSU identifiers"
   )
 })
+
+test_that("formula and vector 'weights' match the survey.design method", {
+  skip_if_not_installed("survey")
+  set.seed(11)
+  s <- data.frame(
+    y = rnorm(120, rep(c(10, 20, 30), each = 40)),
+    psu = rep(1:12, each = 10),
+    w = rep(c(5, 9), each = 60)
+  )
+  dsgn <- survey::svydesign(ids = ~psu, weights = ~w, data = s)
+  ref <- varcomp(dsgn, ~y)
+
+  frm <- varcomp(y ~ psu, data = s, weights = ~w)
+  expect_equal(frm$varb, ref$varb, tolerance = 1e-12)
+  expect_equal(frm$varw, ref$varw, tolerance = 1e-12)
+  expect_equal(frm$delta, ref$delta, tolerance = 1e-12)
+
+  vec <- varcomp(s$y, stage_id = list(s$psu), weights = s$w)
+  expect_equal(vec$delta, ref$delta, tolerance = 1e-12)
+  expect_equal(vec$k, ref$k, tolerance = 1e-12)
+})
+
+test_that("'weights' works with a PPS first stage and with strata", {
+  skip_if_not_installed("survey")
+  set.seed(12)
+  s <- data.frame(
+    y = rnorm(160, rep(c(5, 15, 25, 35), each = 40)),
+    psu = rep(1:16, each = 10),
+    region = rep(c("N", "S"), each = 80),
+    w = rep(c(4, 8), times = 80)
+  )
+  pp <- rep(1 / 16, 16)
+  dsgn <- survey::svydesign(ids = ~psu, weights = ~w, data = s)
+  ref <- varcomp(dsgn, ~y, prob = pp)
+  frm <- varcomp(y ~ psu, data = s, weights = ~w, prob = pp)
+  expect_equal(frm$varb, ref$varb, tolerance = 1e-12)
+  expect_equal(frm$delta, ref$delta, tolerance = 1e-12)
+
+  ref_s <- varcomp(dsgn, ~y, strata = ~region)
+  frm_s <- varcomp(y ~ psu, data = s, weights = ~w, strata = ~region)
+  expect_equal(frm_s$strata$delta_psu, ref_s$strata$delta_psu,
+               tolerance = 1e-12)
+  expect_equal(frm_s$strata$sd, ref_s$strata$sd, tolerance = 1e-12)
+})
+
+test_that("unit 'weights' collapse to the exact frame formulas", {
+  set.seed(13)
+  frame <- data.frame(
+    y = rnorm(100, 50, 10),
+    psu = rep(1:10, each = 10)
+  )
+  ref <- varcomp(y ~ psu, data = frame)
+  wtd <- varcomp(y ~ psu, data = frame, weights = rep(1, 100))
+  expect_identical(wtd$varb, ref$varb)
+  expect_identical(wtd$delta, ref$delta)
+})
+
+test_that("'weights' argument is validated", {
+  s <- data.frame(y = rnorm(20), psu = rep(1:4, each = 5), w = 2)
+  expect_error(varcomp(y ~ psu, data = s, weights = rep(-1, 20)),
+               "positive and finite")
+  expect_error(varcomp(y ~ psu, data = s, weights = rep(NA_real_, 20)),
+               "positive and finite")
+  expect_error(varcomp(s$y, stage_id = list(s$psu), weights = c(2, 2)),
+               "same length as the outcome")
+  expect_error(varcomp(y ~ psu, data = s, weights = ~nope),
+               "not found in 'data'")
+  expect_error(varcomp(y ~ psu, data = s, weights = ~w + y),
+               "exactly one variable")
+})
+
+test_that("formula interface warns on a samplyr sample without weights", {
+  s <- data.frame(y = rnorm(20), psu = rep(1:4, each = 5), w = 2)
+  class(s) <- c("tbl_sample", "data.frame")
+  expect_warning(varcomp(y ~ psu, data = s), "population frame")
+  expect_no_warning(varcomp(y ~ psu, data = s, weights = ~w))
+})

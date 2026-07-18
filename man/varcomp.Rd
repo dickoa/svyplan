@@ -9,9 +9,9 @@
 \usage{
 varcomp(x, ...)
 
-\method{varcomp}{formula}(x, ..., data = NULL, prob = NULL, strata = NULL)
+\method{varcomp}{formula}(x, ..., data = NULL, prob = NULL, strata = NULL, weights = NULL)
 
-\method{varcomp}{default}(x, ..., stage_id = NULL, prob = NULL, strata = NULL)
+\method{varcomp}{default}(x, ..., stage_id = NULL, prob = NULL, strata = NULL, weights = NULL)
 
 \method{varcomp}{survey.design}(x, ..., prob = NULL, strata = NULL)
 }
@@ -34,6 +34,15 @@ across PSUs (tolerance 1e-3). \code{NULL} (default) assumes SRS.}
 \item{strata}{Optional stratification: a one-sided formula (formula
 and survey.design interfaces) or a vector (default interface).
 Components are then estimated per stratum; see Details.}
+
+\item{weights}{Optional sampling weights for estimating components
+from a sample rather than a frame: a one-sided formula (e.g.,
+\code{~w}) when using the formula interface, or a numeric vector with
+one positive value per observation. Within each cluster the
+summed weights must estimate the cluster population size; for a
+multi-stage sample use the within-cluster weights, not the full
+design weight (see Details). \code{NULL} (default) computes frame
+components.}
 
 \item{stage_id}{A list of stage-ID vectors (required for vector interface).
 Length determines the number of stage boundaries (stages - 1).}
@@ -70,23 +79,45 @@ first. Be careful not to reverse the order.
 \item \strong{Numeric vector}: \code{varcomp(y, stage_id = list(cluster_ids))}.
 \item \strong{survey.design}: \code{varcomp(design, ~y)}. Cluster structure and
 design weights are extracted from the design object. Requires the
-survey package. Weights are treated as inverse inclusion
-probabilities: cluster sizes and totals are estimated by summed
-weights, and the estimation variance of the weighted cluster
-totals is subtracted from the between-stage variance terms, so
-unequal-probability samples from a previous round give
-approximately design-unbiased components. Unit weights recover the
-frame formulas exactly. The weight \emph{scale} matters: within each
-cluster the summed weights should estimate the cluster population
-size, since the implied sampling fraction drives the correction.
-The correction assumes noninformative (SRS-like) subsampling
-within clusters; informative within-cluster sampling remains
-approximate. For a PPS first stage, also pass the PSU selection
+survey package. For a PPS first stage, also pass the PSU selection
 probabilities via \code{prob}.
 }
 
+The formula and vector interfaces compute frame components: \code{data}
+is treated as a complete population. To estimate components from a
+sample instead, supply \code{weights} (formula and vector interfaces) or
+use the survey.design method. Weights are treated as inverse
+inclusion probabilities: cluster sizes and totals are estimated by
+summed weights, and the estimation variance of the weighted cluster
+totals is subtracted from the between-stage variance terms, so
+unequal-probability samples from a previous round give approximately
+design-unbiased components. Unit weights recover the frame formulas
+exactly. The weight \emph{scale} matters: within each cluster the summed
+weights should estimate the cluster population size, since the
+implied sampling fraction drives the correction. For a multi-stage
+sample this means the \emph{within-cluster} weights (the product of the
+stage-2 and later weights), not the full design weight, whose
+stage-1 factor would overstate every cluster size. The correction
+assumes noninformative (SRS-like) subsampling within clusters;
+informative within-cluster sampling remains approximate. In the
+3-stage weighted case the between-PSU correction removes
+element-stage estimation noise but not SSU-stage subsampling noise,
+so when few SSUs are sampled per PSU the between-PSU component (and
+\code{delta_psu}) is conservative: biased upward, never downward.
+
 When \code{prob} is \code{NULL}, SRS first-stage is assumed. When provided, PPS
-variance estimation is used.
+variance estimation is used. \code{prob} must sum to 1 across the PSUs
+present in the data. On a complete frame these are the one-draw
+selection probabilities themselves. In a sample containing only some
+of the PSUs, renormalize over the sampled PSUs:
+\code{prob = pp[sampled] / sum(pp[sampled])}. For a fixed-size PPS design
+the stage-1 inclusion probabilities are proportional to the one-draw
+probabilities, so shares derived from inverse stage-1 weights,
+\code{pi1 / sum(pi1)}, are identical and can be used when the frame is
+not at hand. Certainty (take-all) PSUs have no place in the PPS
+path: they contribute no between-PSU variance and should be treated
+as separate strata, with \code{prob} renormalized over the remaining
+PSUs.
 
 The returned \code{delta} is the measure of homogeneity
 \eqn{\delta = V_b / (V_b + V_w)}{delta = Vb / (Vb + Vw)} following
@@ -131,6 +162,18 @@ vc2
 
 # Feed into n_cluster
 n_cluster(stage_cost = c(500, 50), delta = vc2, budget = 100000)
+
+# Estimate components from a two-stage sample: within-cluster
+# weights (summing to each cluster's population size) and, for a
+# PPS first stage, one-draw probabilities renormalized over the
+# sampled clusters
+sampled <- unlist(lapply(split(seq_len(200), frame2$district)[1:8],
+                         sample, size = 4))
+samp <- frame2[sampled, ]
+samp$w <- 10 / 4
+pp <- rep(1 / 20, 8)
+varcomp(income ~ district, data = samp, weights = ~w,
+        prob = pp / sum(pp))
 
 # Per-stratum components for a stratified two-stage plan
 set.seed(42)
