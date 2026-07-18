@@ -11,7 +11,9 @@
 #'   stratum, a subgroup of the population defined by a stratification
 #'   variable such as region, age group, or urbanicity. The values in this
 #'   frame typically come from a census, a population register, or a
-#'   previous survey.
+#'   previous survey. Any stratum table with the columns below works,
+#'   for example the pool summary of an executed samplyr sample
+#'   (`samplyr::frame_summary()`), once the measure columns are added.
 #'
 #'   When a design stratifies by several variables at once (e.g. region
 #'   \eqn{\times} urbanicity), cross them into a single variable before
