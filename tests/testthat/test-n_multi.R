@@ -1921,7 +1921,7 @@ test_that("achieved precision is method-consistent for nonbinding rows", {
                tolerance = 1e-10)
 })
 
-test_that("n_multi cluster results carry honest operational metrics", {
+test_that("n_multi cluster results carry accurate operational metrics", {
   tg <- data.frame(p = c(0.3, 0.15), cv = c(0.1, 0.12),
                    delta_psu = c(0.02, 0.05))
   x <- n_multi(tg, stage_cost = c(500, 50))
