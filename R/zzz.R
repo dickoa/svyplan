@@ -13,35 +13,41 @@
 #' @keywords internal
 #' @noRd
 SE.svyplan_n <- function(object, ...) {
+  .check_unused_dots(...)
   object$se
 }
 
 #' @keywords internal
 #' @noRd
 SE.svyplan_prec <- function(object, ...) {
+  .check_unused_dots(...)
   object$se
 }
 
 #' @keywords internal
 #' @noRd
 SE.svyplan_cluster <- function(object, ...) {
+  .check_unused_dots(...)
   object$se
 }
 
 #' @keywords internal
 #' @noRd
 cv.svyplan_n <- function(object, ...) {
+  .check_unused_dots(...)
   object$cv
 }
 
 #' @keywords internal
 #' @noRd
 cv.svyplan_prec <- function(object, ...) {
+  .check_unused_dots(...)
   object$cv
 }
 
 #' @keywords internal
 #' @noRd
 cv.svyplan_cluster <- function(object, ...) {
+  .check_unused_dots(...)
   object$cv
 }

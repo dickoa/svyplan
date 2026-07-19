@@ -10,6 +10,7 @@ n_alloc(frame, ...)
 
 \method{n_alloc}{default}(
   frame,
+  ...,
   domains = NULL,
   n = NULL,
   cv = NULL,
@@ -21,11 +22,10 @@ n_alloc(frame, ...)
   resp_rate = 1,
   min_n = NULL,
   power_q = 0.5,
-  plan = NULL,
-  ...
+  plan = NULL
 )
 
-\method{n_alloc}{svyplan_prec}(frame, n = NULL, cv = NULL, budget = NULL, ...)
+\method{n_alloc}{svyplan_prec}(frame, ..., n = NULL, cv = NULL, budget = NULL)
 }
 \arguments{
 \item{frame}{For the default method: a \strong{stratum-level} data frame
@@ -69,7 +69,7 @@ proportion of the variable of interest. \strong{Required when solving
 for \code{cv}}, because the coefficient of variation is defined
 relative to the mean. Use \code{mean} for continuous variables
 and \code{p} (in \eqn{[0, 1]}) for binary (yes/no) variables.}
-\item{\code{cost}}{Per-unit interviewing cost in each stratum
+\item{\code{unit_cost}}{Per-unit interviewing cost in each stratum
 (positive, finite). Set higher values for strata that are more
 expensive to reach. Defaults to 1 everywhere (equal cost).}
 \item{\code{max_weight}}{Maximum allowed sampling weight
@@ -82,7 +82,7 @@ whose total population is tiny enough to enumerate.}
 
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_alloc]{prec_alloc()}}.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{domains}{Character vector of column names in \code{frame} to treat as
 domain identifiers, or \code{NULL} (default) for no domains. All names
@@ -106,7 +106,7 @@ or \code{budget}.}
 \code{"proportional"}, or \code{"power"}.}
 
 \item{unit_cost}{Optional scalar or length-\code{nrow(frame)} vector of
-per-stratum unit costs, overriding \code{frame$cost}.}
+per-stratum unit costs, overriding \code{frame$unit_cost}.}
 
 \item{alpha}{Significance level, default 0.05.}
 
@@ -126,8 +126,8 @@ A \code{svyplan_n} object with \code{type = "alloc"} and a stratum-level
 allocation table in \verb{$detail} (also available via \code{as.data.frame()}),
 with columns:
 \describe{
-\item{\code{stratum}, \code{N}, \code{sd}, \code{cost}}{Stratum identifiers and inputs
-carried over from the frame. In cluster mode \code{cost} is the
+\item{\code{stratum}, \code{N}, \code{sd}, \code{unit_cost}}{Stratum identifiers and inputs
+carried over from the frame. In cluster mode \code{unit_cost} is the
 derived effective per-element cost
 \code{cost_psu / psu_size + cost_ssu} (1 when no stage costs were
 given), while \code{sd} stays the input stratum SD.}
@@ -159,7 +159,7 @@ the target; \code{n_int = n_psu_int * psu_size_int}.}
 The result also carries an \verb{$operational} list describing the
 integer field design: \code{n} (total), \code{cost}, \code{se}, \code{moe}, and \code{cv},
 all recomputed from the integer allocation. Top-level \code{n}, \code{se},
-\code{moe}, and \code{cv} describe the continuous optimum;
+\code{moe}, and \code{cv} describe the continuous optimum, while
 \code{as.integer()} returns the operational total.
 }
 \description{
@@ -214,7 +214,7 @@ the problem reduces to the element allocation above with the stratum
 SD inflated to \code{sd * sqrt(k_psu * (1 + delta_psu * (psu_size - 1)))}
 and, when stage costs are given, a per-element cost of
 \code{cost_psu / psu_size + cost_ssu}. All solve modes, allocation
-methods, and constraints work unchanged; \code{n}, \code{cv}, and \code{budget}
+methods, and constraints work unchanged. The \code{n}, \code{cv}, and \code{budget} modes
 keep their meanings.
 
 Cluster-mode columns:
@@ -222,12 +222,12 @@ Cluster-mode columns:
 \item \code{delta_psu} (required): within-PSU homogeneity per stratum,
 e.g. from \code{\link[=varcomp]{varcomp()}} with \code{strata}.
 \item \code{k_psu} (optional, default 1): variance ratio per stratum.
-\item \code{psu_size} (optional): fixes the per-stratum take; \code{NA} entries
+\item \code{psu_size} (optional): fixes the per-stratum take. Any \code{NA} entries
 are replaced by the cost-optimal take
 \code{sqrt(cost_psu / cost_ssu * (1 - delta_psu) / delta_psu)}.
-\item \code{cost_psu}, \code{cost_ssu} (together): per-PSU and per-element costs;
-required for \code{budget} mode or when \code{psu_size} is not fixed. They
-replace \code{cost}/\code{unit_cost}, which are not allowed in this mode.
+\item \code{cost_psu}, \code{cost_ssu} (together): per-PSU and per-element costs.
+These are required for \code{budget} mode or when \code{psu_size} is not fixed. They
+replace \code{unit_cost}, which is not allowed in this mode.
 }
 
 The finite population correction stays at the element level, an
@@ -235,11 +235,11 @@ approximation consistent with \code{\link[=n_cluster]{n_cluster()}}'s variance m
 
 Because \code{delta_psu} already accounts for the clustering, leave
 \code{deff} at 1 unless it captures a \emph{different} source of design
-effect (e.g. weighting loss); a clustering \code{deff} on top of
+effect (e.g. weighting loss). A clustering \code{deff} on top of
 \code{delta_psu} would double-count. The constraints \code{min_n},
 \code{max_weight}, and \code{take_all} stay in element units. For fielding,
 use the whole-unit design in \code{n_psu_int} and \code{psu_size_int}
-(\code{n_int = n_psu_int * psu_size_int}); its actual field cost and
+(\code{n_int = n_psu_int * psu_size_int}). Its actual field cost and
 precision are reported in \verb{$operational} and, in \code{budget} mode,
 never exceed the budget.
 }
@@ -282,7 +282,7 @@ frame <- data.frame(
   N    = c(4000, 3000, 3000),
   sd   = c(10, 15, 8),
   mean = c(50, 60, 55),
-  cost = c(1, 1.5, 1)
+  unit_cost = c(1, 1.5, 1)
 )
 
 n_alloc(frame, n = 600)

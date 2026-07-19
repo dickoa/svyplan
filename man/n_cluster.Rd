@@ -6,10 +6,11 @@
 \alias{n_cluster.svyplan_prec}
 \title{Optimal Multistage Cluster Allocation}
 \usage{
-n_cluster(stage_cost, ...)
+n_cluster(stage_cost = NULL, ...)
 
 \method{n_cluster}{default}(
   stage_cost = NULL,
+  ...,
   delta = NULL,
   rel_var = 1,
   k = 1,
@@ -20,11 +21,10 @@ n_cluster(stage_cost, ...)
   ssu_size = NULL,
   resp_rate = 1,
   fixed_cost = 0,
-  plan = NULL,
-  ...
+  plan = NULL
 )
 
-\method{n_cluster}{svyplan_prec}(stage_cost, cv = NULL, budget = NULL, ...)
+\method{n_cluster}{svyplan_prec}(stage_cost, ..., cv = NULL, budget = NULL)
 }
 \arguments{
 \item{stage_cost}{For the default method: numeric vector of per-stage
@@ -33,7 +33,7 @@ are accepted with stage names \code{cost_psu}, \code{cost_ssu}, \code{cost_tsu}
 (\code{cost_tsu} aliases \code{cost_ssu} in 2-stage).
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_cluster]{prec_cluster()}}.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{delta}{Numeric vector of homogeneity measures (length = stages - 1),
 or a \code{svyplan_varcomp} object. Delta quantifies how similar units
@@ -52,7 +52,7 @@ variance into stage-specific pieces.}
 \item{k}{Ratio parameter(s). Scalar for 2-stage, length-2 vector for
 3-stage (default 1). Controls how stage costs relate to stage
 variances in the optimization. The default of 1 is appropriate for
-most designs; non-unit values are rarely needed outside specialized
+most designs. Non-unit values are rarely needed outside specialized
 cost-variance models.}
 
 \item{cv}{Target coefficient of variation (relative standard error).
@@ -80,8 +80,8 @@ adjustment). The stage-1 sample size is inflated by \code{1 / resp_rate}.}
 \item{fixed_cost}{Fixed overhead cost (C0). Default 0.
 The total cost model becomes
 \code{C = C0 + c1*n_psu + c2*n_psu*psu_size [+ c3*n_psu*psu_size*ssu_size]}.
-In budget mode, only \code{budget - fixed_cost} is available for variable costs;
-in CV mode, \code{fixed_cost} is added to the variable cost.}
+In budget mode, only \code{budget - fixed_cost} is available for variable
+costs. In CV mode, \code{fixed_cost} is added to the variable cost.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults
 (including \code{stage_cost}, \code{delta}, \code{rel_var}, \code{k}, \code{resp_rate}, \code{fixed_cost}).}
@@ -99,9 +99,9 @@ optimum.}
 \item{\code{operational}}{The whole-unit field design, found by a
 discrete search: \code{n} (named integer stage sizes), \code{total_n},
 \code{cost}, and \code{cv}, all recomputed from the integer design. In
-\code{budget} mode its cost never exceeds the budget; in \code{cv} mode it
+\code{budget} mode its cost never exceeds the budget, whereas in \code{cv} mode it
 meets the target at the lowest cost among the designs searched.
-\code{as.integer()} returns \code{operational$n}; \code{as.double()} returns the
+\code{as.integer()} returns \code{operational$n}, and \code{as.double()} returns the
 continuous \code{n}.}
 \item{\code{params}}{List of input parameters.}
 }
@@ -126,7 +126,7 @@ for most household indicators).
 have a fixed budget, set \code{budget}. Never set both.
 \item \strong{Fix stages or let the optimizer decide.} In MICS/DHS-style
 designs, the number of households per cluster is fixed by
-fieldwork logistics (e.g. \code{psu_size = 20}); the optimizer then
+fieldwork logistics (e.g. \code{psu_size = 20}). The optimizer then
 solves for how many clusters (\code{n_psu}) to visit. If no stage is
 fixed, both are optimized jointly.
 }
@@ -154,8 +154,8 @@ available budget.
 
 One or more stage sizes can be fixed, leaving the remaining stage(s) to be
 optimized or derived from the constraint. For 2-stage designs, at most one
-stage may be fixed. For 3-stage designs, up to two stages may be fixed;
-the remaining free stage is derived from the budget or CV constraint.
+stage may be fixed. For 3-stage designs, up to two stages may be fixed.
+The remaining free stage is derived from the budget or CV constraint.
 
 If \code{delta} is a \code{svyplan_varcomp} object, \code{delta}, \code{rel_var}, and \code{k}
 are extracted automatically.

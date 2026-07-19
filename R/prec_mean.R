@@ -5,8 +5,9 @@
 #'
 #' @param var For the default method: population variance \eqn{S^2}.
 #'   For `svyplan_n` objects: a sample size result from [n_mean()].
-#' @param ... Additional arguments passed to methods.
-#' @param n Sample size (gross units drawn; must not exceed a finite `N`).
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
+#' @param n Sample size, measured as gross units drawn and bounded by a
+#'   finite `N`.
 #' @param mu Population mean magnitude (positive). Required for the CV component.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size. `Inf` (default) means no finite population
@@ -83,16 +84,17 @@ prec_mean <- function(var, ...) {
 prec_mean.default <- function(
   var,
   n,
+  ...,
   mu = NULL,
   alpha = 0.05,
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  plan = NULL,
-  ...
+  plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, prec_mean.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_mean.default, c(.plan, list(...))))
+  .check_unused_dots(...)
   check_scalar(var, "var")
   check_scalar(n, "n")
   check_alpha(alpha)

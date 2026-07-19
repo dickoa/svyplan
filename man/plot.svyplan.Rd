@@ -42,7 +42,7 @@ line at the significance level. Defaults: \code{ylim = c(0, 1)},
 }
 \examples{
 # Sampling fraction per stratum
-set.seed(1)
+set.seed(1907)
 sb <- strata_bound(rlnorm(2000, 6, 1), n_strata = 4, n = 200,
                     method = "cumrootf")
 plot(sb)

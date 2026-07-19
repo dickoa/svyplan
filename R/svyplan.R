@@ -46,6 +46,12 @@
 #' `svyplan(prop_method = "wilson")` applies to `n_prop()` but is ignored
 #' by `power_prop()`, which has no Wilson method).
 #'
+#' All stored defaults are validated when the profile is created or updated.
+#' When both `stage_cost` and `delta` are supplied, their lengths must describe
+#' the same number of stages. Length checks that depend on call-specific data,
+#' such as matching `unit_cost` to an allocation frame, occur when the plan is
+#' used.
+#'
 #' Estimand-specific values (`p`, `var`, `mu`, `moe`, `cv`, `n`, `power`,
 #' `effect`) should be passed directly to each function, not stored in
 #' the plan.
@@ -89,6 +95,7 @@ svyplan <- function(...) {
 
 #' @export
 print.svyplan <- function(x, ...) {
+  .check_unused_dots(...)
   cat("svyplan profile\n")
   if (length(x$defaults) == 0L) {
     cat("  (no defaults)\n")
@@ -165,9 +172,82 @@ update.svyplan <- function(object, ...) {
     }
   }
   if ("alpha" %in% nms) check_alpha(defaults$alpha)
-  if ("N" %in% nms && any(is.finite(defaults$N))) check_population_size(defaults$N)
+  if ("N" %in% nms) check_population_size(defaults$N)
   if ("deff" %in% nms) check_deff(defaults$deff)
   if ("resp_rate" %in% nms) check_resp_rate(defaults$resp_rate)
-  if ("stage_cost" %in% nms) check_stage_cost(defaults$stage_cost)
+
+  stage_cost <- NULL
+  if ("stage_cost" %in% nms) {
+    check_stage_cost(defaults$stage_cost)
+    stage_cost <- .reorder_stage_cost(defaults$stage_cost)
+  }
+
+  delta <- NULL
+  if ("delta" %in% nms) {
+    delta <- defaults$delta
+    if (inherits(delta, "svyplan_varcomp")) {
+      if (!is.null(delta$strata)) {
+        stop(
+          "stratified varcomp cannot be stored as a cluster plan default",
+          call. = FALSE
+        )
+      }
+      delta <- delta$delta
+    }
+    delta <- .reorder_stage_vec(delta, "delta")
+    if (!length(delta) %in% 1:2) {
+      stop("'delta' must have length 1 or 2", call. = FALSE)
+    }
+    check_delta(delta)
+    .check_cluster_delta_open(delta, context = "svyplan()")
+    if (!is.null(stage_cost)) {
+      check_delta(delta, expected_length = length(stage_cost) - 1L)
+    }
+  }
+
+  if ("rel_var" %in% nms) check_scalar(defaults$rel_var, "rel_var")
+  if ("k" %in% nms) {
+    k <- .reorder_stage_vec(defaults$k, "k")
+    if (!is.numeric(k) || !length(k) %in% 1:2 || anyNA(k) ||
+        any(!is.finite(k)) || any(k <= 0)) {
+      stop("'k' must contain one or two positive finite values", call. = FALSE)
+    }
+    if (!is.null(stage_cost) && length(stage_cost) == 2L && length(k) != 1L) {
+      stop("'k' must have length 1 for a 2-stage plan", call. = FALSE)
+    }
+  }
+  if ("fixed_cost" %in% nms) check_fixed_cost(defaults$fixed_cost)
+  if ("unit_cost" %in% nms) check_weights(defaults$unit_cost, "unit_cost")
+
+  if ("alternative" %in% nms) {
+    alternative <- defaults$alternative
+    if (!is.character(alternative) || length(alternative) != 1L ||
+        is.na(alternative) ||
+        !alternative %in% c("two.sided", "one.sided")) {
+      stop("'alternative' must be 'two.sided' or 'one.sided'", call. = FALSE)
+    }
+  }
+  if ("ratio" %in% nms) check_scalar(defaults$ratio, "ratio")
+  if ("overlap" %in% nms) check_overlap(defaults$overlap)
+  if ("rho" %in% nms) check_rho(defaults$rho)
+
+  if ("alloc" %in% nms) {
+    alloc <- defaults$alloc
+    if (!is.character(alloc) || length(alloc) != 1L || is.na(alloc) ||
+        !alloc %in% c("neyman", "optimal", "proportional", "power")) {
+      stop(
+        "'alloc' must be 'neyman', 'optimal', 'proportional', or 'power'",
+        call. = FALSE
+      )
+    }
+  }
+  if ("min_n" %in% nms) check_scalar(defaults$min_n, "min_n")
+  if ("power_q" %in% nms) {
+    power_q <- defaults$power_q
+    if (!is.numeric(power_q) || length(power_q) != 1L || is.na(power_q) ||
+        !is.finite(power_q) || power_q < 0 || power_q > 1) {
+      stop("'power_q' must be a numeric scalar in [0, 1]", call. = FALSE)
+    }
+  }
   invisible(NULL)
 }

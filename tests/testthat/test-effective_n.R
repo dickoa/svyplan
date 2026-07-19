@@ -1,5 +1,5 @@
 test_that("effective_n kish uses direct formula", {
-  set.seed(42)
+  set.seed(1009)
   w <- runif(100, 1, 5)
   result <- effective_n(w, method = "kish")
 
@@ -9,7 +9,7 @@ test_that("effective_n kish uses direct formula", {
 })
 
 test_that("effective_n kish consistent with design_effect", {
-  set.seed(42)
+  set.seed(1013)
   w <- runif(100, 1, 5)
   n_eff <- effective_n(w, method = "kish")
   deff <- design_effect(w, method = "kish")

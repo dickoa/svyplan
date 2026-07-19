@@ -10,13 +10,13 @@
 #'   below `p1` and returns the alternative closest to `p1` that achieves the
 #'   target power. When `p1` is near 0 or 1, the MDE may only be detectable
 #'   in one direction.
-#' @param n Per-group sample size (gross units drawn; must not exceed the
-#'   corresponding finite `N`). Scalar (equal groups) or length-2 vector
+#' @param n Per-group sample size, measured as gross units drawn and bounded
+#'   by the corresponding finite `N`. Scalar (equal groups) or length-2 vector
 #'   `c(n1, n2)` for unequal groups. Leave `NULL` to solve for sample size.
 #' @param power Target power, in (0, 1). Leave `NULL` to solve for power.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size for finite-population correction. A scalar applies
-#'   to both groups; a length-2 vector `c(N1, N2)` sets group-specific
+#'   to both groups. A length-2 vector `c(N1, N2)` sets group-specific
 #'   population sizes. `Inf` disables FPC for the corresponding group.
 #' @param deff Design effect multiplier (> 0). Values < 1 are valid for
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
@@ -39,7 +39,7 @@
 #'   and perform better for rare or extreme proportions (Valliant,
 #'   2018, sections 4.3.4--4.3.5).
 #' @param plan Optional [svyplan()] object providing design defaults.
-#' @param ... Additional arguments passed to methods.
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'
 #' @return A `svyplan_power` object with components:
 #' \describe{
@@ -111,16 +111,17 @@ power_prop <- function(p1, ...) {
 
 #' @rdname power_prop
 #' @export
-power_prop.default <- function(p1, p2 = NULL, n = NULL, power = 0.80,
+power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
                        alpha = 0.05, N = Inf, deff = 1,
                        resp_rate = 1,
                        alternative = c("two.sided", "one.sided"),
                        ratio = 1,
                        overlap = 0, rho = 0,
                        method = c("wald", "arcsine", "logodds"),
-                       plan = NULL, ...) {
+                       plan = NULL) {
   .plan <- .merge_plan_args(plan, power_prop.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(power_prop.default, c(.plan, list(...))))
+  .check_unused_dots(...)
   check_proportion(p1, "p1")
   alternative <- match.arg(alternative)
   method <- match.arg(method)

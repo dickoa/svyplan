@@ -9,7 +9,7 @@
 #'   are accepted with stage names `cost_psu`, `cost_ssu`, `cost_tsu`
 #'   (`cost_tsu` aliases `cost_ssu` in 2-stage).
 #'   For `svyplan_prec` objects: a precision result from [prec_cluster()].
-#' @param ... Additional arguments passed to methods.
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param delta Numeric vector of homogeneity measures (length = stages - 1),
 #'   or a `svyplan_varcomp` object. Delta quantifies how similar units
 #'   within the same cluster are: 0 means no similarity (clusters are as
@@ -25,7 +25,7 @@
 #' @param k Ratio parameter(s). Scalar for 2-stage, length-2 vector for
 #'   3-stage (default 1). Controls how stage costs relate to stage
 #'   variances in the optimization. The default of 1 is appropriate for
-#'   most designs; non-unit values are rarely needed outside specialized
+#'   most designs. Non-unit values are rarely needed outside specialized
 #'   cost-variance models.
 #' @param cv Target coefficient of variation (relative standard error).
 #'   For example, `cv = 0.05` means the standard error of the estimate
@@ -46,8 +46,8 @@
 #' @param fixed_cost Fixed overhead cost (C0). Default 0.
 #'   The total cost model becomes
 #'   `C = C0 + c1*n_psu + c2*n_psu*psu_size [+ c3*n_psu*psu_size*ssu_size]`.
-#'   In budget mode, only `budget - fixed_cost` is available for variable costs;
-#'   in CV mode, `fixed_cost` is added to the variable cost.
+#'   In budget mode, only `budget - fixed_cost` is available for variable
+#'   costs. In CV mode, `fixed_cost` is added to the variable cost.
 #' @param plan Optional [svyplan()] object providing design defaults
 #'   (including `stage_cost`, `delta`, `rel_var`, `k`, `resp_rate`, `fixed_cost`).
 #'
@@ -63,9 +63,9 @@
 #'   \item{`operational`}{The whole-unit field design, found by a
 #'     discrete search: `n` (named integer stage sizes), `total_n`,
 #'     `cost`, and `cv`, all recomputed from the integer design. In
-#'     `budget` mode its cost never exceeds the budget; in `cv` mode it
+#'     `budget` mode its cost never exceeds the budget, whereas in `cv` mode it
 #'     meets the target at the lowest cost among the designs searched.
-#'     `as.integer()` returns `operational$n`; `as.double()` returns the
+#'     `as.integer()` returns `operational$n`, and `as.double()` returns the
 #'     continuous `n`.}
 #'   \item{`params`}{List of input parameters.}
 #' }
@@ -85,7 +85,7 @@
 #'    have a fixed budget, set `budget`. Never set both.
 #' 3. **Fix stages or let the optimizer decide.** In MICS/DHS-style
 #'    designs, the number of households per cluster is fixed by
-#'    fieldwork logistics (e.g. `psu_size = 20`); the optimizer then
+#'    fieldwork logistics (e.g. `psu_size = 20`). The optimizer then
 #'    solves for how many clusters (`n_psu`) to visit. If no stage is
 #'    fixed, both are optimized jointly.
 #'
@@ -106,8 +106,8 @@
 #'
 #' One or more stage sizes can be fixed, leaving the remaining stage(s) to be
 #' optimized or derived from the constraint. For 2-stage designs, at most one
-#' stage may be fixed. For 3-stage designs, up to two stages may be fixed;
-#' the remaining free stage is derived from the budget or CV constraint.
+#' stage may be fixed. For 3-stage designs, up to two stages may be fixed.
+#' The remaining free stage is derived from the budget or CV constraint.
 #'
 #' If `delta` is a `svyplan_varcomp` object, `delta`, `rel_var`, and `k`
 #' are extracted automatically.
@@ -161,7 +161,7 @@
 #' n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, fixed_cost = 5000)
 #'
 #' @export
-n_cluster <- function(stage_cost, ...) {
+n_cluster <- function(stage_cost = NULL, ...) {
   if (!missing(stage_cost)) {
     .res <- .dispatch_plan(stage_cost, "stage_cost", n_cluster.default, ...)
     if (!is.null(.res)) return(.res)
@@ -173,6 +173,7 @@ n_cluster <- function(stage_cost, ...) {
 #' @export
 n_cluster.default <- function(
   stage_cost = NULL,
+  ...,
   delta = NULL,
   rel_var = 1,
   k = 1,
@@ -183,11 +184,11 @@ n_cluster.default <- function(
   ssu_size = NULL,
   resp_rate = 1,
   fixed_cost = 0,
-  plan = NULL,
-  ...
+  plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, n_cluster.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(n_cluster.default, c(.plan, list(...))))
+  .check_unused_dots(...)
   if (is.null(stage_cost))
     stop("'stage_cost' is required (directly or via plan)", call. = FALSE)
   if (is.null(delta))
@@ -289,7 +290,7 @@ n_cluster.default <- function(
 
 #' @rdname n_cluster
 #' @export
-n_cluster.svyplan_prec <- function(stage_cost, cv = NULL, budget = NULL, ...) {
+n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   x <- stage_cost
   if (x$type != "cluster") {
     stop("n_cluster requires a svyplan_prec of type 'cluster'", call. = FALSE)

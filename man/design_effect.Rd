@@ -27,9 +27,9 @@ design_effect(x = NULL, ...)
 or \code{NULL} (for the \code{"cluster"} planning method). The \code{"cr"} method
 requires weights on the population scale (inverse inclusion
 probabilities): the sum of weights must exceed the sample size,
-overall and within every stratum; normalized weights are rejected.}
+overall and within every stratum. Normalized weights are rejected.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{y}{Outcome variable (required for \code{"henry"}, \code{"spencer"}, \code{"cr"}).}
 
@@ -54,9 +54,10 @@ used by \code{\link[=n_cluster]{n_cluster()}} and \code{\link[=varcomp]{varcomp(
 \item{psu_size}{Mean cluster size (scalar).}
 }
 \value{
-For \code{"kish"}, \code{"cluster"}, \code{"henry"}, \code{"spencer"}: a numeric
-scalar. For \code{"cr"}: a list with \verb{$strata} (data frame) and
-\verb{$overall} (numeric scalar).
+A numeric \code{svyplan_design_effect} object. Use \code{\link[=as.double]{as.double()}} to
+extract the overall design effect and \code{\link[=as.data.frame]{as.data.frame()}} to export its
+components. For the Chen-Rust method, the data frame contains the full
+per-stratum decomposition.
 }
 \description{
 Estimate the design effect using various methods. This is an S3 generic
@@ -65,7 +66,7 @@ that dispatches on the class of \code{x}.
 \details{
 The design effect (DEFF) measures how much a complex design inflates
 variance compared to a simple random sample of the same size.
-DEFF = 1 means no inflation; DEFF = 2 means the variance is doubled
+DEFF = 1 means no inflation, whereas DEFF = 2 means the variance is doubled
 (equivalently, you need twice the sample size for the same precision).
 \subsection{Choosing a method}{
 
@@ -79,8 +80,8 @@ calibration weighting.
 \item \strong{spencer}: Weights + outcome + selection probabilities. Accounts
 for correlation between weights and the outcome.
 \item \strong{cr}: Weights + outcome + strata/cluster IDs. Full Chen-Rust
-decomposition for multistage stratified designs; returns
-per-stratum and overall DEFF.
+decomposition for multistage stratified designs, returning
+per-stratum and overall DEFF values.
 }
 
 \strong{Before data collection (planning)}: estimate an expected DEFF
@@ -106,7 +107,7 @@ by outcome variable.
 }}
 \examples{
 # Kish design effect from weights
-set.seed(2)
+set.seed(208)
 w <- runif(100, 1, 5)
 design_effect(w, method = "kish")
 

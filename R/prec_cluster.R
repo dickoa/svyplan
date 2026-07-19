@@ -8,7 +8,7 @@
 #'   `c(n_psu, psu_size, ssu_size)` for 3-stage). Named vectors are accepted
 #'   with stage names `n_psu`, `psu_size`, `ssu_size`.
 #'   For `svyplan_cluster` objects: a cluster allocation from [n_cluster()].
-#' @param ... Additional arguments passed to methods.
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param delta Numeric vector of homogeneity measures (length = stages - 1),
 #'   or a `svyplan_varcomp` object.
 #' @param rel_var Unit relvariance (default 1).
@@ -20,8 +20,8 @@
 #'
 #' @return A `svyplan_prec` object with components `$se`, `$moe`, and `$cv`.
 #'   Because the cluster model is parameterized with unit relvariance
-#'   (`rel_var = S^2 / Y_bar^2`), only `$cv` is computable; `$se` and
-#'   `$moe` are `NA`.
+#'   (`rel_var = S^2 / Y_bar^2`), only `$cv` is computable. The `$se` and
+#'   `$moe` components are `NA`.
 #'
 #' @details
 #' `prec_cluster()` is the inverse of [n_cluster()]: given per-stage
@@ -67,15 +67,16 @@ prec_cluster <- function(n, ...) {
 #' @export
 prec_cluster.default <- function(
   n,
+  ...,
   delta = NULL,
   rel_var = 1,
   k = 1,
   resp_rate = 1,
-  plan = NULL,
-  ...
+  plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, prec_cluster.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_cluster.default, c(.plan, list(...))))
+  .check_unused_dots(...)
   if (is.null(delta))
     stop("'delta' is required (directly or via plan)", call. = FALSE)
   if (inherits(delta, "svyplan_varcomp")) {

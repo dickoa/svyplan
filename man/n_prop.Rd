@@ -10,6 +10,7 @@ n_prop(p, ...)
 
 \method{n_prop}{default}(
   p,
+  ...,
   moe = NULL,
   cv = NULL,
   alpha = 0.05,
@@ -17,17 +18,16 @@ n_prop(p, ...)
   deff = 1,
   resp_rate = 1,
   method = c("wald", "wilson", "logodds"),
-  plan = NULL,
-  ...
+  plan = NULL
 )
 
-\method{n_prop}{svyplan_prec}(p, moe = NULL, cv = NULL, ...)
+\method{n_prop}{svyplan_prec}(p, ..., moe = NULL, cv = NULL)
 }
 \arguments{
 \item{p}{For the default method: expected proportion, in (0, 1).
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_prop]{prec_prop()}}.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{moe}{Desired margin of error, the half-width of the confidence
 interval on the proportion scale. For example, \code{moe = 0.05} means
@@ -37,7 +37,7 @@ Specify exactly one of \code{moe} or \code{cv}.}
 \item{cv}{Target coefficient of variation (relative standard error).
 For example, \code{cv = 0.10} means the standard error should be at
 most 10 percent of the estimate. Use \code{cv} when you want precision
-to scale with the estimate (common in economic surveys); use \code{moe}
+to scale with the estimate (common in economic surveys). Use \code{moe}
 when you want a fixed absolute precision (common in health/DHS
 surveys). Specify exactly one of \code{moe} or \code{cv}.}
 
@@ -84,7 +84,8 @@ Only \code{moe} mode, with optional FPC.
 }
 
 For proportions near 0 or 1 (below 0.1 or above 0.9), the Wald interval
-has poor coverage; \code{method = "wilson"} is recommended in those cases.
+has poor coverage. The recommended choice in those cases is
+\code{method = "wilson"}.
 
 For the Wilson and log-odds methods, the design effect is applied as a
 multiplicative factor to the final SRS sample size, which is an
@@ -104,9 +105,9 @@ sampling where the sample size is large enough for the CLT to apply.
 
 When called on a \code{svyplan_prec} object, parameters are extracted from the
 stored result. Any argument of the default method (e.g. \code{method}, \code{deff},
-\code{N}) can be overridden through \code{...}; unknown argument names are an
+\code{N}) can be overridden through \code{...}. Unknown argument names are an
 error. Passing a different \code{method} evaluates the stored precision
-target under that formula; the round-trip will not be exact because the
+target under that formula. The round-trip will not be exact because the
 precision was computed under the original method.
 }
 }

@@ -4,16 +4,16 @@
 #' two-sample test of means. Leave exactly one of `n`, `power`, or `effect`
 #' as `NULL` to solve for that quantity.
 #'
-#' @param effect Absolute difference in means (effect-size magnitude, positive).
-#'   Leave `NULL` to solve for MDE.
 #' @param var Within-group variance. Scalar (equal variances in both groups)
 #'   or length-2 vector `c(var1, var2)` for unequal group variances.
+#' @param effect Absolute difference in means (effect-size magnitude, positive).
+#'   Leave `NULL` to solve for MDE.
 #' @param n Per-group sample size. Scalar (equal groups) or length-2 vector
 #'   `c(n1, n2)` for unequal groups. Leave `NULL` to solve for sample size.
 #' @param power Target power, in (0, 1). Leave `NULL` to solve for power.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size for finite-population correction. A scalar applies
-#'   to both groups; a length-2 vector `c(N1, N2)` sets group-specific
+#'   to both groups. A length-2 vector `c(N1, N2)` sets group-specific
 #'   population sizes. `Inf` disables FPC for the corresponding group.
 #' @param deff Design effect multiplier (> 0). Values < 1 are valid for
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
@@ -31,7 +31,7 @@
 #'   (`overlap = n12 / n1`).
 #' @param rho Correlation between occasions in \[0, 1\].
 #' @param plan Optional [svyplan()] object providing design defaults.
-#' @param ... Additional arguments passed to methods.
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'
 #' @return A `svyplan_power` object with components:
 #' \describe{
@@ -46,8 +46,8 @@
 #' @details
 #' The `var` argument is the within-group population variance. Estimate it
 #' from a pilot study, a previous survey, or published data for a similar
-#' population. When uncertain, use a conservative (larger) estimate; this
-#' inflates the sample size, which is safer than under-powering.
+#' population. When uncertain, use a conservative (larger) estimate. This
+#' inflates the sample size and reduces the risk of an underpowered design.
 #'
 #' To specify the effect in terms of Cohen's d (standardized effect size),
 #' convert via `effect = d * sqrt(mean(var))`, where `d` follows Cohen's
@@ -73,27 +73,27 @@
 #'
 #' @examples
 #' # Sample size to detect a difference of 5 with variance 100
-#' power_mean(effect = 5, var = 100)
+#' power_mean(100, effect = 5)
 #'
 #' # Power given n = 200
-#' power_mean(effect = 5, var = 100, n = 200, power = NULL)
+#' power_mean(100, effect = 5, n = 200, power = NULL)
 #'
 #' # MDE with n = 500
-#' power_mean(var = 100, n = 500)
+#' power_mean(100, n = 500)
 #'
 #' # With design effect
-#' power_mean(effect = 5, var = 100, deff = 1.5)
+#' power_mean(100, effect = 5, deff = 1.5)
 #'
 #' # Unequal group variances
-#' power_mean(effect = 5, var = c(80, 120))
+#' power_mean(c(80, 120), effect = 5)
 #'
 #' # Allocation ratio 2:1
-#' power_mean(effect = 5, var = 100, ratio = 2)
+#' power_mean(100, effect = 5, ratio = 2)
 #'
 #' @export
-power_mean <- function(effect, ...) {
-  if (!missing(effect)) {
-    .res <- .dispatch_plan(effect, "effect", power_mean.default, ...)
+power_mean <- function(var, ...) {
+  if (!missing(var)) {
+    .res <- .dispatch_plan(var, "var", power_mean.default, ...)
     if (!is.null(.res)) return(.res)
   }
   UseMethod("power_mean")
@@ -101,15 +101,16 @@ power_mean <- function(effect, ...) {
 
 #' @rdname power_mean
 #' @export
-power_mean.default <- function(effect = NULL, var, n = NULL, power = 0.80,
+power_mean.default <- function(var, ..., effect = NULL, n = NULL, power = 0.80,
                        alpha = 0.05, N = Inf, deff = 1,
                        resp_rate = 1,
                        alternative = c("two.sided", "one.sided"),
                        ratio = 1,
                        overlap = 0, rho = 0,
-                       plan = NULL, ...) {
+                       plan = NULL) {
   .plan <- .merge_plan_args(plan, power_mean.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(power_mean.default, c(.plan, list(...))))
+  .check_unused_dots(...)
   alternative <- match.arg(alternative)
   var_pair <- .as_pair(var, "var")
   check_alpha(alpha)

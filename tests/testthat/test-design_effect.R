@@ -1,5 +1,5 @@
 test_that("design_effect kish formula", {
-  set.seed(42)
+  set.seed(1069)
   w <- runif(100, 1, 5)
   result <- design_effect(w, method = "kish")
 
@@ -7,13 +7,35 @@ test_that("design_effect kish formula", {
   n <- length(w)
   expected <- 1 + sum((w - mean(w))^2) / n / mean(w)^2
 
-  expect_equal(result, expected, tolerance = 1e-10)
+  expect_s3_class(result, "svyplan_design_effect")
+  expect_equal(as.double(result), expected, tolerance = 1e-10)
 })
 
 test_that("design_effect cluster planning formula", {
   result <- design_effect(delta = 0.05, psu_size = 25, method = "cluster")
-  expect_equal(result, 1 + (25 - 1) * 0.05)
-  expect_equal(result, 2.2)
+  expect_s3_class(result, "svyplan_design_effect")
+  expect_equal(as.double(result), 1 + (25 - 1) * 0.05)
+  expect_equal(as.double(result), 2.2)
+})
+
+test_that("design_effect has explicit display and export methods", {
+  result <- design_effect(delta = 0.05, psu_size = 25, method = "cluster")
+  df <- as.data.frame(result)
+
+  expect_identical(names(df), c("method", "design_effect"))
+  expect_equal(df$method, "cluster")
+  expect_equal(df$design_effect, as.double(result))
+  expect_match(format(result), "svyplan_design_effect")
+  expect_output(print(result), "overall")
+})
+
+test_that("design_effect can be passed directly to sample-size functions", {
+  result <- design_effect(delta = 0.05, psu_size = 25)
+  direct <- n_prop(p = 0.3, moe = 0.05, deff = result)
+  numeric <- n_prop(p = 0.3, moe = 0.05, deff = as.double(result))
+
+  expect_equal(direct$n, numeric$n)
+  expect_false(inherits(direct$n, "svyplan_design_effect"))
 })
 
 test_that("design_effect cluster with svyplan_varcomp", {
@@ -26,11 +48,11 @@ test_that("design_effect cluster with svyplan_varcomp", {
     stages = 2L
   )
   result <- design_effect(delta = vc, psu_size = 25, method = "cluster")
-  expect_equal(result, 1 + (25 - 1) * 0.05)
+  expect_equal(as.double(result), 1 + (25 - 1) * 0.05)
 })
 
 test_that("design_effect henry method", {
-  set.seed(42)
+  set.seed(1087)
   n <- 100
   x_cal <- runif(n, 10, 100)
   y <- 5 + 0.3 * x_cal + rnorm(n, 0, 2)
@@ -42,7 +64,7 @@ test_that("design_effect henry method", {
 })
 
 test_that("design_effect spencer method", {
-  set.seed(42)
+  set.seed(1091)
   n <- 100
   p_sel <- runif(n, 0.01, 0.2)
   y <- 50 + rnorm(n, 0, 10)
@@ -54,47 +76,47 @@ test_that("design_effect spencer method", {
 })
 
 test_that("design_effect henry returns 1 for equal weights", {
-  set.seed(42)
+  set.seed(1093)
   n <- 100
   w <- rep(5, n)
   x_cal <- runif(n, 10, 100)
   y <- 5 + 0.3 * x_cal + rnorm(n, 0, 2)
   result <- design_effect(w, y = y, x_cal = x_cal, method = "henry")
-  expect_equal(result, 1.0)
+  expect_equal(as.double(result), 1.0)
 })
 
 test_that("design_effect spencer returns 1 for equal weights", {
-  set.seed(42)
+  set.seed(1097)
   n <- 100
   w <- rep(5, n)
   p <- rep(0.1, n)
   y <- 50 + rnorm(n, 0, 10)
   result <- design_effect(w, y = y, prob = p, method = "spencer")
-  expect_equal(result, 1.0)
+  expect_equal(as.double(result), 1.0)
 })
 
 test_that("design_effect henry returns 1 for constant y", {
-  set.seed(42)
+  set.seed(1103)
   n <- 100
   w <- runif(n, 1, 5)
   x_cal <- runif(n, 10, 100)
   y <- rep(50, n)
   result <- design_effect(w, y = y, x_cal = x_cal, method = "henry")
-  expect_equal(result, 1.0)
+  expect_equal(as.double(result), 1.0)
 })
 
 test_that("design_effect spencer returns 1 for constant y", {
-  set.seed(42)
+  set.seed(1109)
   n <- 100
   w <- runif(n, 1, 5)
   p <- runif(n, 0.01, 0.2)
   y <- rep(50, n)
   result <- design_effect(w, y = y, prob = p, method = "spencer")
-  expect_equal(result, 1.0)
+  expect_equal(as.double(result), 1.0)
 })
 
 test_that("design_effect spencer handles equal probabilities", {
-  set.seed(42)
+  set.seed(1117)
   n <- 100
   w <- runif(n, 1, 5)
   p <- rep(0.1, n)
@@ -147,7 +169,7 @@ test_that("design_effect validates inputs", {
 })
 
 test_that("design_effect cr stratified + clustered", {
-  set.seed(42)
+  set.seed(1123)
   n <- 200
   strata <- rep(1:5, each = 40)
   cluster <- rep(1:50, each = 4)
@@ -163,49 +185,55 @@ test_that("design_effect cr stratified + clustered", {
     stages = stages,
     method = "cr"
   )
-  expect_true(is.list(result))
-  expect_true("strata" %in% names(result))
-  expect_true("overall" %in% names(result))
-  expect_true(is.numeric(result$overall))
-  expect_equal(nrow(result$strata), 5L)
-  expect_true(all(c("deff_w", "deff_c", "deff_s") %in% names(result$strata)))
+  components <- as.data.frame(result)
+  expect_s3_class(result, "svyplan_design_effect")
+  expect_true(is.numeric(result))
+  expect_equal(nrow(components), 5L)
+  expect_true(all(c("deff_w", "deff_c", "deff_s") %in% names(components)))
   expect_equal(
-    result$overall,
+    as.double(result),
     sum(
-      result$strata$deff_w *
-        result$strata$deff_c *
-        result$strata$deff_s
+      components$deff_w *
+        components$deff_c *
+        components$deff_s
     )
   )
+  expect_true(all(components$overall == as.double(result)))
 })
 
 test_that("design_effect cr stratified, no clusters", {
-  set.seed(42)
+  set.seed(1129)
   n <- 100
   strvar <- rep(1:5, each = 20)
   w <- runif(n, 10, 50)
   y <- rnorm(n, 50, 10)
 
   result <- design_effect(w, y = y, strata_id = strvar, method = "cr")
-  expect_true(is.list(result))
-  expect_equal(result$overall, sum(result$strata$deff_w * result$strata$deff_s))
+  components <- as.data.frame(result)
+  expect_equal(
+    as.double(result),
+    sum(components$deff_w * components$deff_s)
+  )
 })
 
 test_that("design_effect cr unstratified + clustered", {
-  set.seed(42)
+  set.seed(1151)
   n <- 100
   clvar <- rep(1:25, each = 4)
   w <- runif(n, 10, 50)
   y <- rnorm(n, 50, 10)
 
   result <- design_effect(w, y = y, cluster_id = clvar, method = "cr")
-  expect_true(is.list(result))
-  expect_true("rho" %in% names(result$strata))
-  expect_equal(result$overall, result$strata$deff_w * result$strata$deff_c)
+  components <- as.data.frame(result)
+  expect_true("rho" %in% names(components))
+  expect_equal(
+    as.double(result),
+    components$deff_w * components$deff_c
+  )
 })
 
 test_that("design_effect cr mixed stages", {
-  set.seed(42)
+  set.seed(1153)
   n <- 160
   strvar <- rep(1:4, each = 40)
   clvar <- rep(1:40, each = 4)
@@ -221,24 +249,25 @@ test_that("design_effect cr mixed stages", {
     stages = stages,
     method = "cr"
   )
-  expect_equal(result$strata$deff_c[1], 1)
-  expect_equal(result$strata$deff_c[4], 1)
+  components <- as.data.frame(result)
+  expect_equal(components$deff_c[1], 1)
+  expect_equal(components$deff_c[4], 1)
 })
 
 test_that("design_effect cr equal weights gives deff_w near 1", {
-  set.seed(42)
+  set.seed(1163)
   n <- 100
   clvar <- rep(1:25, each = 4)
   w <- rep(50, n)
   y <- rnorm(n, 50, 10)
 
   result <- design_effect(w, y = y, cluster_id = clvar, method = "cr")
-  expect_equal(result$strata$deff_w, 1, tolerance = 1e-10)
+  expect_equal(as.data.frame(result)$deff_w, 1, tolerance = 1e-10)
 })
 
 test_that("design_effect cr agrees with survey package", {
   skip_if_not_installed("survey")
-  set.seed(42)
+  set.seed(102)
   n <- 200
   strvar <- rep(1:4, each = 50)
   clvar <- rep(1:50, each = 4)
@@ -265,7 +294,7 @@ test_that("design_effect cr agrees with survey package", {
   mn <- survey::svymean(~y, design = dsgn, deff = TRUE)
   survey_deff <- as.numeric(survey::deff(mn))
 
-  expect_equal(our$overall, survey_deff, tolerance = 0.05)
+  expect_equal(as.double(our), survey_deff, tolerance = 0.05)
 })
 
 test_that("design_effect cluster rejects vector delta", {
@@ -277,7 +306,7 @@ test_that("design_effect cluster rejects vector delta", {
 
 test_that("design_effect cluster accepts scalar delta", {
   d <- design_effect(delta = 0.05, psu_size = 25)
-  expect_equal(d, 1 + 24 * 0.05)
+  expect_equal(as.double(d), 1 + 24 * 0.05)
 })
 
 test_that("design_effect cr constant y stratified + clustered returns 1", {
@@ -298,11 +327,12 @@ test_that("design_effect cr constant y stratified + clustered returns 1", {
     ),
     "variance is approximately zero"
   )
-  expect_equal(res$overall, 1)
-  expect_true(all(is.na(res$strata$deff_s)))
-  expect_true(all(is.na(res$strata$deff_c)))
-  expect_true(all(is.na(res$strata$rho)))
-  expect_true(all(!is.na(res$strata$cv2_w)))
+  components <- as.data.frame(res)
+  expect_equal(as.double(res), 1)
+  expect_true(all(is.na(components$deff_s)))
+  expect_true(all(is.na(components$deff_c)))
+  expect_true(all(is.na(components$rho)))
+  expect_true(all(!is.na(components$cv2_w)))
 })
 
 test_that("design_effect cr constant y unstratified + clustered returns 1", {
@@ -315,9 +345,10 @@ test_that("design_effect cr constant y unstratified + clustered returns 1", {
     res <- design_effect(w, y = y, cluster_id = clvar, method = "cr"),
     "variance is approximately zero"
   )
-  expect_equal(res$overall, 1)
-  expect_true(is.na(res$strata$rho))
-  expect_true(is.na(res$strata$deff_c))
+  components <- as.data.frame(res)
+  expect_equal(as.double(res), 1)
+  expect_true(is.na(components$rho))
+  expect_true(is.na(components$deff_c))
 })
 
 test_that("design_effect cr constant y stratified no clusters returns 1", {
@@ -330,8 +361,9 @@ test_that("design_effect cr constant y stratified no clusters returns 1", {
     res <- design_effect(w, y = y, strata_id = strvar, method = "cr"),
     "variance is approximately zero"
   )
-  expect_equal(res$overall, 1)
-  expect_true(all(is.na(res$strata$deff_s)))
+  components <- as.data.frame(res)
+  expect_equal(as.double(res), 1)
+  expect_true(all(is.na(components$deff_s)))
 })
 
 test_that(".stratum_cluster_deff returns NA for constant y in stratum", {
@@ -508,7 +540,7 @@ test_that("cr rejects y with Inf", {
 })
 
 test_that("CR rejects weights below the population scale", {
-  set.seed(42)
+  set.seed(1181)
   y <- rnorm(100)
   cl <- rep(1:25, each = 4)
   expect_error(
@@ -537,7 +569,7 @@ test_that("CR rejects weights at or below the sample-size scale", {
                              method = "cr"),
                "must exceed the sample size")
   res <- design_effect(rep(1.5, n), y = y, cluster_id = cl, method = "cr")
-  expect_true(is.finite(res$overall) && res$overall >= 0)
+  expect_true(is.finite(as.double(res)) && as.double(res) >= 0)
 })
 
 test_that("CR names an invalidly scaled stratum", {
@@ -549,7 +581,8 @@ test_that("CR names an invalidly scaled stratum", {
                "stratum 'bad'")
   w_ok <- c(rep(5, 10), rep(10, 10))
   res <- design_effect(w_ok, y = y, strata_id = stratum, method = "cr")
-  expect_true(all(is.finite(res$strata$deff_s)))
-  expect_true(all(res$strata$deff_s >= 0))
-  expect_true(is.finite(res$overall) && res$overall >= 0)
+  components <- as.data.frame(res)
+  expect_true(all(is.finite(components$deff_s)))
+  expect_true(all(components$deff_s >= 0))
+  expect_true(is.finite(as.double(res)) && as.double(res) >= 0)
 })

@@ -1,14 +1,14 @@
 #' Multi-Indicator Sample Size
 #'
 #' Compute the sample size that satisfies precision requirements for
-#' multiple survey indicators simultaneously. Supports simple (single-stage)
-#' and multistage cluster designs, with optional domain-level planning.
+#' multiple survey indicators simultaneously under a simple sampling design.
+#' Optional domain columns support separate requirements by subpopulation.
 #'
 #' @param targets For the default method: a data frame where **each row
 #'   is one survey indicator** you want to measure. For example,
 #'   a prevalence (proportion) or a population mean. Surveys typically
 #'   track several indicators simultaneously and the sample must be large
-#'   enough for the most demanding one; `n_multi` finds that size.
+#'   enough for the most demanding one. `n_multi()` finds that size.
 #'
 #'   See the Details section for the full column reference. At minimum,
 #'   each row needs:
@@ -18,80 +18,41 @@
 #'       population variance. Each row must use exactly one.
 #'     \item **How precise**: `moe` (margin of error) **or**
 #'       `cv` (coefficient of variation). Each row must
-#'       specify exactly one. Both are accepted in simple and
-#'       multistage modes; in multistage mode, `moe` values are
-#'       converted to `cv` internally (see Details).
+#'       specify exactly one.
 #'   }
 #'
 #'   For `svyplan_prec` objects: a precision result from [prec_multi()].
-#' @param ... Additional arguments passed to methods.
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param domains Character vector of column names in `targets` to treat
 #'   as domain variables, or `NULL` (default) for no domains. All names
-#'   must exist in `targets`. When specified, optimization runs
-#'   independently per domain combination (default), or jointly when
-#'   `joint = TRUE`.
-#' @param stage_cost Numeric vector of per-stage costs. `NULL` (default)
-#'   for simple mode; length 2 or 3 for multistage mode.
-#' @param budget Total budget (multistage only). Provide either `cv` values
-#'   in the `targets` data frame or a `budget` here, not both.
-#' @param n_psu Fixed stage-1 sample size (multistage only). For 2-stage, at
-#'   most one of `n_psu` or `psu_size` may be fixed. For 3-stage, up to two
-#'   of `n_psu`, `psu_size`, `ssu_size` may be fixed.
-#' @param psu_size Fixed cluster size (stage-2 sample size per PSU, multistage
-#'   only). `NULL` (default) means optimize.
-#' @param ssu_size Fixed SSU take size (stage-3 sample size per SSU). `NULL`
-#'   (default) means optimize. Only valid for 3-stage designs.
-#' @param joint Logical. If `TRUE`, optimally split a single `budget`
-#'   across domains to minimize the worst-case CV ratio. Only applies
-#'   to multistage budget mode with multiple domains; ignored otherwise.
+#'   must exist in `targets`. When specified, sizing runs
+#'   independently for each domain combination.
 #' @param min_n Numeric scalar or `NULL` (default). Minimum total sample
-#'   size per domain. Only active when domains are present; silently
-#'   ignored otherwise. In simple mode, per-domain sample sizes are
-#'   floored to `min_n`. In joint multistage mode, domains that would
-#'   receive fewer than `min_n` observations are penalized during
-#'   optimization, with an upfront feasibility check. In non-joint
-#'   multistage mode, a warning is issued for any domain below the floor.
-#' @param fixed_cost Fixed overhead cost (C0). Default 0. Only applies
-#'   to multistage mode. See [n_cluster()] for details.
-#' @param prop_method Proportion CI method for simple mode, one of `"wald"`
+#'   size per domain. It applies only when domains are present. Per-domain
+#'   sample sizes are floored to `min_n`.
+#' @param prop_method Proportion CI method, one of `"wald"`
 #'   (default), `"wilson"`, or `"logodds"`. This is passed to [n_prop()]
-#'   for proportion rows and ignored for mean rows and multistage mode.
+#'   for proportion rows and ignored for mean rows.
 #'   An optional `prop_method` column in `targets` overrides this default
 #'   on a per-row basis.
-#' @param plan Optional [svyplan()] object providing design defaults
-#'   (`stage_cost`, `fixed_cost`).
+#' @param plan Optional [svyplan()] object providing design defaults.
 #'
-#' @return A `svyplan_n` object (simple mode) or `svyplan_cluster` object
-#'   (multistage mode). Multistage results without domains also carry an
-#'   `$operational` list with a constraint-preserving whole-unit design.
-#'   In budget mode it is selected from affordable integer stage sizes and
-#'   never exceeds the budget; in precision mode it meets every indicator's
-#'   target. Cost and achieved CVs are recomputed from that integer design.
+#' @return A `svyplan_n` object. The output class is the same with or without
+#'   domains.
 #'
 #'   **Without domains**, the object contains:
 #'   \describe{
-#'     \item{`n`}{Sample size (simple) or named per-stage allocation vector
-#'       (multistage, e.g. `c(n_psu = 80, psu_size = 12)`).}
-#'     \item{`detail`}{Per-indicator results (sample sizes or achieved CVs).}
+#'     \item{`n`}{The sample size required by the binding indicator.}
+#'     \item{`detail`}{Per-indicator sample-size results.}
 #'     \item{`binding`}{Name or index of the binding (most demanding) indicator.}
 #'     \item{`targets`}{The input targets data frame.}
 #'   }
 #'
 #'   **With domains**, the object additionally contains:
 #'   \describe{
-#'     \item{`n`}{Maximum per-stage sample size across domains. In simple
-#'       mode, a single number; in multistage mode, a named vector
-#'       (e.g. `c(n_psu = 120, psu_size = 15)`) giving the conservative
-#'       allocation that satisfies all domains.}
+#'     \item{`n`}{The largest sample size required across domains.}
 #'     \item{`domains`}{Data frame with one row per domain, including
-#'       domain variable columns, per-stage allocations (`n_psu`, `psu_size`, ...),
-#'       and summary columns (`.total_n`, `.cv`, `.cost`, `.binding`
-#'       for multistage; `.n`, `.binding` for simple mode).
-#'       Use this for stratum-specific allocations.}
-#'     \item{`total_n`}{Total sample size summed across all domains
-#'       (multistage only).}
-#'     \item{`cost`}{Total cost summed across all domains
-#'       (multistage only).}
+#'       domain variables, `.n`, and `.binding`.}
 #'   }
 #'
 #' @details
@@ -119,8 +80,9 @@
 #' )
 #' ```
 #'
-#' Rows with `p` are treated as proportions; rows with `var` (and `p = NA`)
-#' as means. You cannot have both `p` and `var` non-`NA` in the same row.
+#' Rows with `p` are treated as proportions, whereas rows with `var` (and
+#' `p = NA`) are treated as means. You cannot have both `p` and `var` non-`NA`
+#' in the same row.
 #'
 #' ## Column reference
 #'
@@ -134,90 +96,43 @@
 #'   \item{`var`}{Population variance of a continuous indicator. Use
 #'     this for means (e.g. income, expenditure, weight). One of `p`
 #'     or `var` per row.}
-#'   \item{`mu`}{Population mean (positive). **Required** when `var` is
-#'     used together with `cv` (because CV = SE / mean) or with `moe`
-#'     in multistage mode (for the moe-to-cv conversion).}
+#'   \item{`mu`}{Population mean (positive). It is required when `var` is
+#'     used with `cv` because CV = SE / mean.}
 #'   \item{`moe`}{Margin of error, the half-width of the confidence
 #'     interval you want. For proportions, this is on the probability
 #'     scale (e.g. 0.05 for +/- 5 percentage points). For means,
-#'     it is in the same units as the variable (e.g. 10 dollars).
-#'     In multistage mode, converted to `cv` internally (see
-#'     Details).}
+#'     it is in the same units as the variable (e.g. 10 dollars).}
 #'   \item{`cv`}{Target coefficient of variation (relative standard
 #'     error). For example, 0.10 means the SE should be at most 10\%
-#'     of the estimate. Works in both simple and multistage mode.}
+#'     of the estimate.}
 #'   \item{`alpha`}{Significance level for the confidence interval
 #'     (default 0.05, giving a 95 percent CI).}
-#'   \item{`deff`}{Design effect multiplier (simple mode only,
-#'     default 1). Set > 1 to inflate the sample size for complex
+#'   \item{`deff`}{Design effect multiplier (default 1). Set > 1 to inflate
+#'     the sample size for complex
 #'     designs (e.g. 1.5 for a cluster design).}
-#'   \item{`N`}{Population size (simple mode only, default `Inf`).
+#'   \item{`N`}{Population size (default `Inf`).
 #'     A finite value applies a finite population correction, reducing
 #'     the required sample size.}
-#'   \item{`prop_method`}{Proportion CI method for simple mode:
+#'   \item{`prop_method`}{Proportion CI method:
 #'     `"wald"` (default), `"wilson"`, or `"logodds"`. `"wilson"` is
 #'     recommended for rare proportions (below 0.1 or above 0.9).
-#'     Only used for rows with `p`; ignored for mean rows and
-#'     multistage mode.}
-#'   \item{`delta_psu`, `delta_ssu`}{Measure of homogeneity (intra-class
-#'     correlation) within clusters, between 0 and 1. Needed for
-#'     multistage mode. `delta_psu` is required for 2-stage designs;
-#'     both are required for 3-stage designs.}
+#'     It is used only for rows with `p`.}
 #'   \item{`rel_var`}{Unit relvariance. If omitted, derived
 #'     automatically from `p` (as `(1 - p) / p`) or from
 #'     `var` / `mu^2`.}
-#'   \item{`k_psu`, `k_ssu`}{Ratio parameters for cost-variance
-#'     modelling (multistage, default 1).}
 #'   \item{`resp_rate`}{Expected response rate, in (0, 1\]. Default 1
 #'     (no adjustment). A value of 0.90 inflates the sample size by
 #'     `1 / 0.90` to compensate for 10 percent non-response.}
 #' }
 #'
 #' Domain columns are specified via the `domains` parameter. When domains
-#' are present, optimization runs independently per domain combination
-#' (default), or jointly when `joint = TRUE`.
+#' are present, sizing runs independently for each domain combination.
 #'
-#' **Simple mode** (`stage_cost = NULL`): computes sample size per indicator
-#' by delegating proportion rows to [n_prop()] and mean rows to [n_mean()],
+#' `n_multi()` computes sample size per indicator by delegating proportion
+#' rows to [n_prop()] and mean rows to [n_mean()],
 #' then takes the maximum per domain. Use `prop_method` or a
 #' `targets$prop_method` column to choose `"wald"`, `"wilson"`, or
 #' `"logodds"` for proportion rows.
-#'
-#' **Multistage mode** (`stage_cost` provided): uses analytical reduction.
-#' For each candidate sub-stage allocation, the required stage-1 size is
-#' the maximum across all indicators. The total cost is then minimized
-#' (CV mode) or the worst-case CV ratio is minimized (budget mode) using
-#' numerical optimization.
-#'
-#' Boundary and near-boundary homogeneity values are not supported by the
-#' analytical multistage optimum. When `delta` is near 0, most variability is
-#' within clusters, so the optimum collapses toward many interviews in very
-#' few PSUs. When `delta` is near 1, most variability is between clusters, so
-#' the optimum collapses toward very few interviews in many PSUs. To stay
-#' aligned with [n_cluster()], multistage `n_multi()` rejects values
-#' numerically too close to 0 or 1.
-#'
-#' **Joint budget allocation** (`joint = TRUE`): when domains and a budget
-#' are specified, the default (`joint = FALSE`) gives each domain the full
-#' budget independently. With `joint = TRUE`, a single budget is split
-#' optimally across domains using L-BFGS-B optimization of budget fractions,
-#' minimizing the worst-case CV ratio across all domains.
-#'
-#' ## MOE in multistage mode
-#'
-#' Multistage optimization uses CV internally. When `moe` values are
-#' provided, they are converted to `cv` before optimization:
-#'
-#' - Proportions: `cv = moe / (z * p)`
-#' - Means: `cv = moe / (z * mu)` (requires `mu`)
-#'
-#' where `z` is the normal quantile for the row's `alpha`.
-#' This is an exact transformation, not an approximation.
-#'
-#' These functions assume sampling fractions are negligible at each stage
-#' (equivalent to sampling with replacement). No finite population correction
-#' is applied. This is standard for multistage planning when cluster
-#' populations are large relative to the sample.
 #'
 #' @references
 #' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
@@ -226,9 +141,9 @@
 #' *Practical Tools for Designing and Weighting Survey Samples*
 #' (2nd ed.). Springer.
 #'
-#' @seealso [n_prop()], [n_mean()] for single-indicator sizing;
-#'   [n_cluster()] for single-indicator multistage allocation;
-#'   [prec_multi()] for the inverse.
+#' @seealso [n_prop()] and [n_mean()] for single-indicator sizing,
+#'   [n_multi_cluster()] for multistage cluster designs, and [prec_multi()]
+#'   for the inverse.
 #'
 #' @examples
 #' # Simple mode: three indicators, take the max
@@ -279,7 +194,7 @@
 #'   cv     = c(0.10, 0.15),
 #'   delta_psu = c(0.02, 0.05)
 #' )
-#' n_multi(targets_cl, stage_cost = c(500, 50))
+#' n_multi_cluster(targets_cl, stage_cost = c(500, 50))
 #'
 #' # Two-stage with MOE (converted to CV internally)
 #' targets_moe <- data.frame(
@@ -288,7 +203,7 @@
 #'   moe    = c(0.05, 0.03),
 #'   delta_psu = c(0.02, 0.05)
 #' )
-#' n_multi(targets_moe, stage_cost = c(500, 50))
+#' n_multi_cluster(targets_moe, stage_cost = c(500, 50))
 #'
 #' # Joint budget allocation across domains
 #' targets_jnt <- data.frame(
@@ -298,8 +213,13 @@
 #'   delta_psu = c(0.02, 0.03, 0.05, 0.04),
 #'   region = rep(c("Urban", "Rural"), 2)
 #' )
-#' n_multi(targets_jnt, domains = "region",
-#'        stage_cost = c(500, 50), budget = 100000, joint = TRUE)
+#' n_multi_cluster(
+#'   targets_jnt,
+#'   stage_cost = c(500, 50),
+#'   domains = "region",
+#'   budget = 100000,
+#'   joint = TRUE
+#' )
 #'
 #' @export
 n_multi <- function(targets, ...) {
@@ -314,26 +234,18 @@ n_multi <- function(targets, ...) {
 #' @export
 n_multi.default <- function(
   targets,
+  ...,
   domains = NULL,
-  stage_cost = NULL,
-  budget = NULL,
-  n_psu = NULL,
-  psu_size = NULL,
-  ssu_size = NULL,
-  joint = FALSE,
   min_n = NULL,
-  fixed_cost = 0,
-  prop_method = "wald",
-  plan = NULL,
-  ...
+  prop_method = c("wald", "wilson", "logodds"),
+  plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, n_multi.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(n_multi.default, c(.plan, list(...))))
+  .check_multi_split_args(list(...), "n_multi_cluster()")
+  .check_unused_dots(...)
   if (!is.data.frame(targets) || nrow(targets) == 0L) {
     stop("'targets' must be a non-empty data frame", call. = FALSE)
-  }
-  if (!is.logical(joint) || length(joint) != 1L || is.na(joint)) {
-    stop("'joint' must be TRUE or FALSE", call. = FALSE)
   }
   if (!is.null(min_n)) {
     if (
@@ -341,6 +253,9 @@ n_multi.default <- function(
     ) {
       stop("'min_n' must be a positive numeric scalar", call. = FALSE)
     }
+  }
+  if (missing(prop_method)) {
+    prop_method <- prop_method[[1L]]
   }
   if (
     !is.character(prop_method) ||
@@ -354,48 +269,8 @@ n_multi.default <- function(
     )
   }
 
-  multistage <- !is.null(stage_cost)
-
-  if (multistage) {
-    check_stage_cost(stage_cost)
-    stage_cost <- .reorder_stage_cost(stage_cost)
-    if (!is.null(budget)) {
-      check_scalar(budget, "budget")
-    }
-    if (!is.null(n_psu)) check_scalar(n_psu, "n_psu")
-    if (!is.null(psu_size)) check_scalar(psu_size, "psu_size")
-    if (!is.null(ssu_size)) check_scalar(ssu_size, "ssu_size")
-    stages <- length(stage_cost)
-    if (stages == 2L && !is.null(ssu_size)) {
-      stop("'ssu_size' is not applicable for 2-stage designs", call. = FALSE)
-    }
-    n_fixed <- sum(!is.null(n_psu), !is.null(psu_size), !is.null(ssu_size))
-    if (n_fixed >= stages) {
-      stop("cannot fix all stages; use prec_multi() instead", call. = FALSE)
-    }
-    check_fixed_cost(fixed_cost, budget)
-  } else {
-    if (!is.null(budget)) {
-      stop("'budget' requires 'stage_cost' to be specified", call. = FALSE)
-    }
-    if (!is.null(n_psu)) {
-      stop("'n_psu' requires 'stage_cost' to be specified", call. = FALSE)
-    }
-    if (!is.null(psu_size)) {
-      stop("'psu_size' requires 'stage_cost' to be specified", call. = FALSE)
-    }
-    if (!is.null(ssu_size)) {
-      stop("'ssu_size' requires 'stage_cost' to be specified", call. = FALSE)
-    }
-  }
-
-  info <- .validate_targets(targets, multistage, domains = domains,
-                            stages = if (multistage) stages else NULL)
-  targets <- .fill_defaults(targets, multistage, prop_method = prop_method)
-
-  if (multistage) {
-    targets <- .convert_moe_to_cv(targets)
-  }
+  info <- .validate_targets(targets, FALSE, domains = domains)
+  targets <- .fill_defaults(targets, FALSE, prop_method = prop_method)
 
   rv_final <- targets$rel_var[!is.na(targets$rel_var)]
   if (
@@ -404,38 +279,205 @@ n_multi.default <- function(
   ) {
     stop("'rel_var' values must be positive and finite", call. = FALSE)
   }
-  if (multistage) {
-    if (any(targets$k_psu <= 0) || any(!is.finite(targets$k_psu))) {
-      stop("'k_psu' values must be positive and finite", call. = FALSE)
-    }
-    if (any(targets$k_ssu <= 0) || any(!is.finite(targets$k_ssu))) {
-      stop("'k_ssu' values must be positive and finite", call. = FALSE)
-    }
-  }
-
   domain_cols <- info$domain_cols
-
-  mode <- if (!multistage) {
-    if ("moe" %in% names(targets) && any(!is.na(targets$moe))) "moe" else "cv"
+  mode <- if ("moe" %in% names(targets) && any(!is.na(targets$moe))) {
+    "moe"
   } else {
-    if (!is.null(budget)) {
-      "budget"
-    } else if ("moe" %in% names(targets) && any(!is.na(targets$moe))) {
-      "moe"
-    } else {
-      "cv"
-    }
+    "cv"
   }
 
   if (length(domain_cols) == 0L) {
-    if (multistage) {
-      .n_multi_cluster(targets, stage_cost, budget, n_psu, psu_size, ssu_size,
-                       fixed_cost, domain_cols = domain_cols, mode = mode,
-                       prop_method = prop_method)
-    } else {
-      .n_multi_simple(targets, domain_cols = domain_cols, mode = mode,
-                      prop_method = prop_method)
-    }
+    .n_multi_simple(targets, domain_cols = domain_cols, mode = mode,
+                    prop_method = prop_method)
+  } else {
+    .n_multi_domains(
+      targets,
+      stage_cost = NULL,
+      budget = NULL,
+      n_psu = NULL,
+      psu_size = NULL,
+      ssu_size = NULL,
+      domain_cols,
+      multistage = FALSE,
+      joint = FALSE,
+      min_n,
+      fixed_cost = 0,
+      mode = mode,
+      prop_method = prop_method
+    )
+  }
+}
+
+#' Multi-Indicator Sample Size for Cluster Designs
+#'
+#' Compute a two- or three-stage cluster allocation that satisfies precision
+#' requirements for several survey indicators. Domain-level planning and a
+#' shared budget across domains are supported.
+#'
+#' @param targets For the default method, a non-empty data frame with one row
+#'   per indicator. Each row requires `p` or `var`, a `cv` or `moe` target,
+#'   and `delta_psu`. Three-stage designs also require `delta_ssu`. For the
+#'   `svyplan_prec` method, a result from [prec_multi_cluster()].
+#' @param ... Additional arguments passed to methods. Unused arguments are
+#'   rejected.
+#' @param stage_cost Numeric vector of per-stage costs with length 2 or 3.
+#' @param domains Optional character vector naming domain columns in
+#'   `targets`. The function solves each domain independently unless `joint`
+#'   is `TRUE` in budget mode.
+#' @param budget Optional total budget. Supply precision targets or a budget,
+#'   according to the target schema described in Details.
+#' @param n_psu Optional fixed stage-1 sample size.
+#' @param psu_size Optional fixed stage-2 sample size per PSU.
+#' @param ssu_size Optional fixed stage-3 sample size per SSU. This is valid
+#'   only for three-stage designs.
+#' @param joint If `TRUE`, split one budget across domains to minimize the
+#'   worst precision ratio. This applies only when domains and `budget` are
+#'   supplied.
+#' @param min_n Optional positive minimum total sample size per domain. In
+#'   joint budget mode it is a constraint. In independent domain mode,
+#'   domains below the floor produce a warning.
+#' @param fixed_cost Non-negative fixed overhead cost. The default is 0.
+#' @param plan Optional [svyplan()] profile providing `stage_cost` and other
+#'   applicable defaults.
+#'
+#' @return A `svyplan_cluster` object. The output class does not depend on
+#'   which optional arguments are supplied.
+#'
+#' @details
+#' Margin-of-error targets are converted to CV before optimization. For each
+#' candidate allocation, the required stage-1 size is the maximum across all
+#' indicators. The solver minimizes total cost for precision targets or the
+#' worst precision ratio under a fixed budget.
+#'
+#' Homogeneity values numerically close to 0 or 1 are rejected because they
+#' make the analytical cluster optimum degenerate. The result includes an
+#' integer `$operational` allocation that preserves the applicable precision
+#' or budget constraint. See [n_multi()] for shared indicator columns and
+#' [n_cluster()] for the cluster cost model.
+#'
+#' @seealso [n_multi()] for simple designs and [prec_multi_cluster()] for the
+#'   inverse calculation.
+#'
+#' @examples
+#' targets <- data.frame(
+#'   name = c("stunting", "anemia"),
+#'   p = c(0.30, 0.10),
+#'   cv = c(0.10, 0.15),
+#'   delta_psu = c(0.02, 0.05)
+#' )
+#' n_multi_cluster(targets, stage_cost = c(500, 50))
+#'
+#' @export
+n_multi_cluster <- function(targets, ...) {
+  if (!missing(targets)) {
+    .res <- .dispatch_plan(targets, "targets", n_multi_cluster.default, ...)
+    if (!is.null(.res)) return(.res)
+  }
+  UseMethod("n_multi_cluster")
+}
+
+#' @rdname n_multi_cluster
+#' @export
+n_multi_cluster.default <- function(
+  targets,
+  ...,
+  stage_cost = NULL,
+  domains = NULL,
+  budget = NULL,
+  n_psu = NULL,
+  psu_size = NULL,
+  ssu_size = NULL,
+  joint = FALSE,
+  min_n = NULL,
+  fixed_cost = 0,
+  plan = NULL
+) {
+  .plan <- .merge_plan_args(
+    plan,
+    n_multi_cluster.default,
+    match.call(),
+    environment()
+  )
+  if (!is.null(.plan)) {
+    return(do.call(n_multi_cluster.default, c(.plan, list(...))))
+  }
+  .check_unused_dots(...)
+
+  if (!is.data.frame(targets) || nrow(targets) == 0L) {
+    stop("'targets' must be a non-empty data frame", call. = FALSE)
+  }
+  if (is.null(stage_cost)) {
+    stop("'stage_cost' is required (directly or via plan)", call. = FALSE)
+  }
+  if (!is.logical(joint) || length(joint) != 1L || is.na(joint)) {
+    stop("'joint' must be TRUE or FALSE", call. = FALSE)
+  }
+  if (!is.null(min_n) &&
+      (!is.numeric(min_n) || length(min_n) != 1L || is.na(min_n) ||
+       min_n <= 0)) {
+    stop("'min_n' must be a positive numeric scalar", call. = FALSE)
+  }
+
+  check_stage_cost(stage_cost)
+  stage_cost <- .reorder_stage_cost(stage_cost)
+  stages <- length(stage_cost)
+  if (!is.null(budget)) check_scalar(budget, "budget")
+  if (!is.null(n_psu)) check_scalar(n_psu, "n_psu")
+  if (!is.null(psu_size)) check_scalar(psu_size, "psu_size")
+  if (!is.null(ssu_size)) check_scalar(ssu_size, "ssu_size")
+  if (stages == 2L && !is.null(ssu_size)) {
+    stop("'ssu_size' is not applicable for 2-stage designs", call. = FALSE)
+  }
+  n_fixed <- sum(!is.null(n_psu), !is.null(psu_size), !is.null(ssu_size))
+  if (n_fixed >= stages) {
+    stop("cannot fix all stages; use prec_multi_cluster() instead",
+         call. = FALSE)
+  }
+  check_fixed_cost(fixed_cost, budget)
+
+  info <- .validate_targets(
+    targets,
+    TRUE,
+    domains = domains,
+    stages = stages,
+    context = "n_multi_cluster()"
+  )
+  targets <- .fill_defaults(targets, TRUE)
+  targets <- .convert_moe_to_cv(targets)
+
+  rv_final <- targets$rel_var[!is.na(targets$rel_var)]
+  if (length(rv_final) > 0L &&
+      (any(rv_final <= 0) || any(!is.finite(rv_final)))) {
+    stop("'rel_var' values must be positive and finite", call. = FALSE)
+  }
+  if (any(targets$k_psu <= 0) || any(!is.finite(targets$k_psu))) {
+    stop("'k_psu' values must be positive and finite", call. = FALSE)
+  }
+  if (any(targets$k_ssu <= 0) || any(!is.finite(targets$k_ssu))) {
+    stop("'k_ssu' values must be positive and finite", call. = FALSE)
+  }
+
+  domain_cols <- info$domain_cols
+  mode <- if (!is.null(budget)) {
+    "budget"
+  } else if ("moe" %in% names(targets) && any(!is.na(targets$moe))) {
+    "moe"
+  } else {
+    "cv"
+  }
+
+  if (length(domain_cols) == 0L) {
+    .n_multi_cluster(
+      targets,
+      stage_cost,
+      budget,
+      n_psu,
+      psu_size,
+      ssu_size,
+      fixed_cost,
+      domain_cols = domain_cols,
+      mode = mode
+    )
   } else {
     .n_multi_domains(
       targets,
@@ -445,14 +487,36 @@ n_multi.default <- function(
       psu_size,
       ssu_size,
       domain_cols,
-      multistage,
+      multistage = TRUE,
       joint,
       min_n,
       fixed_cost,
-      mode = mode,
-      prop_method = prop_method
+      mode = mode
     )
   }
+}
+
+#' Report arguments that moved to the cluster-specific API
+#' @keywords internal
+#' @noRd
+.check_multi_split_args <- function(dots, replacement) {
+  moved <- intersect(
+    names(dots) %||% character(0),
+    c("stage_cost", "budget", "n_psu", "psu_size", "ssu_size", "joint",
+      "fixed_cost")
+  )
+  if (length(moved) > 0L) {
+    stop(
+      sprintf(
+        "cluster argument%s %s moved to %s",
+        if (length(moved) > 1L) "s" else "",
+        paste(sQuote(moved), collapse = ", "),
+        replacement
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
 }
 
 #' Validate targets data frame
@@ -460,7 +524,8 @@ n_multi.default <- function(
 #' @keywords internal
 #' @noRd
 .validate_targets <- function(targets, multistage, domains = NULL,
-                              stages = NULL) {
+                              stages = NULL,
+                              context = "n_multi_cluster()") {
   if (!is.null(domains)) {
     if (!is.character(domains) || anyNA(domains)) {
       stop("'domains' must be a character vector without NAs", call. = FALSE)
@@ -603,13 +668,13 @@ n_multi.default <- function(
     if (any(d1_vals < 0 | d1_vals > 1)) {
       stop("'delta_psu' values must be in [0, 1]", call. = FALSE)
     }
-    .check_cluster_delta_open(d1_vals, context = "n_multi()")
+    .check_cluster_delta_open(d1_vals, context = context)
     if ("delta_ssu" %in% names(targets)) {
       d2_vals <- targets$delta_ssu[!is.na(targets$delta_ssu)]
       if (any(d2_vals < 0 | d2_vals > 1)) {
         stop("'delta_ssu' values must be in [0, 1]", call. = FALSE)
       }
-      .check_cluster_delta_open(d2_vals, context = "n_multi()")
+      .check_cluster_delta_open(d2_vals, context = context)
     }
   }
 
@@ -1351,7 +1416,7 @@ n_multi.default <- function(
         .check_multistage_feasibility(
           cv_t, cv_floor, n_psu,
           rel_var, k_psu, delta_psu,
-          rr = rr, labels = labels, context = "n_multi()"
+          rr = rr, labels = labels, context = "n_multi_cluster()"
         )
 
         psu_size_required_fn <- function(ss) {
@@ -1458,7 +1523,7 @@ n_multi.default <- function(
         .check_multistage_feasibility(
           cv_t, cv_floor, n_psu,
           rel_var, k_psu, delta_psu,
-          rr = rr, labels = labels, context = "n_multi()"
+          rr = rr, labels = labels, context = "n_multi_cluster()"
         )
         psu_size_required_fn2 <- function(j) {
           denom <- cv_t[j]^2 * n_psu * rr[j] / (rel_var[j] * k_ssu[j]) -
@@ -1498,7 +1563,7 @@ n_multi.default <- function(
         .check_multistage_feasibility(
           cv_t, cv_floor, n_psu,
           rel_var, k_psu, delta_psu,
-          rr = rr, labels = labels, context = "n_multi()"
+          rr = rr, labels = labels, context = "n_multi_cluster()"
         )
         psu_per <- vapply(
           seq_len(nr),
@@ -1534,7 +1599,7 @@ n_multi.default <- function(
           rel_var, k_psu, delta_psu,
           k_ssu = k_ssu, delta_ssu = delta_ssu,
           psu_size = psu_size,
-          rr = rr, labels = labels, context = "n_multi()"
+          rr = rr, labels = labels, context = "n_multi_cluster()"
         )
         ssu_per <- vapply(
           seq_len(nr),
@@ -2384,11 +2449,18 @@ n_multi.default <- function(
 
 #' @rdname n_multi
 #' @export
-n_multi.svyplan_prec <- function(targets, stage_cost = NULL, ...) {
+n_multi.svyplan_prec <- function(targets, ...) {
   x <- targets
   dots <- list(...)
   if (x$type != "multi") {
     stop("n_multi requires a svyplan_prec of type 'multi'", call. = FALSE)
+  }
+  if (identical(x$params$design, "cluster") ||
+      !is.null(x$params$stage_cost)) {
+    stop(
+      "cluster precision must be passed to n_multi_cluster()",
+      call. = FALSE
+    )
   }
   tgt <- x$params$targets
   if ("prop_method" %in% names(dots)) {
@@ -2415,31 +2487,55 @@ n_multi.svyplan_prec <- function(targets, stage_cost = NULL, ...) {
     }
   }
 
-  stage_cost <- stage_cost %||% x$params$stage_cost
-  domains_param <- x$params$domain_cols
-  budget <- x$params$budget
-  n_psu <- x$params$n_psu
-  psu_size <- x$params$psu_size
-  ssu_size <- x$params$ssu_size
-  joint <- if (!is.null(x$params$joint)) x$params$joint else FALSE
-  min_n <- x$params$min_n
-  fixed_cost <- if (!is.null(x$params$fixed_cost)) x$params$fixed_cost else 0
-  do.call(
-    n_multi.default,
-    c(
-      list(
-        targets = tgt,
-        domains = domains_param,
-        stage_cost = stage_cost,
-        budget = budget,
-        n_psu = n_psu,
-        psu_size = psu_size,
-        ssu_size = ssu_size,
-        joint = joint,
-        min_n = min_n,
-        fixed_cost = fixed_cost
-      ),
-      dots
+  args <- list(
+    targets = tgt,
+    domains = x$params$domain_cols,
+    min_n = x$params$min_n,
+    prop_method = x$params$prop_method %||% "wald"
+  )
+  do.call(n_multi.default, .roundtrip_args(args, dots, n_multi.default))
+}
+
+#' @rdname n_multi_cluster
+#' @export
+n_multi_cluster.svyplan_prec <- function(targets, ...) {
+  x <- targets
+  dots <- list(...)
+  if (x$type != "multi" || !identical(x$params$design, "cluster")) {
+    stop(
+      "n_multi_cluster requires cluster precision from prec_multi_cluster()",
+      call. = FALSE
     )
+  }
+
+  tgt <- x$params$targets
+  tgt$n <- NULL
+  tgt$psu_size <- NULL
+  tgt$ssu_size <- NULL
+
+  stored_mode <- x$params$mode
+  if (identical(stored_mode, "moe")) {
+    tgt$moe <- x$detail$.moe
+    tgt$cv <- NULL
+  } else if (!is.null(x$detail) && ".cv" %in% names(x$detail)) {
+    tgt$cv <- x$detail$.cv
+    tgt$moe <- NULL
+  }
+
+  args <- list(
+    targets = tgt,
+    stage_cost = x$params$stage_cost,
+    domains = x$params$domain_cols,
+    budget = x$params$budget,
+    n_psu = x$params$n_psu,
+    psu_size = x$params$psu_size,
+    ssu_size = x$params$ssu_size,
+    joint = x$params$joint %||% FALSE,
+    min_n = x$params$min_n,
+    fixed_cost = x$params$fixed_cost %||% 0
+  )
+  do.call(
+    n_multi_cluster.default,
+    .roundtrip_args(args, dots, n_multi_cluster.default)
   )
 }

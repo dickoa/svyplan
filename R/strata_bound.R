@@ -2,29 +2,30 @@
 #'
 #' Determine where to cut a continuous stratification variable to form
 #' optimal strata. Supports four methods: cumulative root frequency
-#' (Dalenius-Hodges), geometric progression, Lavallee-Hidiroglou
+#' (Dalenius-Hodges), geometric progression, Lavall\enc{é}{e}e-Hidiroglou
 #' iterative, and Kozak random search.
 #'
-#' @param x Numeric vector: stratification variable values. Must not
-#'   contain `NA`.
-#' @param n_strata Integer: number of strata (including take-all if
+#' @param x Numeric vector: finite stratification variable values. Must not
+#'   contain missing values.
+#' @param n_strata Required integer: number of strata (including take-all if
 #'   `certain` is specified). Must be >= 2.
-#' @param n Target total sample size. Specify at most one of `n` or `cv`.
-#'   Required for methods `"lh"` and `"kozak"`.
+#' @param n Target total sample size, supplied as a whole number. Specify at
+#'   most one of `n` or `cv`. Required for methods `"lh"` and `"kozak"`.
 #' @param cv Target coefficient of variation (relative standard error).
 #'   For example, `cv = 0.05` means the standard error of the estimated
 #'   population total or mean should be at most 5 percent of the estimate.
 #'   Specify at most one of `n` or `cv`. Required for methods `"lh"` and
 #'   `"kozak"`.
 #' @param method Stratification method: `"cumrootf"` (Dalenius-Hodges),
-#'   `"geo"` (geometric), `"lh"` (Lavallee-Hidiroglou), or `"kozak"`
+#'   `"geo"` (geometric), `"lh"` (Lavall\enc{é}{e}e-Hidiroglou), or
+#'   `"kozak"`
 #'   (random search). Default `"lh"`.
 #' @param alloc Allocation rule: `"proportional"`, `"neyman"`,
 #'   `"optimal"`, or `"power"` (Bankier compromise). Default `"neyman"`.
 #'   See Details.
 #' @param power_q Bankier power parameter, used only when `alloc = "power"`.
 #'   Numeric scalar in \eqn{[0, 1]}. At `power_q = 1` the allocation equals
-#'   Neyman; at `power_q = 0` it yields near-equal subnational CVs.
+#'   Neyman. At `power_q = 0` it yields near-equal subnational CVs.
 #'   Default 0.5.
 #' @param unit_cost Per-stratum unit costs, ordered from lowest to highest
 #'   stratum. Scalar (equal costs) or vector of length `n_strata`.
@@ -32,12 +33,12 @@
 #'   in which case `"optimal"` and `"neyman"` coincide.
 #' @param certain Take-all threshold. Units with `x >= certain` form a
 #'   census stratum.
-#' @param nclass Number of histogram bins for `"cumrootf"`. Default
-#'   `NULL` (Freedman-Diaconis rule).
-#' @param maxiter Maximum iterations for `"lh"` and `"kozak"`. Default
-#'   200.
-#' @param n_restart Random restarts for `"kozak"`. Default `NULL` (= 10 *
-#'   `n_strata`).
+#' @param n_class Positive whole number of histogram bins for `"cumrootf"`.
+#'   Default `NULL` (Freedman-Diaconis rule).
+#' @param max_iter Positive whole number of maximum iterations for `"lh"` and
+#'   `"kozak"`. Default 200.
+#' @param n_restart Positive whole number of random restarts for `"kozak"`.
+#'   Default `NULL` (= 10 * `n_strata`).
 #'
 #' @return A `svyplan_strata` object with components:
 #' \describe{
@@ -66,7 +67,8 @@
 #' - **geo**: Gunning-Horgan (2004) geometric progression. Non-iterative,
 #'   requires `x > 0`. Works well for right-skewed positive variables
 #'   (e.g. income, revenue) where a log-scale spacing is natural.
-#' - **lh** (default): Lavallee-Hidiroglou (1988) iterative coordinate-wise
+#' - **lh** (default): Lavall\enc{é}{e}e-Hidiroglou (1988) iterative
+#'   coordinate-wise
 #'   optimization. Requires `n` or `cv`. The recommended choice when you
 #'   know the sample size or target CV: it directly minimizes the
 #'   objective and is fast even on large frames.
@@ -74,8 +76,8 @@
 #'   `n` or `cv`. Use for highly skewed or multimodal data where `"lh"`
 #'   may get trapped in a local optimum. Slower but more robust.
 #'
-#' In summary: use `"lh"` by default; switch to `"kozak"` if the
-#' distribution is difficult; fall back to `"cumrootf"` or `"geo"` when
+#' In summary, use `"lh"` by default. Switch to `"kozak"` if the
+#' distribution is difficult, or fall back to `"cumrootf"` or `"geo"` when
 #' you do not yet have `n` or `cv`.
 #'
 #' Allocation is controlled by the `alloc` parameter. Four methods are
@@ -102,7 +104,7 @@
 #' Dalenius, T. and Hodges, J. L. (1959). Minimum variance stratification.
 #' \emph{Journal of the American Statistical Association}, 54(285), 88--101.
 #'
-#' Lavallee, P. and Hidiroglou, M. (1988). On the stratification of skewed
+#' Lavall\enc{é}{e}e, P. and Hidiroglou, M. (1988). On the stratification of skewed
 #' populations. \emph{Survey Methodology}, 14(1), 33--43.
 #'
 #' Kozak, M. (2004). Optimal stratification using random search method in
@@ -123,7 +125,7 @@
 #' constraints. \emph{arXiv preprint} arXiv:1501.00014.
 #'
 #' @examples
-#' set.seed(42)
+#' set.seed(867)
 #' x <- rlnorm(500, meanlog = 6, sdlog = 1.5)
 #'
 #' # Dalenius-Hodges (non-iterative)
@@ -138,15 +140,16 @@
 #' # With take-all stratum
 #' strata_bound(x, n_strata = 3, n = 80, certain = quantile(x, 0.95))
 #'
+#' @encoding UTF-8
 #' @export
-strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
-                         method = "lh",
-                         alloc = "neyman",
+strata_bound <- function(x, n_strata, n = NULL, cv = NULL,
+                         method = c("lh", "cumrootf", "geo", "kozak"),
+                         alloc = c("neyman", "optimal", "proportional", "power"),
                          power_q = 0.5,
                          unit_cost = NULL,
                          certain = NULL,
-                         nclass = NULL,
-                         maxiter = 200L,
+                         n_class = NULL,
+                         max_iter = 200L,
                          n_restart = NULL) {
   if (!is.numeric(x) || length(x) < 2L) {
     stop("'x' must be a numeric vector with at least 2 elements", call. = FALSE)
@@ -154,13 +157,16 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
   if (anyNA(x)) {
     stop("'x' must not contain NA values", call. = FALSE)
   }
-
-  n_strata <- as.integer(n_strata)
-  if (length(n_strata) != 1L || is.na(n_strata) || n_strata < 2L) {
-    stop("'n_strata' must be an integer >= 2", call. = FALSE)
+  if (any(!is.finite(x))) {
+    stop("'x' must contain only finite values", call. = FALSE)
   }
 
-  method <- match.arg(method, c("cumrootf", "geo", "lh", "kozak"))
+  if (missing(n_strata)) {
+    stop("'n_strata' is required", call. = FALSE)
+  }
+  n_strata <- check_count(n_strata, "n_strata", minimum = 2L)
+
+  method <- match.arg(method)
 
   has_n <- !is.null(n)
   has_cv <- !is.null(cv)
@@ -170,14 +176,14 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
   if (method %in% c("lh", "kozak") && !has_n && !has_cv) {
     stop("method '", method, "' requires 'n' or 'cv'", call. = FALSE)
   }
-  if (has_n) check_scalar(n, "n")
+  if (has_n) n <- check_count(n, "n")
   if (has_cv) check_scalar(cv, "cv")
 
   if (!is.character(alloc)) {
     stop("'alloc' must be one of \"proportional\", \"neyman\", \"optimal\", \"power\"",
          call. = FALSE)
   }
-  alloc <- match.arg(alloc, c("proportional", "neyman", "optimal", "power"))
+  alloc <- match.arg(alloc)
   if (alloc == "power") {
     if (!is.numeric(power_q) || length(power_q) != 1L || is.na(power_q) || power_q < 0 || power_q > 1) {
       stop("'power_q' must be a numeric scalar in [0, 1]", call. = FALSE)
@@ -188,8 +194,9 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
   L_work <- n_strata
 
   if (!is.null(certain)) {
-    if (!is.numeric(certain) || length(certain) != 1L || is.na(certain)) {
-      stop("'certain' must be a numeric scalar", call. = FALSE)
+    if (!is.numeric(certain) || length(certain) != 1L || is.na(certain) ||
+        !is.finite(certain)) {
+      stop("'certain' must be a finite numeric scalar", call. = FALSE)
     }
     n_certain <- sum(x >= certain)
     if (n_certain == 0L) {
@@ -217,8 +224,9 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
   if (is.null(unit_cost)) {
     cost_h <- rep(1, n_strata)
   } else {
-    if (!is.numeric(unit_cost) || anyNA(unit_cost) || any(unit_cost <= 0)) {
-      stop("'unit_cost' must be positive numeric", call. = FALSE)
+    if (!is.numeric(unit_cost) || anyNA(unit_cost) ||
+        any(!is.finite(unit_cost)) || any(unit_cost <= 0)) {
+      stop("'unit_cost' must be positive and finite", call. = FALSE)
     }
     if (!length(unit_cost) %in% c(1L, n_strata)) {
       stop(
@@ -230,30 +238,31 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     cost_h <- rep_len(unit_cost, n_strata)
   }
 
-  if (is.null(n_restart)) n_restart <- 10L * n_strata
-  maxiter <- as.integer(maxiter)
-  n_restart <- as.integer(n_restart)
+  if (!is.null(n_class)) n_class <- check_count(n_class, "n_class")
+  if (is.null(n_restart)) n_restart <- 10 * n_strata
+  max_iter <- check_count(max_iter, "max_iter")
+  n_restart <- check_count(n_restart, "n_restart")
 
   x_sort <- sort(x_work)
 
   n_total <- if (has_n) n else if (has_cv) NULL else length(x) / 2
 
   if (method == "cumrootf") {
-    bk <- .strata_cumrootf(x_sort, L_work, nclass)
+    bk <- .strata_cumrootf(x_sort, L_work, n_class)
   } else if (method == "geo") {
     bk <- .strata_geo(x_sort, L_work)
   } else if (method == "lh") {
     target_cv <- if (has_cv) cv else NULL
     n_opt <- if (has_n) n else NULL
     res <- .strata_lh(x_sort, L_work, n_opt, target_cv, alloc, power_q,
-                       cost_h[seq_len(L_work)], maxiter)
+                       cost_h[seq_len(L_work)], max_iter)
     bk <- res$bk
     converged <- res$converged
   } else {
     target_cv <- if (has_cv) cv else NULL
     n_opt <- if (has_n) n else NULL
     res <- .strata_kozak(x_sort, L_work, n_opt, target_cv, alloc, power_q,
-                          cost_h[seq_len(L_work)], maxiter, n_restart)
+                          cost_h[seq_len(L_work)], max_iter, n_restart)
     bk <- res$bk
     converged <- res$converged
   }
@@ -264,7 +273,15 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
   }
 
   if (length(bk) != n_strata - 1L) {
-    bk <- bk[seq_len(n_strata - 1L)]
+    stop(
+      sprintf(
+        "internal error: method '%s' returned %d boundaries; expected %d",
+        method,
+        length(bk),
+        n_strata - 1L
+      ),
+      call. = FALSE
+    )
   }
 
   certain_strata <- if (!is.null(certain)) n_strata else NULL
@@ -312,8 +329,8 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     lower   = alloc_res$lower,
     upper   = alloc_res$upper,
     N       = alloc_res$N_h,
-    share   = round(alloc_res$W_h, 6L),
-    sd      = round(alloc_res$S_h, 4L),
+    share   = alloc_res$W_h,
+    sd      = alloc_res$S_h,
     n       = if (has_cv) {
       as.integer(pmin(ceiling(alloc_res$n_h - 1e-9), alloc_res$N_h))
     } else {
@@ -351,7 +368,7 @@ strata_bound <- function(x, n_strata = 3L, n = NULL, cv = NULL,
     params     = list(
       N         = length(x),
       power_q   = if (alloc == "power") power_q else NULL,
-      maxiter   = if (method %in% c("lh", "kozak")) maxiter else NULL,
+      max_iter  = if (method %in% c("lh", "kozak")) max_iter else NULL,
       n_restart = if (method == "kozak") n_restart else NULL,
       cv_continuous = alloc_res$cv,
       cv_target = if (has_cv) cv else NULL,

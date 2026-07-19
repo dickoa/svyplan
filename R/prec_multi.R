@@ -17,24 +17,15 @@
 #'
 #'   See the Details section for the full column reference.
 #'
-#'   For `svyplan_n` or `svyplan_cluster` objects: a result from
-#'   [n_multi()].
-#' @param ... Additional arguments passed to methods.
+#'   For `svyplan_n` objects: a result from [n_multi()].
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param domains Character vector of column names in `targets` to treat
 #'   as domain variables, or `NULL` (default) for no domains. All names
 #'   must exist in `targets`. Domain columns are preserved in the result
 #'   for round-trip conversion back to [n_multi()].
-#' @param stage_cost Numeric vector of per-stage costs. `NULL` (default) for
-#'   simple mode; length 2 or 3 for multistage mode.
-#' @param budget Total budget. Does not affect precision calculations;
-#'   preserved for round-trip conversion back to [n_multi()].
-#' @param n_psu Fixed stage-1 sample size. Does not affect precision
-#'   calculations; preserved for round-trip conversion back to [n_multi()].
-#' @param joint Logical. Does not affect precision calculations;
-#'   preserved for round-trip conversion back to [n_multi()].
-#' @param prop_method Proportion CI method for simple mode, one of `"wald"`
+#' @param prop_method Proportion CI method, one of `"wald"`
 #'   (default), `"wilson"`, or `"logodds"`. This is passed to [prec_prop()]
-#'   for proportion rows and ignored for mean rows and multistage mode.
+#'   for proportion rows and ignored for mean rows.
 #'   An optional `prop_method` column in `targets` overrides this default
 #'   on a per-row basis.
 #' @param plan A [svyplan()] profile providing default design parameters.
@@ -69,38 +60,26 @@
 #'   \item{`var`}{Population variance. One of `p` or `var` per row.}
 #'   \item{`mu`}{Population mean. Required for CV output when `var`
 #'     is specified, because CV = SE / mean.}
-#'   \item{`n`}{Sample size to evaluate (**required**). In simple mode,
-#'     one number per row. In multistage mode, this is the stage-1
-#'     (PSU) sample size; add `psu_size` and optionally `ssu_size`
-#'     columns for the per-stage cluster sizes.}
-#'   \item{`psu_size`}{Stage-2 sample size per PSU (multistage only).
-#'     Required for 2+ stage designs in multistage mode.}
-#'   \item{`ssu_size`}{Stage-3 sample size per SSU (3-stage only).}
+#'   \item{`n`}{Sample size to evaluate (**required**), with one value per
+#'     indicator row.}
 #'   \item{`alpha`}{Significance level (default 0.05).}
-#'   \item{`deff`}{Design effect multiplier (simple mode only,
-#'     default 1).}
-#'   \item{`N`}{Population size (simple mode only, default `Inf`).}
+#'   \item{`deff`}{Design effect multiplier (default 1).}
+#'   \item{`N`}{Population size (default `Inf`).}
 #'   \item{`prop_method`}{Proportion CI method: `"wald"` (default),
-#'     `"wilson"`, or `"logodds"`. Only for rows with `p` in
-#'     simple mode.}
+#'     `"wilson"`, or `"logodds"`. Only for rows with `p`.}
 #'   \item{`resp_rate`}{Expected response rate (default 1).}
-#'   \item{`delta_psu`, `delta_ssu`}{Homogeneity measures
-#'     (multistage).}
-#'   \item{`rel_var`}{Unit relvariance. If omitted, derived from `p`
-#'     or `var`/`mu`.}
-#'   \item{`k_psu`, `k_ssu`}{Ratio parameters (multistage,
-#'     default 1).}
 #' }
 #'
 #' Domain columns are specified via the `domains` parameter.
 #'
-#' In simple mode, `prec_multi()` delegates proportion rows to [prec_prop()]
+#' `prec_multi()` delegates proportion rows to [prec_prop()]
 #' and mean rows to [prec_mean()]. Use `prop_method` or a
 #' `targets$prop_method` column to choose `"wald"`, `"wilson"`, or
 #' `"logodds"` for proportion rows.
 #'
-#' @seealso [n_multi()] for the inverse (compute n from precision targets),
-#'   [prec_prop()], [prec_mean()] for single-indicator precision.
+#' @seealso [n_multi()] for the inverse, [prec_multi_cluster()] for
+#'   multistage cluster designs, and [prec_prop()] and [prec_mean()] for
+#'   single-indicator precision.
 #'
 #' @examples
 #' # Simple mode: precision for three indicators at n = 400
@@ -127,14 +106,10 @@ prec_multi <- function(targets, ...) {
 #' @export
 prec_multi.default <- function(
   targets,
+  ...,
   domains = NULL,
-  stage_cost = NULL,
-  budget = NULL,
-  n_psu = NULL,
-  joint = FALSE,
-  prop_method = "wald",
-  plan = NULL,
-  ...
+  prop_method = c("wald", "wilson", "logodds"),
+  plan = NULL
 ) {
   merged <- .merge_plan_args(
     plan,
@@ -143,7 +118,23 @@ prec_multi.default <- function(
     environment()
   )
   if (!is.null(merged)) {
-    return(do.call(prec_multi.default, merged))
+    return(do.call(prec_multi.default, c(merged, list(...))))
+  }
+  .check_multi_split_args(list(...), "prec_multi_cluster()")
+  .check_unused_dots(...)
+  if (missing(prop_method)) {
+    prop_method <- prop_method[[1L]]
+  }
+  if (
+    !is.character(prop_method) ||
+      length(prop_method) != 1L ||
+      is.na(prop_method) ||
+      !prop_method %in% c("wald", "wilson", "logodds")
+  ) {
+    stop(
+      "'prop_method' must be one of 'wald', 'wilson', or 'logodds'",
+      call. = FALSE
+    )
   }
 
   if (!is.data.frame(targets) || nrow(targets) == 0L) {
@@ -168,29 +159,130 @@ prec_multi.default <- function(
       )
     }
   }
-  if (
-    !is.character(prop_method) ||
-      length(prop_method) != 1L ||
-      is.na(prop_method) ||
-      !prop_method %in% c("wald", "wilson", "logodds")
-  ) {
-    stop(
-      "'prop_method' must be one of 'wald', 'wilson', or 'logodds'",
-      call. = FALSE
+  domain_cols <- domains %||% character(0)
+  .prec_multi_simple(targets, prop_method = prop_method,
+                     domain_cols = domain_cols)
+}
+
+#' Multi-Indicator Precision for Cluster Designs
+#'
+#' Compute achieved precision for several indicators under a two- or
+#' three-stage cluster allocation. This is the inverse of
+#' [n_multi_cluster()].
+#'
+#' @param targets For the default method, a non-empty data frame with one row
+#'   per indicator. It must contain `n` and `psu_size`. Include `ssu_size` for
+#'   a three-stage design. Cluster homogeneity and indicator columns follow
+#'   the schema used by [n_multi_cluster()]. For `svyplan_cluster` methods,
+#'   an allocation returned by [n_multi_cluster()].
+#' @param ... Additional arguments passed to methods. Unused arguments are
+#'   rejected.
+#' @param domains Optional character vector naming domain columns in
+#'   `targets`.
+#' @param stage_cost Optional per-stage costs to retain for a later round trip
+#'   to [n_multi_cluster()]. Costs do not enter the precision calculation.
+#' @param plan Optional [svyplan()] profile providing design metadata.
+#'
+#' @return A `svyplan_prec` object with per-indicator cluster precision in
+#'   `$detail`.
+#'
+#' @examples
+#' targets <- data.frame(
+#'   name = c("stunting", "anemia"),
+#'   p = c(0.30, 0.10),
+#'   n = c(60, 60),
+#'   psu_size = c(12, 12),
+#'   delta_psu = c(0.02, 0.05)
+#' )
+#' prec_multi_cluster(targets)
+#'
+#' @export
+prec_multi_cluster <- function(targets, ...) {
+  if (!missing(targets)) {
+    .res <- .dispatch_plan(
+      targets,
+      "targets",
+      prec_multi_cluster.default,
+      ...
     )
+    if (!is.null(.res)) return(.res)
+  }
+  UseMethod("prec_multi_cluster")
+}
+
+#' @rdname prec_multi_cluster
+#' @export
+prec_multi_cluster.default <- function(
+  targets,
+  ...,
+  domains = NULL,
+  stage_cost = NULL,
+  plan = NULL
+) {
+  merged <- .merge_plan_args(
+    plan,
+    prec_multi_cluster.default,
+    match.call(),
+    environment()
+  )
+  if (!is.null(merged)) {
+    return(do.call(prec_multi_cluster.default, c(merged, list(...))))
+  }
+  .check_unused_dots(...)
+
+  if (!is.data.frame(targets) || nrow(targets) == 0L) {
+    stop("'targets' must be a non-empty data frame", call. = FALSE)
+  }
+  if (!"n" %in% names(targets)) {
+    stop("'targets' must contain an 'n' column", call. = FALSE)
+  }
+  if (!is.null(domains)) {
+    if (!is.character(domains) || anyNA(domains)) {
+      stop("'domains' must be a character vector without NAs", call. = FALSE)
+    }
+    missing_cols <- setdiff(domains, names(targets))
+    if (length(missing_cols) > 0L) {
+      stop(
+        sprintf(
+          "domain column(s) not found in targets: %s",
+          paste(sQuote(missing_cols), collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
   }
 
-  domain_cols <- domains %||% character(0)
-  multistage <- !is.null(stage_cost)
-
-  if (multistage) {
+  if (!is.null(stage_cost)) {
     check_stage_cost(stage_cost)
     stage_cost <- .reorder_stage_cost(stage_cost)
-    .prec_multi_cluster(targets, stage_cost, domain_cols = domain_cols)
-  } else {
-    .prec_multi_simple(targets, prop_method = prop_method,
-                       domain_cols = domain_cols)
   }
+  stages <- if (!is.null(stage_cost)) {
+    length(stage_cost)
+  } else if ("ssu_size" %in% names(targets)) {
+    3L
+  } else {
+    2L
+  }
+  if (!is.null(stage_cost)) {
+    target_stages <- if ("ssu_size" %in% names(targets)) 3L else 2L
+    if (target_stages == 3L && length(stage_cost) != 3L) {
+      stop(
+        sprintf(
+          "'stage_cost' has length %d but target columns describe a %d-stage design",
+          length(stage_cost),
+          target_stages
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
+  .prec_multi_cluster(
+    targets,
+    stages = stages,
+    stage_cost = stage_cost,
+    domain_cols = domains %||% character(0)
+  )
 }
 
 #' @keywords internal
@@ -323,18 +415,20 @@ prec_multi.default <- function(
     moe = moe_vec,
     cv = cv_vec,
     type = "multi",
-    params = list(targets = targets, domain_cols = domain_cols),
+    params = list(
+      targets = targets,
+      domain_cols = domain_cols,
+      design = "simple"
+    ),
     detail = detail
   )
 }
 
 #' @keywords internal
 #' @noRd
-.prec_multi_cluster <- function(targets, stage_cost,
+.prec_multi_cluster <- function(targets, stages, stage_cost = NULL,
                                 domain_cols = character(0),
                                 mode = "cv") {
-  stages <- length(stage_cost)
-
   if (!"alpha" %in% names(targets)) {
     targets$alpha <- 0.05
   }
@@ -492,8 +586,13 @@ prec_multi.default <- function(
     moe = moe_vec,
     cv = cv_vec,
     type = "multi",
-    params = list(targets = targets, stage_cost = stage_cost,
-                  domain_cols = domain_cols),
+    params = list(
+      targets = targets,
+      stage_cost = stage_cost,
+      domain_cols = domain_cols,
+      design = "cluster",
+      stages = stages
+    ),
     detail = detail
   )
 }
@@ -536,9 +635,22 @@ prec_multi.svyplan_n <- function(targets, ...) {
 #' @rdname prec_multi
 #' @export
 prec_multi.svyplan_cluster <- function(targets, ...) {
+  stop(
+    "cluster allocations must be passed to prec_multi_cluster()",
+    call. = FALSE
+  )
+}
+
+#' @rdname prec_multi_cluster
+#' @export
+prec_multi_cluster.svyplan_cluster <- function(targets, ...) {
   x <- targets
+  dots <- list(...)
   if (is.null(x$targets)) {
-    stop("prec_multi requires a svyplan_cluster from n_multi()", call. = FALSE)
+    stop(
+      "prec_multi_cluster requires a svyplan_cluster from n_multi_cluster()",
+      call. = FALSE
+    )
   }
   tgt <- x$targets
   tgt$cv <- NULL
@@ -566,10 +678,41 @@ prec_multi.svyplan_cluster <- function(targets, ...) {
 
   stage_cost <- x$params$stage_cost
   mode <- x$params$mode %||% "cv"
-  res <- .prec_multi_cluster(tgt, stage_cost, domain_cols = dom_cols,
-                             mode = mode)
+  args <- list(
+    targets = tgt,
+    stages = x$stages,
+    stage_cost = stage_cost,
+    domain_cols = dom_cols,
+    mode = mode
+  )
+  allowed <- c("stage_cost", "domains")
+  dot_names <- names(dots) %||% rep("", length(dots))
+  unknown <- setdiff(dot_names, allowed)
+  if (length(unknown) > 0L || any(!nzchar(dot_names))) {
+    .check_unused_dots(...)
+  }
+  if ("stage_cost" %in% names(dots)) {
+    check_stage_cost(dots$stage_cost)
+    override_cost <- .reorder_stage_cost(dots$stage_cost)
+    if (length(override_cost) != x$stages) {
+      stop(
+        sprintf("'stage_cost' must have length %d", x$stages),
+        call. = FALSE
+      )
+    }
+    args$stage_cost <- override_cost
+  }
+  if ("domains" %in% names(dots)) {
+    if (!is.null(dots$domains) &&
+        (!is.character(dots$domains) || anyNA(dots$domains) ||
+         any(!dots$domains %in% names(tgt)))) {
+      stop("'domains' must name columns in targets", call. = FALSE)
+    }
+    args$domain_cols <- dots$domains %||% character(0)
+  }
+  res <- do.call(.prec_multi_cluster, args)
   for (p in c("budget", "n_psu", "psu_size", "ssu_size", "joint", "fixed_cost",
-              "min_n", "mode", "prop_method")) {
+              "min_n", "mode")) {
     if (!is.null(x$params[[p]])) res$params[[p]] <- x$params[[p]]
   }
   res

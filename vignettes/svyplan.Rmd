@@ -18,7 +18,7 @@ knitr::opts_chunk$set(
 library(svyplan)
 ```
 
-`svyplan` provides a simple and complete toolkit for survey sample size determination. It covers sample sizes for proportions and means, precision analysis, multistage cluster allocation, multi-indicator optimization, strata boundary optimization, and power analysis. All functions share a consistent interface built around `S3` generics, enabling round-trip conversions between sample size and precision, and sensitivity analysis via `predict()`.
+`svyplan` provides a toolkit for survey sample size determination. It covers sample sizes for proportions and means, precision analysis, multistage cluster allocation, multi-indicator optimization, strata boundary optimization, and power analysis. The core sizing and precision functions use paired S3 interfaces for round-trip conversions. Sensitivity analysis via `predict()` is available for supported result classes.
 
 ## Function ecosystem
 
@@ -86,11 +86,11 @@ par(op)
 | Design      | `varcomp`, `design_effect`, `effective_n`                        | Variance components and design effects |
 | Strata      | `strata_bound`                                                   | Optimal stratification boundaries      |
 
-Every function returns an S3 object with `print`, `predict`, and (where applicable) `confint` methods.
+Most planning functions return structured S3 objects. Available methods depend on the result class; see the relevant help page for details.
 
 ## The n_\*/prec_\* duality
 
-The most distinctive feature of svyplan is the bidirectional link between sample size and precision functions. Every `n_*` function has a `prec_*` counterpart, and they are exact inverses.
+The most distinctive feature of svyplan is the bidirectional link between sample size and precision functions. Every `n_*` function has a `prec_*` counterpart, and each pair supports round-trip conversion. Under the same formula and continuous design assumptions, converting a result to its counterpart and back reproduces the original target. Changing methods or using an operational integer allocation can change the result.
 
 ```{r decision-diagram, echo = FALSE, fig.height = 4, fig.width = 7}
 op <- par(mar = c(0, 0, 0, 0), family = "sans")
@@ -111,9 +111,9 @@ rrect(1.5, 3.2, 2.5, 0.7, '"How many units?"')
 rrect(5.0, 3.2, 2.8, 0.7, '"What precision at n?"')
 rrect(8.5, 3.2, 2.5, 0.7, '"Can I detect a change?"')
 
-rrect(1.5, 1.5, 2.8, 0.8, "n_prop \u00b7 n_mean\nn_cluster \u00b7 n_multi",
+rrect(1.5, 1.5, 2.8, 0.8, "n_prop \u00b7 n_mean\nn_cluster \u00b7 n_multi \u00b7 n_alloc",
       col = "white", border = "black", cex = 0.65)
-rrect(5.0, 1.5, 2.8, 0.8, "prec_prop \u00b7 prec_mean\nprec_cluster \u00b7 prec_multi",
+rrect(5.0, 1.5, 2.8, 0.8, "prec_prop \u00b7 prec_mean\nprec_cluster \u00b7 prec_multi \u00b7 prec_alloc",
       col = "white", border = "black", cex = 0.65)
 rrect(8.5, 1.5, 2.8, 0.8, "power_prop \u00b7 power_mean\npower_did",
       col = "white", border = "black", cex = 0.65)
@@ -233,7 +233,7 @@ Piping works with both positional and named arguments:
 ```{r svyplan-pipe}
 plan |> n_prop(0.3, moe = 0.05)
 plan |> n_prop(p = 0.3, moe = 0.05)
-plan |> power_mean(5, var = 200)
+plan |> power_mean(200, effect = 5)
 ```
 
 Explicit arguments always override plan defaults:
@@ -384,6 +384,7 @@ frame <- data.frame(cluster = cluster_id, expenditure = expenditure)
 
 vc <- varcomp(expenditure ~ cluster, data = frame)
 vc
+as.data.frame(vc)
 ```
 
 The `delta` value is the survey-planning measure of homogeneity. It feeds directly into `n_cluster()` and the cluster-planning mode of `design_effect()`. This `delta` is not a generic mixed-model ICC: `varcomp()` returns the bounded planning quantity from Valliant, Dever, and Kreuter (2018), and that is the scale expected by the cluster-planning functions. When `delta` is near 0, most variation is within clusters, so the analytical cluster optimum tends to favor many interviews in very few PSUs. When `delta` is near 1, most variation is between clusters, so the optimum tends to favor very few interviews in many PSUs. Both are degenerate boundary cases for the closed-form optimizer, so `n_cluster()` rejects values numerically too close to 0 or 1.
@@ -416,7 +417,7 @@ n_cluster(
 
 ### Response rate in cluster designs
 
-In budget mode, applying a response rate does not change the allocation (the budget constrains the design); instead, the achieved CV worsens. In CV mode, the first-stage sample is inflated by `1/resp_rate`:
+In budget mode, applying a response rate does not change the allocation because the budget constrains the design. Instead, the achieved CV worsens. In CV mode, the first-stage sample is inflated by `1 / resp_rate`:
 
 ```{r n-cluster-resp}
 n_cluster(stage_cost = c(500, 50), delta = vc, cv = 0.05, resp_rate = 0.90)
@@ -434,7 +435,8 @@ n_cluster(stage_cost = c(500, 50), delta = vc, budget = 100000, fixed_cost = 500
 n_cluster(stage_cost = c(500, 50), delta = vc, cv = 0.05, fixed_cost = 5000)
 ```
 
-The same parameter is available in `n_multi()` for multistage multi-indicator designs.
+The same parameter is available in `n_multi_cluster()` for multistage
+multi-indicator designs.
 
 ### Evaluating cluster allocations
 
@@ -467,7 +469,8 @@ effective_n(w, method = "kish")
 
 ### Multi-indicator multistage
 
-For surveys with multiple indicators in a cluster design, provide `delta_psu` columns and a cost/budget to `n_multi()`:
+For surveys with multiple indicators in a cluster design, provide
+`delta_psu` columns and stage costs to `n_multi_cluster()`:
 
 ```{r n-multi-cluster}
 targets_ms <- data.frame(
@@ -477,7 +480,7 @@ targets_ms <- data.frame(
   delta_psu = c(0.05, 0.02)
 )
 
-n_multi(targets_ms, stage_cost = c(500, 50), budget = 80000)
+n_multi_cluster(targets_ms, stage_cost = c(500, 50), budget = 80000)
 ```
 
 ## Optimal strata boundaries
@@ -497,7 +500,7 @@ Four methods are available:
 |:-------------|:------------------------------------------|:---------|:---------------|
 | `"cumrootf"` | Dalenius-Hodges cumulative root frequency | Fast     | General use    |
 | `"geo"`      | Geometric progression                     | Fast     | Skewed data    |
-| `"lh"`       | Lavall\u00e9e-Hidiroglou iterative        | Moderate | Skewed data    |
+| `"lh"`       | Lavallée-Hidiroglou iterative          | Moderate | Skewed data    |
 | `"kozak"`    | Kozak random search                       | Slow     | Global optimum |
 
 The Kozak method often finds better boundaries for highly skewed
@@ -557,14 +560,14 @@ frame <- data.frame(
 n_alloc(frame, n = 600, alloc = "neyman")
 ```
 
-Three solve modes are available: fixed total `n`, target `cv`, or `budget` constraint (when `cost` is provided in the frame).
+Three solve modes are available: fixed total `n`, target `cv`, or `budget` constraint (when `unit_cost` is provided in the frame).
 
 Constraints and domain-level targets are often the more practical use cases:
 
 ```{r n-alloc-constraints}
 frame_constraints <- transform(
   frame,
-  cost = c(1, 1.5, 1),
+  unit_cost = c(1, 1.5, 1),
   max_weight = c(25, 20, NA),
   take_all = c(FALSE, FALSE, TRUE)
 )
@@ -681,10 +684,10 @@ The same three solve modes work for means:
 
 ```{r power-mean}
 # Sample size to detect a difference of 5 (within-group var = 200)
-power_mean(effect = 5, var = 200)
+power_mean(200, effect = 5)
 
 # MDE with n = 400 per group
-power_mean(var = 200, n = 400)
+power_mean(200, n = 400)
 ```
 
 ### Difference-in-differences
@@ -711,7 +714,7 @@ Both `power_prop()` and `power_mean()` support unequal group sizes via `ratio` o
 power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
 
 # Unequal group variances
-power_mean(effect = 5, var = c(80, 120))
+power_mean(c(80, 120), effect = 5)
 ```
 
 For rare proportions, arcsine and log-odds transforms are more accurate:
@@ -778,7 +781,7 @@ A typical planning sequence for a national household survey ties several svyplan
 4. Evaluate achieved precision with `prec_multi()`
 5. Run sensitivity analysis with `predict()`
 6. If frame data is available, estimate variance components with `varcomp()`
-7. Optimize the multistage allocation with `n_cluster()` or `n_multi()` with costs
+7. Optimize the multistage allocation with `n_cluster()` or `n_multi_cluster()`
 8. Determine strata boundaries with `strata_bound()`
 9. Check that the design has adequate power with `power_prop()` / `power_mean()`
 
@@ -813,4 +816,4 @@ power_prop(
 )
 ```
 
-All `svyplan` output objects support `as.integer()` (ceiling of *n*) and `as.double()` (exact *n*), making it straightforward to pass results between functions or into other packages.
+Sample-size, cluster, power, and strata-boundary results support `as.integer()` and `as.double()`. For sample-size results, these return the rounded-up and exact values of *n*, respectively, which makes it straightforward to pass results between functions or into other packages.

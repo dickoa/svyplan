@@ -1,3 +1,62 @@
+#' Reject arguments that were not consumed from dots
+#'
+#' Uses the dots metadata primitives so argument promises are not evaluated
+#' merely to construct an error message.
+#' @keywords internal
+#' @noRd
+.check_unused_dots <- function(...) {
+  n <- ...length()
+  if (n == 0L) {
+    return(invisible(NULL))
+  }
+  .stop_unused_dots(...names(), seq_len(n))
+}
+
+#' Report selected unused dots
+#' @keywords internal
+#' @noRd
+.stop_unused_dots <- function(names, positions) {
+  if (length(positions) == 0L) {
+    return(invisible(NULL))
+  }
+  if (is.null(names)) {
+    names <- rep("", max(positions))
+  }
+  labels <- ifelse(
+    nzchar(names[positions]),
+    paste0("'", names[positions], "'"),
+    paste0("..", positions)
+  )
+  stop(
+    sprintf(
+      "unused argument%s: %s",
+      if (length(positions) == 1L) "" else "s",
+      paste(labels, collapse = ", ")
+    ),
+    call. = FALSE
+  )
+}
+
+#' Validate and return a whole-number count
+#' @keywords internal
+#' @noRd
+check_count <- function(x, name, minimum = 1L) {
+  valid <- is.numeric(x) &&
+    length(x) == 1L &&
+    !is.na(x) &&
+    is.finite(x) &&
+    x == floor(x) &&
+    x >= minimum &&
+    x <= .Machine$integer.max
+  if (!valid) {
+    stop(
+      sprintf("'%s' must be an integer >= %d", name, minimum),
+      call. = FALSE
+    )
+  }
+  as.integer(x)
+}
+
 #' Check that a value is a positive scalar
 #' @keywords internal
 #' @noRd

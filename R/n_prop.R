@@ -5,7 +5,7 @@
 #'
 #' @param p For the default method: expected proportion, in (0, 1).
 #'   For `svyplan_prec` objects: a precision result from [prec_prop()].
-#' @param ... Additional arguments passed to methods.
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param moe Desired margin of error, the half-width of the confidence
 #'   interval on the proportion scale. For example, `moe = 0.05` means
 #'   the 95 percent CI should be no wider than +/- 5 percentage points.
@@ -13,7 +13,7 @@
 #' @param cv Target coefficient of variation (relative standard error).
 #'   For example, `cv = 0.10` means the standard error should be at
 #'   most 10 percent of the estimate. Use `cv` when you want precision
-#'   to scale with the estimate (common in economic surveys); use `moe`
+#'   to scale with the estimate (common in economic surveys). Use `moe`
 #'   when you want a fixed absolute precision (common in health/DHS
 #'   surveys). Specify exactly one of `moe` or `cv`.
 #' @param alpha Significance level, default 0.05.
@@ -48,7 +48,8 @@
 #'   Only `moe` mode, with optional FPC.
 #'
 #' For proportions near 0 or 1 (below 0.1 or above 0.9), the Wald interval
-#' has poor coverage; `method = "wilson"` is recommended in those cases.
+#' has poor coverage. The recommended choice in those cases is
+#' `method = "wilson"`.
 #'
 #' For the Wilson and log-odds methods, the design effect is applied as a
 #' multiplicative factor to the final SRS sample size, which is an
@@ -69,9 +70,9 @@
 #'
 #' When called on a `svyplan_prec` object, parameters are extracted from the
 #' stored result. Any argument of the default method (e.g. `method`, `deff`,
-#' `N`) can be overridden through `...`; unknown argument names are an
+#' `N`) can be overridden through `...`. Unknown argument names are an
 #' error. Passing a different `method` evaluates the stored precision
-#' target under that formula; the round-trip will not be exact because the
+#' target under that formula. The round-trip will not be exact because the
 #' precision was computed under the original method.
 #'
 #' @references
@@ -116,6 +117,7 @@ n_prop <- function(p, ...) {
 #' @export
 n_prop.default <- function(
   p,
+  ...,
   moe = NULL,
   cv = NULL,
   alpha = 0.05,
@@ -123,13 +125,13 @@ n_prop.default <- function(
   deff = 1,
   resp_rate = 1,
   method = c("wald", "wilson", "logodds"),
-  plan = NULL,
-  ...
+  plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, n_prop.default, match.call(), environment())
   if (!is.null(.plan)) {
     return(do.call(n_prop.default, c(.plan, list(...))))
   }
+  .check_unused_dots(...)
   check_proportion(p, "p")
   check_precision(moe, cv)
   check_alpha(alpha)
@@ -239,7 +241,7 @@ n_prop.default <- function(
 
 #' @rdname n_prop
 #' @export
-n_prop.svyplan_prec <- function(p, moe = NULL, cv = NULL, ...) {
+n_prop.svyplan_prec <- function(p, ..., moe = NULL, cv = NULL) {
   x <- p
   if (x$type != "proportion") {
     stop("n_prop requires a svyplan_prec of type 'proportion'", call. = FALSE)

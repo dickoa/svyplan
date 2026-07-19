@@ -14,7 +14,7 @@
 \item{labels}{Labels for the resulting factor levels. Default \code{NULL}
 generates labels from the boundary intervals.}
 
-\item{...}{Additional arguments (currently unused).}
+\item{...}{Additional arguments are not supported and produce an error.}
 }
 \value{
 A factor of stratum assignments with length equal to
@@ -26,7 +26,7 @@ Apply strata boundaries from a \code{\link[=strata_bound]{strata_bound()}} resul
 vector, returning a factor of stratum assignments.
 }
 \examples{
-set.seed(42)
+set.seed(1103)
 x <- rlnorm(500, meanlog = 6, sdlog = 1.5)
 sb <- strata_bound(x, n_strata = 4, n = 100)
 

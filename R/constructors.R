@@ -6,12 +6,33 @@
   type,
   method = NULL,
   params = list(),
+  se = NULL,
+  moe = NULL,
+  cv = NULL,
   targets = NULL,
   detail = NULL,
   binding = NULL,
-  domains = NULL
+  domains = NULL,
+  operational = NULL
 ) {
-  prec <- .compute_prec_for_n(n, type, params, method = method)
+  stopifnot(
+    is.numeric(n),
+    is.character(type),
+    length(type) == 1L,
+    !is.na(type),
+    is.list(params),
+    is.null(detail) || is.data.frame(detail),
+    is.null(domains) || is.data.frame(domains),
+    is.null(operational) || is.list(operational)
+  )
+
+  if (is.null(se) || is.null(moe) || is.null(cv)) {
+    prec <- .compute_prec_for_n(n, type, params, method = method)
+    se <- se %||% prec$se
+    moe <- moe %||% prec$moe
+    cv <- cv %||% prec$cv
+  }
+  stopifnot(is.numeric(se), is.numeric(moe), is.numeric(cv))
 
   structure(
     list(
@@ -19,13 +40,14 @@
       type = type,
       method = method,
       params = params,
-      se = prec$se,
-      moe = prec$moe,
-      cv = prec$cv,
+      se = se,
+      moe = moe,
+      cv = cv,
       targets = targets,
       detail = detail,
       binding = binding,
-      domains = domains
+      domains = domains,
+      operational = operational
     ),
     class = c("svyplan_n", "list")
   )
@@ -70,6 +92,22 @@
   domains = NULL,
   operational = NULL
 ) {
+  stopifnot(
+    is.numeric(n),
+    is.numeric(stages),
+    length(stages) == 1L,
+    is.numeric(total_n),
+    length(total_n) == 1L,
+    is.numeric(cv),
+    length(cv) == 1L,
+    is.numeric(cost),
+    length(cost) == 1L,
+    is.list(params),
+    is.null(detail) || is.data.frame(detail),
+    is.null(domains) || is.data.frame(domains),
+    is.null(operational) || is.list(operational)
+  )
+
   structure(
     list(
       n = n,
@@ -102,6 +140,19 @@
   params = list(),
   detail = NULL
 ) {
+  stopifnot(
+    is.numeric(se),
+    is.numeric(moe),
+    is.numeric(cv),
+    length(se) == length(moe),
+    length(se) == length(cv),
+    is.character(type),
+    length(type) == 1L,
+    !is.na(type),
+    is.list(params),
+    is.null(detail) || is.data.frame(detail)
+  )
+
   structure(
     list(
       se = se,
@@ -128,6 +179,29 @@
   stages,
   strata = NULL
 ) {
+  stopifnot(
+    is.numeric(stages),
+    length(stages) == 1L,
+    is.null(strata) || is.data.frame(strata)
+  )
+  if (is.null(strata)) {
+    stopifnot(
+      is.numeric(varb),
+      is.numeric(varw),
+      is.numeric(delta),
+      is.numeric(k),
+      is.numeric(rel_var)
+    )
+  } else {
+    stopifnot(
+      is.null(varb),
+      is.null(varw),
+      is.null(delta),
+      is.null(k),
+      is.null(rel_var)
+    )
+  }
+
   structure(
     list(
       varb = varb,
@@ -146,6 +220,20 @@
 #' @keywords internal
 #' @noRd
 .new_svyplan_power <- function(n, power, effect, type, solved, params = list()) {
+  stopifnot(
+    is.numeric(n),
+    length(n) %in% 1:2,
+    is.numeric(power),
+    length(power) == 1L,
+    is.numeric(effect),
+    length(effect) == 1L,
+    is.character(type),
+    length(type) == 1L,
+    is.character(solved),
+    length(solved) == 1L,
+    is.list(params)
+  )
+
   structure(
     list(
       n = n,
@@ -173,6 +261,22 @@
   params,
   converged = NA
 ) {
+  stopifnot(
+    is.numeric(boundaries),
+    is.numeric(n_strata),
+    length(n_strata) == 1L,
+    is.numeric(n),
+    length(n) == 1L,
+    is.numeric(cv),
+    length(cv) == 1L,
+    is.data.frame(strata),
+    is.character(method),
+    length(method) == 1L,
+    is.character(alloc),
+    length(alloc) == 1L,
+    is.list(params)
+  )
+
   structure(
     list(
       boundaries = boundaries,
@@ -186,5 +290,33 @@
       converged = converged
     ),
     class = c("svyplan_strata", "list")
+  )
+}
+
+#' Construct a svyplan_design_effect object
+#' @keywords internal
+#' @noRd
+.new_svyplan_design_effect <- function(
+  design_effect,
+  method,
+  components = NULL
+) {
+  stopifnot(
+    is.numeric(design_effect),
+    length(design_effect) == 1L,
+    !is.na(design_effect),
+    is.finite(design_effect),
+    design_effect >= 0,
+    is.character(method),
+    length(method) == 1L,
+    !is.na(method),
+    is.null(components) || is.data.frame(components)
+  )
+
+  structure(
+    as.double(design_effect),
+    method = method,
+    components = components,
+    class = c("svyplan_design_effect", "numeric")
   )
 }

@@ -6,8 +6,9 @@
 #'
 #' @param p For the default method: expected proportion, in (0, 1).
 #'   For `svyplan_n` objects: a sample size result from [n_prop()].
-#' @param ... Additional arguments passed to methods.
-#' @param n Sample size (gross units drawn; must not exceed a finite `N`).
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
+#' @param n Sample size, measured as gross units drawn and bounded by a
+#'   finite `N`.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size. `Inf` (default) means no finite population
 #'   correction.
@@ -34,13 +35,13 @@
 #' The Wald FPC uses the Cochran (1977, Ch. 3) form: the finite-population
 #' correction for a Bernoulli proportion is `(N - n_net) / (N - 1)`, not
 #' the simpler `1 - n_net / N` used for means. The Wilson method has no
-#' finite-population form; it is evaluated at `n_eff` and ignores `N`.
+#' finite-population form. It is evaluated at `n_eff` and ignores `N`.
 #'
 #' When called on a `svyplan_n` object, parameters are extracted from the
 #' stored result. Any argument of the default method (e.g. `method`, `deff`,
-#' `N`) can be overridden through `...`; unknown argument names are an
+#' `N`) can be overridden through `...`. Unknown argument names are an
 #' error. Passing a different `method` evaluates the stored sample
-#' size under that formula; the round-trip will not be exact because `n`
+#' size under that formula. The round-trip will not be exact because `n`
 #' was determined under the original method.
 #'
 #' @seealso [n_prop()] for the inverse (compute n from a precision target),
@@ -67,16 +68,17 @@ prec_prop <- function(p, ...) {
 prec_prop.default <- function(
   p,
   n,
+  ...,
   alpha = 0.05,
   N = Inf,
   deff = 1,
   resp_rate = 1,
   method = c("wald", "wilson", "logodds"),
-  plan = NULL,
-  ...
+  plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, prec_prop.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_prop.default, c(.plan, list(...))))
+  .check_unused_dots(...)
   check_proportion(p, "p")
   check_scalar(n, "n")
   check_alpha(alpha)

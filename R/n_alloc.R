@@ -47,7 +47,7 @@
 #'       for `cv`**, because the coefficient of variation is defined
 #'       relative to the mean. Use `mean` for continuous variables
 #'       and `p` (in \eqn{[0, 1]}) for binary (yes/no) variables.}
-#'     \item{`cost`}{Per-unit interviewing cost in each stratum
+#'     \item{`unit_cost`}{Per-unit interviewing cost in each stratum
 #'       (positive, finite). Set higher values for strata that are more
 #'       expensive to reach. Defaults to 1 everywhere (equal cost).}
 #'     \item{`max_weight`}{Maximum allowed sampling weight
@@ -59,7 +59,7 @@
 #'   }
 #'
 #'   For `svyplan_prec` objects: a precision result from [prec_alloc()].
-#' @param ... Additional arguments passed to methods.
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param domains Character vector of column names in `frame` to treat as
 #'   domain identifiers, or `NULL` (default) for no domains. All names
 #'   must exist in `frame`. Domains define sub-populations that each
@@ -77,7 +77,7 @@
 #' @param alloc Allocation rule: `"neyman"` (default), `"optimal"`,
 #'   `"proportional"`, or `"power"`.
 #' @param unit_cost Optional scalar or length-`nrow(frame)` vector of
-#'   per-stratum unit costs, overriding `frame$cost`.
+#'   per-stratum unit costs, overriding `frame$unit_cost`.
 #' @param alpha Significance level, default 0.05.
 #' @param deff Design effect multiplier (> 0).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1.
@@ -90,8 +90,8 @@
 #'   allocation table in `$detail` (also available via `as.data.frame()`),
 #'   with columns:
 #'   \describe{
-#'     \item{`stratum`, `N`, `sd`, `cost`}{Stratum identifiers and inputs
-#'       carried over from the frame. In cluster mode `cost` is the
+#'     \item{`stratum`, `N`, `sd`, `unit_cost`}{Stratum identifiers and inputs
+#'       carried over from the frame. In cluster mode `unit_cost` is the
 #'       derived effective per-element cost
 #'       `cost_psu / psu_size + cost_ssu` (1 when no stage costs were
 #'       given), while `sd` stays the input stratum SD.}
@@ -123,7 +123,7 @@
 #'   The result also carries an `$operational` list describing the
 #'   integer field design: `n` (total), `cost`, `se`, `moe`, and `cv`,
 #'   all recomputed from the integer allocation. Top-level `n`, `se`,
-#'   `moe`, and `cv` describe the continuous optimum;
+#'   `moe`, and `cv` describe the continuous optimum, while
 #'   `as.integer()` returns the operational total.
 #'
 #' @details
@@ -171,30 +171,30 @@
 #' SD inflated to `sd * sqrt(k_psu * (1 + delta_psu * (psu_size - 1)))`
 #' and, when stage costs are given, a per-element cost of
 #' `cost_psu / psu_size + cost_ssu`. All solve modes, allocation
-#' methods, and constraints work unchanged; `n`, `cv`, and `budget`
+#' methods, and constraints work unchanged. The `n`, `cv`, and `budget` modes
 #' keep their meanings.
 #'
 #' Cluster-mode columns:
 #' - `delta_psu` (required): within-PSU homogeneity per stratum,
 #'   e.g. from [varcomp()] with `strata`.
 #' - `k_psu` (optional, default 1): variance ratio per stratum.
-#' - `psu_size` (optional): fixes the per-stratum take; `NA` entries
+#' - `psu_size` (optional): fixes the per-stratum take. Any `NA` entries
 #'   are replaced by the cost-optimal take
 #'   `sqrt(cost_psu / cost_ssu * (1 - delta_psu) / delta_psu)`.
-#' - `cost_psu`, `cost_ssu` (together): per-PSU and per-element costs;
-#'   required for `budget` mode or when `psu_size` is not fixed. They
-#'   replace `cost`/`unit_cost`, which are not allowed in this mode.
+#' - `cost_psu`, `cost_ssu` (together): per-PSU and per-element costs.
+#'   These are required for `budget` mode or when `psu_size` is not fixed. They
+#'   replace `unit_cost`, which is not allowed in this mode.
 #'
 #' The finite population correction stays at the element level, an
 #' approximation consistent with [n_cluster()]'s variance model.
 #'
 #' Because `delta_psu` already accounts for the clustering, leave
 #' `deff` at 1 unless it captures a *different* source of design
-#' effect (e.g. weighting loss); a clustering `deff` on top of
+#' effect (e.g. weighting loss). A clustering `deff` on top of
 #' `delta_psu` would double-count. The constraints `min_n`,
 #' `max_weight`, and `take_all` stay in element units. For fielding,
 #' use the whole-unit design in `n_psu_int` and `psu_size_int`
-#' (`n_int = n_psu_int * psu_size_int`); its actual field cost and
+#' (`n_int = n_psu_int * psu_size_int`). Its actual field cost and
 #' precision are reported in `$operational` and, in `budget` mode,
 #' never exceed the budget.
 #'
@@ -241,7 +241,7 @@
 #'   N    = c(4000, 3000, 3000),
 #'   sd   = c(10, 15, 8),
 #'   mean = c(50, 60, 55),
-#'   cost = c(1, 1.5, 1)
+#'   unit_cost = c(1, 1.5, 1)
 #' )
 #'
 #' n_alloc(frame, n = 600)
@@ -292,6 +292,7 @@ n_alloc <- function(frame, ...) {
 #' @export
 n_alloc.default <- function(
   frame,
+  ...,
   domains = NULL,
   n = NULL,
   cv = NULL,
@@ -303,11 +304,11 @@ n_alloc.default <- function(
   resp_rate = 1,
   min_n = NULL,
   power_q = 0.5,
-  plan = NULL,
-  ...
+  plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, n_alloc.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(n_alloc.default, c(.plan, list(...))))
+  .check_unused_dots(...)
   alloc <- match.arg(alloc)
   check_alpha(alpha)
   check_deff(deff)
@@ -514,14 +515,14 @@ n_alloc.default <- function(
     type = "alloc",
     method = alloc,
     params = params,
+    se = metrics$se,
+    moe = metrics$moe,
+    cv = metrics$cv,
     detail = detail,
     binding = .alloc_binding_label(n_h, m_h, M_h),
-    domains = domain_summary
+    domains = domain_summary,
+    operational = operational
   )
-  obj$se <- metrics$se
-  obj$moe <- metrics$moe
-  obj$cv <- metrics$cv
-  obj$operational <- operational
 
   obj
 }
@@ -530,10 +531,10 @@ n_alloc.default <- function(
 #' @export
 n_alloc.svyplan_prec <- function(
   frame,
+  ...,
   n = NULL,
   cv = NULL,
-  budget = NULL,
-  ...
+  budget = NULL
 ) {
   x <- frame
   if (x$type != "alloc") {
@@ -566,20 +567,20 @@ n_alloc.svyplan_prec <- function(
 #'
 #' Compute aggregate precision for a stratum allocation.
 #'
-#' @param x For the default method: a stratum-level data frame in the same
+#' @param frame For the default method: a stratum-level data frame in the same
 #'   format as the `frame` argument to [n_alloc()] (one row per stratum,
-#'   with at least `N` and `sd` or `var` columns; see [n_alloc()] for
+#'   with at least `N` and `sd` or `var` columns). See [n_alloc()] for
 #'   the full column reference).
 #'   For `svyplan_n` objects: an allocation result from [n_alloc()].
-#' @param ... Additional arguments passed to methods.
-#' @param n Stratum sample sizes, length `nrow(x)` (default method only).
-#' @param domains Character vector of column names in `x` to treat as
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
+#' @param n Stratum sample sizes, length `nrow(frame)` (default method only).
+#' @param domains Character vector of column names in `frame` to treat as
 #'   domain identifiers, or `NULL` (default) for no domains.
 #' @param alpha Significance level, default 0.05.
 #' @param deff Design effect multiplier (> 0).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1.
-#' @param unit_cost Optional scalar or length-`nrow(x)` vector of
-#'   per-stratum unit costs, overriding `x$cost`.
+#' @param unit_cost Optional scalar or length-`nrow(frame)` vector of
+#'   per-stratum unit costs, overriding `frame$unit_cost`.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_prec` object with `type = "alloc"`.
@@ -596,9 +597,9 @@ n_alloc.svyplan_prec <- function(
 #' prec_alloc(res)
 #'
 #' @export
-prec_alloc <- function(x, ...) {
-  if (!missing(x)) {
-    .res <- .dispatch_plan(x, "x", prec_alloc.default, ...)
+prec_alloc <- function(frame, ...) {
+  if (!missing(frame)) {
+    .res <- .dispatch_plan(frame, "frame", prec_alloc.default, ...)
     if (!is.null(.res)) return(.res)
   }
   UseMethod("prec_alloc")
@@ -607,27 +608,28 @@ prec_alloc <- function(x, ...) {
 #' @rdname prec_alloc
 #' @export
 prec_alloc.default <- function(
-  x,
+  frame,
   n,
+  ...,
   domains = NULL,
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
   unit_cost = NULL,
-  plan = NULL,
-  ...
+  plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, prec_alloc.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_alloc.default, c(.plan, list(...))))
+  .check_unused_dots(...)
   check_alpha(alpha)
   check_deff(deff)
   check_resp_rate(resp_rate)
 
-  prep <- .alloc_prepare_frame(x, domains = domains, unit_cost = unit_cost)
+  prep <- .alloc_prepare_frame(frame, domains = domains, unit_cost = unit_cost)
   H <- length(prep$N_h)
 
   if (!is.numeric(n) || anyNA(n) || any(!is.finite(n)) || length(n) != H) {
-    stop("'n' must be a finite numeric vector with length nrow(x)",
+    stop("'n' must be a finite numeric vector with length nrow(frame)",
          call. = FALSE)
   }
   if (any(n <= 0)) {
@@ -652,7 +654,7 @@ prec_alloc.default <- function(
     cv = metrics$cv,
     type = "alloc",
     params = list(
-      frame = x, n = n, alpha = alpha, deff = deff,
+      frame = frame, n = n, alpha = alpha, deff = deff,
       resp_rate = resp_rate, cost_h = prep$cost_h,
       domain_cols = prep$domain_cols,
       achieved = list(n = sum(n), cv = metrics$cv, cost = metrics$cost)
@@ -663,8 +665,8 @@ prec_alloc.default <- function(
 
 #' @rdname prec_alloc
 #' @export
-prec_alloc.svyplan_n <- function(x, ...) {
-  obj <- x
+prec_alloc.svyplan_n <- function(frame, ...) {
+  obj <- frame
   if (obj$type != "alloc") {
     stop("prec_alloc requires a svyplan_n of type 'alloc'", call. = FALSE)
   }
@@ -679,7 +681,7 @@ prec_alloc.svyplan_n <- function(x, ...) {
   }
 
   args <- list(
-    x = p$frame,
+    frame = p$frame,
     n = n_h,
     domains = p$domain_cols,
     alpha = p$alpha,
@@ -754,6 +756,13 @@ prec_alloc.svyplan_n <- function(x, ...) {
             call. = FALSE)
   }
 
+  if ("cost" %in% names(frame)) {
+    stop(
+      "the 'cost' column was renamed to 'unit_cost'",
+      call. = FALSE
+    )
+  }
+
   if (!is.null(unit_cost)) {
     if (!is.numeric(unit_cost) || anyNA(unit_cost) || any(!is.finite(unit_cost)) || any(unit_cost <= 0)) {
       stop("'unit_cost' must contain positive finite values", call. = FALSE)
@@ -765,11 +774,11 @@ prec_alloc.svyplan_n <- function(x, ...) {
     } else {
       stop("'unit_cost' must have length 1 or nrow(frame)", call. = FALSE)
     }
-  } else if ("cost" %in% names(frame)) {
-    cost_h <- frame$cost
+  } else if ("unit_cost" %in% names(frame)) {
+    cost_h <- frame$unit_cost
     if (!is.numeric(cost_h) || anyNA(cost_h) || any(!is.finite(cost_h)) ||
         any(cost_h <= 0)) {
-      stop("'cost' must contain positive finite values", call. = FALSE)
+      stop("'unit_cost' must contain positive finite values", call. = FALSE)
     }
   } else {
     cost_h <- rep(1, nrow(frame))
@@ -888,9 +897,9 @@ prec_alloc.svyplan_n <- function(x, ...) {
     return(prep)
   }
 
-  if ("cost" %in% names(frame) || !is.null(unit_cost)) {
+  if ("unit_cost" %in% names(frame) || !is.null(unit_cost)) {
     stop(
-      "with 'delta_psu' in the frame, use 'cost_psu'/'cost_ssu' columns instead of 'cost'/'unit_cost'",
+      "with 'delta_psu' in the frame, use 'cost_psu' and 'cost_ssu' columns instead of 'unit_cost'",
       call. = FALSE
     )
   }
@@ -1073,7 +1082,7 @@ prec_alloc.svyplan_n <- function(x, ...) {
     stratum = prep$stratum,
     N = prep$N_h,
     sd = prep$S_raw_h %||% prep$S_h,
-    cost = prep$cost_h,
+    unit_cost = prep$cost_h,
     n = n_h,
     n_int = n_int,
     weight = prep$N_h / n_h,

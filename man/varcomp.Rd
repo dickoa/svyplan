@@ -19,7 +19,7 @@ varcomp(x, ...)
 \item{x}{A formula, numeric vector, or survey design object
 (see Details).}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{data}{A data frame (required for formula interface).}
 
@@ -27,19 +27,19 @@ varcomp(x, ...)
 formula (e.g., \code{~pp}) when using the formula interface, or a numeric
 vector: either one value per observation (constant within each PSU)
 or one value per PSU. A one-per-PSU vector is matched by name when
-named; unnamed values are taken in sorted order of the unique PSU
+named. Unnamed values are taken in sorted order of the unique PSU
 identifiers. Values must be strictly between 0 and 1 and sum to 1
 across PSUs (tolerance 1e-3). \code{NULL} (default) assumes SRS.}
 
 \item{strata}{Optional stratification: a one-sided formula (formula
 and survey.design interfaces) or a vector (default interface).
-Components are then estimated per stratum; see Details.}
+Components are then estimated per stratum. See Details.}
 
 \item{weights}{Optional sampling weights for estimating components
 from a sample rather than a frame: a one-sided formula (e.g.,
 \code{~w}) when using the formula interface, or a numeric vector with
 one positive value per observation. Within each cluster the
-summed weights must estimate the cluster population size; for a
+summed weights must estimate the cluster population size. For a
 multi-stage sample use the within-cluster weights, not the full
 design weight (see Details). \code{NULL} (default) computes frame
 components.}
@@ -62,6 +62,9 @@ length 2 (\code{delta_psu}, \code{delta_ssu}) for 3-stage.}
 \item{\code{strata}}{Per-stratum component table when \code{strata} is
 supplied, otherwise \code{NULL} (see Details).}
 }
+The result can be exported with \code{\link[=as.data.frame]{as.data.frame()}}. Unstratified results
+become a one-row two- or three-stage component table. Stratified results
+return the table stored in \verb{$strata}.
 }
 \description{
 Estimate between- and within-stage variance components using nested
@@ -74,7 +77,7 @@ The interface is determined by the class of \code{x}:
 LHS is the analysis variable, RHS terms express nesting using
 \code{/} or \code{\%in\%} (see \link{formula}): \code{y ~ psu/ssu} or equivalently
 \code{y ~ ssu \%in\% psu} (SSUs nested within PSUs). With \code{/} the
-outermost stage comes first; with \code{\%in\%} the innermost comes
+outermost stage comes first, whereas with \code{\%in\%} the innermost comes
 first. Be careful not to reverse the order.
 \item \strong{Numeric vector}: \code{varcomp(y, stage_id = list(cluster_ids))}.
 \item \strong{survey.design}: \code{varcomp(design, ~y)}. Cluster structure and
@@ -98,8 +101,8 @@ implied sampling fraction drives the correction. For a multi-stage
 sample this means the \emph{within-cluster} weights (the product of the
 stage-2 and later weights), not the full design weight, whose
 stage-1 factor would overstate every cluster size. The correction
-assumes noninformative (SRS-like) subsampling within clusters;
-informative within-cluster sampling remains approximate. In the
+assumes noninformative (SRS-like) subsampling within clusters.
+Informative within-cluster sampling remains approximate. In the
 3-stage weighted case the between-PSU correction removes
 element-stage estimation noise but not SSU-stage subsampling noise,
 so when few SSUs are sampled per PSU the between-PSU component (and
@@ -132,7 +135,7 @@ mean variance of the remaining clusters.
 
 With \code{strata}, components are estimated separately within each
 stratum and returned as a per-stratum table in \verb{$strata} (also via
-\code{as.data.frame()}); the pooled fields (\code{varb}, \code{delta}, ...) are not
+\code{as.data.frame()}). The pooled fields (\code{varb}, \code{delta}, ...) are not
 filled. The table's columns (\code{sd}, \code{mean}, \code{delta_psu}, \code{k_psu})
 match the \code{\link[=n_alloc]{n_alloc()}} frame contract, so after adding stratum \code{N}
 it feeds a stratified two-stage allocation directly. When \code{prob} is
@@ -152,13 +155,14 @@ structure and design weights are extracted from the design.
 }}
 \examples{
 # 2-stage SRS using formula (PSU = district)
-set.seed(42)
+set.seed(314)
 frame2 <- data.frame(
   income = rnorm(200, 50000, 10000),
   district = rep(1:20, each = 10)
 )
 vc2 <- varcomp(income ~ district, data = frame2)
 vc2
+as.data.frame(vc2)
 
 # Feed into n_cluster
 n_cluster(stage_cost = c(500, 50), delta = vc2, budget = 100000)
@@ -176,7 +180,7 @@ varcomp(income ~ district, data = samp, weights = ~w,
         prob = pp / sum(pp))
 
 # Per-stratum components for a stratified two-stage plan
-set.seed(42)
+set.seed(2718)
 frame_s <- data.frame(
   income = rnorm(400, 50000, 10000),
   district = rep(1:40, each = 10),
@@ -186,7 +190,7 @@ varcomp(income ~ district, data = frame_s, strata = ~region)
 
 # 3-stage SRS using formula: villages nested within districts
 # "/" expresses nesting (outermost stage first, see ?formula)
-set.seed(42)
+set.seed(1618)
 frame3 <- data.frame(
   income = rnorm(400, 50000, 10000),
   district = rep(1:20, each = 20),

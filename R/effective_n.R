@@ -5,7 +5,7 @@
 #'
 #' @param x A numeric vector of survey weights (for diagnostic methods),
 #'   or `NULL` (for the `"cluster"` planning method).
-#' @param ... Additional arguments passed to methods.
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'
 #' @return A numeric scalar.
 #'
@@ -13,7 +13,7 @@
 #'
 #' @examples
 #' # Effective sample size from weights (Kish)
-#' set.seed(1)
+#' set.seed(731)
 #' w <- runif(100, 1, 5)
 #' effective_n(w, method = "kish")
 #'
@@ -54,6 +54,7 @@ effective_n.numeric <- function(
   stages = NULL,
   method = "kish"
 ) {
+  .check_unused_dots(...)
   method <- match.arg(method, c("kish", "henry", "spencer", "cr"))
   check_weights(x)
 
@@ -72,17 +73,14 @@ effective_n.numeric <- function(
       method = method
     )
     n <- length(x)
-    if (is.list(deff)) {
-      n / deff$overall
-    } else {
-      n / deff
-    }
+    n / as.double(deff)
   }
 }
 
 #' @describeIn effective_n Planning method (no weights needed).
 #'
-#' @param delta ICC / homogeneity measure, scalar or `svyplan_varcomp`.
+#' @param delta Survey-planning measure of homogeneity, scalar or
+#'   `svyplan_varcomp`. This is not a generic mixed-model ICC.
 #' @param psu_size Mean PSU size (scalar).
 #' @param n Total sample size (required for the cluster method).
 #'
@@ -95,6 +93,7 @@ effective_n.default <- function(
   n = NULL,
   method = "cluster"
 ) {
+  .check_unused_dots(...)
   method <- match.arg(method, "cluster")
 
   if (is.null(n)) {
@@ -103,5 +102,5 @@ effective_n.default <- function(
   check_scalar(n, "n")
 
   deff <- design_effect.default(delta = delta, psu_size = psu_size, method = method)
-  n / deff
+  n / as.double(deff)
 }

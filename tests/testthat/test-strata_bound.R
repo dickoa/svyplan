@@ -7,22 +7,59 @@ test_that("validates x input", {
   expect_error(strata_bound("abc"), "numeric vector")
   expect_error(strata_bound(1), "at least 2")
   expect_error(strata_bound(c(1, NA, 3)), "NA")
+  expect_error(strata_bound(c(1, Inf, 3)), "finite")
+  expect_error(strata_bound(c(1, -Inf, 3)), "finite")
 })
 
 test_that("validates n_strata", {
+  expect_error(strata_bound(x_unif), "'n_strata' is required")
   expect_error(strata_bound(x_unif, n_strata = 1), "integer >= 2")
   expect_error(strata_bound(x_unif, n_strata = NA), "integer >= 2")
+  expect_error(strata_bound(x_unif, n_strata = 3.5), "integer >= 2")
+  expect_error(strata_bound(x_unif, n_strata = "3"), "integer >= 2")
   expect_error(strata_bound(c(1, 1, 1), n_strata = 4, n = 2, method = "cumrootf"),
                "fewer unique")
 })
 
+test_that("validates whole-number controls without rejecting whole doubles", {
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100.5, method = "cumrootf"),
+               "'n' must be an integer")
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf", n_class = 2.5),
+               "'n_class' must be an integer")
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, method = "lh", max_iter = 0),
+               "'max_iter' must be an integer")
+  expect_error(
+    strata_bound(x_unif, n_strata = 3, n = 100, method = "kozak", n_restart = 1.5),
+    "'n_restart' must be an integer"
+  )
+  expect_error(
+    strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf",
+                 n_class = .Machine$integer.max + 1),
+    "'n_class' must be an integer"
+  )
+
+  expect_no_error(
+    strata_bound(x_unif, n_strata = 3.0, n = 100.0, method = "cumrootf",
+                 n_class = 50.0, max_iter = 200.0, n_restart = 30.0)
+  )
+})
+
+test_that("validates finite thresholds and costs", {
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf",
+                            certain = Inf),
+               "finite numeric scalar")
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf",
+                            unit_cost = Inf),
+               "positive and finite")
+})
+
 test_that("validates method", {
-  expect_error(strata_bound(x_unif, method = "invalid"), "'arg' should be one of")
+  expect_error(strata_bound(x_unif, n_strata = 3, method = "invalid"), "'arg' should be one of")
 })
 
 test_that("lh and kozak require n or cv", {
-  expect_error(strata_bound(x_unif, method = "lh"), "requires")
-  expect_error(strata_bound(x_unif, method = "kozak"), "requires")
+  expect_error(strata_bound(x_unif, n_strata = 3, method = "lh"), "requires")
+  expect_error(strata_bound(x_unif, n_strata = 3, method = "kozak"), "requires")
 })
 
 test_that("cumrootf and geo work without n or cv", {
@@ -33,7 +70,7 @@ test_that("cumrootf and geo work without n or cv", {
 })
 
 test_that("cannot specify both n and cv", {
-  expect_error(strata_bound(x_unif, n = 100, cv = 0.05), "at most one")
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, cv = 0.05), "at most one")
 })
 
 test_that("errors when requested n is below feasible minimum", {
@@ -51,30 +88,30 @@ test_that("errors when requested n is above feasible maximum", {
 })
 
 test_that("validates alloc", {
-  expect_error(strata_bound(x_unif, n = 100, alloc = 42),
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, alloc = 42),
                "must be one of")
-  expect_error(strata_bound(x_unif, n = 100, alloc = "invalid"),
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, alloc = "invalid"),
                "'arg' should be one of")
-  expect_error(strata_bound(x_unif, n = 100, alloc = list(q1 = 1)),
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, alloc = list(q1 = 1)),
                "must be one of")
-  expect_error(strata_bound(x_unif, n = 100, alloc = "power", power_q =2),
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, alloc = "power", power_q =2),
                "numeric scalar in \\[0, 1\\]")
-  expect_error(strata_bound(x_unif, n = 100, alloc = "power", power_q =-0.1),
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, alloc = "power", power_q =-0.1),
                "numeric scalar in \\[0, 1\\]")
-  expect_error(strata_bound(x_unif, n = 100, alloc = "power", power_q ="a"),
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, alloc = "power", power_q ="a"),
                "numeric scalar in \\[0, 1\\]")
 })
 
 test_that("validates unit_cost", {
-  expect_error(strata_bound(x_unif, n = 100, unit_cost = -1), "positive")
-  expect_error(strata_bound(x_unif, n = 100, unit_cost = c(1, NA)), "positive")
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, unit_cost = -1), "positive")
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, unit_cost = c(1, NA)), "positive")
 })
 
 test_that("validates certain", {
-  expect_error(strata_bound(x_unif, n = 100, certain = "a"), "numeric scalar")
-  expect_error(strata_bound(x_unif, n = 100, certain = max(x_unif) + 1),
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, certain = "a"), "numeric scalar")
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, certain = max(x_unif) + 1),
                "no units")
-  expect_error(strata_bound(x_unif, n = 100, certain = min(x_unif) - 1),
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, certain = min(x_unif) - 1),
                "all units")
 })
 
@@ -117,11 +154,11 @@ test_that("cumrootf: uniform data yields reasonable strata", {
   expect_true(all(diff(res$boundaries) > 0))
 })
 
-test_that("cumrootf: custom nclass respected", {
+test_that("cumrootf: custom n_class respected", {
   res1 <- strata_bound(x_lnorm, n_strata = 3, n = 100,
-                        method = "cumrootf", nclass = 50)
+                        method = "cumrootf", n_class = 50)
   res2 <- strata_bound(x_lnorm, n_strata = 3, n = 100,
-                        method = "cumrootf", nclass = 200)
+                        method = "cumrootf", n_class = 200)
   expect_s3_class(res1, "svyplan_strata")
   expect_s3_class(res2, "svyplan_strata")
 })
@@ -161,7 +198,7 @@ test_that("lh: converges on lognormal data", {
 test_that("kozak: converges on lognormal data", {
   skip_on_cran()
   res <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "kozak",
-                       n_restart = 5L, maxiter = 50L)
+                       n_restart = 5L, max_iter = 50L)
   expect_s3_class(res, "svyplan_strata")
   expect_equal(res$method, "kozak")
 })
@@ -170,7 +207,7 @@ test_that("kozak cv matches target approximately", {
   skip_on_cran()
   target_cv <- 0.10
   res <- strata_bound(x_lnorm, n_strata = 4, cv = target_cv, method = "kozak",
-                       n_restart = 10L, maxiter = 100L)
+                       n_restart = 10L, max_iter = 100L)
   expect_true(res$cv <= target_cv * 1.5)
 })
 
@@ -178,7 +215,7 @@ test_that("kozak n matches target approximately", {
   skip_on_cran()
   target_n <- 200
   res <- strata_bound(x_lnorm, n_strata = 3, n = target_n, method = "kozak",
-                       n_restart = 5L, maxiter = 50L)
+                       n_restart = 5L, max_iter = 50L)
   expect_true(abs(res$n - target_n) / target_n < 0.5)
 })
 
@@ -242,14 +279,28 @@ test_that("as.integer returns ceiling(n)", {
   expect_equal(as.integer(res), as.integer(ceiling(res$n)))
 })
 
-test_that("as.double returns boundaries", {
+test_that("as.double returns total sample size", {
   res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf")
-  expect_equal(as.double(res), res$boundaries)
+  expect_identical(as.double(res), as.double(res$n))
+  expect_length(res$boundaries, res$n_strata - 1L)
 })
 
 test_that("as.data.frame returns strata df", {
   res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf")
   expect_identical(as.data.frame(res), res$strata)
+})
+
+test_that("strata summaries retain full numerical precision", {
+  res <- strata_bound(x_lnorm, n_strata = 4, n = 100, method = "cumrootf")
+  bins <- findInterval(x_lnorm, res$boundaries, left.open = TRUE) + 1L
+  groups <- split(x_lnorm, factor(bins, levels = seq_len(res$n_strata)))
+  expected_sd <- vapply(groups, function(x) if (length(x) < 2L) 0 else sd(x),
+                        numeric(1L))
+  expected_share <- tabulate(bins, nbins = res$n_strata) / length(x_lnorm)
+
+  expect_equal(res$strata$sd, unname(expected_sd), tolerance = 1e-12)
+  expect_identical(res$strata$share, expected_share)
+  expect_false(identical(res$strata$sd, round(res$strata$sd, 4L)))
 })
 
 test_that("print returns invisible(x)", {
@@ -284,7 +335,7 @@ test_that("works on simulated lognormal (realistic skewed data)", {
   set.seed(999)
   x_skew <- rlnorm(2000, meanlog = 8, sdlog = 2)
   res <- strata_bound(x_skew, n_strata = 5, n = 500, method = "kozak",
-                       n_restart = 5L, maxiter = 50L)
+                       n_restart = 5L, max_iter = 50L)
   expect_s3_class(res, "svyplan_strata")
   expect_equal(nrow(res$strata), 5L)
   expect_true(all(res$strata$N > 0))
@@ -301,7 +352,7 @@ test_that("kozak outperforms or matches cumrootf", {
   skip_on_cran()
   res_cr <- strata_bound(x_lnorm, n_strata = 4, n = 200, method = "cumrootf")
   res_kz <- strata_bound(x_lnorm, n_strata = 4, n = 200, method = "kozak",
-                          n_restart = 10L, maxiter = 100L)
+                          n_restart = 10L, max_iter = 100L)
   expect_true(res_kz$cv <= res_cr$cv * 1.2)
 })
 
@@ -320,9 +371,9 @@ test_that("unit_cost parameter with per-stratum vector", {
 test_that("params captures expected fields", {
   skip_on_cran()
   res <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "kozak",
-                       n_restart = 15L, maxiter = 50L)
+                       n_restart = 15L, max_iter = 50L)
   expect_equal(res$params$N, length(x_lnorm))
-  expect_equal(res$params$maxiter, 50L)
+  expect_equal(res$params$max_iter, 50L)
   expect_equal(res$params$n_restart, 15L)
 })
 
@@ -340,14 +391,14 @@ test_that("lh handles skewed data without NA crash", {
   expect_s3_class(res, "svyplan_strata")
 })
 
-test_that("lh maxiter > 1 improves over maxiter = 1 on skewed data", {
+test_that("lh max_iter > 1 improves over max_iter = 1 on skewed data", {
   skip_on_cran()
-  set.seed(42)
+  set.seed(1021)
   x_skew <- rlnorm(800, meanlog = 6, sdlog = 2)
   res1 <- strata_bound(x_skew, n_strata = 4, n = 200, method = "lh",
-                        maxiter = 1L)
+                        max_iter = 1L)
   res200 <- strata_bound(x_skew, n_strata = 4, n = 200, method = "lh",
-                          maxiter = 200L)
+                          max_iter = 200L)
   expect_true(res200$cv <= res1$cv)
 })
 

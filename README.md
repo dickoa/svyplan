@@ -33,7 +33,7 @@ n_prop(p = 0.3, moe = 0.05)
 # Mean with finite population and design effect
 n_mean(var = 100, moe = 2, N = 5000, deff = 1.5)
 #> Sample size for mean
-#> n = 142 (var = 100.00, moe = 2.000, deff = 1.50)
+#> n = 141 (var = 100.00, moe = 2.000, deff = 1.50)
 ```
 
 ### Response rate adjustment
@@ -59,20 +59,20 @@ plan <- svyplan(deff = 1.5, resp_rate = 0.85, N = 50000)
 # Pass as argument
 n_prop(p = 0.3, moe = 0.05, plan = plan)
 #> Sample size for proportion (wald)
-#> n = 566 (net: 481) (p = 0.30, moe = 0.050, deff = 1.50, resp_rate = 0.85)
+#> n = 564 (net: 480) (p = 0.30, moe = 0.050, deff = 1.50, resp_rate = 0.85)
 
 # Or pipe (positional or named args)
 plan |> n_mean(100, moe = 2)
 #> Sample size for mean
-#> n = 170 (net: 144) (var = 100.00, moe = 2.000, deff = 1.50, resp_rate = 0.85)
+#> n = 169 (net: 144) (var = 100.00, moe = 2.000, deff = 1.50, resp_rate = 0.85)
 plan |> n_mean(var = 100, moe = 2)
 #> Sample size for mean
-#> n = 170 (net: 144) (var = 100.00, moe = 2.000, deff = 1.50, resp_rate = 0.85)
+#> n = 169 (net: 144) (var = 100.00, moe = 2.000, deff = 1.50, resp_rate = 0.85)
 
 # Explicit args always override plan defaults
 n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2.0)
 #> Sample size for proportion (wald)
-#> n = 755 (net: 642) (p = 0.30, moe = 0.050, deff = 2.00, resp_rate = 0.85)
+#> n = 750 (net: 638) (p = 0.30, moe = 0.050, deff = 2.00, resp_rate = 0.85)
 ```
 
 ## Precision analysis
@@ -179,8 +179,9 @@ target population and `hh_size` is the average household size.
 # Optimal 2-stage allocation within a budget
 n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
 #> Optimal 2-stage allocation
-#> n_psu = 85 | psu_size = 14 -> total n = 1190 (unrounded: 1159.1)
+#> field design: n_psu = 80 | psu_size = 15 -> total n = 1200
 #> cv = 0.0376, cost = 100000
+#> continuous optimum: n_psu = 84.08997 | psu_size = 13.78405 (cv = 0.0376, cost = 100000)
 
 # Precision for a given allocation
 prec_cluster(n = c(50, 12), delta = 0.05)
@@ -193,7 +194,7 @@ Variance components can be estimated from frame data and passed directly
 to `n_cluster()`:
 
 ``` r
-set.seed(1)
+set.seed(104)
 frame <- data.frame(
   district = rep(1:40, each = 20),
   income = rep(rnorm(40, 500, 100), each = 20) + rnorm(800, 0, 50)
@@ -202,15 +203,19 @@ frame <- data.frame(
 vc <- varcomp(income ~ district, data = frame)
 vc
 #> Variance components (2-stage)
-#> varb = 0.0307, varw = 0.0105
-#> delta = 0.7448
-#> k = 1.0311
-#> Unit relvariance = 0.0400
+#> varb = 0.0255, varw = 0.0099
+#> delta = 0.7210
+#> k = 1.0317
+#> Unit relvariance = 0.0343
+as.data.frame(vc)
+#>   stages       varb        varw     delta       k   rel_var
+#> 1      2 0.02554834 0.009886668 0.7209915 1.03174 0.0343449
 
 n_cluster(stage_cost = c(500, 50), delta = vc, cv = 0.05)
 #> Optimal 2-stage allocation
-#> n_psu = 15 | psu_size = 2 -> total n = 30 (unrounded: 26.97443)
-#> cv = 0.0500, cost = 8635
+#> field design: n_psu = 13 | psu_size = 2 -> total n = 26
+#> cv = 0.0484, cost = 7800
+#> continuous optimum: n_psu = 12.22966 | psu_size = 1.967178 (cv = 0.0500, cost = 7318)
 ```
 
 `delta` is the survey-planning measure of homogeneity used by
@@ -248,7 +253,10 @@ predict(x, expand.grid(
 #> 16  2.5       1.0  806.7064 0.02551067 0.05 0.08503558
 ```
 
-Works for all object types: sample size, precision, cluster, and power.
+Sensitivity analysis is available for single-indicator sample-size and
+precision results, cluster designs, power analyses, and strata
+boundaries. Multi-indicator results are not currently supported by
+`predict()`.
 
 ## Strata boundaries
 
@@ -256,24 +264,24 @@ Works for all object types: sample size, precision, cluster, and power.
 stratification variable.
 
 ``` r
-set.seed(1)
+set.seed(905)
 x <- rlnorm(5000, meanlog = 6, sdlog = 1.2)
 
 strata_bound(x, n_strata = 4, n = 300, method = "cumrootf")
 #> Strata boundaries (Dalenius-Hodges, 4 strata)
-#> Boundaries: 400.0, 1300.0, 3300.0
-#> n = 300, cv = 0.0211
+#> Boundaries: 400.0, 1300.0, 3200.0
+#> n = 300, cv = 0.0205
 #> Allocation: neyman
 #> ---
-#>  stratum lower      upper    N    share sd     n  
-#>  1          4.92557   400.00 2523 0.505 107.1   44
-#>  2        400.00000  1300.00 1610 0.322 250.3   66
-#>  3       1300.00000  3300.00  647 0.129 544.0   58
-#>  4       3300.00000 39039.61  220 0.044 3675.1 132
+#>  stratum lower       upper    N    share sd     n  
+#>  1          8.380438   400.00 2492 0.498 104.2   46
+#>  2        400.000000  1300.00 1647 0.329 246.5   71
+#>  3       1300.000000  3200.00  639 0.128 500.9   56
+#>  4       3200.000000 28909.53  222 0.044 3264.3 127
 ```
 
 Four methods are available: Dalenius-Hodges (`"cumrootf"`), geometric
-(`"geo"`), Lavallee-Hidiroglou (`"lh"`), and Kozak (`"kozak"`).
+(`"geo"`), Lavallée-Hidiroglou (`"lh"`), and Kozak (`"kozak"`).
 
 ## Power analysis
 
@@ -296,7 +304,7 @@ power_prop(p1 = 0.70, n = 1500, deff = 2.0)
 #> (p1 = 0.700, p2 = 0.764, alpha = 0.05, deff = 2.00)
 
 # Means
-power_mean(effect = 5, var = 200)
+power_mean(200, effect = 5)
 #> Power analysis for means (solved for sample size)
 #> n = 126 (per group), power = 0.800, effect = 5.0000
 #> (alpha = 0.05)
@@ -340,7 +348,8 @@ frame <- data.frame(
 
 n_alloc(frame, n = 600, alloc = "neyman")
 #> Stratum allocation (neyman, 3 strata)
-#> n = 600, cv = 0.0079, se = 0.4305
+#> field design: n = 600, cv = 0.0079, cost = 600
+#> continuous optimum: n = 600, cv = 0.0079, se = 0.4305
 ```
 
 Constraints and alternative solve modes are also supported:
@@ -348,7 +357,7 @@ Constraints and alternative solve modes are also supported:
 ``` r
 frame_constraints <- transform(
   frame,
-  cost = c(1, 1.5, 1),
+  unit_cost = c(1, 1.5, 1),
   max_weight = c(25, 20, NA),
   take_all = c(FALSE, FALSE, TRUE)
 )
@@ -356,7 +365,8 @@ frame_constraints <- transform(
 # Budget-constrained allocation with weight and take-all constraints
 n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n = 40)
 #> Stratum allocation (optimal, 3 strata)
-#> n = 3404, cv = 0.0076, se = 0.4125
+#> field design: n = 3403, cv = 0.0076, cost = 3500
+#> continuous optimum: n = 3403.425, cv = 0.0076, se = 0.4125
 #> (min_n = 40)
 ```
 
@@ -375,12 +385,13 @@ frame_domains <- data.frame(
 n_alloc(frame_domains, domains = "province",
         cv = 0.04, alloc = "power", power_q = 0.3)
 #> Stratum allocation (power, 4 strata)
-#> n = 111, cv = 0.0272, se = 1.4076
+#> field design: n = 112, cv = 0.0270, cost = 112
+#> continuous optimum: n = 110.7422, cv = 0.0272, se = 1.4076
 #> Domains: 2
 #> ---
 #>  province .domain .n       .se      .moe     .cv    .cost
-#>  North    North   59.23404 2.032000 3.982647 0.0400 59   
-#>  South    South   51.50815 1.948447 3.818886 0.0368 52
+#>  North    5_North 59.23404 2.032000 3.982647 0.0400 59   
+#>  South    5_South 51.50815 1.948447 3.818886 0.0368 52
 ```
 
 `prec_alloc()` computes the precision for a given allocation (inverse of
@@ -396,15 +407,17 @@ See `?n_alloc` and the vignette for the full workflow.
 ``` r
 # Planning: expected cluster design effect
 design_effect(delta = 0.05, psu_size = 20, method = "cluster")
-#> [1] 1.95
+#> Design effect (Cluster)
+#> overall = 1.9500
 
 # Diagnostic: Kish design effect from weights
-set.seed(1)
+set.seed(2718)
 w <- runif(500, 0.5, 4)
 design_effect(w, method = "kish")
-#> [1] 1.196494
+#> Design effect (Kish)
+#> overall = 1.1867
 effective_n(w, method = "kish")
-#> [1] 417.8876
+#> [1] 421.3472
 ```
 
 ## References

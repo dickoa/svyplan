@@ -16,7 +16,7 @@ test_that("print.svyplan_cluster outputs correctly", {
 })
 
 test_that("print.svyplan_varcomp outputs correctly", {
-  set.seed(42)
+  set.seed(1019)
   frame <- data.frame(
     income = rnorm(200, 50000, 10000),
     district = rep(1:20, each = 10)
@@ -174,12 +174,13 @@ test_that("as.data.frame.svyplan_n returns one-row summary otherwise", {
 })
 
 test_that("as.data.frame.svyplan_cluster returns the stage table", {
-  res <- n_cluster(cv = 0.05, delta = 0.05, unit_var = 1,
+  res <- n_cluster(budget = 100000, delta = 0.05, rel_var = 1,
                    stage_cost = c(500, 50))
   df <- as.data.frame(res)
   expect_equal(df$stage, c("n_psu", "psu_size"))
   expect_equal(df$n, as.numeric(res$n))
-  expect_equal(df$n_int, as.integer(ceiling(res$n)))
+  expect_identical(df$n_int, as.integer(res))
+  expect_false(identical(as.integer(ceiling(res$n)), as.integer(res)))
 })
 
 test_that("as.data.frame.svyplan_cluster returns domains when present", {
@@ -190,6 +191,58 @@ test_that("as.data.frame.svyplan_cluster returns domains when present", {
     cv = 0.08,
     delta_psu = 0.05
   )
-  res <- n_multi(targets, domains = "domain", stage_cost = c(500, 50))
+  res <- n_multi_cluster(targets, domains = "domain", stage_cost = c(500, 50))
   expect_identical(as.data.frame(res), res$domains)
+})
+
+test_that("as.data.frame.svyplan_prec returns a single-indicator summary", {
+  res <- prec_prop(p = 0.3, n = 400)
+  df <- as.data.frame(res)
+
+  expect_identical(names(df), c("n", "se", "moe", "cv"))
+  expect_equal(nrow(df), 1L)
+  expect_equal(df$n, 400)
+  expect_equal(df$se, res$se)
+})
+
+test_that("as.data.frame.svyplan_prec returns cluster stages", {
+  res <- prec_cluster(
+    n = c(n_psu = 30, psu_size = 10),
+    delta = 0.05,
+    rel_var = 1
+  )
+  df <- as.data.frame(res)
+
+  expect_identical(
+    names(df),
+    c("n_psu", "psu_size", "total_n", "se", "moe", "cv")
+  )
+  expect_equal(df$total_n, 300)
+  expect_equal(df$cv, res$cv)
+})
+
+test_that("as.data.frame.svyplan_prec returns detail when available", {
+  targets <- data.frame(
+    name = c("a", "b"),
+    p = c(0.3, 0.4),
+    n = c(400, 500)
+  )
+  res <- prec_multi(targets)
+
+  expect_identical(as.data.frame(res), res$detail)
+})
+
+test_that("as.data.frame.svyplan_power has a stable two-group schema", {
+  equal <- power_prop(p1 = 0.30, p2 = 0.35)
+  unequal <- power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
+  expected_names <- c(
+    "n1", "n2", "n1_int", "n2_int", "power", "effect", "type", "solved"
+  )
+
+  equal_df <- as.data.frame(equal)
+  unequal_df <- as.data.frame(unequal)
+  expect_identical(names(equal_df), expected_names)
+  expect_identical(names(unequal_df), expected_names)
+  expect_equal(equal_df$n1, equal_df$n2)
+  expect_equal(c(unequal_df$n1, unequal_df$n2), unname(unequal$n))
 })

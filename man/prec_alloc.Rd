@@ -6,34 +6,34 @@
 \alias{prec_alloc.svyplan_n}
 \title{Precision for a Constrained Allocation}
 \usage{
-prec_alloc(x, ...)
+prec_alloc(frame, ...)
 
 \method{prec_alloc}{default}(
-  x,
+  frame,
   n,
+  ...,
   domains = NULL,
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
   unit_cost = NULL,
-  plan = NULL,
-  ...
+  plan = NULL
 )
 
-\method{prec_alloc}{svyplan_n}(x, ...)
+\method{prec_alloc}{svyplan_n}(frame, ...)
 }
 \arguments{
-\item{x}{For the default method: a stratum-level data frame in the same
+\item{frame}{For the default method: a stratum-level data frame in the same
 format as the \code{frame} argument to \code{\link[=n_alloc]{n_alloc()}} (one row per stratum,
-with at least \code{N} and \code{sd} or \code{var} columns; see \code{\link[=n_alloc]{n_alloc()}} for
+with at least \code{N} and \code{sd} or \code{var} columns). See \code{\link[=n_alloc]{n_alloc()}} for
 the full column reference).
 For \code{svyplan_n} objects: an allocation result from \code{\link[=n_alloc]{n_alloc()}}.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
-\item{n}{Stratum sample sizes, length \code{nrow(x)} (default method only).}
+\item{n}{Stratum sample sizes, length \code{nrow(frame)} (default method only).}
 
-\item{domains}{Character vector of column names in \code{x} to treat as
+\item{domains}{Character vector of column names in \code{frame} to treat as
 domain identifiers, or \code{NULL} (default) for no domains.}
 
 \item{alpha}{Significance level, default 0.05.}
@@ -42,8 +42,8 @@ domain identifiers, or \code{NULL} (default) for no domains.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1.}
 
-\item{unit_cost}{Optional scalar or length-\code{nrow(x)} vector of
-per-stratum unit costs, overriding \code{x$cost}.}
+\item{unit_cost}{Optional scalar or length-\code{nrow(frame)} vector of
+per-stratum unit costs, overriding \code{frame$unit_cost}.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }

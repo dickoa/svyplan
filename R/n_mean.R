@@ -8,7 +8,7 @@
 #'   for a similar population. When uncertain, use a conservative
 #'   (larger) estimate to avoid under-sizing.
 #'   For `svyplan_prec` objects: a precision result from [prec_mean()].
-#' @param ... Additional arguments passed to methods.
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param mu Population mean magnitude (positive). Required when `cv` is
 #'   specified, because CV is defined as SE / mean.
 #' @param moe Desired margin of error, the half-width of the confidence
@@ -19,7 +19,7 @@
 #' @param cv Target coefficient of variation (relative standard error).
 #'   For example, `cv = 0.05` means the standard error should be at
 #'   most 5 percent of the estimate. Use `cv` when you want precision
-#'   to scale with the estimate (common in economic surveys); use `moe`
+#'   to scale with the estimate (common in economic surveys). Use `moe`
 #'   when you want a fixed absolute precision. Requires `mu`. Specify
 #'   exactly one of `moe` or `cv`.
 #' @param alpha Significance level, default 0.05.
@@ -110,6 +110,7 @@ n_mean <- function(var, ...) {
 #' @export
 n_mean.default <- function(
   var,
+  ...,
   mu = NULL,
   moe = NULL,
   cv = NULL,
@@ -117,13 +118,13 @@ n_mean.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  plan = NULL,
-  ...
+  plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, n_mean.default, match.call(), environment())
   if (!is.null(.plan)) {
     return(do.call(n_mean.default, c(.plan, list(...))))
   }
+  .check_unused_dots(...)
   check_scalar(var, "var")
   check_precision(moe, cv)
   check_alpha(alpha)
@@ -176,7 +177,7 @@ n_mean.default <- function(
 
 #' @rdname n_mean
 #' @export
-n_mean.svyplan_prec <- function(var, moe = NULL, cv = NULL, ...) {
+n_mean.svyplan_prec <- function(var, ..., moe = NULL, cv = NULL) {
   x <- var
   if (x$type != "mean") {
     stop("n_mean requires a svyplan_prec of type 'mean'", call. = FALSE)

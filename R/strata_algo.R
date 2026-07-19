@@ -297,12 +297,12 @@
 #' Dalenius-Hodges cumulative sqrt(f) rule
 #' @keywords internal
 #' @noRd
-.strata_cumrootf <- function(x, L, nclass = NULL, warn = TRUE) {
-  if (is.null(nclass)) {
-    nclass <- nclass.FD(x)
+.strata_cumrootf <- function(x, L, n_class = NULL, warn = TRUE) {
+  if (is.null(n_class)) {
+    n_class <- nclass.FD(x)
   }
-  nclass <- max(nclass, L)
-  h <- hist(x, breaks = nclass, plot = FALSE)
+  n_class <- max(n_class, L)
+  h <- hist(x, breaks = n_class, plot = FALSE)
   csf <- cumsum(sqrt(h$counts))
   total <- csf[length(csf)]
   targets <- total * seq_len(L - 1L) / L
@@ -363,7 +363,7 @@
   b0 * r^seq_len(L - 1L)
 }
 
-#' Lavallee-Hidiroglou iterative boundary optimization
+#' Lavallée-Hidiroglou iterative boundary optimization
 #' @keywords internal
 #' @noRd
 .strata_lh <- function(
@@ -374,7 +374,7 @@
   alloc,
   q,
   cost_h,
-  maxiter,
+  max_iter,
   certain_idx = NULL
 ) {
   x_uniq <- sort(unique(x_sort))
@@ -429,7 +429,7 @@
   converged <- FALSE
   tol <- diff(range(x_sort)) * 1e-6
 
-  for (iter in seq_len(maxiter)) {
+  for (iter in seq_len(max_iter)) {
     bk_old <- bk
     for (h in seq_len(L - 1L)) {
       lo <- if (h == 1L) x_uniq[1L] + tol else bk[h - 1L] + tol
@@ -477,7 +477,7 @@
   alloc,
   q,
   cost_h,
-  maxiter,
+  max_iter,
   n_restart,
   certain_idx = NULL
 ) {
@@ -568,7 +568,7 @@
   best_obj <- obj_from_pidx(init_pidx)
   best_idx <- init_idx
 
-  total_steps <- as.integer(n_restart) * as.integer(maxiter)
+  total_steps <- as.integer(n_restart) * as.integer(max_iter)
   rand_h <- sample.int(L - 1L, total_steps, replace = TRUE)
   rand_dir <- sample(c(-1L, 1L), total_steps, replace = TRUE)
   ri <- 0L
@@ -587,7 +587,7 @@
       cur_obj <- Inf
     }
 
-    for (step in seq_len(maxiter)) {
+    for (step in seq_len(max_iter)) {
       ri <- ri + 1L
       h <- rand_h[ri]
       new_h <- cur_idx[h] + rand_dir[ri]

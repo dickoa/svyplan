@@ -33,7 +33,7 @@ effective_n(x = NULL, ...)
 \item{x}{A numeric vector of survey weights (for diagnostic methods),
 or \code{NULL} (for the \code{"cluster"} planning method).}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{y}{Outcome variable (for \code{"henry"}, \code{"spencer"}, \code{"cr"}).}
 
@@ -51,7 +51,8 @@ or \code{NULL} (for the \code{"cluster"} planning method).}
 \code{"spencer"}, or \code{"cr"}. For planning (no weights): \code{"cluster"}
 (default and only option).}
 
-\item{delta}{ICC / homogeneity measure, scalar or \code{svyplan_varcomp}.}
+\item{delta}{Survey-planning measure of homogeneity, scalar or
+\code{svyplan_varcomp}. This is not a generic mixed-model ICC.}
 
 \item{psu_size}{Mean PSU size (scalar).}
 
@@ -73,7 +74,7 @@ This is an S3 generic that mirrors \code{\link[=design_effect]{design_effect()}}
 }}
 \examples{
 # Effective sample size from weights (Kish)
-set.seed(1)
+set.seed(731)
 w <- runif(100, 1, 5)
 effective_n(w, method = "kish")
 

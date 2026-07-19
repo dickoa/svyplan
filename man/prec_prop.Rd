@@ -11,13 +11,13 @@ prec_prop(p, ...)
 \method{prec_prop}{default}(
   p,
   n,
+  ...,
   alpha = 0.05,
   N = Inf,
   deff = 1,
   resp_rate = 1,
   method = c("wald", "wilson", "logodds"),
-  plan = NULL,
-  ...
+  plan = NULL
 )
 
 \method{prec_prop}{svyplan_n}(p, ...)
@@ -26,9 +26,10 @@ prec_prop(p, ...)
 \item{p}{For the default method: expected proportion, in (0, 1).
 For \code{svyplan_n} objects: a sample size result from \code{\link[=n_prop]{n_prop()}}.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
-\item{n}{Sample size (gross units drawn; must not exceed a finite \code{N}).}
+\item{n}{Sample size, measured as gross units drawn and bounded by a
+finite \code{N}.}
 
 \item{alpha}{Significance level, default 0.05.}
 
@@ -67,13 +68,13 @@ with the effective sample size \code{n_eff = n_net / deff}.
 The Wald FPC uses the Cochran (1977, Ch. 3) form: the finite-population
 correction for a Bernoulli proportion is \code{(N - n_net) / (N - 1)}, not
 the simpler \code{1 - n_net / N} used for means. The Wilson method has no
-finite-population form; it is evaluated at \code{n_eff} and ignores \code{N}.
+finite-population form. It is evaluated at \code{n_eff} and ignores \code{N}.
 
 When called on a \code{svyplan_n} object, parameters are extracted from the
 stored result. Any argument of the default method (e.g. \code{method}, \code{deff},
-\code{N}) can be overridden through \code{...}; unknown argument names are an
+\code{N}) can be overridden through \code{...}. Unknown argument names are an
 error. Passing a different \code{method} evaluates the stored sample
-size under that formula; the round-trip will not be exact because \code{n}
+size under that formula. The round-trip will not be exact because \code{n}
 was determined under the original method.
 }
 \examples{

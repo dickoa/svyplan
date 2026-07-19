@@ -156,7 +156,7 @@ Variance components can be estimated from frame data and passed
 directly to `n_cluster()`:
 
 ```{r}
-set.seed(1)
+set.seed(104)
 frame <- data.frame(
   district = rep(1:40, each = 20),
   income = rep(rnorm(40, 500, 100), each = 20) + rnorm(800, 0, 50)
@@ -164,6 +164,7 @@ frame <- data.frame(
 
 vc <- varcomp(income ~ district, data = frame)
 vc
+as.data.frame(vc)
 
 n_cluster(stage_cost = c(500, 50), delta = vc, cv = 0.05)
 ```
@@ -186,7 +187,9 @@ predict(x, expand.grid(
 ))
 ```
 
-Works for all object types: sample size, precision, cluster, and power.
+Sensitivity analysis is available for single-indicator sample-size and
+precision results, cluster designs, power analyses, and strata boundaries.
+Multi-indicator results are not currently supported by `predict()`.
 
 ## Strata boundaries
 
@@ -194,14 +197,14 @@ Works for all object types: sample size, precision, cluster, and power.
 stratification variable.
 
 ```{r}
-set.seed(1)
+set.seed(905)
 x <- rlnorm(5000, meanlog = 6, sdlog = 1.2)
 
 strata_bound(x, n_strata = 4, n = 300, method = "cumrootf")
 ```
 
 Four methods are available: Dalenius-Hodges (`"cumrootf"`), geometric
-(`"geo"`), Lavallee-Hidiroglou (`"lh"`), and Kozak (`"kozak"`).
+(`"geo"`), Lavallée-Hidiroglou (`"lh"`), and Kozak (`"kozak"`).
 
 ## Power analysis
 
@@ -218,7 +221,7 @@ power_prop(p1 = 0.70, p2 = 0.75, deff = 2.0)
 power_prop(p1 = 0.70, n = 1500, deff = 2.0)
 
 # Means
-power_mean(effect = 5, var = 200)
+power_mean(200, effect = 5)
 
 # Arcsine method for rare proportions
 power_prop(p1 = 0.15, p2 = 0.18, alternative = "one.sided",
@@ -257,7 +260,7 @@ Constraints and alternative solve modes are also supported:
 ```{r}
 frame_constraints <- transform(
   frame,
-  cost = c(1, 1.5, 1),
+  unit_cost = c(1, 1.5, 1),
   max_weight = c(25, 20, NA),
   take_all = c(FALSE, FALSE, TRUE)
 )
@@ -297,7 +300,7 @@ See `?n_alloc` and the vignette for the full workflow.
 design_effect(delta = 0.05, psu_size = 20, method = "cluster")
 
 # Diagnostic: Kish design effect from weights
-set.seed(1)
+set.seed(2718)
 w <- runif(500, 0.5, 4)
 design_effect(w, method = "kish")
 effective_n(w, method = "kish")

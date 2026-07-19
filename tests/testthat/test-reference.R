@@ -65,14 +65,14 @@ test_that("design_effect kish matches VDK Eq 3.5", {
   n <- length(w)
   deff_exp <- n * sum(w^2) / sum(w)^2
   result <- design_effect(w, method = "kish")
-  expect_equal(result, deff_exp, tolerance = 1e-6)
+  expect_equal(as.double(result), deff_exp, tolerance = 1e-6)
 })
 
 test_that("design_effect kish = 1 for equal weights (VDK)", {
   # VDK: equal weights => deff_w = 1
   w <- rep(3, 100)
   result <- design_effect(w, method = "kish")
-  expect_equal(result, 1, tolerance = 1e-10)
+  expect_equal(as.double(result), 1, tolerance = 1e-10)
 })
 
 test_that("design_effect cluster matches VDK Eq 3.18", {
@@ -82,7 +82,7 @@ test_that("design_effect cluster matches VDK Eq 3.18", {
   b_bar <- 20
   deff_exp <- 1 + (b_bar - 1) * delta
   result <- design_effect(delta = delta, psu_size = b_bar, method = "cluster")
-  expect_equal(result, deff_exp, tolerance = 1e-10)
+  expect_equal(as.double(result), deff_exp, tolerance = 1e-10)
 })
 
 # VDK (2018) Chapter 4: Power Analysis

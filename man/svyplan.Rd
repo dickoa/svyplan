@@ -58,6 +58,12 @@ and also fills the \code{method} argument of \code{\link[=n_prop]{n_prop()}}, \c
 \code{svyplan(prop_method = "wilson")} applies to \code{n_prop()} but is ignored
 by \code{power_prop()}, which has no Wilson method).
 
+All stored defaults are validated when the profile is created or updated.
+When both \code{stage_cost} and \code{delta} are supplied, their lengths must describe
+the same number of stages. Length checks that depend on call-specific data,
+such as matching \code{unit_cost} to an allocation frame, occur when the plan is
+used.
+
 Estimand-specific values (\code{p}, \code{var}, \code{mu}, \code{moe}, \code{cv}, \code{n}, \code{power},
 \code{effect}) should be passed directly to each function, not stored in
 the plan.

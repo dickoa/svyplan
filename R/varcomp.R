@@ -5,7 +5,7 @@
 #'
 #' @param x A formula, numeric vector, or survey design object
 #'   (see Details).
-#' @param ... Additional arguments passed to methods.
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'
 #' @return A `svyplan_varcomp` object with components:
 #' \describe{
@@ -21,6 +21,9 @@
 #'   \item{`strata`}{Per-stratum component table when `strata` is
 #'     supplied, otherwise `NULL` (see Details).}
 #' }
+#' The result can be exported with [as.data.frame()]. Unstratified results
+#' become a one-row two- or three-stage component table. Stratified results
+#' return the table stored in `$strata`.
 #'
 #' @details
 #' The interface is determined by the class of `x`:
@@ -29,7 +32,7 @@
 #'   LHS is the analysis variable, RHS terms express nesting using
 #'   `/` or `%in%` (see [formula]): `y ~ psu/ssu` or equivalently
 #'   `y ~ ssu %in% psu` (SSUs nested within PSUs). With `/` the
-#'   outermost stage comes first; with `%in%` the innermost comes
+#'   outermost stage comes first, whereas with `%in%` the innermost comes
 #'   first. Be careful not to reverse the order.
 #' - **Numeric vector**: `varcomp(y, stage_id = list(cluster_ids))`.
 #' - **survey.design**: `varcomp(design, ~y)`. Cluster structure and
@@ -52,8 +55,8 @@
 #' sample this means the *within-cluster* weights (the product of the
 #' stage-2 and later weights), not the full design weight, whose
 #' stage-1 factor would overstate every cluster size. The correction
-#' assumes noninformative (SRS-like) subsampling within clusters;
-#' informative within-cluster sampling remains approximate. In the
+#' assumes noninformative (SRS-like) subsampling within clusters.
+#' Informative within-cluster sampling remains approximate. In the
 #' 3-stage weighted case the between-PSU correction removes
 #' element-stage estimation noise but not SSU-stage subsampling noise,
 #' so when few SSUs are sampled per PSU the between-PSU component (and
@@ -86,7 +89,7 @@
 #'
 #' With `strata`, components are estimated separately within each
 #' stratum and returned as a per-stratum table in `$strata` (also via
-#' `as.data.frame()`); the pooled fields (`varb`, `delta`, ...) are not
+#' `as.data.frame()`). The pooled fields (`varb`, `delta`, ...) are not
 #' filled. The table's columns (`sd`, `mean`, `delta_psu`, `k_psu`)
 #' match the [n_alloc()] frame contract, so after adding stratum `N`
 #' it feeds a stratified two-stage allocation directly. When `prob` is
@@ -105,13 +108,14 @@
 #'
 #' @examples
 #' # 2-stage SRS using formula (PSU = district)
-#' set.seed(42)
+#' set.seed(314)
 #' frame2 <- data.frame(
 #'   income = rnorm(200, 50000, 10000),
 #'   district = rep(1:20, each = 10)
 #' )
 #' vc2 <- varcomp(income ~ district, data = frame2)
 #' vc2
+#' as.data.frame(vc2)
 #'
 #' # Feed into n_cluster
 #' n_cluster(stage_cost = c(500, 50), delta = vc2, budget = 100000)
@@ -129,7 +133,7 @@
 #'         prob = pp / sum(pp))
 #'
 #' # Per-stratum components for a stratified two-stage plan
-#' set.seed(42)
+#' set.seed(2718)
 #' frame_s <- data.frame(
 #'   income = rnorm(400, 50000, 10000),
 #'   district = rep(1:40, each = 10),
@@ -139,7 +143,7 @@
 #'
 #' # 3-stage SRS using formula: villages nested within districts
 #' # "/" expresses nesting (outermost stage first, see ?formula)
-#' set.seed(42)
+#' set.seed(1618)
 #' frame3 <- data.frame(
 #'   income = rnorm(400, 50000, 10000),
 #'   district = rep(1:20, each = 20),
@@ -168,17 +172,17 @@ varcomp <- function(x, ...) {
 #'   formula (e.g., `~pp`) when using the formula interface, or a numeric
 #'   vector: either one value per observation (constant within each PSU)
 #'   or one value per PSU. A one-per-PSU vector is matched by name when
-#'   named; unnamed values are taken in sorted order of the unique PSU
+#'   named. Unnamed values are taken in sorted order of the unique PSU
 #'   identifiers. Values must be strictly between 0 and 1 and sum to 1
 #'   across PSUs (tolerance 1e-3). `NULL` (default) assumes SRS.
 #' @param strata Optional stratification: a one-sided formula (formula
 #'   and survey.design interfaces) or a vector (default interface).
-#'   Components are then estimated per stratum; see Details.
+#'   Components are then estimated per stratum. See Details.
 #' @param weights Optional sampling weights for estimating components
 #'   from a sample rather than a frame: a one-sided formula (e.g.,
 #'   `~w`) when using the formula interface, or a numeric vector with
 #'   one positive value per observation. Within each cluster the
-#'   summed weights must estimate the cluster population size; for a
+#'   summed weights must estimate the cluster population size. For a
 #'   multi-stage sample use the within-cluster weights, not the full
 #'   design weight (see Details). `NULL` (default) computes frame
 #'   components.
@@ -186,6 +190,7 @@ varcomp <- function(x, ...) {
 #' @export
 varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL,
                             weights = NULL) {
+  .check_unused_dots(...)
   if (inherits(strata, "formula")) {
     strata_name <- all.vars(strata)
     if (length(strata_name) != 1L) {
@@ -212,7 +217,7 @@ varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL,
   }
   if (is.null(weights) && inherits(data, "tbl_sample")) {
     warning(
-      "'data' is a samplyr sample but the formula interface treats it as a complete population frame; pass within-cluster 'weights' (and 'prob' for a PPS first stage) for design-based components",
+      "'data' is a samplyr sample but the formula interface treats it as a complete population frame. Pass within-cluster 'weights' (and 'prob' for a PPS first stage) for design-based components",
       call. = FALSE
     )
   }
@@ -227,6 +232,7 @@ varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL,
 #' @export
 varcomp.default <- function(x, ..., stage_id = NULL, prob = NULL,
                             strata = NULL, weights = NULL) {
+  .check_unused_dots(...)
   if (is.numeric(x)) {
     .varcomp_vector(x, stage_id = stage_id, prob = prob, strata = strata,
                     w = weights)
@@ -242,6 +248,18 @@ varcomp.default <- function(x, ..., stage_id = NULL, prob = NULL,
 #'
 #' @export
 varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
+  dots <- list(...)
+  is_formula <- vapply(dots, inherits, logical(1L), "formula")
+  formula_idx <- which(is_formula)
+  if (length(formula_idx) == 0L) {
+    stop("a one-sided formula specifying the outcome is required (e.g., ~y)",
+         call. = FALSE)
+  }
+  if (length(formula_idx) > 1L) {
+    stop("supply exactly one outcome formula (e.g., ~y)", call. = FALSE)
+  }
+  .stop_unused_dots(names(dots), setdiff(seq_along(dots), formula_idx))
+
   if (inherits(strata, "formula")) {
     strata_name <- all.vars(strata)
     if (length(strata_name) != 1L) {
@@ -254,17 +272,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
            call. = FALSE)
     }
   }
-  formula <- NULL
-  for (a in list(...)) {
-    if (inherits(a, "formula")) {
-      formula <- a
-      break
-    }
-  }
-  if (is.null(formula)) {
-    stop("a one-sided formula specifying the outcome is required (e.g., ~y)",
-         call. = FALSE)
-  }
+  formula <- dots[[formula_idx]]
 
   w <- .varcomp_check_w(as.numeric(stats::weights(x)), "design weights")
 
@@ -283,7 +291,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
   n_stages <- ncol(cl)
 
   if (n_stages == 1L && length(unique(cl[[1L]])) == nrow(cl)) {
-    stop("design has no clusters (ids = ~1); varcomp requires a clustered design",
+    stop("design has no clusters (ids = ~1). varcomp requires a clustered design",
          call. = FALSE)
   }
 
@@ -291,7 +299,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
   .varcomp_dispatch(y, stage_id, prob, w, strata)
 }
 
-#' Validate sampling weights; unit weights collapse to NULL so the
+#' Validate sampling weights. Unit weights collapse to NULL so the
 #' exact frame formulas apply
 #' @keywords internal
 #' @noRd
@@ -352,7 +360,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
     } else {
       stop(
         "multi-stage formula must express nesting ",
-        "(e.g., y ~ psu/ssu or y ~ ssu %in% psu); see ?formula",
+        "(e.g., y ~ psu/ssu or y ~ ssu %in% psu). See ?formula",
         call. = FALSE
       )
     }
@@ -437,7 +445,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 
   if (stages > 3L) {
     stop(
-      "4+ stage variance components are not supported; estimate the top three stages and fold deeper stages (e.g. persons within households) into the 'deff' passed to n_prop() or n_mean()",
+      "4+ stage variance components are not supported. Estimate the top three stages and fold deeper stages (e.g. persons within households) into the 'deff' passed to n_prop() or n_mean()",
       call. = FALSE
     )
   }
@@ -541,7 +549,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 #' Map and validate PPS probabilities to per-PSU values
 #'
 #' Accepts one value per observation (must be constant within PSU) or one
-#' per PSU. A one-per-PSU vector is matched by name when named; unnamed
+#' per PSU. A one-per-PSU vector is matched by name when named. Unnamed
 #' values are taken in sorted order of the unique PSU identifiers.
 #' @keywords internal
 #' @noRd
@@ -588,7 +596,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 .check_min_psu <- function(M) {
   if (M < 2L) {
     stop(
-      "at least two PSUs are required to estimate between-PSU variance; collapse single-PSU strata with a neighbour",
+      "at least two PSUs are required to estimate between-PSU variance. Collapse single-PSU strata with a neighbour",
       call. = FALSE
     )
   }
@@ -606,7 +614,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 }
 
 #' Estimation variance of a weighted group total under SRSWOR within
-#' the group; zero when the group's weights are all 1 (Nhat = n)
+#' the group. Zero when the group's weights are all 1 (Nhat = n)
 #' @keywords internal
 #' @noRd
 .varcomp_total_var <- function(n_i, Nhat_i, S2_i) {
@@ -619,7 +627,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 .impute_singleton_var <- function(x) {
   lonely <- is.na(x)
   if (all(lonely)) {
-    warning("all clusters are singletons; within-cluster variance set to 0",
+    warning("all clusters are singletons. Within-cluster variance set to 0",
             call. = FALSE)
     x[] <- 0
   } else if (any(lonely)) {
@@ -671,7 +679,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 
   total_v <- vb + vw
   if (total_v < eps || rel_var < eps || !is.finite(rel_var)) {
-    warning("outcome variance is approximately zero; delta set to 0 by convention",
+    warning("outcome variance is approximately zero. Delta set to 0 by convention",
             call. = FALSE)
     delta <- 0
     k <- 1
@@ -740,7 +748,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 
   total_v <- vb + vw
   if (total_v < eps || rel_var < eps || !is.finite(rel_var)) {
-    warning("outcome variance is approximately zero; delta set to 0 by convention",
+    warning("outcome variance is approximately zero. Delta set to 0 by convention",
             call. = FALSE)
     delta <- 0
     k <- 1
@@ -882,7 +890,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
     k2 <- ww / V
   }
   if (warn) {
-    warning("outcome variance is approximately zero; delta set to 0 by convention",
+    warning("outcome variance is approximately zero. Delta set to 0 by convention",
             call. = FALSE)
   }
 

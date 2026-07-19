@@ -11,14 +11,10 @@ prec_multi(targets, ...)
 
 \method{prec_multi}{default}(
   targets,
+  ...,
   domains = NULL,
-  stage_cost = NULL,
-  budget = NULL,
-  n_psu = NULL,
-  joint = FALSE,
-  prop_method = "wald",
-  plan = NULL,
-  ...
+  prop_method = c("wald", "wilson", "logodds"),
+  plan = NULL
 )
 
 \method{prec_multi}{svyplan_n}(targets, ...)
@@ -40,31 +36,18 @@ At minimum, each row needs:
 
 See the Details section for the full column reference.
 
-For \code{svyplan_n} or \code{svyplan_cluster} objects: a result from
-\code{\link[=n_multi]{n_multi()}}.}
+For \code{svyplan_n} objects: a result from \code{\link[=n_multi]{n_multi()}}.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{domains}{Character vector of column names in \code{targets} to treat
 as domain variables, or \code{NULL} (default) for no domains. All names
 must exist in \code{targets}. Domain columns are preserved in the result
 for round-trip conversion back to \code{\link[=n_multi]{n_multi()}}.}
 
-\item{stage_cost}{Numeric vector of per-stage costs. \code{NULL} (default) for
-simple mode; length 2 or 3 for multistage mode.}
-
-\item{budget}{Total budget. Does not affect precision calculations;
-preserved for round-trip conversion back to \code{\link[=n_multi]{n_multi()}}.}
-
-\item{n_psu}{Fixed stage-1 sample size. Does not affect precision
-calculations; preserved for round-trip conversion back to \code{\link[=n_multi]{n_multi()}}.}
-
-\item{joint}{Logical. Does not affect precision calculations;
-preserved for round-trip conversion back to \code{\link[=n_multi]{n_multi()}}.}
-
-\item{prop_method}{Proportion CI method for simple mode, one of \code{"wald"}
+\item{prop_method}{Proportion CI method, one of \code{"wald"}
 (default), \code{"wilson"}, or \code{"logodds"}. This is passed to \code{\link[=prec_prop]{prec_prop()}}
-for proportion rows and ignored for mean rows and multistage mode.
+for proportion rows and ignored for mean rows.
 An optional \code{prop_method} column in \code{targets} overrides this default
 on a per-row basis.}
 
@@ -105,32 +88,19 @@ per row (see \code{\link[=n_multi]{n_multi()}}).}
 \item{\code{var}}{Population variance. One of \code{p} or \code{var} per row.}
 \item{\code{mu}}{Population mean. Required for CV output when \code{var}
 is specified, because CV = SE / mean.}
-\item{\code{n}}{Sample size to evaluate (\strong{required}). In simple mode,
-one number per row. In multistage mode, this is the stage-1
-(PSU) sample size; add \code{psu_size} and optionally \code{ssu_size}
-columns for the per-stage cluster sizes.}
-\item{\code{psu_size}}{Stage-2 sample size per PSU (multistage only).
-Required for 2+ stage designs in multistage mode.}
-\item{\code{ssu_size}}{Stage-3 sample size per SSU (3-stage only).}
+\item{\code{n}}{Sample size to evaluate (\strong{required}), with one value per
+indicator row.}
 \item{\code{alpha}}{Significance level (default 0.05).}
-\item{\code{deff}}{Design effect multiplier (simple mode only,
-default 1).}
-\item{\code{N}}{Population size (simple mode only, default \code{Inf}).}
+\item{\code{deff}}{Design effect multiplier (default 1).}
+\item{\code{N}}{Population size (default \code{Inf}).}
 \item{\code{prop_method}}{Proportion CI method: \code{"wald"} (default),
-\code{"wilson"}, or \code{"logodds"}. Only for rows with \code{p} in
-simple mode.}
+\code{"wilson"}, or \code{"logodds"}. Only for rows with \code{p}.}
 \item{\code{resp_rate}}{Expected response rate (default 1).}
-\item{\code{delta_psu}, \code{delta_ssu}}{Homogeneity measures
-(multistage).}
-\item{\code{rel_var}}{Unit relvariance. If omitted, derived from \code{p}
-or \code{var}/\code{mu}.}
-\item{\code{k_psu}, \code{k_ssu}}{Ratio parameters (multistage,
-default 1).}
 }
 
 Domain columns are specified via the \code{domains} parameter.
 
-In simple mode, \code{prec_multi()} delegates proportion rows to \code{\link[=prec_prop]{prec_prop()}}
+\code{prec_multi()} delegates proportion rows to \code{\link[=prec_prop]{prec_prop()}}
 and mean rows to \code{\link[=prec_mean]{prec_mean()}}. Use \code{prop_method} or a
 \code{targets$prop_method} column to choose \code{"wald"}, \code{"wilson"}, or
 \code{"logodds"} for proportion rows.
@@ -150,6 +120,7 @@ prec_multi(data.frame(p = 0.05, n = 400), prop_method = "wilson")
 
 }
 \seealso{
-\code{\link[=n_multi]{n_multi()}} for the inverse (compute n from precision targets),
-\code{\link[=prec_prop]{prec_prop()}}, \code{\link[=prec_mean]{prec_mean()}} for single-indicator precision.
+\code{\link[=n_multi]{n_multi()}} for the inverse, \code{\link[=prec_multi_cluster]{prec_multi_cluster()}} for
+multistage cluster designs, and \code{\link[=prec_prop]{prec_prop()}} and \code{\link[=prec_mean]{prec_mean()}} for
+single-indicator precision.
 }

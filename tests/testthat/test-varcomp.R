@@ -1,5 +1,5 @@
 test_that("varcomp 2-stage SRS formula interface works", {
-  set.seed(42)
+  set.seed(1031)
   frame <- data.frame(
     income = rnorm(200, 50000, 10000),
     district = rep(1:20, each = 10)
@@ -13,7 +13,7 @@ test_that("varcomp 2-stage SRS formula interface works", {
 })
 
 test_that("varcomp 2-stage SRS vector interface matches formula", {
-  set.seed(42)
+  set.seed(1033)
   frame <- data.frame(
     income = rnorm(200, 50000, 10000),
     district = rep(1:20, each = 10)
@@ -32,6 +32,32 @@ test_that("varcomp 2-stage SRS vector interface matches formula", {
     tolerance = 1e-10
   )
   expect_equal(result_vector$delta, result_formula$delta, tolerance = 1e-10)
+})
+
+test_that("unstratified variance components have explicit export schemas", {
+  set.seed(1217)
+  y <- rnorm(200, 50, 10)
+  psu <- rep(seq_len(20), each = 10)
+  ssu <- rep(seq_len(100), each = 2)
+
+  two_stage <- varcomp(y, stage_id = list(psu))
+  three_stage <- varcomp(y, stage_id = list(psu, ssu))
+  two_df <- as.data.frame(two_stage)
+  three_df <- as.data.frame(three_stage)
+
+  expect_identical(
+    names(two_df),
+    c("stages", "varb", "varw", "delta", "k", "rel_var")
+  )
+  expect_identical(
+    names(three_df),
+    c(
+      "stages", "varb", "varw_psu", "varw_ssu", "delta_psu",
+      "delta_ssu", "k_psu", "k_ssu", "rel_var"
+    )
+  )
+  expect_equal(two_df$delta, two_stage$delta)
+  expect_equal(three_df$delta_psu, three_stage$delta[["delta_psu"]])
 })
 
 test_that("varcomp 2-stage SRS known values", {
@@ -93,7 +119,7 @@ test_that("varcomp 2-stage PPS with formula prob", {
 })
 
 test_that("varcomp integrates with n_cluster", {
-  set.seed(42)
+  set.seed(1039)
   frame <- data.frame(
     income = rnorm(200, 50000, 10000),
     district = rep(1:20, each = 10)
@@ -124,7 +150,7 @@ test_that("varcomp handles lonely SSUs", {
 
 test_that("varcomp.survey.design matches formula interface", {
   skip_if_not_installed("survey")
-  set.seed(42)
+  set.seed(1049)
   frame <- data.frame(
     income = rnorm(200, 50000, 10000),
     district = rep(1:20, each = 10)
@@ -364,7 +390,7 @@ test_that("3-stage SRS works with vector interface", {
 
 test_that("survey.design method with unit weights matches frame", {
   skip_if_not_installed("survey")
-  set.seed(42)
+  set.seed(1051)
   frame <- data.frame(
     income = rnorm(200, 50000, 10000),
     district = rep(1:20, each = 10)
@@ -383,7 +409,7 @@ test_that("survey.design method with unit weights matches frame", {
 
 test_that("weighted correction shrinks the between component", {
   skip_if_not_installed("survey")
-  set.seed(42)
+  set.seed(1061)
   frame <- data.frame(
     income = rnorm(200, 50000, 10000),
     district = rep(1:20, each = 10)
@@ -447,7 +473,7 @@ test_that("weighted 2-stage PPS recovers the population delta", {
 
 test_that("per-stratum weighted results do not depend on other strata", {
   skip_if_not_installed("survey")
-  set.seed(42)
+  set.seed(1063)
   d <- data.frame(
     y = rnorm(400, rep(c(10, 20), each = 200)),
     psu = rep(1:40, each = 10),
@@ -581,10 +607,12 @@ test_that("stratified varcomp is rejected where a pooled one is needed", {
                "stratified varcomp")
   expect_error(design_effect(delta = vc, psu_size = 10, method = "cluster"),
                "stratified varcomp")
-  expect_error(prec_cluster(n = c(20, 10), stage_cost = c(500, 50), delta = vc),
+  expect_error(prec_cluster(n = c(20, 10), delta = vc),
                "stratified varcomp")
   pooled <- varcomp(y ~ ea, data = d)
-  expect_error(as.data.frame(pooled), "stratified")
+  pooled_df <- as.data.frame(pooled)
+  expect_equal(nrow(pooled_df), 1L)
+  expect_equal(pooled_df$delta, pooled$delta)
 })
 
 test_that("strata validates inputs", {

@@ -12,7 +12,7 @@
 #'   Column names must be valid parameters for the object type (see
 #'   Details). Parameters not in `newdata` stay at their original
 #'   values from the object.
-#' @param ... Ignored.
+#' @param ... Additional arguments are not supported and produce an error.
 #'
 #' @return A data frame with `newdata` columns followed by result
 #'   columns. The result columns depend on the object type:
@@ -29,10 +29,10 @@
 #' - **`n_mean`**: `var`, `mu`, `moe`, `cv`, `alpha`, `N`, `deff`,
 #'   `resp_rate`
 #' - **`n_cluster`**: `cv`, `budget`, `rel_var`, `resp_rate`, `fixed_cost`,
-#'   stage deltas (`delta` or `delta_psu`; plus `delta_ssu` for 3-stage),
-#'   stage ratios (`k` or `k_psu`; plus `k_ssu` for 3-stage),
-#'   stage costs (`cost_psu`, `cost_ssu`, `cost_tsu`; for 2-stage,
-#'   `cost_tsu` aliases `cost_ssu`)
+#'   stage deltas (`delta` or `delta_psu`, plus `delta_ssu` for 3-stage),
+#'   stage ratios (`k` or `k_psu`, plus `k_ssu` for 3-stage),
+#'   and stage costs (`cost_psu`, `cost_ssu`, `cost_tsu`). For 2-stage
+#'   designs, `cost_tsu` aliases `cost_ssu`.
 #' - **`power_prop`**: `p1`, `p2`, `n`, `power`, `alpha`, `N`, `deff`,
 #'   `alternative`, `overlap`, `rho`, `resp_rate` (excluding the solved-for
 #'   parameter). Not supported for objects with vector `n`.
@@ -43,14 +43,14 @@
 #' - **`prec_mean`**: `var`, `n`, `mu`, `alpha`, `N`, `deff`, `resp_rate`
 #'
 #' For `svyplan_n` objects, `moe` and `cv` are mutually exclusive in
-#' `newdata`. If one appears, that mode is used; if neither, the
+#' `newdata`. If one appears, that mode is used. If neither appears, the
 #' original mode is preserved.
 #'
 #' Similarly, for `svyplan_cluster` objects, `cv` and `budget` are
 #' mutually exclusive.
 #'
 #' Multi-indicator (`n_multi`) and multi-indicator cluster results are
-#' not supported; use the underlying single-indicator functions instead.
+#' not supported. Use the underlying single-indicator functions instead.
 #'
 #' If evaluation fails for a particular row (e.g. invalid parameter
 #' combinations), that row's result columns are `NA` and a warning is
@@ -87,6 +87,7 @@ NULL
 #' @rdname predict.svyplan
 #' @export
 predict.svyplan_n <- function(object, newdata, ...) {
+  .check_unused_dots(...)
   if (!is.null(object$targets)) {
     stop(
       "predict() is not supported for multi-indicator results; ",
@@ -198,6 +199,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
 #' @rdname predict.svyplan
 #' @export
 predict.svyplan_cluster <- function(object, newdata, ...) {
+  .check_unused_dots(...)
   if (!is.null(object$targets)) {
     stop(
       "predict() is not supported for multi-indicator cluster results; ",
@@ -300,6 +302,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
 #' @rdname predict.svyplan
 #' @export
 predict.svyplan_power <- function(object, newdata, ...) {
+  .check_unused_dots(...)
   if (length(object$n) == 2L)
     stop("predict() does not support power objects with unequal-group n; call power_*() directly",
          call. = FALSE)
@@ -388,6 +391,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
 #' @rdname predict.svyplan
 #' @export
 predict.svyplan_prec <- function(object, newdata, ...) {
+  .check_unused_dots(...)
   if (object$type %in% c("multi", "cluster")) {
     stop(
       sprintf(

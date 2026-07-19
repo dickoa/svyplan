@@ -10,6 +10,7 @@ power_did(treat, ...)
 \method{power_did}{default}(
   treat,
   control,
+  ...,
   outcome = c("mean", "prop"),
   var = NULL,
   effect = NULL,
@@ -23,15 +24,14 @@ power_did(treat, ...)
   ratio = 1,
   overlap = 0,
   rho = 0,
-  plan = NULL,
-  ...
+  plan = NULL
 )
 }
 \arguments{
 \item{treat}{Numeric length-2 vector for treated group outcomes:
 \code{c(baseline, endline)}.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{control}{Numeric length-2 vector for control group outcomes:
 \code{c(baseline, endline)}.}
@@ -57,7 +57,8 @@ for n.}
 \item{alpha}{Significance level, default 0.05.}
 
 \item{N}{Population size for finite-population correction.
-Scalar applies to both arms; length-2 vector \code{c(N_treat, N_control)}.
+A scalar applies to both arms. Use a length-2 vector
+\code{c(N_treat, N_control)} for arm-specific population sizes.
 \code{Inf} (default) disables FPC.}
 
 \item{deff}{Design effect multiplier (> 0).}

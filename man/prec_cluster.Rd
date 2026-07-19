@@ -10,12 +10,12 @@ prec_cluster(n, ...)
 
 \method{prec_cluster}{default}(
   n,
+  ...,
   delta = NULL,
   rel_var = 1,
   k = 1,
   resp_rate = 1,
-  plan = NULL,
-  ...
+  plan = NULL
 )
 
 \method{prec_cluster}{svyplan_cluster}(n, ...)
@@ -27,7 +27,7 @@ sizes (\code{c(n_psu, psu_size)} for 2-stage or
 with stage names \code{n_psu}, \code{psu_size}, \code{ssu_size}.
 For \code{svyplan_cluster} objects: a cluster allocation from \code{\link[=n_cluster]{n_cluster()}}.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{delta}{Numeric vector of homogeneity measures (length = stages - 1),
 or a \code{svyplan_varcomp} object.}
@@ -45,8 +45,8 @@ adjustment). The effective stage-1 size is \code{n * resp_rate}.}
 \value{
 A \code{svyplan_prec} object with components \verb{$se}, \verb{$moe}, and \verb{$cv}.
 Because the cluster model is parameterized with unit relvariance
-(\code{rel_var = S^2 / Y_bar^2}), only \verb{$cv} is computable; \verb{$se} and
-\verb{$moe} are \code{NA}.
+(\code{rel_var = S^2 / Y_bar^2}), only \verb{$cv} is computable. The \verb{$se} and
+\verb{$moe} components are \code{NA}.
 }
 \description{
 Compute the sampling error (SE, MOE, CV) for a given multistage sample

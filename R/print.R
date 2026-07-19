@@ -4,7 +4,10 @@
 #' @param object A svyplan object (for `confint` methods).
 #' @param parm Ignored (included for S3 consistency with [confint()]).
 #' @param level Confidence level (default 0.95).
-#' @param ... Additional arguments (currently unused).
+#' @param row.names,optional Standard [as.data.frame()] arguments.
+#' @param stringsAsFactors Logical. Retained for compatibility when a result
+#'   is converted through [data.frame()].
+#' @param ... Additional arguments are not supported and produce an error.
 #'
 #' @return `x` (or `object`), invisibly. `confint` returns a 2-column
 #'   matrix with the lower and upper confidence limits.
@@ -31,7 +34,8 @@
 #' `x$n`: the named integer stage vector for `svyplan_cluster` objects,
 #' the operational total for allocation results, and the ceiled scalar
 #' otherwise. `as.double(x)` returns the continuous counterpart of the
-#' same shape.
+#' same shape. For `svyplan_strata`, both coercions return the total sample
+#' size. Boundary cutpoints remain available in `$boundaries`.
 #'
 #' `as.data.frame()` returns the tabular form of a result, intended as
 #' the stable handoff to downstream packages (e.g. samplyr). For
@@ -40,7 +44,15 @@
 #' to `$detail`) for `n_multi()` results, and a one-row summary
 #' (`n`, `n_int`, `se`, `moe`, `cv`) otherwise. For `svyplan_cluster`:
 #' the per-domain table when domains are present, otherwise a stage
-#' table with columns `stage`, `n`, and `n_int`.
+#' table with columns `stage`, `n`, and `n_int`, where `n` is the continuous
+#' optimum and `n_int` is the constraint-preserving operational design.
+#' For `svyplan_prec`, detail-bearing multi-indicator and allocation results
+#' return `$detail`. Single-indicator results return their sample size and
+#' precision measures in one row. For `svyplan_varcomp`, stratified results
+#' return `$strata`, while unstratified results return one row containing the
+#' two- or three-stage components. For `svyplan_power`, one row contains the
+#' two group sizes, their integer counterparts, power, effect, type, and the
+#' quantity that was solved for.
 #'
 #' @examples
 #' # confint on a proportion sample size
@@ -64,6 +76,7 @@ NULL
 #' @rdname print.svyplan
 #' @export
 print.svyplan_n <- function(x, ...) {
+  .check_unused_dots(...)
   if (x$type == "alloc") {
     .print_alloc_n(x)
   } else if (x$type == "multi") {
@@ -171,6 +184,7 @@ print.svyplan_n <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 print.svyplan_cluster <- function(x, ...) {
+  .check_unused_dots(...)
   if (!is.null(x$targets)) {
     .print_multi_cluster(x)
   } else {
@@ -337,6 +351,7 @@ print.svyplan_cluster <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 print.svyplan_prec <- function(x, ...) {
+  .check_unused_dots(...)
   if (x$type == "multi") {
     .print_multi_prec(x)
   } else {
@@ -415,6 +430,7 @@ print.svyplan_prec <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 print.svyplan_varcomp <- function(x, ...) {
+  .check_unused_dots(...)
   if (!is.null(x$strata)) {
     cat(sprintf(
       "Variance components (%d-stage, %d strata)\n",
@@ -448,6 +464,7 @@ print.svyplan_varcomp <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 print.svyplan_power <- function(x, ...) {
+  .check_unused_dots(...)
   type_label <- switch(
     x$type,
     proportion = "proportions",
@@ -473,7 +490,8 @@ print.svyplan_power <- function(x, ...) {
 
   is_did <- startsWith(x$type, "did")
   if (length(x$n) == 2L) {
-    n1 <- ceiling(x$n[1]); n2 <- ceiling(x$n[2])
+    n1 <- ceiling(x$n[1])
+    n2 <- ceiling(x$n[2])
     lab1 <- if (is_did) "n_treat" else "n1"
     lab2 <- if (is_did) "n_control" else "n2"
     if (!is.null(resp_rate) && resp_rate < 1) {
@@ -551,12 +569,14 @@ print.svyplan_power <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 format.svyplan_n <- function(x, ...) {
+  .check_unused_dots(...)
   paste0("svyplan_n [n=", ceiling(x$n), ", ", x$type, "]")
 }
 
 #' @rdname print.svyplan
 #' @export
 format.svyplan_cluster <- function(x, ...) {
+  .check_unused_dots(...)
   total <- if (!is.null(x$operational)) {
     x$operational$total_n
   } else {
@@ -576,18 +596,21 @@ format.svyplan_cluster <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 format.svyplan_prec <- function(x, ...) {
+  .check_unused_dots(...)
   paste0("svyplan_prec [", x$type, ", se=", sprintf("%.4f", x$se[1L]), "]")
 }
 
 #' @rdname print.svyplan
 #' @export
 format.svyplan_varcomp <- function(x, ...) {
+  .check_unused_dots(...)
   paste0("svyplan_varcomp [", x$stages, "-stage]")
 }
 
 #' @rdname print.svyplan
 #' @export
 format.svyplan_power <- function(x, ...) {
+  .check_unused_dots(...)
   n_str <- if (length(x$n) == 2L) {
     paste0(ceiling(x$n[1]), ",", ceiling(x$n[2]))
   } else {
@@ -609,7 +632,7 @@ format.svyplan_power <- function(x, ...) {
   method = "wald"
 ) {
   # The number entering the FPC is the net number of responding units.
-  # The design effect inflates variance; it does not reduce the sampling
+  # The design effect inflates variance. It does not reduce the sampling
   # fraction.  Transformed intervals still use n_eff in their large-sample
   # variance, consistently with .prec_engine_prop().
   n_net <- n * resp_rate
@@ -661,6 +684,7 @@ format.svyplan_power <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
+  .check_unused_dots(...)
   if (!is.numeric(level) || length(level) != 1L || is.na(level) ||
     level <= 0 || level >= 1) {
     stop("'level' must be a number in (0, 1)", call. = FALSE)
@@ -709,6 +733,7 @@ confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
 #' @rdname print.svyplan
 #' @export
 confint.svyplan_prec <- function(object, parm, level = 0.95, ...) {
+  .check_unused_dots(...)
   if (!is.numeric(level) || length(level) != 1L || is.na(level) ||
     level <= 0 || level >= 1) {
     stop("'level' must be a number in (0, 1)", call. = FALSE)
@@ -750,6 +775,7 @@ confint.svyplan_prec <- function(object, parm, level = 0.95, ...) {
 #' @rdname print.svyplan
 #' @export
 as.integer.svyplan_n <- function(x, ...) {
+  .check_unused_dots(...)
   if (!is.null(x$operational)) {
     return(as.integer(x$operational$n))
   }
@@ -759,12 +785,14 @@ as.integer.svyplan_n <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 as.double.svyplan_n <- function(x, ...) {
+  .check_unused_dots(...)
   x$n
 }
 
 #' @rdname print.svyplan
 #' @export
 as.integer.svyplan_cluster <- function(x, ...) {
+  .check_unused_dots(...)
   if (!is.null(x$operational)) {
     return(as.integer(x$operational$n))
   }
@@ -774,67 +802,280 @@ as.integer.svyplan_cluster <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 as.double.svyplan_cluster <- function(x, ...) {
+  .check_unused_dots(...)
   x$n
 }
 
 #' @rdname print.svyplan
 #' @export
-as.data.frame.svyplan_n <- function(x, ...) {
-  if (identical(x$type, "alloc")) {
-    return(x$detail)
-  }
-  if (identical(x$type, "multi")) {
-    return(x$domains %||% x$detail)
-  }
-  data.frame(
-    n = x$n,
-    n_int = as.integer(ceiling(x$n)),
-    se = x$se,
-    moe = x$moe,
-    cv = x$cv
-  )
-}
-
-#' @rdname print.svyplan
-#' @export
-as.data.frame.svyplan_varcomp <- function(x, ...) {
-  if (is.null(x$strata)) {
-    stop(
-      "as.data.frame is only defined for stratified varcomp results (strata argument)",
-      call. = FALSE
+as.data.frame.svyplan_n <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  ...
+) {
+  .check_unused_dots(...)
+  out <- if (identical(x$type, "alloc")) {
+    x$detail
+  } else if (identical(x$type, "multi")) {
+    x$domains %||% x$detail
+  } else {
+    data.frame(
+      n = x$n,
+      n_int = as.integer(ceiling(x$n)),
+      se = x$se,
+      moe = x$moe,
+      cv = x$cv,
+      stringsAsFactors = stringsAsFactors
     )
   }
-  x$strata
+  as.data.frame(out, row.names = row.names, optional = optional)
 }
 
 #' @rdname print.svyplan
 #' @export
-as.data.frame.svyplan_cluster <- function(x, ...) {
-  if (!is.null(x$domains)) {
-    return(x$domains)
+as.data.frame.svyplan_prec <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  ...
+) {
+  .check_unused_dots(...)
+  if (!is.null(x$detail)) {
+    return(as.data.frame(x$detail, row.names = row.names, optional = optional))
   }
-  data.frame(
-    stage = names(x$n),
-    n = as.numeric(x$n),
-    n_int = as.integer(ceiling(x$n))
-  )
+
+  if (identical(x$type, "cluster")) {
+    stage_n <- x$params$n
+    stage_names <- names(stage_n)
+    if (is.null(stage_names) || any(!nzchar(stage_names))) {
+      stage_names <- paste0("stage", seq_along(stage_n))
+    }
+    out <- as.data.frame(
+      as.list(stats::setNames(as.numeric(stage_n), stage_names)),
+      optional = optional,
+      stringsAsFactors = stringsAsFactors
+    )
+    out$total_n <- prod(stage_n)
+    out$se <- x$se
+    out$moe <- x$moe
+    out$cv <- x$cv
+  } else {
+    out <- data.frame(
+      n = x$params$n,
+      se = x$se,
+      moe = x$moe,
+      cv = x$cv,
+      stringsAsFactors = stringsAsFactors
+    )
+  }
+
+  as.data.frame(out, row.names = row.names, optional = optional)
+}
+
+#' @rdname print.svyplan
+#' @export
+as.data.frame.svyplan_varcomp <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  ...
+) {
+  .check_unused_dots(...)
+  out <- if (!is.null(x$strata)) {
+    x$strata
+  } else if (x$stages == 2L) {
+    data.frame(
+      stages = x$stages,
+      varb = x$varb,
+      varw = x$varw,
+      delta = x$delta,
+      k = x$k,
+      rel_var = x$rel_var,
+      stringsAsFactors = stringsAsFactors
+    )
+  } else {
+    data.frame(
+      stages = x$stages,
+      varb = x$varb,
+      varw_psu = unname(x$varw[1L]),
+      varw_ssu = unname(x$varw[2L]),
+      delta_psu = unname(x$delta[1L]),
+      delta_ssu = unname(x$delta[2L]),
+      k_psu = unname(x$k[1L]),
+      k_ssu = unname(x$k[2L]),
+      rel_var = x$rel_var,
+      stringsAsFactors = stringsAsFactors
+    )
+  }
+  as.data.frame(out, row.names = row.names, optional = optional)
+}
+
+#' @rdname print.svyplan
+#' @export
+as.data.frame.svyplan_cluster <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  ...
+) {
+  .check_unused_dots(...)
+  out <- if (!is.null(x$domains)) {
+    x$domains
+  } else {
+    data.frame(
+      stage = names(x$n),
+      n = as.numeric(x$n),
+      n_int = as.integer(x),
+      stringsAsFactors = stringsAsFactors
+    )
+  }
+  as.data.frame(out, row.names = row.names, optional = optional)
 }
 
 #' @rdname print.svyplan
 #' @export
 as.integer.svyplan_power <- function(x, ...) {
+  .check_unused_dots(...)
   as.integer(ceiling(x$n))
 }
 
 #' @rdname print.svyplan
 #' @export
 as.double.svyplan_power <- function(x, ...) {
+  .check_unused_dots(...)
   x$n
 }
 
 #' @rdname print.svyplan
 #' @export
+as.data.frame.svyplan_power <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  ...
+) {
+  .check_unused_dots(...)
+  n_pair <- if (length(x$n) == 1L) rep(x$n, 2L) else x$n
+  out <- data.frame(
+    n1 = unname(n_pair[1L]),
+    n2 = unname(n_pair[2L]),
+    n1_int = as.integer(ceiling(n_pair[1L])),
+    n2_int = as.integer(ceiling(n_pair[2L])),
+    power = x$power,
+    effect = x$effect,
+    type = x$type,
+    solved = x$solved,
+    stringsAsFactors = stringsAsFactors
+  )
+  as.data.frame(out, row.names = row.names, optional = optional)
+}
+
+#' Print and coerce design-effect results
+#'
+#' @param x A `svyplan_design_effect` object.
+#' @param row.names,optional Standard [as.data.frame()] arguments.
+#' @param stringsAsFactors Logical. Retained for compatibility when a result
+#'   is converted through [data.frame()].
+#' @param e1,e2 Objects supplied to an arithmetic or comparison operator.
+#' @param ... For mathematical transformations, additional arguments passed to
+#'   the underlying operation. The other methods do not support additional
+#'   arguments.
+#'
+#' @return `print()` returns `x` invisibly, `format()` returns a character
+#'   scalar, `as.double()` returns the overall design effect, and
+#'   `as.data.frame()` returns the component table. Arithmetic and mathematical
+#'   transformations return ordinary numeric results.
+#'
+#' @name print.svyplan_design_effect
+NULL
+
+#' @rdname print.svyplan_design_effect
+#' @export
+print.svyplan_design_effect <- function(x, ...) {
+  .check_unused_dots(...)
+  method <- attr(x, "method", exact = TRUE)
+  label <- switch(
+    method,
+    cr = "Chen-Rust",
+    paste0(toupper(substring(method, 1L, 1L)), substring(method, 2L))
+  )
+  cat(sprintf("Design effect (%s)\n", label))
+  cat(sprintf("overall = %.4f\n", as.double(x)))
+  invisible(x)
+}
+
+#' @rdname print.svyplan_design_effect
+#' @export
+format.svyplan_design_effect <- function(x, ...) {
+  .check_unused_dots(...)
+  sprintf(
+    "svyplan_design_effect [%s, %.4f]",
+    attr(x, "method", exact = TRUE),
+    as.double(x)
+  )
+}
+
+#' @rdname print.svyplan_design_effect
+#' @export
+as.double.svyplan_design_effect <- function(x, ...) {
+  .check_unused_dots(...)
+  unclass(x)[[1L]]
+}
+
+#' @rdname print.svyplan_design_effect
+#' @export
+as.data.frame.svyplan_design_effect <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  ...
+) {
+  .check_unused_dots(...)
+  method <- attr(x, "method", exact = TRUE)
+  components <- attr(x, "components", exact = TRUE)
+  if (is.null(components)) {
+    out <- data.frame(
+      method = method,
+      design_effect = as.double(x),
+      stringsAsFactors = stringsAsFactors
+    )
+  } else {
+    out <- components
+    out$method <- method
+    out$overall <- as.double(x)
+    out <- out[c("method", setdiff(names(out), "method"))]
+  }
+  as.data.frame(out, row.names = row.names, optional = optional)
+}
+
+#' @rdname print.svyplan_design_effect
+#' @export
+Ops.svyplan_design_effect <- function(e1, e2) {
+  e1 <- if (inherits(e1, "svyplan_design_effect")) as.double(e1) else e1
+  if (missing(e2)) {
+    return(do.call(.Generic, list(e1)))
+  }
+  e2 <- if (inherits(e2, "svyplan_design_effect")) as.double(e2) else e2
+  do.call(.Generic, list(e1, e2))
+}
+
+#' @rdname print.svyplan_design_effect
+#' @export
+Math.svyplan_design_effect <- function(x, ...) {
+  do.call(.Generic, c(list(as.double(x)), list(...)))
+}
+
+#' @rdname print.svyplan
+#' @export
 print.svyplan_strata <- function(x, ...) {
+  .check_unused_dots(...)
   .print_boundary_strata(x)
   invisible(x)
 }
@@ -846,7 +1087,7 @@ print.svyplan_strata <- function(x, ...) {
     x$method,
     cumrootf = "Dalenius-Hodges",
     geo = "Geometric",
-    lh = "Lavallee-Hidiroglou",
+    lh = "Lavall\u00e9e-Hidiroglou",
     kozak = "Kozak",
     x$method
   )
@@ -929,6 +1170,7 @@ print.svyplan_strata <- function(x, ...) {
 #' @rdname print.svyplan
 #' @export
 format.svyplan_strata <- function(x, ...) {
+  .check_unused_dots(...)
   paste0(
     "svyplan_strata [",
     x$method,
@@ -942,20 +1184,29 @@ format.svyplan_strata <- function(x, ...) {
 
 #' @rdname print.svyplan
 #' @export
-as.data.frame.svyplan_strata <- function(x, ...) {
-  x$strata
+as.data.frame.svyplan_strata <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  ...
+) {
+  .check_unused_dots(...)
+  as.data.frame(x$strata, row.names = row.names, optional = optional)
 }
 
 #' @rdname print.svyplan
 #' @export
 as.integer.svyplan_strata <- function(x, ...) {
+  .check_unused_dots(...)
   as.integer(ceiling(x$n))
 }
 
 #' @rdname print.svyplan
 #' @export
 as.double.svyplan_strata <- function(x, ...) {
-  x$boundaries
+  .check_unused_dots(...)
+  as.double(x$n)
 }
 
 #' Assign Observations to Strata
@@ -967,7 +1218,7 @@ as.double.svyplan_strata <- function(x, ...) {
 #' @param newdata Numeric vector to stratify.
 #' @param labels Labels for the resulting factor levels. Default `NULL`
 #'   generates labels from the boundary intervals.
-#' @param ... Additional arguments (currently unused).
+#' @param ... Additional arguments are not supported and produce an error.
 #'
 #' @return A factor of stratum assignments with length equal to
 #'   `length(newdata)`. Values beyond the original training range are
@@ -976,7 +1227,7 @@ as.double.svyplan_strata <- function(x, ...) {
 #' @seealso [strata_bound()] to compute the boundaries.
 #'
 #' @examples
-#' set.seed(42)
+#' set.seed(1103)
 #' x <- rlnorm(500, meanlog = 6, sdlog = 1.5)
 #' sb <- strata_bound(x, n_strata = 4, n = 100)
 #'
@@ -988,6 +1239,7 @@ as.double.svyplan_strata <- function(x, ...) {
 #'
 #' @export
 predict.svyplan_strata <- function(object, newdata, labels = NULL, ...) {
+  .check_unused_dots(...)
   if (!is.numeric(newdata)) {
     stop("'newdata' must be a numeric vector", call. = FALSE)
   }

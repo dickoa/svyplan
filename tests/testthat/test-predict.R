@@ -254,7 +254,7 @@ test_that("predict.svyplan_cluster rejects multi-indicator results", {
     cv     = c(0.10, 0.15),
     delta_psu = c(0.02, 0.05)
   )
-  x <- n_multi(targets, stage_cost = c(500, 50))
+  x <- n_multi_cluster(targets, stage_cost = c(500, 50))
   expect_error(predict(x, data.frame(cv = 0.05)), "multi-indicator")
 })
 

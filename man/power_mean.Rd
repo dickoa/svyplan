@@ -5,11 +5,12 @@
 \alias{power_mean.default}
 \title{Power Analysis for Means}
 \usage{
-power_mean(effect, ...)
+power_mean(var, ...)
 
 \method{power_mean}{default}(
-  effect = NULL,
   var,
+  ...,
+  effect = NULL,
   n = NULL,
   power = 0.8,
   alpha = 0.05,
@@ -20,18 +21,17 @@ power_mean(effect, ...)
   ratio = 1,
   overlap = 0,
   rho = 0,
-  plan = NULL,
-  ...
+  plan = NULL
 )
 }
 \arguments{
-\item{effect}{Absolute difference in means (effect-size magnitude, positive).
-Leave \code{NULL} to solve for MDE.}
-
-\item{...}{Additional arguments passed to methods.}
-
 \item{var}{Within-group variance. Scalar (equal variances in both groups)
 or length-2 vector \code{c(var1, var2)} for unequal group variances.}
+
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
+
+\item{effect}{Absolute difference in means (effect-size magnitude, positive).
+Leave \code{NULL} to solve for MDE.}
 
 \item{n}{Per-group sample size. Scalar (equal groups) or length-2 vector
 \code{c(n1, n2)} for unequal groups. Leave \code{NULL} to solve for sample size.}
@@ -41,7 +41,7 @@ or length-2 vector \code{c(var1, var2)} for unequal group variances.}
 \item{alpha}{Significance level, default 0.05.}
 
 \item{N}{Population size for finite-population correction. A scalar applies
-to both groups; a length-2 vector \code{c(N1, N2)} sets group-specific
+to both groups. A length-2 vector \code{c(N1, N2)} sets group-specific
 population sizes. \code{Inf} disables FPC for the corresponding group.}
 
 \item{deff}{Design effect multiplier (> 0). Values < 1 are valid for
@@ -86,8 +86,8 @@ as \code{NULL} to solve for that quantity.
 \details{
 The \code{var} argument is the within-group population variance. Estimate it
 from a pilot study, a previous survey, or published data for a similar
-population. When uncertain, use a conservative (larger) estimate; this
-inflates the sample size, which is safer than under-powering.
+population. When uncertain, use a conservative (larger) estimate. This
+inflates the sample size and reduces the risk of an underpowered design.
 
 To specify the effect in terms of Cohen's d (standardized effect size),
 convert via \code{effect = d * sqrt(mean(var))}, where \code{d} follows Cohen's
@@ -104,22 +104,22 @@ scalar and \code{ratio = 1}, this simplifies to the familiar
 }
 \examples{
 # Sample size to detect a difference of 5 with variance 100
-power_mean(effect = 5, var = 100)
+power_mean(100, effect = 5)
 
 # Power given n = 200
-power_mean(effect = 5, var = 100, n = 200, power = NULL)
+power_mean(100, effect = 5, n = 200, power = NULL)
 
 # MDE with n = 500
-power_mean(var = 100, n = 500)
+power_mean(100, n = 500)
 
 # With design effect
-power_mean(effect = 5, var = 100, deff = 1.5)
+power_mean(100, effect = 5, deff = 1.5)
 
 # Unequal group variances
-power_mean(effect = 5, var = c(80, 120))
+power_mean(c(80, 120), effect = 5)
 
 # Allocation ratio 2:1
-power_mean(effect = 5, var = 100, ratio = 2)
+power_mean(100, effect = 5, ratio = 2)
 
 }
 \references{

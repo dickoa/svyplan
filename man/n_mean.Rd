@@ -10,6 +10,7 @@ n_mean(var, ...)
 
 \method{n_mean}{default}(
   var,
+  ...,
   mu = NULL,
   moe = NULL,
   cv = NULL,
@@ -17,11 +18,10 @@ n_mean(var, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  plan = NULL,
-  ...
+  plan = NULL
 )
 
-\method{n_mean}{svyplan_prec}(var, moe = NULL, cv = NULL, ...)
+\method{n_mean}{svyplan_prec}(var, ..., moe = NULL, cv = NULL)
 }
 \arguments{
 \item{var}{For the default method: population variance \eqn{S^2}.
@@ -30,7 +30,7 @@ for a similar population. When uncertain, use a conservative
 (larger) estimate to avoid under-sizing.
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_mean]{prec_mean()}}.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{mu}{Population mean magnitude (positive). Required when \code{cv} is
 specified, because CV is defined as SE / mean.}
@@ -44,7 +44,7 @@ or \code{cv}.}
 \item{cv}{Target coefficient of variation (relative standard error).
 For example, \code{cv = 0.05} means the standard error should be at
 most 5 percent of the estimate. Use \code{cv} when you want precision
-to scale with the estimate (common in economic surveys); use \code{moe}
+to scale with the estimate (common in economic surveys). Use \code{moe}
 when you want a fixed absolute precision. Requires \code{mu}. Specify
 exactly one of \code{moe} or \code{cv}.}
 

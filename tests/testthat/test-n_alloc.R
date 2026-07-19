@@ -31,13 +31,15 @@ test_that("n_alloc: optimal allocation with cost", {
   frame <- data.frame(
     N = c(1000, 2000, 3000),
     sd = c(10, 20, 15),
-    cost = c(1, 4, 1)
+    unit_cost = c(1, 4, 1)
   )
   res <- n_alloc(frame, n = 600, alloc = "optimal")
   a_h <- frame$N * frame$sd / sqrt(c(1, 4, 1))
   expected_frac <- a_h / sum(a_h)
   actual_frac <- res$detail$n / sum(res$detail$n)
   expect_equal(actual_frac, expected_frac, tolerance = 0.02)
+  expect_true("unit_cost" %in% names(res$detail))
+  expect_false("cost" %in% names(res$detail))
 })
 
 test_that("n_alloc: power allocation", {
@@ -115,11 +117,11 @@ test_that("n_alloc: budget mode", {
   frame <- data.frame(
     N = c(1000, 2000, 3000),
     sd = c(10, 20, 15),
-    cost = c(1, 2, 1.5)
+    unit_cost = c(1, 2, 1.5)
   )
   res <- n_alloc(frame, budget = 500)
   expect_s3_class(res, "svyplan_n")
-  total_cost <- sum(res$detail$n * frame$cost)
+  total_cost <- sum(res$detail$n * frame$unit_cost)
   expect_true(abs(total_cost - 500) < 1)
 })
 
@@ -359,14 +361,24 @@ test_that("n_alloc: resp_rate and deff params stored", {
   expect_equal(res$params$deff, 1.5)
 })
 
-test_that("n_alloc: cost column in data", {
+test_that("n_alloc: unit_cost column in data", {
   frame <- data.frame(
     N = c(1000, 2000, 3000),
     sd = c(10, 20, 15),
-    cost = c(1, 4, 1)
+    unit_cost = c(1, 4, 1)
   )
   res <- n_alloc(frame, n = 600, alloc = "optimal")
   expect_equal(res$method, "optimal")
+  expect_equal(res$detail$unit_cost, frame$unit_cost)
+})
+
+test_that("n_alloc: legacy cost column is rejected", {
+  frame <- data.frame(
+    N = c(1000, 2000),
+    sd = c(10, 20),
+    cost = c(1, 2)
+  )
+  expect_error(n_alloc(frame, n = 300), "renamed to 'unit_cost'")
 })
 
 test_that("n_alloc: cv domain convergence", {
@@ -406,11 +418,14 @@ test_that("prec_alloc: basic usage", {
     sd = c(10, 20, 15),
     mean = c(50, 70, 60)
   )
-  res <- prec_alloc(frame, n = c(100, 200, 300))
+  res <- prec_alloc(frame = frame, n = c(100, 200, 300))
   expect_s3_class(res, "svyplan_prec")
   expect_equal(res$type, "alloc")
   expect_true(!is.na(res$se))
   expect_true(!is.na(res$cv))
+  expect_identical(names(formals(prec_alloc))[1L], "frame")
+  expect_identical(names(formals(prec_alloc.default))[1L], "frame")
+  expect_identical(names(formals(prec_alloc.svyplan_n))[1L], "frame")
 })
 
 test_that("prec_alloc: round-trip from n_alloc", {
@@ -462,7 +477,7 @@ test_that("n_alloc: predict returns cost column", {
     N = c(1000, 2000, 3000),
     sd = c(10, 20, 15),
     mean = c(50, 70, 60),
-    cost = c(1, 2, 1.5)
+    unit_cost = c(1, 2, 1.5)
   )
   res <- n_alloc(frame, n = 600)
   grid <- predict(res, data.frame(deff = c(1, 1.5)))
@@ -606,10 +621,10 @@ test_that("cluster mode validates its columns", {
   fr$cost_psu <- 300
   expect_error(n_alloc(fr, cv = 0.02), "supplied together")
   fr$cost_ssu <- 30
-  fr$cost <- 5
-  expect_error(n_alloc(fr, cv = 0.02), "instead of 'cost'")
-  fr$cost <- NULL
-  expect_error(n_alloc(fr, cv = 0.02, unit_cost = 5), "instead of 'cost'")
+  fr$unit_cost <- 5
+  expect_error(n_alloc(fr, cv = 0.02), "instead of 'unit_cost'")
+  fr$unit_cost <- NULL
+  expect_error(n_alloc(fr, cv = 0.02, unit_cost = 5), "instead of 'unit_cost'")
   fr$delta_psu <- 1.5
   expect_error(n_alloc(fr, cv = 0.02), "delta")
   fr$delta_psu <- 0.05
@@ -680,10 +695,10 @@ test_that("cluster mode guards psu_size against the stratum population", {
 
 test_that("budget-mode integer allocation stays within budget", {
   fr <- data.frame(N = rep(100, 3), sd = c(1, 5, 10), mean = rep(5, 3),
-                   cost = c(1, 10, 100))
+                   unit_cost = c(1, 10, 100))
   x <- n_alloc(fr, budget = 180, alloc = "optimal")
-  expect_lte(sum(x$detail$n_int * fr$cost), 180)
-  expect_equal(sum(x$detail$n * fr$cost), 180, tolerance = 1e-6)
+  expect_lte(sum(x$detail$n_int * fr$unit_cost), 180)
+  expect_equal(sum(x$detail$n * fr$unit_cost), 180, tolerance = 1e-6)
 })
 
 test_that("cv-mode integer allocation meets the cv target", {
@@ -712,12 +727,12 @@ test_that("domain values containing the separator do not collide", {
 })
 
 test_that("fractional lower bounds are integerized before feasibility", {
-  fr <- data.frame(N = 100, sd = 1, mean = 1, cost = 1)
+  fr <- data.frame(N = 100, sd = 1, mean = 1, unit_cost = 1)
   expect_error(n_alloc(fr, budget = 1.7, min_n = 1.5),
                "integer lower bounds")
   x <- n_alloc(fr, budget = 3, min_n = 1.5)
   expect_gte(min(x$detail$n_int), 2)
-  expect_lte(sum(x$detail$n_int * fr$cost), 3)
+  expect_lte(sum(x$detail$n_int * fr$unit_cost), 3)
 })
 
 test_that("fixed-total rounding respects integer bounds or errors", {
@@ -730,12 +745,12 @@ test_that("fixed-total rounding respects integer bounds or errors", {
 
 test_that("operational element metrics match the integer allocation", {
   fr <- data.frame(N = rep(100, 3), sd = c(1, 5, 10), mean = rep(5, 3),
-                   cost = c(1, 10, 100))
+                   unit_cost = c(1, 10, 100))
   x <- n_alloc(fr, budget = 180, alloc = "optimal")
   op <- x$operational
   d <- x$detail
   expect_equal(op$n, sum(d$n_int))
-  expect_equal(op$cost, sum(d$n_int * fr$cost))
+  expect_equal(op$cost, sum(d$n_int * fr$unit_cost))
   expect_lte(op$cost, 180)
   W <- d$N / sum(d$N)
   cv_chk <- sqrt(sum(W^2 * d$sd^2 * (1 - d$n_int / d$N) / d$n_int)) /
@@ -815,9 +830,9 @@ test_that("randomized operational invariants hold", {
       N = sample(500:5000, H),
       sd = runif(H, 1, 20),
       mean = runif(H, 20, 80),
-      cost = sample(1:50, H)
+      unit_cost = sample(1:50, H)
     )
-    budget <- sum(fr$cost) * runif(1, 3, 30)
+    budget <- sum(fr$unit_cost) * runif(1, 3, 30)
     x <- try(n_alloc(fr, budget = budget), silent = TRUE)
     if (!inherits(x, "try-error")) {
       expect_lte(x$operational$cost, budget + 1e-8)

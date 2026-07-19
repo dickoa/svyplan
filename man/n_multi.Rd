@@ -10,28 +10,21 @@ n_multi(targets, ...)
 
 \method{n_multi}{default}(
   targets,
+  ...,
   domains = NULL,
-  stage_cost = NULL,
-  budget = NULL,
-  n_psu = NULL,
-  psu_size = NULL,
-  ssu_size = NULL,
-  joint = FALSE,
   min_n = NULL,
-  fixed_cost = 0,
-  prop_method = "wald",
-  plan = NULL,
-  ...
+  prop_method = c("wald", "wilson", "logodds"),
+  plan = NULL
 )
 
-\method{n_multi}{svyplan_prec}(targets, stage_cost = NULL, ...)
+\method{n_multi}{svyplan_prec}(targets, ...)
 }
 \arguments{
 \item{targets}{For the default method: a data frame where \strong{each row
 is one survey indicator} you want to measure. For example,
 a prevalence (proportion) or a population mean. Surveys typically
 track several indicators simultaneously and the sample must be large
-enough for the most demanding one; \code{n_multi} finds that size.
+enough for the most demanding one. \code{n_multi()} finds that size.
 
 See the Details section for the full column reference. At minimum,
 each row needs:
@@ -41,99 +34,53 @@ each row needs:
 population variance. Each row must use exactly one.
 \item \strong{How precise}: \code{moe} (margin of error) \strong{or}
 \code{cv} (coefficient of variation). Each row must
-specify exactly one. Both are accepted in simple and
-multistage modes; in multistage mode, \code{moe} values are
-converted to \code{cv} internally (see Details).
+specify exactly one.
 }
 
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_multi]{prec_multi()}}.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{domains}{Character vector of column names in \code{targets} to treat
 as domain variables, or \code{NULL} (default) for no domains. All names
-must exist in \code{targets}. When specified, optimization runs
-independently per domain combination (default), or jointly when
-\code{joint = TRUE}.}
-
-\item{stage_cost}{Numeric vector of per-stage costs. \code{NULL} (default)
-for simple mode; length 2 or 3 for multistage mode.}
-
-\item{budget}{Total budget (multistage only). Provide either \code{cv} values
-in the \code{targets} data frame or a \code{budget} here, not both.}
-
-\item{n_psu}{Fixed stage-1 sample size (multistage only). For 2-stage, at
-most one of \code{n_psu} or \code{psu_size} may be fixed. For 3-stage, up to two
-of \code{n_psu}, \code{psu_size}, \code{ssu_size} may be fixed.}
-
-\item{psu_size}{Fixed cluster size (stage-2 sample size per PSU, multistage
-only). \code{NULL} (default) means optimize.}
-
-\item{ssu_size}{Fixed SSU take size (stage-3 sample size per SSU). \code{NULL}
-(default) means optimize. Only valid for 3-stage designs.}
-
-\item{joint}{Logical. If \code{TRUE}, optimally split a single \code{budget}
-across domains to minimize the worst-case CV ratio. Only applies
-to multistage budget mode with multiple domains; ignored otherwise.}
+must exist in \code{targets}. When specified, sizing runs
+independently for each domain combination.}
 
 \item{min_n}{Numeric scalar or \code{NULL} (default). Minimum total sample
-size per domain. Only active when domains are present; silently
-ignored otherwise. In simple mode, per-domain sample sizes are
-floored to \code{min_n}. In joint multistage mode, domains that would
-receive fewer than \code{min_n} observations are penalized during
-optimization, with an upfront feasibility check. In non-joint
-multistage mode, a warning is issued for any domain below the floor.}
+size per domain. It applies only when domains are present. Per-domain
+sample sizes are floored to \code{min_n}.}
 
-\item{fixed_cost}{Fixed overhead cost (C0). Default 0. Only applies
-to multistage mode. See \code{\link[=n_cluster]{n_cluster()}} for details.}
-
-\item{prop_method}{Proportion CI method for simple mode, one of \code{"wald"}
+\item{prop_method}{Proportion CI method, one of \code{"wald"}
 (default), \code{"wilson"}, or \code{"logodds"}. This is passed to \code{\link[=n_prop]{n_prop()}}
-for proportion rows and ignored for mean rows and multistage mode.
+for proportion rows and ignored for mean rows.
 An optional \code{prop_method} column in \code{targets} overrides this default
 on a per-row basis.}
 
-\item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults
-(\code{stage_cost}, \code{fixed_cost}).}
+\item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
-A \code{svyplan_n} object (simple mode) or \code{svyplan_cluster} object
-(multistage mode). Multistage results without domains also carry an
-\verb{$operational} list with a constraint-preserving whole-unit design.
-In budget mode it is selected from affordable integer stage sizes and
-never exceeds the budget; in precision mode it meets every indicator's
-target. Cost and achieved CVs are recomputed from that integer design.
+A \code{svyplan_n} object. The output class is the same with or without
+domains.
 
 \strong{Without domains}, the object contains:
 \describe{
-\item{\code{n}}{Sample size (simple) or named per-stage allocation vector
-(multistage, e.g. \code{c(n_psu = 80, psu_size = 12)}).}
-\item{\code{detail}}{Per-indicator results (sample sizes or achieved CVs).}
+\item{\code{n}}{The sample size required by the binding indicator.}
+\item{\code{detail}}{Per-indicator sample-size results.}
 \item{\code{binding}}{Name or index of the binding (most demanding) indicator.}
 \item{\code{targets}}{The input targets data frame.}
 }
 
 \strong{With domains}, the object additionally contains:
 \describe{
-\item{\code{n}}{Maximum per-stage sample size across domains. In simple
-mode, a single number; in multistage mode, a named vector
-(e.g. \code{c(n_psu = 120, psu_size = 15)}) giving the conservative
-allocation that satisfies all domains.}
+\item{\code{n}}{The largest sample size required across domains.}
 \item{\code{domains}}{Data frame with one row per domain, including
-domain variable columns, per-stage allocations (\code{n_psu}, \code{psu_size}, ...),
-and summary columns (\code{.total_n}, \code{.cv}, \code{.cost}, \code{.binding}
-for multistage; \code{.n}, \code{.binding} for simple mode).
-Use this for stratum-specific allocations.}
-\item{\code{total_n}}{Total sample size summed across all domains
-(multistage only).}
-\item{\code{cost}}{Total cost summed across all domains
-(multistage only).}
+domain variables, \code{.n}, and \code{.binding}.}
 }
 }
 \description{
 Compute the sample size that satisfies precision requirements for
-multiple survey indicators simultaneously. Supports simple (single-stage)
-and multistage cluster designs, with optional domain-level planning.
+multiple survey indicators simultaneously under a simple sampling design.
+Optional domain columns support separate requirements by subpopulation.
 }
 \details{
 \subsection{Building the targets data frame}{
@@ -160,8 +107,9 @@ A minimal example for three health indicators:
 )
 }\if{html}{\out{</div>}}
 
-Rows with \code{p} are treated as proportions; rows with \code{var} (and \code{p = NA})
-as means. You cannot have both \code{p} and \code{var} non-\code{NA} in the same row.
+Rows with \code{p} are treated as proportions, whereas rows with \code{var} (and
+\code{p = NA}) are treated as means. You cannot have both \code{p} and \code{var} non-\code{NA}
+in the same row.
 }
 
 \subsection{Column reference}{
@@ -176,92 +124,43 @@ One of \code{p} or \code{var} per row.}
 \item{\code{var}}{Population variance of a continuous indicator. Use
 this for means (e.g. income, expenditure, weight). One of \code{p}
 or \code{var} per row.}
-\item{\code{mu}}{Population mean (positive). \strong{Required} when \code{var} is
-used together with \code{cv} (because CV = SE / mean) or with \code{moe}
-in multistage mode (for the moe-to-cv conversion).}
+\item{\code{mu}}{Population mean (positive). It is required when \code{var} is
+used with \code{cv} because CV = SE / mean.}
 \item{\code{moe}}{Margin of error, the half-width of the confidence
 interval you want. For proportions, this is on the probability
 scale (e.g. 0.05 for +/- 5 percentage points). For means,
-it is in the same units as the variable (e.g. 10 dollars).
-In multistage mode, converted to \code{cv} internally (see
-Details).}
+it is in the same units as the variable (e.g. 10 dollars).}
 \item{\code{cv}}{Target coefficient of variation (relative standard
 error). For example, 0.10 means the SE should be at most 10\\%
-of the estimate. Works in both simple and multistage mode.}
+of the estimate.}
 \item{\code{alpha}}{Significance level for the confidence interval
 (default 0.05, giving a 95 percent CI).}
-\item{\code{deff}}{Design effect multiplier (simple mode only,
-default 1). Set > 1 to inflate the sample size for complex
+\item{\code{deff}}{Design effect multiplier (default 1). Set > 1 to inflate
+the sample size for complex
 designs (e.g. 1.5 for a cluster design).}
-\item{\code{N}}{Population size (simple mode only, default \code{Inf}).
+\item{\code{N}}{Population size (default \code{Inf}).
 A finite value applies a finite population correction, reducing
 the required sample size.}
-\item{\code{prop_method}}{Proportion CI method for simple mode:
+\item{\code{prop_method}}{Proportion CI method:
 \code{"wald"} (default), \code{"wilson"}, or \code{"logodds"}. \code{"wilson"} is
 recommended for rare proportions (below 0.1 or above 0.9).
-Only used for rows with \code{p}; ignored for mean rows and
-multistage mode.}
-\item{\code{delta_psu}, \code{delta_ssu}}{Measure of homogeneity (intra-class
-correlation) within clusters, between 0 and 1. Needed for
-multistage mode. \code{delta_psu} is required for 2-stage designs;
-both are required for 3-stage designs.}
+It is used only for rows with \code{p}.}
 \item{\code{rel_var}}{Unit relvariance. If omitted, derived
 automatically from \code{p} (as \code{(1 - p) / p}) or from
 \code{var} / \code{mu^2}.}
-\item{\code{k_psu}, \code{k_ssu}}{Ratio parameters for cost-variance
-modelling (multistage, default 1).}
 \item{\code{resp_rate}}{Expected response rate, in (0, 1]. Default 1
 (no adjustment). A value of 0.90 inflates the sample size by
 \code{1 / 0.90} to compensate for 10 percent non-response.}
 }
 
 Domain columns are specified via the \code{domains} parameter. When domains
-are present, optimization runs independently per domain combination
-(default), or jointly when \code{joint = TRUE}.
+are present, sizing runs independently for each domain combination.
 
-\strong{Simple mode} (\code{stage_cost = NULL}): computes sample size per indicator
-by delegating proportion rows to \code{\link[=n_prop]{n_prop()}} and mean rows to \code{\link[=n_mean]{n_mean()}},
+\code{n_multi()} computes sample size per indicator by delegating proportion
+rows to \code{\link[=n_prop]{n_prop()}} and mean rows to \code{\link[=n_mean]{n_mean()}},
 then takes the maximum per domain. Use \code{prop_method} or a
 \code{targets$prop_method} column to choose \code{"wald"}, \code{"wilson"}, or
 \code{"logodds"} for proportion rows.
-
-\strong{Multistage mode} (\code{stage_cost} provided): uses analytical reduction.
-For each candidate sub-stage allocation, the required stage-1 size is
-the maximum across all indicators. The total cost is then minimized
-(CV mode) or the worst-case CV ratio is minimized (budget mode) using
-numerical optimization.
-
-Boundary and near-boundary homogeneity values are not supported by the
-analytical multistage optimum. When \code{delta} is near 0, most variability is
-within clusters, so the optimum collapses toward many interviews in very
-few PSUs. When \code{delta} is near 1, most variability is between clusters, so
-the optimum collapses toward very few interviews in many PSUs. To stay
-aligned with \code{\link[=n_cluster]{n_cluster()}}, multistage \code{n_multi()} rejects values
-numerically too close to 0 or 1.
-
-\strong{Joint budget allocation} (\code{joint = TRUE}): when domains and a budget
-are specified, the default (\code{joint = FALSE}) gives each domain the full
-budget independently. With \code{joint = TRUE}, a single budget is split
-optimally across domains using L-BFGS-B optimization of budget fractions,
-minimizing the worst-case CV ratio across all domains.
-}
-
-\subsection{MOE in multistage mode}{
-
-Multistage optimization uses CV internally. When \code{moe} values are
-provided, they are converted to \code{cv} before optimization:
-\itemize{
-\item Proportions: \code{cv = moe / (z * p)}
-\item Means: \code{cv = moe / (z * mu)} (requires \code{mu})
-}
-
-where \code{z} is the normal quantile for the row's \code{alpha}.
-This is an exact transformation, not an approximation.
-
-These functions assume sampling fractions are negligible at each stage
-(equivalent to sampling with replacement). No finite population correction
-is applied. This is standard for multistage planning when cluster
-populations are large relative to the sample.
 }
 }
 \examples{
@@ -313,7 +212,7 @@ targets_cl <- data.frame(
   cv     = c(0.10, 0.15),
   delta_psu = c(0.02, 0.05)
 )
-n_multi(targets_cl, stage_cost = c(500, 50))
+n_multi_cluster(targets_cl, stage_cost = c(500, 50))
 
 # Two-stage with MOE (converted to CV internally)
 targets_moe <- data.frame(
@@ -322,7 +221,7 @@ targets_moe <- data.frame(
   moe    = c(0.05, 0.03),
   delta_psu = c(0.02, 0.05)
 )
-n_multi(targets_moe, stage_cost = c(500, 50))
+n_multi_cluster(targets_moe, stage_cost = c(500, 50))
 
 # Joint budget allocation across domains
 targets_jnt <- data.frame(
@@ -332,8 +231,13 @@ targets_jnt <- data.frame(
   delta_psu = c(0.02, 0.03, 0.05, 0.04),
   region = rep(c("Urban", "Rural"), 2)
 )
-n_multi(targets_jnt, domains = "region",
-       stage_cost = c(500, 50), budget = 100000, joint = TRUE)
+n_multi_cluster(
+  targets_jnt,
+  stage_cost = c(500, 50),
+  domains = "region",
+  budget = 100000,
+  joint = TRUE
+)
 
 }
 \references{
@@ -344,7 +248,7 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 (2nd ed.). Springer.
 }
 \seealso{
-\code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}} for single-indicator sizing;
-\code{\link[=n_cluster]{n_cluster()}} for single-indicator multistage allocation;
-\code{\link[=prec_multi]{prec_multi()}} for the inverse.
+\code{\link[=n_prop]{n_prop()}} and \code{\link[=n_mean]{n_mean()}} for single-indicator sizing,
+\code{\link[=n_multi_cluster]{n_multi_cluster()}} for multistage cluster designs, and \code{\link[=prec_multi]{prec_multi()}}
+for the inverse.
 }

@@ -24,7 +24,8 @@
 #' @param power Target power, in (0, 1). Leave `NULL` to solve for power.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size for finite-population correction.
-#'   Scalar applies to both arms; length-2 vector `c(N_treat, N_control)`.
+#'   A scalar applies to both arms. Use a length-2 vector
+#'   `c(N_treat, N_control)` for arm-specific population sizes.
 #'   `Inf` (default) disables FPC.
 #' @param deff Design effect multiplier (> 0).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
@@ -37,7 +38,7 @@
 #' @param rho Correlation between baseline and endline outcomes within
 #'   overlapping units, in \[0, 1\].
 #' @param plan Optional [svyplan()] object providing design defaults.
-#' @param ... Additional arguments passed to methods.
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'
 #' @return A `svyplan_power` object with components:
 #' \describe{
@@ -115,6 +116,7 @@ power_did <- function(treat, ...) {
 power_did.default <- function(
   treat,
   control,
+  ...,
   outcome = c("mean", "prop"),
   var = NULL,
   effect = NULL,
@@ -128,11 +130,11 @@ power_did.default <- function(
   ratio = 1,
   overlap = 0,
   rho = 0,
-  plan = NULL,
-  ...
+  plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, power_did.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(power_did.default, c(.plan, list(...))))
+  .check_unused_dots(...)
   outcome <- match.arg(outcome)
   alternative <- match.arg(alternative)
 

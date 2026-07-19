@@ -19,10 +19,12 @@
 \alias{as.integer.svyplan_cluster}
 \alias{as.double.svyplan_cluster}
 \alias{as.data.frame.svyplan_n}
+\alias{as.data.frame.svyplan_prec}
 \alias{as.data.frame.svyplan_varcomp}
 \alias{as.data.frame.svyplan_cluster}
 \alias{as.integer.svyplan_power}
 \alias{as.double.svyplan_power}
+\alias{as.data.frame.svyplan_power}
 \alias{print.svyplan_strata}
 \alias{format.svyplan_strata}
 \alias{as.data.frame.svyplan_strata}
@@ -62,21 +64,61 @@
 
 \method{as.double}{svyplan_cluster}(x, ...)
 
-\method{as.data.frame}{svyplan_n}(x, ...)
+\method{as.data.frame}{svyplan_n}(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  ...
+)
 
-\method{as.data.frame}{svyplan_varcomp}(x, ...)
+\method{as.data.frame}{svyplan_prec}(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  ...
+)
 
-\method{as.data.frame}{svyplan_cluster}(x, ...)
+\method{as.data.frame}{svyplan_varcomp}(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  ...
+)
+
+\method{as.data.frame}{svyplan_cluster}(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  ...
+)
 
 \method{as.integer}{svyplan_power}(x, ...)
 
 \method{as.double}{svyplan_power}(x, ...)
 
+\method{as.data.frame}{svyplan_power}(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  ...
+)
+
 \method{print}{svyplan_strata}(x, ...)
 
 \method{format}{svyplan_strata}(x, ...)
 
-\method{as.data.frame}{svyplan_strata}(x, ...)
+\method{as.data.frame}{svyplan_strata}(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  ...
+)
 
 \method{as.integer}{svyplan_strata}(x, ...)
 
@@ -85,13 +127,18 @@
 \arguments{
 \item{x}{A svyplan object.}
 
-\item{...}{Additional arguments (currently unused).}
+\item{...}{Additional arguments are not supported and produce an error.}
 
 \item{object}{A svyplan object (for \code{confint} methods).}
 
 \item{parm}{Ignored (included for S3 consistency with \code{\link[=confint]{confint()}}).}
 
 \item{level}{Confidence level (default 0.95).}
+
+\item{row.names, optional}{Standard \code{\link[=as.data.frame]{as.data.frame()}} arguments.}
+
+\item{stringsAsFactors}{Logical. Retained for compatibility when a result
+is converted through \code{\link[=data.frame]{data.frame()}}.}
 }
 \value{
 \code{x} (or \code{object}), invisibly. \code{confint} returns a 2-column
@@ -123,7 +170,8 @@ field design and shows the continuous optimum as a diagnostic.
 \code{x$n}: the named integer stage vector for \code{svyplan_cluster} objects,
 the operational total for allocation results, and the ceiled scalar
 otherwise. \code{as.double(x)} returns the continuous counterpart of the
-same shape.
+same shape. For \code{svyplan_strata}, both coercions return the total sample
+size. Boundary cutpoints remain available in \verb{$boundaries}.
 
 \code{as.data.frame()} returns the tabular form of a result, intended as
 the stable handoff to downstream packages (e.g. samplyr). For
@@ -132,7 +180,15 @@ the stable handoff to downstream packages (e.g. samplyr). For
 to \verb{$detail}) for \code{n_multi()} results, and a one-row summary
 (\code{n}, \code{n_int}, \code{se}, \code{moe}, \code{cv}) otherwise. For \code{svyplan_cluster}:
 the per-domain table when domains are present, otherwise a stage
-table with columns \code{stage}, \code{n}, and \code{n_int}.
+table with columns \code{stage}, \code{n}, and \code{n_int}, where \code{n} is the continuous
+optimum and \code{n_int} is the constraint-preserving operational design.
+For \code{svyplan_prec}, detail-bearing multi-indicator and allocation results
+return \verb{$detail}. Single-indicator results return their sample size and
+precision measures in one row. For \code{svyplan_varcomp}, stratified results
+return \verb{$strata}, while unstratified results return one row containing the
+two- or three-stage components. For \code{svyplan_power}, one row contains the
+two group sizes, their integer counterparts, power, effect, type, and the
+quantity that was solved for.
 }
 }
 \examples{

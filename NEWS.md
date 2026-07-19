@@ -8,36 +8,59 @@ Initial CRAN release.
 * `n_mean()`: sample size for a mean (moe and cv modes).
 * `n_cluster()`: optimal multistage cluster allocation (2- and 3-stage,
   budget and cv modes).
-* `n_multi()`: multi-indicator sample size for surveys with several
-  precision targets. Supports simple (single-stage) and multistage modes,
-  with explicit per-domain optimization via `domains` and `min_n` floor.
+* `n_multi()`: multi-indicator sample size under a simple design, with
+  optional per-domain sizing via `domains` and a `min_n` floor.
+* `n_multi_cluster()`: explicit two- or three-stage multi-indicator cluster
+  allocation. Cluster arguments no longer change the behavior and output
+  class of `n_multi()`.
 * `n_alloc()`: stratified sample allocation given a frame with stratum
   sizes and variabilities. Three solve modes: fixed total `n`, target `cv`,
   or `budget` constraint. Four allocation methods: proportional, Neyman,
   optimal (cost-weighted), and Bankier power allocation. A `delta_psu`
   frame column switches to a stratified two-stage design (PSUs then
-  elements per stratum) with cost-optimal or fixed per-stratum takes;
-  all solve modes, methods, and constraints apply unchanged.
+  elements per stratum) with cost-optimal or fixed per-stratum takes.
+  All solve modes, methods, and constraints apply unchanged.
 
 ## Precision analysis
 
 * `prec_prop()`: sampling precision (se, moe, cv) for a proportion given a
-  sample size. Inverse of `n_prop()`.
-* `prec_mean()`: sampling precision for a mean given a sample size. Inverse
-  of `n_mean()`.
+  sample size. Precision counterpart to `n_prop()`.
+* `prec_mean()`: sampling precision for a mean given a sample size. Precision
+  counterpart to `n_mean()`.
 * `prec_cluster()`: sampling precision (cv) for a multistage cluster
-  allocation. Inverse of `n_cluster()`.
+  allocation. Precision counterpart to `n_cluster()`.
 * `prec_multi()`: per-indicator sampling precision for multi-indicator
-  survey designs. Inverse of `n_multi()`.
-* `prec_alloc()`: sampling precision for a stratified allocation. Inverse
-  of `n_alloc()`.
+  survey designs. Precision counterpart to `n_multi()`.
+* `prec_multi_cluster()`: per-indicator precision for multistage
+  multi-indicator designs. Stage costs are optional round-trip metadata and
+  do not enter the precision calculation.
+* `prec_alloc()`: sampling precision for a stratified allocation. Precision
+  counterpart to `n_alloc()`.
 
 All `n_*` and `prec_*` functions are S3 generics with bidirectional
 round-trip: passing a precision object to the corresponding `n_*` function
-recovers the sample size, and vice versa. Round-trip methods accept named
-`...` overrides of any stored argument (e.g. `prec_prop(x, deff = 2)`);
-a `NULL` value unsets a stored argument, and unknown names raise an error
+recovers the continuous sample-size target under the same method and design
+assumptions, and vice versa. Method changes and operational integer rounding
+can change the result. Round-trip methods accept named
+`...` overrides of any stored argument (e.g. `prec_prop(x, deff = 2)`).
+A `NULL` value unsets a stored argument, and unknown names raise an error
 instead of being silently ignored.
+
+All public calculation, prediction, coercion, and display methods now reject
+unused arguments passed through `...`. This catches misspelled names instead
+of silently computing a result with an unintended default. Legitimate plan,
+round-trip, plotting, and standard data-frame arguments remain supported.
+
+Optional arguments in the public calculation methods now follow `...`, so
+they must be fully named. This makes calls resilient to later additions and
+prevents positional or partial matching of design controls.
+
+`power_mean()` now takes the always-required `var` as its primary argument and
+keeps `effect` optional for minimum-detectable-effect calculations.
+`n_cluster()` displays `stage_cost = NULL` because that value may come from a
+plan. `strata_bound()` now requires `n_strata`, which determines the shape of
+its result. Short method and allocation choices are displayed in function
+signatures where applicable.
 
 ## Power analysis
 
@@ -64,13 +87,21 @@ instead of being silently ignored.
 * `strata_bound()`: optimal strata boundary determination for a continuous
   stratification variable. Four methods: Dalenius-Hodges cumulative root
   frequency (`"cumrootf"`), geometric progression (`"geo"`),
-  Lavallee-Hidiroglou iterative (`"lh"`), and Kozak random search
+  Lavallée-Hidiroglou iterative (`"lh"`), and Kozak random search
   (`"kozak"`). Four allocation methods: proportional, Neyman, optimal
   (cost-weighted), and Bankier (1988) power allocation (`"power"`) with
   parameter `q` controlling the national/subnational precision trade-off.
   Take-all (certainty) strata via the `take_all` argument.
 * `predict.svyplan_strata()`: apply strata boundaries to new data,
   returning a factor.
+* Strata results now retain full-precision `share` and `sd` values, validate
+  count inputs as whole numbers, and reject nonfinite stratification values,
+  thresholds, and costs. `as.double()` now returns the total sample size,
+  consistently with `as.integer()`. Cutpoints remain in `$boundaries`.
+
+Cluster stage tables returned by `as.data.frame()` now take `n_int` from the
+constraint-preserving operational design rather than independently rounding
+each continuous stage size upward.
 
 ## Design components
 
@@ -84,7 +115,7 @@ instead of being silently ignored.
   approximately design-unbiased components (unit weights recover the
   frame formulas exactly). The formula and vector interfaces accept the
   same weights directly via a `weights` argument, so sample-based
-  estimation does not require constructing a `svydesign` object; the
+  estimation does not require constructing a `svydesign` object. The
   documentation specifies the within-cluster weight scale and the
   renormalization of `prob` over sampled PSUs. The formula interface
   warns when `data` is a samplyr sample and no weights are supplied.
@@ -102,6 +133,9 @@ instead of being silently ignored.
   Piping works with both positional and named arguments
   (e.g. `plan |> n_prop(p = 0.3, moe = 0.05)`).
   Explicit arguments always override plan defaults.
+* `svyplan()` and `update.svyplan()` now validate every supported default at
+  construction time. Related cluster defaults such as `stage_cost`, `delta`,
+  and `k` are also checked for compatible stage counts.
 
 ## Naming
 
@@ -109,6 +143,11 @@ instead of being silently ignored.
   (`n_cluster()`, `n_multi()`, `prec_multi()`).
 * Stratified allocation functions use `unit_cost` for per-stratum unit costs
   (`n_alloc()`, `prec_alloc()`, `strata_bound()`).
+  The optional frame column and the per-stratum detail column now use that
+  same name. The previous `cost` frame column is rejected with a migration
+  message, while `$operational$cost` remains the total field cost.
+* The first argument of `prec_alloc()` is now `frame`, matching `n_alloc()`.
+* `strata_bound()` now uses `n_class` and `max_iter` for its public controls.
 
 ## Domain handling
 
@@ -132,6 +171,18 @@ instead of being silently ignored.
 
 ## Common features
 
+* Result constructors now return complete objects with canonical fields.
+  In particular, allocation results pass their continuous precision and
+  operational design into the constructor instead of mutating the result
+  afterward.
+* `as.data.frame()` now has explicit schemas for `svyplan_prec` and
+  `svyplan_power` objects. Unstratified `svyplan_varcomp` results also export
+  as one-row two- or three-stage component tables.
+* Every `design_effect()` method now returns a numeric
+  `svyplan_design_effect` object. `as.double()` extracts the overall design
+  effect, while `as.data.frame()` exports the Chen-Rust decomposition when
+  available. The object remains directly usable as the `deff` argument in
+  sample-size and precision calculations.
 * All sample size, precision, and power functions accept `deff` (design
   effect), `N` (finite population correction), and `resp_rate` (response
   rate adjustment). One shared variance equation is used throughout:
@@ -188,7 +239,7 @@ All classes have print and format methods.
 * Constrained designs separate the continuous mathematical optimum
   (top-level fields) from the whole-unit field design (`$operational`,
   with cost, cv, and se recomputed from the integer design). `print()`
-  leads with the field design; `as.integer()` returns the operational
+  leads with the field design, and `as.integer()` returns the operational
   design in the same shape as `n` (stage vector for cluster plans,
   total for allocations) and `as.double()` its continuous counterpart.
 * `n_cluster()` finds the operational design by discrete search
@@ -206,7 +257,7 @@ All classes have print and format methods.
   unit cost (the integer design stays within budget), and a fixed-`n`
   solve preserves the total with bounded largest-remainder rounding.
   Bounds are integerized first (`ceiling` of lower bounds, `floor` of
-  upper bounds); infeasible integer designs raise clear errors instead
+  upper bounds). Infeasible integer designs raise clear errors instead
   of silently violating `min_n`, `max_weight`, or the budget.
 * `strata_bound()` reports the cv achieved by its integer allocation
   (the continuous optimum's cv is kept in `params$cv_continuous`).
@@ -224,7 +275,7 @@ All classes have print and format methods.
   replication are rejected, and the returned components are validated
   as finite and non-negative.
 * `varcomp()` rejects non-finite outcomes, missing stage identifiers,
-  and out-of-range PPS probabilities; per-observation probabilities must
+  and out-of-range PPS probabilities. Per-observation probabilities must
   be constant within PSU, and named per-PSU probabilities are matched by
   PSU identifier.
 * Three-stage `n_multi()` requires `delta_ssu` (matching `prec_multi()`),
@@ -234,7 +285,7 @@ All classes have print and format methods.
   When the cumulative-root-frequency boundaries degenerate on
   concentrated or discrete data, `cumrootf` falls back (with a warning)
   to boundaries between adjacent distinct values, so any input with at
-  least `n_strata` distinct values yields nonempty strata; fewer
+  least `n_strata` distinct values yields nonempty strata. Fewer
   distinct values than strata is a targeted error.
 
 ## Display

@@ -7,17 +7,18 @@
 #'   or `NULL` (for the `"cluster"` planning method). The `"cr"` method
 #'   requires weights on the population scale (inverse inclusion
 #'   probabilities): the sum of weights must exceed the sample size,
-#'   overall and within every stratum; normalized weights are rejected.
-#' @param ... Additional arguments passed to methods.
+#'   overall and within every stratum. Normalized weights are rejected.
+#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'
-#' @return For `"kish"`, `"cluster"`, `"henry"`, `"spencer"`: a numeric
-#'   scalar. For `"cr"`: a list with `$strata` (data frame) and
-#'   `$overall` (numeric scalar).
+#' @return A numeric `svyplan_design_effect` object. Use [as.double()] to
+#'   extract the overall design effect and [as.data.frame()] to export its
+#'   components. For the Chen-Rust method, the data frame contains the full
+#'   per-stratum decomposition.
 #'
 #' @details
 #' The design effect (DEFF) measures how much a complex design inflates
 #' variance compared to a simple random sample of the same size.
-#' DEFF = 1 means no inflation; DEFF = 2 means the variance is doubled
+#' DEFF = 1 means no inflation, whereas DEFF = 2 means the variance is doubled
 #' (equivalently, you need twice the sample size for the same precision).
 #'
 #' ## Choosing a method
@@ -32,8 +33,8 @@
 #' - **spencer**: Weights + outcome + selection probabilities. Accounts
 #'   for correlation between weights and the outcome.
 #' - **cr**: Weights + outcome + strata/cluster IDs. Full Chen-Rust
-#'   decomposition for multistage stratified designs; returns
-#'   per-stratum and overall DEFF.
+#'   decomposition for multistage stratified designs, returning
+#'   per-stratum and overall DEFF values.
 #'
 #' **Before data collection (planning)**: estimate an expected DEFF
 #' to inflate a simple-random-sample size calculation:
@@ -69,7 +70,7 @@
 #'
 #' @examples
 #' # Kish design effect from weights
-#' set.seed(2)
+#' set.seed(208)
 #' w <- runif(100, 1, 5)
 #' design_effect(w, method = "kish")
 #'
@@ -110,16 +111,26 @@ design_effect.numeric <- function(
   stages = NULL,
   method = "kish"
 ) {
+  .check_unused_dots(...)
   method <- match.arg(method, c("kish", "henry", "spencer", "cr"))
   check_weights(x)
 
-  switch(
+  result <- switch(
     method,
     kish = .deff_kish(x),
     henry = .deff_henry(x, y, x_cal),
     spencer = .deff_spencer(x, y, prob),
     cr = .deff_cr(x, y, strata_id, cluster_id, stages)
   )
+  if (identical(method, "cr")) {
+    .new_svyplan_design_effect(
+      result$overall,
+      method = method,
+      components = result$strata
+    )
+  } else {
+    .new_svyplan_design_effect(result, method = method)
+  }
 }
 
 #' @describeIn design_effect Planning method (no weights needed).
@@ -137,6 +148,7 @@ design_effect.default <- function(
   psu_size = NULL,
   method = "cluster"
 ) {
+  .check_unused_dots(...)
   method <- match.arg(method, "cluster")
 
   if (is.null(delta) || is.null(psu_size)) {
@@ -159,7 +171,10 @@ design_effect.default <- function(
   check_scalar(psu_size, "psu_size")
   check_delta(delta, expected_length = 1L)
 
-  1 + (psu_size - 1) * delta
+  .new_svyplan_design_effect(
+    1 + (psu_size - 1) * delta,
+    method = method
+  )
 }
 
 #' Kish (1965) design effect: 1 + CV^2(w)
@@ -316,7 +331,7 @@ design_effect.default <- function(
 
   if (sig2 < .Machine$double.eps) {
     warning(
-      "outcome variance is approximately zero; ",
+      "outcome variance is approximately zero. ",
       "CR design effect is undefined, returning 1 by convention",
       call. = FALSE
     )
@@ -399,7 +414,7 @@ design_effect.default <- function(
   comp <- unlist(out$strata[vapply(out$strata, is.numeric, logical(1L))])
   if (any(!is.finite(c(comp, out$overall))) || out$overall < 0) {
     stop(
-      "the CR design effect produced non-finite or negative components; check the weight scale, strata, and cluster structure",
+      "the CR design effect produced non-finite or negative components. Check the weight scale, strata, and cluster structure",
       call. = FALSE
     )
   }
@@ -452,7 +467,7 @@ design_effect.default <- function(
     i <- which(bad_scale)[1L]
     stop(
       sprintf(
-        "stratum '%s': the sum of weights (%.4g) must exceed the stratum sample size (%d); CR weights must be on the population scale in every stratum",
+        "stratum '%s': the sum of weights (%.4g) must exceed the stratum sample size (%d). CR weights must be on the population scale in every stratum",
         strat[i], sw_h[i], nh[i]
       ),
       call. = FALSE
@@ -487,7 +502,7 @@ design_effect.default <- function(
     warning(
       "singleton stratum/strata (n = 1) at position(s) ",
       paste(singletons, collapse = ", "),
-      "; contribution set to zero",
+      ". Contribution set to zero",
       call. = FALSE
     )
   }
@@ -522,7 +537,7 @@ design_effect.default <- function(
       if (nh_star[i] <= 1 + 1e-8) {
         stop(
           sprintf(
-            "stratum '%s': every cluster contains a single observation; the cluster component of the CR design effect is not estimable",
+            "stratum '%s': every cluster contains a single observation. The cluster component of the CR design effect is not estimable",
             strat[i]
           ),
           call. = FALSE
@@ -578,7 +593,7 @@ design_effect.default <- function(
     nh_star <- sum(cl_wt_sums^2) / sum(w^2)
     if (nh_star <= 1 + 1e-8) {
       stop(
-        "every cluster contains a single observation; the cluster component of the CR design effect is not estimable",
+        "every cluster contains a single observation. The cluster component of the CR design effect is not estimable",
         call. = FALSE
       )
     }

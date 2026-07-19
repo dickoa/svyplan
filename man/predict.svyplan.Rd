@@ -27,7 +27,7 @@ Column names must be valid parameters for the object type (see
 Details). Parameters not in \code{newdata} stay at their original
 values from the object.}
 
-\item{...}{Ignored.}
+\item{...}{Additional arguments are not supported and produce an error.}
 }
 \value{
 A data frame with \code{newdata} columns followed by result
@@ -51,10 +51,10 @@ Valid parameters for \code{newdata} by object type:
 \item \strong{\code{n_mean}}: \code{var}, \code{mu}, \code{moe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
 \code{resp_rate}
 \item \strong{\code{n_cluster}}: \code{cv}, \code{budget}, \code{rel_var}, \code{resp_rate}, \code{fixed_cost},
-stage deltas (\code{delta} or \code{delta_psu}; plus \code{delta_ssu} for 3-stage),
-stage ratios (\code{k} or \code{k_psu}; plus \code{k_ssu} for 3-stage),
-stage costs (\code{cost_psu}, \code{cost_ssu}, \code{cost_tsu}; for 2-stage,
-\code{cost_tsu} aliases \code{cost_ssu})
+stage deltas (\code{delta} or \code{delta_psu}, plus \code{delta_ssu} for 3-stage),
+stage ratios (\code{k} or \code{k_psu}, plus \code{k_ssu} for 3-stage),
+and stage costs (\code{cost_psu}, \code{cost_ssu}, \code{cost_tsu}). For 2-stage
+designs, \code{cost_tsu} aliases \code{cost_ssu}.
 \item \strong{\code{power_prop}}: \code{p1}, \code{p2}, \code{n}, \code{power}, \code{alpha}, \code{N}, \code{deff},
 \code{alternative}, \code{overlap}, \code{rho}, \code{resp_rate} (excluding the solved-for
 parameter). Not supported for objects with vector \code{n}.
@@ -66,14 +66,14 @@ solved-for parameter). Not supported for objects with vector \code{n}.
 }
 
 For \code{svyplan_n} objects, \code{moe} and \code{cv} are mutually exclusive in
-\code{newdata}. If one appears, that mode is used; if neither, the
+\code{newdata}. If one appears, that mode is used. If neither appears, the
 original mode is preserved.
 
 Similarly, for \code{svyplan_cluster} objects, \code{cv} and \code{budget} are
 mutually exclusive.
 
 Multi-indicator (\code{n_multi}) and multi-indicator cluster results are
-not supported; use the underlying single-indicator functions instead.
+not supported. Use the underlying single-indicator functions instead.
 
 If evaluation fails for a particular row (e.g. invalid parameter
 combinations), that row's result columns are \code{NA} and a warning is

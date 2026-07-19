@@ -50,7 +50,63 @@ test_that("svyplan validates core typed params", {
   expect_error(svyplan(resp_rate = 0), "resp_rate")
   expect_error(svyplan(resp_rate = 1.5), "resp_rate")
   expect_error(svyplan(N = 0), "'N' must be greater than 1")
+  expect_error(svyplan(N = NA_real_), "'N' must be greater than 1")
   expect_error(svyplan(stage_cost = 10), "'stage_cost' must be a numeric vector")
+})
+
+test_that("svyplan validates every supported default", {
+  bad <- list(
+    delta = 2,
+    rel_var = -1,
+    k = 0,
+    fixed_cost = -10,
+    unit_cost = -2,
+    alternative = "sideways",
+    ratio = 0,
+    overlap = 2,
+    rho = -1,
+    alloc = "mystery",
+    min_n = 0,
+    power_q = 3
+  )
+
+  for (nm in names(bad)) {
+    args <- setNames(list(bad[[nm]]), nm)
+    expect_error(do.call(svyplan, args), nm, fixed = TRUE)
+  }
+})
+
+test_that("svyplan accepts valid extended defaults", {
+  plan <- svyplan(
+    stage_cost = c(cost_psu = 500, cost_ssu = 50),
+    delta = c(delta_psu = 0.05),
+    rel_var = 1.2,
+    k = c(k_psu = 1),
+    fixed_cost = 5000,
+    unit_cost = c(1, 1.5),
+    alternative = "one.sided",
+    ratio = 1.5,
+    overlap = 0.2,
+    rho = 0.4,
+    alloc = "power",
+    min_n = 20,
+    power_q = 0.5
+  )
+
+  expect_s3_class(plan, "svyplan")
+  expect_equal(plan$defaults$delta, c(delta_psu = 0.05))
+  expect_equal(plan$defaults$alloc, "power")
+})
+
+test_that("svyplan validates related cluster defaults together", {
+  expect_error(
+    svyplan(stage_cost = c(500, 100, 50), delta = 0.05),
+    "'delta' must have length 2"
+  )
+  expect_error(
+    svyplan(stage_cost = c(500, 50), delta = 0.05, k = c(1, 2)),
+    "'k' must have length 1"
+  )
 })
 
 test_that("svyplan rejects unknown defaults", {
@@ -105,6 +161,7 @@ test_that("update.svyplan adds new parameters", {
 test_that("update.svyplan validates modified params", {
   plan <- svyplan()
   expect_error(update(plan, alpha = 5), "alpha")
+  expect_error(update(plan, alloc = "mystery"), "alloc")
 })
 
 test_that("n_prop uses plan defaults", {
@@ -244,7 +301,7 @@ test_that("prec_cluster requires delta", {
   expect_error(prec_cluster(n = c(50, 12)), "'delta' is required")
 })
 
-test_that("n_multi uses plan for stage_cost", {
+test_that("n_multi_cluster uses plan for stage_cost", {
   targets <- data.frame(
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
@@ -252,8 +309,8 @@ test_that("n_multi uses plan for stage_cost", {
     delta_psu = c(0.02, 0.05)
   )
   plan <- svyplan(stage_cost = c(500, 50))
-  res <- suppressMessages(n_multi(targets, plan = plan))
-  ref <- suppressMessages(n_multi(targets, stage_cost = c(500, 50)))
+  res <- suppressMessages(n_multi_cluster(targets, plan = plan))
+  ref <- suppressMessages(n_multi_cluster(targets, stage_cost = c(500, 50)))
   expect_equal(res$n, ref$n)
 })
 
@@ -359,7 +416,7 @@ test_that("pipe: plan |> power_prop", {
 
 test_that("pipe: plan |> power_mean", {
   plan <- svyplan(deff = 1.5)
-  res <- plan |> power_mean(5, var = 100)
+  res <- plan |> power_mean(100, effect = 5)
   ref <- power_mean(effect = 5, var = 100, deff = 1.5)
   expect_equal(res$n, ref$n)
 })
@@ -388,7 +445,7 @@ test_that("pipe: plan |> prec_cluster", {
   expect_equal(res$cv, ref$cv)
 })
 
-test_that("pipe: plan |> n_multi", {
+test_that("pipe: plan |> n_multi_cluster", {
   targets <- data.frame(
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
@@ -396,8 +453,8 @@ test_that("pipe: plan |> n_multi", {
     delta_psu = c(0.02, 0.05)
   )
   plan <- svyplan(stage_cost = c(500, 50))
-  res <- suppressMessages(plan |> n_multi(targets))
-  ref <- suppressMessages(n_multi(targets, stage_cost = c(500, 50)))
+  res <- suppressMessages(plan |> n_multi_cluster(targets))
+  ref <- suppressMessages(n_multi_cluster(targets, stage_cost = c(500, 50)))
   expect_equal(res$n, ref$n)
 })
 
@@ -484,10 +541,10 @@ test_that("named pipe: plan |> power_prop(p1 = ...) matches all styles", {
   expect_equal(res_named_pipe$n, res_pos_pipe$n)
 })
 
-test_that("named pipe: plan |> power_mean(effect = ...) matches all styles", {
+test_that("named pipe: plan |> power_mean(var = ...) matches all styles", {
   plan <- svyplan(deff = 1.5)
   res_named_plan <- power_mean(effect = 5, var = 100, plan = plan)
-  res_pos_pipe <- plan |> power_mean(5, var = 100)
+  res_pos_pipe <- plan |> power_mean(100, effect = 5)
   res_named_pipe <- plan |> power_mean(effect = 5, var = 100)
   expect_equal(res_named_pipe$n, res_named_plan$n)
   expect_equal(res_named_pipe$n, res_pos_pipe$n)
@@ -520,7 +577,7 @@ test_that("named pipe: plan |> prec_cluster(n = ...) matches all styles", {
   expect_equal(res_named_pipe$cv, res_pos_pipe$cv)
 })
 
-test_that("named pipe: plan |> n_multi(targets = ...) matches all styles", {
+test_that("named pipe: plan |> n_multi_cluster() matches all styles", {
   targets <- data.frame(
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
@@ -528,9 +585,9 @@ test_that("named pipe: plan |> n_multi(targets = ...) matches all styles", {
     delta_psu = c(0.02, 0.05)
   )
   plan <- svyplan(stage_cost = c(500, 50))
-  res_named_plan <- suppressMessages(n_multi(targets, plan = plan))
-  res_pos_pipe <- suppressMessages(plan |> n_multi(targets))
-  res_named_pipe <- suppressMessages(plan |> n_multi(targets = targets))
+  res_named_plan <- suppressMessages(n_multi_cluster(targets, plan = plan))
+  res_pos_pipe <- suppressMessages(plan |> n_multi_cluster(targets))
+  res_named_pipe <- suppressMessages(plan |> n_multi_cluster(targets = targets))
   expect_equal(res_named_pipe$n, res_named_plan$n)
   expect_equal(res_named_pipe$n, res_pos_pipe$n)
 })
@@ -549,7 +606,7 @@ test_that("named pipe: plan |> n_alloc(frame = ...) matches all styles", {
   expect_equal(res_named_pipe$n, res_pos_pipe$n)
 })
 
-test_that("named pipe: plan |> prec_alloc(x = ...) matches all styles", {
+test_that("named pipe: plan |> prec_alloc(frame = ...) matches all styles", {
   frame <- data.frame(
     N = c(4000, 3000, 3000),
     sd = c(10, 15, 8),
@@ -558,12 +615,12 @@ test_that("named pipe: plan |> prec_alloc(x = ...) matches all styles", {
   plan <- svyplan(deff = 1.5)
   res_named_plan <- prec_alloc(frame, n = c(200, 200, 200), plan = plan)
   res_pos_pipe <- plan |> prec_alloc(frame, n = c(200, 200, 200))
-  res_named_pipe <- plan |> prec_alloc(x = frame, n = c(200, 200, 200))
+  res_named_pipe <- plan |> prec_alloc(frame = frame, n = c(200, 200, 200))
   expect_equal(res_named_pipe$se, res_named_plan$se)
   expect_equal(res_named_pipe$se, res_pos_pipe$se)
 })
 
-test_that("named pipe: plan |> prec_multi(targets = ...) with stage_cost", {
+test_that("named pipe: plan |> prec_multi_cluster() with stage_cost", {
   targets <- data.frame(
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
@@ -572,9 +629,9 @@ test_that("named pipe: plan |> prec_multi(targets = ...) with stage_cost", {
     delta_psu = c(0.02, 0.05)
   )
   plan <- svyplan(stage_cost = c(500, 50))
-  res_explicit <- prec_multi(targets, stage_cost = c(500, 50))
-  res_named_plan <- prec_multi(targets, plan = plan)
-  res_named_pipe <- plan |> prec_multi(targets = targets)
+  res_explicit <- prec_multi_cluster(targets, stage_cost = c(500, 50))
+  res_named_plan <- prec_multi_cluster(targets, plan = plan)
+  res_named_pipe <- plan |> prec_multi_cluster(targets = targets)
   expect_equal(res_named_plan$cv, res_explicit$cv)
   expect_equal(res_named_pipe$cv, res_explicit$cv)
 })

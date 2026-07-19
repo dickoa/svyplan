@@ -11,13 +11,13 @@ prec_mean(var, ...)
 \method{prec_mean}{default}(
   var,
   n,
+  ...,
   mu = NULL,
   alpha = 0.05,
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  plan = NULL,
-  ...
+  plan = NULL
 )
 
 \method{prec_mean}{svyplan_n}(var, ...)
@@ -26,9 +26,10 @@ prec_mean(var, ...)
 \item{var}{For the default method: population variance \eqn{S^2}.
 For \code{svyplan_n} objects: a sample size result from \code{\link[=n_mean]{n_mean()}}.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
-\item{n}{Sample size (gross units drawn; must not exceed a finite \code{N}).}
+\item{n}{Sample size, measured as gross units drawn and bounded by a
+finite \code{N}.}
 
 \item{mu}{Population mean magnitude (positive). Required for the CV component.}
 

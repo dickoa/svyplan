@@ -9,6 +9,7 @@ power_prop(p1, ...)
 
 \method{power_prop}{default}(
   p1,
+  ...,
   p2 = NULL,
   n = NULL,
   power = 0.8,
@@ -21,14 +22,13 @@ power_prop(p1, ...)
   overlap = 0,
   rho = 0,
   method = c("wald", "arcsine", "logodds"),
-  plan = NULL,
-  ...
+  plan = NULL
 )
 }
 \arguments{
 \item{p1}{Baseline proportion, in (0, 1).}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{p2}{Alternative proportion, in (0, 1). Leave \code{NULL} to solve for
 the minimum detectable effect (MDE). The solver searches both above and
@@ -36,8 +36,8 @@ below \code{p1} and returns the alternative closest to \code{p1} that achieves t
 target power. When \code{p1} is near 0 or 1, the MDE may only be detectable
 in one direction.}
 
-\item{n}{Per-group sample size (gross units drawn; must not exceed the
-corresponding finite \code{N}). Scalar (equal groups) or length-2 vector
+\item{n}{Per-group sample size, measured as gross units drawn and bounded
+by the corresponding finite \code{N}. Scalar (equal groups) or length-2 vector
 \code{c(n1, n2)} for unequal groups. Leave \code{NULL} to solve for sample size.}
 
 \item{power}{Target power, in (0, 1). Leave \code{NULL} to solve for power.}
@@ -45,7 +45,7 @@ corresponding finite \code{N}). Scalar (equal groups) or length-2 vector
 \item{alpha}{Significance level, default 0.05.}
 
 \item{N}{Population size for finite-population correction. A scalar applies
-to both groups; a length-2 vector \code{c(N1, N2)} sets group-specific
+to both groups. A length-2 vector \code{c(N1, N2)} sets group-specific
 population sizes. \code{Inf} disables FPC for the corresponding group.}
 
 \item{deff}{Design effect multiplier (> 0). Values < 1 are valid for
