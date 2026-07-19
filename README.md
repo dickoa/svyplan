@@ -332,7 +332,7 @@ pw <- power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
 plot(pw)
 ```
 
-![](man/figures/README-power-plot-1.png)<!-- -->
+<img src="man/figures/README-power-plot-1.png" alt="Power increases with total sample size. Dashed reference lines mark 80 percent power at the required sample size for detecting a change from 70 to 75 percent with a design effect of 2."  />
 
 ## Stratified allocation
 

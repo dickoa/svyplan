@@ -20,6 +20,7 @@ reference:
   - n_mean
   - n_cluster
   - n_multi
+  - n_multi_cluster
   - n_alloc
 
 - title: Precision analysis
@@ -29,6 +30,7 @@ reference:
   - prec_mean
   - prec_cluster
   - prec_multi
+  - prec_multi_cluster
   - prec_alloc
 
 - title: Power analysis
@@ -59,6 +61,7 @@ reference:
   desc: Format and display svyplan objects.
   contents:
   - print.svyplan
+  - print.svyplan_design_effect
 
 - title: Predict methods
   desc: Grid exploration for svyplan objects.

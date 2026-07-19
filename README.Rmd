@@ -234,7 +234,7 @@ power_did(treat = c(0.50, 0.55), control = c(0.50, 0.48),
 
 `plot()` draws the power-vs-sample-size curve with reference lines at the solved point:
 
-```{r power-plot, fig.width=7, fig.height=4}
+```{r power-plot, fig.width=7, fig.height=4, fig.alt="Power increases with total sample size. Dashed reference lines mark 80 percent power at the required sample size for detecting a change from 70 to 75 percent with a design effect of 2."}
 pw <- power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
 plot(pw)
 ```
