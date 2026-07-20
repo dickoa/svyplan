@@ -20,6 +20,7 @@
   row.names = NULL,
   optional = FALSE,
   stringsAsFactors = FALSE,
+  validRN = TRUE,
   ...
 )
 
@@ -38,6 +39,9 @@ arguments.}
 
 \item{stringsAsFactors}{Logical. Retained for compatibility when a result
 is converted through \code{\link[=data.frame]{data.frame()}}.}
+
+\item{validRN}{Logical. Accepted for compatibility with \code{\link[=data.frame]{data.frame()}} in
+R 4.7.0 and later. Svyplan results already have valid row names.}
 
 \item{e1, e2}{Objects supplied to an arithmetic or comparison operator.}
 }

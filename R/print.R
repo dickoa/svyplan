@@ -7,6 +7,8 @@
 #' @param row.names,optional Standard [as.data.frame()] arguments.
 #' @param stringsAsFactors Logical. Retained for compatibility when a result
 #'   is converted through [data.frame()].
+#' @param validRN Logical. Accepted for compatibility with [data.frame()] in
+#'   R 4.7.0 and later. Svyplan results already have valid row names.
 #' @param ... Additional arguments are not supported and produce an error.
 #'
 #' @return `x` (or `object`), invisibly. `confint` returns a 2-column
@@ -813,6 +815,7 @@ as.data.frame.svyplan_n <- function(
   row.names = NULL,
   optional = FALSE,
   stringsAsFactors = FALSE,
+  validRN = TRUE,
   ...
 ) {
   .check_unused_dots(...)
@@ -840,6 +843,7 @@ as.data.frame.svyplan_prec <- function(
   row.names = NULL,
   optional = FALSE,
   stringsAsFactors = FALSE,
+  validRN = TRUE,
   ...
 ) {
   .check_unused_dots(...)
@@ -882,6 +886,7 @@ as.data.frame.svyplan_varcomp <- function(
   row.names = NULL,
   optional = FALSE,
   stringsAsFactors = FALSE,
+  validRN = TRUE,
   ...
 ) {
   .check_unused_dots(...)
@@ -921,6 +926,7 @@ as.data.frame.svyplan_cluster <- function(
   row.names = NULL,
   optional = FALSE,
   stringsAsFactors = FALSE,
+  validRN = TRUE,
   ...
 ) {
   .check_unused_dots(...)
@@ -958,6 +964,7 @@ as.data.frame.svyplan_power <- function(
   row.names = NULL,
   optional = FALSE,
   stringsAsFactors = FALSE,
+  validRN = TRUE,
   ...
 ) {
   .check_unused_dots(...)
@@ -982,6 +989,8 @@ as.data.frame.svyplan_power <- function(
 #' @param row.names,optional Standard [as.data.frame()] arguments.
 #' @param stringsAsFactors Logical. Retained for compatibility when a result
 #'   is converted through [data.frame()].
+#' @param validRN Logical. Accepted for compatibility with [data.frame()] in
+#'   R 4.7.0 and later. Svyplan results already have valid row names.
 #' @param e1,e2 Objects supplied to an arithmetic or comparison operator.
 #' @param ... For mathematical transformations, additional arguments passed to
 #'   the underlying operation. The other methods do not support additional
@@ -1035,6 +1044,7 @@ as.data.frame.svyplan_design_effect <- function(
   row.names = NULL,
   optional = FALSE,
   stringsAsFactors = FALSE,
+  validRN = TRUE,
   ...
 ) {
   .check_unused_dots(...)
@@ -1189,6 +1199,7 @@ as.data.frame.svyplan_strata <- function(
   row.names = NULL,
   optional = FALSE,
   stringsAsFactors = FALSE,
+  validRN = TRUE,
   ...
 ) {
   .check_unused_dots(...)

@@ -178,6 +178,8 @@ each continuous stage size upward.
 * `as.data.frame()` now has explicit schemas for `svyplan_prec` and
   `svyplan_power` objects. Unstratified `svyplan_varcomp` results also export
   as one-row two- or three-stage component tables.
+* All `as.data.frame()` methods accept the `validRN` argument forwarded by
+  `data.frame()` in R 4.7.0 and later.
 * Every `design_effect()` method now returns a numeric
   `svyplan_design_effect` object. `as.double()` extracts the overall design
   effect, while `as.data.frame()` exports the Chen-Rust decomposition when

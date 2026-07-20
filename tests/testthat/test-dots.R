@@ -92,4 +92,34 @@ test_that("prediction and display methods reject unused arguments", {
                "unused argument.*roundng")
   expect_s3_class(data.frame(result), "data.frame")
   expect_s3_class(as.data.frame(result, optional = TRUE), "data.frame")
+  expect_error(as.data.frame(result, validRn = FALSE),
+               "unused argument.*validRn")
+})
+
+test_that("data-frame methods accept R-devel validRN forwarding", {
+  results <- list(
+    n = n_prop(0.3, moe = 0.05),
+    prec = prec_prop(0.3, n = 400),
+    cluster = n_cluster(
+      budget = 100000,
+      delta = 0.05,
+      rel_var = 1,
+      stage_cost = c(500, 50)
+    ),
+    power = power_prop(p1 = 0.30, p2 = 0.35),
+    design_effect = design_effect(c(1, 1.5, 2)),
+    strata = strata_bound(seq_len(40), n_strata = 2, n = 10),
+    varcomp = varcomp(
+      seq_len(12),
+      stage_id = list(rep(seq_len(4), each = 3))
+    )
+  )
+
+  for (result in results) {
+    expect_s3_class(
+      as.data.frame(result, validRN = FALSE),
+      "data.frame"
+    )
+    expect_s3_class(data.frame(result), "data.frame")
+  }
 })
