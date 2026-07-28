@@ -762,3 +762,17 @@ test_that("two-phase stratum labels identify one stratum each", {
                      budget = 1000)
   expect_equal(bare$detail$stratum, c("1", "2"))
 })
+
+test_that("stratum means that cancel do not pass for a usable 'mu'", {
+  f <- data.frame(
+    stratum = c("A", "B"), N = c(5000, 5000), sd = c(2, 2),
+    mean = c(0.1, -0.1), unit_cost = c(2, 2)
+  )
+  expect_error(
+    n_twophase(f, phase1_cost = 1, cv = 0.05),
+    "'mu' is required in cv mode"
+  )
+  # an explicit 'mu' is the user's own number and is used as given
+  expect_s3_class(n_twophase(f, phase1_cost = 1, cv = 0.05, mu = 3),
+                  "svyplan_twophase")
+})

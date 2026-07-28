@@ -758,10 +758,10 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 #' The frame variance of the PSU totals relative to their mean.
 #' @keywords internal
 #' @noRd
-.vc_between_srs <- function(psu_total, adjustment = 0) {
+.vc_between_srs <- function(psu_total, den, adjustment = 0) {
   spread <- max(var(psu_total) - adjustment, 0)
   n <- length(psu_total)
-  .vc_component(spread * n^2, sum(psu_total)^2)
+  .vc_component(spread * n^2, den)
 }
 
 #' Relvariance of the between-PSU term, PPS first stage
@@ -770,10 +770,10 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 #' totals about the grand total, relative to its square.
 #' @keywords internal
 #' @noRd
-.vc_between_pps <- function(psu_total, draw_prob, adjustment = 0) {
+.vc_between_pps <- function(psu_total, draw_prob, den, adjustment = 0) {
   grand_total <- sum(psu_total)
   spread <- sum(draw_prob * (psu_total / draw_prob - grand_total)^2)
-  .vc_component(max(spread - adjustment, 0), grand_total^2)
+  .vc_component(max(spread - adjustment, 0), den)
 }
 
 #' Relvariance contributed by the spread inside each group
@@ -783,11 +783,19 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 #' draw probability.
 #' @keywords internal
 #' @noRd
-.vc_within <- function(size, group_var, draw_prob, grand_total) {
-  .vc_component(sum(size^2 * group_var / draw_prob), grand_total^2)
+.vc_within <- function(size, group_var, draw_prob, den) {
+  .vc_component(sum(size^2 * group_var / draw_prob), den)
 }
 
-#' Unit relvariance of the analysis variable
+#' Unit relvariance and the denominator every component shares
+#'
+#' Each component is scaled by the square of the estimated grand total.
+#' That square is formed once here so all of them agree on it, and it is
+#' set to zero when the total is negligible next to the dispersion of the
+#' outcome. Such a total is a zero mean up to rounding: the relvariances
+#' it would produce are numerical noise whose value depends on the order
+#' the sum happened to be taken in, so they are reported as infinite on
+#' every platform rather than as a large finite number on some.
 #' @keywords internal
 #' @noRd
 .vc_unit_relvar <- function(y, w) {
@@ -795,10 +803,20 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
   spread <- if (is.null(w)) var(y) else .wtdvar(y, w)
   total_w <- if (is.null(w)) length(y) else sum(w)
   eps <- .vc_eps()
-  if (abs(centre) < eps && spread < eps) {
-    return(.vc_component(0, 1))
+  scale <- max(abs(y))
+  # Centring a constant outcome cancels exactly only when every observation
+  # carries the same weight, so a weighted variance bottoms out at rounding
+  # noise instead of at zero. Dispersion that far below the outcome's own
+  # magnitude is not variance to split.
+  if (spread <= (eps * scale)^2) {
+    spread <- 0
   }
-  .vc_component(spread * total_w^2, (centre * total_w)^2)
+  den <- if (abs(centre) <= eps * sqrt(spread)) {
+    0
+  } else {
+    (centre * total_w)^2
+  }
+  list(den = den, unit = .vc_component(spread * total_w^2, den))
 }
 
 #' Homogeneity and ratio parameter for one pair of components
@@ -866,15 +884,18 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
     correction <- .vc_total_var(summary$observed, summary$size, summary$var)
   }
 
+  relvar <- .vc_unit_relvar(y, w)
+  unit <- relvar$unit
+
   if (is.null(draw_prob)) {
     between <- .vc_between_srs(
-      summary$total,
+      summary$total, relvar$den,
       adjustment = if (is.null(w)) 0 else mean(correction)
     )
     scale <- rep(1 / psu$count, psu$count)
   } else {
     between <- .vc_between_pps(
-      summary$total, draw_prob,
+      summary$total, draw_prob, relvar$den,
       adjustment = if (is.null(w)) {
         0
       } else {
@@ -884,10 +905,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
     scale <- draw_prob
   }
 
-  within <- .vc_within(
-    summary$size, summary$var, scale, sum(summary$total)
-  )
-  unit <- .vc_unit_relvar(y, w)
+  within <- .vc_within(summary$size, summary$var, scale, relvar$den)
   ratios <- .vc_ratios(between, within, unit)
   .vc_warn_degenerate(ratios$degenerate)
   .vc_warn_zero_mean(unit)
@@ -965,20 +983,22 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
     psu_adjustment <- sum(psu_noise * (1 - draw_prob) / draw_prob)
   }
 
-  grand_total <- sum(by_psu$total)
-  between_psu <- .vc_between_pps(by_psu$total, draw_prob,
+  relvar <- .vc_unit_relvar(y, w)
+  unit <- relvar$unit
+  den <- relvar$den
+
+  between_psu <- .vc_between_pps(by_psu$total, draw_prob, den,
                                  adjustment = psu_adjustment)
-  element_in_psu <- .vc_within(by_psu$size, by_psu$var, draw_prob, grand_total)
-  between_ssu <- .vc_within(ssu_per_psu, ssu_total_var, draw_prob, grand_total)
+  element_in_psu <- .vc_within(by_psu$size, by_psu$var, draw_prob, den)
+  between_ssu <- .vc_within(ssu_per_psu, ssu_total_var, draw_prob, den)
   element_in_ssu <- .vc_component(
     sum(
       ssu_per_psu[psu_of_ssu] * by_ssu$size^2 * by_ssu$var /
         draw_prob[psu_of_ssu]
     ),
-    grand_total^2
+    den
   )
 
-  unit <- .vc_unit_relvar(y, w)
   psu_ratios <- .vc_ratios(between_psu, element_in_psu, unit)
   ssu_ratios <- .vc_ratios(between_ssu, element_in_ssu, unit)
   .vc_warn_degenerate(c(psu_ratios$degenerate, ssu_ratios$degenerate))

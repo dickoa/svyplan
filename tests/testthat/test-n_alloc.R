@@ -951,3 +951,23 @@ test_that("prec_alloc min_n_stratum matches the fitted path and is joint-only", 
     "applies to joint precision assessment"
   )
 })
+
+test_that("stratum means that cancel give an undefined CV, not a huge one", {
+  # sum(W * mean) lands on rounding noise rather than on zero here, and how
+  # much noise depends on the platform's accumulator, so the aggregate mean
+  # is compared against the scale of its own terms
+  f <- data.frame(N = c(1000, 1000), sd = c(2, 2), mean = c(0.1, -0.1))
+  expect_identical(n_alloc(f, n = 200)$cv, Inf)
+  expect_identical(n_alloc(transform(f, mean = c(1 / 3, -1 / 3)), n = 200)$cv,
+                   Inf)
+  expect_true(is.finite(n_alloc(transform(f, mean = c(5, 5)), n = 200)$cv))
+})
+
+test_that("the aggregate CV does not depend on the outcome's unit", {
+  f <- data.frame(N = c(1000, 2000), sd = c(2, 3), mean = c(10, 12))
+  ref <- n_alloc(f, n = 200)$cv
+  for (scale in c(1e-6, 1e-12, 1e-20)) {
+    rescaled <- transform(f, sd = sd * scale, mean = mean * scale)
+    expect_equal(n_alloc(rescaled, n = 200)$cv, ref)
+  }
+})

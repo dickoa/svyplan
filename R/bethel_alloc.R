@@ -1134,10 +1134,13 @@
          call. = FALSE)
   }
   # Relative-variance requirements are undefined against a negligible total.
-  # Both CV constraints and objective components use this guard.
+  # Both CV constraints and objective components use this guard. Negligible
+  # is measured against the terms that formed the total and against nothing
+  # else: an absolute floor here would call a legitimate total of 1e-12
+  # zero, and a total of exactly zero still fails the test on its own.
   negligible_total <- function(k) {
     scale_total <- sum(abs(N[membership[, k]] * mean_all[membership[, k], k]))
-    abs(total_all[k]) <= sqrt(.Machine$double.eps) * max(1, scale_total)
+    abs(total_all[k]) <= sqrt(.Machine$double.eps) * scale_total
   }
   A <- A_all[, seq_len(K), drop = FALSE]
   B <- B_all[seq_len(K)]
@@ -1328,7 +1331,7 @@
   )
   reciprocal <- .bethel_constraint_value(problem$A, allocation)
   variance <- problem$B + reciprocal
-  cancellation_scale <- pmax(1, abs(problem$B), abs(reciprocal))
+  cancellation_scale <- pmax(abs(problem$B), abs(reciprocal))
   tiny_negative <- variance < 0 &
     abs(variance) <= 100 * .Machine$double.eps * cancellation_scale
   variance[tiny_negative] <- 0
@@ -1493,7 +1496,7 @@
   if (is.null(obj)) return(NULL)
   reciprocal <- drop(crossprod(obj$A, 1 / allocation))
   variance <- obj$B + reciprocal
-  cancellation_scale <- pmax(1, abs(obj$B), abs(reciprocal))
+  cancellation_scale <- pmax(abs(obj$B), abs(reciprocal))
   tiny_negative <- variance < 0 &
     abs(variance) <= 100 * .Machine$double.eps * cancellation_scale
   variance[tiny_negative] <- 0

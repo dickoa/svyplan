@@ -458,7 +458,7 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
   V_int <- .strata_variance(
     alloc_res$W_h, alloc_res$S_h, n_int, alloc_res$N_h, deff, resp_rate
   )
-  ybar <- sum(alloc_res$W_h * alloc_res$mean_h)
+  ybar <- .aggregate_mean(alloc_res$W_h, alloc_res$mean_h)
   cv_int <- if (ybar == 0) Inf else sqrt(V_int) / abs(ybar)
 
   .new_svyplan_strata(

@@ -176,7 +176,7 @@
   }
 
   V <- .strata_variance(W_h, S_h, n_h, N_h, deff, resp_rate)
-  ybar <- sum(W_h * mean_h)
+  ybar <- .aggregate_mean(W_h, mean_h)
   cv <- if (ybar == 0) Inf else sqrt(V) / abs(ybar)
 
   list(
@@ -277,7 +277,7 @@
     mean_h[is.nan(mean_h)] <- 0
   }
 
-  ybar <- sum(W_h * mean_h)
+  ybar <- .aggregate_mean(W_h, mean_h)
   target_V <- (target_cv * abs(ybar))^2
 
   a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h)
@@ -554,7 +554,7 @@
     }
 
     if (use_cv) {
-      ybar <- sum(W_h * mean_h)
+      ybar <- .aggregate_mean(W_h, mean_h)
       tgt_V <- (target_cv * abs(ybar))^2
       active <- N_h > 0
       bi_lo <- 2 * L
@@ -569,7 +569,7 @@
     } else {
       n_h <- .rna_alloc(a_h, n_total, m_h, M_h)
       V <- .strata_variance(W_h, S_h, n_h, N_h, deff, resp_rate)
-      ybar <- sum(W_h * mean_h)
+      ybar <- .aggregate_mean(W_h, mean_h)
       if (ybar == 0) Inf else sqrt(V) / abs(ybar)
     }
   }

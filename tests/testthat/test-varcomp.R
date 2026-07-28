@@ -774,6 +774,39 @@ test_that("a zero-mean outcome keeps icc and var_ratio, which do not use the mea
   expect_gt(res$icc, 0.9)
 })
 
+test_that("a mean left just off zero by rounding is still treated as zero", {
+  # whether the terms of a centred outcome cancel to exactly zero depends on
+  # the width of the accumulator, so the same data gives a mean of 0 on one
+  # platform and of 1e-17 on another. Both are the same zero mean.
+  y <- rep(c(-2, -1, 1, 2), each = 4) + rep(c(-0.2, -0.1, 0.1, 0.2), 4)
+  y[1] <- y[1] + 1e-15
+  psu_id <- rep(seq_len(4), each = 4)
+  expect_gt(abs(mean(y)), 0)
+
+  expect_warning(
+    res <- varcomp(y, stage_id = list(psu_id)),
+    "mean is approximately zero"
+  )
+  expect_true(is.infinite(res$varb))
+  expect_true(is.infinite(res$varw))
+  expect_true(is.infinite(res$unit_relvar))
+
+  shifted <- varcomp(y + 100, stage_id = list(psu_id))
+  expect_equal(res$icc, shifted$icc)
+  expect_equal(res$var_ratio, shifted$var_ratio)
+})
+
+test_that("relvariances do not depend on the outcome's unit of measurement", {
+  y <- rep(c(-2, -1, 1, 2), each = 4) + rep(c(-0.2, -0.1, 0.1, 0.2), 4) + 3
+  psu_id <- rep(seq_len(4), each = 4)
+  ref <- varcomp(y, stage_id = list(psu_id))
+  tiny <- varcomp(y * 1e-9, stage_id = list(psu_id))
+
+  expect_equal(tiny$varb, ref$varb)
+  expect_equal(tiny$unit_relvar, ref$unit_relvar)
+  expect_equal(tiny$icc, ref$icc)
+})
+
 test_that("the two degenerate outcomes are told apart", {
   psu_id <- rep(seq_len(4), each = 4)
   collect <- function(expr) {
@@ -795,4 +828,20 @@ test_that("the two degenerate outcomes are told apart", {
   expect_false(any(grepl("no variance to split", zero_mean)))
   expect_true(any(grepl("no variance to split", constant)))
   expect_false(any(grepl("mean is approximately zero", constant)))
+})
+
+test_that("a constant outcome is degenerate whether or not weights are given", {
+  # centring a constant outcome cancels exactly under equal weights only, so
+  # the weighted variance bottoms out at rounding noise rather than at zero
+  psu_id <- rep(seq_len(4), each = 3)
+  for (seed in c(3L, 4L, 8L, 17L)) {
+    set.seed(seed)
+    w <- runif(12, 0.3, 9)
+    expect_warning(
+      res <- varcomp(rep(7, 12), stage_id = list(psu_id), weights = w),
+      "no variance to split"
+    )
+    expect_identical(res$icc, 0)
+    expect_identical(res$var_ratio, 1)
+  }
 })

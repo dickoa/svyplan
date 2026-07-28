@@ -1608,7 +1608,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       stop("'mean' (or 'p') must be complete to compute aggregate CV",
            call. = FALSE)
     }
-    ybar <- sum(W_h * mean_h)
+    ybar <- .aggregate_mean(W_h, mean_h)
     cv <- if (ybar == 0) Inf else se / abs(ybar)
   }
 

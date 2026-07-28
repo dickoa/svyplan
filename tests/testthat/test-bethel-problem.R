@@ -225,3 +225,30 @@ test_that("materially negative evaluated variance is an internal error", {
     "materially negative variance"
   )
 })
+
+test_that("a negligible total is judged against the terms that formed it", {
+  # rescaling every mean and sd leaves the CV constraint unchanged, so the
+  # allocation must not depend on the unit the measure is expressed in
+  z <- .bethel_fixture()
+  z$targets <- data.frame(
+    name = "income", domain = ".overall", level = NA_character_,
+    cv = 0.05, moe = NA_real_
+  )
+  ref <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+  for (scale in c(1e-6, 1e-14, 1e-30)) {
+    small <- z
+    small$measures$mean <- small$measures$mean * scale
+    small$measures$sd <- small$measures$sd * scale
+    fit <- n_alloc(small$frame, measures = small$measures,
+                   targets = small$targets)
+    expect_equal(fit$n, ref$n)
+  }
+
+  # a total that is zero because its terms cancel is still rejected
+  zero <- z
+  zero$measures$mean[5:8] <- c(50, -25, 60, -90)
+  expect_error(
+    n_alloc(zero$frame, measures = zero$measures, targets = zero$targets),
+    "negligible total"
+  )
+})

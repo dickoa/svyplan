@@ -203,8 +203,24 @@ test_that("strata table is validated", {
   expect_error(
     design_effect(strata = data.frame(N = c(10, 20), sd = c(0, 0),
                                       mean = c(0, 0))),
-    "no variability"
+    "no within-stratum variability"
   )
+  # a stratification that explains everything has a component of zero, which
+  # is not a design effect either
+  expect_error(
+    design_effect(strata = data.frame(N = c(10, 20), sd = c(0, 0),
+                                      mean = c(7, 9))),
+    "no within-stratum variability"
+  )
+})
+
+test_that("the stratification component does not depend on the outcome's unit", {
+  s <- data.frame(N = c(1000, 2000), sd = c(2, 3), mean = c(10, 12))
+  ref <- design_effect(strata = s)$deff
+  for (scale in c(1e-4, 1e-9, 1e-20)) {
+    rescaled <- transform(s, sd = sd * scale, mean = mean * scale)
+    expect_equal(design_effect(strata = rescaled)$deff, ref)
+  }
 })
 
 test_that("weights are validated", {

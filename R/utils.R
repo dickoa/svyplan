@@ -76,6 +76,26 @@ check_scalar <- function(x, name, positive = TRUE) {
   invisible(TRUE)
 }
 
+#' Aggregate mean of a stratified frame, with a zero that survives rounding
+#'
+#' A CV divides by this mean, so whether it is zero decides between a
+#' number and `Inf`. Stratum means that cancel do not cancel to exactly
+#' zero: what is left depends on the order the sum was taken in and on the
+#' width of the accumulator, which differs between platforms. A total below
+#' the scale of the terms that formed it is that zero, and is returned as
+#' an exact one so every caller can keep testing for it directly. The
+#' tolerance is the same relative one [varcomp()] uses to decide that an
+#' outcome is centred on zero.
+#' @keywords internal
+#' @noRd
+.aggregate_mean <- function(share, mean) {
+  ybar <- sum(share * mean)
+  if (abs(ybar) <= sqrt(.Machine$double.eps) * sum(share * abs(mean))) {
+    return(0)
+  }
+  ybar
+}
+
 #' Check a population mean used as the denominator of a CV
 #'
 #' A coefficient of variation is a magnitude, `SE / abs(mu)`, and the

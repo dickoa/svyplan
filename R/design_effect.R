@@ -381,17 +381,16 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
   W <- detail$N / sum(detail$N)
   n <- detail$n
   factor_h <- .deff_alloc_factor(x$params$frame, detail)
-  within <- sum(W * detail$sd^2)
-  between <- sum(W * (detail$mean - sum(W * detail$mean))^2)
-  total <- within + between
-  if (total < .Machine$double.eps) {
-    stop("the allocation has no variability to summarize: 'sd' and 'mean' are constant and zero",
+  parts <- .deff_variance_parts(W, detail$sd, detail$mean)
+  if (parts$within <= 0) {
+    stop(paste("the allocation has no within-stratum variability to summarize:",
+               "every 'sd' is zero, so the ratio is 0 or undefined"),
          call. = FALSE)
   }
   # the scalar deff the allocation was built under is part of its variance
   # model, so it belongs in the ratio exactly once
   scalar <- x$params$deff %||% 1
-  value <- scalar * sum(n) * sum(W^2 * detail$sd^2 * factor_h / n) / total
+  value <- scalar * sum(n) * sum(W^2 * detail$sd^2 * factor_h / n) / parts$total
   list(
     value = value,
     note = sprintf("%d strata, n = %.4g (direct variance ratio)",
@@ -599,6 +598,28 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
   )
 }
 
+#' Split a stratified population variance into its two parts
+#'
+#' The within term is a sum of squares, so it is zero only when every `sd`
+#' is. The between term subtracts the overall mean from each stratum mean,
+#' and equal means cancel to rounding noise rather than to zero, so the
+#' term is compared against the size of that noise instead of against an
+#' absolute threshold. A variance expressed in small units is still a
+#' variance: nothing here may depend on the unit `sd` and `mean` are
+#' measured in.
+#' @keywords internal
+#' @noRd
+.deff_variance_parts <- function(share, sd, mean) {
+  within <- sum(share * sd^2)
+  deviation <- mean - sum(share * mean)
+  between <- sum(share * deviation^2)
+  noise <- (.Machine$double.eps * max(abs(mean)))^2
+  if (between <= noise) {
+    between <- 0
+  }
+  list(within = within, between = between, total = within + between)
+}
+
 #' Stratification component under proportional allocation
 #' @keywords internal
 #' @noRd
@@ -610,19 +631,18 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
     )
   }
   share <- N / sum(N)
-  within <- sum(share * sd^2)
-  between <- sum(share * (mean - sum(share * mean))^2)
-  total <- within + between
-  if (total < .Machine$double.eps) {
+  parts <- .deff_variance_parts(share, sd, mean)
+  if (parts$within <= 0) {
     stop(
-      "'strata' has no variability: 'sd' and 'mean' are constant and zero",
+      paste("'strata' has no within-stratum variability: every 'sd' is zero,",
+            "so the stratification component is 0 or undefined"),
       call. = FALSE
     )
   }
   list(
-    value = within / total,
+    value = parts$within / parts$total,
     note = sprintf("%d strata, between-stratum share %.4g", length(N),
-                   between / total)
+                   parts$between / parts$total)
   )
 }
 

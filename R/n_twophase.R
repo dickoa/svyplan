@@ -628,7 +628,10 @@ n_twophase.default <- function(
     A <- 0
   }
   if (is.null(mu) && "mean" %in% names(frame)) {
-    mu <- sum(W * frame$mean)
+    # the cv paths test this against zero, so a set of stratum means that
+    # cancels has to reach them as an exact zero rather than as whatever
+    # the summation left behind
+    mu <- .aggregate_mean(W, frame$mean)
   }
   list(
     stratum = .twophase_labels(frame),
