@@ -76,6 +76,33 @@ check_scalar <- function(x, name, positive = TRUE) {
   invisible(TRUE)
 }
 
+#' Check a population mean used as the denominator of a CV
+#'
+#' A coefficient of variation is a magnitude, `SE / abs(mu)`, and the
+#' sample-size formulas use the square of the mean, so the sign of a mean
+#' is immaterial to them: a quantity that is negative on average, like a
+#' net change, can be planned for exactly as one that is positive. Zero is
+#' the value with no relative scale, and that is what is rejected.
+#' @keywords internal
+#' @noRd
+check_mu <- function(mu, name = "mu") {
+  if (!is.numeric(mu) || length(mu) != 1L) {
+    stop(sprintf("'%s' must be a numeric scalar", name), call. = FALSE)
+  }
+  if (anyNA(mu)) {
+    stop(sprintf("'%s' must not be NA", name), call. = FALSE)
+  }
+  if (!is.finite(mu)) {
+    stop(sprintf("'%s' must be finite", name), call. = FALSE)
+  }
+  if (mu == 0) {
+    stop(sprintf(
+      "'%s' must not be zero: a coefficient of variation has no scale there",
+      name), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 #' Check that a value is in (0, 1)
 #' @keywords internal
 #' @noRd
@@ -87,6 +114,48 @@ check_proportion <- function(x, name) {
     stop(sprintf("'%s' must be in (0, 1)", name), call. = FALSE)
   }
   invisible(TRUE)
+}
+
+#' Default `var_ratio_ssu` implied by the three-stage variance decomposition
+#'
+#' The three-stage multiplier is
+#' `D = var_ratio_psu icc_psu m q + var_ratio_ssu (1 + icc_ssu (q - 1))`, where
+#' `var_ratio_psu = S^2 / unit_relvar` rescales the components' unit variance to the
+#' analysis variable and `var_ratio_ssu` does the same for the within-PSU part,
+#' `S_w^2 = S^2 (1 - icc_psu)`. So `var_ratio_ssu` is not free once `var_ratio_psu` and
+#' `icc_psu` are known:
+#' \deqn{k_{ssu} = k_{psu}(1 - \delta_{psu}).}
+#' Equivalently `var_ratio_psu icc_psu + var_ratio_ssu = var_ratio_psu`, which is what makes
+#' `D` collapse to `var_ratio_psu` when `m = q = 1` and there is no clustering left
+#' to inflate anything. Defaulting `var_ratio_ssu` to 1 asserts that the within-PSU
+#' variance is the whole variance, contradicting any positive `icc_psu` in
+#' the same expression, and inflates the design effect by
+#' `var_ratio_psu icc_psu (1 + icc_ssu (q - 1))`.
+#' @keywords internal
+#' @noRd
+.var_ratio_ssu_default <- function(var_ratio_psu, icc_psu) {
+  value <- var_ratio_psu * (1 - icc_psu)
+  if (any(!is.finite(value)) || any(value <= 0)) {
+    stop(
+      "'icc_psu' of 1 leaves no within-PSU variance, so a three-stage design is not identified; supply 'var_ratio_ssu' explicitly or plan two stages",
+      call. = FALSE
+    )
+  }
+  value
+}
+
+#' Expand a three-stage `var_ratio` to the (var_ratio_psu, var_ratio_ssu) pair
+#'
+#' A scalar `var_ratio` supplies `var_ratio_psu` only; `var_ratio_ssu` then follows from the
+#' decomposition. A length-2 `var_ratio` is taken as supplied and checked for
+#' consistency.
+#' @keywords internal
+#' @noRd
+.stage_k_pair <- function(var_ratio, icc) {
+  if (length(var_ratio) == 1L) {
+    return(c(var_ratio, .var_ratio_ssu_default(var_ratio, icc[1L])))
+  }
+  rep_len(var_ratio, 2L)
 }
 
 #' Check that exactly one of moe/cv is specified
@@ -220,19 +289,19 @@ check_fixed_cost <- function(fixed_cost, budget = NULL) {
   invisible(TRUE)
 }
 
-#' Check delta vector
+#' Check icc vector
 #' @keywords internal
 #' @noRd
-check_delta <- function(delta, expected_length = NULL) {
-  if (!is.numeric(delta) || length(delta) == 0L) {
-    stop("'delta' must be a non-empty numeric vector", call. = FALSE)
+check_icc <- function(icc, expected_length = NULL) {
+  if (!is.numeric(icc) || length(icc) == 0L) {
+    stop("'icc' must be a non-empty numeric vector", call. = FALSE)
   }
-  if (anyNA(delta) || any(delta < 0) || any(delta > 1)) {
-    stop("'delta' values must be in [0, 1]", call. = FALSE)
+  if (anyNA(icc) || any(icc < 0) || any(icc > 1)) {
+    stop("'icc' values must be in [0, 1]", call. = FALSE)
   }
-  if (!is.null(expected_length) && length(delta) != expected_length) {
+  if (!is.null(expected_length) && length(icc) != expected_length) {
     stop(
-      sprintf("'delta' must have length %d (stages - 1)", expected_length),
+      sprintf("'icc' must have length %d (stages - 1)", expected_length),
       call. = FALSE
     )
   }
@@ -242,20 +311,20 @@ check_delta <- function(delta, expected_length = NULL) {
 #' Tolerance for detecting numerically degenerate cluster homogeneity
 #' @keywords internal
 #' @noRd
-.cluster_delta_tol <- function() {
+.cluster_icc_tol <- function() {
   1e-8
 }
 
 #' Reject cluster homogeneity values that are too close to 0 or 1
 #' @keywords internal
 #' @noRd
-.check_cluster_delta_open <- function(delta, context = "n_cluster()") {
-  tol <- .cluster_delta_tol()
-  bad <- delta <= tol | delta >= 1 - tol
+.check_cluster_icc_open <- function(icc, context = "n_cluster()") {
+  tol <- .cluster_icc_tol()
+  bad <- icc <= tol | icc >= 1 - tol
   if (any(bad)) {
     stop(
       sprintf(
-        "'delta' must stay away from 0 and 1 for %s; values <= %.0e or >= %.8f make cluster optimization degenerate",
+        "'icc' must stay away from 0 and 1 for %s; values <= %.0e or >= %.8f make cluster optimization degenerate",
         context,
         tol,
         1 - tol
@@ -269,18 +338,18 @@ check_delta <- function(delta, expected_length = NULL) {
 #' Asymptotic CV floor for a multistage cluster design at fixed `n_psu`
 #'
 #' As the free stage sizes grow, CV approaches an irreducible between-PSU
-#' variance floor. When both `n_psu` and `psu_size` are fixed, the floor
-#' is tighter (includes the between-SSU component scaled by 1/psu_size).
+#' variance floor. When both `n_psu` and `n_per_psu` are fixed, the floor
+#' is tighter (includes the between-SSU component scaled by 1/n_per_psu).
 #' @keywords internal
 #' @noRd
-.multistage_cv_floor <- function(rel_var, k_psu, delta_psu,
-                                 k_ssu = NULL, delta_ssu = NULL,
-                                 rr, n_psu, psu_size = NULL) {
-  comp <- k_psu * delta_psu
-  if (!is.null(psu_size) && !is.null(k_ssu) && !is.null(delta_ssu)) {
-    comp <- comp + k_ssu * delta_ssu / psu_size
+.multistage_cv_floor <- function(unit_relvar, var_ratio_psu, icc_psu,
+                                 var_ratio_ssu = NULL, icc_ssu = NULL,
+                                 rr, n_psu, n_per_psu = NULL) {
+  comp <- var_ratio_psu * icc_psu
+  if (!is.null(n_per_psu) && !is.null(var_ratio_ssu) && !is.null(icc_ssu)) {
+    comp <- comp + var_ratio_ssu * icc_ssu / n_per_psu
   }
-  sqrt(rel_var * comp / (n_psu * rr))
+  sqrt(unit_relvar * comp / (n_psu * rr))
 }
 
 #' Check target CV against the achievable floor; error with diagnostic
@@ -288,9 +357,9 @@ check_delta <- function(delta, expected_length = NULL) {
 #' @keywords internal
 #' @noRd
 .check_multistage_feasibility <- function(cv_t, cv_floor, n_psu,
-                                          rel_var, k_psu, delta_psu,
-                                          k_ssu = NULL, delta_ssu = NULL,
-                                          psu_size = NULL,
+                                          unit_relvar, var_ratio_psu, icc_psu,
+                                          var_ratio_ssu = NULL, icc_ssu = NULL,
+                                          n_per_psu = NULL,
                                           rr,
                                           labels = NULL,
                                           context = "n_multi()") {
@@ -303,12 +372,12 @@ check_delta <- function(delta, expected_length = NULL) {
     labels <- as.character(seq_along(cv_t))
   }
   idx <- which(bad)[1L]
-  comp_j <- k_psu[idx] * delta_psu[idx]
-  if (!is.null(psu_size) && !is.null(k_ssu) && !is.null(delta_ssu)) {
-    comp_j <- comp_j + k_ssu[idx] * delta_ssu[idx] / psu_size
+  comp_j <- var_ratio_psu[idx] * icc_psu[idx]
+  if (!is.null(n_per_psu) && !is.null(var_ratio_ssu) && !is.null(icc_ssu)) {
+    comp_j <- comp_j + var_ratio_ssu[idx] * icc_ssu[idx] / n_per_psu
   }
   required_n_psu <- ceiling(
-    rel_var[idx] * comp_j / (cv_t[idx]^2 * rr[idx])
+    unit_relvar[idx] * comp_j / (cv_t[idx]^2 * rr[idx])
   )
   more <- if (sum(bad) > 1L) {
     sprintf(" (%d other indicator(s) also infeasible)", sum(bad) - 1L)
@@ -337,7 +406,7 @@ check_delta <- function(delta, expected_length = NULL) {
 #' If `x` is unnamed, return as-is. If named, validate and reorder
 #' to canonical `c(..._psu, ..._ssu)` order.
 #' @param x Numeric vector (length 1 or 2).
-#' @param name Parameter name for error messages (e.g., `"delta"`, `"k"`).
+#' @param name Parameter name for error messages (e.g., `"icc"`, `"var_ratio"`).
 #' @keywords internal
 #' @noRd
 .reorder_named_vec <- function(x, name, canonical, aliases = character(0)) {
@@ -423,15 +492,15 @@ check_delta <- function(delta, expected_length = NULL) {
 
 #' Reorder named stage sample-size vector
 #'
-#' Supports stage names `n_psu`, `psu_size`, `ssu_size`.
+#' Supports stage names `n_psu`, `n_per_psu`, `n_per_ssu`.
 #' @keywords internal
 #' @noRd
 .reorder_n_vec <- function(n) {
   stages <- length(n)
   out_names <- if (stages == 2L) {
-    c("n_psu", "psu_size")
+    c("n_psu", "n_per_psu")
   } else {
-    c("n_psu", "psu_size", "ssu_size")
+    c("n_psu", "n_per_psu", "n_per_ssu")
   }
 
   if (is.null(names(n))) {
@@ -489,8 +558,8 @@ check_delta <- function(delta, expected_length = NULL) {
 
 #' Reorder named stage parameter columns in predict(newdata)
 #'
-#' Supports stage names like `delta_psu` / `delta_ssu` (or `k_psu` / `k_ssu`).
-#' Optionally supports a scalar alias (`delta` or `k`) for 2-stage.
+#' Supports stage names like `icc_psu` / `icc_ssu` (or `var_ratio_psu` / `var_ratio_ssu`).
+#' Optionally supports a scalar alias (`icc` or `var_ratio`) for 2-stage.
 #' @keywords internal
 #' @noRd
 .cluster_stage_col_map <- function(
@@ -577,7 +646,7 @@ check_delta <- function(delta, expected_length = NULL) {
 #' If `x` is unnamed, return as-is. If named, validate and reorder
 #' to canonical stage order.
 #' @param x Numeric vector (length 1 or 2).
-#' @param name Parameter name for error messages (e.g., `"delta"`, `"k"`).
+#' @param name Parameter name for error messages (e.g., `"icc"`, `"var_ratio"`).
 #' @keywords internal
 #' @noRd
 .reorder_stage_vec <- function(x, name) {
@@ -612,11 +681,11 @@ check_overlap <- function(overlap) {
 #' Check correlation coefficient in \[0, 1\]
 #' @keywords internal
 #' @noRd
-check_rho <- function(rho) {
+check_overlap_cor <- function(overlap_cor) {
   if (
-    !is.numeric(rho) || length(rho) != 1L || anyNA(rho) || rho < 0 || rho > 1
+    !is.numeric(overlap_cor) || length(overlap_cor) != 1L || anyNA(overlap_cor) || overlap_cor < 0 || overlap_cor > 1
   ) {
-    stop("'rho' must be a number in [0, 1]", call. = FALSE)
+    stop("'overlap_cor' must be a number in [0, 1]", call. = FALSE)
   }
   invisible(TRUE)
 }
@@ -829,29 +898,163 @@ check_resp_rate <- function(resp_rate) {
 #' units drive both the leading term and the FPC's sampling fraction;
 #' deff multiplies the SRSWOR variance at n_net, so
 #' se^2 = deff * p * q * fpc(n_net) / n_net with fpc(n) = (N - n)/(N - 1).
-#' Wilson and log-odds are computed at the effective size
-#' n_eff = n_net / deff; Wilson has no finite-N form, so N is ignored.
+#' All three methods read that variance through one quantity, the effective
+#' size n_eff = n_net / (deff * fpc) at which an infinite-population SRS
+#' would reproduce it. A census drives fpc to 0, n_eff to infinity, and
+#' every method's margin of error to 0.
 #' @keywords internal
 #' @noRd
-.prec_engine_prop <- function(p, n, alpha, N, deff, resp_rate, method) {
+.prec_engine_prop <- function(p, n, alpha, N, deff, resp_rate, method,
+                              df = NULL) {
   z <- qnorm(1 - alpha / 2)
   q <- 1 - p
   n_net <- n * resp_rate
-  n_eff <- n_net / deff
+  fpc <- if (is.infinite(N)) 1 else (N - n_net) / (N - 1)
+  fpc <- .clamp_fpc(fpc, n_net, N)
+  n_eff <- .effective_from_n(n_net, N, deff)
+  # A census has no sampling variance under any method. Returning here keeps
+  # the single census warning raised by .clamp_fpc() above.
+  if (is.infinite(n_eff)) {
+    return(list(se = 0, moe = 0, cv = 0))
+  }
 
   if (method == "wald") {
-    fpc <- if (is.infinite(N)) 1 else (N - n_net) / (N - 1)
-    fpc <- .clamp_fpc(fpc, n_net, N)
-    se <- sqrt(p * q * fpc / n_eff)
+    se <- sqrt(p * q / n_eff)
     moe <- z * se
   } else if (method == "wilson") {
-    moe <- z * sqrt(p * q / n_eff + z^2 / (4 * n_eff^2)) / (1 + z^2 / n_eff)
+    moe <- .wilson_moe(p, n_eff, z)
+    se <- moe / z
+  } else if (method == "logodds") {
+    moe <- .logodds_moe(p, n_net, alpha, N, deff)
     se <- moe / z
   } else {
-    moe <- .logodds_moe(p, n_net, alpha, N, deff)
+    moe <- .beta_moe(p, .kg_effective(n_eff, n_net, alpha, df), alpha)
     se <- moe / z
   }
   list(se = se, moe = moe, cv = se / p)
+}
+
+#' Convert a net sample size to its infinite-population equivalent
+#'
+#' `n_eff` is the size at which an infinite-population SRS has the same
+#' variance as `n_net` responding units under `deff` and the finite
+#' population correction, so `p q / n_eff == deff p q fpc / n_net`. It is
+#' infinite for a census, where the design carries no sampling variance.
+#' @keywords internal
+#' @noRd
+.effective_from_n <- function(n_net, N, deff) {
+  if (is.infinite(N)) {
+    return(n_net / deff)
+  }
+  if (n_net >= N) {
+    return(Inf)
+  }
+  n_net * (N - 1) / (deff * (N - n_net))
+}
+
+#' Invert `.effective_from_n()`
+#'
+#' Solves `n_eff = n_net (N - 1) / (deff (N - n_net))` for `n_net`. The
+#' result approaches but never reaches `N`, so a finite frame can always
+#' meet a positive margin of error.
+#' @keywords internal
+#' @noRd
+.n_from_effective <- function(n_eff, N, deff) {
+  if (is.infinite(N)) {
+    return(n_eff * deff)
+  }
+  n_eff * deff * N / (N - 1 + n_eff * deff)
+}
+
+#' Half-width of the Wilson score interval
+#'
+#' Centred at `(n p + z^2/2) / (n + z^2)` with half-width
+#' `z sqrt(n p q + z^2/4) / (n + z^2)`, evaluated at the effective sample
+#' size `n_eff` so that the design effect and the finite population
+#' correction enter through the same variance the other methods use. The
+#' half-width tends to 1/2 as `n_eff` tends to 0 and to 0 as it grows.
+#' @keywords internal
+#' @noRd
+.wilson_moe <- function(p, n_eff, z) {
+  z * sqrt(p * (1 - p) / n_eff + z^2 / (4 * n_eff^2)) / (1 + z^2 / n_eff)
+}
+
+#' Degrees-of-freedom adjusted effective sample size (Korn-Graubard 2.2)
+#'
+#' A variance estimated from `df` degrees of freedom is less stable than one
+#' from a simple random sample of `n_net` units, and the Korn-Graubard
+#' interval widens for it by scaling the effective size by
+#' `(t_{n_net-1}(1 - alpha/2) / t_df(1 - alpha/2))^2`. Leaving `df` `NULL`
+#' means "as stable as a simple random sample of the same size" and applies
+#' no adjustment.
+#' @keywords internal
+#' @noRd
+.kg_effective <- function(n_eff, n_net, alpha, df = NULL) {
+  if (is.null(df) || is.infinite(n_eff)) {
+    return(n_eff)
+  }
+  # With fewer than one degree of freedom the t quantile is undefined and no
+  # interval is identified from the design.
+  if (!is.numeric(df) || length(df) != 1L || is.na(df) || df < 1) {
+    stop("'df' must be a number >= 1", call. = FALSE)
+  }
+  reference <- max(n_net - 1, 1)
+  n_eff * (stats::qt(1 - alpha / 2, reference) /
+             stats::qt(1 - alpha / 2, df))^2
+}
+
+#' Korn-Graubard (1998) confidence limits for a proportion
+#'
+#' The Clopper-Pearson limits evaluated at the effective sample size, with
+#' `x = p * n_eff` playing the role of the observed positive count. Written
+#' in the equivalent beta form of Korn and Graubard's equation (1.2).
+#' @keywords internal
+#' @noRd
+.beta_limits <- function(p, n_eff, alpha) {
+  if (is.infinite(n_eff)) {
+    return(c(p, p))
+  }
+  x <- p * n_eff
+  c(
+    stats::qbeta(alpha / 2, x, n_eff - x + 1),
+    stats::qbeta(1 - alpha / 2, x + 1, n_eff - x)
+  )
+}
+
+#' Half-width of the Korn-Graubard interval
+#'
+#' The interval is asymmetric about `p`, so this half-width is a summary of
+#' its length rather than an offset either limit sits at. Use [confint()] for
+#' the limits themselves. It decreases monotonically in `n_eff`, which is
+#' what lets `n_prop()` invert it.
+#' @keywords internal
+#' @noRd
+.beta_moe <- function(p, n_eff, alpha) {
+  limits <- .beta_limits(p, n_eff, alpha)
+  (limits[2L] - limits[1L]) / 2
+}
+
+#' Half-width of the back-transformed log-odds interval
+#'
+#' Builds a symmetric interval on the logit scale from the icc-method
+#' standard error of `logit(p_hat)`, then maps both endpoints back to the
+#' probability scale and halves their distance. The variance of `p_hat`
+#' follows the package convention shared with the Wald method,
+#' `deff * N / (N - 1) * p q (1/n_net - 1/N)`, so the two agree as the
+#' margin of error shrinks.
+#' @keywords internal
+#' @noRd
+.logodds_moe <- function(p, n_net, alpha, N, deff = 1) {
+  if (!is.infinite(N) && n_net >= N) {
+    warning("net sample size >= population size; moe is 0", call. = FALSE)
+    return(0)
+  }
+  bernoulli <- if (is.infinite(N)) 1 else N / (N - 1)
+  fraction <- if (is.infinite(N)) 0 else 1 / N
+  var_p <- deff * bernoulli * p * (1 - p) * (1 / n_net - fraction)
+  spread <- qnorm(1 - alpha / 2) * sqrt(var_p) / (p * (1 - p))
+  centre <- qlogis(p)
+  (plogis(centre + spread) - plogis(centre - spread)) / 2
 }
 
 #' Shared precision engine for means
@@ -867,7 +1070,7 @@ check_resp_rate <- function(resp_rate) {
   fpc <- .clamp_fpc(fpc, n_net, N)
   se <- sqrt(var * fpc / n_eff)
   list(se = se, moe = z * se,
-       cv = if (!is.null(mu)) se / mu else NA_real_)
+       cv = if (!is.null(mu)) se / abs(mu) else NA_real_)
 }
 
 #' Collision-free key for domain grouping and matching
@@ -949,7 +1152,7 @@ check_resp_rate <- function(resp_rate) {
   tol <- sqrt(.Machine$double.eps)
   if (V < -tol) {
     stop(
-      sprintf("%s is negative; reduce overlap or rho, or adjust inputs", what),
+      sprintf("%s is negative; reduce overlap or overlap_cor, or adjust inputs", what),
       call. = FALSE
     )
   }
@@ -979,6 +1182,77 @@ check_resp_rate <- function(resp_rate) {
       call. = FALSE
     )
   }
+}
+
+#' Validate and normalize a take_all column
+#'
+#' Documented as logical or 0/1, so any other number is a mistake rather
+#' than a truthy value. `as.logical()` on its own would take 2 for `TRUE`
+#' and pin a stratum the caller never meant to pin.
+#' @keywords internal
+#' @noRd
+.check_take_all <- function(take_all, n) {
+  if (is.null(take_all)) {
+    return(rep(FALSE, n))
+  }
+  if (is.numeric(take_all)) {
+    if (anyNA(take_all) || any(!take_all %in% c(0, 1))) {
+      stop("'take_all' must be logical (or 0/1)", call. = FALSE)
+    }
+    return(take_all != 0)
+  }
+  if (!is.logical(take_all) || anyNA(take_all)) {
+    stop("'take_all' must be logical (or 0/1)", call. = FALSE)
+  }
+  take_all
+}
+
+#' Overlapping samples must share one population
+#'
+#' Two occasions can only have units in common if they are drawn from the
+#' same frame, so a single `N` is the only coherent input once `overlap` is
+#' positive. Without overlap the two groups are independent and may
+#' legitimately be different populations of different sizes.
+#' @keywords internal
+#' @noRd
+.check_overlap_N <- function(overlap, N_pair) {
+  if (overlap > 0 && !isTRUE(all.equal(N_pair[1], N_pair[2]))) {
+    stop(
+      paste("overlapping samples are drawn from one population, so 'N' must",
+            "be a single size or two equal ones"),
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
+}
+
+#' Design variance of a difference between two overlapping occasion means
+#'
+#' The marginal terms carry their own finite population correction; the
+#' overlap covariance does not. For two SRSWOR samples drawn from one
+#' population of size \eqn{N} and sharing \eqn{k = overlap \cdot n_1} units,
+#' \deqn{Cov(\bar y_1, \bar y_2) = \rho S_1S_2\{k/(n_1n_2) - 1/N\},}
+#' so the population term enters once as \eqn{1/N} rather than through
+#' sample 2's marginal factor. Collecting terms,
+#' \deqn{V = \frac{v_1}{n_1} + \frac{v_2}{n_2}
+#'       - \frac{2\rho\,overlap\sqrt{v_1v_2}}{n_2}
+#'       - \frac{v_1 + v_2 - 2\rho\sqrt{v_1v_2}}{N},}
+#' a per-unit part less a census part. At \eqn{\rho = 1} with equal sizes
+#' and variances the census part is zero, the population terms cancel
+#' exactly, and the whole reduces to \eqn{2S^2(1 - overlap)/n}.
+#' @keywords internal
+#' @noRd
+.diff_var_fpc <- function(n_eff, var_pair, N_pair, deff, overlap, overlap_cor) {
+  if (length(n_eff) == 1L) n_eff <- c(n_eff, n_eff)
+  fpc1 <- .fpc_factor(n_eff[1], N_pair[1])
+  fpc2 <- .fpc_factor(n_eff[2], N_pair[2])
+  V <- var_pair[1] * fpc1 / n_eff[1] + var_pair[2] * fpc2 / n_eff[2]
+  if (overlap > 0) {
+    cross <- overlap_cor * sqrt(var_pair[1] * var_pair[2])
+    V <- V - 2 * overlap * cross / n_eff[2] +
+      if (is.infinite(N_pair[1])) 0 else 2 * cross / N_pair[1]
+  }
+  deff * V
 }
 
 #' Null-coalescing operator
@@ -1118,36 +1392,125 @@ check_resp_rate <- function(resp_rate) {
   fpc
 }
 
-#' Validate common optional columns in multi-indicator targets
+#' Column names that are near misses for a recognized indicator column
+#'
+#' Extra columns are allowed, as in the `n_alloc()` frame, so this rejects
+#' only names that the rest of the package would lead a reader to expect
+#' here: the spelling the `n_alloc()` frame uses for the same quantity,
+#' the argument name a neighbouring function takes, or the singular of
+#' the argument this table is passed as.
 #' @keywords internal
 #' @noRd
-.validate_common_columns <- function(targets) {
-  if ("alpha" %in% names(targets)) {
-    vals <- targets$alpha[!is.na(targets$alpha)]
+.indicator_column_aliases <- function() {
+  c(
+    indicator = "name", indicators = "name", label = "name",
+    mean = "mu", method = "prop_method",
+    icc = "icc_psu", var_ratio = "var_ratio_psu"
+  )
+}
+
+#' Take the dispersion of a continuous indicator in either spelling
+#'
+#' The scalar methods accept `var` or `sd`, so a table written for one
+#' should not have to be rewritten for the other. They are different
+#' quantities rather than synonyms, so supplying both is an error rather
+#' than a preference, and the rest of the code sees only `var`.
+#' @keywords internal
+#' @noRd
+.indicators_var_from_sd <- function(indicators, domains = NULL) {
+  nms <- setdiff(names(indicators), domains)
+  if (!"sd" %in% nms) {
+    return(indicators)
+  }
+  if ("var" %in% nms) {
+    stop("supply the dispersion as 'sd' or as 'var', not both", call. = FALSE)
+  }
+  values <- indicators$sd
+  present <- !is.na(values)
+  if (!is.numeric(values) || any(values[present] <= 0) ||
+      any(!is.finite(values[present]))) {
+    stop("all 'sd' values must be positive and finite", call. = FALSE)
+  }
+  indicators$var <- values^2
+  indicators$sd <- NULL
+  indicators
+}
+
+#' Reject indicator columns that would be silently ignored
+#'
+#' `domains` names are user-chosen, so they are exempt: a domain may
+#' legitimately be called `label` or `method`.
+#' @keywords internal
+#' @noRd
+.check_indicator_columns <- function(indicators, domains = NULL) {
+  nms <- setdiff(names(indicators), domains)
+  aliases <- .indicator_column_aliases()
+  hit <- intersect(nms, names(aliases))
+  hit <- hit[!aliases[hit] %in% nms]
+  if (length(hit) > 0L) {
+    stop(
+      sprintf(
+        "unrecognized indicator column(s): %s. Did you mean %s?",
+        paste(sQuote(hit), collapse = ", "),
+        paste(sQuote(unname(aliases[hit])), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+#' Per-row degrees of freedom, or NULL when the row carries none
+#'
+#' `NULL` is what the single-indicator engines take to mean "no adjustment",
+#' and an all-NA column is the common case, so an absent or NA entry has to
+#' arrive there as `NULL` rather than as `NA`.
+#' @keywords internal
+#' @noRd
+.row_df <- function(indicators, i) {
+  if (!"df" %in% names(indicators)) {
+    return(NULL)
+  }
+  value <- indicators$df[i]
+  if (is.na(value)) NULL else value
+}
+
+#' Validate common optional columns in a multi-indicator table
+#' @keywords internal
+#' @noRd
+.validate_common_columns <- function(indicators) {
+  if ("df" %in% names(indicators)) {
+    vals <- indicators$df[!is.na(indicators$df)]
+    if (length(vals) > 0L && (!is.numeric(vals) || any(vals <= 0))) {
+      stop("'df' values must be positive", call. = FALSE)
+    }
+  }
+  if ("alpha" %in% names(indicators)) {
+    vals <- indicators$alpha[!is.na(indicators$alpha)]
     if (any(vals <= 0 | vals >= 1)) {
       stop("'alpha' values must be in (0, 1)", call. = FALSE)
     }
   }
-  if ("deff" %in% names(targets)) {
-    vals <- targets$deff[!is.na(targets$deff)]
+  if ("deff" %in% names(indicators)) {
+    vals <- indicators$deff[!is.na(indicators$deff)]
     if (any(vals <= 0) || any(!is.finite(vals))) {
       stop("'deff' values must be positive and finite", call. = FALSE)
     }
   }
-  if ("N" %in% names(targets)) {
-    vals <- targets$N[!is.na(targets$N)]
+  if ("N" %in% names(indicators)) {
+    vals <- indicators$N[!is.na(indicators$N)]
     if (any(vals <= 1)) {
       stop("'N' values must be greater than 1 (or Inf)", call. = FALSE)
     }
   }
-  if ("resp_rate" %in% names(targets)) {
-    vals <- targets$resp_rate[!is.na(targets$resp_rate)]
+  if ("resp_rate" %in% names(indicators)) {
+    vals <- indicators$resp_rate[!is.na(indicators$resp_rate)]
     if (any(vals <= 0 | vals > 1)) {
       stop("'resp_rate' values must be in (0, 1]", call. = FALSE)
     }
   }
-  if ("n" %in% names(targets)) {
-    if (anyNA(targets$n) || any(targets$n <= 0) || any(!is.finite(targets$n))) {
+  if ("n" %in% names(indicators)) {
+    if (anyNA(indicators$n) || any(indicators$n <= 0) || any(!is.finite(indicators$n))) {
       stop("'n' values must be positive, finite, and non-NA", call. = FALSE)
     }
   }
@@ -1155,6 +1518,10 @@ check_resp_rate <- function(resp_rate) {
 }
 
 #' Weighted variance
+#'
+#' Normalizes the weights to sum to 1, then takes the weighted mean of the
+#' squared deviations from the weighted centre and rescales by n / (n - 1)
+#' so unit weights reproduce [var()].
 #' @keywords internal
 #' @noRd
 .wtdvar <- function(x, w) {
@@ -1171,10 +1538,38 @@ check_resp_rate <- function(resp_rate) {
     )
   }
   n <- length(w)
-  sw <- sum(w)
-  if (sw <= 0) {
+  total <- sum(w)
+  if (total <= 0) {
     stop("sum of weights must be positive", call. = FALSE)
   }
-  xbarw <- sum(w * x) / sw
-  n / (n - 1) * sum(w * (x - xbarw)^2) / sw
+  share <- w / total
+  centre <- sum(share * x)
+  n / (n - 1) * sum(share * (x - centre)^2)
+}
+
+#' Resolve the dispersion input of the mean-based functions
+#'
+#' `var` and `sd` are two spellings of the same input; exactly one is
+#' required. `sd` is accepted because stratum frames and published survey
+#' reports quote standard deviations rather than variances.
+#'
+#' @param var Population variance, or `NULL`.
+#' @param sd Population standard deviation, or `NULL`.
+#' @return The variance.
+#' @keywords internal
+#' @noRd
+.resolve_var <- function(var, sd) {
+  if (!is.null(sd)) {
+    if (!is.null(var)) {
+      stop("supply exactly one of 'var' or 'sd'", call. = FALSE)
+    }
+    if (!is.numeric(sd) || anyNA(sd) || any(!is.finite(sd)) || any(sd <= 0)) {
+      stop("'sd' must contain positive finite values", call. = FALSE)
+    }
+    return(sd^2)
+  }
+  if (is.null(var)) {
+    stop("supply exactly one of 'var' or 'sd'", call. = FALSE)
+  }
+  var
 }

@@ -19,7 +19,7 @@
 \arguments{
 \item{object}{A svyplan object (\code{svyplan_n}, \code{svyplan_cluster},
 \code{svyplan_power}, or \code{svyplan_prec}). For \code{svyplan_prec}, only
-types \code{"prop"} and \code{"mean"} are supported (not \code{"cluster"} or
+types \code{"proportion"} and \code{"mean"} are supported (not \code{"cluster"} or
 \code{"multi"}).}
 
 \item{newdata}{A data frame of parameter combinations to evaluate.
@@ -34,7 +34,7 @@ A data frame with \code{newdata} columns followed by result
 columns. The result columns depend on the object type:
 \itemize{
 \item \code{svyplan_n}: \code{n}, \code{se}, \code{moe}, \code{cv}
-\item \code{svyplan_cluster}: \code{n_psu}, \code{psu_size}, (opt. \code{ssu_size}), \code{total_n}, \code{cv}, \code{cost}
+\item \code{svyplan_cluster}: \code{n_psu}, \code{n_per_psu}, (opt. \code{n_per_ssu}), \code{total_n}, \code{cv}, \code{cost}
 \item \code{svyplan_power}: \code{n}, \code{power}, \code{effect}
 \item \code{svyplan_prec}: \code{se}, \code{moe}, \code{cv}
 }
@@ -47,21 +47,23 @@ quantities, suitable for sensitivity analysis or plotting.
 \details{
 Valid parameters for \code{newdata} by object type:
 \itemize{
-\item \strong{\code{n_prop}}: \code{p}, \code{moe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}
+\item \strong{\code{n_prop}}: \code{p}, \code{moe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
+\code{df} (\code{method = "beta"} only)
 \item \strong{\code{n_mean}}: \code{var}, \code{mu}, \code{moe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
 \code{resp_rate}
-\item \strong{\code{n_cluster}}: \code{cv}, \code{budget}, \code{rel_var}, \code{resp_rate}, \code{fixed_cost},
-stage deltas (\code{delta} or \code{delta_psu}, plus \code{delta_ssu} for 3-stage),
-stage ratios (\code{k} or \code{k_psu}, plus \code{k_ssu} for 3-stage),
+\item \strong{\code{n_cluster}}: \code{cv}, \code{budget}, \code{unit_relvar}, \code{resp_rate}, \code{fixed_cost},
+stage deltas (\code{icc} or \code{icc_psu}, plus \code{icc_ssu} for 3-stage),
+stage ratios (\code{var_ratio} or \code{var_ratio_psu}, plus \code{var_ratio_ssu} for 3-stage),
 and stage costs (\code{cost_psu}, \code{cost_ssu}, \code{cost_tsu}). For 2-stage
 designs, \code{cost_tsu} aliases \code{cost_ssu}.
 \item \strong{\code{power_prop}}: \code{p1}, \code{p2}, \code{n}, \code{power}, \code{alpha}, \code{N}, \code{deff},
-\code{alternative}, \code{overlap}, \code{rho}, \code{resp_rate} (excluding the solved-for
+\code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate} (excluding the solved-for
 parameter). Not supported for objects with vector \code{n}.
 \item \strong{\code{power_mean}}: \code{effect}, \code{var}, \code{n}, \code{power}, \code{alpha}, \code{N},
-\code{deff}, \code{alternative}, \code{overlap}, \code{rho}, \code{resp_rate} (excluding the
+\code{deff}, \code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate} (excluding the
 solved-for parameter). Not supported for objects with vector \code{n}.
-\item \strong{\code{prec_prop}}: \code{p}, \code{n}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}
+\item \strong{\code{prec_prop}}: \code{p}, \code{n}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
+\code{df} (\code{method = "beta"} only)
 \item \strong{\code{prec_mean}}: \code{var}, \code{n}, \code{mu}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}
 }
 
@@ -74,6 +76,16 @@ mutually exclusive.
 
 Multi-indicator (\code{n_multi}) and multi-indicator cluster results are
 not supported. Use the underlying single-indicator functions instead.
+
+A joint constrained allocation (\code{\link[=n_alloc]{n_alloc()}} with \code{measures} and \code{targets})
+is supported only in fixed-budget objective mode, where \code{newdata} varies
+\code{budget} alone and the result is the cost-versus-objective frontier: \code{n},
+continuous \code{cost}, \code{objective_value} and its equivalent \code{cv}, the
+operational \code{n_int} and \code{cost_int}, whether the budget binds, and
+\code{.feasible}. Budgets that cannot fund the hard targets give an all-\code{NA} row
+with \code{.feasible = FALSE} and a warning, so one infeasible point does not
+discard the rest of the frontier. In minimum-cost mode there is no scalar to
+vary; modify \code{targets} and call \code{\link[=n_alloc]{n_alloc()}} again.
 
 If evaluation fails for a particular row (e.g. invalid parameter
 combinations), that row's result columns are \code{NA} and a warning is
@@ -91,9 +103,9 @@ predict(x, expand.grid(
 pw <- power_prop(p1 = 0.30, p2 = 0.35, n = 500, power = NULL)
 predict(pw, data.frame(n = seq(100, 1000, 100)))
 
-# Cluster design: sensitivity to delta (homogeneity)
-cl <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
-predict(cl, data.frame(delta = c(0.01, 0.03, 0.05, 0.10, 0.15)))
+# Cluster design: sensitivity to icc (homogeneity)
+cl <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
+predict(cl, data.frame(icc = c(0.01, 0.03, 0.05, 0.10, 0.15)))
 
 # Allocation: how does the CV change with sample size?
 frame <- data.frame(
@@ -104,4 +116,8 @@ frame <- data.frame(
 alloc <- n_alloc(frame, n = 600)
 predict(alloc, data.frame(n = seq(200, 1000, 200)))
 
+}
+\seealso{
+\link{plot.svyplan} to draw a one-parameter grid, and
+\link{confint.svyplan} for the interval implied by a single result.
 }

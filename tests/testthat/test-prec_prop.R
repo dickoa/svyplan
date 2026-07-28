@@ -76,12 +76,15 @@ test_that("prec_prop logodds extreme p round-trip", {
   }
 })
 
-test_that("prec_prop logodds census returns moe = 0 with warning", {
-  expect_warning(
-    res <- prec_prop(p = 0.5, n = 50, N = 50, method = "logodds"),
-    "net sample size >= population size"
-  )
-  expect_equal(res$moe, 0)
+test_that("a census returns moe = 0 with one warning under every method", {
+  for (m in c("wald", "wilson", "logodds")) {
+    expect_warning(
+      res <- prec_prop(p = 0.5, n = 50, N = 50, method = m),
+      "net sample size .* >= population size"
+    )
+    expect_equal(res$moe, 0)
+    expect_equal(res$se, 0)
+  }
 })
 
 test_that("supplied gross n above a finite N is rejected", {

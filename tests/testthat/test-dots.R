@@ -6,7 +6,7 @@ test_that("planning and precision functions reject unused arguments", {
   expect_error(n_prop(0.3, moe = 0.05, defff = 2), "unused argument.*defff")
   expect_error(n_mean(100, moe = 2, defff = 2), "unused argument.*defff")
   expect_error(
-    n_cluster(c(500, 50), delta = 0.05, budget = 1e5, resp_rte = 0.8),
+    n_cluster(c(500, 50), icc = 0.05, budget = 1e5, resp_rte = 0.8),
     "unused argument.*resp_rte"
   )
   expect_error(n_multi(targets_n, prop_methd = "wald"),
@@ -19,7 +19,7 @@ test_that("planning and precision functions reject unused arguments", {
   expect_error(prec_mean(100, n = 100, alpa = 0.1),
                "unused argument.*alpa")
   expect_error(
-    prec_cluster(c(20, 10), delta = 0.05, resp_rte = 0.8),
+    prec_cluster(c(20, 10), icc = 0.05, resp_rte = 0.8),
     "unused argument.*resp_rte"
   )
   expect_error(prec_multi(targets_p, prop_methd = "wald"),
@@ -38,9 +38,10 @@ test_that("power and design-effect functions reject unused arguments", {
               effect = 0.1, powr = 0.9),
     "unused argument.*powr"
   )
-  expect_error(design_effect(1:5, methd = "kish"),
+  expect_error(design_effect(icc = 0.05, n_per_psu = 5, methd = "kish"),
                "unused argument.*methd")
-  expect_error(effective_n(1:5, methd = "kish"),
+  expect_error(effective_n(n = 100, icc = 0.05, n_per_psu = 5,
+                           methd = "kish"),
                "unused argument.*methd")
 })
 
@@ -76,7 +77,7 @@ test_that("round-trip overrides remain supported and validated", {
   expect_s3_class(prec_prop(n_result, alpha = 0.1), "svyplan_prec")
   expect_error(prec_prop(n_result, alpa = 0.1), "unused argument.*alpa")
 
-  targets <- data.frame(p = 0.3, cv = 0.1, delta_psu = 0.05)
+  targets <- data.frame(p = 0.3, cv = 0.1, icc_psu = 0.05)
   cluster_result <- n_multi_cluster(targets, stage_cost = c(500, 50))
   expect_error(prec_multi_cluster(cluster_result, alpa = 0.1),
                "unused argument.*alpa")
@@ -102,12 +103,12 @@ test_that("data-frame methods accept R-devel validRN forwarding", {
     prec = prec_prop(0.3, n = 400),
     cluster = n_cluster(
       budget = 100000,
-      delta = 0.05,
-      rel_var = 1,
+      icc = 0.05,
+      unit_relvar = 1,
       stage_cost = c(500, 50)
     ),
     power = power_prop(p1 = 0.30, p2 = 0.35),
-    design_effect = design_effect(c(1, 1.5, 2)),
+    design_effect = design_effect(weights = c(1, 1.5, 2)),
     strata = strata_bound(seq_len(40), n_strata = 2, n = 10),
     varcomp = varcomp(
       seq_len(12),

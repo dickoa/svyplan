@@ -5,11 +5,12 @@
 \alias{power_mean.default}
 \title{Power Analysis for Means}
 \usage{
-power_mean(var, ...)
+power_mean(var = NULL, ...)
 
 \method{power_mean}{default}(
-  var,
+  var = NULL,
   ...,
+  sd = NULL,
   effect = NULL,
   n = NULL,
   power = 0.8,
@@ -20,7 +21,7 @@ power_mean(var, ...)
   alternative = c("two.sided", "one.sided"),
   ratio = 1,
   overlap = 0,
-  rho = 0,
+  overlap_cor = 0,
   plan = NULL
 )
 }
@@ -29,6 +30,10 @@ power_mean(var, ...)
 or length-2 vector \code{c(var1, var2)} for unequal group variances.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
+
+\item{sd}{Population standard deviation, an alternative spelling of
+\code{var}. Supply exactly one of \code{var} or \code{sd}. Stratum frames and
+published survey reports usually quote standard deviations.}
 
 \item{effect}{Absolute difference in means (effect-size magnitude, positive).
 Leave \code{NULL} to solve for MDE.}
@@ -61,9 +66,15 @@ the sample of group 2.}
 
 \item{overlap}{Panel overlap fraction in [0, 1], for repeated surveys.
 Defined as the fraction of group 1 that also appears in group 2
-(\code{overlap = n12 / n1}).}
+(\code{overlap = n12 / n1}). A positive value describes a coordinated
+design with that many units deliberately held in common, which with a
+finite \code{N} requires both occasions to sample one population. The
+default 0 is the ordinary two-group comparison, where the groups are
+independent and may be different populations of different sizes; it is
+not the same model as a deliberately disjoint pair, which is why the
+two need not agree in the limit when \code{N} is small.}
 
-\item{rho}{Correlation between occasions in [0, 1].}
+\item{overlap_cor}{Correlation between occasions in [0, 1].}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -100,7 +111,26 @@ When \code{var} is a length-2 vector, the variance of the difference is:
 
 where \code{r} is the allocation ratio n1/n2 (default 1). When \code{var} is
 scalar and \code{ratio = 1}, this simplifies to the familiar
-\code{V = 2 * var * (1 - overlap * rho)}.
+\code{V = 2 * var * (1 - overlap * overlap_cor)}.
+
+With a finite \code{N} the correction applies to the marginal terms but not
+to the overlap covariance, which carries a single \eqn{1/N}: for two
+SRSWOR samples sharing \eqn{k = overlap \cdot n_1} units,
+\eqn{Cov(\bar y_1, \bar y_2) = \rho S_1S_2\{k/(n_1n_2) - 1/N\}}. At
+\code{overlap_cor = 1} with equal sizes and variances the population terms
+cancel exactly and the difference variance is
+\eqn{2S^2(1 - overlap)/n}, free of \code{N}.
+\subsection{Normal approximation}{
+
+Critical values and power are computed from the standard normal, not
+from a t distribution with an estimated denominator: no degrees of
+freedom enter, and the variance is treated as known. This is the
+convention for survey-scale samples, where the two agree closely, and
+it is what makes \code{deff} and a finite \code{N} insertable directly into the
+variance. At small \code{n} the sizes are correspondingly smaller than
+\code{\link[stats:power.t.test]{stats::power.t.test()}}, which uses a noncentral t; use that function
+instead when the sample is small enough for the difference to matter.
+}
 }
 \examples{
 # Sample size to detect a difference of 5 with variance 100

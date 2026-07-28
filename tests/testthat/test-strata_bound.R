@@ -40,13 +40,17 @@ test_that("validates whole-number controls without rejecting whole doubles", {
 
   expect_no_error(
     strata_bound(x_unif, n_strata = 3.0, n = 100.0, method = "cumrootf",
-                 n_class = 50.0, max_iter = 200.0, n_restart = 30.0)
+                 n_class = 50.0)
+  )
+  expect_no_error(
+    strata_bound(x_unif, n_strata = 3.0, n = 100.0, method = "kozak",
+                 max_iter = 200.0, n_restart = 30.0)
   )
 })
 
 test_that("validates finite thresholds and costs", {
   expect_error(strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf",
-                            certain = Inf),
+                            take_all_above = Inf),
                "finite numeric scalar")
   expect_error(strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf",
                             unit_cost = Inf),
@@ -94,11 +98,11 @@ test_that("validates alloc", {
                "'arg' should be one of")
   expect_error(strata_bound(x_unif, n_strata = 3, n = 100, alloc = list(q1 = 1)),
                "must be one of")
-  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, alloc = "power", power_q =2),
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, alloc = "power", alloc_q =2),
                "numeric scalar in \\[0, 1\\]")
-  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, alloc = "power", power_q =-0.1),
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, alloc = "power", alloc_q =-0.1),
                "numeric scalar in \\[0, 1\\]")
-  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, alloc = "power", power_q ="a"),
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, alloc = "power", alloc_q ="a"),
                "numeric scalar in \\[0, 1\\]")
 })
 
@@ -107,11 +111,11 @@ test_that("validates unit_cost", {
   expect_error(strata_bound(x_unif, n_strata = 3, n = 100, unit_cost = c(1, NA)), "positive")
 })
 
-test_that("validates certain", {
-  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, certain = "a"), "numeric scalar")
-  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, certain = max(x_unif) + 1),
+test_that("validates take_all", {
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, take_all_above = "a"), "numeric scalar")
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, take_all_above = max(x_unif) + 1),
                "no units")
-  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, certain = min(x_unif) - 1),
+  expect_error(strata_bound(x_unif, n_strata = 3, n = 100, take_all_above = min(x_unif) - 1),
                "all units")
 })
 
@@ -119,15 +123,15 @@ test_that("take_all marks only the last stratum as take-all", {
   set.seed(1)
   x <- c(runif(95, 1, 100), runif(5, 200, 300))
   thr <- as.numeric(quantile(x, 0.95))
-  res <- strata_bound(x, n_strata = 3, n = 30, certain = thr, method = "cumrootf")
+  res <- strata_bound(x, n_strata = 3, n = 30, take_all_above = thr, method = "cumrootf")
   expect_equal(which(res$strata$take_all), 3L)
   expect_equal(res$strata$n[3], res$strata$N[3])
 })
 
-test_that("certain includes equality and CV sizing accounts for the census stratum", {
+test_that("take_all includes equality and CV sizing accounts for the census stratum", {
   x <- c(1:89, rep(90, 5), 91:100)
   res <- strata_bound(
-    x, n_strata = 3, cv = 0.05, method = "cumrootf", certain = 90
+    x, n_strata = 3, cv = 0.05, method = "cumrootf", take_all_above = 90
   )
 
   expect_equal(res$strata$N[3], sum(x >= 90))
@@ -135,10 +139,10 @@ test_that("certain includes equality and CV sizing accounts for the census strat
   expect_lte(res$cv, 0.05 + 1e-10)
 })
 
-test_that("certain CV regression meets its requested precision", {
+test_that("take_all CV regression meets its requested precision", {
   res <- strata_bound(
     1:100, n_strata = 3, cv = 0.05,
-    method = "cumrootf", certain = 90
+    method = "cumrootf", take_all_above = 90
   )
   expect_equal(res$strata$N[3], 11L)
   expect_lte(res$cv, 0.05 + 1e-10)
@@ -240,10 +244,10 @@ test_that("neyman allocation: n_h proportional to N * sd", {
 
 test_that("power allocation works", {
   res <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
-                       alloc = "power", power_q =0.5)
+                       alloc = "power", alloc_q =0.5)
   expect_s3_class(res, "svyplan_strata")
   expect_equal(res$alloc, "power")
-  expect_equal(res$params$power_q, 0.5)
+  expect_equal(res$params$alloc_q, 0.5)
 })
 
 test_that("n_h >= 2 per stratum", {
@@ -254,7 +258,7 @@ test_that("n_h >= 2 per stratum", {
 test_that("take-all stratum works", {
   skip_on_cran()
   thresh <- quantile(x_lnorm, 0.90)
-  res <- strata_bound(x_lnorm, n_strata = 3, n = 200, certain = thresh)
+  res <- strata_bound(x_lnorm, n_strata = 3, n = 200, take_all_above = thresh)
   expect_s3_class(res, "svyplan_strata")
   expect_true(any(res$strata$take_all))
   take_all_row <- res$strata[res$strata$take_all, ]
@@ -270,7 +274,7 @@ test_that("output class is svyplan_strata", {
 test_that("strata df has correct columns", {
   res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf")
   expected_cols <- c("stratum", "lower", "upper", "N", "share", "sd",
-                     "n", "take_all")
+                     "mean", "n", "take_all")
   expect_equal(names(res$strata), expected_cols)
 })
 
@@ -406,7 +410,7 @@ test_that("power alloc q = 1 matches neyman", {
   res_ney <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
                            alloc = "neyman")
   res_pow <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
-                           alloc = "power", power_q =1)
+                           alloc = "power", alloc_q =1)
   expect_equal(res_pow$strata$n, res_ney$strata$n)
 })
 
@@ -416,7 +420,7 @@ test_that("power alloc q = 0 differs from neyman on skewed data", {
   res_ney <- strata_bound(x_skew, n_strata = 4, n = 400, method = "cumrootf",
                            alloc = "neyman")
   res_pow <- strata_bound(x_skew, n_strata = 4, n = 400, method = "cumrootf",
-                           alloc = "power", power_q =0)
+                           alloc = "power", alloc_q =0)
   expect_false(identical(res_pow$strata$n, res_ney$strata$n))
   expect_equal(res_pow$alloc, "power")
 })
@@ -425,7 +429,7 @@ test_that("power alloc uses default q = 0.5", {
   res <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
                        alloc = "power")
   expect_equal(res$alloc, "power")
-  expect_equal(res$params$power_q, 0.5)
+  expect_equal(res$params$alloc_q, 0.5)
 })
 
 test_that("print shows allocation label", {
@@ -435,9 +439,9 @@ test_that("print shows allocation label", {
   expect_true(any(grepl("Allocation: neyman", out_ney)))
 
   res_pow <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
-                           alloc = "power", power_q =0.3)
+                           alloc = "power", alloc_q =0.3)
   out_pow <- capture.output(print(res_pow))
-  expect_true(any(grepl("power \\(power_q = 0\\.30\\)", out_pow)))
+  expect_true(any(grepl("power \\(alloc_q = 0\\.30\\)", out_pow)))
 })
 
 test_that("alloc field stores method name for all methods", {
@@ -445,7 +449,7 @@ test_that("alloc field stores method name for all methods", {
     res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf",
                          alloc = a)
     expect_equal(res$alloc, a)
-    expect_null(res$params$power_q)
+    expect_null(res$params$alloc_q)
   }
 })
 
@@ -514,4 +518,138 @@ test_that("cumrootf errors when distinct values are fewer than strata", {
                  method = "cumrootf"),
     "unique values"
   )
+})
+
+test_that("the strata table is a valid n_alloc frame", {
+  set.seed(3)
+  x <- rlnorm(4000, 6, 1)
+  sb <- strata_bound(x, n_strata = 4, cv = 0.05, method = "lh")
+
+  expect_true(all(c("N", "sd", "mean") %in% names(sb$strata)))
+  # The means are the stratum means of x, recomputed from the boundaries.
+  bins <- cut(x, c(-Inf, sb$boundaries, Inf), labels = FALSE)
+  expect_equal(sb$strata$mean, as.numeric(tapply(x, bins, mean)))
+
+  # The handoff runs without the caller reconstructing anything.
+  expect_s3_class(n_alloc(sb$strata, cv = 0.05), "svyplan_n")
+})
+
+test_that("strata_bound and n_alloc agree on the same design", {
+  set.seed(3)
+  x <- rlnorm(4000, 6, 1)
+  for (spec in list(c(1, 1), c(1.8, 0.85), c(2.5, 0.7))) {
+    deff <- spec[1L]
+    resp_rate <- spec[2L]
+    sb <- strata_bound(x, n_strata = 4, cv = 0.05, method = "lh",
+                       deff = deff, resp_rate = resp_rate)
+    continuous <- .strata_n_for_cv(
+      x, sb$boundaries, 0.05, "neyman", 0.5, rep(1, 4),
+      deff = deff, resp_rate = resp_rate
+    )
+    expect_equal(
+      continuous,
+      n_alloc(sb$strata, cv = 0.05, deff = deff, resp_rate = resp_rate)$n,
+      tolerance = 1e-8
+    )
+  }
+})
+
+test_that("deff and resp_rate default to the identity", {
+  set.seed(3)
+  x <- rlnorm(4000, 6, 1)
+  base <- strata_bound(x, n_strata = 4, cv = 0.05, method = "lh")
+  expect_equal(base$n, 46)
+  expect_equal(base$cv, 0.04863648, tolerance = 1e-6)
+  expect_equal(
+    base$n,
+    strata_bound(x, n_strata = 4, cv = 0.05, method = "lh",
+                 deff = 1, resp_rate = 1)$n
+  )
+
+  # A design effect raises the required sample; a response rate raises it
+  # further, because 'n' is what gets fielded.
+  expect_gt(strata_bound(x, n_strata = 4, cv = 0.05, deff = 1.8)$n, base$n)
+  expect_gt(
+    strata_bound(x, n_strata = 4, cv = 0.05, deff = 1.8, resp_rate = 0.85)$n,
+    strata_bound(x, n_strata = 4, cv = 0.05, deff = 1.8)$n
+  )
+  # At a fixed n, they worsen the achieved cv instead.
+  expect_gt(
+    strata_bound(x, n_strata = 4, n = 400, deff = 2)$cv,
+    strata_bound(x, n_strata = 4, n = 400)$cv
+  )
+})
+
+test_that("a scalar deff leaves the boundaries where they were", {
+  set.seed(3)
+  x <- rlnorm(4000, 6, 1)
+  plain <- strata_bound(x, n_strata = 4, cv = 0.05, method = "lh")$boundaries
+  scaled <- strata_bound(x, n_strata = 4, cv = 0.05, method = "lh",
+                         deff = 1.8, resp_rate = 0.85)$boundaries
+  expect_equal(scaled, plain, tolerance = 0.01)
+})
+
+test_that("strata_bound accepts a plan", {
+  set.seed(3)
+  x <- rlnorm(4000, 6, 1)
+  plan <- svyplan(deff = 1.8, resp_rate = 0.85, alloc = "power",
+                  alloc_q = 0.3)
+
+  from_plan <- strata_bound(x, n_strata = 4, cv = 0.05, plan = plan)
+  explicit <- strata_bound(x, n_strata = 4, cv = 0.05, deff = 1.8,
+                           resp_rate = 0.85, alloc = "power", alloc_q = 0.3)
+  expect_equal(from_plan$boundaries, explicit$boundaries)
+  expect_equal(from_plan$n, explicit$n)
+
+  # An explicit argument still wins.
+  expect_equal(
+    strata_bound(x, n_strata = 4, cv = 0.05, plan = plan, deff = 1)$n,
+    strata_bound(x, n_strata = 4, cv = 0.05, resp_rate = 0.85,
+                 alloc = "power", alloc_q = 0.3)$n
+  )
+
+  # A scalar unit_cost is a design constant and passes through; a vector one
+  # is frame-ordered and is rejected rather than silently misapplied.
+  expect_s3_class(
+    strata_bound(x, n_strata = 4, cv = 0.05, plan = svyplan(unit_cost = 2)),
+    "svyplan_strata"
+  )
+  expect_error(
+    strata_bound(x, n_strata = 4, cv = 0.05,
+                 plan = svyplan(unit_cost = c(1, 2, 3, 4))),
+    "orders costs from the lowest to the highest stratum"
+  )
+  expect_error(strata_bound(x, n_strata = 4, cv = 0.05, plan = "nope"),
+               "must be a svyplan object")
+})
+
+test_that("controls the chosen method cannot use are rejected", {
+  x <- rlnorm(500, meanlog = 5, sdlog = 1)
+  expect_error(
+    strata_bound(x, n_strata = 3, n = 100, method = "geo", n_restart = 99),
+    "'n_restart' applies only to method"
+  )
+  expect_error(
+    strata_bound(x, n_strata = 3, n = 100, method = "lh", n_class = 20),
+    "'n_class' applies only to method"
+  )
+  expect_error(
+    strata_bound(x, n_strata = 3, n = 100, method = "cumrootf", max_iter = 50),
+    "'max_iter' applies only to method"
+  )
+  expect_s3_class(
+    strata_bound(x, n_strata = 3, n = 100, method = "kozak",
+                 n_restart = 5, max_iter = 50),
+    "svyplan_strata"
+  )
+  expect_s3_class(
+    strata_bound(x, n_strata = 3, n = 100, method = "cumrootf", n_class = 20),
+    "svyplan_strata"
+  )
+})
+
+test_that("max_iter defaults to 200 for the iterative methods", {
+  x <- rlnorm(300, meanlog = 5, sdlog = 1)
+  res <- strata_bound(x, n_strata = 3, n = 100, method = "lh")
+  expect_equal(res$params$max_iter, 200)
 })

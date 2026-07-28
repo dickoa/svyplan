@@ -8,6 +8,11 @@ articles:
       - svyplan
 
 reference:
+- title: Overview
+  desc: Package overview and the argument-to-symbol notation map.
+  contents:
+  - svyplan-package
+
 - title: Survey plan profiles
   desc: Reusable design defaults for survey planning.
   contents:
@@ -22,6 +27,7 @@ reference:
   - n_multi
   - n_multi_cluster
   - n_alloc
+  - n_twophase
 
 - title: Precision analysis
   desc: Evaluate sampling precision for a given design.
@@ -32,6 +38,7 @@ reference:
   - prec_multi
   - prec_multi_cluster
   - prec_alloc
+  - prec_twophase
 
 - title: Power analysis
   desc: Statistical power for two-sample tests.
@@ -52,16 +59,21 @@ reference:
   - predict.svyplan_strata
 
 - title: Design effects
-  desc: Estimate design effects and effective sample sizes.
+  desc: Plan design effects and effective sample sizes.
   contents:
   - design_effect
   - effective_n
+
+- title: Confidence intervals
+  desc: Confidence intervals for a planned design.
+  contents:
+  - confint.svyplan
 
 - title: Print methods
   desc: Format and display svyplan objects.
   contents:
   - print.svyplan
-  - print.svyplan_design_effect
+  - print.svyplan_deff
 
 - title: Predict methods
   desc: Grid exploration for svyplan objects.

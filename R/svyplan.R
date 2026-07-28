@@ -20,10 +20,10 @@
 #' @param ... Named defaults to reuse across calls. Allowed names:
 #'   `alpha`, `N`, `deff`, `resp_rate`,
 #'   `prop_method`,
-#'   `stage_cost`, `delta`, `rel_var`, `k`, `fixed_cost`,
+#'   `stage_cost`, `icc`, `unit_relvar`, `var_ratio`, `fixed_cost`,
 #'   `unit_cost`,
-#'   `alternative`, `ratio`, `overlap`, `rho`,
-#'   `alloc`, `min_n`, `power_q`.
+#'   `alternative`, `ratio`, `overlap`, `overlap_cor`,
+#'   `alloc`, `min_n_stratum`, `min_n_domain`, `alloc_q`, `phase1_cost`.
 #'
 #' @return A `svyplan` object.
 #'
@@ -40,17 +40,21 @@
 #'
 #' Defaults are applied only when their names match the called function's
 #' formals. Irrelevant defaults are silently ignored. `prop_method` must
-#' be `"wald"`, `"wilson"`, or `"logodds"` (validated at construction)
+#' be `"wald"`, `"wilson"`, `"logodds"`, or `"beta"` (validated at
+#' construction)
 #' and also fills the `method` argument of [n_prop()], [prec_prop()], and
 #' [power_prop()] when its value is valid for that function (so
 #' `svyplan(prop_method = "wilson")` applies to `n_prop()` but is ignored
 #' by `power_prop()`, which has no Wilson method).
 #'
 #' All stored defaults are validated when the profile is created or updated.
-#' When both `stage_cost` and `delta` are supplied, their lengths must describe
+#' When both `stage_cost` and `icc` are supplied, their lengths must describe
 #' the same number of stages. Length checks that depend on call-specific data,
 #' such as matching `unit_cost` to an allocation frame, occur when the plan is
-#' used.
+#' used. `unit_cost` is ordered by allocation-frame row, whereas
+#' [strata_bound()] orders costs from the lowest to the highest stratum, so
+#' only a scalar `unit_cost` reaches that function from a profile; a vector
+#' one is rejected there rather than applied to the wrong strata.
 #'
 #' Estimand-specific values (`p`, `var`, `mu`, `moe`, `cv`, `n`, `power`,
 #' `effect`) should be passed directly to each function, not stored in
@@ -80,7 +84,7 @@
 #' plan |> power_prop(0.30, p2 = 0.35)
 #'
 #' # Cluster context
-#' cl_plan <- svyplan(stage_cost = c(500, 50), delta = 0.05, resp_rate = 0.85)
+#' cl_plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.85)
 #' cl_plan |> n_cluster(cv = 0.05)
 #'
 #' # Override a plan default
@@ -130,10 +134,11 @@ update.svyplan <- function(object, ...) {
   c(
     "alpha", "N", "deff", "resp_rate",
     "prop_method",
-    "stage_cost", "delta", "rel_var", "k", "fixed_cost",
+    "stage_cost", "icc", "unit_relvar", "var_ratio", "fixed_cost",
     "unit_cost",
-    "alternative", "ratio", "overlap", "rho",
-    "alloc", "min_n", "power_q"
+    "alternative", "ratio", "overlap", "overlap_cor",
+    "alloc", "min_n_stratum", "min_n_domain", "alloc_q",
+    "phase1_cost"
   )
 }
 
@@ -166,9 +171,11 @@ update.svyplan <- function(object, ...) {
   if ("prop_method" %in% nms) {
     pm <- defaults$prop_method
     if (!is.character(pm) || length(pm) != 1L ||
-        !pm %in% c("wald", "wilson", "logodds")) {
-      stop("'prop_method' must be one of \"wald\", \"wilson\", \"logodds\"",
-           call. = FALSE)
+        !pm %in% c("wald", "wilson", "logodds", "beta")) {
+      stop(
+        "'prop_method' must be one of \"wald\", \"wilson\", \"logodds\", \"beta\"",
+        call. = FALSE
+      )
     }
   }
   if ("alpha" %in% nms) check_alpha(defaults$alpha)
@@ -182,38 +189,38 @@ update.svyplan <- function(object, ...) {
     stage_cost <- .reorder_stage_cost(defaults$stage_cost)
   }
 
-  delta <- NULL
-  if ("delta" %in% nms) {
-    delta <- defaults$delta
-    if (inherits(delta, "svyplan_varcomp")) {
-      if (!is.null(delta$strata)) {
+  icc <- NULL
+  if ("icc" %in% nms) {
+    icc <- defaults$icc
+    if (inherits(icc, "svyplan_varcomp")) {
+      if (!is.null(icc$strata)) {
         stop(
           "stratified varcomp cannot be stored as a cluster plan default",
           call. = FALSE
         )
       }
-      delta <- delta$delta
+      icc <- icc$icc
     }
-    delta <- .reorder_stage_vec(delta, "delta")
-    if (!length(delta) %in% 1:2) {
-      stop("'delta' must have length 1 or 2", call. = FALSE)
+    icc <- .reorder_stage_vec(icc, "icc")
+    if (!length(icc) %in% 1:2) {
+      stop("'icc' must have length 1 or 2", call. = FALSE)
     }
-    check_delta(delta)
-    .check_cluster_delta_open(delta, context = "svyplan()")
+    check_icc(icc)
+    .check_cluster_icc_open(icc, context = "svyplan()")
     if (!is.null(stage_cost)) {
-      check_delta(delta, expected_length = length(stage_cost) - 1L)
+      check_icc(icc, expected_length = length(stage_cost) - 1L)
     }
   }
 
-  if ("rel_var" %in% nms) check_scalar(defaults$rel_var, "rel_var")
-  if ("k" %in% nms) {
-    k <- .reorder_stage_vec(defaults$k, "k")
-    if (!is.numeric(k) || !length(k) %in% 1:2 || anyNA(k) ||
-        any(!is.finite(k)) || any(k <= 0)) {
-      stop("'k' must contain one or two positive finite values", call. = FALSE)
+  if ("unit_relvar" %in% nms) check_scalar(defaults$unit_relvar, "unit_relvar")
+  if ("var_ratio" %in% nms) {
+    var_ratio <- .reorder_stage_vec(defaults$var_ratio, "var_ratio")
+    if (!is.numeric(var_ratio) || !length(var_ratio) %in% 1:2 || anyNA(var_ratio) ||
+        any(!is.finite(var_ratio)) || any(var_ratio <= 0)) {
+      stop("'var_ratio' must contain one or two positive finite values", call. = FALSE)
     }
-    if (!is.null(stage_cost) && length(stage_cost) == 2L && length(k) != 1L) {
-      stop("'k' must have length 1 for a 2-stage plan", call. = FALSE)
+    if (!is.null(stage_cost) && length(stage_cost) == 2L && length(var_ratio) != 1L) {
+      stop("'var_ratio' must have length 1 for a 2-stage plan", call. = FALSE)
     }
   }
   if ("fixed_cost" %in% nms) check_fixed_cost(defaults$fixed_cost)
@@ -229,7 +236,7 @@ update.svyplan <- function(object, ...) {
   }
   if ("ratio" %in% nms) check_scalar(defaults$ratio, "ratio")
   if ("overlap" %in% nms) check_overlap(defaults$overlap)
-  if ("rho" %in% nms) check_rho(defaults$rho)
+  if ("overlap_cor" %in% nms) check_overlap_cor(defaults$overlap_cor)
 
   if ("alloc" %in% nms) {
     alloc <- defaults$alloc
@@ -241,13 +248,17 @@ update.svyplan <- function(object, ...) {
       )
     }
   }
-  if ("min_n" %in% nms) check_scalar(defaults$min_n, "min_n")
-  if ("power_q" %in% nms) {
-    power_q <- defaults$power_q
-    if (!is.numeric(power_q) || length(power_q) != 1L || is.na(power_q) ||
-        !is.finite(power_q) || power_q < 0 || power_q > 1) {
-      stop("'power_q' must be a numeric scalar in [0, 1]", call. = FALSE)
+  if ("min_n_stratum" %in% nms) check_scalar(defaults$min_n_stratum, "min_n_stratum")
+  if ("min_n_domain" %in% nms) {
+    check_scalar(defaults$min_n_domain, "min_n_domain")
+  }
+  if ("alloc_q" %in% nms) {
+    alloc_q <- defaults$alloc_q
+    if (!is.numeric(alloc_q) || length(alloc_q) != 1L || is.na(alloc_q) ||
+        !is.finite(alloc_q) || alloc_q < 0 || alloc_q > 1) {
+      stop("'alloc_q' must be a numeric scalar in [0, 1]", call. = FALSE)
     }
   }
+  if ("phase1_cost" %in% nms) check_scalar(defaults$phase1_cost, "phase1_cost")
   invisible(NULL)
 }

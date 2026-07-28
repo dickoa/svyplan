@@ -33,7 +33,7 @@
 #' @param overlap Panel overlap fraction in \[0, 1\], for repeated surveys.
 #'   Defined as the fraction of group 1 that also appears in group 2
 #'   (`overlap = n12 / n1`). Only supported with `method = "wald"`.
-#' @param rho Correlation between occasions in \[0, 1\].
+#' @param overlap_cor Correlation between occasions in \[0, 1\].
 #' @param method Variance method: `"wald"` (default), `"arcsine"`, or
 #'   `"logodds"`. Arcsine and log-odds transforms are variance-stabilizing
 #'   and perform better for rare or extreme proportions (Valliant,
@@ -69,6 +69,38 @@
 #' For proportions in the 0.2--0.8 range, all three methods give similar
 #' results. For rare or extreme proportions, `"arcsine"` or `"logodds"`
 #' are more reliable.
+#'
+#' ## Null variance convention
+#'
+#' `method = "wald"` uses the unpooled variance
+#' \eqn{p_1 q_1 / n_1 + p_2 q_2 / n_2} for both the critical value and the
+#' power shift. [stats::power.prop.test()] instead evaluates the critical
+#' value under the null, using the pooled variance
+#' \eqn{\bar{p} \bar{q} (1/n_1 + 1/n_2)} with
+#' \eqn{\bar{p} = (p_1 + p_2) / 2}. Both conventions are standard, and they
+#' differ by a few tenths of a percent in the resulting size:
+#'
+#' ```
+#' power_prop(p1 = 0.3, p2 = 0.4, power = 0.8)$n   # 353.2
+#' power.prop.test(p1 = 0.3, p2 = 0.4, power = 0.8)$n   # 355.9
+#' ```
+#'
+#' The unpooled form is used here because it is the variance the package
+#' reports everywhere else: it is the same expression that `deff`, the
+#' finite population correction, and `resp_rate` act on in [n_prop()] and
+#' [prec_prop()], so a power calculation and a precision calculation for the
+#' same design stay on one scale. The pooled form has no finite-population
+#' analogue that keeps that correspondence.
+#'
+#' ## Normal approximation
+#'
+#' All three methods compute critical values and power from the standard
+#' normal, with no degrees-of-freedom correction and the variance treated
+#' as known. This is the convention for survey-scale samples and is what
+#' lets `deff`, a finite `N`, and `resp_rate` enter the variance directly.
+#' The choice of `method` addresses accuracy in \eqn{p}, not in \eqn{n}:
+#' `"arcsine"` and `"logodds"` improve the normal approximation for an
+#' extreme proportion, but none of the three is exact at small `n`.
 #'
 #' @references
 #' Valliant, R., Dever, J. A., & Kreuter, F. (2018). *Practical Tools for
@@ -116,7 +148,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
                        resp_rate = 1,
                        alternative = c("two.sided", "one.sided"),
                        ratio = 1,
-                       overlap = 0, rho = 0,
+                       overlap = 0, overlap_cor = 0,
                        method = c("wald", "arcsine", "logodds"),
                        plan = NULL) {
   .plan <- .merge_plan_args(plan, power_prop.default, match.call(), environment())
@@ -129,7 +161,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   N_pair <- .check_power_N(N)
   check_deff(deff)
   check_overlap(overlap)
-  check_rho(rho)
+  check_overlap_cor(overlap_cor)
+  .check_overlap_N(overlap, N_pair)
   check_resp_rate(resp_rate)
   ratio <- .resolve_ratio(n, ratio)
 
@@ -151,7 +184,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
   params <- list(p1 = p1, alpha = alpha, N = N, deff = deff,
                  resp_rate = resp_rate, alternative = alternative,
-                 ratio = ratio, overlap = overlap, rho = rho,
+                 ratio = ratio, overlap = overlap, overlap_cor = overlap_cor,
                  method = method)
 
   if (is.null(n)) {
@@ -161,7 +194,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
     res <- switch(method,
       wald    = .power_prop_n_wald(p1, p2, power, alpha, N_pair, deff,
-                                  alternative, overlap, rho, ratio, resp_rate),
+                                  alternative, overlap, overlap_cor, ratio, resp_rate),
       arcsine = .power_prop_n_arcsine(p1, p2, power, alpha, N_pair, deff,
                                       alternative, ratio, resp_rate),
       logodds = .power_prop_n_logodds(p1, p2, power, alpha, N_pair, deff,
@@ -180,7 +213,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
     res <- switch(method,
       wald    = .power_prop_power_wald(p1, p2, n_eff, alpha, N_pair, deff,
-                                      alternative, overlap, rho),
+                                      alternative, overlap, overlap_cor),
       arcsine = .power_prop_power_arcsine(p1, p2, n_eff, alpha, N_pair, deff,
                                           alternative),
       logodds = .power_prop_power_logodds(p1, p2, n_eff, alpha, N_pair, deff,
@@ -198,7 +231,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
     res <- switch(method,
       wald    = .power_prop_mde_wald(p1, n_eff, power, alpha, N_pair, deff,
-                                    alternative, overlap, rho),
+                                    alternative, overlap, overlap_cor),
       arcsine = .power_prop_mde_arcsine(p1, n_eff, power, alpha, N_pair, deff,
                                         alternative),
       logodds = .power_prop_mde_logodds(p1, n_eff, power, alpha, N_pair, deff,
@@ -212,30 +245,30 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
 #' @keywords internal
 #' @noRd
-.prop_var <- function(p1, p2, overlap, rho) {
+.prop_var <- function(p1, p2, overlap, overlap_cor) {
   p1 * (1 - p1) + p2 * (1 - p2) -
-    2 * overlap * rho * sqrt(p1 * (1 - p1) * p2 * (1 - p2))
+    2 * overlap * overlap_cor * sqrt(p1 * (1 - p1) * p2 * (1 - p2))
 }
 
 # --- Wald internals ---
 
 .power_prop_n_wald <- function(p1, p2, power, alpha, N_pair, deff,
-                               alternative, overlap, rho, ratio, resp_rate) {
+                               alternative, overlap, overlap_cor, ratio, resp_rate) {
   z_a <- .z_alpha(alpha, alternative)
   z_b <- qnorm(power)
-  delta <- abs(p1 - p2)
+  icc <- abs(p1 - p2)
   q1 <- 1 - p1; q2 <- 1 - p2
-  ov_term <- 2 * overlap * rho * sqrt(p1 * q1 * p2 * q2)
+  ov_term <- 2 * overlap * overlap_cor * sqrt(p1 * q1 * p2 * q2)
 
   if (all(is.infinite(N_pair))) {
     if (ratio == 1) {
       V <- p1 * q1 + p2 * q2 - ov_term
-      n2_0 <- (z_a + z_b)^2 * V * deff / delta^2
+      n2_0 <- (z_a + z_b)^2 * V * deff / icc^2
       n0 <- n2_0 / resp_rate
     } else {
       r <- ratio
       V_r <- p1 * q1 / r + p2 * q2 - ov_term
-      n2 <- (z_a + z_b)^2 * V_r * deff / delta^2
+      n2 <- (z_a + z_b)^2 * V_r * deff / icc^2
       n2 <- n2 / resp_rate
       n0 <- c(r * n2, n2)
     }
@@ -245,7 +278,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
       n_eff <- if (r == 1) c(n2, n2) else c(r * n2, n2)
       n_eff <- n_eff * resp_rate
       .power_prop_power_wald(p1, p2, n_eff, alpha, N_pair, deff,
-                             alternative, overlap, rho)
+                             alternative, overlap, overlap_cor)
     }
     n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
     n0 <- if (r == 1) n2 else c(r * n2, n2)
@@ -254,33 +287,27 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 }
 
 .power_prop_power_wald <- function(p1, p2, n_eff, alpha, N_pair, deff,
-                                   alternative, overlap, rho) {
+                                   alternative, overlap, overlap_cor) {
   n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
 
   z_a <- .z_alpha(alpha, alternative)
   q1 <- 1 - p1; q2 <- 1 - p2
-  delta <- abs(p1 - p2)
+  icc <- abs(p1 - p2)
 
-  fpc1 <- .fpc_factor(n_vec[1], N_pair[1])
-  fpc2 <- .fpc_factor(n_vec[2], N_pair[2])
-  V_d <- deff * (p1 * q1 * fpc1 / n_vec[1] + p2 * q2 * fpc2 / n_vec[2])
-  if (overlap > 0 && fpc1 > 0 && fpc2 > 0) {
-    fpc_ov <- .fpc_factor(n_vec[2], N_pair[2])
-    V_d <- V_d - 2 * overlap * rho * sqrt(p1 * q1 * p2 * q2) *
-           deff * fpc_ov / n_vec[2]
-  }
+  V_d <- .diff_var_fpc(n_vec, c(p1 * q1, p2 * q2), N_pair, deff,
+                       overlap, overlap_cor)
   V_d <- .safe_variance(V_d, "difference variance")
   if (V_d == 0) return(1)
 
   se <- sqrt(V_d)
-  pw <- pnorm(delta / se - z_a)
+  pw <- pnorm(icc / se - z_a)
   if (alternative == "two.sided")
-    pw <- pw + pnorm(-delta / se - z_a)
+    pw <- pw + pnorm(-icc / se - z_a)
   min(pw, 1)
 }
 
 .power_prop_mde_wald <- function(p1, n_eff, power, alpha, N_pair, deff,
-                                  alternative, overlap, rho) {
+                                  alternative, overlap, overlap_cor) {
   n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
   if (all(vapply(seq_len(2L), function(i) {
     .fpc_factor(n_vec[i], N_pair[i]) == 0
@@ -288,7 +315,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
   target_fn <- function(p2) {
     .power_prop_power_wald(p1, p2, n_eff, alpha, N_pair, deff,
-                           alternative, overlap, rho) - power
+                           alternative, overlap, overlap_cor) - power
   }
 
   eps <- 1e-8
@@ -329,15 +356,15 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
                                    alternative, ratio, resp_rate) {
   z_a <- .z_alpha(alpha, alternative)
   z_b <- qnorm(power)
-  delta_phi <- asin(sqrt(p1)) - asin(sqrt(p2))
+  diff_phi <- asin(sqrt(p1)) - asin(sqrt(p2))
 
   if (all(is.infinite(N_pair))) {
     if (ratio == 1) {
-      n2_0 <- ((z_a + z_b) / (sqrt(2) * abs(delta_phi)))^2 * deff
+      n2_0 <- ((z_a + z_b) / (sqrt(2) * abs(diff_phi)))^2 * deff
       n0 <- n2_0 / resp_rate
     } else {
       r <- ratio
-      n2 <- ((z_a + z_b) / abs(delta_phi))^2 * deff * (1 / r + 1) / 4
+      n2 <- ((z_a + z_b) / abs(diff_phi))^2 * deff * (1 / r + 1) / 4
       n2 <- n2 / resp_rate
       n0 <- c(r * n2, n2)
     }
@@ -360,7 +387,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
 
   z_a <- .z_alpha(alpha, alternative)
-  delta_phi <- asin(sqrt(p1)) - asin(sqrt(p2))
+  diff_phi <- asin(sqrt(p1)) - asin(sqrt(p2))
 
   fpc1 <- .fpc_factor(n_vec[1], N_pair[1])
   fpc2 <- .fpc_factor(n_vec[2], N_pair[2])
@@ -368,10 +395,10 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
   if (se_phi == 0) return(1)
 
-  z_test <- abs(delta_phi) / se_phi - z_a
+  z_test <- abs(diff_phi) / se_phi - z_a
   pw <- pnorm(z_test)
   if (alternative == "two.sided")
-    pw <- pw + pnorm(-abs(delta_phi) / se_phi - z_a)
+    pw <- pw + pnorm(-abs(diff_phi) / se_phi - z_a)
   min(pw, 1)
 }
 
@@ -413,7 +440,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   z_a <- .z_alpha(alpha, alternative)
   z_b <- qnorm(power)
   q1 <- 1 - p1; q2 <- 1 - p2
-  delta_phi <- log(p1 / q1) - log(p2 / q2)
+  diff_phi <- log(p1 / q1) - log(p2 / q2)
   p_bar <- (p1 + p2) / 2
   q_bar <- 1 - p_bar
 
@@ -421,13 +448,13 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
     if (ratio == 1) {
       V0 <- 2 / (p_bar * q_bar)
       VA <- 1 / (p1 * q1) + 1 / (p2 * q2)
-      n2_0 <- ((z_a * sqrt(V0) + z_b * sqrt(VA)) / abs(delta_phi))^2 * deff
+      n2_0 <- ((z_a * sqrt(V0) + z_b * sqrt(VA)) / abs(diff_phi))^2 * deff
       n0 <- n2_0 / resp_rate
     } else {
       r <- ratio
       V0_coeff <- (1 / r + 1) / (p_bar * q_bar)
       VA_coeff <- 1 / (r * p1 * q1) + 1 / (p2 * q2)
-      n2 <- ((z_a * sqrt(V0_coeff) + z_b * sqrt(VA_coeff)) / abs(delta_phi))^2 * deff
+      n2 <- ((z_a * sqrt(V0_coeff) + z_b * sqrt(VA_coeff)) / abs(diff_phi))^2 * deff
       n2 <- n2 / resp_rate
       n0 <- c(r * n2, n2)
     }
@@ -451,7 +478,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
   z_a <- .z_alpha(alpha, alternative)
   q1 <- 1 - p1; q2 <- 1 - p2
-  delta_phi <- log(p1 / q1) - log(p2 / q2)
+  diff_phi <- log(p1 / q1) - log(p2 / q2)
   p_bar <- (p1 + p2) / 2
   q_bar <- 1 - p_bar
 
@@ -465,10 +492,10 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
   if (VA == 0) return(1)
 
-  z_test <- (abs(delta_phi) - z_a * sqrt(V0)) / sqrt(VA)
+  z_test <- (abs(diff_phi) - z_a * sqrt(V0)) / sqrt(VA)
   pw <- pnorm(z_test)
   if (alternative == "two.sided")
-    pw <- pw + pnorm((-abs(delta_phi) - z_a * sqrt(V0)) / sqrt(VA))
+    pw <- pw + pnorm((-abs(diff_phi) - z_a * sqrt(V0)) / sqrt(VA))
   min(pw, 1)
 }
 

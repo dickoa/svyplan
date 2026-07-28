@@ -15,13 +15,16 @@ n_alloc(frame, ...)
   n = NULL,
   cv = NULL,
   budget = NULL,
+  measures = NULL,
+  targets = NULL,
+  objective = NULL,
   alloc = c("neyman", "optimal", "proportional", "power"),
   unit_cost = NULL,
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
-  min_n = NULL,
-  power_q = 0.5,
+  min_n_stratum = NULL,
+  alloc_q = 0.5,
   plan = NULL
 )
 
@@ -42,12 +45,26 @@ When a design stratifies by several variables at once (e.g. region
 calling \code{n_alloc} (e.g. with \code{\link[=interaction]{interaction()}}) so that each row maps
 to exactly one population cell.
 
+When \code{measures} and \code{targets} are supplied, \code{frame} instead describes
+atomic allocation strata for joint constrained allocation. It requires
+unique, non-missing \code{stratum} and positive finite \code{N} columns. It may
+contain \code{unit_cost}, \code{max_weight}, \code{take_all}, and complete domain
+classification columns named by \code{targets$domain}; \code{sd}, \code{var}, \code{mean},
+and \code{p} then belong in \code{measures}. Each row must be homogeneous for every
+domain classification used by a target. For a fixed-take two-stage
+design, also supply whole \code{N_psu} and \code{n_per_psu}, plus positive
+\code{cost_psu} and \code{cost_ssu}. A three-stage design additionally requires
+whole \code{N_ssu} and \code{n_per_ssu}, and positive \code{cost_tsu}. \code{N_psu} is the
+number of PSUs in the stratum. In three-stage mode, \code{N_ssu} is the
+aggregate number of SSUs across all PSUs in the stratum (not the number
+per PSU). Stage costs replace \code{unit_cost}.
+
 \strong{Required columns:}
 \describe{
 \item{\code{N}}{Number of units (e.g. households, individuals) in
 each stratum. These are population counts, not sample sizes.
 Must be positive and finite.}
-\item{\code{sd} \strong{or} \code{var}}{A measure of how spread out the variable
+\item{\code{sd} \strong{or} \code{var} (legacy mode)}{A measure of how spread out the variable
 of interest is within each stratum. Provide \strong{exactly one}:
 \itemize{
 \item \code{sd}: the stratum standard deviation
@@ -99,14 +116,54 @@ Requires \code{mean} or \code{p} in \code{frame}. When domain columns are
 present, this target is enforced in each domain. Specify exactly one
 of \code{n}, \code{cv}, or \code{budget}.}
 
-\item{budget}{Total field budget. Specify exactly one of \code{n}, \code{cv},
-or \code{budget}.}
+\item{budget}{Total field budget. In the classic modes, specify exactly one
+of \code{n}, \code{cv}, or \code{budget}, and \code{budget} caps the affordable allocation.
+In joint constrained allocation it must be accompanied by \code{objective}:
+the allocation minimizes the priority-weighted
+relative variance of the objective components subject to the budget, every
+hard target in \code{targets}, and the stratum bounds. Supplying \code{budget}
+without \code{objective} in joint mode is an error, because the two readings
+are incompatible.}
+
+\item{measures}{Optional long data frame for joint constrained allocation,
+with one row per required \code{stratum} and indicator \code{name}. Each row must
+contain either \code{p} in \verb{[0, 1]}, or \code{mean} and exactly one of non-negative
+\code{sd} or \code{var}. Optional row-specific \code{deff} and \code{resp_rate} values override
+the scalar arguments; \code{NA} uses the scalar default. In fixed-take
+multistage mode, \code{icc_psu} is required and \code{var_ratio_psu} defaults to 1;
+three-stage mode also requires \code{icc_ssu} and derives \code{var_ratio_ssu} as
+\code{var_ratio_psu * (1 - icc_psu)} when it is absent, which is the value the
+variance decomposition implies.
+Stage parameters may instead be supplied as stratum defaults in \code{frame};
+non-missing measure-row values take precedence. Only rows selected by a
+target and its domain are value-validated. Unused rows are ignored after
+their non-empty, unique keys and frame-stratum membership are checked.
+Must be supplied with \code{targets}.}
+
+\item{targets}{Optional long data frame with one precision requirement per
+row. It requires indicator \code{name} and exactly one positive \code{cv} or \code{moe}.
+Optional \code{domain} and \code{level} select a frame domain (\code{.overall} and
+\code{level = NA} denote the whole population), \code{alpha} overrides the scalar
+value for MOE, and \code{constraint} supplies a stable unique identifier.
+Must be supplied with \code{measures}. Optional when \code{objective} and \code{budget}
+are given, which requests the best design a budget can buy with no hard
+precision requirement.}
+
+\item{objective}{Optional estimates whose priority-weighted relative
+variance is minimized among the allocations that meet \code{targets} and the
+budget. Either a character vector of indicator names (overall domain,
+equal priority) or a data frame with \code{name} plus optional \code{domain},
+\code{level}, non-negative \code{priority}, and \code{component} columns, using the same
+indicator-domain identifiers as \code{targets}. At least one priority must be
+positive; priorities need not be normalized. Requires \code{budget} and must be
+supplied with \code{measures}.}
 
 \item{alloc}{Allocation rule: \code{"neyman"} (default), \code{"optimal"},
 \code{"proportional"}, or \code{"power"}.}
 
 \item{unit_cost}{Optional scalar or length-\code{nrow(frame)} vector of
-per-stratum unit costs, overriding \code{frame$unit_cost}.}
+per-stratum unit costs, overriding \code{frame$unit_cost}. Not used with
+fixed-take multistage joint allocation, which requires stage costs.}
 
 \item{alpha}{Significance level, default 0.05.}
 
@@ -114,9 +171,9 @@ per-stratum unit costs, overriding \code{frame$unit_cost}.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1.}
 
-\item{min_n}{Optional minimum sample size per stratum.}
+\item{min_n_stratum}{Optional minimum sample size per stratum.}
 
-\item{power_q}{Bankier power parameter from 0 to 1, used when
+\item{alloc_q}{Bankier power parameter from 0 to 1, used when
 \code{alloc = "power"}.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
@@ -129,11 +186,13 @@ with columns:
 \item{\code{stratum}, \code{N}, \code{sd}, \code{unit_cost}}{Stratum identifiers and inputs
 carried over from the frame. In cluster mode \code{unit_cost} is the
 derived effective per-element cost
-\code{cost_psu / psu_size + cost_ssu} (1 when no stage costs were
+\code{cost_psu / n_per_psu + cost_ssu} (1 when no stage costs were
 given), while \code{sd} stays the input stratum SD.}
 \item{\code{n}}{Allocated sample size (continuous).}
 \item{\code{n_int}}{Integer allocation. In \code{n} mode the requested
-total is preserved (bounded largest-remainder rounding); in
+total is preserved (bounded largest-remainder rounding), except
+under a fixed cluster take, where the take is held and the total
+moves to the nearest whole multiple of it instead; in
 \code{cv} mode each stratum is rounded up so the integer design
 meets the target; in \code{budget} mode units are added by variance
 reduction per unit cost so the integer design stays within
@@ -143,24 +202,42 @@ no integer allocation can satisfy them.}
 \item{\code{weight}}{Design weight \code{N / n}.}
 \item{\code{n_eff}}{Effective sample size \code{n * resp_rate / deff}.}
 \item{\code{.lower}, \code{.upper}}{Bounds applied to the stratum
-(from \code{min_n}, \code{max_weight}, \code{take_all}, or \code{N}).}
+(from \code{min_n_stratum}, \code{max_weight}, \code{take_all}, or \code{N}).}
 \item{\code{.binding}}{Whether the allocation sits on one of its
 bounds.}
 \item{\code{take_all}, \code{mean}}{Present when take-all strata or stratum
 means were supplied.}
-\item{\code{psu_size}, \code{n_psu}}{Cluster mode only: the continuous
-per-stratum take and implied number of PSUs (\code{n / psu_size}).}
-\item{\code{n_psu_int}, \code{psu_size_int}}{Cluster mode only: the
+\item{\code{n_per_psu}, \code{n_psu}}{Cluster mode only: the continuous
+per-stratum take and implied number of PSUs (\code{n / n_per_psu}).}
+\item{\code{n_psu_int}, \code{n_per_psu_int}}{Cluster mode only: the
 whole-unit field design (whole PSUs and whole takes), chosen so
 that \code{budget} designs stay within budget and \code{cv} designs meet
-the target; \code{n_int = n_psu_int * psu_size_int}.}
+the target; \code{n_int = n_psu_int * n_per_psu_int}.}
+\item{\code{n_psu}, \code{n_psu_int}, \code{n_per_psu}, \code{n_per_ssu}}{Joint fixed-take
+multistage mode: continuous and whole first-stage decisions and the
+fixed later-stage takes. \code{n_per_ssu} is present only for three stages.
+Public \code{n} remains in ultimate-unit units, so
+\code{n = n_psu * n_per_psu} for two stages and
+\code{n = n_psu * n_per_psu * n_per_ssu} for three stages; the same exact
+identities hold for \code{n_int} and \code{n_psu_int}.}
 }
 
-The result also carries an \verb{$operational} list describing the
-integer field design: \code{n} (total), \code{cost}, \code{se}, \code{moe}, and \code{cv},
-all recomputed from the integer allocation. Top-level \code{n}, \code{se},
-\code{moe}, and \code{cv} describe the continuous optimum, while
-\code{as.integer()} returns the operational total.
+The result also carries an \verb{$operational} list describing the integer
+field design. In joint mode it contains total \code{n}, variable field \code{cost},
+the full target table in \code{constraints}, \code{all_pass}, and the number of
+integer-repair additions. In legacy modes it also reports the applicable
+aggregate \code{se}, \code{moe}, and \code{cv}. Top-level quantities describe the
+continuous design, while \code{as.integer()} returns the operational total.
+
+In fixed-budget objective mode the result adds \verb{$objective}, one row per
+component with its \code{priority}, relative variance \code{.relvar}, equivalent
+\code{.cv}, weighted \code{.contribution}, and \code{.share} of the total, plus the scalar
+\verb{$objective_value}. \verb{$operational} carries the same two fields for the
+integer design together with \code{budget_residual}. \verb{$params$mode} is
+\code{"budget_objective"} rather than \code{"targets"}, and \verb{$optimization} adds the
+budget, whether it binds, its residual, the local \code{budget_sensitivity}
+(change in objective value per extra unit of budget), and the
+epsilon-constraint \code{objective_bound} and its multiplier.
 }
 \description{
 Distribute a total sample size across strata defined by a single
@@ -170,6 +247,164 @@ urbanicity), cross them into a single variable beforehand so that each row
 of \code{frame} represents one unique stratum.
 }
 \details{
+\subsection{Joint constrained allocation}{
+
+Supplying both \code{measures} and \code{targets} requests a minimum-cost allocation
+that meets all indicator-domain precision requirements simultaneously.
+This mode is mutually exclusive with scalar \code{n}, \code{cv}, \code{budget}, \code{domains},
+and an explicit \code{alloc} rule: the target table defines the constraints and
+the allocation is solved jointly.
+
+CV targets apply to domain means or totals (the CV is the same on either
+scale). MOE targets are absolute margins of error for domain means. The
+variance model uses Wald/linearized variances, the package's gross-sample
+response-rate convention, design effects, and finite population correction.
+Domain classifications may overlap; for example, separate \code{region} and
+\code{residence} targets can use the same atomic \verb{region x residence} frame rows.
+
+Fixed-take two- and three-stage joint designs keep only the first-stage PSU
+count free. Later-stage takes must be positive whole numbers. The canonical
+optimizer works in PSU units, while public \code{n}, \code{min_n_stratum}, \code{max_weight}, and
+precision assessments remain in ultimate-unit units. PSU upper bounds use
+\code{min(N_psu, N / n_per_psu)} for two stages and
+\code{min(N_psu, N_ssu / n_per_psu, N / (n_per_psu * n_per_ssu))} for three stages. Because sampling
+every PSU does not establish an ultimate-unit census, \code{take_all} is not
+supported in this mode. The response rate applies once to the gross
+ultimate-unit take. Jointly optimized later-stage takes are not supported.
+
+What the optimum then means is worth stating plainly. The convex problem
+is solved to optimality for the planning coefficients supplied, and the
+feasibility and KKT diagnostics report on that problem. It is a planning
+model rather than an exact design-based variance for every multistage
+design: the later-stage takes are fixed inputs rather than decision
+variables, and the stage variances enter through the design-effect and
+FPC adapter described above. A design that is optimal here is optimal
+within that family, not across all multistage designs.
+
+The three population columns are all \strong{stratum totals}, not per-parent
+counts: \code{N} is the number of ultimate units in the stratum, \code{N_psu} the
+number of PSUs in it, and \code{N_ssu} the number of SSUs across \emph{all} of its
+PSUs. The take columns are the mirror image, counting per parent unit:
+\code{n_per_psu} units (or SSUs) inside one selected PSU and \code{n_per_ssu} units
+inside one selected SSU. The \code{N_ssu / n_per_psu} bound above reads
+correctly only under this convention, since it divides a stratum total by
+a per-PSU take to bound the number of PSUs. A frame that stores SSUs per
+PSU instead must be converted first, typically
+\code{N_ssu = N_psu * ssu_per_psu}.
+
+In two-stage mode \code{n_per_psu} is the number of ultimate units sampled in a
+selected PSU, \code{cost_psu} is the cost per selected PSU, and \code{cost_ssu} is the
+cost per sampled ultimate unit. The cost of one selected PSU is therefore
+\code{cost_psu + cost_ssu * n_per_psu}. In three-stage mode \code{n_per_psu} is the
+number of SSUs sampled per selected PSU, \code{n_per_ssu} is the number of
+ultimate units sampled per selected SSU, \code{cost_ssu} is per sampled SSU,
+and \code{cost_tsu} is per sampled ultimate unit. The corresponding cost is
+\code{cost_psu + cost_ssu * n_per_psu + cost_tsu * n_per_psu * n_per_ssu}.
+
+For indicator \eqn{k} and stratum \eqn{h}, write \eqn{m_h} for
+\code{n_per_psu}, \eqn{q_h} for \code{n_per_ssu}, and \eqn{S^2_{hk}} for \code{var} (or
+\code{sd^2}, or \code{p * (1 - p)}). The fixed variance multiplier is
+\eqn{D_{hk}=k_{1,hk}(1+\delta_{1,hk}(m_h-1))} at two stages and
+\eqn{D_{hk}=k_{1,hk}\delta_{1,hk}m_hq_h+
+k_{2,hk}(1+\delta_{2,hk}(q_h-1))} at three stages. At three stages
+\code{var_ratio_ssu} is not a free parameter: \code{var_ratio_psu} rescales the components' unit
+variance to the analysis variable and \code{var_ratio_ssu} does the same for the
+within-PSU part, so
+\eqn{k_{2}=k_{1}(1-\delta_{1})}. That identity is what makes
+\eqn{D_{hk}} collapse to \eqn{k_{1}} at \eqn{m_h=q_h=1}, where no
+clustering is left to inflate anything. Leaving \code{var_ratio_ssu} out of \code{measures}
+applies it; supplying a value overrides it, which is only meaningful when
+the two stages' ratios come from different decompositions. With ultimate-unit take
+\eqn{t_h=m_h} or \eqn{m_hq_h}, first-stage decision \eqn{a_h}, response
+rate \eqn{r_{hk}}, and extra design effect \eqn{d_{hk}}, the implemented
+total-variance contribution is
+\deqn{N_h^2 S_{hk}^2 D_{hk}d_{hk}/(r_{hk}a_ht_h)
+      - N_h S_{hk}^2 D_{hk}d_{hk}.}
+Thus response inflation is applied once. Leave \code{deff = 1} unless it
+represents a source not already captured by the stage deltas and var_ratio factors.
+Deltas may include 0 and 1; var_ratio values must be positive finite. All stage
+populations and fixed takes must be positive whole numbers.
+
+The continuous result is a KKT-certified global optimum of the convex,
+fixed-coefficient problem. \verb{$detail$n_int} is a deterministic, feasible,
+locally cleaned operational recommendation; it is not claimed to be the
+globally optimal integer allocation. Full achieved precision is in
+\verb{$constraints} and \verb{$operational$constraints}. Use \code{\link[=prec_alloc]{prec_alloc()}} to assess
+the fitted, operational, or a modified allocation.
+
+A constraint table records \code{.metric}, \code{.target}, \code{.achieved}, \code{.ratio}, and
+\code{.residual = .ratio - 1}; \code{.pass} means \code{.ratio <= 1 + .tolerance}.
+\code{.binding} identifies a numerically active target. \code{.multiplier} is the
+continuous Lagrange multiplier and \code{.sensitivity} is the local derivative
+of minimum variable cost with respect to the target. Both are \code{NA} for a
+pure precision assessment; multipliers are also \code{NA} when duplicate
+normalized constraints make an individual split unidentified. The stored
+\code{feasibility_tolerance} and per-row \code{.tolerance} are the public numerical
+acceptance contract.
+}
+
+\subsection{Fixed budget and a weighted objective}{
+
+Joint allocation answers two different planning questions, distinguished by
+whether \code{objective} is supplied. Without it, \code{n_alloc()} returns the
+cheapest design meeting every requirement in \code{targets}. With \code{objective}
+and \code{budget}, it returns the best design that budget can buy: among the
+allocations that meet every hard target and cost no more than \code{budget}, the
+one minimizing
+\deqn{Q(n) = \sum_j w_j \, \mathrm{cv}_j^2(n),}
+the priority-weighted sum of the objective components' relative variances.
+The three roles stay distinct: \code{targets} are pass/fail requirements,
+\code{objective} expresses preference among the allocations that pass, and
+\code{budget} is a hard ceiling on variable cost.\tabular{ll}{
+   Inputs \tab Meaning \cr
+   \code{measures} + \code{targets} \tab cheapest design meeting every target \cr
+   \code{measures} + \code{objective} + \code{budget} \tab best design the budget can buy \cr
+   \code{measures} + \code{targets} + \code{objective} + \code{budget} \tab best design the budget can buy, subject to the targets \cr
+   \code{measures} + \code{objective} without \code{budget} \tab error \cr
+   \code{measures} + \code{targets} + \code{budget} without \code{objective} \tab error \cr
+}
+
+
+Two consequences of the objective being in squared-CV units are worth
+stating. Objective rows are always relative-variance, even when the same
+indicator carries an MOE hard target, so they take no \code{cv} or \code{moe} column
+and they need a non-negligible domain total. And \code{priority = c(2, 1)}
+weights \emph{variances} 2 to 1, not CVs. Scaling every priority by a constant
+leaves the allocation unchanged, and a zero-priority component does not
+affect it at all.
+
+The solver appends the objective as one more reciprocal constraint column
+and root searches the objective bound whose minimum cost equals the budget.
+The model is convex with fixed coefficients, so this recovers the global
+continuous optimum with the same KKT certification as the minimum-cost mode.
+Solving the minimum-cost problem with the added requirement
+\eqn{Q \le Q^{*}} returns the same allocation at a cost equal to the budget.
+
+Infeasibility takes three distinct forms, each with its own message: the
+targets may be unattainable even at the stratum upper bounds; they may be
+attainable but unaffordable, in which case the cheapest target-feasible cost
+and the shortfall are reported; or the continuous problem may be feasible
+while no whole-unit allocation meets every target inside the budget.
+
+\code{ceiling()} is not a safe integer start under a budget, so the operational
+design is built from several roundings of the continuous optimum, repaired
+and trimmed to be both target-feasible and affordable, then improved by
+spending residual budget and by pairwise exchanges. It satisfies
+\verb{$operational$cost <= budget} and \verb{all($operational$constraints$.pass)}, and
+it is a feasible, locally improved recommendation rather than a globally
+optimal integer allocation. The greedy construction is incomplete: it can
+report failure on a problem that does have a feasible integer point.
+
+\code{\link[=predict]{predict()}} on a fixed-budget result varies \code{budget} in \code{newdata} and
+returns the cost-versus-objective frontier, reusing the same solves.
+
+For fieldwork, use \verb{$detail$n_int}, not the analytical continuous \code{n}.
+Fixed-take count columns are numeric vectors whose values are exact whole
+numbers; the \verb{_int} suffix denotes operational integer semantics rather
+than R's 32-bit \code{integer} storage type. Result lists contain diagnostics and
+are not promised as a long-term serialization format.
+}
+
 \subsection{Building the frame}{
 
 The \code{frame} is a data frame where \strong{each row is one stratum} of
@@ -207,39 +442,43 @@ the allocation formulas apply to the correct per-stratum \code{N} and \code{sd} 
 
 \subsection{Cluster designs within strata}{
 
-Adding a \code{delta_psu} column to the frame turns the allocation into a
+Adding a \code{icc_psu} column to the frame turns the allocation into a
 stratified \strong{two-stage} design (e.g. enumeration areas then
 households within each stratum). Under the cluster variance model
 the problem reduces to the element allocation above with the stratum
-SD inflated to \code{sd * sqrt(k_psu * (1 + delta_psu * (psu_size - 1)))}
+SD inflated to \code{sd * sqrt(var_ratio_psu * (1 + icc_psu * (n_per_psu - 1)))}
 and, when stage costs are given, a per-element cost of
-\code{cost_psu / psu_size + cost_ssu}. All solve modes, allocation
+\code{cost_psu / n_per_psu + cost_ssu}. All solve modes, allocation
 methods, and constraints work unchanged. The \code{n}, \code{cv}, and \code{budget} modes
 keep their meanings.
 
 Cluster-mode columns:
 \itemize{
-\item \code{delta_psu} (required): within-PSU homogeneity per stratum,
+\item \code{icc_psu} (required): within-PSU homogeneity per stratum,
 e.g. from \code{\link[=varcomp]{varcomp()}} with \code{strata}.
-\item \code{k_psu} (optional, default 1): variance ratio per stratum.
-\item \code{psu_size} (optional): fixes the per-stratum take. Any \code{NA} entries
-are replaced by the cost-optimal take
-\code{sqrt(cost_psu / cost_ssu * (1 - delta_psu) / delta_psu)}.
+\item \code{var_ratio_psu} (optional, default 1): variance ratio per stratum.
+\item \code{n_per_psu} (optional): fixes the per-stratum take, in the
+operational whole-unit design as much as in the continuous one. Any
+\code{NA} entries are replaced by the cost-optimal take
+\code{sqrt(cost_psu / cost_ssu * (1 - icc_psu) / icc_psu)}. Holding the
+take is what \code{n} mode gives up its exact total for: the stratum is
+fielded as a whole number of clusters of that size, so its element
+count lands on the nearest multiple.
 \item \code{cost_psu}, \code{cost_ssu} (together): per-PSU and per-element costs.
-These are required for \code{budget} mode or when \code{psu_size} is not fixed. They
+These are required for \code{budget} mode or when \code{n_per_psu} is not fixed. They
 replace \code{unit_cost}, which is not allowed in this mode.
 }
 
 The finite population correction stays at the element level, an
 approximation consistent with \code{\link[=n_cluster]{n_cluster()}}'s variance model.
 
-Because \code{delta_psu} already accounts for the clustering, leave
+Because \code{icc_psu} already accounts for the clustering, leave
 \code{deff} at 1 unless it captures a \emph{different} source of design
 effect (e.g. weighting loss). A clustering \code{deff} on top of
-\code{delta_psu} would double-count. The constraints \code{min_n},
+\code{icc_psu} would double-count. The constraints \code{min_n_stratum},
 \code{max_weight}, and \code{take_all} stay in element units. For fielding,
-use the whole-unit design in \code{n_psu_int} and \code{psu_size_int}
-(\code{n_int = n_psu_int * psu_size_int}). Its actual field cost and
+use the whole-unit design in \code{n_psu_int} and \code{n_per_psu_int}
+(\code{n_int = n_psu_int * n_per_psu_int}). Its actual field cost and
 precision are reported in \verb{$operational} and, in \code{budget} mode,
 never exceed the budget.
 }
@@ -265,11 +504,12 @@ Allocation is controlled by the \code{alloc} parameter (same methods as
 \item \strong{proportional}: \eqn{n_h \propto N_h}
 \item \strong{neyman}: \eqn{n_h \propto N_h S_h}
 \item \strong{optimal}: \eqn{n_h \propto N_h S_h / \sqrt{c_h}}
-\item \strong{power}: Bankier (1988), \eqn{n_h \propto S_h N_h^{power\_q}}
+\item \strong{power}: Bankier (1988), \eqn{n_h \propto S_h N_h^{q}}{n_h ~ S_h * N_h^alloc_q},
+with exponent \code{alloc_q}
 }
 
 Stratum allocations are rounded to integers using the ORIC method
-(Cont and Heidari, 2015). Constraints (\code{min_n}, \code{max_weight}, \code{take_all})
+(Cont and Heidari, 2015). Constraints (\code{min_n_stratum}, \code{max_weight}, \code{take_all})
 are enforced via recursive Neyman allocation (RNA, Wesolowski et al., 2021).
 
 When \code{budget} is specified, the algorithm finds the maximum affordable
@@ -294,7 +534,7 @@ frame_constraints <- transform(
   take_all = c(FALSE, FALSE, TRUE)
 )
 
-n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n = 40)
+n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n_stratum = 40)
 
 frame_domains <- data.frame(
   province = c("North", "North", "South", "South"),
@@ -305,7 +545,81 @@ frame_domains <- data.frame(
 )
 
 n_alloc(frame_domains, domains = "province",
-       cv = 0.04, alloc = "power", power_q = 0.3)
+       cv = 0.04, alloc = "power", alloc_q = 0.3)
+
+# Joint targets for two indicators and an overlapping domain
+joint_frame <- data.frame(
+  stratum = c("North urban", "North rural", "South urban"),
+  region = c("North", "North", "South"),
+  N = c(1000, 1800, 1200)
+)
+joint_measures <- data.frame(
+  stratum = rep(joint_frame$stratum, 2),
+  name = rep(c("coverage", "income"), each = 3),
+  p = c(0.5, 0.4, 0.6, NA, NA, NA),
+  mean = c(NA, NA, NA, 50, 55, 60),
+  sd = c(NA, NA, NA, 10, 12, 15)
+)
+joint_targets <- data.frame(
+  name = c("coverage", "income"),
+  domain = c(".overall", "region"),
+  level = c(NA, "North"),
+  cv = c(0.06, NA),
+  moe = c(NA, 3)
+)
+joint <- n_alloc(
+  joint_frame, measures = joint_measures, targets = joint_targets
+)
+prec_alloc(joint, n = joint$detail$n_int)
+
+# The best design a fixed budget can buy, subject to the same targets
+bought <- n_alloc(
+  joint_frame, measures = joint_measures, targets = joint_targets,
+  objective = "income", budget = 4000
+)
+bought$objective
+
+# Unequal priorities, and an objective on a specific domain
+priorities <- data.frame(
+  name     = c("income", "coverage"),
+  domain   = c(".overall", "region"),
+  level    = c(NA, "North"),
+  priority = c(2, 1)
+)
+n_alloc(
+  joint_frame, measures = joint_measures, targets = joint_targets,
+  objective = priorities, budget = 4000
+)
+
+# What would other budgets buy? (cost-versus-objective frontier)
+predict(bought, data.frame(budget = c(3000, 4000, 5000)))
+
+# The same target tables with fixed two-stage takes
+joint_frame$N_psu <- c(100, 150, 100)
+joint_frame$n_per_psu <- c(8, 10, 12)
+joint_frame$cost_psu <- c(300, 400, 450)
+joint_frame$cost_ssu <- c(25, 30, 35)
+joint_measures$icc_psu <- rep(c(0.03, 0.05, 0.08), 2)
+joint_measures$var_ratio_psu <- 1
+joint_cluster <- n_alloc(
+  joint_frame, measures = joint_measures, targets = joint_targets
+)
+joint_cluster$detail[, c("stratum", "n_psu_int", "n_per_psu", "n_int")]
+
+# Fixed three-stage takes: PSUs, SSUs within PSU, ultimate units within SSU
+joint_frame$N_ssu <- c(600, 1000, 750) # aggregate SSUs by stratum
+joint_frame$n_per_ssu <- c(3, 4, 3)
+joint_frame$cost_tsu <- c(5, 6, 7)
+joint_measures$icc_ssu <- rep(c(0.10, 0.08, 0.12), 2)
+joint_measures$var_ratio_ssu <- 1
+joint_three <- n_alloc(
+  joint_frame, measures = joint_measures, targets = joint_targets,
+  min_n_stratum = 20
+)
+joint_three$detail[, c(
+  "stratum", "n_psu_int", "n_per_psu", "n_per_ssu", "n_int"
+)]
+prec_alloc(joint_three, n = joint_three$detail$n_int)
 
 # Stratified two-stage design (EAs then households per stratum)
 frame_cluster <- data.frame(
@@ -313,7 +627,7 @@ frame_cluster <- data.frame(
   N         = c(50000, 150000),
   sd        = c(0.45, 0.48),
   mean      = c(0.35, 0.25),
-  delta_psu = c(0.03, 0.08),
+  icc_psu = c(0.03, 0.08),
   cost_psu  = c(300, 600),
   cost_ssu  = c(40, 60)
 )
@@ -323,11 +637,24 @@ n_alloc(frame_cluster, cv = 0.05)
 }
 \references{
 Valliant, R., Dever, J. A., & Kreuter, F. (2018). \emph{Practical Tools for
-Designing and Weighting Survey Samples} (2nd ed.). Springer. Chapter 5.
+Designing and Weighting Survey Samples} (2nd ed.). Springer. Chapters 5
+and 9.
 
 Bankier, M. D. (1988). Power allocations: determining sample sizes for
 subnational areas. \emph{The American Statistician}, 42(3), 174--177.
+
+Bethel, J. (1989). Sample allocation in multivariate surveys.
+\emph{Survey Methodology}, 15(1), 47--57.
+
+Cont, R. and Heidari, M. (2015). Optimal rounding under integer
+constraints. \emph{arXiv preprint} arXiv:1501.00014.
+
+Wesolowski, J., Wieczorkowski, R. and Wojciak, W. (2021). Optimality of
+the recursive Neyman allocation. \emph{Journal of Survey Statistics and
+Methodology}, 10(5), 1263--1275.
 }
 \seealso{
-\code{\link[=prec_alloc]{prec_alloc()}}, \code{\link[=strata_bound]{strata_bound()}}.
+\code{\link[=prec_alloc]{prec_alloc()}} for the inverse, \code{\link[=strata_bound]{strata_bound()}} for
+constructing the strata to allocate over, and \code{\link[=n_multi]{n_multi()}} for the
+unstratified multi-indicator size that joint allocation refines.
 }

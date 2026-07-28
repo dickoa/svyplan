@@ -18,8 +18,8 @@ knitr::opts_chunk$set(
 [![Codecov test coverage](https://codecov.io/gl/dickoa/svyplan/branch/main/graph/badge.svg)](https://app.codecov.io/gl/dickoa/svyplan?branch=main)
 <!-- badges: end -->
 
-Survey sample size determination, precision analysis, optimal allocation,
-stratification, and power analysis for R.
+Survey sample size determination, precision analysis, optimal and joint
+multivariate/multidomain allocation, stratification, and power analysis for R.
 
 ## Installation
 
@@ -146,10 +146,10 @@ target population and `hh_size` is the average household size.
 
 ```{r}
 # Optimal 2-stage allocation within a budget
-n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
 
 # Precision for a given allocation
-prec_cluster(n = c(50, 12), delta = 0.05)
+prec_cluster(n = c(50, 12), icc = 0.05)
 ```
 
 Variance components can be estimated from frame data and passed
@@ -166,10 +166,10 @@ vc <- varcomp(income ~ district, data = frame)
 vc
 as.data.frame(vc)
 
-n_cluster(stage_cost = c(500, 50), delta = vc, cv = 0.05)
+n_cluster(stage_cost = c(500, 50), icc = vc, cv = 0.05)
 ```
 
-`delta` is the survey-planning measure of homogeneity used by
+`icc` is the survey-planning measure of homogeneity used by
 `varcomp()`, `n_cluster()`, and `design_effect()`. It is not the same as
 a generic mixed-model ICC, and values near 0 or 1 correspond to
 degenerate boundary cases for the closed-form cluster optimizer.
@@ -193,7 +193,7 @@ Multi-indicator results are not currently supported by `predict()`.
 
 ## Strata boundaries
 
-`strata_bound()` finds optimal boundaries for a continuous
+`strata_bound()` constructs candidate boundaries for a continuous
 stratification variable.
 
 ```{r}
@@ -204,7 +204,59 @@ strata_bound(x, n_strata = 4, n = 300, method = "cumrootf")
 ```
 
 Four methods are available: Dalenius-Hodges (`"cumrootf"`), geometric
-(`"geo"`), Lavallée-Hidiroglou (`"lh"`), and Kozak (`"kozak"`).
+(`"geo"`), LH-inspired coordinate optimization (`"lh"`), and
+Kozak-inspired random-restart local search (`"kozak"`). The latter two are
+heuristics and do not claim global optimality or exact implementation of the
+published algorithms.
+
+## Two-phase designs
+
+A large cheap phase 1, then a subsample measured on the expensive
+variable. `n_twophase()` allocates both at once. The frame is one row per
+phase-2 stratum, in the `n_alloc()` column vocabulary but on a narrower
+contract: `sd` is required where `n_alloc()` also accepts `var`.
+
+```{r twophase}
+frame <- data.frame(
+  stratum   = c("A", "B", "C", "D"),
+  N         = c(3500, 2500, 2500, 1500),
+  sd        = c(12, 25, 8, 40),
+  mean      = c(40, 70, 35, 90),
+  unit_cost = c(2, 5, 1, 9)
+)
+
+n_twophase(frame, phase1_cost = 1, budget = 50000)
+```
+
+Nonresponse follow-up is the same problem with two strata: respondents
+are already measured, so they cost nothing more and are all kept, and
+only the nonrespondents are subsampled.
+
+```{r twophase-nrfu}
+theta <- 0.5
+
+nrfu <- data.frame(
+  stratum   = c("respondents", "nonrespondents"),
+  N         = c(theta, 1 - theta),
+  sd        = c(1, 1),
+  unit_cost = c(0, 200),
+  take_all  = c(TRUE, FALSE)
+)
+
+n_twophase(nrfu, phase1_cost = 50, budget = 100000,
+           mu = 1, single_cost = 50 / theta)
+```
+
+Neither phase has to be a simple random sample, and both can lose sample
+to nonresponse. `phase1_deff` and `resp_rate` act on the between-stratum
+component; `deff` and `resp_rate` frame columns act on each stratum's
+residual; `single_deff` and `single_resp_rate` describe the comparator.
+Each divides its own component, so a single factor on the combined
+variance would be the wrong model. Issued and expected-responding counts
+are reported separately.
+
+Every result carries the single-phase comparison, because two-phase
+sampling is not always an improvement.
 
 ## Power analysis
 
@@ -266,7 +318,7 @@ frame_constraints <- transform(
 )
 
 # Budget-constrained allocation with weight and take-all constraints
-n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n = 40)
+n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n_stratum = 40)
 ```
 
 Domain-level CV targets can be enforced via the `domains` parameter:
@@ -282,29 +334,109 @@ frame_domains <- data.frame(
 
 # Minimum total n such that each province meets the CV target
 n_alloc(frame_domains, domains = "province",
-        cv = 0.04, alloc = "power", power_q = 0.3)
+        cv = 0.04, alloc = "power", alloc_q = 0.3)
 ```
+
+For several indicators and overlapping domains, pass long `measures` and
+`targets` tables. The allocation rule is then determined jointly by the
+precision requirements:
+
+```{r joint-allocation}
+joint_frame <- data.frame(
+  stratum = c("North urban", "North rural", "South urban", "South rural"),
+  region = rep(c("North", "South"), each = 2),
+  residence = rep(c("Urban", "Rural"), 2),
+  N = c(1000, 1800, 1200, 1600),
+  unit_cost = c(1, 1.2, 1.4, 1.1)
+)
+joint_measures <- data.frame(
+  stratum = rep(joint_frame$stratum, 2),
+  name = rep(c("coverage", "income"), each = 4),
+  p = c(0.50, 0.40, 0.60, 0.35, rep(NA, 4)),
+  mean = c(rep(NA, 4), 50, 55, 60, 48),
+  sd = c(rep(NA, 4), 10, 12, 15, 9)
+)
+joint_targets <- data.frame(
+  name = c("coverage", "coverage", "income"),
+  domain = c(".overall", "region", "residence"),
+  level = c(NA, "North", "Urban"),
+  cv = c(0.05, 0.08, NA),
+  moe = c(NA, NA, 2)
+)
+
+joint_fit <- n_alloc(
+  joint_frame, measures = joint_measures, targets = joint_targets
+)
+joint_fit
+```
+
+The fitted object distinguishes the certified continuous optimum from a
+feasible integer operational recommendation. Use `prec_alloc(joint_fit)` or
+`prec_alloc(joint_fit, n = joint_fit$detail$n_int)` to inspect either design.
+
+The same API handles fixed-take multistage designs. Stage populations, fixed
+takes, and costs belong in `frame`; indicator-specific homogeneity parameters
+belong in `measures`. Here only the PSU counts are optimized:
+
+```{r joint-allocation-two-stage}
+cluster_frame <- within(joint_frame, {
+  unit_cost <- NULL
+  N_psu <- c(100, 150, 100, 120)
+  n_per_psu <- c(8, 10, 12, 8)
+  cost_psu <- c(300, 400, 450, 350)
+  cost_ssu <- c(25, 30, 35, 28)
+})
+cluster_measures <- transform(
+  joint_measures,
+  icc_psu = rep(c(0.03, 0.05, 0.08, 0.04), 2),
+  var_ratio_psu = 1
+)
+cluster_fit <- n_alloc(
+  cluster_frame, measures = cluster_measures, targets = joint_targets
+)
+cluster_fit$detail[, c("stratum", "n_psu_int", "n_per_psu", "n_int")]
+```
+
+Public `n` remains the ultimate-unit sample size. Thus the field design obeys
+`n_int = n_psu_int * n_per_psu`; three-stage designs additionally multiply by
+the fixed `n_per_ssu`.
 
 `prec_alloc()` computes the precision for a given allocation (inverse of
 `n_alloc()`).
 
-Adding a `delta_psu` column to the frame (for example from `varcomp()`
+Adding a `icc_psu` column to the frame (for example from `varcomp()`
 with its `strata` argument) turns the allocation into a stratified
 two-stage design, with cost-optimal or fixed cluster takes per stratum.
 See `?n_alloc` and the vignette for the full workflow.
 
 ## Design effects
 
-```{r}
-# Planning: expected cluster design effect
-design_effect(delta = 0.05, psu_size = 20, method = "cluster")
+`design_effect()` anticipates the design effect of a plan by combining the
+design features you are choosing. Components multiply, and each is selected
+by the arguments you supply.
 
-# Diagnostic: Kish design effect from weights
-set.seed(2718)
-w <- runif(500, 0.5, 4)
-design_effect(w, method = "kish")
-effective_n(w, method = "kish")
+```{r}
+# Clustering alone: 20 households per cluster
+design_effect(icc = 0.05, n_per_psu = 20)
+
+# Clustering, unequal weighting, and the stratification gain together
+frame <- data.frame(
+  N = c(50000, 120000), n = c(600, 400), sd = c(12, 20), mean = c(55, 48)
+)
+deff <- design_effect(icc = 0.05, n_per_psu = 20, strata = frame)
+deff
+
+# Use it wherever a deff is expected
+n_prop(p = 0.3, moe = 0.05, deff = deff)
+effective_n(deff, n = 1000)
+
+# Or read the features off a plan you already built
+design_effect(n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05))
 ```
+
+This is a planning tool. To measure the design effect a *collected* sample
+actually achieved, use `survey::svymean(..., deff = TRUE)`, which computes
+it from the realized weights, strata, and clusters.
 
 ## References
 

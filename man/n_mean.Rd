@@ -6,11 +6,12 @@
 \alias{n_mean.svyplan_prec}
 \title{Sample Size for a Mean}
 \usage{
-n_mean(var, ...)
+n_mean(var = NULL, ...)
 
 \method{n_mean}{default}(
-  var,
+  var = NULL,
   ...,
+  sd = NULL,
   mu = NULL,
   moe = NULL,
   cv = NULL,
@@ -32,7 +33,11 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_mean]
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
-\item{mu}{Population mean magnitude (positive). Required when \code{cv} is
+\item{sd}{Population standard deviation, an alternative spelling of
+\code{var}. Supply exactly one of \code{var} or \code{sd}. Stratum frames and
+published survey reports usually quote standard deviations.}
+
+\item{mu}{Population mean. Required when \code{cv} is
 specified, because CV is defined as SE / mean.}
 
 \item{moe}{Desired margin of error, the half-width of the confidence
@@ -65,7 +70,26 @@ adjustment). The required sample size is inflated by \code{1 / resp_rate}.}
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
-A \code{svyplan_n} object.
+A \code{svyplan_n} object with \code{type = "mean"}:
+\describe{
+\item{\code{n}}{Required sample size, continuous and gross. It already
+carries \code{deff} and the \code{1 / resp_rate} inflation, so it counts the
+units to release, not the completed interviews. \verb{$n} and
+\code{as.double()} keep the unrounded value, which is what makes the
+round trip through \code{\link[=prec_mean]{prec_mean()}} exact; \code{print()} and
+\code{as.integer()} round it up to the whole units you would field.
+Take the field figure from \code{as.integer()} rather than from \verb{$n}.}
+\item{\code{se}, \code{moe}, \code{cv}}{Precision the design achieves at that \code{n},
+the same values \code{\link[=prec_mean]{prec_mean()}} reports for the same inputs. \code{moe}
+is \code{qnorm(1 - alpha / 2) * se}, and the interval is symmetric
+about the mean. \code{cv} is \code{NA} unless \code{mu} was supplied, since a
+relative standard error needs a mean to be relative to.}
+\item{\code{params}}{The validated inputs (\code{var}, \code{alpha}, \code{N}, \code{deff},
+\code{resp_rate}, \code{mu} when given, and whichever of \code{moe} or \code{cv} was
+the target). Dispersion is always stored as \code{var}, including when
+you supplied \code{sd}. \code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the \code{\link[=prec_mean]{prec_mean()}}
+round trip read the design back from here.}
+}
 }
 \description{
 Compute the required sample size for estimating a population mean
@@ -74,11 +98,16 @@ with a specified margin of error or coefficient of variation.
 \details{
 Two modes:
 \itemize{
-\item \strong{MOE mode}: \code{n = z^2 * var / (moe^2 + z^2 * var / N)}, then
-multiplied by \code{deff}.
-\item \strong{CV mode}: Computes \code{CVpop = sqrt(var) / mu}, then
-\code{n = CVpop^2 / (cv^2 + CVpop^2 / N)}, multiplied by \code{deff}.
+\item \strong{MOE mode}: \code{n = deff * z^2 * var / (moe^2 + deff * z^2 * var / N)}.
+\item \strong{CV mode}: Computes \code{CVpop = sqrt(var) / abs(mu)}, then
+\code{n = deff * CVpop^2 / (cv^2 + deff * CVpop^2 / N)}.
 }
+
+\code{deff} appears in the denominator as well as the numerator: it inflates
+the variance the finite population correction is then applied to, rather
+than scaling a size already corrected. The two coincide only at infinite
+\code{N}. For \code{var = 100}, \code{moe = 2}, \code{N = 100} and \code{deff = 2}, inflating
+afterwards would give 97.98 against the correct 65.76.
 \subsection{Finite population correction}{
 
 Setting \code{N} to a finite value reduces the required sample size when

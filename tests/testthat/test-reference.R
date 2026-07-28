@@ -58,55 +58,55 @@ test_that("n_mean CV mode matches Cochran formula", {
 })
 
 # VDK (2018) Chapter 3: Design Effect
-test_that("design_effect kish matches VDK Eq 3.5", {
+test_that("design_effect weighting matches VDK Eq 3.5", {
   # VDK Eq 3.5: deff_w = n * sum(w^2) / sum(w)^2
   # equivalently: 1 + CV_pop(w)^2
   w <- c(1, 1, 1, 1, 5)
   n <- length(w)
   deff_exp <- n * sum(w^2) / sum(w)^2
-  result <- design_effect(w, method = "kish")
+  result <- design_effect(weights = w)
   expect_equal(as.double(result), deff_exp, tolerance = 1e-6)
 })
 
-test_that("design_effect kish = 1 for equal weights (VDK)", {
+test_that("design_effect weighting = 1 for equal weights (VDK)", {
   # VDK: equal weights => deff_w = 1
   w <- rep(3, 100)
-  result <- design_effect(w, method = "kish")
+  result <- design_effect(weights = w)
   expect_equal(as.double(result), 1, tolerance = 1e-10)
 })
 
-test_that("design_effect cluster matches VDK Eq 3.18", {
-  # VDK Eq 3.18: deff_c = 1 + (b_bar - 1) * delta
-  # where b_bar = avg cluster size, delta = ICC
-  delta <- 0.05
+test_that("design_effect clustering matches VDK Eq 3.18", {
+  # VDK Eq 3.18: deff_c = 1 + (b_bar - 1) * icc
+  # where b_bar = avg cluster size, icc = ICC
+  icc <- 0.05
   b_bar <- 20
-  deff_exp <- 1 + (b_bar - 1) * delta
-  result <- design_effect(delta = delta, psu_size = b_bar, method = "cluster")
+  deff_exp <- 1 + (b_bar - 1) * icc
+  result <- design_effect(icc = icc, n_per_psu = b_bar)
   expect_equal(as.double(result), deff_exp, tolerance = 1e-10)
 })
 
 # VDK (2018) Chapter 4: Power Analysis
 test_that("power_prop matches VDK Eq 4.7 (Wald, SRS)", {
-  # VDK Eq 4.7: n = (z_a + z_b)^2 * (p1*q1 + p2*q2) / delta^2
+  # VDK Eq 4.7: n = (z_a + z_b)^2 * (p1*q1 + p2*q2) / icc^2
   p1 <- 0.30
   p2 <- 0.35
   z_a <- qnorm(0.975)
   z_b <- qnorm(0.80)
-  delta <- abs(p1 - p2)
+  icc <- abs(p1 - p2)
   V <- p1 * (1 - p1) + p2 * (1 - p2)
-  n_exp <- (z_a + z_b)^2 * V / delta^2
+  n_exp <- (z_a + z_b)^2 * V / icc^2
   result <- power_prop(p1 = p1, p2 = p2)
   expect_equal(result$n, n_exp, tolerance = 1e-4)
 })
 
 test_that("power_mean matches VDK Eq 4.14 (SRS)", {
-  # VDK Eq 4.14: n = (z_a + z_b)^2 * 2 * sigma^2 / delta^2
+  # VDK Eq 4.14: n = (z_a + z_b)^2 * 2 * sigma^2 / icc^2
   sigma2 <- 100
-  delta <- 5
+  icc <- 5
   z_a <- qnorm(0.975)
   z_b <- qnorm(0.80)
-  n_exp <- (z_a + z_b)^2 * 2 * sigma2 / delta^2
-  result <- power_mean(effect = delta, var = sigma2)
+  n_exp <- (z_a + z_b)^2 * 2 * sigma2 / icc^2
+  result <- power_mean(effect = icc, var = sigma2)
   expect_equal(result$n, n_exp, tolerance = 1e-4)
 })
 
@@ -127,12 +127,12 @@ test_that("n_prop MICS-style with resp_rate and deff", {
 
 # Cluster design: optimal allocation (VDK Ch 9)
 test_that("n_cluster optimal allocation matches VDK formula", {
-  # VDK Eq 9.14: m_opt = sqrt(c1/c2 * (1-delta)/delta)
+  # VDK Eq 9.14: m_opt = sqrt(c1/c2 * (1-icc)/icc)
   c1 <- 500
   c2 <- 50
-  delta <- 0.05
-  m_opt <- sqrt(c1 / c2 * (1 - delta) / delta)
-  result <- n_cluster(stage_cost = c(c1, c2), delta = delta, cv = 0.05)
+  icc <- 0.05
+  m_opt <- sqrt(c1 / c2 * (1 - icc) / icc)
+  result <- n_cluster(stage_cost = c(c1, c2), icc = icc, cv = 0.05)
   expect_equal(unname(result$n[2]), max(2, ceiling(m_opt)), tolerance = 1)
 })
 
@@ -158,4 +158,93 @@ test_that("prec_mean SE with FPC matches Cochran formula", {
   se_exp <- sqrt(S2 * fpc / n)
   result <- prec_mean(var = S2, n = n, N = N)
   expect_equal(result$se, se_exp, tolerance = 1e-6)
+})
+
+# VDK (2018) Example 5.2: minimum relvariance of estimated total revenue under
+# a fixed budget, book pp. 133-140 with the comparison in Table 5.4 p. 162
+.vdk_example_5_2 <- function() {
+  sector <- c("Manufacturing", "Retail", "Wholesale", "Service", "Finance")
+  N <- c(6221, 11738, 4333, 22809, 5467)
+  # VDK compute proportion SDs with the finite-population factor
+  sd_prop <- function(p) sqrt(p * (1 - p) * N / (N - 1))
+  list(
+    frame = data.frame(
+      stratum = sector, N = N, unit_cost = c(120, 80, 80, 90, 150),
+      stringsAsFactors = FALSE
+    ),
+    measures = data.frame(
+      stratum = rep(sector, 4),
+      name = rep(c("revenue", "employees", "research", "offshore"), each = 5),
+      mean = c(
+        85, 11, 23, 17, 126,
+        511, 21, 70, 32, 157,
+        0.8, 0.2, 0.5, 0.3, 0.9,
+        0.06, 0.03, 0.03, 0.21, 0.77
+      ),
+      sd = c(
+        170.0, 8.8, 23.0, 25.5, 315.0,
+        255.50, 5.25, 35.00, 32.00, 471.00,
+        sd_prop(c(0.8, 0.2, 0.5, 0.3, 0.9)),
+        sd_prop(c(0.06, 0.03, 0.03, 0.21, 0.77))
+      ),
+      stringsAsFactors = FALSE
+    ),
+    targets = data.frame(
+      name = c("employees", "research", "offshore"),
+      domain = ".overall", level = NA_character_,
+      cv = c(0.05, 0.03, 0.03),
+      stringsAsFactors = FALSE
+    )
+  )
+}
+
+test_that("n_alloc reproduces VDK Example 5.2 under a fixed budget", {
+  z <- .vdk_example_5_2()
+  fit <- n_alloc(
+    z$frame, measures = z$measures, targets = z$targets,
+    objective = "revenue", budget = 300000, min_n_stratum = 100
+  )
+
+  # Table 5.4: proc nlp and nloptr both land here
+  expect_equal(round(fit$detail$n), c(413, 318, 124, 1397, 596))
+  expect_equal(sum(fit$detail$n), 2847.56, tolerance = 1e-4)
+  expect_equal(fit$params$achieved$cost, 300000, tolerance = 1e-6)
+
+  # proc nlp reports 0.0021705237; svyplan agrees to nine significant figures
+  expect_equal(fit$objective_value, 0.002170523648, tolerance = 1e-9)
+  expect_equal(sqrt(fit$objective_value), 0.04658888, tolerance = 1e-7)
+
+  achieved <- setNames(fit$constraints$.achieved, fit$constraints$name)
+  expect_equal(unname(achieved["employees"]), 0.0239, tolerance = 1e-3)
+  expect_equal(unname(achieved["research"]), 0.0208, tolerance = 1e-3)
+  # the offshore constraint is the binding one, at exactly its 3% limit
+  expect_equal(unname(achieved["offshore"]), 0.03, tolerance = 1e-9)
+  expect_identical(fit$binding, "offshore@.overall:cv")
+})
+
+test_that("the VDK Example 5.2 rerun at 350000 improves on the published CV", {
+  z <- .vdk_example_5_2()
+  fit <- n_alloc(
+    z$frame, measures = z$measures, targets = z$targets,
+    objective = "revenue", budget = 350000, min_n_stratum = 100
+  )
+  # VDK report CV(revenue) = 0.0409 at this budget (p. 140). Their Solver run
+  # starts from the 300000 solution and stops at a local point; the
+  # epsilon-constraint route finds a strictly feasible design at 0.0388.
+  expect_equal(sqrt(fit$objective_value), 0.03875365, tolerance = 1e-6)
+  expect_lt(sqrt(fit$objective_value), 0.0409)
+  expect_equal(fit$params$achieved$cost, 350000, tolerance = 1e-6)
+  expect_true(all(fit$constraints$.pass))
+  expect_lte(fit$operational$cost, 350000)
+})
+
+test_that("VDK Example 5.2 at 250000 cannot fund its targets", {
+  z <- .vdk_example_5_2()
+  expect_error(
+    n_alloc(
+      z$frame, measures = z$measures, targets = z$targets,
+      objective = "revenue", budget = 250000, min_n_stratum = 100
+    ),
+    "cheapest target-feasible design costs 265192, short by 15191"
+  )
 })

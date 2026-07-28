@@ -50,16 +50,16 @@ test_that("predict works with new data of different length", {
 test_that("predict works with take_all stratum", {
   set.seed(3)
   x <- rlnorm(500, meanlog = 6, sdlog = 1.5)
-  sb <- strata_bound(x, n_strata = 3, n = 80, certain = quantile(x, 0.95))
+  sb <- strata_bound(x, n_strata = 3, n = 80, take_all_above = quantile(x, 0.95))
   f <- predict(sb, x)
   expect_equal(nlevels(f), 3L)
   expect_equal(length(f), length(x))
 })
 
-test_that("predict assigns equality at certain to the take-all stratum", {
+test_that("predict assigns equality at the threshold to the take-all stratum", {
   sb <- strata_bound(
     c(1:89, rep(90, 5), 91:100), n_strata = 3, n = 30,
-    certain = 90, method = "cumrootf"
+    take_all_above = 90, method = "cumrootf"
   )
   assigned <- predict(sb, c(89, 90, 91))
   expect_equal(as.integer(assigned), c(2L, 3L, 3L))

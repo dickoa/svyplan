@@ -4,10 +4,15 @@
 #' results.
 #'
 #' @param x A svyplan object.
-#' @param npoints Number of points in the power curve grid (default 101).
+#' @param npoints Number of points in the grid: the power curve (default
+#'   101) or the budget frontier (default 25, since each point is a solve).
+#' @param newdata Optional one-column data frame of `budget` values for
+#'   `plot.svyplan_n()`. The default sweeps from the cheapest design that
+#'   meets the hard targets up to twice the fitted budget.
 #' @param ... Additional graphical parameters passed to [barplot()]
-#'   (for strata) or [plot()] (for power). These override the defaults,
-#'   so you can set `main`, `col`, `ylab`, `xlab`, `ylim`, etc.
+#'   (for strata) or [plot()] (for power and the budget frontier). These
+#'   override the defaults, so you can set `main`, `col`, `ylab`, `xlab`,
+#'   `ylim`, etc.
 #'
 #' @return `x`, invisibly.
 #'
@@ -25,6 +30,16 @@
 #' line at the significance level. Defaults: `ylim = c(0, 1)`,
 #' `type = "l"`, `xlab = "Sample size (per group)"`, `ylab = "Power"`.
 #'
+#' `plot.svyplan_n()` draws the budget frontier for a fixed-budget joint
+#' allocation ([n_alloc()] with `objective` and `budget`): what precision
+#' each budget buys on the objective indicator, over the range where the
+#' hard targets remain fundable. The fitted design is a filled dot. The
+#' curve is the same one [predict()] returns as a table, so read exact
+#' numbers there. Its shape is the point: the objective falls as
+#' `1 / cost`, so the marginal return on budget flattens, and the plot
+#' shows where. Other `svyplan_n` results have no frontier to draw and
+#' produce an error naming what is plottable.
+#'
 #' @examples
 #' # Sampling fraction per stratum
 #' set.seed(1907)
@@ -41,6 +56,28 @@
 #'
 #' # Custom line width and colour
 #' plot(pw, lwd = 2, col = "darkred")
+#'
+#' # Budget frontier: what each budget buys on the objective indicator
+#' frame <- data.frame(
+#'   stratum = c("A", "B", "C"),
+#'   N = c(4000, 3000, 3000),
+#'   unit_cost = c(1, 1.2, 1.5)
+#' )
+#' measures <- data.frame(
+#'   stratum = rep(frame$stratum, 2),
+#'   name = rep(c("vaccination", "income"), each = 3),
+#'   p = c(0.5, 0.4, 0.6, rep(NA, 3)),
+#'   mean = c(rep(NA, 3), 50, 55, 60),
+#'   sd = c(rep(NA, 3), 10, 12, 15)
+#' )
+#' targets <- data.frame(name = "vaccination", cv = 0.05)
+#' fit <- n_alloc(frame, measures = measures, targets = targets,
+#'                objective = "income", budget = 4000)
+#' plot(fit)
+#'
+#' @seealso [predict.svyplan] for the sensitivity grids these curves are
+#'   drawn from, and [strata_bound()], [power_prop()], [n_alloc()] for the
+#'   results that are plottable.
 #'
 #' @name plot.svyplan
 NULL
@@ -69,8 +106,8 @@ plot.svyplan_strata <- function(x, ...) {
     x$method,
     cumrootf = "Dalenius-Hodges",
     geo = "Geometric",
-    lh = "Lavall\u00e9e-Hidiroglou",
-    kozak = "Kozak",
+    lh = "LH-inspired coordinate search",
+    kozak = "Kozak-inspired local search",
     x$method
   )
 
@@ -131,6 +168,96 @@ plot.svyplan_power <- function(x, npoints = 101L, ...) {
   invisible(x)
 }
 
+#' @rdname plot.svyplan
+#' @export
+plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
+  if (!identical(x$params$mode, "budget_objective")) {
+    stop(
+      paste0(
+        "plot() is available for fixed-budget joint allocations ",
+        "(n_alloc() with 'objective' and 'budget'), which have a budget ",
+        "frontier to draw. Use plot() on a strata_bound() or power_*() ",
+        "result, or predict() for a sensitivity table on this one."
+      ),
+      call. = FALSE
+    )
+  }
+  if (!is.numeric(npoints) || length(npoints) != 1L || is.na(npoints) ||
+      npoints < 2) {
+    stop("'npoints' must be a single number >= 2", call. = FALSE)
+  }
+
+  if (is.null(newdata)) newdata <- data.frame(budget = .budget_grid(x, npoints))
+  fr <- predict(x, newdata)
+  fr <- fr[!is.na(fr$.feasible) & fr$.feasible, , drop = FALSE]
+  if (nrow(fr) < 2L) {
+    stop("too few feasible budgets to draw a frontier; supply 'newdata'",
+         call. = FALSE)
+  }
+
+  defaults <- list(
+    type = "l",
+    xlab = "Cost",
+    ylab = "Objective cv",
+    main = .frontier_title(x$params$objective)
+  )
+  args <- modifyList(defaults, list(...))
+  do.call(plot, c(list(x = fr$cost, y = fr$cv), args))
+
+  fitted_cv <- sqrt(x$objective_value)
+  fitted_cost <- x$params$achieved$cost
+  abline(h = fitted_cv, lty = 2, col = "grey50")
+  abline(v = fitted_cost, lty = 2, col = "grey50")
+  points(fitted_cost, fitted_cv, pch = 19)
+
+  invisible(x)
+}
+
+#' Title for the frontier plot
+#'
+#' `objective` is the normalized component table, not a name, so a single
+#' component is named and several are counted rather than concatenated into
+#' a title too wide for the device.
+#' @keywords internal
+#' @noRd
+.frontier_title <- function(objective) {
+  if (is.null(objective) || nrow(objective) == 0L) return("Budget frontier")
+  if (nrow(objective) == 1L) {
+    return(sprintf("Budget frontier for %s", objective$component[1L]))
+  }
+  sprintf("Budget frontier (%d objective components)", nrow(objective))
+}
+
+#' Feasible budget sweep for the frontier plot
+#'
+#' Starts at the cheapest design meeting the hard targets rather than at an
+#' arbitrary fraction of the fitted budget, so the grid contains no
+#' infeasible points and the curve begins where the frontier actually does.
+#' @keywords internal
+#' @noRd
+.budget_grid <- function(x, npoints) {
+  p <- x$params
+  targets <- if (is.null(p$targets) || nrow(p$targets) == 0L) NULL else
+    p$targets
+  lo <- NULL
+  if (!is.null(targets)) {
+    floor_fit <- tryCatch(
+      n_alloc.default(
+        frame = p$frame, measures = p$measures, targets = targets,
+        unit_cost = p$unit_cost, alpha = p$alpha, deff = p$deff,
+        resp_rate = p$resp_rate, min_n_stratum = p$min_n_stratum
+      ),
+      error = function(e) NULL
+    )
+    # the integer design is the true floor: the continuous optimum is not
+    # itself affordable in whole units
+    if (!is.null(floor_fit)) lo <- floor_fit$operational$cost
+  }
+  hi <- 2 * p$budget
+  if (is.null(lo) || !is.finite(lo) || lo >= hi) lo <- 0.5 * p$budget
+  seq(lo, hi, length.out = as.integer(npoints))
+}
+
 #' @keywords internal
 #' @noRd
 .power_curve_grid <- function(x, n_seq) {
@@ -152,7 +279,7 @@ plot.svyplan_power <- function(x, npoints = 101L, ...) {
               resp_rate = p$resp_rate,
               alternative = p$alternative,
               overlap = p$overlap,
-              rho = p$rho,
+              overlap_cor = p$overlap_cor,
               method = p$method %||% "wald"
             )
           } else if (x$type %in% c("did_prop", "did_mean")) {
@@ -170,7 +297,7 @@ plot.svyplan_power <- function(x, npoints = 101L, ...) {
               resp_rate = p$resp_rate,
               alternative = p$alternative,
               overlap = p$overlap,
-              rho = p$rho
+              overlap_cor = p$overlap_cor
             )
           } else {
             res <- power_mean(
@@ -184,7 +311,7 @@ plot.svyplan_power <- function(x, npoints = 101L, ...) {
               resp_rate = p$resp_rate,
               alternative = p$alternative,
               overlap = p$overlap,
-              rho = p$rho
+              overlap_cor = p$overlap_cor
             )
           }
           res$power

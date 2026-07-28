@@ -10,8 +10,8 @@ test_that("svyplan_n constructors return canonical fields", {
   )
 
   expected <- c(
-    "n", "type", "method", "params", "se", "moe", "cv", "targets",
-    "detail", "binding", "domains", "operational"
+    "n", "type", "method", "params", "se", "moe", "cv", "indicators",
+    "targets", "detail", "binding", "domains", "operational"
   )
   expect_identical(names(single), expected)
   expect_identical(names(alloc), expected)
@@ -22,14 +22,14 @@ test_that("svyplan_n constructors return canonical fields", {
 })
 
 test_that("design-effect constructor produces a numeric result class", {
-  result <- design_effect(delta = 0.05, psu_size = 20)
+  result <- design_effect(icc = 0.05, n_per_psu = 20)
 
-  expect_s3_class(result, "svyplan_design_effect")
+  expect_s3_class(result, "svyplan_deff")
   expect_true(is.numeric(result))
   expect_length(result, 1L)
   expect_equal(as.double(result), 1.95)
   expect_equal(result * 2, 3.9)
-  expect_false(inherits(result * 2, "svyplan_design_effect"))
+  expect_false(inherits(result * 2, "svyplan_deff"))
   expect_equal(sqrt(result), sqrt(1.95))
-  expect_false(inherits(sqrt(result), "svyplan_design_effect"))
+  expect_false(inherits(sqrt(result), "svyplan_deff"))
 })

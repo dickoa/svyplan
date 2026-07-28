@@ -20,7 +20,7 @@ power_prop(p1, ...)
   alternative = c("two.sided", "one.sided"),
   ratio = 1,
   overlap = 0,
-  rho = 0,
+  overlap_cor = 0,
   method = c("wald", "arcsine", "logodds"),
   plan = NULL
 )
@@ -68,7 +68,7 @@ the sample of group 2.}
 Defined as the fraction of group 1 that also appears in group 2
 (\code{overlap = n12 / n1}). Only supported with \code{method = "wald"}.}
 
-\item{rho}{Correlation between occasions in [0, 1].}
+\item{overlap_cor}{Correlation between occasions in [0, 1].}
 
 \item{method}{Variance method: \code{"wald"} (default), \code{"arcsine"}, or
 \code{"logodds"}. Arcsine and log-odds transforms are variance-stabilizing
@@ -111,6 +111,39 @@ proportions. Uses Valliant Eq (4.23)/(4.24).}
 For proportions in the 0.2--0.8 range, all three methods give similar
 results. For rare or extreme proportions, \code{"arcsine"} or \code{"logodds"}
 are more reliable.
+}
+
+\subsection{Null variance convention}{
+
+\code{method = "wald"} uses the unpooled variance
+\eqn{p_1 q_1 / n_1 + p_2 q_2 / n_2} for both the critical value and the
+power shift. \code{\link[stats:power.prop.test]{stats::power.prop.test()}} instead evaluates the critical
+value under the null, using the pooled variance
+\eqn{\bar{p} \bar{q} (1/n_1 + 1/n_2)} with
+\eqn{\bar{p} = (p_1 + p_2) / 2}. Both conventions are standard, and they
+differ by a few tenths of a percent in the resulting size:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{power_prop(p1 = 0.3, p2 = 0.4, power = 0.8)$n   # 353.2
+power.prop.test(p1 = 0.3, p2 = 0.4, power = 0.8)$n   # 355.9
+}\if{html}{\out{</div>}}
+
+The unpooled form is used here because it is the variance the package
+reports everywhere else: it is the same expression that \code{deff}, the
+finite population correction, and \code{resp_rate} act on in \code{\link[=n_prop]{n_prop()}} and
+\code{\link[=prec_prop]{prec_prop()}}, so a power calculation and a precision calculation for the
+same design stay on one scale. The pooled form has no finite-population
+analogue that keeps that correspondence.
+}
+
+\subsection{Normal approximation}{
+
+All three methods compute critical values and power from the standard
+normal, with no degrees-of-freedom correction and the variance treated
+as known. This is the convention for survey-scale samples and is what
+lets \code{deff}, a finite \code{N}, and \code{resp_rate} enter the variance directly.
+The choice of \code{method} addresses accuracy in \eqn{p}, not in \eqn{n}:
+\code{"arcsine"} and \code{"logodds"} improve the normal approximation for an
+extreme proportion, but none of the three is exact at small \code{n}.
 }
 }
 \examples{

@@ -53,11 +53,11 @@ A \code{svyplan_varcomp} object with components:
 \item{\code{varb}}{Between-PSU variance (scalar).}
 \item{\code{varw}}{Within-PSU variance. Scalar for 2-stage, length-2
 vector (\code{varw_psu}, \code{varw_ssu}) for 3-stage.}
-\item{\code{delta}}{Measure of homogeneity. Length 1 for 2-stage,
-length 2 (\code{delta_psu}, \code{delta_ssu}) for 3-stage.}
-\item{\code{k}}{Ratio parameter(s), same length as \code{delta}
-(\code{k_psu}, \code{k_ssu} for 3-stage).}
-\item{\code{rel_var}}{Unit relvariance (scalar).}
+\item{\code{icc}}{Measure of homogeneity. Length 1 for 2-stage,
+length 2 (\code{icc_psu}, \code{icc_ssu}) for 3-stage.}
+\item{\code{var_ratio}}{Ratio parameter(s), same length as \code{icc}
+(\code{var_ratio_psu}, \code{var_ratio_ssu} for 3-stage).}
+\item{\code{unit_relvar}}{Unit relvariance (scalar).}
 \item{\code{stages}}{Number of stages (2 or 3).}
 \item{\code{strata}}{Per-stratum component table when \code{strata} is
 supplied, otherwise \code{NULL} (see Details).}
@@ -106,7 +106,7 @@ Informative within-cluster sampling remains approximate. In the
 3-stage weighted case the between-PSU correction removes
 element-stage estimation noise but not SSU-stage subsampling noise,
 so when few SSUs are sampled per PSU the between-PSU component (and
-\code{delta_psu}) is conservative: biased upward, never downward.
+\code{icc_psu}) is conservative: biased upward, never downward.
 
 When \code{prob} is \code{NULL}, SRS first-stage is assumed. When provided, PPS
 variance estimation is used. \code{prob} must sum to 1 across the PSUs
@@ -122,12 +122,50 @@ path: they contribute no between-PSU variance and should be treated
 as separate strata, with \code{prob} renormalized over the remaining
 PSUs.
 
-The returned \code{delta} is the measure of homogeneity
-\eqn{\delta = V_b / (V_b + V_w)}{delta = Vb / (Vb + Vw)} following
-Valliant, Dever, and Kreuter (2018, Ch. 9). Unlike the traditional ANOVA
-intraclass correlation coefficient, \code{delta} is constrained to \eqn{[0, 1]}
+The returned \code{icc} is the design-based measure of homogeneity
+\eqn{\delta = V_b / (V_b + V_w)}{icc = Vb / (Vb + Vw)}, written
+\eqn{\delta} in Valliant, Dever, and Kreuter (2018, Ch. 9).
+Unlike the traditional ANOVA
+intraclass correlation coefficient, \code{icc} is constrained to \eqn{[0, 1]}
 and should not be compared directly to mixed-model ICCs (e.g. from lme4)
 which can be negative.
+\subsection{Component estimands}{
+
+For two-stage SRS, let \eqn{M} be the number of PSUs, \eqn{N_i} the
+ultimate-unit count in PSU \eqn{i}, \eqn{t_i} its outcome total, and
+\eqn{S_i^2} its within-PSU variance. With
+\eqn{t_U=M\bar t}, the complete-frame components returned are
+\deqn{V_b=s^2(t_i)/\bar t^2, \qquad
+      V_w=M\sum_iN_i^2S_i^2/t_U^2.}
+For PPS with one-draw probabilities \eqn{p_i}, they are
+\deqn{V_b=\sum_i p_i(t_i/p_i-t_U)^2/t_U^2, \qquad
+      V_w=\sum_iN_i^2S_i^2/(p_it_U^2).}
+In both cases \code{unit_relvar} is the ultimate-unit variance divided by the
+squared ultimate-unit mean, \code{icc = varb / (varb + varw)}, and
+\code{var_ratio = (varb + varw) / unit_relvar}.
+
+For three stages, \code{varb} uses the PPS between-PSU expression above.
+\code{varw_psu} applies the same PPS scaling to the variance of SSU totals
+within each PSU, and \code{varw_ssu} aggregates the within-SSU ultimate-unit
+variances. The returned PSU homogeneity compares the between-PSU component
+with the element-level variance aggregated within PSUs; the SSU
+homogeneity is \code{varw_psu / (varw_psu + varw_ssu)}. This distinction is why
+the first \code{icc} is not generally \code{varb / sum(c(varb, varw))} for a
+three-stage result.
+
+The two \code{var_ratio} values are estimated from their own stage decompositions
+rather than by imposing the identity \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)}
+that the planning formula uses (see \code{\link[=design_effect]{design_effect()}}). On small clusters
+the two can differ by several percent. Passing a \code{svyplan_varcomp} to a
+planning function uses the estimated pair as given; omitting \code{var_ratio_ssu} there
+applies the identity instead.
+
+When weights are supplied, \eqn{N_i}, totals, means, and variances in these
+expressions are their weighted estimates. The code subtracts the stated
+SRS-without-replacement estimation variance of estimated cluster totals and
+truncates negative corrected components to zero. These corrections are
+planning approximations, not exact variance estimators for arbitrary
+informative multistage samples.
 
 Clusters containing a single observation have undefined within-cluster
 variance. In this case, the within-cluster variance is imputed as the
@@ -135,12 +173,13 @@ mean variance of the remaining clusters.
 
 With \code{strata}, components are estimated separately within each
 stratum and returned as a per-stratum table in \verb{$strata} (also via
-\code{as.data.frame()}). The pooled fields (\code{varb}, \code{delta}, ...) are not
-filled. The table's columns (\code{sd}, \code{mean}, \code{delta_psu}, \code{k_psu})
+\code{as.data.frame()}). The pooled fields (\code{varb}, \code{icc}, ...) are not
+filled. The table's columns (\code{sd}, \code{mean}, \code{icc_psu}, \code{var_ratio_psu})
 match the \code{\link[=n_alloc]{n_alloc()}} frame contract, so after adding stratum \code{N}
 it feeds a stratified two-stage allocation directly. When \code{prob} is
 combined with \code{strata}, supply one value per observation, summing
 to 1 within each stratum.
+}
 }
 \section{Methods (by class)}{
 \itemize{
@@ -165,7 +204,7 @@ vc2
 as.data.frame(vc2)
 
 # Feed into n_cluster
-n_cluster(stage_cost = c(500, 50), delta = vc2, budget = 100000)
+n_cluster(stage_cost = c(500, 50), icc = vc2, budget = 100000)
 
 # Estimate components from a two-stage sample: within-cluster
 # weights (summing to each cluster's population size) and, for a
@@ -217,5 +256,5 @@ Hansen, M. H., Hurwitz, W. N., and Madow, W. G. (1953).
 \emph{Sample Survey Methods and Theory} (Vol. I). Wiley.
 }
 \seealso{
-\code{\link[=n_cluster]{n_cluster()}} which accepts a \code{svyplan_varcomp} as \code{delta}.
+\code{\link[=n_cluster]{n_cluster()}} which accepts a \code{svyplan_varcomp} as \code{icc}.
 }

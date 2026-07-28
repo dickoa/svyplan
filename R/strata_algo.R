@@ -82,6 +82,24 @@
   n_h
 }
 
+#' Stratified variance of the mean under the package's shared convention
+#'
+#' `V = deff * sum(W_h^2 S_h^2 (1 / n_net_h - 1 / N_h))` with
+#' `n_net_h = n_h * resp_rate`, the same expression `.alloc_metrics()` uses,
+#' so that `strata_bound()` and `n_alloc()` report the same `cv` for the same
+#' design. A scalar `deff` scales every candidate boundary set equally and so
+#' leaves the optimal boundaries unchanged; what it changes is the `n` a `cv`
+#' target requires and the `cv` a given `n` achieves.
+#' @keywords internal
+#' @noRd
+.strata_variance <- function(W_h, S_h, n_h, N_h, deff = 1, resp_rate = 1) {
+  n_net <- n_h * resp_rate
+  n_eff <- n_net / deff
+  active <- N_h > 0 & n_eff > 0
+  fpc <- pmax(0, 1 - n_net[active] / N_h[active])
+  sum(W_h[active]^2 * S_h[active]^2 * fpc / n_eff[active])
+}
+
 #' Evaluate stratified allocation for given boundaries
 #' @keywords internal
 #' @noRd
@@ -92,8 +110,10 @@
   alloc,
   q,
   cost_h,
-  certain_idx = NULL,
-  .pre = NULL
+  take_all_idx = NULL,
+  .pre = NULL,
+  deff = 1,
+  resp_rate = 1
 ) {
   L <- length(bk) + 1L
 
@@ -110,11 +130,11 @@
     x_range <- range(x)
     breaks <- c(x_range[1L], bk, x_range[2L])
     bins <- findInterval(x, bk, left.open = TRUE) + 1L
-    if (!is.null(certain_idx)) {
+    if (!is.null(take_all_idx)) {
       # Ordinary cutpoints define right-closed strata, but the documented
-      # take-all rule is x >= certain.  Move equality at that threshold into
-      # the certain stratum explicitly.
-      bins[x >= bk[certain_idx - 1L]] <- certain_idx
+      # take-all rule is x >= the threshold.  Move equality at that threshold into
+      # the take-all stratum explicitly.
+      bins[x >= bk[take_all_idx - 1L]] <- take_all_idx
     }
     N_h <- tabulate(bins, nbins = L)
     N <- length(x)
@@ -139,23 +159,23 @@
   a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h)
   m_h <- pmin(rep(2, L), N_h)
   M_h <- N_h
-  if (!is.null(certain_idx)) {
-    a_h[certain_idx] <- 0
-    m_h[certain_idx] <- N_h[certain_idx]
+  if (!is.null(take_all_idx)) {
+    a_h[take_all_idx] <- 0
+    m_h[take_all_idx] <- N_h[take_all_idx]
   }
 
   sa <- sum(a_h)
   if (sa <= 0) {
     n_h <- rep(2, L)
-    if (!is.null(certain_idx)) {
-      n_h[certain_idx] <- N_h[certain_idx]
+    if (!is.null(take_all_idx)) {
+      n_h[take_all_idx] <- N_h[take_all_idx]
     }
     n_h <- n_h * (n_total / sum(n_h))
   } else {
     n_h <- .rna_alloc(a_h, n_total, m_h, M_h)
   }
 
-  V <- sum(W_h^2 * S_h^2 / n_h * (1 - n_h / N_h))
+  V <- .strata_variance(W_h, S_h, n_h, N_h, deff, resp_rate)
   ybar <- sum(W_h * mean_h)
   cv <- if (ybar == 0) Inf else sqrt(V) / abs(ybar)
 
@@ -182,13 +202,16 @@
   alloc,
   q,
   cost_h,
-  certain_idx = NULL,
-  .pre = NULL
+  take_all_idx = NULL,
+  .pre = NULL,
+  deff = 1,
+  resp_rate = 1
 ) {
   if (is.unsorted(bk)) {
     return(Inf)
   }
-  res <- .strata_alloc(x, bk, n_total, alloc, q, cost_h, certain_idx, .pre)
+  res <- .strata_alloc(x, bk, n_total, alloc, q, cost_h, take_all_idx, .pre,
+                       deff, resp_rate)
   if (any(res$N_h == 0L)) {
     return(Inf)
   }
@@ -205,8 +228,10 @@
   alloc,
   q,
   cost_h,
-  certain_idx = NULL,
-  .pre = NULL
+  take_all_idx = NULL,
+  .pre = NULL,
+  deff = 1,
+  resp_rate = 1
 ) {
   if (is.unsorted(bk)) {
     return(Inf)
@@ -226,8 +251,8 @@
     mean_h <- stats$mean_h
   } else {
     bins <- findInterval(x, bk, left.open = TRUE) + 1L
-    if (!is.null(certain_idx)) {
-      bins[x >= bk[certain_idx - 1L]] <- certain_idx
+    if (!is.null(take_all_idx)) {
+      bins[x >= bk[take_all_idx - 1L]] <- take_all_idx
     }
     N_h <- tabulate(bins, nbins = L)
     if (any(N_h == 0L)) {
@@ -258,9 +283,9 @@
   a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h)
   m_h <- pmin(rep(2, L), N_h)
   M_h <- N_h
-  if (!is.null(certain_idx)) {
-    a_h[certain_idx] <- 0
-    m_h[certain_idx] <- N_h[certain_idx]
+  if (!is.null(take_all_idx)) {
+    a_h[take_all_idx] <- 0
+    m_h[take_all_idx] <- N_h[take_all_idx]
   }
 
   sa <- sum(a_h)
@@ -273,12 +298,7 @@
   hi <- N
   variance_at <- function(n_total) {
     n_h <- .rna_alloc(a_h, n_total, m_h, M_h)
-    sum(
-      W_h[active]^2 *
-        S_h[active]^2 /
-        n_h[active] *
-        (1 - n_h[active] / N_h[active])
-    )
+    .strata_variance(W_h, S_h, n_h, N_h, deff, resp_rate)
   }
   if (variance_at(lo) <= target_V) {
     return(lo)
@@ -363,7 +383,7 @@
   b0 * r^seq_len(L - 1L)
 }
 
-#' Lavallée-Hidiroglou iterative boundary optimization
+#' LH-inspired coordinate-wise boundary optimization
 #' @keywords internal
 #' @noRd
 .strata_lh <- function(
@@ -375,7 +395,9 @@
   q,
   cost_h,
   max_iter,
-  certain_idx = NULL
+  take_all_idx = NULL,
+  deff = 1,
+  resp_rate = 1
 ) {
   x_uniq <- sort(unique(x_sort))
   nu <- length(x_uniq)
@@ -401,8 +423,10 @@
         alloc,
         q,
         cost_h,
-        certain_idx,
-        .pre = pre
+        take_all_idx,
+        .pre = pre,
+        deff = deff,
+        resp_rate = resp_rate
       )
     }
   } else {
@@ -414,8 +438,10 @@
         alloc,
         q,
         cost_h,
-        certain_idx,
-        .pre = pre
+        take_all_idx,
+        .pre = pre,
+        deff = deff,
+        resp_rate = resp_rate
       )
     }
   }
@@ -466,7 +492,7 @@
   list(bk = best_bk, converged = converged)
 }
 
-#' Kozak random search boundary optimization
+#' Kozak-inspired random-restart adjacent-boundary local search
 #' @keywords internal
 #' @noRd
 .strata_kozak <- function(
@@ -479,7 +505,9 @@
   cost_h,
   max_iter,
   n_restart,
-  certain_idx = NULL
+  take_all_idx = NULL,
+  deff = 1,
+  resp_rate = 1
 ) {
   x_uniq <- sort(unique(x_sort))
   nu <- length(x_uniq)
@@ -512,8 +540,8 @@
     S_h <- sqrt(var_h)
     W_h <- N_h / N
     a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h)
-    if (!is.null(certain_idx)) {
-      a_h[certain_idx] <- 0
+    if (!is.null(take_all_idx)) {
+      a_h[take_all_idx] <- 0
     }
     sa <- sum(a_h)
     if (sa <= 0) {
@@ -521,8 +549,8 @@
     }
     m_h <- pmin(rep(2, L), N_h)
     M_h <- N_h
-    if (!is.null(certain_idx)) {
-      m_h[certain_idx] <- N_h[certain_idx]
+    if (!is.null(take_all_idx)) {
+      m_h[take_all_idx] <- N_h[take_all_idx]
     }
 
     if (use_cv) {
@@ -534,18 +562,13 @@
       for (i in seq_len(20L)) {
         mid <- (bi_lo + bi_hi) / 2
         n_h <- .rna_alloc(a_h, mid, m_h, M_h)
-        V <- sum(
-          W_h[active]^2 *
-            S_h[active]^2 /
-            n_h[active] *
-            (1 - n_h[active] / N_h[active])
-        )
+        V <- .strata_variance(W_h, S_h, n_h, N_h, deff, resp_rate)
         if (V > tgt_V) bi_lo <- mid else bi_hi <- mid
       }
       (bi_lo + bi_hi) / 2
     } else {
       n_h <- .rna_alloc(a_h, n_total, m_h, M_h)
-      V <- sum(W_h^2 * S_h^2 / n_h * (1 - n_h / N_h))
+      V <- .strata_variance(W_h, S_h, n_h, N_h, deff, resp_rate)
       ybar <- sum(W_h * mean_h)
       if (ybar == 0) Inf else sqrt(V) / abs(ybar)
     }

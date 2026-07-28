@@ -4,23 +4,25 @@
 #' allocation. This is the inverse of [n_cluster()].
 #'
 #' @param n For the default method: numeric vector of per-stage sample
-#'   sizes (`c(n_psu, psu_size)` for 2-stage or
-#'   `c(n_psu, psu_size, ssu_size)` for 3-stage). Named vectors are accepted
-#'   with stage names `n_psu`, `psu_size`, `ssu_size`.
+#'   sizes (`c(n_psu, n_per_psu)` for 2-stage or
+#'   `c(n_psu, n_per_psu, n_per_ssu)` for 3-stage). Named vectors are accepted
+#'   with stage names `n_psu`, `n_per_psu`, `n_per_ssu`.
 #'   For `svyplan_cluster` objects: a cluster allocation from [n_cluster()].
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
-#' @param delta Numeric vector of homogeneity measures (length = stages - 1),
+#' @param icc Numeric vector of homogeneity measures (length = stages - 1),
 #'   or a `svyplan_varcomp` object.
-#' @param rel_var Unit relvariance (default 1).
-#' @param k Ratio parameter(s). Scalar for 2-stage, length-2 vector for
-#'   3-stage (default 1).
+#' @param unit_relvar Unit relvariance (default 1).
+#' @param var_ratio Ratio of the stage components' unit variance to the analysis
+#'   variable's, default 1. A scalar names `var_ratio_psu`; for three stages
+#'   `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)` follows from the decomposition. See
+#'   [design_effect()].
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The effective stage-1 size is `n * resp_rate`.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_prec` object with components `$se`, `$moe`, and `$cv`.
 #'   Because the cluster model is parameterized with unit relvariance
-#'   (`rel_var = S^2 / Y_bar^2`), only `$cv` is computable. The `$se` and
+#'   (`unit_relvar = S^2 / Y_bar^2`), only `$cv` is computable. The `$se` and
 #'   `$moe` components are `NA`.
 #'
 #' @details
@@ -47,11 +49,11 @@
 #'
 #' @examples
 #' # Direct usage
-#' prec_cluster(n = c(50, 12), delta = 0.05)
-#' prec_cluster(n = c(50, 12, 8), delta = c(0.01, 0.05))
+#' prec_cluster(n = c(50, 12), icc = 0.05)
+#' prec_cluster(n = c(50, 12, 8), icc = c(0.01, 0.05))
 #'
 #' # Round-trip from n_cluster
-#' res <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
+#' res <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
 #' prec_cluster(res)
 #'
 #' @export
@@ -68,28 +70,28 @@ prec_cluster <- function(n, ...) {
 prec_cluster.default <- function(
   n,
   ...,
-  delta = NULL,
-  rel_var = 1,
-  k = 1,
+  icc = NULL,
+  unit_relvar = 1,
+  var_ratio = 1,
   resp_rate = 1,
   plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, prec_cluster.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_cluster.default, c(.plan, list(...))))
   .check_unused_dots(...)
-  if (is.null(delta))
-    stop("'delta' is required (directly or via plan)", call. = FALSE)
-  if (inherits(delta, "svyplan_varcomp")) {
-    vc <- delta
+  if (is.null(icc))
+    stop("'icc' is required (directly or via plan)", call. = FALSE)
+  if (inherits(icc, "svyplan_varcomp")) {
+    vc <- icc
     if (!is.null(vc$strata)) {
       stop(
         "stratified varcomp: merge its $strata columns into an n_alloc() frame, or pass one stratum's values",
         call. = FALSE
       )
     }
-    delta <- vc$delta
-    rel_var <- vc$rel_var
-    k <- vc$k
+    icc <- vc$icc
+    unit_relvar <- vc$unit_relvar
+    var_ratio <- vc$var_ratio
   }
 
   if (!is.numeric(n) || length(n) < 2L) {
@@ -110,19 +112,19 @@ prec_cluster.default <- function(
   }
 
   stages <- length(n)
-  delta <- .reorder_stage_vec(delta, "delta")
-  k <- .reorder_stage_vec(k, "k")
-  check_delta(delta, expected_length = stages - 1L)
+  icc <- .reorder_stage_vec(icc, "icc")
+  var_ratio <- .reorder_stage_vec(var_ratio, "var_ratio")
+  check_icc(icc, expected_length = stages - 1L)
   check_resp_rate(resp_rate)
-  check_scalar(rel_var, "rel_var")
+  check_scalar(unit_relvar, "unit_relvar")
   if (
-    !is.numeric(k) ||
-      length(k) == 0L ||
-      anyNA(k) ||
-      any(k <= 0) ||
-      any(!is.finite(k))
+    !is.numeric(var_ratio) ||
+      length(var_ratio) == 0L ||
+      anyNA(var_ratio) ||
+      any(var_ratio <= 0) ||
+      any(!is.finite(var_ratio))
   ) {
-    stop("'k' must contain positive finite values", call. = FALSE)
+    stop("'var_ratio' must contain positive finite values", call. = FALSE)
   }
 
   if (any(n <= 0)) {
@@ -133,18 +135,18 @@ prec_cluster.default <- function(
   n_eff[1L] <- n[1L] * resp_rate
 
   if (stages == 2L) {
-    k <- rep_len(k, 1L)
-    cv_val <- unname(.cv_cluster_2stage(n_eff, delta, rel_var, k))
+    var_ratio <- rep_len(var_ratio, 1L)
+    cv_val <- unname(.cv_cluster_2stage(n_eff, icc, unit_relvar, var_ratio))
   } else {
-    k <- rep_len(k, 2L)
-    cv_val <- unname(.cv_cluster_3stage(n_eff, delta, rel_var, k))
+    var_ratio <- .stage_k_pair(var_ratio, icc)
+    cv_val <- unname(.cv_cluster_3stage(n_eff, icc, unit_relvar, var_ratio))
   }
 
   params <- list(
     n = n,
-    delta = delta,
-    rel_var = rel_var,
-    k = k,
+    icc = icc,
+    unit_relvar = unit_relvar,
+    var_ratio = var_ratio,
     resp_rate = resp_rate,
     stages = stages
   )
@@ -164,9 +166,9 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
   p <- x$params
   args <- list(
     n = x$n,
-    delta = p$delta,
-    rel_var = p$rel_var,
-    k = p$k,
+    icc = p$icc,
+    unit_relvar = p$unit_relvar,
+    var_ratio = p$var_ratio,
     resp_rate = p$resp_rate %||% 1
   )
   out <- do.call(
@@ -181,11 +183,11 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
   if (!is.null(p$n_psu)) {
     out$params$n_psu <- p$n_psu
   }
-  if (!is.null(p$psu_size)) {
-    out$params$psu_size <- p$psu_size
+  if (!is.null(p$n_per_psu)) {
+    out$params$n_per_psu <- p$n_per_psu
   }
-  if (!is.null(p$ssu_size)) {
-    out$params$ssu_size <- p$ssu_size
+  if (!is.null(p$n_per_ssu)) {
+    out$params$n_per_ssu <- p$n_per_ssu
   }
   if (!is.null(p$fixed_cost)) {
     out$params$fixed_cost <- p$fixed_cost
@@ -195,24 +197,24 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
 
 #' @keywords internal
 #' @noRd
-.cv_cluster_2stage <- function(n, delta, rel_var, k) {
+.cv_cluster_2stage <- function(n, icc, unit_relvar, var_ratio) {
   n1 <- n[1L]
   n2 <- n[2L]
-  sqrt(rel_var / (n1 * n2) * k * (1 + delta * (n2 - 1)))
+  sqrt(unit_relvar / (n1 * n2) * var_ratio * (1 + icc * (n2 - 1)))
 }
 
 #' @keywords internal
 #' @noRd
-.cv_cluster_3stage <- function(n, delta, rel_var, k) {
+.cv_cluster_3stage <- function(n, icc, unit_relvar, var_ratio) {
   n1 <- n[1L]
   n2 <- n[2L]
   n3 <- n[3L]
-  delta1 <- delta[1L]
-  delta2 <- delta[2L]
-  k1 <- k[1L]
-  k2 <- k[2L]
+  delta1 <- icc[1L]
+  delta2 <- icc[2L]
+  k1 <- var_ratio[1L]
+  k2 <- var_ratio[2L]
   sqrt(
-    rel_var /
+    unit_relvar /
       (n1 * n2 * n3) *
       (k1 * delta1 * n2 * n3 + k2 * (1 + delta2 * (n3 - 1)))
   )

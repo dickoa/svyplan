@@ -3,7 +3,7 @@
 #' Compute the sampling error (SE, MOE, CV) for multiple survey indicators
 #' given a sample size. This is the inverse of [n_multi()].
 #'
-#' @param targets For the default method: a data frame where **each row
+#' @param indicators For the default method: a data frame where **each row
 #'   is one survey indicator**, in the same format as [n_multi()] but
 #'   with an additional `n` column giving the sample size. This lets you
 #'   answer: "given this sample size, what precision do I get for each
@@ -19,14 +19,14 @@
 #'
 #'   For `svyplan_n` objects: a result from [n_multi()].
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
-#' @param domains Character vector of column names in `targets` to treat
+#' @param domains Character vector of column names in `indicators` to treat
 #'   as domain variables, or `NULL` (default) for no domains. All names
-#'   must exist in `targets`. Domain columns are preserved in the result
+#'   must exist in `indicators`. Domain columns are preserved in the result
 #'   for round-trip conversion back to [n_multi()].
 #' @param prop_method Proportion CI method, one of `"wald"`
-#'   (default), `"wilson"`, or `"logodds"`. This is passed to [prec_prop()]
-#'   for proportion rows and ignored for mean rows.
-#'   An optional `prop_method` column in `targets` overrides this default
+#'   (default), `"wilson"`, `"logodds"`, or `"beta"`. This is passed to
+#'   [prec_prop()] for proportion rows and ignored for mean rows.
+#'   An optional `prop_method` column in `indicators` overrides this default
 #'   on a per-row basis.
 #' @param plan A [svyplan()] profile providing default design parameters.
 #'
@@ -34,14 +34,14 @@
 #'   per-indicator precision.
 #'
 #' @details
-#' ## Building the targets data frame
+#' ## Building the indicators data frame
 #'
-#' The `targets` data frame uses the same structure as [n_multi()],
+#' The `indicators` data frame uses the same structure as [n_multi()],
 #' with the addition of a required `n` column specifying the sample
 #' size to evaluate. A minimal example:
 #'
 #' ```
-#' targets <- data.frame(
+#' indicators <- data.frame(
 #'   name = c("stunting", "vaccination", "anemia"),
 #'   p    = c(0.30, 0.70, 0.10),
 #'   n    = c(400, 400, 400)
@@ -66,7 +66,10 @@
 #'   \item{`deff`}{Design effect multiplier (default 1).}
 #'   \item{`N`}{Population size (default `Inf`).}
 #'   \item{`prop_method`}{Proportion CI method: `"wald"` (default),
-#'     `"wilson"`, or `"logodds"`. Only for rows with `p`.}
+#'     `"wilson"`, `"logodds"`, or `"beta"`. Only for rows with `p`.}
+#'   \item{`df`}{Degrees of freedom of the variance estimator, typically
+#'     sampled PSUs minus strata. Read by `"beta"` rows only; `NA` (the
+#'     default) applies no adjustment.}
 #'   \item{`resp_rate`}{Expected response rate (default 1).}
 #' }
 #'
@@ -74,8 +77,8 @@
 #'
 #' `prec_multi()` delegates proportion rows to [prec_prop()]
 #' and mean rows to [prec_mean()]. Use `prop_method` or a
-#' `targets$prop_method` column to choose `"wald"`, `"wilson"`, or
-#' `"logodds"` for proportion rows.
+#' `indicators$prop_method` column to choose `"wald"`, `"wilson"`,
+#' `"logodds"` or `"beta"` for proportion rows.
 #'
 #' @seealso [n_multi()] for the inverse, [prec_multi_cluster()] for
 #'   multistage cluster designs, and [prec_prop()] and [prec_mean()] for
@@ -83,20 +86,20 @@
 #'
 #' @examples
 #' # Simple mode: precision for three indicators at n = 400
-#' targets <- data.frame(
+#' indicators <- data.frame(
 #'   name = c("stunting", "vaccination", "anemia"),
 #'   p    = c(0.30, 0.70, 0.10),
 #'   n    = c(400, 400, 400)
 #' )
-#' prec_multi(targets)
+#' prec_multi(indicators)
 #'
 #' # Wilson precision for a rare proportion
 #' prec_multi(data.frame(p = 0.05, n = 400), prop_method = "wilson")
 #'
 #' @export
-prec_multi <- function(targets, ...) {
-  if (!missing(targets)) {
-    .res <- .dispatch_plan(targets, "targets", prec_multi.default, ...)
+prec_multi <- function(indicators, ...) {
+  if (!missing(indicators)) {
+    .res <- .dispatch_plan(indicators, "indicators", prec_multi.default, ...)
     if (!is.null(.res)) return(.res)
   }
   UseMethod("prec_multi")
@@ -105,10 +108,10 @@ prec_multi <- function(targets, ...) {
 #' @rdname prec_multi
 #' @export
 prec_multi.default <- function(
-  targets,
+  indicators,
   ...,
   domains = NULL,
-  prop_method = c("wald", "wilson", "logodds"),
+  prop_method = c("wald", "wilson", "logodds", "beta"),
   plan = NULL
 ) {
   merged <- .merge_plan_args(
@@ -122,37 +125,42 @@ prec_multi.default <- function(
   }
   .check_multi_split_args(list(...), "prec_multi_cluster()")
   .check_unused_dots(...)
-  if (missing(prop_method)) {
-    prop_method <- prop_method[[1L]]
+  # An unresolved default arrives either as a missing argument or, through
+  # the plan-merge path, as the full choice vector itself.
+  if (identical(prop_method, c("wald", "wilson", "logodds", "beta"))) {
+    prop_method <- "wald"
   }
   if (
     !is.character(prop_method) ||
       length(prop_method) != 1L ||
       is.na(prop_method) ||
-      !prop_method %in% c("wald", "wilson", "logodds")
+      !prop_method %in% c("wald", "wilson", "logodds", "beta")
   ) {
     stop(
-      "'prop_method' must be one of 'wald', 'wilson', or 'logodds'",
+      "'prop_method' must be one of 'wald', 'wilson', 'logodds', or 'beta'",
       call. = FALSE
     )
   }
 
-  if (!is.data.frame(targets) || nrow(targets) == 0L) {
-    stop("'targets' must be a non-empty data frame", call. = FALSE)
+  if (!is.data.frame(indicators) || nrow(indicators) == 0L) {
+    stop("'indicators' must be a non-empty data frame", call. = FALSE)
   }
 
-  if (!"n" %in% names(targets)) {
-    stop("'targets' must contain an 'n' column for prec_multi", call. = FALSE)
+  indicators <- .indicators_var_from_sd(indicators, domains)
+  .check_indicator_columns(indicators, domains)
+
+  if (!"n" %in% names(indicators)) {
+    stop("'indicators' must contain an 'n' column for prec_multi", call. = FALSE)
   }
   if (!is.null(domains)) {
     if (!is.character(domains) || anyNA(domains)) {
       stop("'domains' must be a character vector without NAs", call. = FALSE)
     }
-    missing_cols <- setdiff(domains, names(targets))
+    missing_cols <- setdiff(domains, names(indicators))
     if (length(missing_cols) > 0L) {
       stop(
         sprintf(
-          "domain column(s) not found in targets: %s",
+          "domain column(s) not found in indicators: %s",
           paste(sQuote(missing_cols), collapse = ", ")
         ),
         call. = FALSE
@@ -160,7 +168,7 @@ prec_multi.default <- function(
     }
   }
   domain_cols <- domains %||% character(0)
-  .prec_multi_simple(targets, prop_method = prop_method,
+  .prec_multi_simple(indicators, prop_method = prop_method,
                      domain_cols = domain_cols)
 }
 
@@ -170,15 +178,16 @@ prec_multi.default <- function(
 #' three-stage cluster allocation. This is the inverse of
 #' [n_multi_cluster()].
 #'
-#' @param targets For the default method, a non-empty data frame with one row
-#'   per indicator. It must contain `n` and `psu_size`. Include `ssu_size` for
+#' @param indicators For the default method, a non-empty data frame with one row
+#'   per indicator. It must contain `n` and `n_per_psu`. Include `n_per_ssu` for
 #'   a three-stage design. Cluster homogeneity and indicator columns follow
-#'   the schema used by [n_multi_cluster()]. For `svyplan_cluster` methods,
-#'   an allocation returned by [n_multi_cluster()].
+#'   the schema used by [n_multi_cluster()], including the derived
+#'   three-stage `var_ratio_ssu`. For `svyplan_cluster` methods, an allocation
+#'   returned by [n_multi_cluster()].
 #' @param ... Additional arguments passed to methods. Unused arguments are
 #'   rejected.
 #' @param domains Optional character vector naming domain columns in
-#'   `targets`.
+#'   `indicators`.
 #' @param stage_cost Optional per-stage costs to retain for a later round trip
 #'   to [n_multi_cluster()]. Costs do not enter the precision calculation.
 #' @param plan Optional [svyplan()] profile providing design metadata.
@@ -187,21 +196,24 @@ prec_multi.default <- function(
 #'   `$detail`.
 #'
 #' @examples
-#' targets <- data.frame(
+#' indicators <- data.frame(
 #'   name = c("stunting", "anemia"),
 #'   p = c(0.30, 0.10),
 #'   n = c(60, 60),
-#'   psu_size = c(12, 12),
-#'   delta_psu = c(0.02, 0.05)
+#'   n_per_psu = c(12, 12),
+#'   icc_psu = c(0.02, 0.05)
 #' )
-#' prec_multi_cluster(targets)
+#' prec_multi_cluster(indicators)
+#'
+#' @seealso [n_multi_cluster()] for the inverse, [prec_multi()] for the
+#'   single-stage counterpart, and [prec_cluster()] for one indicator.
 #'
 #' @export
-prec_multi_cluster <- function(targets, ...) {
-  if (!missing(targets)) {
+prec_multi_cluster <- function(indicators, ...) {
+  if (!missing(indicators)) {
     .res <- .dispatch_plan(
-      targets,
-      "targets",
+      indicators,
+      "indicators",
       prec_multi_cluster.default,
       ...
     )
@@ -213,7 +225,7 @@ prec_multi_cluster <- function(targets, ...) {
 #' @rdname prec_multi_cluster
 #' @export
 prec_multi_cluster.default <- function(
-  targets,
+  indicators,
   ...,
   domains = NULL,
   stage_cost = NULL,
@@ -230,21 +242,24 @@ prec_multi_cluster.default <- function(
   }
   .check_unused_dots(...)
 
-  if (!is.data.frame(targets) || nrow(targets) == 0L) {
-    stop("'targets' must be a non-empty data frame", call. = FALSE)
+  if (!is.data.frame(indicators) || nrow(indicators) == 0L) {
+    stop("'indicators' must be a non-empty data frame", call. = FALSE)
   }
-  if (!"n" %in% names(targets)) {
-    stop("'targets' must contain an 'n' column", call. = FALSE)
+  indicators <- .indicators_var_from_sd(indicators, domains)
+  .check_indicator_columns(indicators, domains)
+
+  if (!"n" %in% names(indicators)) {
+    stop("'indicators' must contain an 'n' column", call. = FALSE)
   }
   if (!is.null(domains)) {
     if (!is.character(domains) || anyNA(domains)) {
       stop("'domains' must be a character vector without NAs", call. = FALSE)
     }
-    missing_cols <- setdiff(domains, names(targets))
+    missing_cols <- setdiff(domains, names(indicators))
     if (length(missing_cols) > 0L) {
       stop(
         sprintf(
-          "domain column(s) not found in targets: %s",
+          "domain column(s) not found in indicators: %s",
           paste(sQuote(missing_cols), collapse = ", ")
         ),
         call. = FALSE
@@ -258,13 +273,13 @@ prec_multi_cluster.default <- function(
   }
   stages <- if (!is.null(stage_cost)) {
     length(stage_cost)
-  } else if ("ssu_size" %in% names(targets)) {
+  } else if ("n_per_ssu" %in% names(indicators)) {
     3L
   } else {
     2L
   }
   if (!is.null(stage_cost)) {
-    target_stages <- if ("ssu_size" %in% names(targets)) 3L else 2L
+    target_stages <- if ("n_per_ssu" %in% names(indicators)) 3L else 2L
     if (target_stages == 3L && length(stage_cost) != 3L) {
       stop(
         sprintf(
@@ -278,7 +293,7 @@ prec_multi_cluster.default <- function(
   }
 
   .prec_multi_cluster(
-    targets,
+    indicators,
     stages = stages,
     stage_cost = stage_cost,
     domain_cols = domains %||% character(0)
@@ -287,39 +302,42 @@ prec_multi_cluster.default <- function(
 
 #' @keywords internal
 #' @noRd
-.prec_multi_simple <- function(targets, prop_method = "wald",
+.prec_multi_simple <- function(indicators, prop_method = "wald",
                               domain_cols = character(0)) {
-  if (!"alpha" %in% names(targets)) {
-    targets$alpha <- 0.05
+  if (!"alpha" %in% names(indicators)) {
+    indicators$alpha <- 0.05
   }
-  if (!"deff" %in% names(targets)) {
-    targets$deff <- 1
+  if (!"deff" %in% names(indicators)) {
+    indicators$deff <- 1
   }
-  if (!"N" %in% names(targets)) {
-    targets$N <- Inf
+  if (!"N" %in% names(indicators)) {
+    indicators$N <- Inf
   }
-  if (!"resp_rate" %in% names(targets)) {
-    targets$resp_rate <- 1
+  if (!"resp_rate" %in% names(indicators)) {
+    indicators$resp_rate <- 1
   }
-  if (!"prop_method" %in% names(targets)) {
-    targets$prop_method <- prop_method
+  if (!"prop_method" %in% names(indicators)) {
+    indicators$prop_method <- prop_method
   } else {
-    targets$prop_method[is.na(targets$prop_method)] <- prop_method
+    indicators$prop_method[is.na(indicators$prop_method)] <- prop_method
+  }
+  if (!"df" %in% names(indicators)) {
+    indicators$df <- NA_real_
   }
 
-  .validate_common_columns(targets)
+  .validate_common_columns(indicators)
 
-  has_p <- "p" %in% names(targets)
-  has_var <- "var" %in% names(targets)
+  has_p <- "p" %in% names(indicators)
+  has_var <- "var" %in% names(indicators)
   if (!has_p && !has_var) {
-    stop("'targets' must contain 'p' or 'var' column", call. = FALSE)
+    stop("'indicators' must contain 'p' or 'var' column", call. = FALSE)
   }
-  has_indicator <- rep(FALSE, nrow(targets))
+  has_indicator <- rep(FALSE, nrow(indicators))
   if (has_p) {
-    has_indicator <- has_indicator | !is.na(targets$p)
+    has_indicator <- has_indicator | !is.na(indicators$p)
   }
   if (has_var) {
-    has_indicator <- has_indicator | !is.na(targets$var)
+    has_indicator <- has_indicator | !is.na(indicators$var)
   }
   if (any(!has_indicator)) {
     stop(
@@ -332,68 +350,69 @@ prec_multi_cluster.default <- function(
   }
 
   if (has_p) {
-    p_vals <- targets$p[!is.na(targets$p)]
+    p_vals <- indicators$p[!is.na(indicators$p)]
     if (any(p_vals <= 0 | p_vals >= 1)) {
       stop("all 'p' values must be in (0, 1)", call. = FALSE)
     }
   }
   if (has_var) {
-    var_vals <- targets$var[!is.na(targets$var)]
+    var_vals <- indicators$var[!is.na(indicators$var)]
     if (any(var_vals <= 0) || any(!is.finite(var_vals))) {
       stop("all 'var' values must be positive and finite", call. = FALSE)
     }
   }
-  if ("mu" %in% names(targets)) {
-    mu_vals <- targets$mu[!is.na(targets$mu)]
-    if (any(mu_vals <= 0) || any(!is.finite(mu_vals))) {
-      stop("'mu' values must be positive and finite", call. = FALSE)
+  if ("mu" %in% names(indicators)) {
+    mu_vals <- indicators$mu[!is.na(indicators$mu)]
+    if (any(mu_vals == 0) || any(!is.finite(mu_vals))) {
+      stop("'mu' values must be finite and non-zero", call. = FALSE)
     }
   }
-  method_vals <- targets$prop_method[!is.na(targets$prop_method)]
-  bad_methods <- !method_vals %in% c("wald", "wilson", "logodds")
+  method_vals <- indicators$prop_method[!is.na(indicators$prop_method)]
+  bad_methods <- !method_vals %in% c("wald", "wilson", "logodds", "beta")
   if (any(bad_methods)) {
     stop(
-      "'prop_method' values must be one of 'wald', 'wilson', or 'logodds'",
+      "'prop_method' values must be one of 'wald', 'wilson', 'logodds', or 'beta'",
       call. = FALSE
     )
   }
 
-  nr <- nrow(targets)
-  has_mu <- "mu" %in% names(targets)
+  nr <- nrow(indicators)
+  has_mu <- "mu" %in% names(indicators)
 
-  row_labels <- if ("name" %in% names(targets)) {
-    targets$name
+  row_labels <- if ("name" %in% names(indicators)) {
+    indicators$name
   } else {
     paste("indicator", seq_len(nr))
   }
-  .check_gross_n(targets$n, targets$N, label = row_labels)
+  .check_gross_n(indicators$n, indicators$N, label = row_labels)
 
   se_vec <- numeric(nr)
   moe_vec <- numeric(nr)
   cv_vec <- numeric(nr)
 
   for (i in seq_len(nr)) {
-    is_prop <- has_p && !is.na(targets$p[i])
+    is_prop <- has_p && !is.na(indicators$p[i])
 
     if (is_prop) {
       res_i <- prec_prop.default(
-        p = targets$p[i],
-        n = targets$n[i],
-        alpha = targets$alpha[i],
-        N = targets$N[i],
-        deff = targets$deff[i],
-        resp_rate = targets$resp_rate[i],
-        method = targets$prop_method[i]
+        p = indicators$p[i],
+        n = indicators$n[i],
+        alpha = indicators$alpha[i],
+        N = indicators$N[i],
+        deff = indicators$deff[i],
+        resp_rate = indicators$resp_rate[i],
+        method = indicators$prop_method[i],
+        df = .row_df(indicators, i)
       )
     } else {
       res_i <- prec_mean.default(
-        var = targets$var[i],
-        n = targets$n[i],
-        mu = if (has_mu && !is.na(targets$mu[i])) targets$mu[i] else NULL,
-        alpha = targets$alpha[i],
-        N = targets$N[i],
-        deff = targets$deff[i],
-        resp_rate = targets$resp_rate[i]
+        var = indicators$var[i],
+        n = indicators$n[i],
+        mu = if (has_mu && !is.na(indicators$mu[i])) indicators$mu[i] else NULL,
+        alpha = indicators$alpha[i],
+        N = indicators$N[i],
+        deff = indicators$deff[i],
+        resp_rate = indicators$resp_rate[i]
       )
     }
     se_vec[i] <- res_i$se
@@ -401,7 +420,7 @@ prec_multi_cluster.default <- function(
     cv_vec[i] <- res_i$cv
   }
 
-  labels <- if ("name" %in% names(targets)) targets$name else seq_len(nr)
+  labels <- if ("name" %in% names(indicators)) indicators$name else seq_len(nr)
 
   detail <- data.frame(
     name = labels,
@@ -416,7 +435,7 @@ prec_multi_cluster.default <- function(
     cv = cv_vec,
     type = "multi",
     params = list(
-      targets = targets,
+      indicators = indicators,
       domain_cols = domain_cols,
       design = "simple"
     ),
@@ -426,127 +445,139 @@ prec_multi_cluster.default <- function(
 
 #' @keywords internal
 #' @noRd
-.prec_multi_cluster <- function(targets, stages, stage_cost = NULL,
+.prec_multi_cluster <- function(indicators, stages, stage_cost = NULL,
                                 domain_cols = character(0),
                                 mode = "cv") {
-  if (!"alpha" %in% names(targets)) {
-    targets$alpha <- 0.05
+  if (!"alpha" %in% names(indicators)) {
+    indicators$alpha <- 0.05
   }
-  if (!"resp_rate" %in% names(targets)) {
-    targets$resp_rate <- 1
+  if (!"resp_rate" %in% names(indicators)) {
+    indicators$resp_rate <- 1
   }
-  if (!"k_psu" %in% names(targets)) {
-    targets$k_psu <- 1
+  if (!"var_ratio_psu" %in% names(indicators)) {
+    indicators$var_ratio_psu <- 1
   }
-  if (!"k_ssu" %in% names(targets)) {
-    targets$k_ssu <- 1
+  # var_ratio_ssu is derived below, once var_ratio_psu and icc_psu have been validated.
+  var_ratio_ssu_supplied <- "var_ratio_ssu" %in% names(indicators)
+  if (!var_ratio_ssu_supplied) {
+    indicators$var_ratio_ssu <- 1
   }
 
-  .validate_common_columns(targets)
+  .validate_common_columns(indicators)
 
-  if (!"rel_var" %in% names(targets)) {
-    targets$rel_var <- NA_real_
+  if (!"unit_relvar" %in% names(indicators)) {
+    indicators$unit_relvar <- NA_real_
   }
-  targets$rel_var <- .derive_rel_var(targets, require_all = TRUE)
+  indicators$unit_relvar <- .derive_unit_relvar(indicators, require_all = TRUE)
 
-  rv_check <- targets$rel_var[!is.na(targets$rel_var)]
+  rv_check <- indicators$unit_relvar[!is.na(indicators$unit_relvar)]
   if (
     length(rv_check) > 0L &&
       (any(rv_check <= 0) || any(!is.finite(rv_check)))
   ) {
-    stop("'rel_var' values must be positive and finite", call. = FALSE)
+    stop("'unit_relvar' values must be positive and finite", call. = FALSE)
   }
-  if (any(targets$k_psu <= 0) || any(!is.finite(targets$k_psu))) {
-    stop("'k_psu' values must be positive and finite", call. = FALSE)
+  if (any(indicators$var_ratio_psu <= 0) || any(!is.finite(indicators$var_ratio_psu))) {
+    stop("'var_ratio_psu' values must be positive and finite", call. = FALSE)
   }
-  if (any(targets$k_ssu <= 0) || any(!is.finite(targets$k_ssu))) {
-    stop("'k_ssu' values must be positive and finite", call. = FALSE)
+  if (any(indicators$var_ratio_ssu <= 0) || any(!is.finite(indicators$var_ratio_ssu))) {
+    stop("'var_ratio_ssu' values must be positive and finite", call. = FALSE)
   }
 
-  nr <- nrow(targets)
-  labels <- if ("name" %in% names(targets)) targets$name else seq_len(nr)
+  nr <- nrow(indicators)
+  labels <- if ("name" %in% names(indicators)) indicators$name else seq_len(nr)
 
-  n1 <- targets$n
+  n1 <- indicators$n
   if (
     stages >= 2L &&
-      (!"psu_size" %in% names(targets) ||
-        anyNA(targets$psu_size) ||
-        any(targets$psu_size <= 0))
+      (!"n_per_psu" %in% names(indicators) ||
+        anyNA(indicators$n_per_psu) ||
+        any(indicators$n_per_psu <= 0))
   ) {
     stop(
-      "'psu_size' column is required for multistage precision (positive, no NA)",
+      "'n_per_psu' column is required for multistage precision (positive, no NA)",
       call. = FALSE
     )
   }
   if (
     stages == 3L &&
-      (!"ssu_size" %in% names(targets) ||
-        anyNA(targets$ssu_size) ||
-        any(targets$ssu_size <= 0))
+      (!"n_per_ssu" %in% names(indicators) ||
+        anyNA(indicators$n_per_ssu) ||
+        any(indicators$n_per_ssu <= 0))
   ) {
     stop(
-      "'ssu_size' column is required for 3-stage precision (positive, no NA)",
+      "'n_per_ssu' column is required for 3-stage precision (positive, no NA)",
       call. = FALSE
     )
   }
-  if (!"delta_psu" %in% names(targets)) {
+  if (!"icc_psu" %in% names(indicators)) {
     stop(
-      "'delta_psu' column is required for multistage precision",
+      "'icc_psu' column is required for multistage precision",
       call. = FALSE
     )
   }
-  if (!is.numeric(targets$delta_psu)) {
-    stop("'delta_psu' must be numeric", call. = FALSE)
+  if (!is.numeric(indicators$icc_psu)) {
+    stop("'icc_psu' must be numeric", call. = FALSE)
   }
-  if (anyNA(targets$delta_psu)) {
-    stop("'delta_psu' must not contain NA values", call. = FALSE)
+  if (anyNA(indicators$icc_psu)) {
+    stop("'icc_psu' must not contain NA values", call. = FALSE)
   }
-  if (any(targets$delta_psu < 0 | targets$delta_psu > 1)) {
-    stop("'delta_psu' values must be in [0, 1]", call. = FALSE)
+  if (any(indicators$icc_psu < 0 | indicators$icc_psu > 1)) {
+    stop("'icc_psu' values must be in [0, 1]", call. = FALSE)
   }
   if (stages == 3L) {
-    if (!"delta_ssu" %in% names(targets)) {
+    if (!"icc_ssu" %in% names(indicators)) {
       stop(
-        "'delta_ssu' column is required for 3-stage precision",
+        "'icc_ssu' column is required for 3-stage precision",
         call. = FALSE
       )
     }
-    if (!is.numeric(targets$delta_ssu)) {
-      stop("'delta_ssu' must be numeric", call. = FALSE)
+    if (!is.numeric(indicators$icc_ssu)) {
+      stop("'icc_ssu' must be numeric", call. = FALSE)
     }
-    if (anyNA(targets$delta_ssu)) {
-      stop("'delta_ssu' must not contain NA values", call. = FALSE)
+    if (anyNA(indicators$icc_ssu)) {
+      stop("'icc_ssu' must not contain NA values", call. = FALSE)
     }
-    if (any(targets$delta_ssu < 0 | targets$delta_ssu > 1)) {
-      stop("'delta_ssu' values must be in [0, 1]", call. = FALSE)
+    if (any(indicators$icc_ssu < 0 | indicators$icc_ssu > 1)) {
+      stop("'icc_ssu' values must be in [0, 1]", call. = FALSE)
     }
   }
 
-  n2 <- targets$psu_size
-  n3 <- if (stages == 3L) targets$ssu_size else rep(NA_real_, nr)
+  n2 <- indicators$n_per_psu
+  n3 <- if (stages == 3L) indicators$n_per_ssu else rep(NA_real_, nr)
 
-  rr <- targets$resp_rate
+  rr <- indicators$resp_rate
   n1_eff <- n1 * rr
 
   cv_vec <- numeric(nr)
-  delta1 <- targets$delta_psu
-  delta2 <- if ("delta_ssu" %in% names(targets)) {
-    targets$delta_ssu
+  delta1 <- indicators$icc_psu
+  delta2 <- if ("icc_ssu" %in% names(indicators)) {
+    indicators$icc_ssu
   } else {
     rep(0, nr)
   }
-  rel_var <- targets$rel_var
-  k1 <- targets$k_psu
-  k2 <- targets$k_ssu
+  unit_relvar <- indicators$unit_relvar
+  k1 <- indicators$var_ratio_psu
+  # var_ratio_ssu is the within-PSU counterpart of var_ratio_psu and is fixed by the
+  # decomposition: var_ratio_ssu = var_ratio_psu * (1 - icc_psu). See .var_ratio_ssu_default().
+  if (stages == 3L) {
+    implied <- .var_ratio_ssu_default(k1, delta1)
+    if (var_ratio_ssu_supplied) {
+      indicators$var_ratio_ssu[is.na(indicators$var_ratio_ssu)] <- implied[is.na(indicators$var_ratio_ssu)]
+    } else {
+      indicators$var_ratio_ssu <- implied
+    }
+  }
+  k2 <- indicators$var_ratio_ssu
 
   for (i in seq_len(nr)) {
     if (stages == 2L) {
       cv_vec[i] <- sqrt(
-        rel_var[i] * k1[i] / (n1_eff[i] * n2[i]) * (1 + delta1[i] * (n2[i] - 1))
+        unit_relvar[i] * k1[i] / (n1_eff[i] * n2[i]) * (1 + delta1[i] * (n2[i] - 1))
       )
     } else {
       cv_vec[i] <- sqrt(
-        rel_var[i] /
+        unit_relvar[i] /
           (n1_eff[i] * n2[i] * n3[i]) *
           (k1[i] *
             delta1[i] *
@@ -561,14 +592,14 @@ prec_multi_cluster.default <- function(
   moe_vec <- rep(NA_real_, nr)
 
   if (identical(mode, "moe")) {
-    has_p <- "p" %in% names(targets)
-    has_mu <- "mu" %in% names(targets)
+    has_p <- "p" %in% names(indicators)
+    has_mu <- "mu" %in% names(indicators)
     for (i in seq_len(nr)) {
-      z <- qnorm(1 - targets$alpha[i] / 2)
-      if (has_p && !is.na(targets$p[i])) {
-        moe_vec[i] <- cv_vec[i] * z * targets$p[i]
-      } else if (has_mu && !is.na(targets$mu[i])) {
-        moe_vec[i] <- cv_vec[i] * z * targets$mu[i]
+      z <- qnorm(1 - indicators$alpha[i] / 2)
+      if (has_p && !is.na(indicators$p[i])) {
+        moe_vec[i] <- cv_vec[i] * z * indicators$p[i]
+      } else if (has_mu && !is.na(indicators$mu[i])) {
+        moe_vec[i] <- cv_vec[i] * z * indicators$mu[i]
       }
       se_vec[i] <- moe_vec[i] / z
     }
@@ -587,7 +618,7 @@ prec_multi_cluster.default <- function(
     cv = cv_vec,
     type = "multi",
     params = list(
-      targets = targets,
+      indicators = indicators,
       stage_cost = stage_cost,
       domain_cols = domain_cols,
       design = "cluster",
@@ -599,13 +630,13 @@ prec_multi_cluster.default <- function(
 
 #' @rdname prec_multi
 #' @export
-prec_multi.svyplan_n <- function(targets, ...) {
-  x <- targets
+prec_multi.svyplan_n <- function(indicators, ...) {
+  x <- indicators
   dots <- list(...)
   if (x$type != "multi") {
     stop("prec_multi requires a svyplan_n of type 'multi'", call. = FALSE)
   }
-  tgt <- x$targets
+  tgt <- x$indicators
   if ("prop_method" %in% names(dots)) {
     tgt$prop_method <- NA_character_
   }
@@ -624,9 +655,9 @@ prec_multi.svyplan_n <- function(targets, ...) {
     tgt$n <- dom$.n[dom_idx]
   }
   res <- do.call(prec_multi.default, c(
-    list(targets = tgt, domains = dom_cols), dots
+    list(indicators = tgt, domains = dom_cols), dots
   ))
-  for (p in c("mode", "prop_method", "min_n")) {
+  for (p in c("mode", "prop_method", "min_n_domain")) {
     if (!is.null(x$params[[p]])) res$params[[p]] <- x$params[[p]]
   }
   res
@@ -634,7 +665,7 @@ prec_multi.svyplan_n <- function(targets, ...) {
 
 #' @rdname prec_multi
 #' @export
-prec_multi.svyplan_cluster <- function(targets, ...) {
+prec_multi.svyplan_cluster <- function(indicators, ...) {
   stop(
     "cluster allocations must be passed to prec_multi_cluster()",
     call. = FALSE
@@ -643,24 +674,24 @@ prec_multi.svyplan_cluster <- function(targets, ...) {
 
 #' @rdname prec_multi_cluster
 #' @export
-prec_multi_cluster.svyplan_cluster <- function(targets, ...) {
-  x <- targets
+prec_multi_cluster.svyplan_cluster <- function(indicators, ...) {
+  x <- indicators
   dots <- list(...)
-  if (is.null(x$targets)) {
+  if (is.null(x$indicators)) {
     stop(
       "prec_multi_cluster requires a svyplan_cluster from n_multi_cluster()",
       call. = FALSE
     )
   }
-  tgt <- x$targets
+  tgt <- x$indicators
   tgt$cv <- NULL
   tgt$moe <- NULL
   tgt$n <- x$n[1L]
   if (x$stages >= 2L) {
-    tgt$psu_size <- x$n[2L]
+    tgt$n_per_psu <- x$n[2L]
   }
   if (x$stages >= 3L) {
-    tgt$ssu_size <- x$n[3L]
+    tgt$n_per_ssu <- x$n[3L]
   }
 
   dom_cols <- x$params$domain_cols %||% character(0)
@@ -671,15 +702,15 @@ prec_multi_cluster.svyplan_cluster <- function(targets, ...) {
     dom_idx <- match(tgt_key, dom_key)
     tgt$n <- dom$n_psu[dom_idx]
     if (x$stages >= 2L) {
-      tgt$psu_size <- dom$psu_size[dom_idx]
+      tgt$n_per_psu <- dom$n_per_psu[dom_idx]
     }
-    if (x$stages >= 3L) tgt$ssu_size <- dom$ssu_size[dom_idx]
+    if (x$stages >= 3L) tgt$n_per_ssu <- dom$n_per_ssu[dom_idx]
   }
 
   stage_cost <- x$params$stage_cost
   mode <- x$params$mode %||% "cv"
   args <- list(
-    targets = tgt,
+    indicators = tgt,
     stages = x$stages,
     stage_cost = stage_cost,
     domain_cols = dom_cols,
@@ -706,13 +737,13 @@ prec_multi_cluster.svyplan_cluster <- function(targets, ...) {
     if (!is.null(dots$domains) &&
         (!is.character(dots$domains) || anyNA(dots$domains) ||
          any(!dots$domains %in% names(tgt)))) {
-      stop("'domains' must name columns in targets", call. = FALSE)
+      stop("'domains' must name columns in indicators", call. = FALSE)
     }
     args$domain_cols <- dots$domains %||% character(0)
   }
   res <- do.call(.prec_multi_cluster, args)
-  for (p in c("budget", "n_psu", "psu_size", "ssu_size", "joint", "fixed_cost",
-              "min_n", "mode")) {
+  for (p in c("budget", "n_psu", "n_per_psu", "n_per_ssu", "joint", "fixed_cost",
+              "min_n_domain", "mode")) {
     if (!is.null(x$params[[p]])) res$params[[p]] <- x$params[[p]]
   }
   res

@@ -17,7 +17,8 @@ n_prop(p, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  method = c("wald", "wilson", "logodds"),
+  method = c("wald", "wilson", "logodds", "beta"),
+  df = NULL,
   plan = NULL
 )
 
@@ -60,36 +61,122 @@ adjustment). The required sample size is inflated by \code{1 / resp_rate}.
 Estimate from response rates observed in similar surveys in the same
 population.}
 
-\item{method}{One of \code{"wald"} (default), \code{"wilson"}, or \code{"logodds"}.}
+\item{method}{One of \code{"wald"} (default), \code{"wilson"}, \code{"logodds"}, or
+\code{"beta"}.}
+
+\item{df}{Degrees of freedom of the variance estimator the planned design
+will have, typically sampled PSUs minus strata. Used by
+\code{method = "beta"} only, where it widens the interval for a variance
+estimated from few clusters (Korn and Graubard, 1998, eq. 2.2). \code{NULL}
+(default) applies no adjustment, which is equivalent to \code{df = n - 1},
+the value a simple random sample would have.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
-A \code{svyplan_n} object.
+A \code{svyplan_n} object with \code{type = "proportion"}:
+\describe{
+\item{\code{n}}{Required sample size, continuous and gross. It already
+carries \code{deff} and the \code{1 / resp_rate} inflation, so it counts the
+units to release, not the completed interviews. \verb{$n} and
+\code{as.double()} keep the unrounded value, which is what makes the
+round trip through \code{\link[=prec_prop]{prec_prop()}} exact; \code{print()} and
+\code{as.integer()} round it up to the whole units you would field.
+Take the field figure from \code{as.integer()} rather than from \verb{$n}.}
+\item{\code{se}, \code{moe}, \code{cv}}{Precision the design achieves at that \code{n},
+the same values \code{\link[=prec_prop]{prec_prop()}} reports for the same inputs. \code{moe}
+is \code{qnorm(1 - alpha / 2) * se}; for the three asymmetric methods
+it is half the interval's length rather than an offset from either
+limit, so read the limits with \code{\link[=confint]{confint()}}.}
+\item{\code{method}}{The interval method used.}
+\item{\code{params}}{The validated inputs (\code{p}, \code{alpha}, \code{N}, \code{deff},
+\code{resp_rate}, \code{df}, and whichever of \code{moe} or \code{cv} was the target).
+\code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the \code{\link[=prec_prop]{prec_prop()}} round trip read the
+design back from here.}
+}
 }
 \description{
 Compute the required sample size for estimating a population proportion
 with a specified margin of error or coefficient of variation.
 }
 \details{
-Three confidence interval methods are available:
+Four confidence interval methods are available:
 \itemize{
 \item \strong{Wald} (\code{"wald"}): Standard normal approximation
 (Cochran, 1977, Ch. 3). Supports both \code{moe} and \code{cv} modes,
 with optional finite population correction.
 \item \strong{Wilson} (\code{"wilson"}): Wilson (1927) score interval. Only \code{moe}
-mode, no FPC.
+mode, with optional finite population correction.
 \item \strong{Log-odds} (\code{"logodds"}): Log-odds (logit) transform interval.
-Only \code{moe} mode, with optional FPC.
+Only \code{moe} mode, with optional finite population correction.
+\item \strong{Beta} (\code{"beta"}): Korn-Graubard (1998) interval, the Clopper-Pearson
+limits evaluated at the effective sample size, optionally widened for
+the degrees of freedom of the variance estimator via \code{df}. Only \code{moe}
+mode, with optional finite population correction. This is the method
+\code{survey::svyciprop(method = "beta")} reports, and the two agree exactly
+on a design where they see the same effective size.
 }
 
-For proportions near 0 or 1 (below 0.1 or above 0.9), the Wald interval
-has poor coverage. The recommended choice in those cases is
-\code{method = "wilson"}.
+All four read one variance,
+\eqn{\mathrm{deff}\,\frac{N}{N-1}\,p(1-p)(1/n-1/N)}. They differ only in
+the interval built around it, so they agree closely whenever the margin
+of error is small and diverge only where the normal approximation itself
+is doubtful. In practice the choice matters for a rare or near-universal
+outcome and is immaterial otherwise; see the section below.
 
-For the Wilson and log-odds methods, the design effect is applied as a
-multiplicative factor to the final SRS sample size, which is an
-approximation.
+The design effect and the finite population correction enter every method
+through the effective sample size
+\eqn{n_\mathrm{eff}=n_\mathrm{net}/(\mathrm{deff}\cdot\mathrm{fpc})}, the
+size at which an infinite-population simple random sample would carry the
+same variance. For Wald this reproduces the usual closed form exactly; for
+the other three it is the approximation that keeps \code{deff} and \code{N} acting
+on the interval as they act on the variance. A census therefore yields a
+zero margin of error under all four.
+
+The Wilson, log-odds, and beta intervals are not symmetric about \code{p}, so
+the reported \code{moe} is half the interval's length rather than an offset
+either limit sits at. For the limits themselves, use \code{\link[=confint]{confint()}}, which
+returns the interval the chosen method actually produces. The gap matters
+most for the beta method at a rare outcome, where the upper arm can be
+several times the lower one.
+\subsection{Choosing a method}{
+
+Reach for Wald unless you have a reason not to. It is the only method
+that also solves a \code{cv} target, it is what every survey text and every
+sample size table reports, and for a proportion between roughly 0.1 and
+0.9 at any usable sample size the four methods differ by less than a
+percent of the margin of error.
+
+The exception is a rare or near-universal outcome. As \code{p} approaches 0 or
+1 the Wald interval loses coverage and can extend past 0 or 1, while the
+score interval stays inside the parameter space and keeps its nominal
+coverage far better. Planning a survey for a 2 percent prevalence is the
+case that justifies \code{method = "wilson"}.
+
+Log-odds is the narrower case again: it respects the parameter space like
+Wilson but keeps the estimate at the centre of the interval on the logit
+scale, which matters when the plan will be reported as an odds ratio or
+fed into a logistic model. If you are not doing either, prefer Wilson.
+
+Reach for \code{"beta"} when the expected number of positive cases is small in
+absolute terms, not merely when \code{p} is small: a few dozen cases or fewer,
+which is the regime Korn and Graubard wrote for and the one where the
+normality of the estimated proportion breaks down however large the
+sample is. Rare-outcome domain estimates in a clustered survey are the
+standard case. It is the most conservative of the four, it is the only
+one whose interval is guaranteed to stay inside \eqn{[0, 1]} by
+construction rather than by clamping, and it is the only one that can
+account for a variance estimated from few clusters, through \code{df}. Its
+cost is a larger planned sample.
+
+A note on where the methods bind. For \emph{sizing}, the choice is close to
+immaterial: across the usual range the four sizes differ by a few
+percent, far less than the uncertainty in the assumed \code{p}, \code{deff}, and
+response rate. For \emph{assessing} an achieved design the choice can dominate,
+because that is where small realized samples of rare outcomes appear. If
+you are unsure, plan with Wald and report with \code{"beta"}.
+}
+
 \subsection{Finite population correction}{
 
 Setting \code{N} to a finite value reduces the required sample size when
@@ -121,6 +208,14 @@ n_prop(p = 0.5, cv = 0.10, N = 10000)
 # Wilson score interval
 n_prop(p = 0.1, moe = 0.03, method = "wilson")
 
+# Korn-Graubard interval for a rare outcome, and the asymmetric limits
+# it implies
+rare <- n_prop(p = 0.02, moe = 0.01, method = "beta")
+confint(rare)
+
+# The same, allowing for a variance estimated from 30 PSUs in 5 strata
+n_prop(p = 0.02, moe = 0.01, method = "beta", df = 25)
+
 # With design effect and response rate
 n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 
@@ -136,6 +231,19 @@ Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
 Wilson, E. B. (1927). Probable inference, the law of succession,
 and statistical inference. \emph{Journal of the American Statistical
 Association}, 22(158), 209--212.
+
+Brown, L. D., Cai, T. T. and DasGupta, A. (2001). Interval estimation
+for a binomial proportion. \emph{Statistical Science}, 16(2), 101--133.
+The coverage comparison that motivates preferring the score interval
+for a rare or near-universal outcome.
+
+Korn, E. L. and Graubard, B. I. (1998). Confidence intervals for
+proportions with small expected number of positive counts estimated from
+survey data. \emph{Survey Methodology}, 24(2), 193--201.
+
+Clopper, C. J. and Pearson, E. S. (1934). The use of confidence or
+fiducial limits illustrated in the case of the binomial.
+\emph{Biometrika}, 26(4), 404--413.
 }
 \seealso{
 \code{\link[=n_mean]{n_mean()}} for continuous variables, \code{\link[=n_cluster]{n_cluster()}} for

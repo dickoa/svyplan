@@ -42,20 +42,20 @@ test_that("n_mean -> prec_mean -> n_mean with deff and FPC", {
 })
 
 test_that("n_cluster -> prec_cluster round-trip", {
-  s1 <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+  s1 <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   p1 <- prec_cluster(s1)
   expect_equal(unname(p1$cv), unname(s1$cv), tolerance = 1e-6)
 })
 
 test_that("n_cluster -> prec_cluster -> n_cluster round-trip", {
-  s1 <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+  s1 <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   p1 <- prec_cluster(s1)
   s2 <- n_cluster(p1)
   expect_equal(unname(s2$cv), unname(s1$cv), tolerance = 1e-4)
 })
 
 test_that("n_cluster 3-stage -> prec_cluster round-trip", {
-  s1 <- n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+  s1 <- n_cluster(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05), cv = 0.05)
   p1 <- prec_cluster(s1)
   expect_equal(unname(p1$cv), unname(s1$cv), tolerance = 1e-6)
 })
@@ -106,7 +106,7 @@ test_that("n_multi_cluster 2-stage -> prec_multi_cluster round-trip", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta_psu = c(0.02, 0.05)
+    icc_psu = c(0.02, 0.05)
   )
   s1 <- n_multi_cluster(tgt, stage_cost = c(500, 50))
   p1 <- prec_multi_cluster(s1)
@@ -157,8 +157,8 @@ test_that("prec_multi rejects non-multi svyplan_n", {
   expect_error(prec_multi(s1), "type 'multi'")
 })
 
-test_that("prec_cluster.svyplan_cluster round-trip preserves delta", {
-  s1 <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+test_that("prec_cluster.svyplan_cluster round-trip preserves icc", {
+  s1 <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   expect_no_error(prec_cluster(s1))
 })
 
@@ -167,7 +167,7 @@ test_that("cluster multi-indicator round-trip preserves cluster class", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta_psu = c(0.02, 0.05)
+    icc_psu = c(0.02, 0.05)
   )
   s1 <- n_multi_cluster(tgt, stage_cost = c(500, 50))
   p1 <- prec_multi_cluster(s1)
@@ -181,7 +181,7 @@ test_that("n_multi_cluster budget round-trip preserves budget param", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta_psu = c(0.02, 0.05)
+    icc_psu = c(0.02, 0.05)
   )
   s1 <- n_multi_cluster(tgt, stage_cost = c(500, 50), budget = 100000)
   p1 <- prec_multi_cluster(s1)
@@ -195,7 +195,7 @@ test_that("cluster round-trip does not leak stage sizes as domain columns", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta_psu = c(0.02, 0.05)
+    icc_psu = c(0.02, 0.05)
   )
   s1 <- n_multi_cluster(tgt, stage_cost = c(500, 50))
   p1 <- prec_multi_cluster(s1)
@@ -300,10 +300,10 @@ test_that("round-trip methods honor ... overrides", {
   m2 <- prec_mean(var = 100, n = xm$n, resp_rate = 0.8)
   expect_equal(m1$se, m2$se)
 
-  cl <- n_cluster(cv = 0.05, delta = 0.05, rel_var = 1,
+  cl <- n_cluster(cv = 0.05, icc = 0.05, unit_relvar = 1,
                   stage_cost = c(500, 50))
   c1 <- prec_cluster(cl, resp_rate = 0.9)
-  c2 <- prec_cluster(n = cl$n, delta = 0.05, rel_var = 1, resp_rate = 0.9)
+  c2 <- prec_cluster(n = cl$n, icc = 0.05, unit_relvar = 1, resp_rate = 0.9)
   expect_equal(c1$cv, c2$cv)
 })
 

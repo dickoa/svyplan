@@ -10,13 +10,18 @@ prec_alloc(frame, ...)
 
 \method{prec_alloc}{default}(
   frame,
-  n,
+  n = NULL,
   ...,
+  measures = NULL,
+  targets = NULL,
+  objective = NULL,
+  budget = NULL,
   domains = NULL,
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
   unit_cost = NULL,
+  min_n_stratum = NULL,
   plan = NULL
 )
 
@@ -31,7 +36,29 @@ For \code{svyplan_n} objects: an allocation result from \code{\link[=n_alloc]{n_
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
-\item{n}{Stratum sample sizes, length \code{nrow(frame)} (default method only).}
+\item{n}{Stratum sample sizes, length \code{nrow(frame)}. For a fitted joint
+allocation, omission uses its continuous allocation; pass \verb{$detail$n_int}
+to assess the operational recommendation. A named vector is matched to
+\code{frame$stratum}; an unnamed vector is positional. In fixed-take
+multistage mode these are ultimate-unit sizes. Explicit adopted sizes must
+correspond to whole PSU counts; omission from a fitted result retains its
+continuous first-stage allocation.}
+
+\item{measures}{Optional long indicator table for joint assessment. See the
+\code{measures} argument to \code{\link[=n_alloc]{n_alloc()}}. It must be supplied with \code{targets} in
+the default method and is recovered automatically from a fitted result.}
+
+\item{targets}{Optional long precision-requirement table for joint
+assessment. See the \code{targets} argument to \code{\link[=n_alloc]{n_alloc()}}. It must be supplied
+with \code{measures} in the default method and is recovered automatically from
+a fitted result.}
+
+\item{objective}{Optional objective components to report alongside the
+targets. See the \code{objective} argument to \code{\link[=n_alloc]{n_alloc()}}. Recovered
+automatically from a fitted budget-objective result.}
+
+\item{budget}{Optional budget, used only to report the residual against the
+assessed allocation's cost. Requires \code{objective}.}
 
 \item{domains}{Character vector of column names in \code{frame} to treat as
 domain identifiers, or \code{NULL} (default) for no domains.}
@@ -43,15 +70,41 @@ domain identifiers, or \code{NULL} (default) for no domains.}
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1.}
 
 \item{unit_cost}{Optional scalar or length-\code{nrow(frame)} vector of
-per-stratum unit costs, overriding \code{frame$unit_cost}.}
+per-stratum unit costs, overriding \code{frame$unit_cost}. Fixed-take
+multistage joint assessment instead uses the stage costs stored in
+\code{frame}.}
+
+\item{min_n_stratum}{Optional minimum sample size per stratum, applied as the
+lower bound the assessment reports against in \verb{$bounds}. It is the same
+argument \code{\link[=n_alloc]{n_alloc()}} takes, so a design and its assessment can be held
+to one floor. Joint assessment only; supplying it without \code{measures} and
+\code{targets} is an error.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
-A \code{svyplan_prec} object with \code{type = "alloc"}.
+A \code{svyplan_prec} object with \code{type = "alloc"}. For joint
+assessment, \verb{$detail} is the constraint dictionary described in
+\code{\link[=n_alloc]{n_alloc()}}: target and achieved precision, ratio/residual/tolerance,
+pass/binding flags, and (when available) multiplier/sensitivity columns.
+\verb{$bounds} reports ultimate-unit \code{n}, lower/upper limits, each violation
+flag, and \code{.pass} by stratum. \verb{$params$achieved$cost} is variable field
+cost under the supplied allocation. When the fitted object carries an
+objective, \verb{$objective} and \verb{$objective_value} report its components and
+weighted value under the assessed allocation.
+
+Passing a joint precision result back to \code{\link[=n_alloc]{n_alloc()}} round trips the
+design. Minimum-cost results invert through precision, pinning the
+achieved values as the requirement. Budget-objective results invert
+through cost instead: the targets stay as specified and the assessed
+allocation's cost becomes the budget, because pinning achieved precision
+as hard targets would over-constrain a design that already spends its
+whole budget.
 }
 \description{
-Compute aggregate precision for a stratum allocation.
+Compute aggregate precision for a stratum allocation. For a joint
+constrained allocation, return one achieved-precision row per target and
+separate stratum-bound diagnostics.
 }
 \examples{
 frame <- data.frame(
@@ -61,6 +114,24 @@ frame <- data.frame(
 )
 res <- n_alloc(frame, n = 600)
 prec_alloc(res)
+
+# Direct joint assessment (the allocation is in ultimate-unit units)
+jf <- data.frame(
+  stratum = c("A", "B"), region = c("North", "South"),
+  N = c(1000, 1500), unit_cost = c(1, 1.2)
+)
+jm <- data.frame(
+  stratum = rep(jf$stratum, 2),
+  name = rep(c("coverage", "income"), each = 2),
+  p = c(0.4, 0.6, NA, NA),
+  mean = c(NA, NA, 50, 55),
+  sd = c(NA, NA, 10, 12)
+)
+jt <- data.frame(
+  name = c("coverage", "income"),
+  cv = c(0.10, NA), moe = c(NA, 2.5)
+)
+prec_alloc(jf, n = c(120, 150), measures = jm, targets = jt)
 
 }
 \seealso{

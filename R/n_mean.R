@@ -9,7 +9,10 @@
 #'   (larger) estimate to avoid under-sizing.
 #'   For `svyplan_prec` objects: a precision result from [prec_mean()].
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
-#' @param mu Population mean magnitude (positive). Required when `cv` is
+#' @param sd Population standard deviation, an alternative spelling of
+#'   `var`. Supply exactly one of `var` or `sd`. Stratum frames and
+#'   published survey reports usually quote standard deviations.
+#' @param mu Population mean. Required when `cv` is
 #'   specified, because CV is defined as SE / mean.
 #' @param moe Desired margin of error, the half-width of the confidence
 #'   interval, in the same units as the variable. For example, if
@@ -34,15 +37,39 @@
 #'   adjustment). The required sample size is inflated by `1 / resp_rate`.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
-#' @return A `svyplan_n` object.
+#' @return A `svyplan_n` object with `type = "mean"`:
+#' \describe{
+#'   \item{`n`}{Required sample size, continuous and gross. It already
+#'     carries `deff` and the `1 / resp_rate` inflation, so it counts the
+#'     units to release, not the completed interviews. `$n` and
+#'     `as.double()` keep the unrounded value, which is what makes the
+#'     round trip through [prec_mean()] exact; `print()` and
+#'     `as.integer()` round it up to the whole units you would field.
+#'     Take the field figure from `as.integer()` rather than from `$n`.}
+#'   \item{`se`, `moe`, `cv`}{Precision the design achieves at that `n`,
+#'     the same values [prec_mean()] reports for the same inputs. `moe`
+#'     is `qnorm(1 - alpha / 2) * se`, and the interval is symmetric
+#'     about the mean. `cv` is `NA` unless `mu` was supplied, since a
+#'     relative standard error needs a mean to be relative to.}
+#'   \item{`params`}{The validated inputs (`var`, `alpha`, `N`, `deff`,
+#'     `resp_rate`, `mu` when given, and whichever of `moe` or `cv` was
+#'     the target). Dispersion is always stored as `var`, including when
+#'     you supplied `sd`. [predict()], [confint()] and the [prec_mean()]
+#'     round trip read the design back from here.}
+#' }
 #'
 #' @details
 #' Two modes:
 #'
-#' - **MOE mode**: `n = z^2 * var / (moe^2 + z^2 * var / N)`, then
-#'   multiplied by `deff`.
-#' - **CV mode**: Computes `CVpop = sqrt(var) / mu`, then
-#'   `n = CVpop^2 / (cv^2 + CVpop^2 / N)`, multiplied by `deff`.
+#' - **MOE mode**: `n = deff * z^2 * var / (moe^2 + deff * z^2 * var / N)`.
+#' - **CV mode**: Computes `CVpop = sqrt(var) / abs(mu)`, then
+#'   `n = deff * CVpop^2 / (cv^2 + deff * CVpop^2 / N)`.
+#'
+#' `deff` appears in the denominator as well as the numerator: it inflates
+#' the variance the finite population correction is then applied to, rather
+#' than scaling a size already corrected. The two coincide only at infinite
+#' `N`. For `var = 100`, `moe = 2`, `N = 100` and `deff = 2`, inflating
+#' afterwards would give 97.98 against the correct 65.76.
 #'
 #' ## Finite population correction
 #'
@@ -98,8 +125,8 @@
 #' n_mean(var = 2500, mu = 300, cv = 0.05, N = 10000)
 #'
 #' @export
-n_mean <- function(var, ...) {
-  if (!missing(var)) {
+n_mean <- function(var = NULL, ...) {
+  if (!is.null(var)) {
     .res <- .dispatch_plan(var, "var", n_mean.default, ...)
     if (!is.null(.res)) return(.res)
   }
@@ -109,8 +136,9 @@ n_mean <- function(var, ...) {
 #' @rdname n_mean
 #' @export
 n_mean.default <- function(
-  var,
+  var = NULL,
   ...,
+  sd = NULL,
   mu = NULL,
   moe = NULL,
   cv = NULL,
@@ -125,6 +153,7 @@ n_mean.default <- function(
     return(do.call(n_mean.default, c(.plan, list(...))))
   }
   .check_unused_dots(...)
+  var <- .resolve_var(var, sd)
   check_scalar(var, "var")
   check_precision(moe, cv)
   check_alpha(alpha)
@@ -136,7 +165,7 @@ n_mean.default <- function(
     stop("'mu' is required when 'cv' is specified", call. = FALSE)
   }
   if (!is.null(mu)) {
-    check_scalar(mu, "mu")
+    check_mu(mu)
   }
 
   z <- qnorm(1 - alpha / 2)

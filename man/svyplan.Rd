@@ -13,10 +13,10 @@ svyplan(...)
 \item{...}{Named defaults to reuse across calls. Allowed names:
 \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
 \code{prop_method},
-\code{stage_cost}, \code{delta}, \code{rel_var}, \code{k}, \code{fixed_cost},
+\code{stage_cost}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{fixed_cost},
 \code{unit_cost},
-\code{alternative}, \code{ratio}, \code{overlap}, \code{rho},
-\code{alloc}, \code{min_n}, \code{power_q}.}
+\code{alternative}, \code{ratio}, \code{overlap}, \code{overlap_cor},
+\code{alloc}, \code{min_n_stratum}, \code{min_n_domain}, \code{alloc_q}, \code{phase1_cost}.}
 
 \item{object}{A \code{svyplan} object to update.}
 }
@@ -52,17 +52,21 @@ n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2)  # deff = 2 wins
 
 Defaults are applied only when their names match the called function's
 formals. Irrelevant defaults are silently ignored. \code{prop_method} must
-be \code{"wald"}, \code{"wilson"}, or \code{"logodds"} (validated at construction)
+be \code{"wald"}, \code{"wilson"}, \code{"logodds"}, or \code{"beta"} (validated at
+construction)
 and also fills the \code{method} argument of \code{\link[=n_prop]{n_prop()}}, \code{\link[=prec_prop]{prec_prop()}}, and
 \code{\link[=power_prop]{power_prop()}} when its value is valid for that function (so
 \code{svyplan(prop_method = "wilson")} applies to \code{n_prop()} but is ignored
 by \code{power_prop()}, which has no Wilson method).
 
 All stored defaults are validated when the profile is created or updated.
-When both \code{stage_cost} and \code{delta} are supplied, their lengths must describe
+When both \code{stage_cost} and \code{icc} are supplied, their lengths must describe
 the same number of stages. Length checks that depend on call-specific data,
 such as matching \code{unit_cost} to an allocation frame, occur when the plan is
-used.
+used. \code{unit_cost} is ordered by allocation-frame row, whereas
+\code{\link[=strata_bound]{strata_bound()}} orders costs from the lowest to the highest stratum, so
+only a scalar \code{unit_cost} reaches that function from a profile; a vector
+one is rejected there rather than applied to the wrong strata.
 
 Estimand-specific values (\code{p}, \code{var}, \code{mu}, \code{moe}, \code{cv}, \code{n}, \code{power},
 \code{effect}) should be passed directly to each function, not stored in
@@ -89,7 +93,7 @@ plan |> n_mean(100, mu = 50, cv = 0.05)
 plan |> power_prop(0.30, p2 = 0.35)
 
 # Cluster context
-cl_plan <- svyplan(stage_cost = c(500, 50), delta = 0.05, resp_rate = 0.85)
+cl_plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.85)
 cl_plan |> n_cluster(cv = 0.05)
 
 # Override a plan default

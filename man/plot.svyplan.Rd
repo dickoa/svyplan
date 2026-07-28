@@ -4,20 +4,29 @@
 \alias{plot.svyplan}
 \alias{plot.svyplan_strata}
 \alias{plot.svyplan_power}
+\alias{plot.svyplan_n}
 \title{Plot svyplan objects}
 \usage{
 \method{plot}{svyplan_strata}(x, ...)
 
 \method{plot}{svyplan_power}(x, npoints = 101L, ...)
+
+\method{plot}{svyplan_n}(x, npoints = 25L, newdata = NULL, ...)
 }
 \arguments{
 \item{x}{A svyplan object.}
 
 \item{...}{Additional graphical parameters passed to \code{\link[=barplot]{barplot()}}
-(for strata) or \code{\link[=plot]{plot()}} (for power). These override the defaults,
-so you can set \code{main}, \code{col}, \code{ylab}, \code{xlab}, \code{ylim}, etc.}
+(for strata) or \code{\link[=plot]{plot()}} (for power and the budget frontier). These
+override the defaults, so you can set \code{main}, \code{col}, \code{ylab}, \code{xlab},
+\code{ylim}, etc.}
 
-\item{npoints}{Number of points in the power curve grid (default 101).}
+\item{npoints}{Number of points in the grid: the power curve (default
+101) or the budget frontier (default 25, since each point is a solve).}
+
+\item{newdata}{Optional one-column data frame of \code{budget} values for
+\code{plot.svyplan_n()}. The default sweeps from the cheapest design that
+meets the hard targets up to twice the fitted budget.}
 }
 \value{
 \code{x}, invisibly.
@@ -39,6 +48,16 @@ marks the overall sampling fraction (\code{n / N}). Defaults:
 reference lines at the computed power and sample size, and a dotted
 line at the significance level. Defaults: \code{ylim = c(0, 1)},
 \code{type = "l"}, \code{xlab = "Sample size (per group)"}, \code{ylab = "Power"}.
+
+\code{plot.svyplan_n()} draws the budget frontier for a fixed-budget joint
+allocation (\code{\link[=n_alloc]{n_alloc()}} with \code{objective} and \code{budget}): what precision
+each budget buys on the objective indicator, over the range where the
+hard targets remain fundable. The fitted design is a filled dot. The
+curve is the same one \code{\link[=predict]{predict()}} returns as a table, so read exact
+numbers there. Its shape is the point: the objective falls as
+\code{1 / cost}, so the marginal return on budget flattens, and the plot
+shows where. Other \code{svyplan_n} results have no frontier to draw and
+produce an error naming what is plottable.
 }
 \examples{
 # Sampling fraction per stratum
@@ -57,4 +76,27 @@ plot(pw)
 # Custom line width and colour
 plot(pw, lwd = 2, col = "darkred")
 
+# Budget frontier: what each budget buys on the objective indicator
+frame <- data.frame(
+  stratum = c("A", "B", "C"),
+  N = c(4000, 3000, 3000),
+  unit_cost = c(1, 1.2, 1.5)
+)
+measures <- data.frame(
+  stratum = rep(frame$stratum, 2),
+  name = rep(c("vaccination", "income"), each = 3),
+  p = c(0.5, 0.4, 0.6, rep(NA, 3)),
+  mean = c(rep(NA, 3), 50, 55, 60),
+  sd = c(rep(NA, 3), 10, 12, 15)
+)
+targets <- data.frame(name = "vaccination", cv = 0.05)
+fit <- n_alloc(frame, measures = measures, targets = targets,
+               objective = "income", budget = 4000)
+plot(fit)
+
+}
+\seealso{
+\link{predict.svyplan} for the sensitivity grids these curves are
+drawn from, and \code{\link[=strata_bound]{strata_bound()}}, \code{\link[=power_prop]{power_prop()}}, \code{\link[=n_alloc]{n_alloc()}} for the
+results that are plottable.
 }

@@ -99,8 +99,8 @@ test_that("prec_multi multistage mode computes per-indicator CV", {
     name   = c("stunting", "anemia"),
     p      = c(0.30, 0.10),
     n      = c(50, 50),
-    psu_size     = c(12, 12),
-    delta_psu = c(0.02, 0.05)
+    n_per_psu     = c(12, 12),
+    icc_psu = c(0.02, 0.05)
   )
   result <- prec_multi_cluster(targets, stage_cost = c(500, 50))
   expect_equal(result$type, "multi")
@@ -149,131 +149,141 @@ test_that("prec_multi simple rejects invalid var", {
   )
 })
 
-test_that("prec_multi simple rejects non-positive mu", {
+test_that("prec_multi simple rejects a zero or non-finite mu", {
   expect_error(
     prec_multi(data.frame(var = 10, mu = 0, n = 100)),
-    "mu.*positive"
+    "must be finite and non-zero"
   )
   expect_error(
-    prec_multi(data.frame(var = 10, mu = -5, n = 100)),
-    "mu.*positive"
+    prec_multi(data.frame(var = 10, mu = Inf, n = 100)),
+    "must be finite and non-zero"
   )
 })
 
-test_that("prec_multi cluster requires psu_size column", {
+test_that("a negative mu round trips, since CV divides by its absolute value", {
+  x <- n_multi(data.frame(var = 100, mu = -5, cv = 0.1))
+  p <- prec_multi(x)
+  expect_s3_class(p, "svyplan_prec")
+  expect_equal(p$detail$.cv, 0.1, tolerance = 1e-8)
+
+  # the sign of mu does not move the size, only its magnitude does
+  expect_equal(x$n, n_multi(data.frame(var = 100, mu = 5, cv = 0.1))$n)
+})
+
+test_that("prec_multi cluster requires n_per_psu column", {
   targets <- data.frame(
-    p = 0.3, n = 50, delta_psu = 0.05
+    p = 0.3, n = 50, icc_psu = 0.05
   )
   expect_error(
     prec_multi_cluster(targets, stage_cost = c(500, 50)),
-    "psu_size.*required"
+    "n_per_psu.*required"
   )
 })
 
-test_that("prec_multi 3-stage requires ssu_size column", {
+test_that("prec_multi 3-stage requires n_per_ssu column", {
   targets <- data.frame(
-    p = 0.3, n = 50, psu_size = 10, delta_psu = 0.05
+    p = 0.3, n = 50, n_per_psu = 10, icc_psu = 0.05
   )
   expect_error(
     prec_multi_cluster(targets, stage_cost = c(500, 100, 50)),
-    "ssu_size.*required"
+    "n_per_ssu.*required"
   )
 })
 
-test_that("prec_multi cluster rejects NA in psu_size", {
+test_that("prec_multi cluster rejects NA in n_per_psu", {
   targets <- data.frame(
-    p = c(0.3, 0.1), n = c(50, 50), psu_size = c(10, NA), delta_psu = c(0.05, 0.02)
+    p = c(0.3, 0.1), n = c(50, 50), n_per_psu = c(10, NA), icc_psu = c(0.05, 0.02)
   )
   expect_error(
     prec_multi_cluster(targets, stage_cost = c(500, 50)),
-    "psu_size.*required"
+    "n_per_psu.*required"
   )
 })
 
-test_that("prec_multi cluster rejects negative rel_var", {
+test_that("prec_multi cluster rejects negative unit_relvar", {
   targets <- data.frame(
-    p = 0.3, n = 50, psu_size = 10, delta_psu = 0.05, rel_var = -1
+    p = 0.3, n = 50, n_per_psu = 10, icc_psu = 0.05, unit_relvar = -1
   )
   expect_error(
     prec_multi_cluster(targets, stage_cost = c(500, 50)),
-    "rel_var.*positive"
+    "unit_relvar.*positive"
   )
 })
 
-test_that("prec_multi cluster rejects zero rel_var", {
+test_that("prec_multi cluster rejects zero unit_relvar", {
   targets <- data.frame(
-    p = 0.3, n = 50, psu_size = 10, delta_psu = 0.05, rel_var = 0
+    p = 0.3, n = 50, n_per_psu = 10, icc_psu = 0.05, unit_relvar = 0
   )
   expect_error(
     prec_multi_cluster(targets, stage_cost = c(500, 50)),
-    "rel_var.*positive"
+    "unit_relvar.*positive"
   )
 })
 
-test_that("prec_multi cluster rejects negative k_psu", {
+test_that("prec_multi cluster rejects negative var_ratio_psu", {
   targets <- data.frame(
-    p = 0.3, n = 50, psu_size = 10, delta_psu = 0.05, k_psu = -1
+    p = 0.3, n = 50, n_per_psu = 10, icc_psu = 0.05, var_ratio_psu = -1
   )
   expect_error(
     prec_multi_cluster(targets, stage_cost = c(500, 50)),
-    "k_psu.*positive"
+    "var_ratio_psu.*positive"
   )
 })
 
-test_that("prec_multi cluster rejects negative k_ssu", {
+test_that("prec_multi cluster rejects negative var_ratio_ssu", {
   targets <- data.frame(
-    p = 0.3, n = 50, psu_size = 10, delta_psu = 0.05, k_ssu = -1
+    p = 0.3, n = 50, n_per_psu = 10, icc_psu = 0.05, var_ratio_ssu = -1
   )
   expect_error(
     prec_multi_cluster(targets, stage_cost = c(500, 50)),
-    "k_ssu.*positive"
+    "var_ratio_ssu.*positive"
   )
 })
 
-test_that("prec_multi cluster rejects missing delta_psu", {
-  targets <- data.frame(p = 0.3, n = 50, psu_size = 10)
+test_that("prec_multi cluster rejects missing icc_psu", {
+  targets <- data.frame(p = 0.3, n = 50, n_per_psu = 10)
   expect_error(
     prec_multi_cluster(targets, stage_cost = c(500, 50)),
-    "delta_psu.*required"
+    "icc_psu.*required"
   )
 })
 
-test_that("prec_multi cluster rejects delta_psu out of range", {
-  targets <- data.frame(p = 0.3, n = 50, psu_size = 2, delta_psu = -2)
+test_that("prec_multi cluster rejects icc_psu out of range", {
+  targets <- data.frame(p = 0.3, n = 50, n_per_psu = 2, icc_psu = -2)
   expect_error(
     prec_multi_cluster(targets, stage_cost = c(500, 50)),
-    "delta_psu.*\\[0, 1\\]"
+    "icc_psu.*\\[0, 1\\]"
   )
-  targets2 <- data.frame(p = 0.3, n = 50, psu_size = 2, delta_psu = 1.5)
+  targets2 <- data.frame(p = 0.3, n = 50, n_per_psu = 2, icc_psu = 1.5)
   expect_error(
     prec_multi_cluster(targets2, stage_cost = c(500, 50)),
-    "delta_psu.*\\[0, 1\\]"
+    "icc_psu.*\\[0, 1\\]"
   )
 })
 
-test_that("prec_multi cluster rejects NA delta_psu", {
-  targets <- data.frame(p = 0.3, n = 50, psu_size = 10, delta_psu = NA_real_)
+test_that("prec_multi cluster rejects NA icc_psu", {
+  targets <- data.frame(p = 0.3, n = 50, n_per_psu = 10, icc_psu = NA_real_)
   expect_error(
     prec_multi_cluster(targets, stage_cost = c(500, 50)),
-    "delta_psu.*NA"
+    "icc_psu.*NA"
   )
 })
 
-test_that("prec_multi 3-stage rejects missing delta_ssu", {
-  targets <- data.frame(p = 0.3, n = 50, psu_size = 10, ssu_size = 5, delta_psu = 0.05)
+test_that("prec_multi 3-stage rejects missing icc_ssu", {
+  targets <- data.frame(p = 0.3, n = 50, n_per_psu = 10, n_per_ssu = 5, icc_psu = 0.05)
   expect_error(
     prec_multi_cluster(targets, stage_cost = c(500, 100, 50)),
-    "delta_ssu.*required"
+    "icc_ssu.*required"
   )
 })
 
-test_that("prec_multi 3-stage rejects NA delta_ssu", {
+test_that("prec_multi 3-stage rejects NA icc_ssu", {
   targets <- data.frame(
-    p = 0.3, n = 50, psu_size = 10, ssu_size = 5, delta_psu = 0.05, delta_ssu = NA_real_
+    p = 0.3, n = 50, n_per_psu = 10, n_per_ssu = 5, icc_psu = 0.05, icc_ssu = NA_real_
   )
   expect_error(
     prec_multi_cluster(targets, stage_cost = c(500, 100, 50)),
-    "delta_ssu.*NA"
+    "icc_ssu.*NA"
   )
 })
 

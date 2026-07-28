@@ -5,6 +5,11 @@
 * checking CRAN incoming feasibility ... NOTE
   New submission
 
+  The same NOTE reports the `BugReports` URL as possibly invalid and
+  suggests appending `/issues`. The package is hosted on GitLab, whose
+  issue tracker is served at `/-/work_items`; `/-/issues` is the GitHub
+  convention and is not the path GitLab uses. The URL is correct as given.
+
 ## Test environments
 
 * Local: Arch Linux, R 4.6.1

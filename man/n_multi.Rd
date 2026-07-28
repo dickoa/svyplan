@@ -6,21 +6,21 @@
 \alias{n_multi.svyplan_prec}
 \title{Multi-Indicator Sample Size}
 \usage{
-n_multi(targets, ...)
+n_multi(indicators, ...)
 
 \method{n_multi}{default}(
-  targets,
+  indicators,
   ...,
   domains = NULL,
-  min_n = NULL,
-  prop_method = c("wald", "wilson", "logodds"),
+  min_n_domain = NULL,
+  prop_method = c("wald", "wilson", "logodds", "beta"),
   plan = NULL
 )
 
-\method{n_multi}{svyplan_prec}(targets, ...)
+\method{n_multi}{svyplan_prec}(indicators, ...)
 }
 \arguments{
-\item{targets}{For the default method: a data frame where \strong{each row
+\item{indicators}{For the default method: a data frame where \strong{each row
 is one survey indicator} you want to measure. For example,
 a prevalence (proportion) or a population mean. Surveys typically
 track several indicators simultaneously and the sample must be large
@@ -41,20 +41,21 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_multi
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
-\item{domains}{Character vector of column names in \code{targets} to treat
+\item{domains}{Character vector of column names in \code{indicators} to treat
 as domain variables, or \code{NULL} (default) for no domains. All names
-must exist in \code{targets}. When specified, sizing runs
+must exist in \code{indicators}. When specified, sizing runs
 independently for each domain combination.}
 
-\item{min_n}{Numeric scalar or \code{NULL} (default). Minimum total sample
+\item{min_n_domain}{Numeric scalar or \code{NULL} (default). Minimum total sample
 size per domain. It applies only when domains are present. Per-domain
-sample sizes are floored to \code{min_n}.}
+sample sizes are floored to \code{min_n_domain}.}
 
 \item{prop_method}{Proportion CI method, one of \code{"wald"}
-(default), \code{"wilson"}, or \code{"logodds"}. This is passed to \code{\link[=n_prop]{n_prop()}}
-for proportion rows and ignored for mean rows.
-An optional \code{prop_method} column in \code{targets} overrides this default
-on a per-row basis.}
+(default), \code{"wilson"}, \code{"logodds"}, or \code{"beta"}. This is passed to
+\code{\link[=n_prop]{n_prop()}} for proportion rows and ignored for mean rows.
+An optional \code{prop_method} column in \code{indicators} overrides this default
+on a per-row basis. \code{"wilson"}, \code{"logodds"} and \code{"beta"} size from an
+interval half-width, so those rows need \code{moe} rather than \code{cv}.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -67,7 +68,7 @@ domains.
 \item{\code{n}}{The sample size required by the binding indicator.}
 \item{\code{detail}}{Per-indicator sample-size results.}
 \item{\code{binding}}{Name or index of the binding (most demanding) indicator.}
-\item{\code{targets}}{The input targets data frame.}
+\item{\code{indicators}}{The input indicators data frame.}
 }
 
 \strong{With domains}, the object additionally contains:
@@ -83,9 +84,9 @@ multiple survey indicators simultaneously under a simple sampling design.
 Optional domain columns support separate requirements by subpopulation.
 }
 \details{
-\subsection{Building the targets data frame}{
+\subsection{Building the indicators data frame}{
 
-Each row of \code{targets} represents one survey indicator. The two key
+Each row of \code{indicators} represents one survey indicator. The two key
 decisions per row are:
 \enumerate{
 \item \strong{Type of indicator}: is it a proportion (binary variable like
@@ -99,7 +100,7 @@ coefficient of variation (\code{cv}, e.g. 10 percent relative error)?
 
 A minimal example for three health indicators:
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{targets <- data.frame(
+\if{html}{\out{<div class="sourceCode">}}\preformatted{indicators <- data.frame(
   name = c("stunting", "vaccination", "expenditure"),
   p    = c(0.30, 0.70, NA),
   var  = c(NA, NA, 2500),
@@ -124,8 +125,9 @@ One of \code{p} or \code{var} per row.}
 \item{\code{var}}{Population variance of a continuous indicator. Use
 this for means (e.g. income, expenditure, weight). One of \code{p}
 or \code{var} per row.}
-\item{\code{mu}}{Population mean (positive). It is required when \code{var} is
-used with \code{cv} because CV = SE / mean.}
+\item{\code{mu}}{Population mean (finite and non-zero; it may be
+negative). It is required when \code{var} is used with \code{cv} because
+CV = SE / abs(mean).}
 \item{\code{moe}}{Margin of error, the half-width of the confidence
 interval you want. For proportions, this is on the probability
 scale (e.g. 0.05 for +/- 5 percentage points). For means,
@@ -142,10 +144,19 @@ designs (e.g. 1.5 for a cluster design).}
 A finite value applies a finite population correction, reducing
 the required sample size.}
 \item{\code{prop_method}}{Proportion CI method:
-\code{"wald"} (default), \code{"wilson"}, or \code{"logodds"}. \code{"wilson"} is
-recommended for rare proportions (below 0.1 or above 0.9).
-It is used only for rows with \code{p}.}
-\item{\code{rel_var}}{Unit relvariance. If omitted, derived
+\code{"wald"} (default), \code{"wilson"}, \code{"logodds"}, or \code{"beta"}.
+\code{"wilson"} is recommended for rare proportions (below 0.1 or above
+0.9), and \code{"beta"} (Korn-Graubard) when the expected number of
+positive counts is small enough that the interval should stay
+inside \verb{[0, 1]} by construction. It is used only for rows with
+\code{p}. See \code{\link[=n_prop]{n_prop()}} for how to choose.}
+\item{\code{df}}{Degrees of freedom of the planned variance estimator,
+typically sampled PSUs minus strata. Read by \code{"beta"} rows only,
+where it widens the interval for a variance estimated from few
+clusters; \code{NA} (the default) applies no adjustment. Supplying it
+on a row using any other method is an error, so a mixed table
+carries \code{NA} on its non-beta rows.}
+\item{\code{unit_relvar}}{Unit relvariance. If omitted, derived
 automatically from \code{p} (as \code{(1 - p) / p}) or from
 \code{var} / \code{mu^2}.}
 \item{\code{resp_rate}}{Expected response rate, in (0, 1]. Default 1
@@ -156,21 +167,38 @@ automatically from \code{p} (as \code{(1 - p) / p}) or from
 Domain columns are specified via the \code{domains} parameter. When domains
 are present, sizing runs independently for each domain combination.
 
+Columns beyond those listed are carried along and ignored, so the table
+can keep questionnaire modules, sources, or other bookkeeping. The
+exception is a name the rest of the package would lead you to expect
+here: \code{mean} (this table takes \code{mu}, while the \code{\link[=n_alloc]{n_alloc()}} frame takes
+\code{mean}), \code{indicator} or \code{label} (it takes \code{name}), \code{method} (it takes
+\code{prop_method}), and \code{icc} or \code{var_ratio} (which are per stage here, so
+\code{icc_psu} and \code{var_ratio_psu}). Those are rejected with the name they
+should have carried rather than silently ignored. A column named
+through \code{domains} is exempt, so a domain may be called \code{label} or
+\code{method}.
+
+The dispersion of a continuous indicator may be given as \code{var} or as
+\code{sd}, whichever the source reports, exactly as in \code{\link[=n_mean]{n_mean()}}. They are
+different quantities rather than two names for one, so supplying both
+in the same table is an error rather than a preference; \code{sd} is squared
+on the way in and everything downstream reads \code{var}.
+
 \code{n_multi()} computes sample size per indicator by delegating proportion
 rows to \code{\link[=n_prop]{n_prop()}} and mean rows to \code{\link[=n_mean]{n_mean()}},
 then takes the maximum per domain. Use \code{prop_method} or a
-\code{targets$prop_method} column to choose \code{"wald"}, \code{"wilson"}, or
-\code{"logodds"} for proportion rows.
+\code{indicators$prop_method} column to choose \code{"wald"}, \code{"wilson"},
+\code{"logodds"} or \code{"beta"} for proportion rows.
 }
 }
 \examples{
 # Simple mode: three indicators, take the max
-targets <- data.frame(
+indicators <- data.frame(
   name = c("stunting", "vaccination", "anemia"),
   p    = c(0.30, 0.70, 0.10),
   moe  = c(0.05, 0.05, 0.03)
 )
-n_multi(targets)
+n_multi(indicators)
 
 # MICS/DHS-style: specify precision as a relative margin of error (RME).
 # RME = moe / p, so convert with moe = RME * p before calling n_multi().
@@ -183,8 +211,41 @@ targets_rme <- data.frame(
 targets_rme$moe <- rme * targets_rme$p
 n_multi(targets_rme)
 
+# Continuous indicators: 'var' for the dispersion, 'mu' for the mean.
+# A CV target needs 'mu', because a relative standard error is relative
+# to something; a MOE target does not.
+targets_mean <- data.frame(
+  name = c("expenditure", "hh_size"),
+  var  = c(250000, 4.0),
+  mu   = c(1200, 5.4),
+  cv   = c(0.05, 0.03)
+)
+n_multi(targets_mean)
+
+# Proportions and means in one table, sized to a common CV
+targets_both <- data.frame(
+  name = c("stunting", "expenditure"),
+  p    = c(0.30, NA),
+  var  = c(NA, 250000),
+  mu   = c(NA, 1200),
+  cv   = c(0.08, 0.05)
+)
+n_multi(targets_both)
+
 # Rare proportion: use Wilson globally in simple mode
-n_multi(targets[3, , drop = FALSE], prop_method = "wilson")
+n_multi(indicators[3, , drop = FALSE], prop_method = "wilson")
+
+# Korn-Graubard for an indicator whose expected count is small, with the
+# degrees of freedom of the planned variance estimator. 'df' is read on
+# beta rows only, so the other rows carry NA.
+targets_rare <- data.frame(
+  name = c("stunting", "cocaine_use"),
+  p    = c(0.30, 0.02),
+  moe  = c(0.05, 0.01),
+  prop_method = c("wald", "beta"),
+  df   = c(NA, 25)
+)
+n_multi(targets_rare)
 
 # Per-row proportion methods in a mixed target table
 targets_mixed <- data.frame(
@@ -210,7 +271,7 @@ targets_cl <- data.frame(
   name   = c("stunting", "anemia"),
   p      = c(0.30, 0.10),
   cv     = c(0.10, 0.15),
-  delta_psu = c(0.02, 0.05)
+  icc_psu = c(0.02, 0.05)
 )
 n_multi_cluster(targets_cl, stage_cost = c(500, 50))
 
@@ -219,7 +280,7 @@ targets_moe <- data.frame(
   name   = c("stunting", "anemia"),
   p      = c(0.30, 0.10),
   moe    = c(0.05, 0.03),
-  delta_psu = c(0.02, 0.05)
+  icc_psu = c(0.02, 0.05)
 )
 n_multi_cluster(targets_moe, stage_cost = c(500, 50))
 
@@ -228,7 +289,7 @@ targets_jnt <- data.frame(
   name   = rep(c("stunting", "anemia"), each = 2),
   p      = c(0.30, 0.25, 0.10, 0.15),
   cv     = c(0.10, 0.10, 0.15, 0.15),
-  delta_psu = c(0.02, 0.03, 0.05, 0.04),
+  icc_psu = c(0.02, 0.03, 0.05, 0.04),
   region = rep(c("Urban", "Rural"), 2)
 )
 n_multi_cluster(
@@ -236,7 +297,7 @@ n_multi_cluster(
   stage_cost = c(500, 50),
   domains = "region",
   budget = 100000,
-  joint = TRUE
+  allocation = "joint"
 )
 
 }
@@ -249,6 +310,7 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 }
 \seealso{
 \code{\link[=n_prop]{n_prop()}} and \code{\link[=n_mean]{n_mean()}} for single-indicator sizing,
+\code{\link[=n_alloc]{n_alloc()}} to split a multi-indicator size across strata or domains,
 \code{\link[=n_multi_cluster]{n_multi_cluster()}} for multistage cluster designs, and \code{\link[=prec_multi]{prec_multi()}}
 for the inverse.
 }

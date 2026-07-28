@@ -6,12 +6,13 @@
 \alias{prec_mean.svyplan_n}
 \title{Sampling Precision for a Mean}
 \usage{
-prec_mean(var, ...)
+prec_mean(var = NULL, ...)
 
 \method{prec_mean}{default}(
-  var,
+  var = NULL,
   n,
   ...,
+  sd = NULL,
   mu = NULL,
   alpha = 0.05,
   N = Inf,
@@ -31,7 +32,11 @@ For \code{svyplan_n} objects: a sample size result from \code{\link[=n_mean]{n_m
 \item{n}{Sample size, measured as gross units drawn and bounded by a
 finite \code{N}.}
 
-\item{mu}{Population mean magnitude (positive). Required for the CV component.}
+\item{sd}{Population standard deviation, an alternative spelling of
+\code{var}. Supply exactly one of \code{var} or \code{sd}. Stratum frames and
+published survey reports usually quote standard deviations.}
+
+\item{mu}{Population mean. Required for the CV component.}
 
 \item{alpha}{Significance level, default 0.05.}
 
@@ -47,8 +52,26 @@ adjustment). The effective sample size is \code{n * resp_rate}.}
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
-A \code{svyplan_prec} object with components \verb{$se}, \verb{$moe}, and \verb{$cv}.
-\verb{$cv} is \code{NA} when \code{mu} is not provided.
+A \code{svyplan_prec} object with \code{type = "mean"}:
+\describe{
+\item{\code{se}}{Standard error of the planned estimate, computed on the
+net sample \code{n * resp_rate}.}
+\item{\code{moe}}{Margin of error, \code{qnorm(1 - alpha / 2) * se}. The
+interval is symmetric, so the limits are \code{mu - moe} and
+\code{mu + moe}.}
+\item{\code{cv}}{Relative standard error, \code{se / abs(mu)}. \code{NA} when \code{mu} is
+not supplied, since a relative standard error needs a mean to be
+relative to.}
+\item{\code{params}}{The validated inputs (\code{var}, \code{n}, \code{alpha}, \code{N},
+\code{deff}, \code{resp_rate}, and \code{mu} when given). Dispersion is always
+stored as \code{var}, including when you supplied \code{sd}. \code{\link[=predict]{predict()}},
+\code{\link[=confint]{confint()}} and the \code{\link[=n_mean]{n_mean()}} round trip read the design back
+from here.}
+}
+
+Nothing here is rounded: \code{n} is taken as given, so passing a
+continuous \code{n} back from \code{\link[=n_mean]{n_mean()}} reproduces its \code{se}, \code{moe} and
+\code{cv} exactly.
 }
 \description{
 Compute the sampling error (SE, margin of error, CV) for estimating a

@@ -16,10 +16,31 @@
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The effective sample size is `n * resp_rate`.
-#' @param method One of `"wald"` (default), `"wilson"`, or `"logodds"`.
+#' @param method One of `"wald"` (default), `"wilson"`, `"logodds"`, or
+#'   `"beta"` (Korn-Graubard). See [n_prop()] for how to choose.
+#' @param df Degrees of freedom of the variance estimator, typically sampled
+#'   PSUs minus strata. Used by `method = "beta"` only. `NULL` (default)
+#'   applies no adjustment. See [n_prop()].
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
-#' @return A `svyplan_prec` object with components `$se`, `$moe`, and `$cv`.
+#' @return A `svyplan_prec` object with `type = "proportion"`:
+#' \describe{
+#'   \item{`se`}{Standard error of the planned estimate, computed on the
+#'     net sample `n * resp_rate`.}
+#'   \item{`moe`}{Margin of error, `qnorm(1 - alpha / 2) * se`. For the
+#'     three asymmetric methods this is half the interval's length, not
+#'     an offset from either limit, so `p - moe` and `p + moe` are not
+#'     the endpoints; use [confint()] for those.}
+#'   \item{`cv`}{Relative standard error, `se / p`.}
+#'   \item{`method`}{The interval method used.}
+#'   \item{`params`}{The validated inputs (`p`, `n`, `alpha`, `N`,
+#'     `deff`, `resp_rate`, `df`). [predict()], [confint()] and the
+#'     [n_prop()] round trip read the design back from here.}
+#' }
+#'
+#' Nothing here is rounded: `n` is taken as given, so passing a
+#' continuous `n` back from [n_prop()] reproduces its `se`, `moe` and
+#' `cv` exactly.
 #'
 #' @details
 #' Computes the standard error for the given sample size and design
@@ -29,13 +50,23 @@
 #' `n_net = n * resp_rate` is the expected number of responding units:
 #' `deff` multiplies the SRS variance at the realized sample size, and
 #' the finite population correction uses the actual sampling fraction
-#' `n_net / N`. Equivalently, `se^2 = p * (1 - p) * fpc(n_net) / n_eff`
-#' with the effective sample size `n_eff = n_net / deff`.
+#' `n_net / N`. Equivalently, `se^2 = p * (1 - p) / n_eff` with the
+#' effective sample size `n_eff = n_net / (deff * fpc(n_net))`, the size at
+#' which an infinite-population simple random sample would carry the same
+#' variance.
 #'
-#' The Wald FPC uses the Cochran (1977, Ch. 3) form: the finite-population
+#' The FPC uses the Cochran (1977, Ch. 3) form: the finite-population
 #' correction for a Bernoulli proportion is `(N - n_net) / (N - 1)`, not
-#' the simpler `1 - n_net / N` used for means. The Wilson method has no
-#' finite-population form. It is evaluated at `n_eff` and ignores `N`.
+#' the simpler `1 - n_net / N` used for means. All four methods read the
+#' same variance through `n_eff`, so all four respond to `deff` and `N`
+#' and all four return zero at a census. They differ only in the interval
+#' built around that variance; see [n_prop()] for how to choose.
+#'
+#' `$moe` is half the length of that interval. Only the Wald interval is
+#' symmetric about `p`, so for the other three `p - moe` and `p + moe` are
+#' not the limits: use [confint()] for those. The `"beta"` method makes this
+#' most visible, since its interval is deliberately asymmetric for a rare
+#' outcome.
 #'
 #' When called on a `svyplan_n` object, parameters are extracted from the
 #' stored result. Any argument of the default method (e.g. `method`, `deff`,
@@ -53,6 +84,10 @@
 #'
 #' # With design effect and response rate
 #' prec_prop(p = 0.3, n = 400, deff = 1.5, resp_rate = 0.8)
+#'
+#' # Korn-Graubard interval for a rare outcome in a clustered design
+#' rare <- prec_prop(p = 0.02, n = 900, deff = 2, method = "beta", df = 25)
+#' confint(rare)
 #'
 #' @export
 prec_prop <- function(p, ...) {
@@ -73,7 +108,8 @@ prec_prop.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  method = c("wald", "wilson", "logodds"),
+  method = c("wald", "wilson", "logodds", "beta"),
+  df = NULL,
   plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, prec_prop.default, match.call(), environment())
@@ -87,8 +123,11 @@ prec_prop.default <- function(
   check_resp_rate(resp_rate)
   .check_gross_n(n, N)
   method <- match.arg(method)
+  if (!is.null(df) && method != "beta") {
+    stop("'df' applies to method = 'beta' only", call. = FALSE)
+  }
 
-  prec <- .prec_engine_prop(p, n, alpha, N, deff, resp_rate, method)
+  prec <- .prec_engine_prop(p, n, alpha, N, deff, resp_rate, method, df)
   se <- prec$se
   moe <- prec$moe
   cv_val <- prec$cv
@@ -99,7 +138,8 @@ prec_prop.default <- function(
     alpha = alpha,
     N = N,
     deff = deff,
-    resp_rate = resp_rate
+    resp_rate = resp_rate,
+    df = df
   )
 
 
@@ -128,57 +168,8 @@ prec_prop.svyplan_n <- function(p, ...) {
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate %||% 1,
-    method = x$method %||% "wald"
+    method = x$method %||% "wald",
+    df = par$df
   )
   do.call(prec_prop.default, .roundtrip_args(args, list(...), prec_prop.default))
-}
-
-#' Invert log-odds n formula to get MOE for a given net sample size.
-#' @keywords internal
-#' @noRd
-.logodds_moe <- function(p, n_net, alpha, N, deff = 1) {
-  if (!is.infinite(N) && n_net >= N) {
-    warning("net sample size >= population size; moe is 0", call. = FALSE)
-    return(0)
-  }
-  f <- function(e) .n_prop_logodds_raw(p, e, alpha, N, deff) - n_net
-  lo <- 1e-6
-  hi <- 0.5 - 1e-6
-  f_lo <- f(lo)
-  f_hi <- f(hi)
-  if (sign(f_lo) == sign(f_hi)) {
-    stop(
-      "log-odds MOE inversion failed: no sign change on [",
-      lo,
-      ", ",
-      hi,
-      "] for p = ",
-      p,
-      ", n_net = ",
-      round(n_net, 2),
-      ", N = ",
-      N,
-      call. = FALSE
-    )
-  }
-  tryCatch(
-    uniroot(
-      f,
-      interval = c(lo, hi),
-      f.lower = f_lo,
-      f.upper = f_hi,
-      tol = .Machine$double.eps^0.5
-    )$root,
-    error = function(e) {
-      stop(
-        "log-odds MOE inversion failed for p = ",
-        p,
-        ", n_net = ",
-        round(n_net, 2),
-        ": ",
-        conditionMessage(e),
-        call. = FALSE
-      )
-    }
-  )
 }

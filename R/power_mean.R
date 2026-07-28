@@ -6,6 +6,9 @@
 #'
 #' @param var Within-group variance. Scalar (equal variances in both groups)
 #'   or length-2 vector `c(var1, var2)` for unequal group variances.
+#' @param sd Population standard deviation, an alternative spelling of
+#'   `var`. Supply exactly one of `var` or `sd`. Stratum frames and
+#'   published survey reports usually quote standard deviations.
 #' @param effect Absolute difference in means (effect-size magnitude, positive).
 #'   Leave `NULL` to solve for MDE.
 #' @param n Per-group sample size. Scalar (equal groups) or length-2 vector
@@ -28,8 +31,14 @@
 #'   the sample of group 2.
 #' @param overlap Panel overlap fraction in \[0, 1\], for repeated surveys.
 #'   Defined as the fraction of group 1 that also appears in group 2
-#'   (`overlap = n12 / n1`).
-#' @param rho Correlation between occasions in \[0, 1\].
+#'   (`overlap = n12 / n1`). A positive value describes a coordinated
+#'   design with that many units deliberately held in common, which with a
+#'   finite `N` requires both occasions to sample one population. The
+#'   default 0 is the ordinary two-group comparison, where the groups are
+#'   independent and may be different populations of different sizes; it is
+#'   not the same model as a deliberately disjoint pair, which is why the
+#'   two need not agree in the limit when `N` is small.
+#' @param overlap_cor Correlation between occasions in \[0, 1\].
 #' @param plan Optional [svyplan()] object providing design defaults.
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'
@@ -60,7 +69,26 @@
 #'
 #' where `r` is the allocation ratio n1/n2 (default 1). When `var` is
 #' scalar and `ratio = 1`, this simplifies to the familiar
-#' `V = 2 * var * (1 - overlap * rho)`.
+#' `V = 2 * var * (1 - overlap * overlap_cor)`.
+#'
+#' With a finite `N` the correction applies to the marginal terms but not
+#' to the overlap covariance, which carries a single \eqn{1/N}: for two
+#' SRSWOR samples sharing \eqn{k = overlap \cdot n_1} units,
+#' \eqn{Cov(\bar y_1, \bar y_2) = \rho S_1S_2\{k/(n_1n_2) - 1/N\}}. At
+#' `overlap_cor = 1` with equal sizes and variances the population terms
+#' cancel exactly and the difference variance is
+#' \eqn{2S^2(1 - overlap)/n}, free of `N`.
+#'
+#' ## Normal approximation
+#'
+#' Critical values and power are computed from the standard normal, not
+#' from a t distribution with an estimated denominator: no degrees of
+#' freedom enter, and the variance is treated as known. This is the
+#' convention for survey-scale samples, where the two agree closely, and
+#' it is what makes `deff` and a finite `N` insertable directly into the
+#' variance. At small `n` the sizes are correspondingly smaller than
+#' [stats::power.t.test()], which uses a noncentral t; use that function
+#' instead when the sample is small enough for the difference to matter.
 #'
 #' @references
 #' Valliant, R., Dever, J. A., & Kreuter, F. (2018). *Practical Tools for
@@ -91,8 +119,8 @@
 #' power_mean(100, effect = 5, ratio = 2)
 #'
 #' @export
-power_mean <- function(var, ...) {
-  if (!missing(var)) {
+power_mean <- function(var = NULL, ...) {
+  if (!is.null(var)) {
     .res <- .dispatch_plan(var, "var", power_mean.default, ...)
     if (!is.null(.res)) return(.res)
   }
@@ -101,23 +129,25 @@ power_mean <- function(var, ...) {
 
 #' @rdname power_mean
 #' @export
-power_mean.default <- function(var, ..., effect = NULL, n = NULL, power = 0.80,
+power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NULL, power = 0.80,
                        alpha = 0.05, N = Inf, deff = 1,
                        resp_rate = 1,
                        alternative = c("two.sided", "one.sided"),
                        ratio = 1,
-                       overlap = 0, rho = 0,
+                       overlap = 0, overlap_cor = 0,
                        plan = NULL) {
   .plan <- .merge_plan_args(plan, power_mean.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(power_mean.default, c(.plan, list(...))))
   .check_unused_dots(...)
   alternative <- match.arg(alternative)
+  var <- .resolve_var(var, sd)
   var_pair <- .as_pair(var, "var")
   check_alpha(alpha)
   N_pair <- .check_power_N(N)
   check_deff(deff)
   check_overlap(overlap)
-  check_rho(rho)
+  check_overlap_cor(overlap_cor)
+  .check_overlap_N(overlap, N_pair)
   check_resp_rate(resp_rate)
   ratio <- .resolve_ratio(n, ratio)
 
@@ -138,10 +168,10 @@ power_mean.default <- function(var, ..., effect = NULL, n = NULL, power = 0.80,
 
   params <- list(var = var, alpha = alpha, N = N, deff = deff,
                  resp_rate = resp_rate, alternative = alternative,
-                 ratio = ratio, overlap = overlap, rho = rho)
+                 ratio = ratio, overlap = overlap, overlap_cor = overlap_cor)
 
 
-  ov_term <- 2 * overlap * rho * sqrt(var_pair[1] * var_pair[2])
+  ov_term <- 2 * overlap * overlap_cor * sqrt(var_pair[1] * var_pair[2])
 
   if (is.null(n)) {
     params$effect <- effect
@@ -166,15 +196,7 @@ power_mean.default <- function(var, ..., effect = NULL, n = NULL, power = 0.80,
         n_vec <- if (r == 1) c(n2, n2) else c(r * n2, n2)
         n_eff <- n_vec * resp_rate
 
-        fpc1 <- .fpc_factor(n_eff[1], N_pair[1])
-        fpc2 <- .fpc_factor(n_eff[2], N_pair[2])
-        V_d <- deff * (var_pair[1] * fpc1 / n_eff[1] +
-                       var_pair[2] * fpc2 / n_eff[2])
-        if (overlap > 0) {
-          fpc_ov <- .fpc_factor(n_eff[2], N_pair[2])
-          V_d <- V_d - 2 * overlap * rho * sqrt(var_pair[1] * var_pair[2]) *
-                 deff * fpc_ov / n_eff[2]
-        }
+        V_d <- .diff_var_fpc(n_eff, var_pair, N_pair, deff, overlap, overlap_cor)
         V_d <- .safe_variance(V_d, "difference variance")
         if (V_d == 0) return(1)
         se <- sqrt(V_d)
@@ -198,15 +220,7 @@ power_mean.default <- function(var, ..., effect = NULL, n = NULL, power = 0.80,
     .check_gross_n(n_vec, N_pair, label = c("group 1", "group 2"))
     n_eff <- n_vec * resp_rate
 
-    fpc1 <- .fpc_factor(n_eff[1], N_pair[1])
-    fpc2 <- .fpc_factor(n_eff[2], N_pair[2])
-    V_d <- deff * (var_pair[1] * fpc1 / n_eff[1] +
-                   var_pair[2] * fpc2 / n_eff[2])
-    if (overlap > 0 && fpc1 > 0 && fpc2 > 0) {
-      fpc_ov <- .fpc_factor(n_eff[2], N_pair[2])
-      V_d <- V_d - 2 * overlap * rho * sqrt(var_pair[1] * var_pair[2]) *
-             deff * fpc_ov / n_eff[2]
-    }
+    V_d <- .diff_var_fpc(n_eff, var_pair, N_pair, deff, overlap, overlap_cor)
     V_d <- .safe_variance(V_d, "difference variance")
     if (V_d == 0) {
       pw <- 1
@@ -229,15 +243,7 @@ power_mean.default <- function(var, ..., effect = NULL, n = NULL, power = 0.80,
     .check_gross_n(n_vec, N_pair, label = c("group 1", "group 2"))
     n_eff <- n_vec * resp_rate
 
-    fpc1 <- .fpc_factor(n_eff[1], N_pair[1])
-    fpc2 <- .fpc_factor(n_eff[2], N_pair[2])
-    V_d <- deff * (var_pair[1] * fpc1 / n_eff[1] +
-                   var_pair[2] * fpc2 / n_eff[2])
-    if (overlap > 0 && fpc1 > 0 && fpc2 > 0) {
-      fpc_ov <- .fpc_factor(n_eff[2], N_pair[2])
-      V_d <- V_d - 2 * overlap * rho * sqrt(var_pair[1] * var_pair[2]) *
-             deff * fpc_ov / n_eff[2]
-    }
+    V_d <- .diff_var_fpc(n_eff, var_pair, N_pair, deff, overlap, overlap_cor)
     V_d <- .safe_variance(V_d, "difference variance")
     se <- sqrt(V_d)
     mde <- (z_a + z_b) * se

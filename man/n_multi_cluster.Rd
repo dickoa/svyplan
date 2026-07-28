@@ -6,30 +6,33 @@
 \alias{n_multi_cluster.svyplan_prec}
 \title{Multi-Indicator Sample Size for Cluster Designs}
 \usage{
-n_multi_cluster(targets, ...)
+n_multi_cluster(indicators, ...)
 
 \method{n_multi_cluster}{default}(
-  targets,
+  indicators,
   ...,
   stage_cost = NULL,
   domains = NULL,
   budget = NULL,
   n_psu = NULL,
-  psu_size = NULL,
-  ssu_size = NULL,
-  joint = FALSE,
-  min_n = NULL,
+  n_per_psu = NULL,
+  n_per_ssu = NULL,
+  allocation = c("separate", "joint"),
+  min_n_domain = NULL,
   fixed_cost = 0,
   plan = NULL
 )
 
-\method{n_multi_cluster}{svyplan_prec}(targets, ...)
+\method{n_multi_cluster}{svyplan_prec}(indicators, ...)
 }
 \arguments{
-\item{targets}{For the default method, a non-empty data frame with one row
+\item{indicators}{For the default method, a non-empty data frame with one row
 per indicator. Each row requires \code{p} or \code{var}, a \code{cv} or \code{moe} target,
-and \code{delta_psu}. Three-stage designs also require \code{delta_ssu}. For the
-\code{svyplan_prec} method, a result from \code{\link[=prec_multi_cluster]{prec_multi_cluster()}}.}
+and \code{icc_psu}. Three-stage designs also require \code{icc_ssu}. Optional
+\code{var_ratio_psu} defaults to 1; three-stage \code{var_ratio_ssu} is derived as
+\code{var_ratio_psu * (1 - icc_psu)} when absent, the value the variance
+decomposition implies (see \code{\link[=design_effect]{design_effect()}}). For the \code{svyplan_prec}
+method, a result from \code{\link[=prec_multi_cluster]{prec_multi_cluster()}}.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are
 rejected.}
@@ -37,24 +40,26 @@ rejected.}
 \item{stage_cost}{Numeric vector of per-stage costs with length 2 or 3.}
 
 \item{domains}{Optional character vector naming domain columns in
-\code{targets}. The function solves each domain independently unless \code{joint}
-is \code{TRUE} in budget mode.}
+\code{indicators}. The function solves each domain independently unless
+\code{allocation = "joint"} in budget mode.}
 
-\item{budget}{Optional total budget. Supply precision targets or a budget,
+\item{budget}{Optional total budget. Supply precision indicators or a budget,
 according to the target schema described in Details.}
 
 \item{n_psu}{Optional fixed stage-1 sample size.}
 
-\item{psu_size}{Optional fixed stage-2 sample size per PSU.}
+\item{n_per_psu}{Optional fixed stage-2 sample size per PSU.}
 
-\item{ssu_size}{Optional fixed stage-3 sample size per SSU. This is valid
+\item{n_per_ssu}{Optional fixed stage-3 sample size per SSU. This is valid
 only for three-stage designs.}
 
-\item{joint}{If \code{TRUE}, split one budget across domains to minimize the
-worst precision ratio. This applies only when domains and \code{budget} are
+\item{allocation}{How a budget is split across domains, either
+\code{"separate"} (default, each domain sized on its own) or \code{"joint"}
+(one budget split across domains to minimize the worst precision
+ratio). \code{"joint"} applies only when \code{domains} and \code{budget} are
 supplied.}
 
-\item{min_n}{Optional positive minimum total sample size per domain. In
+\item{min_n_domain}{Optional positive minimum total sample size per domain. In
 joint budget mode it is a constraint. In independent domain mode,
 domains below the floor produce a warning.}
 
@@ -73,9 +78,9 @@ requirements for several survey indicators. Domain-level planning and a
 shared budget across domains are supported.
 }
 \details{
-Margin-of-error targets are converted to CV before optimization. For each
+Margin-of-error indicators are converted to CV before optimization. For each
 candidate allocation, the required stage-1 size is the maximum across all
-indicators. The solver minimizes total cost for precision targets or the
+indicators. The solver minimizes total cost for precision indicators or the
 worst precision ratio under a fixed budget.
 
 Homogeneity values numerically close to 0 or 1 are rejected because they
@@ -83,18 +88,33 @@ make the analytical cluster optimum degenerate. The result includes an
 integer \verb{$operational} allocation that preserves the applicable precision
 or budget constraint. See \code{\link[=n_multi]{n_multi()}} for shared indicator columns and
 \code{\link[=n_cluster]{n_cluster()}} for the cluster cost model.
+\subsection{How strong the optimum is}{
+
+With a stage size fixed, the remaining problem is solved from the
+closed-form cluster optimum. With all stage sizes free, the objective is
+a maximum over indicator requirements, which is not smooth, and it is
+minimized by a bounded quasi-Newton search. That search warns when it
+fails to converge or lands on a bound, but it carries no
+global-optimality or KKT certificate: a successful return means the best
+design this search found, not a proven minimum-cost one. The
+\verb{$operational} allocation can always be checked against its own
+precision or budget constraint, which is a separate and exact statement.
+\code{\link[=n_alloc]{n_alloc()}} gives the stronger guarantee where it applies, returning
+feasibility and KKT diagnostics for its convex continuous problem.
+}
 }
 \examples{
-targets <- data.frame(
+indicators <- data.frame(
   name = c("stunting", "anemia"),
   p = c(0.30, 0.10),
   cv = c(0.10, 0.15),
-  delta_psu = c(0.02, 0.05)
+  icc_psu = c(0.02, 0.05)
 )
-n_multi_cluster(targets, stage_cost = c(500, 50))
+n_multi_cluster(indicators, stage_cost = c(500, 50))
 
 }
 \seealso{
-\code{\link[=n_multi]{n_multi()}} for simple designs and \code{\link[=prec_multi_cluster]{prec_multi_cluster()}} for the
-inverse calculation.
+\code{\link[=n_multi]{n_multi()}} for simple designs, \code{\link[=n_cluster]{n_cluster()}} for a single
+indicator, \code{\link[=n_alloc]{n_alloc()}} for stratified multistage allocation, and
+\code{\link[=prec_multi_cluster]{prec_multi_cluster()}} for the inverse calculation.
 }

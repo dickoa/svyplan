@@ -12,8 +12,6 @@
 \alias{format.svyplan_prec}
 \alias{format.svyplan_varcomp}
 \alias{format.svyplan_power}
-\alias{confint.svyplan_n}
-\alias{confint.svyplan_prec}
 \alias{as.integer.svyplan_n}
 \alias{as.double.svyplan_n}
 \alias{as.integer.svyplan_cluster}
@@ -30,6 +28,7 @@
 \alias{as.data.frame.svyplan_strata}
 \alias{as.integer.svyplan_strata}
 \alias{as.double.svyplan_strata}
+\alias{print.svyplan_twophase}
 \title{Print svyplan objects}
 \usage{
 \method{print}{svyplan_n}(x, ...)
@@ -51,10 +50,6 @@
 \method{format}{svyplan_varcomp}(x, ...)
 
 \method{format}{svyplan_power}(x, ...)
-
-\method{confint}{svyplan_n}(object, parm, level = 0.95, ...)
-
-\method{confint}{svyplan_prec}(object, parm, level = 0.95, ...)
 
 \method{as.integer}{svyplan_n}(x, ...)
 
@@ -129,17 +124,13 @@
 \method{as.integer}{svyplan_strata}(x, ...)
 
 \method{as.double}{svyplan_strata}(x, ...)
+
+\method{print}{svyplan_twophase}(x, ...)
 }
 \arguments{
 \item{x}{A svyplan object.}
 
 \item{...}{Additional arguments are not supported and produce an error.}
-
-\item{object}{A svyplan object (for \code{confint} methods).}
-
-\item{parm}{Ignored (included for S3 consistency with \code{\link[=confint]{confint()}}).}
-
-\item{level}{Confidence level (default 0.95).}
 
 \item{row.names, optional}{Standard \code{\link[=as.data.frame]{as.data.frame()}} arguments.}
 
@@ -150,26 +141,22 @@ is converted through \code{\link[=data.frame]{data.frame()}}.}
 R 4.7.0 and later. Svyplan results already have valid row names.}
 }
 \value{
-\code{x} (or \code{object}), invisibly. \code{confint} returns a 2-column
-matrix with the lower and upper confidence limits.
+\code{print()} returns \code{x} invisibly. \code{format()} returns a character
+vector, \code{as.integer()} and \code{as.double()} return numeric vectors, and
+\code{as.data.frame()} returns a data frame; the shapes are described under
+Details.
 }
 \description{
-Print svyplan objects
+Display and coercion methods shared by every result the package returns.
+\code{print()} gives the human-readable design, while \code{as.integer()},
+\code{as.double()}, and \code{as.data.frame()} extract it in the shapes a
+downstream package can consume.
 }
 \details{
-\subsection{confint}{
-
-\code{confint()} computes a confidence interval for the estimated parameter
-(proportion or mean). For proportions, the interval type matches the
-\code{method} used to compute the sample size (\code{"wald"}, \code{"wilson"}, or
-\code{"logodds"}). For means, a symmetric z-interval is used (requires
-\code{mu} in the original call).
-}
-
 \subsection{Print and coercion}{
 
-Constrained designs (\code{n_cluster()}, \code{n_alloc()}, multistage
-\code{n_multi()}) carry two representations: the continuous mathematical
+Constrained designs (\code{n_cluster()}, \code{n_alloc()}, \code{n_multi_cluster()})
+carry two representations: the continuous mathematical
 optimum in the top-level fields (\code{n}, \code{cv}, \code{cost}, ...) and the
 whole-unit field design in \verb{$operational}, whose cost and precision
 are recomputed from the integer design. \code{print()} leads with the
@@ -201,19 +188,13 @@ quantity that was solved for.
 }
 }
 \examples{
-# confint on a proportion sample size
-res <- n_prop(p = 0.3, moe = 0.05)
-confint(res)
+# print leads with the operational (whole-unit) design
+n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
 
-# confint at 90\% level
-confint(res, level = 0.90)
+# the tabular handoff to downstream packages
+as.data.frame(n_prop(p = 0.3, moe = 0.05))
 
-# confint on a mean (requires mu)
-res_mean <- n_mean(var = 100, mu = 50, moe = 2)
-confint(res_mean)
-
-# confint on a precision result
-prec <- prec_prop(p = 0.3, n = 400)
-confint(prec)
-
+}
+\seealso{
+\link{confint.svyplan} for confidence intervals on a result.
 }

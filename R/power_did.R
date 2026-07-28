@@ -2,22 +2,34 @@
 #'
 #' Compute sample size, power, or minimum detectable effect (MDE) for a
 #' two-group, two-period difference-in-differences (DiD) contrast.
-#' Leave exactly one of `n`, `power`, or `effect` as `NULL`.
+#'
+#' `treat` and `control` already determine the contrast, so `effect` is
+#' optional: leave `n` or `power` as `NULL` to solve for it. Leaving both
+#' `n` and `power` supplied while `effect` is `NULL` solves for the MDE
+#' instead. Exactly one quantity must remain unknown.
 #'
 #' @param treat Numeric length-2 vector for treated group outcomes:
 #'   `c(baseline, endline)`.
 #' @param control Numeric length-2 vector for control group outcomes:
 #'   `c(baseline, endline)`.
 #' @param outcome Outcome scale: `"mean"` (default) or `"prop"`.
-#' @param var Outcome variance for `outcome = "mean"`.
+#' @param var Outcome variance. Applies to `outcome = "mean"` only; under
+#'   `outcome = "prop"` the cell variances follow from `treat` and `control`,
+#'   so supplying it is an error rather than a silent no-op.
 #'   Length 1: common variance for all four cells.
 #'   Length 2: group-specific variances `c(var_treat, var_control)`,
 #'   assumed equal across waves.
 #'   Length 4: cell-specific variances in order
 #'   `c(var_treat_baseline, var_treat_endline, var_control_baseline,
 #'   var_control_endline)`.
-#' @param effect Absolute DiD effect size to detect (> 0).
-#'   Leave `NULL` to solve for MDE.
+#' @param sd Outcome standard deviation, an alternative spelling of `var`
+#'   taking the same lengths. Supply at most one of `var` or `sd`.
+#' @param effect Absolute DiD effect size to detect (> 0). Defaults to the
+#'   contrast implied by `treat` and `control`,
+#'   `|(treat[2] - treat[1]) - (control[2] - control[1])|`, so it only needs
+#'   to be supplied to plan for an effect other than the one those paths
+#'   describe. Supplying a value that disagrees with them warns. Leave `NULL`
+#'   with both `n` and `power` given to solve for the MDE.
 #' @param n Per-arm sample size per wave. Scalar (equal treated/control)
 #'   or length-2 vector `c(n_treat, n_control)`. Leave `NULL` to solve
 #'   for n.
@@ -35,7 +47,7 @@
 #'   Used only when solving for `n` (`n = NULL`).
 #' @param overlap Panel overlap fraction in \[0, 1\] within each arm
 #'   across baseline and endline.
-#' @param rho Correlation between baseline and endline outcomes within
+#' @param overlap_cor Correlation between baseline and endline outcomes within
 #'   overlapping units, in \[0, 1\].
 #' @param plan Optional [svyplan()] object providing design defaults.
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
@@ -70,6 +82,29 @@
 #'
 #' When `overlap = 0`, this reduces to the classical flat-variance formula.
 #'
+#' ## What `treat` and `control` are used for
+#'
+#' Both paths always supply the contrast. Whether they also supply the
+#' variance depends on `outcome`: for `"prop"` the four cell variances are
+#' \eqn{p(1-p)} at each path value, while for `"mean"` the variance comes
+#' entirely from `var` and the paths are used for the contrast alone.
+#'
+#' Because the contrast is derived, `effect` is redundant with the paths and
+#' is only needed to plan for a different effect than they describe, for
+#' example a conservative target below the change a pilot observed. Doing so
+#' warns, since the printed result then shows an `effect` that the displayed
+#' paths do not produce.
+#'
+#' ## Normal approximation
+#'
+#' Critical values and power come from the standard normal, with the
+#' variance treated as known and no degrees-of-freedom correction, as in
+#' [power_mean()] and [power_prop()]. The cluster count, not the unit
+#' count, is what governs the accuracy of that approximation for a
+#' clustered DiD design: `deff` inflates the variance but does not model
+#' the loss of degrees of freedom, so a design with few clusters per arm
+#' is optimistic here by more than the unit count suggests.
+#'
 #' @references
 #' Valliant, R., Dever, J. A., & Kreuter, F. (2018). *Practical Tools for
 #'   Designing and Weighting Survey Samples* (2nd ed.). Springer. Chapter 4.
@@ -78,10 +113,11 @@
 #'   two-sample means.
 #'
 #' @examples
-#' # DiD sample size for means
+#' # DiD sample size for means. The effect is the contrast the two paths
+#' # describe: (55 - 50) - (52 - 50) = 3.
 #' power_did(
 #'   treat = c(50, 55), control = c(50, 52),
-#'   outcome = "mean", var = 100, effect = 3
+#'   outcome = "mean", var = 100
 #' )
 #'
 #' # DiD power for proportions
@@ -99,7 +135,7 @@
 #' # Panel overlap reduces required n
 #' power_did(
 #'   treat = c(0.50, 0.55), control = c(0.50, 0.48),
-#'   outcome = "prop", effect = 0.07, overlap = 0.5, rho = 0.6
+#'   outcome = "prop", effect = 0.07, overlap = 0.5, overlap_cor = 0.6
 #' )
 #'
 #' @export
@@ -119,6 +155,7 @@ power_did.default <- function(
   ...,
   outcome = c("mean", "prop"),
   var = NULL,
+  sd = NULL,
   effect = NULL,
   n = NULL,
   power = 0.80,
@@ -129,13 +166,20 @@ power_did.default <- function(
   alternative = c("two.sided", "one.sided"),
   ratio = 1,
   overlap = 0,
-  rho = 0,
+  overlap_cor = 0,
   plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, power_did.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(power_did.default, c(.plan, list(...))))
   .check_unused_dots(...)
   outcome <- match.arg(outcome)
+  if (outcome == "prop" && (!is.null(var) || !is.null(sd))) {
+    stop(
+      "'var' and 'sd' apply only to outcome = \"mean\"; under outcome = \"prop\" the cell variances follow from 'treat' and 'control'",
+      call. = FALSE
+    )
+  }
+  if (!is.null(sd)) var <- .resolve_var(var, sd)
   alternative <- match.arg(alternative)
 
   treat <- .check_did_path(treat, "treat", outcome)
@@ -146,14 +190,41 @@ power_did.default <- function(
   check_deff(deff)
   check_resp_rate(resp_rate)
   check_overlap(overlap)
-  check_rho(rho)
+  check_overlap_cor(overlap_cor)
 
   ratio <- .resolve_ratio(n, ratio)
 
+  effect_implied <- (treat[2L] - treat[1L]) - (control[2L] - control[1L])
+
   null_count <- is.null(n) + is.null(power) + is.null(effect)
+  # 'treat' and 'control' already determine the contrast, so an omitted
+  # 'effect' is filled from them rather than being a second unknown. Only
+  # when it is the second unknown: with both 'n' and 'power' supplied, a
+  # NULL 'effect' still means "solve for the MDE".
+  if (null_count == 2L && is.null(effect)) {
+    if (abs(effect_implied) <= 0) {
+      stop(
+        "'treat' and 'control' imply a difference-in-differences of 0; supply 'effect', or leave both 'n' and 'power' to solve for the minimum detectable effect",
+        call. = FALSE
+      )
+    }
+    effect <- abs(effect_implied)
+    null_count <- 1L
+  }
   if (null_count != 1L) {
     stop("leave exactly one of 'n', 'power', or 'effect' as NULL",
          call. = FALSE)
+  }
+  if (!is.null(effect) &&
+      abs(abs(effect) - abs(effect_implied)) >
+        1e-8 * max(1, abs(effect_implied))) {
+    warning(
+      sprintf(
+        "'effect' (%g) differs from the difference-in-differences implied by 'treat' and 'control' (%g); the supplied value is used for the contrast and 'treat'/'control' only for the variance",
+        effect, abs(effect_implied)
+      ),
+      call. = FALSE
+    )
   }
 
   if (!is.null(n)) {
@@ -167,10 +238,10 @@ power_did.default <- function(
 
   if (outcome == "mean") {
     var_parts <- .did_var_parts(var)
-    var_terms <- .did_var_terms_mean(var_parts, overlap, rho)
+    var_terms <- .did_var_terms_mean(var_parts, overlap, overlap_cor)
   } else {
     var_parts <- NULL
-    var_terms <- .did_var_terms_prop(treat, control, overlap, rho)
+    var_terms <- .did_var_terms_prop(treat, control, overlap, overlap_cor)
   }
 
   type <- if (outcome == "prop") "did_prop" else "did_mean"
@@ -186,7 +257,7 @@ power_did.default <- function(
     alternative = alternative,
     ratio = ratio,
     overlap = overlap,
-    rho = rho
+    overlap_cor = overlap_cor
   )
 
   if (!is.null(var_parts)) params$var <- var_parts
@@ -200,11 +271,11 @@ power_did.default <- function(
 
     if (all(is.infinite(N_pair))) {
       if (ratio == 1) {
-        n0 <- (z_a + z_b)^2 * deff * sum(var_terms) / effect^2
+        n0 <- (z_a + z_b)^2 * deff * sum(var_terms$change) / effect^2
         n0 <- n0 / resp_rate
       } else {
         n_c <- (z_a + z_b)^2 * deff *
-          (var_terms[1] / ratio + var_terms[2]) / effect^2
+          (var_terms$change[1] / ratio + var_terms$change[2]) / effect^2
         n_c <- n_c / resp_rate
         n0 <- c(ratio * n_c, n_c)
       }
@@ -315,36 +386,56 @@ power_did.default <- function(
   var
 }
 
+#' Per-arm variance of the before-after change
+#'
+#' Returns the per-unit variance and, alongside it, the census term the
+#' finite population correction subtracts. The overlap covariance carries a
+#' single \eqn{1/N} rather than the arm's marginal factor, so the change
+#' variance splits as \eqn{v/n - v^{census}/N} with the census term the
+#' same expression at full overlap. See `.diff_var_fpc()`.
 #' @keywords internal
 #' @noRd
-.did_var_terms_prop <- function(treat, control, overlap, rho) {
-  t0 <- treat[1]; t1 <- treat[2]
-  c0 <- control[1]; c1 <- control[2]
-
-  vt <- t0 * (1 - t0) + t1 * (1 - t1) -
-    2 * overlap * rho * sqrt(t0 * (1 - t0) * t1 * (1 - t1))
-  vc <- c0 * (1 - c0) + c1 * (1 - c1) -
-    2 * overlap * rho * sqrt(c0 * (1 - c0) * c1 * (1 - c1))
-
-  c(
-    .safe_variance(vt, "treated change variance"),
-    .safe_variance(vc, "control change variance")
+.did_var_pair <- function(v0, v1, overlap, overlap_cor, what) {
+  cross <- overlap_cor * sqrt(v0 * v1)
+  list(
+    change = .safe_variance(v0 + v1 - 2 * overlap * cross, what),
+    census = .safe_variance(v0 + v1 - 2 * cross, what)
   )
 }
 
 #' @keywords internal
 #' @noRd
-.did_var_terms_mean <- function(var_parts, overlap, rho) {
-  vt0 <- var_parts[1]; vt1 <- var_parts[2]
-  vc0 <- var_parts[3]; vc1 <- var_parts[4]
+.did_var_terms_prop <- function(treat, control, overlap, overlap_cor) {
+  t0 <- treat[1]; t1 <- treat[2]
+  c0 <- control[1]; c1 <- control[2]
 
-  vt <- vt0 + vt1 - 2 * overlap * rho * sqrt(vt0 * vt1)
-  vc <- vc0 + vc1 - 2 * overlap * rho * sqrt(vc0 * vc1)
+  vt <- .did_var_pair(t0 * (1 - t0), t1 * (1 - t1), overlap, overlap_cor,
+                      "treated change variance")
+  vc <- .did_var_pair(c0 * (1 - c0), c1 * (1 - c1), overlap, overlap_cor,
+                      "control change variance")
 
-  c(
-    .safe_variance(vt, "treated change variance"),
-    .safe_variance(vc, "control change variance")
-  )
+  list(change = c(vt$change, vc$change), census = c(vt$census, vc$census))
+}
+
+#' @keywords internal
+#' @noRd
+.did_var_terms_mean <- function(var_parts, overlap, overlap_cor) {
+  vt <- .did_var_pair(var_parts[1], var_parts[2], overlap, overlap_cor,
+                      "treated change variance")
+  vc <- .did_var_pair(var_parts[3], var_parts[4], overlap, overlap_cor,
+                      "control change variance")
+
+  list(change = c(vt$change, vc$change), census = c(vt$census, vc$census))
+}
+
+#' DiD variance with the correction applied to each arm
+#' @keywords internal
+#' @noRd
+.did_var_d <- function(n_eff, var_terms, N_pair, deff) {
+  if (length(n_eff) == 1L) n_eff <- c(n_eff, n_eff)
+  per_unit <- var_terms$change / n_eff
+  census <- ifelse(is.infinite(N_pair), 0, var_terms$census / N_pair)
+  deff * sum(per_unit - census)
 }
 
 #' @keywords internal
@@ -352,23 +443,16 @@ power_did.default <- function(
 .power_did_power_core <- function(
   effect, n_eff, var_terms, alpha, N_pair, deff, alternative
 ) {
-  if (length(n_eff) == 1L) n_eff <- c(n_eff, n_eff)
   z_a <- .z_alpha(alpha, alternative)
-  fpc1 <- .fpc_factor(n_eff[1], N_pair[1])
-  fpc2 <- .fpc_factor(n_eff[2], N_pair[2])
-
-  V_d <- deff * (
-    var_terms[1] * fpc1 / n_eff[1] +
-    var_terms[2] * fpc2 / n_eff[2]
-  )
+  V_d <- .did_var_d(n_eff, var_terms, N_pair, deff)
   V_d <- .safe_variance(V_d, "DiD variance")
   if (V_d == 0) return(1)
 
   se <- sqrt(V_d)
-  delta <- abs(effect)
-  pw <- pnorm(delta / se - z_a)
+  icc <- abs(effect)
+  pw <- pnorm(icc / se - z_a)
   if (alternative == "two.sided") {
-    pw <- pw + pnorm(-delta / se - z_a)
+    pw <- pw + pnorm(-icc / se - z_a)
   }
   min(pw, 1)
 }
@@ -378,13 +462,7 @@ power_did.default <- function(
 .power_did_mde_core <- function(
   n_eff, power, alpha, N_pair, deff, alternative, var_terms
 ) {
-  if (length(n_eff) == 1L) n_eff <- c(n_eff, n_eff)
-  fpc1 <- .fpc_factor(n_eff[1], N_pair[1])
-  fpc2 <- .fpc_factor(n_eff[2], N_pair[2])
-  V_d <- deff * (
-    var_terms[1] * fpc1 / n_eff[1] +
-    var_terms[2] * fpc2 / n_eff[2]
-  )
+  V_d <- .did_var_d(n_eff, var_terms, N_pair, deff)
   V_d <- .safe_variance(V_d, "DiD variance")
 
   z_a <- .z_alpha(alpha, alternative)

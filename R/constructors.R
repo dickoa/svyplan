@@ -9,11 +9,16 @@
   se = NULL,
   moe = NULL,
   cv = NULL,
+  indicators = NULL,
   targets = NULL,
   detail = NULL,
   binding = NULL,
   domains = NULL,
-  operational = NULL
+  operational = NULL,
+  constraints = NULL,
+  optimization = NULL,
+  objective = NULL,
+  objective_value = NULL
 ) {
   stopifnot(
     is.numeric(n),
@@ -23,7 +28,12 @@
     is.list(params),
     is.null(detail) || is.data.frame(detail),
     is.null(domains) || is.data.frame(domains),
-    is.null(operational) || is.list(operational)
+    is.null(operational) || is.list(operational),
+    is.null(constraints) || is.data.frame(constraints),
+    is.null(optimization) || is.list(optimization),
+    is.null(objective) || is.data.frame(objective),
+    is.null(objective_value) ||
+      (is.numeric(objective_value) && length(objective_value) == 1L)
   )
 
   if (is.null(se) || is.null(moe) || is.null(cv)) {
@@ -34,23 +44,29 @@
   }
   stopifnot(is.numeric(se), is.numeric(moe), is.numeric(cv))
 
-  structure(
-    list(
-      n = n,
-      type = type,
-      method = method,
-      params = params,
-      se = se,
-      moe = moe,
-      cv = cv,
-      targets = targets,
-      detail = detail,
-      binding = binding,
-      domains = domains,
-      operational = operational
-    ),
-    class = c("svyplan_n", "list")
+  out <- list(
+    n = n,
+    type = type,
+    method = method,
+    params = params,
+    se = se,
+    moe = moe,
+    cv = cv,
+    indicators = indicators,
+    targets = targets,
+    detail = detail,
+    binding = binding,
+    domains = domains,
+    operational = operational
   )
+  # Preserve the exact legacy schema unless the optional generalized
+  # allocation diagnostics are actually present.
+  if (!is.null(constraints)) out$constraints <- constraints
+  if (!is.null(optimization)) out$optimization <- optimization
+  if (!is.null(objective)) out$objective <- objective
+  if (!is.null(objective_value)) out$objective_value <- objective_value
+
+  structure(out, class = c("svyplan_n", "list"))
 }
 
 #' Compute precision measures from n and params
@@ -86,7 +102,7 @@
   cv,
   cost,
   params = list(),
-  targets = NULL,
+  indicators = NULL,
   detail = NULL,
   binding = NULL,
   domains = NULL,
@@ -119,7 +135,7 @@
       cost = cost,
       operational = operational,
       params = params,
-      targets = targets,
+      indicators = indicators,
       detail = detail,
       binding = binding,
       domains = domains
@@ -138,7 +154,10 @@
   type,
   method = NULL,
   params = list(),
-  detail = NULL
+  detail = NULL,
+  bounds = NULL,
+  objective = NULL,
+  objective_value = NULL
 ) {
   stopifnot(
     is.numeric(se),
@@ -150,21 +169,27 @@
     length(type) == 1L,
     !is.na(type),
     is.list(params),
-    is.null(detail) || is.data.frame(detail)
+    is.null(detail) || is.data.frame(detail),
+    is.null(bounds) || is.data.frame(bounds),
+    is.null(objective) || is.data.frame(objective),
+    is.null(objective_value) ||
+      (is.numeric(objective_value) && length(objective_value) == 1L)
   )
 
-  structure(
-    list(
-      se = se,
-      moe = moe,
-      cv = cv,
-      type = type,
-      method = method,
-      params = params,
-      detail = detail
-    ),
-    class = c("svyplan_prec", "list")
+  out <- list(
+    se = se,
+    moe = moe,
+    cv = cv,
+    type = type,
+    method = method,
+    params = params,
+    detail = detail
   )
+  if (!is.null(bounds)) out$bounds <- bounds
+  if (!is.null(objective)) out$objective <- objective
+  if (!is.null(objective_value)) out$objective_value <- objective_value
+
+  structure(out, class = c("svyplan_prec", "list"))
 }
 
 #' Construct a svyplan_varcomp object
@@ -173,9 +198,9 @@
 .new_svyplan_varcomp <- function(
   varb,
   varw,
-  delta,
-  k,
-  rel_var,
+  icc,
+  var_ratio,
+  unit_relvar,
   stages,
   strata = NULL
 ) {
@@ -188,17 +213,17 @@
     stopifnot(
       is.numeric(varb),
       is.numeric(varw),
-      is.numeric(delta),
-      is.numeric(k),
-      is.numeric(rel_var)
+      is.numeric(icc),
+      is.numeric(var_ratio),
+      is.numeric(unit_relvar)
     )
   } else {
     stopifnot(
       is.null(varb),
       is.null(varw),
-      is.null(delta),
-      is.null(k),
-      is.null(rel_var)
+      is.null(icc),
+      is.null(var_ratio),
+      is.null(unit_relvar)
     )
   }
 
@@ -206,9 +231,9 @@
     list(
       varb = varb,
       varw = varw,
-      delta = delta,
-      k = k,
-      rel_var = rel_var,
+      icc = icc,
+      var_ratio = var_ratio,
+      unit_relvar = unit_relvar,
       stages = stages,
       strata = strata
     ),
@@ -293,30 +318,58 @@
   )
 }
 
-#' Construct a svyplan_design_effect object
+#' Construct a svyplan_deff object
+#'
+#' `components` is a named numeric vector of the multiplicative parts and
+#' `notes` a parallel character vector describing each part's inputs.
 #' @keywords internal
 #' @noRd
-.new_svyplan_design_effect <- function(
-  design_effect,
-  method,
-  components = NULL
-) {
+.new_svyplan_deff <- function(deff, components, notes) {
   stopifnot(
-    is.numeric(design_effect),
-    length(design_effect) == 1L,
-    !is.na(design_effect),
-    is.finite(design_effect),
-    design_effect >= 0,
-    is.character(method),
-    length(method) == 1L,
-    !is.na(method),
-    is.null(components) || is.data.frame(components)
+    is.numeric(deff),
+    length(deff) == 1L,
+    !is.na(deff),
+    is.finite(deff),
+    deff > 0,
+    is.numeric(components),
+    length(components) > 0L,
+    !is.null(names(components)),
+    all(is.finite(components)),
+    is.character(notes),
+    identical(names(notes), names(components))
   )
 
   structure(
-    as.double(design_effect),
-    method = method,
+    as.double(deff),
     components = components,
-    class = c("svyplan_design_effect", "numeric")
+    notes = notes,
+    class = c("svyplan_deff", "numeric")
+  )
+}
+
+#' Construct a svyplan_twophase object
+#' @keywords internal
+#' @noRd
+.new_svyplan_twophase <- function(n, responding, cv, cost, detail, single_phase,
+                                  operational = NULL, params = list()) {
+  stopifnot(
+    is.numeric(n), length(n) == 2L,
+    is.numeric(responding), length(responding) == 2L,
+    is.numeric(cost), length(cost) == 1L,
+    is.data.frame(detail),
+    is.list(single_phase)
+  )
+  structure(
+    list(
+      n = n,
+      responding = responding,
+      cv = cv,
+      cost = cost,
+      detail = detail,
+      single_phase = single_phase,
+      operational = operational,
+      params = params
+    ),
+    class = "svyplan_twophase"
   )
 }

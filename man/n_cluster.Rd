@@ -11,14 +11,14 @@ n_cluster(stage_cost = NULL, ...)
 \method{n_cluster}{default}(
   stage_cost = NULL,
   ...,
-  delta = NULL,
-  rel_var = 1,
-  k = 1,
+  icc = NULL,
+  unit_relvar = 1,
+  var_ratio = 1,
   cv = NULL,
   budget = NULL,
   n_psu = NULL,
-  psu_size = NULL,
-  ssu_size = NULL,
+  n_per_psu = NULL,
+  n_per_ssu = NULL,
   resp_rate = 1,
   fixed_cost = 0,
   plan = NULL
@@ -35,25 +35,28 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_clust
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
-\item{delta}{Numeric vector of homogeneity measures (length = stages - 1),
-or a \code{svyplan_varcomp} object. Delta quantifies how similar units
+\item{icc}{Numeric vector of homogeneity measures (length = stages - 1),
+or a \code{svyplan_varcomp} object. The ICC quantifies how similar units
 within the same cluster are: 0 means no similarity (clusters are as
 variable as the whole population), 1 means perfect similarity (all
 units in a cluster are identical). Typical values in household
-surveys range from 0.01 to 0.10. Higher delta means more clusters
+surveys range from 0.01 to 0.10. Higher icc means more clusters
 are needed for the same precision. Use \code{\link[=varcomp]{varcomp()}} to estimate
-delta from a previous survey or pilot data.}
+icc from a previous survey or pilot data.}
 
-\item{rel_var}{Unit relvariance (default 1). For most applications,
+\item{unit_relvar}{Unit relvariance (default 1). For most applications,
 the default of 1 is appropriate. Non-unit values arise when working
 with variance components from \code{\link[=varcomp]{varcomp()}} that separate the total
 variance into stage-specific pieces.}
 
-\item{k}{Ratio parameter(s). Scalar for 2-stage, length-2 vector for
-3-stage (default 1). Controls how stage costs relate to stage
-variances in the optimization. The default of 1 is appropriate for
-most designs. Non-unit values are rarely needed outside specialized
-cost-variance models.}
+\item{var_ratio}{Ratio of the stage components' unit variance to the analysis
+variable's, default 1. A scalar names \code{var_ratio_psu} and, for a three-stage
+design, derives \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)}, the identity the
+variance decomposition imposes; supply a length-2 vector only to
+override it, which is meaningful when the two stages' ratios come from
+different decompositions. See \code{\link[=design_effect]{design_effect()}} for the identity and
+why the design effect would not reduce to \code{var_ratio_psu} without it. The
+default of 1 is appropriate for most designs.}
 
 \item{cv}{Target coefficient of variation (relative standard error).
 For example, \code{cv = 0.05} means the standard error of the estimate
@@ -63,15 +66,15 @@ one of \code{cv} or \code{budget}.}
 \item{budget}{Total budget. Specify exactly one of \code{cv} or \code{budget}.}
 
 \item{n_psu}{Fixed number of PSUs (stage-1 sample size). \code{NULL} (default)
-means optimize. For 2-stage, at most one of \code{n_psu} or \code{psu_size} may be
-specified. For 3-stage, up to two of \code{n_psu}, \code{psu_size}, \code{ssu_size} may
+means optimize. For 2-stage, at most one of \code{n_psu} or \code{n_per_psu} may be
+specified. For 3-stage, up to two of \code{n_psu}, \code{n_per_psu}, \code{n_per_ssu} may
 be fixed.}
 
-\item{psu_size}{Fixed cluster size (stage-2 sample size per PSU). \code{NULL}
+\item{n_per_psu}{Fixed cluster size (stage-2 sample size per PSU). \code{NULL}
 (default) means optimize. This is the typical MICS/DHS parameterization
 where the number of households per cluster is fixed.}
 
-\item{ssu_size}{Fixed SSU take size (stage-3 sample size per SSU). \code{NULL}
+\item{n_per_ssu}{Fixed SSU take size (stage-3 sample size per SSU). \code{NULL}
 (default) means optimize. Only valid for 3-stage designs.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
@@ -79,18 +82,18 @@ adjustment). The stage-1 sample size is inflated by \code{1 / resp_rate}.}
 
 \item{fixed_cost}{Fixed overhead cost (C0). Default 0.
 The total cost model becomes
-\code{C = C0 + c1*n_psu + c2*n_psu*psu_size [+ c3*n_psu*psu_size*ssu_size]}.
+\code{C = C0 + c1*n_psu + c2*n_psu*n_per_psu [+ c3*n_psu*n_per_psu*n_per_ssu]}.
 In budget mode, only \code{budget - fixed_cost} is available for variable
 costs. In CV mode, \code{fixed_cost} is added to the variable cost.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults
-(including \code{stage_cost}, \code{delta}, \code{rel_var}, \code{k}, \code{resp_rate}, \code{fixed_cost}).}
+(including \code{stage_cost}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{resp_rate}, \code{fixed_cost}).}
 }
 \value{
 A \code{svyplan_cluster} object with components:
 \describe{
 \item{\code{n}}{Named numeric vector of continuous per-stage sample sizes
-(e.g. \code{c(n_psu = 84.1, psu_size = 13.8)}), the mathematical
+(e.g. \code{c(n_psu = 84.1, n_per_psu = 13.8)}), the mathematical
 optimum.}
 \item{\code{stages}}{Number of stages (2 or 3).}
 \item{\code{total_n}}{Continuous total sample size (\code{prod(n)}).}
@@ -119,14 +122,14 @@ A typical 2-stage household survey workflow:
 \item \strong{Decide what you know.} You need the cost per cluster visit
 (\code{stage_cost[1]}, e.g. travel + logistics) and the cost per
 interview (\code{stage_cost[2]}), plus an estimate of within-cluster
-homogeneity (\code{delta}). Estimate delta from a pilot or previous
+homogeneity (\code{icc}). Estimate icc from a pilot or previous
 survey with \code{\link[=varcomp]{varcomp()}}, or use a plausible range (0.01--0.10
 for most household indicators).
 \item \strong{Choose a mode.} If you have a target precision, set \code{cv}. If you
 have a fixed budget, set \code{budget}. Never set both.
 \item \strong{Fix stages or let the optimizer decide.} In MICS/DHS-style
 designs, the number of households per cluster is fixed by
-fieldwork logistics (e.g. \code{psu_size = 20}). The optimizer then
+fieldwork logistics (e.g. \code{n_per_psu = 20}). The optimizer then
 solves for how many clusters (\code{n_psu}) to visit. If no stage is
 fixed, both are optimized jointly.
 }
@@ -137,9 +140,9 @@ fixed, both are optimized jointly.
 Stage count is determined by \code{length(stage_cost)}:
 \itemize{
 \item \strong{2-stage} (e.g. clusters then households): \code{stage_cost} has 2
-elements, \code{delta} is a scalar.
+elements, \code{icc} is a scalar.
 \item \strong{3-stage} (e.g. districts, clusters, households): \code{stage_cost}
-has 3 elements, \code{delta} is length 2.
+has 3 elements, \code{icc} is length 2.
 }
 
 Two solving modes:
@@ -157,16 +160,16 @@ optimized or derived from the constraint. For 2-stage designs, at most one
 stage may be fixed. For 3-stage designs, up to two stages may be fixed.
 The remaining free stage is derived from the budget or CV constraint.
 
-If \code{delta} is a \code{svyplan_varcomp} object, \code{delta}, \code{rel_var}, and \code{k}
+If \code{icc} is a \code{svyplan_varcomp} object, \code{icc}, \code{unit_relvar}, and \code{var_ratio}
 are extracted automatically.
 }
 
-\subsection{Boundary delta values}{
+\subsection{Boundary icc values}{
 
 Boundary and near-boundary homogeneity values are not supported by the
-analytical optimum used here. When \code{delta} is near 0, most variability is
+analytical optimum used here. When \code{icc} is near 0, most variability is
 within PSUs, so the closed-form optimum collapses toward taking many units
-in very few PSUs. When \code{delta} is near 1, most variability is between PSUs,
+in very few PSUs. When \code{icc} is near 1, most variability is between PSUs,
 so the optimum collapses toward taking very few units in many PSUs. In both
 cases the analytical allocation becomes degenerate, so \code{n_cluster()}
 rejects values numerically too close to 0 or 1.
@@ -179,28 +182,28 @@ populations are large relative to the sample.
 }
 \examples{
 # 2-stage, budget mode
-n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
 
 # 2-stage, CV mode
-n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
+n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
 
 # 2-stage, fixed n_psu
-n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, n_psu = 40)
+n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, n_psu = 40)
 
-# 2-stage, fixed psu_size (MICS/DHS style: 20 households per cluster)
-n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, psu_size = 20)
+# 2-stage, fixed n_per_psu (MICS/DHS style: 20 households per cluster)
+n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, n_per_psu = 20)
 
 # 3-stage
-n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+n_cluster(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05), cv = 0.05)
 
-# 3-stage, fixed n_psu + ssu_size (solve for psu_size)
+# 3-stage, fixed n_psu + n_per_ssu (solve for n_per_psu)
 n_cluster(
-  stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
-  budget = 500000, n_psu = 50, ssu_size = 8
+  stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
+  budget = 500000, n_psu = 50, n_per_ssu = 8
 )
 
 # With fixed overhead cost
-n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, fixed_cost = 5000)
+n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, fixed_cost = 5000)
 
 }
 \references{
@@ -210,5 +213,6 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 }
 \seealso{
 \code{\link[=prec_cluster]{prec_cluster()}} for the inverse, \code{\link[=varcomp]{varcomp()}} for estimating
-variance components.
+variance components, \code{\link[=n_multi_cluster]{n_multi_cluster()}} for several indicators at once,
+and \code{\link[=n_alloc]{n_alloc()}} for a stratified multistage allocation.
 }

@@ -16,7 +16,8 @@ prec_prop(p, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  method = c("wald", "wilson", "logodds"),
+  method = c("wald", "wilson", "logodds", "beta"),
+  df = NULL,
   plan = NULL
 )
 
@@ -42,12 +43,34 @@ efficient designs (e.g., stratified sampling with Neyman allocation).}
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The effective sample size is \code{n * resp_rate}.}
 
-\item{method}{One of \code{"wald"} (default), \code{"wilson"}, or \code{"logodds"}.}
+\item{method}{One of \code{"wald"} (default), \code{"wilson"}, \code{"logodds"}, or
+\code{"beta"} (Korn-Graubard). See \code{\link[=n_prop]{n_prop()}} for how to choose.}
+
+\item{df}{Degrees of freedom of the variance estimator, typically sampled
+PSUs minus strata. Used by \code{method = "beta"} only. \code{NULL} (default)
+applies no adjustment. See \code{\link[=n_prop]{n_prop()}}.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
-A \code{svyplan_prec} object with components \verb{$se}, \verb{$moe}, and \verb{$cv}.
+A \code{svyplan_prec} object with \code{type = "proportion"}:
+\describe{
+\item{\code{se}}{Standard error of the planned estimate, computed on the
+net sample \code{n * resp_rate}.}
+\item{\code{moe}}{Margin of error, \code{qnorm(1 - alpha / 2) * se}. For the
+three asymmetric methods this is half the interval's length, not
+an offset from either limit, so \code{p - moe} and \code{p + moe} are not
+the endpoints; use \code{\link[=confint]{confint()}} for those.}
+\item{\code{cv}}{Relative standard error, \code{se / p}.}
+\item{\code{method}}{The interval method used.}
+\item{\code{params}}{The validated inputs (\code{p}, \code{n}, \code{alpha}, \code{N},
+\code{deff}, \code{resp_rate}, \code{df}). \code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the
+\code{\link[=n_prop]{n_prop()}} round trip read the design back from here.}
+}
+
+Nothing here is rounded: \code{n} is taken as given, so passing a
+continuous \code{n} back from \code{\link[=n_prop]{n_prop()}} reproduces its \code{se}, \code{moe} and
+\code{cv} exactly.
 }
 \description{
 Compute the sampling error (SE, margin of error, CV) for estimating a
@@ -62,13 +85,23 @@ variation. The variance equation is
 \code{n_net = n * resp_rate} is the expected number of responding units:
 \code{deff} multiplies the SRS variance at the realized sample size, and
 the finite population correction uses the actual sampling fraction
-\code{n_net / N}. Equivalently, \code{se^2 = p * (1 - p) * fpc(n_net) / n_eff}
-with the effective sample size \code{n_eff = n_net / deff}.
+\code{n_net / N}. Equivalently, \code{se^2 = p * (1 - p) / n_eff} with the
+effective sample size \code{n_eff = n_net / (deff * fpc(n_net))}, the size at
+which an infinite-population simple random sample would carry the same
+variance.
 
-The Wald FPC uses the Cochran (1977, Ch. 3) form: the finite-population
+The FPC uses the Cochran (1977, Ch. 3) form: the finite-population
 correction for a Bernoulli proportion is \code{(N - n_net) / (N - 1)}, not
-the simpler \code{1 - n_net / N} used for means. The Wilson method has no
-finite-population form. It is evaluated at \code{n_eff} and ignores \code{N}.
+the simpler \code{1 - n_net / N} used for means. All four methods read the
+same variance through \code{n_eff}, so all four respond to \code{deff} and \code{N}
+and all four return zero at a census. They differ only in the interval
+built around that variance; see \code{\link[=n_prop]{n_prop()}} for how to choose.
+
+\verb{$moe} is half the length of that interval. Only the Wald interval is
+symmetric about \code{p}, so for the other three \code{p - moe} and \code{p + moe} are
+not the limits: use \code{\link[=confint]{confint()}} for those. The \code{"beta"} method makes this
+most visible, since its interval is deliberately asymmetric for a rare
+outcome.
 
 When called on a \code{svyplan_n} object, parameters are extracted from the
 stored result. Any argument of the default method (e.g. \code{method}, \code{deff},
@@ -83,6 +116,10 @@ prec_prop(p = 0.3, n = 400)
 
 # With design effect and response rate
 prec_prop(p = 0.3, n = 400, deff = 1.5, resp_rate = 0.8)
+
+# Korn-Graubard interval for a rare outcome in a clustered design
+rare <- prec_prop(p = 0.02, n = 900, deff = 2, method = "beta", df = 25)
+confint(rare)
 
 }
 \seealso{

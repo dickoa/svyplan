@@ -88,3 +88,31 @@ test_that("deff multiplies the SRS variance at the actual net n (finite N)", {
     expect_equal(pm$moe, 2, tolerance = 1e-8)
   }
 })
+
+test_that("a CV target is planned on the magnitude of the mean", {
+  # the formula uses mu^2, so the sign cannot matter
+  expect_equal(n_mean(sd = 10, mu = -20, cv = 0.1)$n,
+               n_mean(sd = 10, mu = 20, cv = 0.1)$n)
+  expect_equal(prec_mean(sd = 10, mu = -20, n = 100)$cv,
+               prec_mean(sd = 10, mu = 20, n = 100)$cv)
+  expect_gt(prec_mean(sd = 10, mu = -20, n = 100)$cv, 0)
+
+  # zero is the value with no relative scale
+  expect_error(n_mean(sd = 10, mu = 0, cv = 0.1), "must not be zero")
+  expect_error(prec_mean(sd = 10, mu = 0, n = 100), "must not be zero")
+
+  # and the frame paths agree with the scalar ones
+  frame <- data.frame(stratum = c("A", "B"), N = c(100, 100), sd = c(1, 2),
+                      mean = c(-10, -20))
+  flipped <- transform(frame, mean = c(10, 20))
+  expect_equal(n_alloc(frame, n = 100, alloc = "neyman")$cv,
+               n_alloc(flipped, n = 100, alloc = "neyman")$cv)
+
+  two_phase <- data.frame(stratum = c("A", "B"), N = c(600, 400),
+                          sd = c(10, 20), mean = c(-50, -70), unit_cost = 1)
+  expect_equal(
+    n_twophase(two_phase, phase1_cost = 1, budget = 5000)$cv,
+    n_twophase(transform(two_phase, mean = c(50, 70)),
+               phase1_cost = 1, budget = 5000)$cv
+  )
+})

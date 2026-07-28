@@ -6,9 +6,12 @@
 #' @param var For the default method: population variance \eqn{S^2}.
 #'   For `svyplan_n` objects: a sample size result from [n_mean()].
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
+#' @param sd Population standard deviation, an alternative spelling of
+#'   `var`. Supply exactly one of `var` or `sd`. Stratum frames and
+#'   published survey reports usually quote standard deviations.
 #' @param n Sample size, measured as gross units drawn and bounded by a
 #'   finite `N`.
-#' @param mu Population mean magnitude (positive). Required for the CV component.
+#' @param mu Population mean. Required for the CV component.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size. `Inf` (default) means no finite population
 #'   correction.
@@ -18,8 +21,26 @@
 #'   adjustment). The effective sample size is `n * resp_rate`.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
-#' @return A `svyplan_prec` object with components `$se`, `$moe`, and `$cv`.
-#'   `$cv` is `NA` when `mu` is not provided.
+#' @return A `svyplan_prec` object with `type = "mean"`:
+#' \describe{
+#'   \item{`se`}{Standard error of the planned estimate, computed on the
+#'     net sample `n * resp_rate`.}
+#'   \item{`moe`}{Margin of error, `qnorm(1 - alpha / 2) * se`. The
+#'     interval is symmetric, so the limits are `mu - moe` and
+#'     `mu + moe`.}
+#'   \item{`cv`}{Relative standard error, `se / abs(mu)`. `NA` when `mu` is
+#'     not supplied, since a relative standard error needs a mean to be
+#'     relative to.}
+#'   \item{`params`}{The validated inputs (`var`, `n`, `alpha`, `N`,
+#'     `deff`, `resp_rate`, and `mu` when given). Dispersion is always
+#'     stored as `var`, including when you supplied `sd`. [predict()],
+#'     [confint()] and the [n_mean()] round trip read the design back
+#'     from here.}
+#' }
+#'
+#' Nothing here is rounded: `n` is taken as given, so passing a
+#' continuous `n` back from [n_mean()] reproduces its `se`, `moe` and
+#' `cv` exactly.
 #'
 #' @details
 #' Computes the standard error for the given sample size and design
@@ -71,8 +92,8 @@
 #' p$cv        # CV is the same for mean and total
 #'
 #' @export
-prec_mean <- function(var, ...) {
-  if (!missing(var)) {
+prec_mean <- function(var = NULL, ...) {
+  if (!is.null(var)) {
     .res <- .dispatch_plan(var, "var", prec_mean.default, ...)
     if (!is.null(.res)) return(.res)
   }
@@ -82,9 +103,10 @@ prec_mean <- function(var, ...) {
 #' @rdname prec_mean
 #' @export
 prec_mean.default <- function(
-  var,
+  var = NULL,
   n,
   ...,
+  sd = NULL,
   mu = NULL,
   alpha = 0.05,
   N = Inf,
@@ -95,6 +117,7 @@ prec_mean.default <- function(
   .plan <- .merge_plan_args(plan, prec_mean.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_mean.default, c(.plan, list(...))))
   .check_unused_dots(...)
+  var <- .resolve_var(var, sd)
   check_scalar(var, "var")
   check_scalar(n, "n")
   check_alpha(alpha)
@@ -103,7 +126,7 @@ prec_mean.default <- function(
   check_resp_rate(resp_rate)
   .check_gross_n(n, N)
   if (!is.null(mu)) {
-    check_scalar(mu, "mu")
+    check_mu(mu)
   }
 
   prec <- .prec_engine_mean(var, mu, n, alpha, N, deff, resp_rate)

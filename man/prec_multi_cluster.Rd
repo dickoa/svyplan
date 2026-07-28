@@ -6,30 +6,31 @@
 \alias{prec_multi_cluster.svyplan_cluster}
 \title{Multi-Indicator Precision for Cluster Designs}
 \usage{
-prec_multi_cluster(targets, ...)
+prec_multi_cluster(indicators, ...)
 
 \method{prec_multi_cluster}{default}(
-  targets,
+  indicators,
   ...,
   domains = NULL,
   stage_cost = NULL,
   plan = NULL
 )
 
-\method{prec_multi_cluster}{svyplan_cluster}(targets, ...)
+\method{prec_multi_cluster}{svyplan_cluster}(indicators, ...)
 }
 \arguments{
-\item{targets}{For the default method, a non-empty data frame with one row
-per indicator. It must contain \code{n} and \code{psu_size}. Include \code{ssu_size} for
+\item{indicators}{For the default method, a non-empty data frame with one row
+per indicator. It must contain \code{n} and \code{n_per_psu}. Include \code{n_per_ssu} for
 a three-stage design. Cluster homogeneity and indicator columns follow
-the schema used by \code{\link[=n_multi_cluster]{n_multi_cluster()}}. For \code{svyplan_cluster} methods,
-an allocation returned by \code{\link[=n_multi_cluster]{n_multi_cluster()}}.}
+the schema used by \code{\link[=n_multi_cluster]{n_multi_cluster()}}, including the derived
+three-stage \code{var_ratio_ssu}. For \code{svyplan_cluster} methods, an allocation
+returned by \code{\link[=n_multi_cluster]{n_multi_cluster()}}.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are
 rejected.}
 
 \item{domains}{Optional character vector naming domain columns in
-\code{targets}.}
+\code{indicators}.}
 
 \item{stage_cost}{Optional per-stage costs to retain for a later round trip
 to \code{\link[=n_multi_cluster]{n_multi_cluster()}}. Costs do not enter the precision calculation.}
@@ -46,13 +47,17 @@ three-stage cluster allocation. This is the inverse of
 \code{\link[=n_multi_cluster]{n_multi_cluster()}}.
 }
 \examples{
-targets <- data.frame(
+indicators <- data.frame(
   name = c("stunting", "anemia"),
   p = c(0.30, 0.10),
   n = c(60, 60),
-  psu_size = c(12, 12),
-  delta_psu = c(0.02, 0.05)
+  n_per_psu = c(12, 12),
+  icc_psu = c(0.02, 0.05)
 )
-prec_multi_cluster(targets)
+prec_multi_cluster(indicators)
 
+}
+\seealso{
+\code{\link[=n_multi_cluster]{n_multi_cluster()}} for the inverse, \code{\link[=prec_multi]{prec_multi()}} for the
+single-stage counterpart, and \code{\link[=prec_cluster]{prec_cluster()}} for one indicator.
 }

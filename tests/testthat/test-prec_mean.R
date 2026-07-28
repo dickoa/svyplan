@@ -110,5 +110,5 @@ test_that("prec_mean validates inputs", {
   expect_error(prec_mean(var = 100, n = 400, resp_rate = 0), "resp_rate")
   expect_error(prec_mean(var = 100, n = 400, resp_rate = 1.5), "resp_rate")
   expect_error(prec_mean(var = 100, n = 400, N = -1), "must be greater than 1")
-  expect_error(prec_mean(var = 100, n = 400, mu = -1), "must be positive")
+  expect_error(prec_mean(var = 100, n = 400, mu = 0), "must not be zero")
 })

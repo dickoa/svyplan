@@ -7,11 +7,11 @@ test_that("print.svyplan_n outputs correctly", {
 })
 
 test_that("print.svyplan_cluster outputs correctly", {
-  result <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+  result <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   out <- capture.output(print(result))
   expect_match(out[1], "Optimal 2-stage allocation")
   expect_match(out[2], "n_psu")
-  expect_match(out[2], "psu_size")
+  expect_match(out[2], "n_per_psu")
   expect_match(out[3], "cv =")
 })
 
@@ -44,7 +44,7 @@ test_that("as.double.svyplan_n returns raw n", {
 })
 
 test_that("as.integer.svyplan_cluster returns the operational stage vector", {
-  result <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+  result <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   expect_identical(as.integer(result), as.integer(result$operational$n))
   expect_length(as.integer(result), 2L)
   expect_lte(result$operational$cost, 100000)
@@ -56,20 +56,20 @@ test_that("print returns invisible(x)", {
 })
 
 test_that("print shows fixed_cost when > 0", {
-  result <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05,
+  result <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
                        fixed_cost = 5000)
   out <- capture.output(print(result))
   expect_true(any(grepl("fixed: 5000", out)))
 })
 
 test_that("print hides fixed_cost when 0", {
-  result <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
+  result <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
   out <- capture.output(print(result))
   expect_false(any(grepl("fixed", out)))
 })
 
 test_that("print shows field design and continuous optimum for cluster", {
-  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   out <- capture.output(print(x))
   expect_true(any(grepl("field design", out)))
   expect_true(any(grepl("continuous optimum", out)))
@@ -77,13 +77,13 @@ test_that("print shows field design and continuous optimum for cluster", {
 })
 
 test_that("as.double.svyplan_cluster returns the continuous stage vector", {
-  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   expect_equal(as.double(x), x$n)
   expect_length(as.double(x), length(as.integer(x)))
 })
 
 test_that("format.svyplan_cluster shows unrounded", {
-  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   fmt <- format(x)
   expected_unrounded <- format(signif(x$total_n, 8), trim = TRUE, scientific = FALSE)
   expect_match(fmt, "unrounded")
@@ -93,7 +93,7 @@ test_that("format.svyplan_cluster shows unrounded", {
 test_that("cluster print and format handle pathological stage sizes", {
   x <- structure(
     list(
-      n = c(n_psu = 3.99303258914344e-15, psu_size = 150518950596651648),
+      n = c(n_psu = 3.99303258914344e-15, n_per_psu = 150518950596651648),
       stages = 2L,
       total_n = 601.027075016102,
       se = NA_real_,
@@ -153,7 +153,7 @@ test_that("as.data.frame.svyplan_n returns the alloc detail table", {
 
 test_that("as.data.frame.svyplan_n returns domains for n_multi", {
   targets <- data.frame(
-    indicator = "stunting",
+    name = "stunting",
     domain = c("urban", "rural"),
     p = c(0.25, 0.35),
     cv = 0.08
@@ -161,7 +161,7 @@ test_that("as.data.frame.svyplan_n returns domains for n_multi", {
   res <- n_multi(targets, domains = "domain")
   expect_identical(as.data.frame(res), res$domains)
 
-  no_dom <- n_multi(data.frame(indicator = "x", p = 0.3, cv = 0.08))
+  no_dom <- n_multi(data.frame(name = "x", p = 0.3, cv = 0.08))
   expect_identical(as.data.frame(no_dom), no_dom$detail)
 })
 
@@ -174,10 +174,10 @@ test_that("as.data.frame.svyplan_n returns one-row summary otherwise", {
 })
 
 test_that("as.data.frame.svyplan_cluster returns the stage table", {
-  res <- n_cluster(budget = 100000, delta = 0.05, rel_var = 1,
+  res <- n_cluster(budget = 100000, icc = 0.05, unit_relvar = 1,
                    stage_cost = c(500, 50))
   df <- as.data.frame(res)
-  expect_equal(df$stage, c("n_psu", "psu_size"))
+  expect_equal(df$stage, c("n_psu", "n_per_psu"))
   expect_equal(df$n, as.numeric(res$n))
   expect_identical(df$n_int, as.integer(res))
   expect_false(identical(as.integer(ceiling(res$n)), as.integer(res)))
@@ -185,11 +185,11 @@ test_that("as.data.frame.svyplan_cluster returns the stage table", {
 
 test_that("as.data.frame.svyplan_cluster returns domains when present", {
   targets <- data.frame(
-    indicator = "s",
+    name = "s",
     domain = c("u", "r"),
     p = c(0.25, 0.35),
     cv = 0.08,
-    delta_psu = 0.05
+    icc_psu = 0.05
   )
   res <- n_multi_cluster(targets, domains = "domain", stage_cost = c(500, 50))
   expect_identical(as.data.frame(res), res$domains)
@@ -207,15 +207,15 @@ test_that("as.data.frame.svyplan_prec returns a single-indicator summary", {
 
 test_that("as.data.frame.svyplan_prec returns cluster stages", {
   res <- prec_cluster(
-    n = c(n_psu = 30, psu_size = 10),
-    delta = 0.05,
-    rel_var = 1
+    n = c(n_psu = 30, n_per_psu = 10),
+    icc = 0.05,
+    unit_relvar = 1
   )
   df <- as.data.frame(res)
 
   expect_identical(
     names(df),
-    c("n_psu", "psu_size", "total_n", "se", "moe", "cv")
+    c("n_psu", "n_per_psu", "total_n", "se", "moe", "cv")
   )
   expect_equal(df$total_n, 300)
   expect_equal(df$cv, res$cv)
@@ -245,4 +245,48 @@ test_that("as.data.frame.svyplan_power has a stable two-group schema", {
   expect_identical(names(unequal_df), expected_names)
   expect_equal(equal_df$n1, equal_df$n2)
   expect_equal(c(unequal_df$n1, unequal_df$n2), unname(unequal$n))
+})
+
+test_that("a single binding constraint prints on one line with the total", {
+  z <- .bethel_fixture()
+  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+  expect_equal(sum(fit$constraints$.binding), 1L)
+  expect_lt(sum(fit$constraints$.binding), nrow(fit$constraints))
+
+  out <- capture.output(print(fit))
+  binding <- fit$constraints$constraint[fit$constraints$.binding]
+  expect_true(any(grepl(paste0("binding: ", binding), out, fixed = TRUE)))
+  # the constraint total is on the field-design line, so the reader can see
+  # that one of several is named without a separate see-also line
+  expect_true(any(grepl(
+    sprintf("%d targets, all pass", nrow(fit$constraints)), out, fixed = TRUE
+  )))
+  # confirmations that never vary are gone
+  expect_false(any(grepl("status: optimal", out, fixed = TRUE)))
+  expect_false(any(grepl("active bounds: 0 lower, 0 upper", out, fixed = TRUE)))
+
+  prec_out <- capture.output(print(prec_alloc(fit)))
+  expect_true(any(grepl("binding of", prec_out, fixed = TRUE)))
+  expect_true(any(grepl("see $detail", prec_out, fixed = TRUE)))
+})
+
+test_that("active bounds are reported only when some are active", {
+  z <- .bethel_fixture()
+  bounded <- n_alloc(
+    z$frame, measures = z$measures, targets = z$targets,
+    min_n_stratum = min(z$frame$N)
+  )
+  expect_true(any(grepl("active bounds:", capture.output(print(bounded)),
+                        fixed = TRUE)))
+})
+
+test_that("print omits the subset label when every constraint is shown", {
+  z <- .bethel_fixture()
+  z$targets <- z$targets[1L, , drop = FALSE]
+  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+  expect_identical(nrow(fit$constraints), 1L)
+
+  out <- capture.output(print(fit))
+  expect_false(any(grepl("showing", out, fixed = TRUE)))
+  expect_false(any(grepl("see $constraints", out, fixed = TRUE)))
 })

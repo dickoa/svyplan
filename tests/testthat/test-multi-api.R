@@ -3,7 +3,7 @@ test_that("simple and cluster multi-indicator APIs have invariant classes", {
   cluster_targets <- data.frame(
     p = 0.30,
     cv = 0.10,
-    delta_psu = 0.05
+    icc_psu = 0.05
   )
 
   simple <- n_multi(simple_targets)
@@ -31,8 +31,8 @@ test_that("cluster precision does not require costs", {
   targets <- data.frame(
     p = 0.30,
     n = 60,
-    psu_size = 12,
-    delta_psu = 0.05
+    n_per_psu = 12,
+    icc_psu = 0.05
   )
 
   precision <- prec_multi_cluster(targets)
@@ -49,7 +49,7 @@ test_that("cluster precision does not require costs", {
 
 test_that("simple and cluster round trips cannot be mixed", {
   cluster <- n_multi_cluster(
-    data.frame(p = 0.30, cv = 0.10, delta_psu = 0.05),
+    data.frame(p = 0.30, cv = 0.10, icc_psu = 0.05),
     stage_cost = c(500, 50)
   )
   precision <- prec_multi_cluster(cluster)

@@ -12,11 +12,11 @@
 #'   \item{`varb`}{Between-PSU variance (scalar).}
 #'   \item{`varw`}{Within-PSU variance. Scalar for 2-stage, length-2
 #'     vector (`varw_psu`, `varw_ssu`) for 3-stage.}
-#'   \item{`delta`}{Measure of homogeneity. Length 1 for 2-stage,
-#'     length 2 (`delta_psu`, `delta_ssu`) for 3-stage.}
-#'   \item{`k`}{Ratio parameter(s), same length as `delta`
-#'     (`k_psu`, `k_ssu` for 3-stage).}
-#'   \item{`rel_var`}{Unit relvariance (scalar).}
+#'   \item{`icc`}{Measure of homogeneity. Length 1 for 2-stage,
+#'     length 2 (`icc_psu`, `icc_ssu`) for 3-stage.}
+#'   \item{`var_ratio`}{Ratio parameter(s), same length as `icc`
+#'     (`var_ratio_psu`, `var_ratio_ssu` for 3-stage).}
+#'   \item{`unit_relvar`}{Unit relvariance (scalar).}
 #'   \item{`stages`}{Number of stages (2 or 3).}
 #'   \item{`strata`}{Per-stratum component table when `strata` is
 #'     supplied, otherwise `NULL` (see Details).}
@@ -60,7 +60,7 @@
 #' 3-stage weighted case the between-PSU correction removes
 #' element-stage estimation noise but not SSU-stage subsampling noise,
 #' so when few SSUs are sampled per PSU the between-PSU component (and
-#' `delta_psu`) is conservative: biased upward, never downward.
+#' `icc_psu`) is conservative: biased upward, never downward.
 #'
 #' When `prob` is `NULL`, SRS first-stage is assumed. When provided, PPS
 #' variance estimation is used. `prob` must sum to 1 across the PSUs
@@ -76,12 +76,51 @@
 #' as separate strata, with `prob` renormalized over the remaining
 #' PSUs.
 #'
-#' The returned `delta` is the measure of homogeneity
-#' \eqn{\delta = V_b / (V_b + V_w)}{delta = Vb / (Vb + Vw)} following
-#' Valliant, Dever, and Kreuter (2018, Ch. 9). Unlike the traditional ANOVA
-#' intraclass correlation coefficient, `delta` is constrained to \eqn{[0, 1]}
+#' The returned `icc` is the design-based measure of homogeneity
+#' \eqn{\delta = V_b / (V_b + V_w)}{icc = Vb / (Vb + Vw)}, written
+#' \eqn{\delta} in Valliant, Dever, and Kreuter (2018, Ch. 9).
+#' Unlike the traditional ANOVA
+#' intraclass correlation coefficient, `icc` is constrained to \eqn{[0, 1]}
 #' and should not be compared directly to mixed-model ICCs (e.g. from lme4)
 #' which can be negative.
+#'
+#' ## Component estimands
+#'
+#' For two-stage SRS, let \eqn{M} be the number of PSUs, \eqn{N_i} the
+#' ultimate-unit count in PSU \eqn{i}, \eqn{t_i} its outcome total, and
+#' \eqn{S_i^2} its within-PSU variance. With
+#' \eqn{t_U=M\bar t}, the complete-frame components returned are
+#' \deqn{V_b=s^2(t_i)/\bar t^2, \qquad
+#'       V_w=M\sum_iN_i^2S_i^2/t_U^2.}
+#' For PPS with one-draw probabilities \eqn{p_i}, they are
+#' \deqn{V_b=\sum_i p_i(t_i/p_i-t_U)^2/t_U^2, \qquad
+#'       V_w=\sum_iN_i^2S_i^2/(p_it_U^2).}
+#' In both cases `unit_relvar` is the ultimate-unit variance divided by the
+#' squared ultimate-unit mean, `icc = varb / (varb + varw)`, and
+#' `var_ratio = (varb + varw) / unit_relvar`.
+#'
+#' For three stages, `varb` uses the PPS between-PSU expression above.
+#' `varw_psu` applies the same PPS scaling to the variance of SSU totals
+#' within each PSU, and `varw_ssu` aggregates the within-SSU ultimate-unit
+#' variances. The returned PSU homogeneity compares the between-PSU component
+#' with the element-level variance aggregated within PSUs; the SSU
+#' homogeneity is `varw_psu / (varw_psu + varw_ssu)`. This distinction is why
+#' the first `icc` is not generally `varb / sum(c(varb, varw))` for a
+#' three-stage result.
+#'
+#' The two `var_ratio` values are estimated from their own stage decompositions
+#' rather than by imposing the identity `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)`
+#' that the planning formula uses (see [design_effect()]). On small clusters
+#' the two can differ by several percent. Passing a `svyplan_varcomp` to a
+#' planning function uses the estimated pair as given; omitting `var_ratio_ssu` there
+#' applies the identity instead.
+#'
+#' When weights are supplied, \eqn{N_i}, totals, means, and variances in these
+#' expressions are their weighted estimates. The code subtracts the stated
+#' SRS-without-replacement estimation variance of estimated cluster totals and
+#' truncates negative corrected components to zero. These corrections are
+#' planning approximations, not exact variance estimators for arbitrary
+#' informative multistage samples.
 #'
 #' Clusters containing a single observation have undefined within-cluster
 #' variance. In this case, the within-cluster variance is imputed as the
@@ -89,8 +128,8 @@
 #'
 #' With `strata`, components are estimated separately within each
 #' stratum and returned as a per-stratum table in `$strata` (also via
-#' `as.data.frame()`). The pooled fields (`varb`, `delta`, ...) are not
-#' filled. The table's columns (`sd`, `mean`, `delta_psu`, `k_psu`)
+#' `as.data.frame()`). The pooled fields (`varb`, `icc`, ...) are not
+#' filled. The table's columns (`sd`, `mean`, `icc_psu`, `var_ratio_psu`)
 #' match the [n_alloc()] frame contract, so after adding stratum `N`
 #' it feeds a stratified two-stage allocation directly. When `prob` is
 #' combined with `strata`, supply one value per observation, summing
@@ -104,7 +143,7 @@
 #' Hansen, M. H., Hurwitz, W. N., and Madow, W. G. (1953).
 #' *Sample Survey Methods and Theory* (Vol. I). Wiley.
 #'
-#' @seealso [n_cluster()] which accepts a `svyplan_varcomp` as `delta`.
+#' @seealso [n_cluster()] which accepts a `svyplan_varcomp` as `icc`.
 #'
 #' @examples
 #' # 2-stage SRS using formula (PSU = district)
@@ -118,7 +157,7 @@
 #' as.data.frame(vc2)
 #'
 #' # Feed into n_cluster
-#' n_cluster(stage_cost = c(500, 50), delta = vc2, budget = 100000)
+#' n_cluster(stage_cost = c(500, 50), icc = vc2, budget = 100000)
 #'
 #' # Estimate components from a two-stage sample: within-cluster
 #' # weights (summing to each cluster's population size) and, for a
@@ -471,7 +510,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 #' Per-stratum variance components
 #'
 #' Splits the data by stratum and runs the requested estimator within
-#' each. Column names of the result (`sd`, `mean`, `delta_psu`, `k_psu`,
+#' each. Column names of the result (`sd`, `mean`, `icc_psu`, `var_ratio_psu`,
 #' ...) deliberately match the n_alloc() frame contract so the table can
 #' be merged into an allocation frame directly.
 #' @keywords internal
@@ -511,25 +550,25 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
     } else {
       data.frame(
         stratum = s,
-        sd = sqrt(.varcomp_wvar(y[idx], w[idx])),
+        sd = sqrt(.vc_group_var(y[idx], w[idx])),
         mean = sum(w[idx] * y[idx]) / sum(w[idx])
       )
     }
     if (vc$stages == 2L) {
-      row$delta_psu <- vc$delta
-      row$k_psu <- vc$k
+      row$icc_psu <- vc$icc
+      row$var_ratio_psu <- vc$var_ratio
       row$varb <- vc$varb
       row$varw <- vc$varw
     } else {
-      row$delta_psu <- vc$delta[["delta_psu"]]
-      row$delta_ssu <- vc$delta[["delta_ssu"]]
-      row$k_psu <- vc$k[["k_psu"]]
-      row$k_ssu <- vc$k[["k_ssu"]]
+      row$icc_psu <- vc$icc[["icc_psu"]]
+      row$icc_ssu <- vc$icc[["icc_ssu"]]
+      row$var_ratio_psu <- vc$var_ratio[["var_ratio_psu"]]
+      row$var_ratio_ssu <- vc$var_ratio[["var_ratio_ssu"]]
       row$varb <- vc$varb
       row$varw_psu <- vc$varw[["varw_psu"]]
       row$varw_ssu <- vc$varw[["varw_ssu"]]
     }
-    row$rel_var <- vc$rel_var
+    row$unit_relvar <- vc$unit_relvar
     row
   })
 
@@ -538,9 +577,9 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
   .new_svyplan_varcomp(
     varb    = NULL,
     varw    = NULL,
-    delta   = NULL,
-    k       = NULL,
-    rel_var = NULL,
+    icc   = NULL,
+    var_ratio       = NULL,
+    unit_relvar = NULL,
     stages  = length(stage_id) + 1L,
     strata  = tab
   )
@@ -593,8 +632,8 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 #' Require at least two PSUs for a between-PSU variance
 #' @keywords internal
 #' @noRd
-.check_min_psu <- function(M) {
-  if (M < 2L) {
+.check_min_psu <- function(psu_count) {
+  if (psu_count < 2L) {
     stop(
       "at least two PSUs are required to estimate between-PSU variance. Collapse single-PSU strata with a neighbour",
       call. = FALSE
@@ -603,303 +642,354 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
   invisible(TRUE)
 }
 
-#' Group-safe weighted variance (NA for singletons)
+#' Tolerance below which a variance counts as zero
 #' @keywords internal
 #' @noRd
-.varcomp_wvar <- function(x, w) {
-  if (length(x) < 2L) {
+.vc_eps <- function() {
+  sqrt(.Machine$double.eps)
+}
+
+#' Split observations into groups, preserving the caller's level order
+#'
+#' Returns the per-observation group index and the number of groups, so
+#' every downstream summary can be built with a single split.
+#' @keywords internal
+#' @noRd
+.vc_group <- function(id, levels) {
+  list(index = match(id, levels), count = length(levels))
+}
+
+#' Per-group size, total, and unit variance
+#'
+#' Size is the count of observations without weights and the summed weight
+#' with them, so it estimates the group's population count either way.
+#' Totals and variances follow the same substitution. Groups with a single
+#' observation have no variance estimate and are filled in by the caller.
+#' @keywords internal
+#' @noRd
+.vc_summarise <- function(y, w, group) {
+  parts <- split(y, group$index)
+  observed <- tabulate(group$index, nbins = group$count)
+  if (is.null(w)) {
+    list(
+      size = as.numeric(observed),
+      total = vapply(parts, sum, numeric(1L), USE.NAMES = FALSE),
+      var = vapply(parts, var, numeric(1L), USE.NAMES = FALSE),
+      observed = observed
+    )
+  } else {
+    weight_parts <- split(w, group$index)
+    list(
+      size = vapply(weight_parts, sum, numeric(1L), USE.NAMES = FALSE),
+      total = vapply(
+        seq_len(group$count),
+        function(g) sum(weight_parts[[g]] * parts[[g]]),
+        numeric(1L)
+      ),
+      var = vapply(
+        seq_len(group$count),
+        function(g) .vc_group_var(parts[[g]], weight_parts[[g]]),
+        numeric(1L)
+      ),
+      observed = observed
+    )
+  }
+}
+
+#' Weighted variance of one group, NA when it holds a single observation
+#' @keywords internal
+#' @noRd
+.vc_group_var <- function(y, w) {
+  if (length(y) < 2L) {
     return(NA_real_)
   }
-  .wtdvar(x, w)
+  .wtdvar(y, w)
 }
 
-#' Estimation variance of a weighted group total under SRSWOR within
-#' the group. Zero when the group's weights are all 1 (Nhat = n)
+#' Fill in the variance of groups holding a single observation
+#'
+#' A singleton group carries no information about within-group spread, so
+#' it borrows the average of the groups that do.
 #' @keywords internal
 #' @noRd
-.varcomp_total_var <- function(n_i, Nhat_i, S2_i) {
-  Nhat_i^2 * pmax(1 - n_i / Nhat_i, 0) * S2_i / n_i
-}
-
-#' Impute singleton cluster variances (NA from var() on length-1 groups)
-#' @keywords internal
-#' @noRd
-.impute_singleton_var <- function(x) {
-  lonely <- is.na(x)
-  if (all(lonely)) {
+.vc_fill_singletons <- function(group_var) {
+  alone <- is.na(group_var)
+  if (all(alone)) {
     warning("all clusters are singletons. Within-cluster variance set to 0",
             call. = FALSE)
-    x[] <- 0
-  } else if (any(lonely)) {
-    x[lonely] <- mean(x[!lonely])
+    group_var[] <- 0
+    return(group_var)
   }
-  x
+  if (any(alone)) {
+    group_var[alone] <- mean(group_var[!alone])
+  }
+  group_var
+}
+
+#' Sampling variance of an estimated group total under SRSWOR in the group
+#'
+#' The usual N^2 (1 - f) S^2 / n, with the group's population size
+#' estimated by its summed weights. Zero when the weights are all 1,
+#' because the group is then fully enumerated.
+#' @keywords internal
+#' @noRd
+.vc_total_var <- function(observed, size, group_var) {
+  size^2 * pmax(1 - observed / size, 0) * group_var / observed
+}
+
+#' One variance component, as a relvariance and as a bare numerator
+#'
+#' Every component here is a variance divided by the square of a total or a
+#' mean, and every one of those denominators is the same multiple of the
+#' population mean. Carrying the numerator on that common scale alongside
+#' the relvariance is what lets `icc` and `var_ratio` be formed when the
+#' mean is zero and each relvariance on its own is infinite.
+#' @keywords internal
+#' @noRd
+.vc_component <- function(num, den) {
+  list(
+    num = num,
+    rel = if (den > 0) num / den else if (num > 0) Inf else 0
+  )
+}
+
+#' Relvariance of the between-PSU term, SRS first stage
+#'
+#' The frame variance of the PSU totals relative to their mean.
+#' @keywords internal
+#' @noRd
+.vc_between_srs <- function(psu_total, adjustment = 0) {
+  spread <- max(var(psu_total) - adjustment, 0)
+  n <- length(psu_total)
+  .vc_component(spread * n^2, sum(psu_total)^2)
+}
+
+#' Relvariance of the between-PSU term, PPS first stage
+#'
+#' The with-replacement (Hansen-Hurwitz) dispersion of the inflated PSU
+#' totals about the grand total, relative to its square.
+#' @keywords internal
+#' @noRd
+.vc_between_pps <- function(psu_total, draw_prob, adjustment = 0) {
+  grand_total <- sum(psu_total)
+  spread <- sum(draw_prob * (psu_total / draw_prob - grand_total)^2)
+  .vc_component(max(spread - adjustment, 0), grand_total^2)
+}
+
+#' Relvariance contributed by the spread inside each group
+#'
+#' Aggregates group-level variances up to the estimator scale by weighting
+#' each group by the square of its size and the inverse of its first-stage
+#' draw probability.
+#' @keywords internal
+#' @noRd
+.vc_within <- function(size, group_var, draw_prob, grand_total) {
+  .vc_component(sum(size^2 * group_var / draw_prob), grand_total^2)
+}
+
+#' Unit relvariance of the analysis variable
+#' @keywords internal
+#' @noRd
+.vc_unit_relvar <- function(y, w) {
+  centre <- if (is.null(w)) mean(y) else sum(w * y) / sum(w)
+  spread <- if (is.null(w)) var(y) else .wtdvar(y, w)
+  total_w <- if (is.null(w)) length(y) else sum(w)
+  eps <- .vc_eps()
+  if (abs(centre) < eps && spread < eps) {
+    return(.vc_component(0, 1))
+  }
+  .vc_component(spread * total_w^2, (centre * total_w)^2)
+}
+
+#' Homogeneity and ratio parameter for one pair of components
+#'
+#' `icc` is the share of the pair carried by the first component and
+#' `var_ratio` rescales the pair to unit relvariance. Both are ratios of
+#' components sharing a denominator, so both are formed from the
+#' numerators and stay defined wherever the outcome has variance to split,
+#' including at a mean of zero. Only an outcome with no variance leaves
+#' them at their neutral values.
+#' @keywords internal
+#' @noRd
+.vc_ratios <- function(first, second, unit) {
+  pair <- first$num + second$num
+  if (pair <= 0 || unit$num <= 0) {
+    return(list(icc = 0, var_ratio = 1, degenerate = TRUE))
+  }
+  list(icc = first$num / pair, var_ratio = pair / unit$num, degenerate = FALSE)
+}
+
+#' Warn once when a component pair could not be identified
+#' @keywords internal
+#' @noRd
+.vc_warn_degenerate <- function(degenerate) {
+  if (any(degenerate)) {
+    warning("the outcome has no variance to split. 'icc' set to 0 by convention",
+            call. = FALSE)
+  }
+  invisible(NULL)
+}
+
+#' Warn when the relvariances are undefined but the ratios are not
+#'
+#' Relvariance is variance over the square of the mean, so an outcome
+#' centred on zero has none, however variable it is. That is a different
+#' condition from a constant outcome and it leaves `icc` and `var_ratio`
+#' perfectly well defined, since neither depends on the mean.
+#' @keywords internal
+#' @noRd
+.vc_warn_zero_mean <- function(unit) {
+  if (unit$num > 0 && !is.finite(unit$rel)) {
+    warning(paste("the outcome mean is approximately zero, so the relvariances",
+                  "'varb', 'varw' and 'unit_relvar' are infinite; 'icc' and",
+                  "'var_ratio' do not depend on the mean and are reported"),
+            call. = FALSE)
+  }
+  invisible(NULL)
+}
+
+#' Two-stage variance components
+#'
+#' Shared by the SRS and PPS first-stage paths, which differ only in how
+#' the between-PSU dispersion of the PSU totals is measured and in the
+#' first-stage draw probabilities used to scale the within-PSU term.
+#' @keywords internal
+#' @noRd
+.varcomp_2stage <- function(y, psu_id, draw_prob, w, levels) {
+  psu <- .vc_group(psu_id, levels)
+  .check_min_psu(psu$count)
+  summary <- .vc_summarise(y, w, psu)
+  summary$var <- .vc_fill_singletons(summary$var)
+
+  correction <- 0
+  if (!is.null(w)) {
+    correction <- .vc_total_var(summary$observed, summary$size, summary$var)
+  }
+
+  if (is.null(draw_prob)) {
+    between <- .vc_between_srs(
+      summary$total,
+      adjustment = if (is.null(w)) 0 else mean(correction)
+    )
+    scale <- rep(1 / psu$count, psu$count)
+  } else {
+    between <- .vc_between_pps(
+      summary$total, draw_prob,
+      adjustment = if (is.null(w)) {
+        0
+      } else {
+        sum(correction * (1 - draw_prob) / draw_prob)
+      }
+    )
+    scale <- draw_prob
+  }
+
+  within <- .vc_within(
+    summary$size, summary$var, scale, sum(summary$total)
+  )
+  unit <- .vc_unit_relvar(y, w)
+  ratios <- .vc_ratios(between, within, unit)
+  .vc_warn_degenerate(ratios$degenerate)
+  .vc_warn_zero_mean(unit)
+
+  .new_svyplan_varcomp(
+    varb    = between$rel,
+    varw    = within$rel,
+    icc   = ratios$icc,
+    var_ratio       = ratios$var_ratio,
+    unit_relvar = unit$rel,
+    stages  = 2L
+  )
 }
 
 #' 2-stage SRS variance components
 #' @keywords internal
 #' @noRd
 .varcomp_2stage_srs <- function(y, psu_id, w = NULL) {
-  uid <- unique(psu_id)
-  M <- length(uid)
-  .check_min_psu(M)
-  idx <- match(psu_id, uid)
-  grp <- split(y, idx)
-
-  if (is.null(w)) {
-    Ni <- tabulate(idx, nbins = M)
-    ti <- vapply(grp, sum, numeric(1L))
-    S2Ui <- .impute_singleton_var(vapply(grp, var, numeric(1L)))
-    S2U1 <- var(ti)
-    ybarU <- mean(y)
-    S2U <- var(y)
-  } else {
-    grp_w <- split(w, idx)
-    Ni <- vapply(grp_w, sum, numeric(1L))
-    ti <- vapply(seq_len(M), function(i) sum(grp_w[[i]] * grp[[i]]),
-                 numeric(1L))
-    S2Ui <- .impute_singleton_var(
-      vapply(seq_len(M), function(i) .varcomp_wvar(grp[[i]], grp_w[[i]]),
-             numeric(1L))
-    )
-    ni <- tabulate(idx, nbins = M)
-    Vti <- .varcomp_total_var(ni, Ni, S2Ui)
-    S2U1 <- max(var(ti) - mean(Vti), 0)
-    ybarU <- sum(w * y) / sum(w)
-    S2U <- .varcomp_wvar(y, w)
-  }
-
-  tbarU <- mean(ti)
-  tU <- M * tbarU
-  vb <- S2U1 / tbarU^2
-  vw <- M * sum(Ni^2 * S2Ui) / tU^2
-
-  eps <- sqrt(.Machine$double.eps)
-  rel_var <- if (abs(ybarU) < eps && S2U < eps) 0 else S2U / ybarU^2
-
-  total_v <- vb + vw
-  if (total_v < eps || rel_var < eps || !is.finite(rel_var)) {
-    warning("outcome variance is approximately zero. Delta set to 0 by convention",
-            call. = FALSE)
-    delta <- 0
-    k <- 1
-  } else {
-    delta <- vb / total_v
-    k <- total_v / rel_var
-  }
-
-  .new_svyplan_varcomp(
-    varb    = vb,
-    varw    = vw,
-    delta   = delta,
-    k       = k,
-    rel_var = rel_var,
-    stages  = 2L
-  )
+  .varcomp_2stage(y, psu_id, NULL, w, unique(psu_id))
 }
 
 #' 2-stage PPS variance components
 #' @keywords internal
 #' @noRd
 .varcomp_2stage_pps <- function(y, psu_id, pp, w = NULL) {
-  unique_psu <- sort(unique(psu_id))
-  M <- length(unique_psu)
-  .check_min_psu(M)
-  idx <- match(psu_id, unique_psu)
-
-  pp_psu <- .varcomp_map_pp(pp, y, psu_id, unique_psu)
-
-  grp <- split(y, idx)
-
-  if (is.null(w)) {
-    Ni <- tabulate(idx, nbins = M)
-    cl_tots <- vapply(grp, sum, numeric(1L))
-    cl_vars <- .impute_singleton_var(vapply(grp, var, numeric(1L)))
-    tU <- sum(cl_tots)
-    S2U1 <- sum(pp_psu * (cl_tots / pp_psu - tU)^2)
-    ybarU <- mean(y)
-    S2U <- var(y)
-  } else {
-    grp_w <- split(w, idx)
-    Ni <- vapply(grp_w, sum, numeric(1L))
-    cl_tots <- vapply(seq_len(M), function(i) sum(grp_w[[i]] * grp[[i]]),
-                      numeric(1L))
-    cl_vars <- .impute_singleton_var(
-      vapply(seq_len(M), function(i) .varcomp_wvar(grp[[i]], grp_w[[i]]),
-             numeric(1L))
-    )
-    tU <- sum(cl_tots)
-    ni <- tabulate(idx, nbins = M)
-    Vti <- .varcomp_total_var(ni, Ni, cl_vars)
-    S2U1 <- max(
-      sum(pp_psu * (cl_tots / pp_psu - tU)^2) -
-        sum(Vti * (1 - pp_psu) / pp_psu),
-      0
-    )
-    ybarU <- sum(w * y) / sum(w)
-    S2U <- .varcomp_wvar(y, w)
-  }
-
-  vb <- S2U1 / tU^2
-  vw <- sum(Ni^2 * cl_vars / pp_psu) / tU^2
-
-  eps <- sqrt(.Machine$double.eps)
-  rel_var <- if (abs(ybarU) < eps && S2U < eps) 0 else S2U / ybarU^2
-
-  total_v <- vb + vw
-  if (total_v < eps || rel_var < eps || !is.finite(rel_var)) {
-    warning("outcome variance is approximately zero. Delta set to 0 by convention",
-            call. = FALSE)
-    delta <- 0
-    k <- 1
-  } else {
-    delta <- vb / total_v
-    k <- total_v / rel_var
-  }
-
-  .new_svyplan_varcomp(
-    varb    = vb,
-    varw    = vw,
-    delta   = delta,
-    k       = k,
-    rel_var = rel_var,
-    stages  = 2L
-  )
+  levels <- sort(unique(psu_id))
+  draw_prob <- .varcomp_map_pp(pp, y, psu_id, levels)
+  .varcomp_2stage(y, psu_id, draw_prob, w, levels)
 }
 
 #' 3-stage PPS variance components
+#'
+#' Four terms are built from two nested groupings. At the PSU level the
+#' between-PSU dispersion of PSU totals gives `varb` and the spread of
+#' elements within a PSU gives the companion term the PSU homogeneity is
+#' measured against. At the SSU level the spread of SSU totals within a
+#' PSU gives `varw_psu` and the spread of elements within an SSU gives
+#' `varw_ssu`.
 #' @keywords internal
 #' @noRd
 .varcomp_3stage_pps <- function(y, psu_id, ssu_id, pp, w = NULL) {
-  unique_psu <- sort(unique(psu_id))
-  M <- length(unique_psu)
-  .check_min_psu(M)
-  psu_idx <- match(psu_id, unique_psu)
+  psu_levels <- sort(unique(psu_id))
+  psu <- .vc_group(psu_id, psu_levels)
+  .check_min_psu(psu$count)
+  draw_prob <- .varcomp_map_pp(pp, y, psu_id, psu_levels)
 
-  pp_psu <- .varcomp_map_pp(pp, y, psu_id, unique_psu)
+  # SSU labels need only be unique inside a PSU, so nest before grouping.
+  nested <- interaction(psu_id, ssu_id, drop = TRUE)
+  ssu_levels <- unique(nested)
+  ssu <- .vc_group(nested, ssu_levels)
+  psu_of_ssu <- match(psu_id[match(ssu_levels, nested)], psu_levels)
+  ssu_per_psu <- tabulate(psu_of_ssu, nbins = psu$count)
 
-  weighted <- !is.null(w)
+  by_psu <- .vc_summarise(y, w, psu)
+  by_ssu <- .vc_summarise(y, w, ssu)
+  by_psu$var <- .vc_fill_singletons(by_psu$var)
+  by_ssu$var <- .vc_fill_singletons(by_ssu$var)
 
-  # PSU totals
-  grp_psu <- split(y, psu_idx)
-  if (weighted) {
-    grp_psu_w <- split(w, psu_idx)
-    tUi <- vapply(seq_len(M), function(i) sum(grp_psu_w[[i]] * grp_psu[[i]]),
-                  numeric(1L))
-  } else {
-    tUi <- vapply(grp_psu, sum, numeric(1L))
-  }
-  tU <- sum(tUi)
+  ssu_total_var <- .vc_fill_singletons(
+    vapply(split(by_ssu$total, psu_of_ssu), var, numeric(1L), USE.NAMES = FALSE)
+  )
 
-  # Between-PSU variance (bias-corrected below for weighted samples)
-  S2U1pwr <- sum(pp_psu * (tUi / pp_psu - tU)^2)
-
-  # Nest SSU IDs within PSU (handles non-unique SSU IDs across PSUs)
-  ssu_nested <- interaction(psu_id, ssu_id, drop = TRUE)
-  unique_ssu <- unique(ssu_nested)
-  first_psu_per_ssu <- psu_id[match(unique_ssu, ssu_nested)]
-  psu_of_ssu_idx <- match(first_psu_per_ssu, unique_psu)
-  Ni <- tabulate(psu_of_ssu_idx, nbins = M)
-
-  # SSU totals and their variances within PSU
-  ssu_idx <- match(ssu_nested, unique_ssu)
-  n_ssu <- length(unique_ssu)
-  grp_ssu <- split(y, ssu_idx)
-  if (weighted) {
-    grp_ssu_w <- split(w, ssu_idx)
-    tij <- vapply(seq_len(n_ssu),
-                  function(j) sum(grp_ssu_w[[j]] * grp_ssu[[j]]),
-                  numeric(1L))
-  } else {
-    tij <- vapply(grp_ssu, sum, numeric(1L))
-  }
-  grp_tij <- split(tij, psu_of_ssu_idx)
-  S2U2i <- .impute_singleton_var(vapply(grp_tij, var, numeric(1L)))
-
-  # Element-level variance within PSU (for delta1 = B/(B+W))
-  if (weighted) {
-    Qi <- vapply(grp_psu_w, sum, numeric(1L))
-    S2U3i <- vapply(seq_len(M), function(i) {
-      .varcomp_wvar(grp_psu[[i]], grp_psu_w[[i]])
-    }, numeric(1L))
-  } else {
-    Qi <- tabulate(psu_idx, nbins = M)
-    S2U3i <- vapply(grp_psu, var, numeric(1L))
-  }
-  S2U3i <- .impute_singleton_var(S2U3i)
-  W <- sum(Qi^2 * S2U3i / pp_psu) / tU^2
-
-  # Element-level variance within SSU
-  if (weighted) {
-    Qij <- vapply(grp_ssu_w, sum, numeric(1L))
-    S2U3ij <- vapply(seq_len(n_ssu), function(j) {
-      .varcomp_wvar(grp_ssu[[j]], grp_ssu_w[[j]])
-    }, numeric(1L))
-  } else {
-    Qij <- tabulate(ssu_idx, nbins = n_ssu)
-    S2U3ij <- vapply(grp_ssu, var, numeric(1L))
-  }
-  S2U3ij <- .impute_singleton_var(S2U3ij)
-
-  if (weighted) {
-    # Estimation variance of SSU and PSU totals (zero for w = 1)
-    qij <- tabulate(ssu_idx, nbins = n_ssu)
-    Vtij <- .varcomp_total_var(qij, Qij, S2U3ij)
-    Vtij_psu <- split(Vtij, psu_of_ssu_idx)
-    S2U2i <- pmax(S2U2i - vapply(Vtij_psu, mean, numeric(1L)), 0)
-    Vti <- vapply(Vtij_psu, sum, numeric(1L))
-    S2U1pwr <- max(S2U1pwr - sum(Vti * (1 - pp_psu) / pp_psu), 0)
+  psu_adjustment <- 0
+  if (!is.null(w)) {
+    # Estimated SSU totals carry element-stage sampling noise. Remove it
+    # from both terms built on those totals.
+    ssu_noise <- .vc_total_var(by_ssu$observed, by_ssu$size, by_ssu$var)
+    grouped_noise <- split(ssu_noise, psu_of_ssu)
+    ssu_total_var <- pmax(
+      ssu_total_var - vapply(grouped_noise, mean, numeric(1L),
+                             USE.NAMES = FALSE),
+      0
+    )
+    psu_noise <- vapply(grouped_noise, sum, numeric(1L), USE.NAMES = FALSE)
+    psu_adjustment <- sum(psu_noise * (1 - draw_prob) / draw_prob)
   }
 
-  B <- S2U1pwr / tU^2
-  vw2 <- sum(Ni^2 * S2U2i / pp_psu) / tU^2
+  grand_total <- sum(by_psu$total)
+  between_psu <- .vc_between_pps(by_psu$total, draw_prob,
+                                 adjustment = psu_adjustment)
+  element_in_psu <- .vc_within(by_psu$size, by_psu$var, draw_prob, grand_total)
+  between_ssu <- .vc_within(ssu_per_psu, ssu_total_var, draw_prob, grand_total)
+  element_in_ssu <- .vc_component(
+    sum(
+      ssu_per_psu[psu_of_ssu] * by_ssu$size^2 * by_ssu$var /
+        draw_prob[psu_of_ssu]
+    ),
+    grand_total^2
+  )
 
-  # Replicate pp and Ni to SSU level
-  pp_ssu <- pp_psu[psu_of_ssu_idx]
-  Ni_ssu <- Ni[psu_of_ssu_idx]
-
-  vw3 <- sum(Ni_ssu * Qij^2 * S2U3ij / pp_ssu) / tU^2
-
-  eps <- sqrt(.Machine$double.eps)
-  if (weighted) {
-    ybarU <- sum(w * y) / sum(w)
-    S2U <- .varcomp_wvar(y, w)
-  } else {
-    ybarU <- mean(y)
-    S2U <- var(y)
-  }
-  V <- if (abs(ybarU) < eps && S2U < eps) 0 else S2U / ybarU^2
-
-  warn <- FALSE
-  bw <- B + W
-  if (bw < eps || V < eps || !is.finite(V)) {
-    warn <- TRUE
-    delta1 <- 0
-    k1 <- 1
-  } else {
-    delta1 <- B / bw
-    k1 <- bw / V
-  }
-  ww <- vw2 + vw3
-  if (ww < eps || V < eps || !is.finite(V)) {
-    warn <- TRUE
-    delta2 <- 0
-    k2 <- 1
-  } else {
-    delta2 <- vw2 / ww
-    k2 <- ww / V
-  }
-  if (warn) {
-    warning("outcome variance is approximately zero. Delta set to 0 by convention",
-            call. = FALSE)
-  }
+  unit <- .vc_unit_relvar(y, w)
+  psu_ratios <- .vc_ratios(between_psu, element_in_psu, unit)
+  ssu_ratios <- .vc_ratios(between_ssu, element_in_ssu, unit)
+  .vc_warn_degenerate(c(psu_ratios$degenerate, ssu_ratios$degenerate))
+  .vc_warn_zero_mean(unit)
 
   .new_svyplan_varcomp(
-    varb    = B,
-    varw    = c(varw_psu = vw2, varw_ssu = vw3),
-    delta   = c(delta_psu = delta1, delta_ssu = delta2),
-    k       = c(k_psu = k1, k_ssu = k2),
-    rel_var = V,
+    varb    = between_psu$rel,
+    varw    = c(varw_psu = between_ssu$rel, varw_ssu = element_in_ssu$rel),
+    icc   = c(icc_psu = psu_ratios$icc, icc_ssu = ssu_ratios$icc),
+    var_ratio       = c(var_ratio_psu = psu_ratios$var_ratio, var_ratio_ssu = ssu_ratios$var_ratio),
+    unit_relvar = unit$rel,
     stages  = 3L
   )
 }

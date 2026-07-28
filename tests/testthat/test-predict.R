@@ -64,7 +64,7 @@ test_that("no duplicate columns when newdata overlaps result names", {
   res2 <- predict(x, nd2)
   expect_equal(sum(names(res2) == "cv"), 1L)
 
-  cl <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
+  cl <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
   nd3 <- data.frame(cv = c(0.03, 0.05))
   res3 <- predict(cl, nd3)
   expect_equal(sum(names(res3) == "cv"), 1L)
@@ -92,61 +92,61 @@ test_that("predict.svyplan_n errors for multi-indicator results", {
 })
 
 test_that("predict.svyplan_cluster varies budget", {
-  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   nd <- data.frame(budget = c(50000, 100000, 200000))
   res <- predict(x, nd)
 
   expect_equal(nrow(res), 3L)
-  expect_true(all(c("n_psu", "psu_size", "total_n", "cv", "cost") %in% names(res)))
+  expect_true(all(c("n_psu", "n_per_psu", "total_n", "cv", "cost") %in% names(res)))
   expect_true(all(diff(res$cv) < 0))
 })
 
 test_that("predict.svyplan_cluster varies cv", {
-  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
+  x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
   nd <- data.frame(cv = c(0.03, 0.05, 0.10))
   res <- predict(x, nd)
 
   expect_true(all(diff(res$cost) < 0))
 })
 
-test_that("predict.svyplan_cluster supports varying delta only", {
-  cl <- n_cluster(stage_cost = c(750, 100), delta = 0.05, rel_var = 1, k = 1,
+test_that("predict.svyplan_cluster supports varying icc only", {
+  cl <- n_cluster(stage_cost = c(750, 100), icc = 0.05, unit_relvar = 1, var_ratio = 1,
                   budget = 1e5)
-  nd <- data.frame(delta = c(0.01, 0.05, 0.10, 0.20))
+  nd <- data.frame(icc = c(0.01, 0.05, 0.10, 0.20))
   res <- predict(cl, nd)
 
   expect_equal(nrow(res), 4L)
-  expect_equal(res$delta, nd$delta)
+  expect_equal(res$icc, nd$icc)
 
-  ref_cv <- vapply(nd$delta, function(d) {
+  ref_cv <- vapply(nd$icc, function(d) {
     n_cluster(
-      stage_cost = c(750, 100), delta = d, rel_var = 1, k = 1, budget = 1e5
+      stage_cost = c(750, 100), icc = d, unit_relvar = 1, var_ratio = 1, budget = 1e5
     )$cv
   }, numeric(1))
   expect_equal(res$cv, ref_cv, tolerance = 1e-8)
 })
 
-test_that("predict.svyplan_cluster supports varying k in 2-stage", {
-  cl <- n_cluster(stage_cost = c(750, 100), delta = 0.05, rel_var = 1, k = 1,
+test_that("predict.svyplan_cluster supports varying var_ratio in 2-stage", {
+  cl <- n_cluster(stage_cost = c(750, 100), icc = 0.05, unit_relvar = 1, var_ratio = 1,
                   budget = 1e5)
-  nd <- data.frame(k_psu = c(0.8, 1.0, 1.2))
+  nd <- data.frame(var_ratio_psu = c(0.8, 1.0, 1.2))
   res <- predict(cl, nd)
 
-  ref_cv <- vapply(nd$k_psu, function(kval) {
+  ref_cv <- vapply(nd$var_ratio_psu, function(kval) {
     n_cluster(
-      stage_cost = c(750, 100), delta = 0.05, rel_var = 1, k = kval, budget = 1e5
+      stage_cost = c(750, 100), icc = 0.05, unit_relvar = 1, var_ratio = kval, budget = 1e5
     )$cv
   }, numeric(1))
   expect_equal(res$cv, ref_cv, tolerance = 1e-8)
 
-  nd_alias <- data.frame(k = c(0.8, 1.0, 1.2))
+  nd_alias <- data.frame(var_ratio = c(0.8, 1.0, 1.2))
   res_alias <- predict(cl, nd_alias)
   expect_equal(res_alias$cv, ref_cv, tolerance = 1e-8)
 })
 
-test_that("predict.svyplan_cluster varies rel_var", {
-  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, rel_var = 1, cv = 0.05)
-  nd <- data.frame(rel_var = c(0.5, 1, 2))
+test_that("predict.svyplan_cluster varies unit_relvar", {
+  x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, unit_relvar = 1, cv = 0.05)
+  nd <- data.frame(unit_relvar = c(0.5, 1, 2))
   res <- predict(x, nd)
 
   expect_equal(nrow(res), 3L)
@@ -154,7 +154,7 @@ test_that("predict.svyplan_cluster varies rel_var", {
 })
 
 test_that("predict.svyplan_cluster uses original mode when no cv/budget in newdata", {
-  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
+  x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
   nd <- data.frame(resp_rate = c(0.8, 0.9, 1.0))
   res <- predict(x, nd)
 
@@ -163,13 +163,13 @@ test_that("predict.svyplan_cluster uses original mode when no cv/budget in newda
 })
 
 test_that("predict.svyplan_cluster supports varying stage costs", {
-  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   nd <- data.frame(cost_psu = c(500, 800), cost_ssu = c(50, 120))
   res <- predict(x, nd)
   ref <- vapply(seq_len(nrow(nd)), function(i) {
     n_cluster(
       stage_cost = c(nd$cost_psu[i], nd$cost_ssu[i]),
-      delta = 0.05,
+      icc = 0.05,
       budget = 100000
     )$cv
   }, numeric(1))
@@ -180,26 +180,26 @@ test_that("predict.svyplan_cluster supports varying stage costs", {
   expect_equal(res_alias$cv, ref, tolerance = 1e-8)
 })
 
-test_that("predict.svyplan_cluster supports stage-wise delta and k in 3-stage", {
+test_that("predict.svyplan_cluster supports stage-wise icc and var_ratio in 3-stage", {
   x <- n_cluster(
     stage_cost = c(500, 100, 50),
-    delta = c(0.01, 0.05),
-    k = c(1.0, 1.0),
+    icc = c(0.01, 0.05),
+    var_ratio = c(1.0, 1.0),
     budget = 200000
   )
   nd <- data.frame(
-    delta_psu = c(0.01, 0.02),
-    delta_ssu = c(0.05, 0.08),
-    k_psu = c(1.0, 1.2),
-    k_ssu = c(1.0, 0.9)
+    icc_psu = c(0.01, 0.02),
+    icc_ssu = c(0.05, 0.08),
+    var_ratio_psu = c(1.0, 1.2),
+    var_ratio_ssu = c(1.0 * (1 - 0.01), 1.2 * (1 - 0.02))
   )
   res <- predict(x, nd)
 
   ref <- vapply(seq_len(nrow(nd)), function(i) {
     n_cluster(
       stage_cost = c(500, 100, 50),
-      delta = c(nd$delta_psu[i], nd$delta_ssu[i]),
-      k = c(nd$k_psu[i], nd$k_ssu[i]),
+      icc = c(nd$icc_psu[i], nd$icc_ssu[i]),
+      var_ratio = c(nd$var_ratio_psu[i], nd$var_ratio_ssu[i]),
       budget = 200000
     )$cv
   }, numeric(1))
@@ -207,42 +207,42 @@ test_that("predict.svyplan_cluster supports stage-wise delta and k in 3-stage", 
 })
 
 test_that("predict.svyplan_cluster rejects overlapping cost aliases", {
-  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+  x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   nd <- data.frame(cost_ssu = 50, cost_tsu = 50)
   expect_error(predict(x, nd), "multiple columns")
 })
 
-test_that("predict.svyplan_cluster rejects overlapping delta/k aliases", {
-  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, k = 1, budget = 100000)
+test_that("predict.svyplan_cluster rejects overlapping icc/var_ratio aliases", {
+  x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, var_ratio = 1, budget = 100000)
   expect_error(
-    predict(x, data.frame(delta = 0.05, delta_psu = 0.05)),
+    predict(x, data.frame(icc = 0.05, icc_psu = 0.05)),
     "multiple columns"
   )
   expect_error(
-    predict(x, data.frame(k = 1, k_psu = 1)),
+    predict(x, data.frame(var_ratio = 1, var_ratio_psu = 1)),
     "multiple columns"
   )
 })
 
-test_that("predict.svyplan_cluster rejects scalar delta/k for 3-stage", {
+test_that("predict.svyplan_cluster rejects scalar icc/var_ratio for 3-stage", {
   x <- n_cluster(
     stage_cost = c(500, 100, 50),
-    delta = c(0.01, 0.05),
-    k = c(1, 1),
+    icc = c(0.01, 0.05),
+    var_ratio = c(1, 1),
     budget = 200000
   )
   expect_error(
-    predict(x, data.frame(delta = 0.02)),
-    "delta_psu'.*delta_ssu"
+    predict(x, data.frame(icc = 0.02)),
+    "icc_psu'.*icc_ssu"
   )
   expect_error(
-    predict(x, data.frame(k = 1.1)),
-    "k_psu'.*k_ssu"
+    predict(x, data.frame(var_ratio = 1.1)),
+    "var_ratio_psu'.*var_ratio_ssu"
   )
 })
 
 test_that("predict.svyplan_cluster errors on both cv and budget", {
-  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
+  x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
   nd <- data.frame(cv = 0.05, budget = 100000)
   expect_error(predict(x, nd), "cannot contain both")
 })
@@ -252,7 +252,7 @@ test_that("predict.svyplan_cluster rejects multi-indicator results", {
     name   = c("a", "b"),
     p      = c(0.3, 0.1),
     cv     = c(0.10, 0.15),
-    delta_psu = c(0.02, 0.05)
+    icc_psu = c(0.02, 0.05)
   )
   x <- n_multi_cluster(targets, stage_cost = c(500, 50))
   expect_error(predict(x, data.frame(cv = 0.05)), "multi-indicator")
@@ -317,7 +317,7 @@ test_that("single-row identity for prec_prop", {
 })
 
 test_that("predict.svyplan_prec errors for cluster type", {
-  x <- prec_cluster(n = c(50, 12), delta = 0.05)
+  x <- prec_cluster(n = c(50, 12), icc = 0.05)
   expect_error(predict(x, data.frame(n = 100)), "not supported")
 })
 
@@ -357,7 +357,7 @@ test_that("predict produces NA + warning on row failure", {
 })
 
 test_that("predict.svyplan_cluster supports fixed_cost in newdata", {
-  x <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05,
+  x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
                   fixed_cost = 5000)
   nd <- data.frame(fixed_cost = c(0, 5000, 10000))
   res <- predict(x, nd)
@@ -398,9 +398,27 @@ test_that("predict.svyplan_power supports varying alternative", {
 test_that("predict works for cluster-mode n_alloc objects", {
   fr <- data.frame(stratum = c("A", "B"), N = c(50000, 150000),
                    sd = c(0.45, 0.48), mean = c(0.35, 0.25),
-                   delta_psu = c(0.03, 0.08), psu_size = c(12, 12))
+                   icc_psu = c(0.03, 0.08), n_per_psu = c(12, 12))
   x <- n_alloc(fr, n = 1000)
   p <- predict(x, data.frame(n = c(1000, 1100)))
   expect_equal(nrow(p), 2L)
   expect_equal(p$cv[1], x$cv, tolerance = 1e-10)
+})
+
+test_that("predict keeps the beta interval's df", {
+  x <- n_prop(0.02, moe = 0.01, method = "beta", df = 25)
+  # deff = 1 is what the object already has, so the size must not move
+  expect_equal(predict(x, data.frame(deff = 1))$n, x$n)
+
+  p <- prec_prop(p = 0.02, n = 900, deff = 2, method = "beta", df = 25)
+  expect_equal(predict(p, data.frame(deff = 2))$moe, p$moe)
+})
+
+test_that("df can be varied on a beta grid", {
+  x <- n_prop(0.02, moe = 0.01, method = "beta", df = 25)
+  g <- predict(x, data.frame(df = c(10, 25, 100)))
+
+  expect_equal(g$n[2], x$n)
+  # fewer degrees of freedom widen the interval, so the size rises
+  expect_true(all(diff(g$n) < 0))
 })

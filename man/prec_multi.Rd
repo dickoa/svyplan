@@ -7,22 +7,22 @@
 \alias{prec_multi.svyplan_cluster}
 \title{Multi-Indicator Sampling Precision}
 \usage{
-prec_multi(targets, ...)
+prec_multi(indicators, ...)
 
 \method{prec_multi}{default}(
-  targets,
+  indicators,
   ...,
   domains = NULL,
-  prop_method = c("wald", "wilson", "logodds"),
+  prop_method = c("wald", "wilson", "logodds", "beta"),
   plan = NULL
 )
 
-\method{prec_multi}{svyplan_n}(targets, ...)
+\method{prec_multi}{svyplan_n}(indicators, ...)
 
-\method{prec_multi}{svyplan_cluster}(targets, ...)
+\method{prec_multi}{svyplan_cluster}(indicators, ...)
 }
 \arguments{
-\item{targets}{For the default method: a data frame where \strong{each row
+\item{indicators}{For the default method: a data frame where \strong{each row
 is one survey indicator}, in the same format as \code{\link[=n_multi]{n_multi()}} but
 with an additional \code{n} column giving the sample size. This lets you
 answer: "given this sample size, what precision do I get for each
@@ -40,15 +40,15 @@ For \code{svyplan_n} objects: a result from \code{\link[=n_multi]{n_multi()}}.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
-\item{domains}{Character vector of column names in \code{targets} to treat
+\item{domains}{Character vector of column names in \code{indicators} to treat
 as domain variables, or \code{NULL} (default) for no domains. All names
-must exist in \code{targets}. Domain columns are preserved in the result
+must exist in \code{indicators}. Domain columns are preserved in the result
 for round-trip conversion back to \code{\link[=n_multi]{n_multi()}}.}
 
 \item{prop_method}{Proportion CI method, one of \code{"wald"}
-(default), \code{"wilson"}, or \code{"logodds"}. This is passed to \code{\link[=prec_prop]{prec_prop()}}
-for proportion rows and ignored for mean rows.
-An optional \code{prop_method} column in \code{targets} overrides this default
+(default), \code{"wilson"}, \code{"logodds"}, or \code{"beta"}. This is passed to
+\code{\link[=prec_prop]{prec_prop()}} for proportion rows and ignored for mean rows.
+An optional \code{prop_method} column in \code{indicators} overrides this default
 on a per-row basis.}
 
 \item{plan}{A \code{\link[=svyplan]{svyplan()}} profile providing default design parameters.}
@@ -62,13 +62,13 @@ Compute the sampling error (SE, MOE, CV) for multiple survey indicators
 given a sample size. This is the inverse of \code{\link[=n_multi]{n_multi()}}.
 }
 \details{
-\subsection{Building the targets data frame}{
+\subsection{Building the indicators data frame}{
 
-The \code{targets} data frame uses the same structure as \code{\link[=n_multi]{n_multi()}},
+The \code{indicators} data frame uses the same structure as \code{\link[=n_multi]{n_multi()}},
 with the addition of a required \code{n} column specifying the sample
 size to evaluate. A minimal example:
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{targets <- data.frame(
+\if{html}{\out{<div class="sourceCode">}}\preformatted{indicators <- data.frame(
   name = c("stunting", "vaccination", "anemia"),
   p    = c(0.30, 0.70, 0.10),
   n    = c(400, 400, 400)
@@ -94,7 +94,10 @@ indicator row.}
 \item{\code{deff}}{Design effect multiplier (default 1).}
 \item{\code{N}}{Population size (default \code{Inf}).}
 \item{\code{prop_method}}{Proportion CI method: \code{"wald"} (default),
-\code{"wilson"}, or \code{"logodds"}. Only for rows with \code{p}.}
+\code{"wilson"}, \code{"logodds"}, or \code{"beta"}. Only for rows with \code{p}.}
+\item{\code{df}}{Degrees of freedom of the variance estimator, typically
+sampled PSUs minus strata. Read by \code{"beta"} rows only; \code{NA} (the
+default) applies no adjustment.}
 \item{\code{resp_rate}}{Expected response rate (default 1).}
 }
 
@@ -102,18 +105,18 @@ Domain columns are specified via the \code{domains} parameter.
 
 \code{prec_multi()} delegates proportion rows to \code{\link[=prec_prop]{prec_prop()}}
 and mean rows to \code{\link[=prec_mean]{prec_mean()}}. Use \code{prop_method} or a
-\code{targets$prop_method} column to choose \code{"wald"}, \code{"wilson"}, or
-\code{"logodds"} for proportion rows.
+\code{indicators$prop_method} column to choose \code{"wald"}, \code{"wilson"},
+\code{"logodds"} or \code{"beta"} for proportion rows.
 }
 }
 \examples{
 # Simple mode: precision for three indicators at n = 400
-targets <- data.frame(
+indicators <- data.frame(
   name = c("stunting", "vaccination", "anemia"),
   p    = c(0.30, 0.70, 0.10),
   n    = c(400, 400, 400)
 )
-prec_multi(targets)
+prec_multi(indicators)
 
 # Wilson precision for a rare proportion
 prec_multi(data.frame(p = 0.05, n = 400), prop_method = "wilson")

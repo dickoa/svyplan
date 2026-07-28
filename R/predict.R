@@ -6,7 +6,7 @@
 #'
 #' @param object A svyplan object (`svyplan_n`, `svyplan_cluster`,
 #'   `svyplan_power`, or `svyplan_prec`). For `svyplan_prec`, only
-#'   types `"prop"` and `"mean"` are supported (not `"cluster"` or
+#'   types `"proportion"` and `"mean"` are supported (not `"cluster"` or
 #'   `"multi"`).
 #' @param newdata A data frame of parameter combinations to evaluate.
 #'   Column names must be valid parameters for the object type (see
@@ -18,28 +18,30 @@
 #'   columns. The result columns depend on the object type:
 #'
 #'   - `svyplan_n`: `n`, `se`, `moe`, `cv`
-#'   - `svyplan_cluster`: `n_psu`, `psu_size`, (opt. `ssu_size`), `total_n`, `cv`, `cost`
+#'   - `svyplan_cluster`: `n_psu`, `n_per_psu`, (opt. `n_per_ssu`), `total_n`, `cv`, `cost`
 #'   - `svyplan_power`: `n`, `power`, `effect`
 #'   - `svyplan_prec`: `se`, `moe`, `cv`
 #'
 #' @details
 #' Valid parameters for `newdata` by object type:
 #'
-#' - **`n_prop`**: `p`, `moe`, `cv`, `alpha`, `N`, `deff`, `resp_rate`
+#' - **`n_prop`**: `p`, `moe`, `cv`, `alpha`, `N`, `deff`, `resp_rate`,
+#'   `df` (`method = "beta"` only)
 #' - **`n_mean`**: `var`, `mu`, `moe`, `cv`, `alpha`, `N`, `deff`,
 #'   `resp_rate`
-#' - **`n_cluster`**: `cv`, `budget`, `rel_var`, `resp_rate`, `fixed_cost`,
-#'   stage deltas (`delta` or `delta_psu`, plus `delta_ssu` for 3-stage),
-#'   stage ratios (`k` or `k_psu`, plus `k_ssu` for 3-stage),
+#' - **`n_cluster`**: `cv`, `budget`, `unit_relvar`, `resp_rate`, `fixed_cost`,
+#'   stage deltas (`icc` or `icc_psu`, plus `icc_ssu` for 3-stage),
+#'   stage ratios (`var_ratio` or `var_ratio_psu`, plus `var_ratio_ssu` for 3-stage),
 #'   and stage costs (`cost_psu`, `cost_ssu`, `cost_tsu`). For 2-stage
 #'   designs, `cost_tsu` aliases `cost_ssu`.
 #' - **`power_prop`**: `p1`, `p2`, `n`, `power`, `alpha`, `N`, `deff`,
-#'   `alternative`, `overlap`, `rho`, `resp_rate` (excluding the solved-for
+#'   `alternative`, `overlap`, `overlap_cor`, `resp_rate` (excluding the solved-for
 #'   parameter). Not supported for objects with vector `n`.
 #' - **`power_mean`**: `effect`, `var`, `n`, `power`, `alpha`, `N`,
-#'   `deff`, `alternative`, `overlap`, `rho`, `resp_rate` (excluding the
+#'   `deff`, `alternative`, `overlap`, `overlap_cor`, `resp_rate` (excluding the
 #'   solved-for parameter). Not supported for objects with vector `n`.
-#' - **`prec_prop`**: `p`, `n`, `alpha`, `N`, `deff`, `resp_rate`
+#' - **`prec_prop`**: `p`, `n`, `alpha`, `N`, `deff`, `resp_rate`,
+#'   `df` (`method = "beta"` only)
 #' - **`prec_mean`**: `var`, `n`, `mu`, `alpha`, `N`, `deff`, `resp_rate`
 #'
 #' For `svyplan_n` objects, `moe` and `cv` are mutually exclusive in
@@ -51,6 +53,16 @@
 #'
 #' Multi-indicator (`n_multi`) and multi-indicator cluster results are
 #' not supported. Use the underlying single-indicator functions instead.
+#'
+#' A joint constrained allocation ([n_alloc()] with `measures` and `targets`)
+#' is supported only in fixed-budget objective mode, where `newdata` varies
+#' `budget` alone and the result is the cost-versus-objective frontier: `n`,
+#' continuous `cost`, `objective_value` and its equivalent `cv`, the
+#' operational `n_int` and `cost_int`, whether the budget binds, and
+#' `.feasible`. Budgets that cannot fund the hard targets give an all-`NA` row
+#' with `.feasible = FALSE` and a warning, so one infeasible point does not
+#' discard the rest of the frontier. In minimum-cost mode there is no scalar to
+#' vary; modify `targets` and call [n_alloc()] again.
 #'
 #' If evaluation fails for a particular row (e.g. invalid parameter
 #' combinations), that row's result columns are `NA` and a warning is
@@ -68,9 +80,9 @@
 #' pw <- power_prop(p1 = 0.30, p2 = 0.35, n = 500, power = NULL)
 #' predict(pw, data.frame(n = seq(100, 1000, 100)))
 #'
-#' # Cluster design: sensitivity to delta (homogeneity)
-#' cl <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
-#' predict(cl, data.frame(delta = c(0.01, 0.03, 0.05, 0.10, 0.15)))
+#' # Cluster design: sensitivity to icc (homogeneity)
+#' cl <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
+#' predict(cl, data.frame(icc = c(0.01, 0.03, 0.05, 0.10, 0.15)))
 #'
 #' # Allocation: how does the CV change with sample size?
 #' frame <- data.frame(
@@ -81,6 +93,9 @@
 #' alloc <- n_alloc(frame, n = 600)
 #' predict(alloc, data.frame(n = seq(200, 1000, 200)))
 #'
+#' @seealso [plot.svyplan] to draw a one-parameter grid, and
+#'   [confint.svyplan] for the interval implied by a single result.
+#'
 #' @name predict.svyplan
 NULL
 
@@ -88,7 +103,16 @@ NULL
 #' @export
 predict.svyplan_n <- function(object, newdata, ...) {
   .check_unused_dots(...)
-  if (!is.null(object$targets)) {
+  if (identical(object$method, "bethel")) {
+    if (!identical(object$params$mode, "budget_objective")) {
+      stop(
+        "predict() is not supported for joint constrained allocations; modify 'targets' and rerun n_alloc()",
+        call. = FALSE
+      )
+    }
+    return(.predict_bethel_budget(object, newdata))
+  }
+  if (!is.null(object$indicators)) {
     stop(
       "predict() is not supported for multi-indicator results; ",
       "use the underlying single-indicator functions instead",
@@ -97,7 +121,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
   }
 
   if (object$type == "proportion") {
-    allowed <- c("p", "moe", "cv", "alpha", "N", "deff", "resp_rate")
+    allowed <- c("p", "moe", "cv", "alpha", "N", "deff", "resp_rate", "df")
     base <- object$params
     method <- object$method %||% "wald"
 
@@ -109,7 +133,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
         p = p$p, moe = p$moe, cv = p$cv,
         alpha = p$alpha, N = p$N,
         deff = p$deff, resp_rate = p$resp_rate,
-        method = method
+        method = method, df = p$df
       )
       data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv)
     })
@@ -131,12 +155,12 @@ predict.svyplan_n <- function(object, newdata, ...) {
     })
 
   } else if (object$type == "alloc") {
-    allowed <- c("n", "cv", "budget", "alpha", "deff", "resp_rate", "min_n", "power_q")
+    allowed <- c("n", "cv", "budget", "alpha", "deff", "resp_rate", "min_n_stratum", "alloc_q")
     base <- object$params
     base_small <- list(
       n = base$n, cv = base$cv, budget = base$budget,
       alpha = base$alpha, deff = base$deff, resp_rate = base$resp_rate,
-      min_n = base$min_n, power_q = base$power_q %||% 0.5
+      min_n_stratum = base$min_n_stratum, alloc_q = base$alloc_q %||% 0.5
     )
 
     .validate_newdata(newdata, allowed)
@@ -172,8 +196,8 @@ predict.svyplan_n <- function(object, newdata, ...) {
         alpha = p$alpha,
         deff = p$deff,
         resp_rate = p$resp_rate,
-        min_n = p$min_n,
-        power_q = p$power_q
+        min_n_stratum = p$min_n_stratum,
+        alloc_q = p$alloc_q
       )
       if (!.alloc_is_cluster(base$frame)) {
         alloc_args$unit_cost <- base$cost_h
@@ -200,7 +224,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
 #' @export
 predict.svyplan_cluster <- function(object, newdata, ...) {
   .check_unused_dots(...)
-  if (!is.null(object$targets)) {
+  if (!is.null(object$indicators)) {
     stop(
       "predict() is not supported for multi-indicator cluster results; ",
       "use n_cluster() directly",
@@ -209,37 +233,37 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
   }
 
   stages <- length(object$params$stage_cost)
-  if (stages == 3L && "delta" %in% names(newdata)) {
+  if (stages == 3L && "icc" %in% names(newdata)) {
     stop(
-      "for 3-stage cluster predict, vary 'delta_psu' and 'delta_ssu' instead of 'delta'",
+      "for 3-stage cluster predict, vary 'icc_psu' and 'icc_ssu' instead of 'icc'",
       call. = FALSE
     )
   }
-  if (stages == 3L && "k" %in% names(newdata)) {
+  if (stages == 3L && "var_ratio" %in% names(newdata)) {
     stop(
-      "for 3-stage cluster predict, vary 'k_psu' and 'k_ssu' instead of 'k'",
+      "for 3-stage cluster predict, vary 'var_ratio_psu' and 'var_ratio_ssu' instead of 'var_ratio'",
       call. = FALSE
     )
   }
 
   cost_meta <- .cluster_cost_col_map(names(newdata), stages)
-  delta_meta <- .cluster_stage_col_map(
+  icc_meta <- .cluster_stage_col_map(
     names(newdata),
-    "delta",
+    "icc",
     stage_count = stages - 1L,
     allow_scalar_alias = stages == 2L
   )
   k_meta <- .cluster_stage_col_map(
     names(newdata),
-    "k",
+    "var_ratio",
     stage_count = stages - 1L,
     allow_scalar_alias = stages == 2L
   )
 
   allowed <- unique(c(
-    "cv", "budget", "rel_var", "resp_rate", "fixed_cost",
-    "n_psu", "psu_size", "ssu_size",
-    delta_meta$allowed, k_meta$allowed, cost_meta$allowed
+    "cv", "budget", "unit_relvar", "resp_rate", "fixed_cost",
+    "n_psu", "n_per_psu", "n_per_ssu",
+    icc_meta$allowed, k_meta$allowed, cost_meta$allowed
   ))
   .validate_newdata(newdata, allowed)
 
@@ -251,9 +275,9 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
   }
 
   base <- list(
-    stage_cost = p$stage_cost, delta = p$delta, rel_var = p$rel_var,
-    k = p$k, resp_rate = p$resp_rate %||% 1, n_psu = p$n_psu,
-    psu_size = p$psu_size, ssu_size = p$ssu_size,
+    stage_cost = p$stage_cost, icc = p$icc, unit_relvar = p$unit_relvar,
+    var_ratio = p$var_ratio, resp_rate = p$resp_rate %||% 1, n_psu = p$n_psu,
+    n_per_psu = p$n_per_psu, n_per_ssu = p$n_per_ssu,
     fixed_cost = p$fixed_cost %||% 0
   )
 
@@ -271,24 +295,24 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
 
   .predict_grid(newdata, base, function(params) {
     row_cost <- .apply_cluster_cost_cols(base$stage_cost, params, cost_meta$map)
-    row_delta <- .apply_cluster_stage_cols(
-      base$delta,
+    row_icc <- .apply_cluster_stage_cols(
+      base$icc,
       params,
-      delta_meta$map,
-      delta_meta$canonical
+      icc_meta$map,
+      icc_meta$canonical
     )
     row_k <- .apply_cluster_stage_cols(
-      base$k,
+      base$var_ratio,
       params,
       k_meta$map,
       k_meta$canonical
     )
     res <- n_cluster.default(
-      stage_cost = row_cost, delta = row_delta,
-      rel_var = params$rel_var, k = row_k,
+      stage_cost = row_cost, icc = row_icc,
+      unit_relvar = params$unit_relvar, var_ratio = row_k,
       cv = params$cv, budget = params$budget,
-      n_psu = params$n_psu, psu_size = params$psu_size,
-      ssu_size = params$ssu_size, resp_rate = params$resp_rate,
+      n_psu = params$n_psu, n_per_psu = params$n_per_psu,
+      n_per_ssu = params$n_per_ssu, resp_rate = params$resp_rate,
       fixed_cost = params$fixed_cost
     )
     out <- as.list(res$n)
@@ -311,7 +335,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
 
   if (object$type == "proportion") {
     all_params <- c("p1", "p2", "n", "power", "alpha", "N", "deff",
-                    "resp_rate", "alternative", "overlap", "rho")
+                    "resp_rate", "alternative", "overlap", "overlap_cor")
     excluded <- switch(solved, n = "n", power = "power", mde = "p2")
     allowed <- setdiff(all_params, excluded)
 
@@ -324,7 +348,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
         p1 = p$p1, p2 = p$p2, n = p$n, power = p$power,
         alpha = p$alpha, N = p$N, deff = p$deff,
         resp_rate = p$resp_rate,
-        alternative = p$alternative, overlap = p$overlap, rho = p$rho,
+        alternative = p$alternative, overlap = p$overlap, overlap_cor = p$overlap_cor,
         method = method
       )
       args[excluded] <- list(NULL)
@@ -334,7 +358,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
 
   } else if (object$type == "mean") {
     all_params <- c("effect", "var", "n", "power", "alpha", "N", "deff",
-                    "resp_rate", "alternative", "overlap", "rho")
+                    "resp_rate", "alternative", "overlap", "overlap_cor")
     excluded <- switch(solved, n = "n", power = "power", mde = "effect")
     allowed <- setdiff(all_params, excluded)
 
@@ -346,7 +370,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
         effect = p$effect, var = p$var, n = p$n, power = p$power,
         alpha = p$alpha, N = p$N, deff = p$deff,
         resp_rate = p$resp_rate,
-        alternative = p$alternative, overlap = p$overlap, rho = p$rho
+        alternative = p$alternative, overlap = p$overlap, overlap_cor = p$overlap_cor
       )
       args[excluded] <- list(NULL)
       res <- do.call(power_mean, args)
@@ -355,7 +379,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
 
   } else if (object$type %in% c("did_prop", "did_mean")) {
     all_params <- c("effect", "n", "power", "alpha", "N", "deff",
-                    "resp_rate", "alternative", "overlap", "rho", "ratio")
+                    "resp_rate", "alternative", "overlap", "overlap_cor", "ratio")
     excluded <- switch(solved, n = "n", power = "power", mde = "effect")
     allowed <- setdiff(all_params, excluded)
 
@@ -370,7 +394,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
         alpha = p$alpha, N = p$N, deff = p$deff,
         resp_rate = p$resp_rate,
         alternative = p$alternative, ratio = p$ratio,
-        overlap = p$overlap, rho = p$rho
+        overlap = p$overlap, overlap_cor = p$overlap_cor
       )
       args[excluded] <- list(NULL)
       res <- do.call(power_did, args)
@@ -403,7 +427,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   }
 
   if (object$type == "proportion") {
-    allowed <- c("p", "n", "alpha", "N", "deff", "resp_rate")
+    allowed <- c("p", "n", "alpha", "N", "deff", "resp_rate", "df")
     base <- object$params
     method <- object$method %||% "wald"
 
@@ -413,7 +437,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       res <- prec_prop.default(
         p = p$p, n = p$n, alpha = p$alpha, N = p$N,
         deff = p$deff, resp_rate = p$resp_rate,
-        method = method
+        method = method, df = p$df
       )
       data.frame(se = res$se, moe = res$moe, cv = res$cv)
     })
@@ -556,6 +580,65 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   }
 
   out <- cbind(newdata, result_df)
+  rownames(out) <- NULL
+  out
+}
+
+#' Budget frontier for a joint budget-objective allocation
+#'
+#' Re-solves the stored problem at each requested budget. The root search
+#' already sweeps the minimum-cost problem across objective bounds, so the
+#' cost-versus-objective frontier costs little beyond the solves themselves.
+#' Budgets that cannot fund the hard targets yield an all-`NA` row with
+#' `.feasible = FALSE` rather than aborting the grid.
+#' @keywords internal
+#' @noRd
+.predict_bethel_budget <- function(object, newdata) {
+  .validate_newdata(newdata, "budget")
+  if (!"budget" %in% names(newdata)) {
+    stop("newdata must vary 'budget' for a joint budget-objective allocation",
+         call. = FALSE)
+  }
+  p <- object$params
+  targets <- if (is.null(p$targets) || nrow(p$targets) == 0L) NULL else
+    p$targets
+  rows <- lapply(newdata$budget, function(b) {
+    fit <- tryCatch(
+      n_alloc.default(
+        frame = p$frame,
+        measures = p$measures,
+        targets = targets,
+        objective = p$objective,
+        budget = b,
+        unit_cost = p$unit_cost,
+        alpha = p$alpha,
+        deff = p$deff,
+        resp_rate = p$resp_rate,
+        min_n_stratum = p$min_n_stratum
+      ),
+      error = function(e) e
+    )
+    if (inherits(fit, "error")) {
+      warning(sprintf("budget %s is infeasible: %s", format(b),
+                      conditionMessage(fit)), call. = FALSE)
+      return(data.frame(
+        n = NA_real_, cost = NA_real_, objective_value = NA_real_,
+        cv = NA_real_, n_int = NA_real_, cost_int = NA_real_,
+        .binding = NA, .feasible = FALSE
+      ))
+    }
+    data.frame(
+      n = fit$n,
+      cost = fit$params$achieved$cost,
+      objective_value = fit$objective_value,
+      cv = sqrt(fit$objective_value),
+      n_int = as.numeric(fit$operational$n),
+      cost_int = fit$operational$cost,
+      .binding = isTRUE(fit$optimization$budget_binding),
+      .feasible = TRUE
+    )
+  })
+  out <- cbind(newdata, do.call(rbind, rows))
   rownames(out) <- NULL
   out
 }

@@ -106,7 +106,7 @@ test_that("confint.svyplan_prec fails for mean without mu", {
 })
 
 test_that("confint.svyplan_prec fails for cluster type", {
-  result <- prec_cluster(n = c(50, 12), delta = 0.05)
+  result <- prec_cluster(n = c(50, 12), icc = 0.05)
   expect_error(confint(result), "not supported")
 })
 

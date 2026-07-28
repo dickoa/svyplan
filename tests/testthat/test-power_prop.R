@@ -6,8 +6,8 @@ test_that("power_prop solve-n matches formula", {
   z_a <- qnorm(1 - alpha / 2)
   z_b <- qnorm(power)
   V <- p1 * (1 - p1) + p2 * (1 - p2)
-  delta <- abs(p1 - p2)
-  expected <- (z_a + z_b)^2 * V / delta^2
+  icc <- abs(p1 - p2)
+  expected <- (z_a + z_b)^2 * V / icc^2
 
   res <- power_prop(p1 = p1, p2 = p2)
   expect_s3_class(res, "svyplan_power")
@@ -25,9 +25,9 @@ test_that("power_prop solve-power matches formula", {
   alpha <- 0.05
   z_a <- qnorm(1 - alpha / 2)
   V <- p1 * (1 - p1) + p2 * (1 - p2)
-  delta <- abs(p1 - p2)
+  icc <- abs(p1 - p2)
   se <- sqrt(V / n)
-  expected <- pnorm(delta / se - z_a) + pnorm(-delta / se - z_a)
+  expected <- pnorm(icc / se - z_a) + pnorm(-icc / se - z_a)
 
   res <- power_prop(p1 = p1, p2 = p2, n = n, power = NULL)
   expect_equal(res$power, expected, tolerance = 1e-6)
@@ -56,7 +56,7 @@ test_that("power_prop FPC reduces n", {
 
 test_that("power_prop panel overlap reduces n", {
   base <- power_prop(p1 = 0.30, p2 = 0.35)
-  panel <- power_prop(p1 = 0.30, p2 = 0.35, overlap = 0.5, rho = 0.6)
+  panel <- power_prop(p1 = 0.30, p2 = 0.35, overlap = 0.5, overlap_cor = 0.6)
   expect_true(panel$n < base$n)
 })
 
@@ -99,8 +99,8 @@ test_that("power_prop validates inputs", {
     "overlap"
   )
   expect_error(
-    power_prop(p1 = 0.3, p2 = 0.4, n = 100, power = NULL, rho = 2),
-    "rho"
+    power_prop(p1 = 0.3, p2 = 0.4, n = 100, power = NULL, overlap_cor = 2),
+    "overlap_cor"
   )
 })
 
@@ -174,20 +174,20 @@ test_that("power_prop handles partial and full censuses for every method", {
 test_that("power_prop overlap + ratio reduces n", {
   res0 <- power_prop(p1 = 0.3, p2 = 0.35, ratio = 2)
   res_ov <- power_prop(p1 = 0.3, p2 = 0.35, ratio = 2,
-                        overlap = 0.3, rho = 0.5)
+                        overlap = 0.3, overlap_cor = 0.5)
   expect_true(res_ov$n[2] < res0$n[2])
 })
 
 test_that("power_prop overlap exceeds 1/ratio errors", {
   expect_error(
-    power_prop(p1 = 0.3, p2 = 0.35, ratio = 2, overlap = 0.6, rho = 0.5),
+    power_prop(p1 = 0.3, p2 = 0.35, ratio = 2, overlap = 0.6, overlap_cor = 0.5),
     "overlap.*must be.*1/ratio"
   )
 })
 
 test_that("power_prop overlap not supported with arcsine", {
   expect_error(
-    power_prop(p1 = 0.3, p2 = 0.35, overlap = 0.5, rho = 0.5,
+    power_prop(p1 = 0.3, p2 = 0.35, overlap = 0.5, overlap_cor = 0.5,
                method = "arcsine"),
     "overlap is only supported with method = 'wald'"
   )
@@ -195,7 +195,7 @@ test_that("power_prop overlap not supported with arcsine", {
 
 test_that("power_prop overlap not supported with logodds", {
   expect_error(
-    power_prop(p1 = 0.3, p2 = 0.35, overlap = 0.5, rho = 0.5,
+    power_prop(p1 = 0.3, p2 = 0.35, overlap = 0.5, overlap_cor = 0.5,
                method = "logodds"),
     "overlap is only supported with method = 'wald'"
   )
@@ -415,5 +415,27 @@ test_that("supplied-n power and mde modes reject gross draws above N", {
     power_did(treat = c(0.3, 0.4), control = c(0.3, 0.3), outcome = "prop",
               effect = 0.1, n = 120, power = NULL, N = 100),
     "treatment group"
+  )
+})
+
+test_that("power_prop applies the overlap correction like power_mean", {
+  za <- qnorm(0.975)
+  p1 <- 0.30; p2 <- 0.40; nn <- c(60, 60); NN <- 400
+  v <- c(p1 * (1 - p1), p2 * (1 - p2))
+  for (rho in c(0.4, 1)) {
+    for (ov in c(0.3, 0.8)) {
+      exact <- v[1] * (1 / nn[1] - 1 / NN) + v[2] * (1 / nn[2] - 1 / NN) -
+        2 * rho * sqrt(v[1] * v[2]) * (ov / nn[2] - 1 / NN)
+      got <- power_prop(p1 = p1, p2 = p2, n = nn, power = NULL, N = NN,
+                        overlap = ov, overlap_cor = rho)
+      se <- 1 / (qnorm(got$power - pnorm(-abs(p1 - p2) / sqrt(exact) - za)) + za) *
+        abs(p1 - p2)
+      expect_equal(se^2, exact, tolerance = 1e-7)
+    }
+  }
+  expect_error(
+    power_prop(p1 = 0.3, p2 = 0.4, n = 60, power = NULL, N = c(400, 900),
+               overlap = 0.5, overlap_cor = 1),
+    "one population"
   )
 })

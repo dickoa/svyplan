@@ -10,51 +10,54 @@
 #'   (`cost_tsu` aliases `cost_ssu` in 2-stage).
 #'   For `svyplan_prec` objects: a precision result from [prec_cluster()].
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
-#' @param delta Numeric vector of homogeneity measures (length = stages - 1),
-#'   or a `svyplan_varcomp` object. Delta quantifies how similar units
+#' @param icc Numeric vector of homogeneity measures (length = stages - 1),
+#'   or a `svyplan_varcomp` object. The ICC quantifies how similar units
 #'   within the same cluster are: 0 means no similarity (clusters are as
 #'   variable as the whole population), 1 means perfect similarity (all
 #'   units in a cluster are identical). Typical values in household
-#'   surveys range from 0.01 to 0.10. Higher delta means more clusters
+#'   surveys range from 0.01 to 0.10. Higher icc means more clusters
 #'   are needed for the same precision. Use [varcomp()] to estimate
-#'   delta from a previous survey or pilot data.
-#' @param rel_var Unit relvariance (default 1). For most applications,
+#'   icc from a previous survey or pilot data.
+#' @param unit_relvar Unit relvariance (default 1). For most applications,
 #'   the default of 1 is appropriate. Non-unit values arise when working
 #'   with variance components from [varcomp()] that separate the total
 #'   variance into stage-specific pieces.
-#' @param k Ratio parameter(s). Scalar for 2-stage, length-2 vector for
-#'   3-stage (default 1). Controls how stage costs relate to stage
-#'   variances in the optimization. The default of 1 is appropriate for
-#'   most designs. Non-unit values are rarely needed outside specialized
-#'   cost-variance models.
+#' @param var_ratio Ratio of the stage components' unit variance to the analysis
+#'   variable's, default 1. A scalar names `var_ratio_psu` and, for a three-stage
+#'   design, derives `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)`, the identity the
+#'   variance decomposition imposes; supply a length-2 vector only to
+#'   override it, which is meaningful when the two stages' ratios come from
+#'   different decompositions. See [design_effect()] for the identity and
+#'   why the design effect would not reduce to `var_ratio_psu` without it. The
+#'   default of 1 is appropriate for most designs.
 #' @param cv Target coefficient of variation (relative standard error).
 #'   For example, `cv = 0.05` means the standard error of the estimate
 #'   should be at most 5 percent of the estimate itself. Specify exactly
 #'   one of `cv` or `budget`.
 #' @param budget Total budget. Specify exactly one of `cv` or `budget`.
 #' @param n_psu Fixed number of PSUs (stage-1 sample size). `NULL` (default)
-#'   means optimize. For 2-stage, at most one of `n_psu` or `psu_size` may be
-#'   specified. For 3-stage, up to two of `n_psu`, `psu_size`, `ssu_size` may
+#'   means optimize. For 2-stage, at most one of `n_psu` or `n_per_psu` may be
+#'   specified. For 3-stage, up to two of `n_psu`, `n_per_psu`, `n_per_ssu` may
 #'   be fixed.
-#' @param psu_size Fixed cluster size (stage-2 sample size per PSU). `NULL`
+#' @param n_per_psu Fixed cluster size (stage-2 sample size per PSU). `NULL`
 #'   (default) means optimize. This is the typical MICS/DHS parameterization
 #'   where the number of households per cluster is fixed.
-#' @param ssu_size Fixed SSU take size (stage-3 sample size per SSU). `NULL`
+#' @param n_per_ssu Fixed SSU take size (stage-3 sample size per SSU). `NULL`
 #'   (default) means optimize. Only valid for 3-stage designs.
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The stage-1 sample size is inflated by `1 / resp_rate`.
 #' @param fixed_cost Fixed overhead cost (C0). Default 0.
 #'   The total cost model becomes
-#'   `C = C0 + c1*n_psu + c2*n_psu*psu_size [+ c3*n_psu*psu_size*ssu_size]`.
+#'   `C = C0 + c1*n_psu + c2*n_psu*n_per_psu [+ c3*n_psu*n_per_psu*n_per_ssu]`.
 #'   In budget mode, only `budget - fixed_cost` is available for variable
 #'   costs. In CV mode, `fixed_cost` is added to the variable cost.
 #' @param plan Optional [svyplan()] object providing design defaults
-#'   (including `stage_cost`, `delta`, `rel_var`, `k`, `resp_rate`, `fixed_cost`).
+#'   (including `stage_cost`, `icc`, `unit_relvar`, `var_ratio`, `resp_rate`, `fixed_cost`).
 #'
 #' @return A `svyplan_cluster` object with components:
 #' \describe{
 #'   \item{`n`}{Named numeric vector of continuous per-stage sample sizes
-#'     (e.g. `c(n_psu = 84.1, psu_size = 13.8)`), the mathematical
+#'     (e.g. `c(n_psu = 84.1, n_per_psu = 13.8)`), the mathematical
 #'     optimum.}
 #'   \item{`stages`}{Number of stages (2 or 3).}
 #'   \item{`total_n`}{Continuous total sample size (`prod(n)`).}
@@ -78,14 +81,14 @@
 #' 1. **Decide what you know.** You need the cost per cluster visit
 #'    (`stage_cost[1]`, e.g. travel + logistics) and the cost per
 #'    interview (`stage_cost[2]`), plus an estimate of within-cluster
-#'    homogeneity (`delta`). Estimate delta from a pilot or previous
+#'    homogeneity (`icc`). Estimate icc from a pilot or previous
 #'    survey with [varcomp()], or use a plausible range (0.01--0.10
 #'    for most household indicators).
 #' 2. **Choose a mode.** If you have a target precision, set `cv`. If you
 #'    have a fixed budget, set `budget`. Never set both.
 #' 3. **Fix stages or let the optimizer decide.** In MICS/DHS-style
 #'    designs, the number of households per cluster is fixed by
-#'    fieldwork logistics (e.g. `psu_size = 20`). The optimizer then
+#'    fieldwork logistics (e.g. `n_per_psu = 20`). The optimizer then
 #'    solves for how many clusters (`n_psu`) to visit. If no stage is
 #'    fixed, both are optimized jointly.
 #'
@@ -93,9 +96,9 @@
 #'
 #' Stage count is determined by `length(stage_cost)`:
 #' - **2-stage** (e.g. clusters then households): `stage_cost` has 2
-#'   elements, `delta` is a scalar.
+#'   elements, `icc` is a scalar.
 #' - **3-stage** (e.g. districts, clusters, households): `stage_cost`
-#'   has 3 elements, `delta` is length 2.
+#'   has 3 elements, `icc` is length 2.
 #'
 #' Two solving modes:
 #' - **CV mode**: minimize total cost subject to achieving the target CV.
@@ -109,15 +112,15 @@
 #' stage may be fixed. For 3-stage designs, up to two stages may be fixed.
 #' The remaining free stage is derived from the budget or CV constraint.
 #'
-#' If `delta` is a `svyplan_varcomp` object, `delta`, `rel_var`, and `k`
+#' If `icc` is a `svyplan_varcomp` object, `icc`, `unit_relvar`, and `var_ratio`
 #' are extracted automatically.
 #'
-#' ## Boundary delta values
+#' ## Boundary icc values
 #'
 #' Boundary and near-boundary homogeneity values are not supported by the
-#' analytical optimum used here. When `delta` is near 0, most variability is
+#' analytical optimum used here. When `icc` is near 0, most variability is
 #' within PSUs, so the closed-form optimum collapses toward taking many units
-#' in very few PSUs. When `delta` is near 1, most variability is between PSUs,
+#' in very few PSUs. When `icc` is near 1, most variability is between PSUs,
 #' so the optimum collapses toward taking very few units in many PSUs. In both
 #' cases the analytical allocation becomes degenerate, so `n_cluster()`
 #' rejects values numerically too close to 0 or 1.
@@ -133,32 +136,33 @@
 #' (2nd ed.). Springer. Ch. 9.
 #'
 #' @seealso [prec_cluster()] for the inverse, [varcomp()] for estimating
-#'   variance components.
+#'   variance components, [n_multi_cluster()] for several indicators at once,
+#'   and [n_alloc()] for a stratified multistage allocation.
 #'
 #' @examples
 #' # 2-stage, budget mode
-#' n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+#' n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
 #'
 #' # 2-stage, CV mode
-#' n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
+#' n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
 #'
 #' # 2-stage, fixed n_psu
-#' n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, n_psu = 40)
+#' n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, n_psu = 40)
 #'
-#' # 2-stage, fixed psu_size (MICS/DHS style: 20 households per cluster)
-#' n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, psu_size = 20)
+#' # 2-stage, fixed n_per_psu (MICS/DHS style: 20 households per cluster)
+#' n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, n_per_psu = 20)
 #'
 #' # 3-stage
-#' n_cluster(stage_cost = c(500, 100, 50), delta = c(0.01, 0.05), cv = 0.05)
+#' n_cluster(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05), cv = 0.05)
 #'
-#' # 3-stage, fixed n_psu + ssu_size (solve for psu_size)
+#' # 3-stage, fixed n_psu + n_per_ssu (solve for n_per_psu)
 #' n_cluster(
-#'   stage_cost = c(500, 100, 50), delta = c(0.01, 0.05),
-#'   budget = 500000, n_psu = 50, ssu_size = 8
+#'   stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
+#'   budget = 500000, n_psu = 50, n_per_ssu = 8
 #' )
 #'
 #' # With fixed overhead cost
-#' n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000, fixed_cost = 5000)
+#' n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, fixed_cost = 5000)
 #'
 #' @export
 n_cluster <- function(stage_cost = NULL, ...) {
@@ -174,14 +178,14 @@ n_cluster <- function(stage_cost = NULL, ...) {
 n_cluster.default <- function(
   stage_cost = NULL,
   ...,
-  delta = NULL,
-  rel_var = 1,
-  k = 1,
+  icc = NULL,
+  unit_relvar = 1,
+  var_ratio = 1,
   cv = NULL,
   budget = NULL,
   n_psu = NULL,
-  psu_size = NULL,
-  ssu_size = NULL,
+  n_per_psu = NULL,
+  n_per_ssu = NULL,
   resp_rate = 1,
   fixed_cost = 0,
   plan = NULL
@@ -191,41 +195,41 @@ n_cluster.default <- function(
   .check_unused_dots(...)
   if (is.null(stage_cost))
     stop("'stage_cost' is required (directly or via plan)", call. = FALSE)
-  if (is.null(delta))
-    stop("'delta' is required (directly or via plan)", call. = FALSE)
+  if (is.null(icc))
+    stop("'icc' is required (directly or via plan)", call. = FALSE)
   check_stage_cost(stage_cost)
   stage_cost <- .reorder_stage_cost(stage_cost)
   check_resp_rate(resp_rate)
 
-  if (inherits(delta, "svyplan_varcomp")) {
-    vc <- delta
+  if (inherits(icc, "svyplan_varcomp")) {
+    vc <- icc
     if (!is.null(vc$strata)) {
       stop(
         "stratified varcomp: merge its $strata columns into an n_alloc() frame, or pass one stratum's values",
         call. = FALSE
       )
     }
-    delta <- vc$delta
-    rel_var <- vc$rel_var
-    k <- vc$k
+    icc <- vc$icc
+    unit_relvar <- vc$unit_relvar
+    var_ratio <- vc$var_ratio
   }
 
-  check_scalar(rel_var, "rel_var")
+  check_scalar(unit_relvar, "unit_relvar")
   if (
-    !is.numeric(k) ||
-      length(k) == 0L ||
-      anyNA(k) ||
-      any(k <= 0) ||
-      any(!is.finite(k))
+    !is.numeric(var_ratio) ||
+      length(var_ratio) == 0L ||
+      anyNA(var_ratio) ||
+      any(var_ratio <= 0) ||
+      any(!is.finite(var_ratio))
   ) {
-    stop("'k' must contain positive finite values", call. = FALSE)
+    stop("'var_ratio' must contain positive finite values", call. = FALSE)
   }
 
   stages <- length(stage_cost)
-  delta <- .reorder_stage_vec(delta, "delta")
-  k <- .reorder_stage_vec(k, "k")
-  check_delta(delta, expected_length = stages - 1L)
-  .check_cluster_delta_open(delta, context = "n_cluster()")
+  icc <- .reorder_stage_vec(icc, "icc")
+  var_ratio <- .reorder_stage_vec(var_ratio, "var_ratio")
+  check_icc(icc, expected_length = stages - 1L)
+  .check_cluster_icc_open(icc, context = "n_cluster()")
 
   has_cv <- !is.null(cv)
   has_budget <- !is.null(budget)
@@ -239,18 +243,18 @@ n_cluster.default <- function(
     check_scalar(budget, "budget")
   }
   if (!is.null(n_psu)) check_scalar(n_psu, "n_psu")
-  if (!is.null(psu_size)) check_scalar(psu_size, "psu_size")
-  if (!is.null(ssu_size)) check_scalar(ssu_size, "ssu_size")
-  for (nm in c("n_psu", "psu_size", "ssu_size")) {
+  if (!is.null(n_per_psu)) check_scalar(n_per_psu, "n_per_psu")
+  if (!is.null(n_per_ssu)) check_scalar(n_per_ssu, "n_per_ssu")
+  for (nm in c("n_psu", "n_per_psu", "n_per_ssu")) {
     v <- get(nm)
     if (!is.null(v) && v < 1) {
       stop(sprintf("'%s' must be at least 1", nm), call. = FALSE)
     }
   }
-  if (stages == 2L && !is.null(ssu_size)) {
-    stop("'ssu_size' is not applicable for 2-stage designs", call. = FALSE)
+  if (stages == 2L && !is.null(n_per_ssu)) {
+    stop("'n_per_ssu' is not applicable for 2-stage designs", call. = FALSE)
   }
-  n_fixed <- sum(!is.null(n_psu), !is.null(psu_size), !is.null(ssu_size))
+  n_fixed <- sum(!is.null(n_psu), !is.null(n_per_psu), !is.null(n_per_ssu))
   if (n_fixed >= stages) {
     stop("cannot fix all stages; use prec_cluster() instead", call. = FALSE)
   }
@@ -259,28 +263,28 @@ n_cluster.default <- function(
   res <- if (stages == 2L) {
     .n_cluster_2stage(
       stage_cost,
-      delta,
-      rel_var,
-      k,
+      icc,
+      unit_relvar,
+      var_ratio,
       cv,
       budget,
       n_psu,
-      psu_size,
+      n_per_psu,
       resp_rate,
       fixed_cost
     )
   } else {
-    k <- rep_len(k, 2L)
+    var_ratio <- .stage_k_pair(var_ratio, icc)
     .n_cluster_3stage(
       stage_cost,
-      delta,
-      rel_var,
-      k,
+      icc,
+      unit_relvar,
+      var_ratio,
       cv,
       budget,
       n_psu,
-      psu_size,
-      ssu_size,
+      n_per_psu,
+      n_per_ssu,
       resp_rate,
       fixed_cost
     )
@@ -301,14 +305,14 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   }
   args <- list(
     stage_cost = p$stage_cost,
-    delta = p$delta,
-    rel_var = p$rel_var,
-    k = p$k,
+    icc = p$icc,
+    unit_relvar = p$unit_relvar,
+    var_ratio = p$var_ratio,
     cv = cv,
     budget = budget,
     n_psu = p$n_psu,
-    psu_size = p$psu_size,
-    ssu_size = p$ssu_size,
+    n_per_psu = p$n_per_psu,
+    n_per_ssu = p$n_per_ssu,
     resp_rate = p$resp_rate %||% 1,
     fixed_cost = p$fixed_cost %||% 0
   )
@@ -317,25 +321,25 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 
 #' Discrete (integer) 2-stage design
 #'
-#' Enumerates whole psu_size values (or uses rounded fixed sizes),
+#' Enumerates whole n_per_psu values (or uses rounded fixed sizes),
 #' computes the largest affordable whole n_psu in budget mode or the
 #' smallest sufficient whole n_psu in cv mode, and returns the best
 #' integer design with its own recomputed cost and cv. Budget-mode
 #' designs never exceed the budget; cv-mode designs meet the target.
 #' @keywords internal
 #' @noRd
-.op_cluster_2stage <- function(stage_cost, delta, rel_var, k, cv, budget,
-                               n_psu, psu_size, resp_rate, fixed_cost,
+.op_cluster_2stage <- function(stage_cost, icc, unit_relvar, var_ratio, cv, budget,
+                               n_psu, n_per_psu, resp_rate, fixed_cost,
                                cont_m) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   vb <- if (!is.null(budget)) budget - fixed_cost else NULL
   cv_fn <- function(a, m) {
-    sqrt(rel_var * k * (1 + delta * (m - 1)) / (a * resp_rate * m))
+    sqrt(unit_relvar * var_ratio * (1 + icc * (m - 1)) / (a * resp_rate * m))
   }
 
-  m_cand <- if (!is.null(psu_size)) {
-    max(1L, as.integer(round(psu_size)))
+  m_cand <- if (!is.null(n_per_psu)) {
+    max(1L, as.integer(round(n_per_psu)))
   } else {
     seq_len(max(100L, min(10L * as.integer(ceiling(cont_m)) + 1L, 100000L)))
   }
@@ -367,8 +371,8 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   } else {
     if (!is.null(n_psu)) {
       a_best <- max(1L, as.integer(round(n_psu)))
-      need <- rel_var * k * (1 - delta) /
-        (cv^2 * a_best * resp_rate - rel_var * k * delta)
+      need <- unit_relvar * var_ratio * (1 - icc) /
+        (cv^2 * a_best * resp_rate - unit_relvar * var_ratio * icc)
       if (!is.finite(need) || need <= 0) {
         stop("target CV is not achievable with whole units at the given fixed stage-1 size",
              call. = FALSE)
@@ -377,7 +381,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     } else {
       a_cand <- vapply(m_cand, function(m) {
         as.integer(ceiling(
-          rel_var * k * (1 + delta * (m - 1)) /
+          unit_relvar * var_ratio * (1 + icc * (m - 1)) /
             (m * cv^2 * resp_rate) - 1e-9
         ))
       }, integer(1L))
@@ -390,7 +394,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   }
 
   list(
-    n = c(n_psu = a_best, psu_size = m_best),
+    n = c(n_psu = a_best, n_per_psu = m_best),
     total_n = a_best * m_best,
     cost = fixed_cost + a_best * (C1 + C2 * m_best),
     cv = cv_fn(a_best, m_best)
@@ -400,20 +404,20 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 #' Discrete (integer) 3-stage design via bounded enumeration
 #' @keywords internal
 #' @noRd
-.op_cluster_3stage <- function(stage_cost, delta, rel_var, k, cv, budget,
-                               n_psu, psu_size, ssu_size, resp_rate,
+.op_cluster_3stage <- function(stage_cost, icc, unit_relvar, var_ratio, cv, budget,
+                               n_psu, n_per_psu, n_per_ssu, resp_rate,
                                fixed_cost, cont_m, cont_q) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   C3 <- stage_cost[3L]
-  delta1 <- delta[1L]
-  delta2 <- delta[2L]
-  k1 <- k[1L]
-  k2 <- k[2L]
+  delta1 <- icc[1L]
+  delta2 <- icc[2L]
+  k1 <- var_ratio[1L]
+  k2 <- var_ratio[2L]
   vb <- if (!is.null(budget)) budget - fixed_cost else NULL
   cv_fn <- function(a, m, q) {
     sqrt(
-      rel_var / (a * resp_rate * m * q) *
+      unit_relvar / (a * resp_rate * m * q) *
         (k1 * delta1 * m * q + k2 * (1 + delta2 * (q - 1)))
     )
   }
@@ -425,8 +429,8 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
       seq_len(max(60L, min(6L * as.integer(ceiling(cont)) + 1L, 400L)))
     }
   }
-  m_cand <- window(psu_size, cont_m)
-  q_cand <- window(ssu_size, cont_q)
+  m_cand <- window(n_per_psu, cont_m)
+  q_cand <- window(n_per_ssu, cont_q)
   grid <- expand.grid(m = m_cand, q = q_cand)
   per_psu <- C1 + C2 * grid$m + C3 * grid$m * grid$q
 
@@ -445,7 +449,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     cvs <- cv_fn(a, grid$m, grid$q)
     j <- which.min(cvs + 1e-12 * (grid$m + grid$q))
   } else {
-    need <- rel_var *
+    need <- unit_relvar *
       (k1 * delta1 * grid$m * grid$q + k2 * (1 + delta2 * (grid$q - 1))) /
       (grid$m * grid$q * cv^2 * resp_rate)
     a <- if (!is.null(n_psu)) {
@@ -471,7 +475,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   m_best <- as.integer(grid$m[j])
   q_best <- as.integer(grid$q[j])
   list(
-    n = c(n_psu = a_best, psu_size = m_best, ssu_size = q_best),
+    n = c(n_psu = a_best, n_per_psu = m_best, n_per_ssu = q_best),
     total_n = a_best * m_best * q_best,
     cost = fixed_cost +
       a_best * (C1 + C2 * m_best + C3 * m_best * q_best),
@@ -483,13 +487,13 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 #' @noRd
 .n_cluster_2stage <- function(
   stage_cost,
-  delta,
-  rel_var,
-  k,
+  icc,
+  unit_relvar,
+  var_ratio,
   cv,
   budget,
   n_psu,
-  psu_size,
+  n_per_psu,
   resp_rate,
   fixed_cost = 0
 ) {
@@ -497,11 +501,11 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   C2 <- stage_cost[2L]
   var_budget <- if (!is.null(budget)) budget - fixed_cost else NULL
 
-  if (is.null(n_psu) && is.null(psu_size)) {
-    n2_opt <- sqrt(C1 / C2 * (1 - delta) / delta)
+  if (is.null(n_psu) && is.null(n_per_psu)) {
+    n2_opt <- sqrt(C1 / C2 * (1 - icc) / icc)
     if (n2_opt < 1) {
       warning(
-        "cost-optimal psu_size is below 1 (high 'delta' relative to stage costs); clamped to 1",
+        "cost-optimal n_per_psu is below 1 (high 'icc' relative to stage costs); clamped to 1",
         call. = FALSE
       )
       n2_opt <- 1
@@ -511,13 +515,13 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
       n1_opt <- var_budget / (C1 + C2 * n2_opt)
       n1_eff <- n1_opt * resp_rate
       cv_achieved <- sqrt(
-        rel_var / (n1_eff * n2_opt) * k * (1 + delta * (n2_opt - 1))
+        unit_relvar / (n1_eff * n2_opt) * var_ratio * (1 + icc * (n2_opt - 1))
       )
       total_cost <- budget
     } else {
-      n1_eff_needed <- rel_var *
-        k *
-        (1 + delta * (n2_opt - 1)) /
+      n1_eff_needed <- unit_relvar *
+        var_ratio *
+        (1 + icc * (n2_opt - 1)) /
         (n2_opt * cv^2)
       n1_opt <- n1_eff_needed / resp_rate
       total_cost <- fixed_cost + C1 * n1_opt + C2 * n1_opt * n2_opt
@@ -535,13 +539,13 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
         )
       }
       cv_achieved <- sqrt(
-        rel_var * k / (n1_eff * n2_opt) * (1 + delta * (n2_opt - 1))
+        unit_relvar * var_ratio / (n1_eff * n2_opt) * (1 + icc * (n2_opt - 1))
       )
       total_cost <- budget
     } else {
-      cv_floor <- sqrt(rel_var * k * delta / (n_psu * resp_rate))
+      cv_floor <- sqrt(unit_relvar * var_ratio * icc / (n_psu * resp_rate))
       if (cv_floor >= cv) {
-        required_n_psu <- ceiling(rel_var * k * delta / (cv^2 * resp_rate))
+        required_n_psu <- ceiling(unit_relvar * var_ratio * icc / (cv^2 * resp_rate))
         stop(
           sprintf(
             "n_cluster(): target CV %.4g is below the achievable floor %.4g at n_psu = %d; increase n_psu to at least %d, or relax target CV above %.4g",
@@ -550,7 +554,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
           call. = FALSE
         )
       }
-      n2_opt <- (1 - delta) / (cv^2 * n1_eff / (rel_var * k) - delta)
+      n2_opt <- (1 - icc) / (cv^2 * n1_eff / (unit_relvar * var_ratio) - icc)
       if (n2_opt <= 0) {
         stop(
           "target CV is too small for the given fixed stage-1 size and parameters",
@@ -559,25 +563,25 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
       }
       if (n2_opt < 1) {
         n2_opt <- 1
-        cv_achieved <- sqrt(rel_var * k / n1_eff)
+        cv_achieved <- sqrt(unit_relvar * var_ratio / n1_eff)
       } else {
         cv_achieved <- cv
       }
       total_cost <- fixed_cost + C1 * n_psu + C2 * n_psu * n2_opt
     }
   } else {
-    n2_opt <- psu_size
+    n2_opt <- n_per_psu
     if (!is.null(budget)) {
-      n1_opt <- var_budget / (C1 + C2 * psu_size)
+      n1_opt <- var_budget / (C1 + C2 * n_per_psu)
       n1_eff <- n1_opt * resp_rate
       cv_achieved <- sqrt(
-        rel_var * k / (n1_eff * n2_opt) * (1 + delta * (n2_opt - 1))
+        unit_relvar * var_ratio / (n1_eff * n2_opt) * (1 + icc * (n2_opt - 1))
       )
       total_cost <- budget
     } else {
-      n1_eff_needed <- rel_var *
-        k *
-        (1 + delta * (n2_opt - 1)) /
+      n1_eff_needed <- unit_relvar *
+        var_ratio *
+        (1 + icc * (n2_opt - 1)) /
         (n2_opt * cv^2)
       n1_opt <- n1_eff_needed / resp_rate
       total_cost <- fixed_cost + C1 * n1_opt + C2 * n1_opt * n2_opt
@@ -596,18 +600,18 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   }
 
   operational <- .op_cluster_2stage(
-    stage_cost, delta, rel_var, k, cv, budget, n_psu, psu_size,
+    stage_cost, icc, unit_relvar, var_ratio, cv, budget, n_psu, n_per_psu,
     resp_rate, fixed_cost, cont_m = n2_opt
   )
 
-  n_vec <- c(n_psu = n1_opt, psu_size = n2_opt)
+  n_vec <- c(n_psu = n1_opt, n_per_psu = n2_opt)
   total_n <- prod(n_vec)
 
   params <- list(
     stage_cost = c(cost_psu = stage_cost[1L], cost_ssu = stage_cost[2L]),
-    delta = c(delta_psu = delta[1L]),
-    rel_var = rel_var,
-    k = c(k_psu = k[1L]),
+    icc = c(icc_psu = icc[1L]),
+    unit_relvar = unit_relvar,
+    var_ratio = c(var_ratio_psu = var_ratio[1L]),
     resp_rate = resp_rate
   )
   if (!is.null(cv)) {
@@ -619,8 +623,8 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   if (!is.null(n_psu)) {
     params$n_psu <- n_psu
   }
-  if (!is.null(psu_size)) {
-    params$psu_size <- psu_size
+  if (!is.null(n_per_psu)) {
+    params$n_per_psu <- n_per_psu
   }
   if (fixed_cost > 0) {
     params$fixed_cost <- fixed_cost
@@ -641,34 +645,34 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 #' @noRd
 .n_cluster_3stage <- function(
   stage_cost,
-  delta,
-  rel_var,
-  k,
+  icc,
+  unit_relvar,
+  var_ratio,
   cv,
   budget,
   n_psu,
-  psu_size,
-  ssu_size,
+  n_per_psu,
+  n_per_ssu,
   resp_rate,
   fixed_cost = 0
 ) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   C3 <- stage_cost[3L]
-  delta1 <- delta[1L]
-  delta2 <- delta[2L]
-  k1 <- k[1L]
-  k2 <- k[2L]
+  delta1 <- icc[1L]
+  delta2 <- icc[2L]
+  k1 <- var_ratio[1L]
+  k2 <- var_ratio[2L]
   var_budget <- if (!is.null(budget)) budget - fixed_cost else NULL
 
   .cv3 <- function(n1e, n2v, n3v) {
     sqrt(
-      rel_var / (n1e * n2v * n3v) *
+      unit_relvar / (n1e * n2v * n3v) *
         (k1 * delta1 * n2v * n3v + k2 * (1 + delta2 * (n3v - 1)))
     )
   }
 
-  solve_for <- if (!is.null(n_psu) && !is.null(psu_size)) {
+  solve_for <- if (!is.null(n_psu) && !is.null(n_per_psu)) {
     "n3"
   } else if (!is.null(n_psu)) {
     "n2"
@@ -676,13 +680,13 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     "n1"
   }
 
-  n3 <- if (!is.null(ssu_size)) {
-    ssu_size
+  n3 <- if (!is.null(n_per_ssu)) {
+    n_per_ssu
   } else if (solve_for != "n3") {
     n3_free <- sqrt((1 - delta2) / delta2 * C2 / C3)
     if (n3_free < 1) {
       warning(
-        "cost-optimal ssu_size is below 1 (high 'delta_ssu' relative to stage costs); clamped to 1",
+        "cost-optimal n_per_ssu is below 1 (high 'icc_ssu' relative to stage costs); clamped to 1",
         call. = FALSE
       )
       n3_free <- 1
@@ -690,10 +694,10 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     n3_free
   }
 
-  n2 <- if (!is.null(psu_size)) {
-    psu_size
+  n2 <- if (!is.null(n_per_psu)) {
+    n_per_psu
   } else if (solve_for != "n2") {
-    n2_free <- if (!is.null(ssu_size)) {
+    n2_free <- if (!is.null(n_per_ssu)) {
       sqrt(
         k2 * (1 + delta2 * (n3 - 1)) * C1 /
           (n3 * k1 * delta1 * (C2 + C3 * n3))
@@ -703,7 +707,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     }
     if (n2_free < 1) {
       warning(
-        "cost-optimal psu_size is below 1 (high 'delta_psu' relative to stage costs); clamped to 1",
+        "cost-optimal n_per_psu is below 1 (high 'icc_psu' relative to stage costs); clamped to 1",
         call. = FALSE
       )
       n2_free <- 1
@@ -719,7 +723,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
       cv_achieved <- .cv3(n1 * resp_rate, n2, n3)
       total_cost <- budget
     } else {
-      n1_eff <- rel_var / (cv^2 * n2 * n3) *
+      n1_eff <- unit_relvar / (cv^2 * n2 * n3) *
         (k1 * delta1 * n2 * n3 + k2 * (1 + delta2 * (n3 - 1)))
       n1 <- n1_eff / resp_rate
       total_cost <- fixed_cost +
@@ -739,9 +743,9 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
       cv_achieved <- .cv3(n1_eff, n2, n3)
       total_cost <- budget
     } else {
-      cv_floor <- sqrt(rel_var * k1 * delta1 / n1_eff)
+      cv_floor <- sqrt(unit_relvar * k1 * delta1 / n1_eff)
       if (cv_floor >= cv) {
-        required_n_psu <- ceiling(rel_var * k1 * delta1 / (cv^2 * resp_rate))
+        required_n_psu <- ceiling(unit_relvar * k1 * delta1 / (cv^2 * resp_rate))
         stop(
           sprintf(
             "n_cluster(): target CV %.4g is below the achievable floor %.4g at n_psu = %d; increase n_psu to at least %d, or relax target CV above %.4g",
@@ -751,7 +755,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
         )
       }
       n2 <- k2 * (1 + delta2 * (n3 - 1)) /
-        (n3 * (cv^2 * n1_eff / rel_var - k1 * delta1))
+        (n3 * (cv^2 * n1_eff / unit_relvar - k1 * delta1))
       if (n2 <= 0) {
         stop(
           "target CV is too small for the given fixed stage sizes and parameters",
@@ -780,20 +784,20 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
       cv_achieved <- .cv3(n1_eff, n2, n3)
       total_cost <- budget
     } else {
-      cv_floor <- sqrt(rel_var * (k1 * delta1 + k2 * delta2 / n2) / n1_eff)
+      cv_floor <- sqrt(unit_relvar * (k1 * delta1 + k2 * delta2 / n2) / n1_eff)
       if (cv_floor >= cv) {
         required_n_psu <- ceiling(
-          rel_var * (k1 * delta1 + k2 * delta2 / n2) / (cv^2 * resp_rate)
+          unit_relvar * (k1 * delta1 + k2 * delta2 / n2) / (cv^2 * resp_rate)
         )
         stop(
           sprintf(
-            "n_cluster(): target CV %.4g is below the achievable floor %.4g at n_psu = %d, psu_size = %.0f; increase n_psu to at least %d, or relax target CV above %.4g",
+            "n_cluster(): target CV %.4g is below the achievable floor %.4g at n_psu = %d, n_per_psu = %.0f; increase n_psu to at least %d, or relax target CV above %.4g",
             cv, cv_floor, as.integer(n_psu), n2, required_n_psu, cv_floor
           ),
           call. = FALSE
         )
       }
-      denom <- n2 * (cv^2 * n1_eff / rel_var - k1 * delta1) - k2 * delta2
+      denom <- n2 * (cv^2 * n1_eff / unit_relvar - k1 * delta1) - k2 * delta2
       n3 <- k2 * (1 - delta2) / denom
       if (n3 <= 0) {
         stop(
@@ -815,7 +819,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   if (!is.null(budget) && n1 < 1) {
     stop(
       sprintf(
-        "'budget' is too small for any realizable design: one PSU with psu_size = %.3g and ssu_size = %.3g costs %.4g plus fixed_cost = %.4g",
+        "'budget' is too small for any realizable design: one PSU with n_per_psu = %.3g and n_per_ssu = %.3g costs %.4g plus fixed_cost = %.4g",
         n2, n3, C1 + C2 * n2 + C3 * n2 * n3, fixed_cost
       ),
       call. = FALSE
@@ -823,25 +827,25 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   }
 
   operational <- .op_cluster_3stage(
-    stage_cost, delta, rel_var, k, cv, budget, n_psu, psu_size, ssu_size,
+    stage_cost, icc, unit_relvar, var_ratio, cv, budget, n_psu, n_per_psu, n_per_ssu,
     resp_rate, fixed_cost, cont_m = n2, cont_q = n3
   )
 
-  n_vec <- c(n_psu = n1, psu_size = n2, ssu_size = n3)
+  n_vec <- c(n_psu = n1, n_per_psu = n2, n_per_ssu = n3)
   total_n <- prod(n_vec)
 
   params <- list(
     stage_cost = c(cost_psu = C1, cost_ssu = C2, cost_tsu = C3),
-    delta = c(delta_psu = delta1, delta_ssu = delta2),
-    rel_var = rel_var,
-    k = c(k_psu = k1, k_ssu = k2),
+    icc = c(icc_psu = delta1, icc_ssu = delta2),
+    unit_relvar = unit_relvar,
+    var_ratio = c(var_ratio_psu = k1, var_ratio_ssu = k2),
     resp_rate = resp_rate
   )
   if (!is.null(cv)) params$cv <- cv
   if (!is.null(budget)) params$budget <- budget
   if (!is.null(n_psu)) params$n_psu <- n_psu
-  if (!is.null(psu_size)) params$psu_size <- psu_size
-  if (!is.null(ssu_size)) params$ssu_size <- ssu_size
+  if (!is.null(n_per_psu)) params$n_per_psu <- n_per_psu
+  if (!is.null(n_per_ssu)) params$n_per_ssu <- n_per_ssu
   if (fixed_cost > 0) params$fixed_cost <- fixed_cost
 
   .new_svyplan_cluster(

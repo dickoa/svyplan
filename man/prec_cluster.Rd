@@ -11,9 +11,9 @@ prec_cluster(n, ...)
 \method{prec_cluster}{default}(
   n,
   ...,
-  delta = NULL,
-  rel_var = 1,
-  k = 1,
+  icc = NULL,
+  unit_relvar = 1,
+  var_ratio = 1,
   resp_rate = 1,
   plan = NULL
 )
@@ -22,20 +22,22 @@ prec_cluster(n, ...)
 }
 \arguments{
 \item{n}{For the default method: numeric vector of per-stage sample
-sizes (\code{c(n_psu, psu_size)} for 2-stage or
-\code{c(n_psu, psu_size, ssu_size)} for 3-stage). Named vectors are accepted
-with stage names \code{n_psu}, \code{psu_size}, \code{ssu_size}.
+sizes (\code{c(n_psu, n_per_psu)} for 2-stage or
+\code{c(n_psu, n_per_psu, n_per_ssu)} for 3-stage). Named vectors are accepted
+with stage names \code{n_psu}, \code{n_per_psu}, \code{n_per_ssu}.
 For \code{svyplan_cluster} objects: a cluster allocation from \code{\link[=n_cluster]{n_cluster()}}.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
-\item{delta}{Numeric vector of homogeneity measures (length = stages - 1),
+\item{icc}{Numeric vector of homogeneity measures (length = stages - 1),
 or a \code{svyplan_varcomp} object.}
 
-\item{rel_var}{Unit relvariance (default 1).}
+\item{unit_relvar}{Unit relvariance (default 1).}
 
-\item{k}{Ratio parameter(s). Scalar for 2-stage, length-2 vector for
-3-stage (default 1).}
+\item{var_ratio}{Ratio of the stage components' unit variance to the analysis
+variable's, default 1. A scalar names \code{var_ratio_psu}; for three stages
+\code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)} follows from the decomposition. See
+\code{\link[=design_effect]{design_effect()}}.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The effective stage-1 size is \code{n * resp_rate}.}
@@ -45,7 +47,7 @@ adjustment). The effective stage-1 size is \code{n * resp_rate}.}
 \value{
 A \code{svyplan_prec} object with components \verb{$se}, \verb{$moe}, and \verb{$cv}.
 Because the cluster model is parameterized with unit relvariance
-(\code{rel_var = S^2 / Y_bar^2}), only \verb{$cv} is computable. The \verb{$se} and
+(\code{unit_relvar = S^2 / Y_bar^2}), only \verb{$cv} is computable. The \verb{$se} and
 \verb{$moe} components are \code{NA}.
 }
 \description{
@@ -68,11 +70,11 @@ Stage count is determined by \code{length(n)}.
 }
 \examples{
 # Direct usage
-prec_cluster(n = c(50, 12), delta = 0.05)
-prec_cluster(n = c(50, 12, 8), delta = c(0.01, 0.05))
+prec_cluster(n = c(50, 12), icc = 0.05)
+prec_cluster(n = c(50, 12, 8), icc = c(0.01, 0.05))
 
 # Round-trip from n_cluster
-res <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05)
+res <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
 prec_cluster(res)
 
 }

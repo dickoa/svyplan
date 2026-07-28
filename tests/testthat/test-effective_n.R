@@ -1,95 +1,120 @@
-test_that("effective_n kish uses direct formula", {
+test_that("effective_n from weights is the Kish effective sample size", {
   set.seed(1009)
   w <- runif(100, 1, 5)
-  result <- effective_n(w, method = "kish")
-
-  # Direct: sum(w)^2 / sum(w^2)
-  expected <- sum(w)^2 / sum(w^2)
-  expect_equal(result, expected, tolerance = 1e-10)
+  expect_equal(effective_n(weights = w), sum(w)^2 / sum(w^2))
 })
 
-test_that("effective_n kish consistent with design_effect", {
-  set.seed(1013)
-  w <- runif(100, 1, 5)
-  n_eff <- effective_n(w, method = "kish")
-  deff <- design_effect(w, method = "kish")
-
-  # n_eff should equal n / deff
-  expect_equal(n_eff, length(w) / deff, tolerance = 1e-6)
+test_that("effective_n equals n when weights are equal", {
+  w <- rep(2.5, 60)
+  expect_equal(effective_n(weights = w), 60)
 })
 
-test_that("effective_n cluster planning", {
-  result <- effective_n(delta = 0.05, psu_size =25, n = 800, method = "cluster")
-  deff <- 1 + (25 - 1) * 0.05  # 2.2
-  expect_equal(result, 800 / deff, tolerance = 1e-10)
+test_that("effective_n is n divided by design_effect", {
+  set.seed(444)
+  w <- runif(80, 1, 6)
+  expect_equal(
+    effective_n(weights = w),
+    length(w) / as.double(design_effect(weights = w))
+  )
+  expect_equal(
+    effective_n(n = 1200, icc = 0.05, n_per_psu = 25),
+    1200 / as.double(design_effect(icc = 0.05, n_per_psu = 25))
+  )
 })
 
-test_that("effective_n cluster validates n argument", {
-  expect_error(effective_n(delta = 0.05, psu_size =25, method = "cluster"),
-               "'n' is required")
+test_that("effective_n accepts a design effect object or a plain number", {
+  deff <- design_effect(icc = 0.05, n_per_psu = 25)
+  expect_equal(effective_n(deff, n = 1200), 1200 / 2.2)
+  expect_equal(effective_n(n = 1200, deff = deff), 1200 / 2.2)
+  expect_equal(effective_n(n = 1200, deff = 2.2), 1200 / 2.2)
 })
 
-test_that("effective_n with equal weights equals n", {
-  w <- rep(1, 50)
-  result <- effective_n(w, method = "kish")
-  expect_equal(result, 50, tolerance = 1e-10)
+test_that("deff and its components are mutually exclusive", {
+  expect_error(
+    effective_n(n = 100, deff = 2, icc = 0.05, n_per_psu = 10),
+    "either 'deff' or the design components"
+  )
 })
 
-test_that("effective_n rejects Inf weights", {
-  expect_error(effective_n(c(1, Inf), method = "kish"), "finite")
+test_that("effective_n derives n where it can and requires it otherwise", {
+  strata <- data.frame(N = c(50000, 120000), n = c(600, 400))
+  expect_equal(
+    effective_n(strata = strata),
+    1000 / as.double(design_effect(strata = strata))
+  )
+  expect_error(effective_n(icc = 0.05, n_per_psu = 25), "'n' is required")
+  expect_error(
+    effective_n(design_effect(icc = 0.05, n_per_psu = 25)), "'n' is required"
+  )
 })
 
-test_that("effective_n rejects -Inf weights", {
-  expect_error(effective_n(c(1, -Inf), method = "kish"), "finite")
+test_that("cluster planning bounds behave at the extremes", {
+  expect_equal(effective_n(n = 500, icc = 0, n_per_psu = 30), 500)
+  expect_equal(effective_n(n = 500, icc = 1, n_per_psu = 20), 25)
+  expect_equal(effective_n(n = 500, icc = 0.05, n_per_psu = 1), 500)
 })
 
-test_that("effective_n kish with highly variable weights", {
-  w <- c(rep(1, 99), 100)
-  result <- effective_n(w, method = "kish")
-  expected <- sum(w)^2 / sum(w^2)
-  expect_equal(result, expected, tolerance = 1e-10)
-  expect_true(result < length(w))
+test_that("effective_n reads plans and allocations", {
+  plan <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
+  expect_equal(effective_n(plan), plan$total_n / as.double(design_effect(plan)))
+  expect_equal(effective_n(plan, n = 1000), 1000 / as.double(design_effect(plan)))
+
+  alloc <- n_alloc(
+    data.frame(stratum = c("A", "B"), N = c(4000, 6000), sd = c(10, 15),
+               mean = c(50, 60)),
+    n = 500
+  )
+  expect_equal(effective_n(alloc), alloc$n / as.double(design_effect(alloc)))
 })
 
-test_that("effective_n kish with length-1 weight", {
-  result <- effective_n(5, method = "kish")
-  expect_equal(result, 1)
+test_that("effective_n validates its inputs", {
+  expect_error(effective_n(n = -5, icc = 0.05, n_per_psu = 10), "positive")
+  expect_error(effective_n(weights = c(1, Inf)), "only finite")
+  expect_error(effective_n(weights = c(1, -Inf)), "only finite")
+  expect_error(effective_n(n = 100, icc = 0.05), "both 'icc' and 'n_per_psu'")
+  expect_error(effective_n(n = 100, icc = 1.5, n_per_psu = 10), "in \\[0, 1\\]")
 })
 
-test_that("effective_n cluster with small psu_size", {
-  result <- effective_n(delta = 0.05, psu_size = 2, n = 100, method = "cluster")
-  deff <- 1 + (2 - 1) * 0.05
-  expect_equal(result, 100 / deff, tolerance = 1e-10)
+test_that("effective_n rejects unused arguments", {
+  expect_error(effective_n(n = 100, icc = 0.05, n_per_psu = 10,
+                           methd = "kish"),
+               "unused argument.*methd")
 })
 
-test_that("effective_n cluster with delta = 0 equals n", {
-  result <- effective_n(delta = 0, psu_size = 25, n = 800, method = "cluster")
-  expect_equal(result, 800, tolerance = 1e-10)
+test_that("effective_n nets down for response, matching the planning identity", {
+  frame <- data.frame(
+    stratum = c("A", "B"),
+    N = c(1e5, 1e5),
+    sd = c(1, 1),
+    mean = c(1, 1)
+  )
+  alloc <- n_alloc(frame, n = 200, alloc = "neyman", resp_rate = 0.8)
+  deff <- as.double(design_effect(alloc))
+
+  # n * resp_rate / deff, the identity the n_eff column reports
+  expect_equal(as.double(effective_n(alloc)), 200 * 0.8 / deff)
+  expect_equal(as.double(effective_n(alloc)), sum(alloc$detail$n_eff))
+
+  # an explicit rate overrides the plan's
+  expect_equal(as.double(effective_n(alloc, resp_rate = 1)), 200 / deff)
+
+  # a plan without nonresponse is unchanged
+  full <- n_alloc(frame, n = 200, alloc = "neyman")
+  expect_equal(as.double(effective_n(full)),
+               200 / as.double(design_effect(full)))
 })
 
-test_that("effective_n cluster with delta = 1 (max homogeneity)", {
-  result <- effective_n(delta = 1, psu_size = 25, n = 800, method = "cluster")
-  deff <- 1 + (25 - 1) * 1
-  expect_equal(result, 800 / deff, tolerance = 1e-10)
-  expect_equal(result, 32, tolerance = 1e-10)
+test_that("effective_n takes a response rate for a bare n", {
+  expect_equal(effective_n(n = 1000, deff = 2), 500)
+  expect_equal(effective_n(n = 1000, deff = 2, resp_rate = 0.8), 400)
+  expect_error(effective_n(n = 1000, deff = 2, resp_rate = 0), "resp_rate")
 })
 
-test_that("effective_n cluster validates psu_size", {
-  expect_error(effective_n(delta = 0.05, n = 800, method = "cluster"),
-               "psu_size")
-})
-
-test_that("effective_n cluster validates delta", {
-  expect_error(effective_n(delta = -0.1, psu_size = 25, n = 800, method = "cluster"))
-  expect_error(effective_n(delta = 1.5, psu_size = 25, n = 800, method = "cluster"))
-})
-
-test_that("effective_n is inverse of design_effect * n", {
-  set.seed(123)
-  w <- runif(200, 1, 10)
-  for (m in c("kish")) {
-    n_eff <- effective_n(w, method = m)
-    deff <- design_effect(w, method = m)
-    expect_equal(n_eff, length(w) / deff, tolerance = 1e-6)
-  }
+test_that("a cluster plan carries its own response rate", {
+  plan <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
+                    resp_rate = 0.8)
+  expect_equal(
+    as.double(effective_n(plan)),
+    plan$total_n * 0.8 / as.double(design_effect(plan))
+  )
 })

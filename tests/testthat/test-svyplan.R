@@ -20,18 +20,18 @@ test_that("svyplan with all core params", {
 })
 
 test_that("svyplan with cluster context", {
-  plan <- svyplan(stage_cost = c(500, 50), delta = 0.05, resp_rate = 0.85)
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.85)
   expect_equal(plan$defaults$stage_cost, c(500, 50))
-  expect_equal(plan$defaults$delta, 0.05)
+  expect_equal(plan$defaults$icc, 0.05)
   expect_equal(plan$defaults$resp_rate, 0.85)
 })
 
 test_that("svyplan with extended defaults", {
   plan <- svyplan(alternative = "one.sided",
-                  overlap = 0.5, rho = 0.6)
+                  overlap = 0.5, overlap_cor = 0.6)
   expect_equal(plan$defaults$alternative, "one.sided")
   expect_equal(plan$defaults$overlap, 0.5)
-  expect_equal(plan$defaults$rho, 0.6)
+  expect_equal(plan$defaults$overlap_cor, 0.6)
 })
 
 test_that("svyplan rejects ambiguous method parameter", {
@@ -56,18 +56,18 @@ test_that("svyplan validates core typed params", {
 
 test_that("svyplan validates every supported default", {
   bad <- list(
-    delta = 2,
-    rel_var = -1,
-    k = 0,
+    icc = 2,
+    unit_relvar = -1,
+    var_ratio = 0,
     fixed_cost = -10,
     unit_cost = -2,
     alternative = "sideways",
     ratio = 0,
     overlap = 2,
-    rho = -1,
+    overlap_cor = -1,
     alloc = "mystery",
-    min_n = 0,
-    power_q = 3
+    min_n_stratum = 0,
+    alloc_q = 3
   )
 
   for (nm in names(bad)) {
@@ -79,33 +79,33 @@ test_that("svyplan validates every supported default", {
 test_that("svyplan accepts valid extended defaults", {
   plan <- svyplan(
     stage_cost = c(cost_psu = 500, cost_ssu = 50),
-    delta = c(delta_psu = 0.05),
-    rel_var = 1.2,
-    k = c(k_psu = 1),
+    icc = c(icc_psu = 0.05),
+    unit_relvar = 1.2,
+    var_ratio = c(var_ratio_psu = 1),
     fixed_cost = 5000,
     unit_cost = c(1, 1.5),
     alternative = "one.sided",
     ratio = 1.5,
     overlap = 0.2,
-    rho = 0.4,
+    overlap_cor = 0.4,
     alloc = "power",
-    min_n = 20,
-    power_q = 0.5
+    min_n_stratum = 20,
+    alloc_q = 0.5
   )
 
   expect_s3_class(plan, "svyplan")
-  expect_equal(plan$defaults$delta, c(delta_psu = 0.05))
+  expect_equal(plan$defaults$icc, c(icc_psu = 0.05))
   expect_equal(plan$defaults$alloc, "power")
 })
 
 test_that("svyplan validates related cluster defaults together", {
   expect_error(
-    svyplan(stage_cost = c(500, 100, 50), delta = 0.05),
-    "'delta' must have length 2"
+    svyplan(stage_cost = c(500, 100, 50), icc = 0.05),
+    "'icc' must have length 2"
   )
   expect_error(
-    svyplan(stage_cost = c(500, 50), delta = 0.05, k = c(1, 2)),
-    "'k' must have length 1"
+    svyplan(stage_cost = c(500, 50), icc = 0.05, var_ratio = c(1, 2)),
+    "'var_ratio' must have length 1"
   )
 })
 
@@ -190,7 +190,7 @@ test_that("n_prop without plan is unchanged", {
 })
 
 test_that("n_prop ignores irrelevant plan defaults", {
-  plan <- svyplan(deff = 1.5, stage_cost = c(500, 50), delta = 0.05)
+  plan <- svyplan(deff = 1.5, stage_cost = c(500, 50), icc = 0.05)
   res <- n_prop(p = 0.3, moe = 0.05, plan = plan)
   ref <- n_prop(p = 0.3, moe = 0.05, deff = 1.5)
   expect_equal(res$n, ref$n)
@@ -261,44 +261,44 @@ test_that("power_did uses plan defaults", {
   expect_equal(res$n, ref$n)
 })
 
-test_that("n_cluster uses plan for stage_cost/delta", {
-  plan <- svyplan(stage_cost = c(500, 50), delta = 0.05, resp_rate = 0.85)
+test_that("n_cluster uses plan for stage_cost/icc", {
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.85)
   res <- n_cluster(cv = 0.05, plan = plan)
-  ref <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05,
+  ref <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
                    resp_rate = 0.85)
   expect_equal(res$n, ref$n)
   expect_equal(res$cv, ref$cv)
 })
 
 test_that("n_cluster with budget from plan", {
-  plan <- svyplan(stage_cost = c(500, 50), delta = 0.05)
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05)
   res <- n_cluster(budget = 100000, plan = plan)
-  ref <- n_cluster(stage_cost = c(500, 50), delta = 0.05, budget = 100000)
+  ref <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   expect_equal(res$n, ref$n)
 })
 
 test_that("n_cluster explicit stage_cost overrides plan", {
-  plan <- svyplan(stage_cost = c(500, 50), delta = 0.05)
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05)
   res <- n_cluster(stage_cost = c(800, 80), cv = 0.05, plan = plan)
-  ref <- n_cluster(stage_cost = c(800, 80), delta = 0.05, cv = 0.05)
+  ref <- n_cluster(stage_cost = c(800, 80), icc = 0.05, cv = 0.05)
   expect_equal(res$n, ref$n)
 })
 
-test_that("n_cluster requires stage_cost and delta", {
+test_that("n_cluster requires stage_cost and icc", {
   expect_error(n_cluster(cv = 0.05), "'stage_cost' is required")
   expect_error(n_cluster(stage_cost = c(500, 50), cv = 0.05),
-               "'delta' is required")
+               "'icc' is required")
 })
 
 test_that("prec_cluster uses plan defaults", {
-  plan <- svyplan(stage_cost = c(500, 50), delta = 0.05, resp_rate = 0.9)
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.9)
   res <- prec_cluster(n = c(50, 12), plan = plan)
-  ref <- prec_cluster(n = c(50, 12), delta = 0.05, resp_rate = 0.9)
+  ref <- prec_cluster(n = c(50, 12), icc = 0.05, resp_rate = 0.9)
   expect_equal(res$cv, ref$cv)
 })
 
-test_that("prec_cluster requires delta", {
-  expect_error(prec_cluster(n = c(50, 12)), "'delta' is required")
+test_that("prec_cluster requires icc", {
+  expect_error(prec_cluster(n = c(50, 12)), "'icc' is required")
 })
 
 test_that("n_multi_cluster uses plan for stage_cost", {
@@ -306,7 +306,7 @@ test_that("n_multi_cluster uses plan for stage_cost", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta_psu = c(0.02, 0.05)
+    icc_psu = c(0.02, 0.05)
   )
   plan <- svyplan(stage_cost = c(500, 50))
   res <- suppressMessages(n_multi_cluster(targets, plan = plan))
@@ -430,18 +430,18 @@ test_that("pipe: plan |> power_did", {
   expect_equal(res$n, ref$n)
 })
 
-test_that("pipe: plan |> n_cluster (stage_cost/delta from plan)", {
-  plan <- svyplan(stage_cost = c(500, 50), delta = 0.05, resp_rate = 0.85)
+test_that("pipe: plan |> n_cluster (stage_cost/icc from plan)", {
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.85)
   res <- plan |> n_cluster(cv = 0.05)
-  ref <- n_cluster(stage_cost = c(500, 50), delta = 0.05, cv = 0.05,
+  ref <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
                    resp_rate = 0.85)
   expect_equal(res$n, ref$n)
 })
 
 test_that("pipe: plan |> prec_cluster", {
-  plan <- svyplan(stage_cost = c(500, 50), delta = 0.05)
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05)
   res <- plan |> prec_cluster(c(50, 12))
-  ref <- prec_cluster(n = c(50, 12), delta = 0.05)
+  ref <- prec_cluster(n = c(50, 12), icc = 0.05)
   expect_equal(res$cv, ref$cv)
 })
 
@@ -450,7 +450,7 @@ test_that("pipe: plan |> n_multi_cluster", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta_psu = c(0.02, 0.05)
+    icc_psu = c(0.02, 0.05)
   )
   plan <- svyplan(stage_cost = c(500, 50))
   res <- suppressMessages(plan |> n_multi_cluster(targets))
@@ -490,7 +490,7 @@ test_that("pipe result equals plan= result for n_prop", {
 })
 
 test_that("pipe result equals plan= result for n_cluster", {
-  plan <- svyplan(stage_cost = c(500, 50), delta = 0.05, resp_rate = 0.85)
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.85)
   res_pipe <- plan |> n_cluster(cv = 0.05)
   res_plan <- n_cluster(cv = 0.05, plan = plan)
   expect_equal(res_pipe$n, res_plan$n)
@@ -562,14 +562,14 @@ test_that("named pipe: plan |> power_did(treat = ...) matches all styles", {
 })
 
 test_that("named pipe: plan |> n_cluster(cv = ...) matches all styles", {
-  plan <- svyplan(stage_cost = c(500, 50), delta = 0.05, resp_rate = 0.85)
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.85)
   res_named_plan <- n_cluster(cv = 0.05, plan = plan)
   res_pos_pipe <- plan |> n_cluster(cv = 0.05)
   expect_equal(res_pos_pipe$n, res_named_plan$n)
 })
 
 test_that("named pipe: plan |> prec_cluster(n = ...) matches all styles", {
-  plan <- svyplan(delta = 0.05)
+  plan <- svyplan(icc = 0.05)
   res_named_plan <- prec_cluster(n = c(50, 12), plan = plan)
   res_pos_pipe <- plan |> prec_cluster(c(50, 12))
   res_named_pipe <- plan |> prec_cluster(n = c(50, 12))
@@ -582,12 +582,12 @@ test_that("named pipe: plan |> n_multi_cluster() matches all styles", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    delta_psu = c(0.02, 0.05)
+    icc_psu = c(0.02, 0.05)
   )
   plan <- svyplan(stage_cost = c(500, 50))
   res_named_plan <- suppressMessages(n_multi_cluster(targets, plan = plan))
   res_pos_pipe <- suppressMessages(plan |> n_multi_cluster(targets))
-  res_named_pipe <- suppressMessages(plan |> n_multi_cluster(targets = targets))
+  res_named_pipe <- suppressMessages(plan |> n_multi_cluster(indicators = targets))
   expect_equal(res_named_pipe$n, res_named_plan$n)
   expect_equal(res_named_pipe$n, res_pos_pipe$n)
 })
@@ -625,13 +625,13 @@ test_that("named pipe: plan |> prec_multi_cluster() with stage_cost", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     n = c(50, 50),
-    psu_size = c(12, 12),
-    delta_psu = c(0.02, 0.05)
+    n_per_psu = c(12, 12),
+    icc_psu = c(0.02, 0.05)
   )
   plan <- svyplan(stage_cost = c(500, 50))
   res_explicit <- prec_multi_cluster(targets, stage_cost = c(500, 50))
   res_named_plan <- prec_multi_cluster(targets, plan = plan)
-  res_named_pipe <- plan |> prec_multi_cluster(targets = targets)
+  res_named_pipe <- plan |> prec_multi_cluster(indicators = targets)
   expect_equal(res_named_plan$cv, res_explicit$cv)
   expect_equal(res_named_pipe$cv, res_explicit$cv)
 })
@@ -699,5 +699,52 @@ test_that("plan prop_method outside a function's choices is ignored", {
   expect_equal(
     power_prop(p1 = 0.15, p2 = 0.18, plan = pl2)$n,
     power_prop(p1 = 0.15, p2 = 0.18, method = "logodds")$n
+  )
+})
+
+test_that("svyplan carries min_n_domain separately from min_n_stratum", {
+  plan <- svyplan(min_n_stratum = 20, min_n_domain = 300)
+  expect_equal(plan$defaults$min_n_stratum, 20)
+  expect_equal(plan$defaults$min_n_domain, 300)
+  expect_error(svyplan(min_n_domain = -1), "min_n_domain", fixed = TRUE)
+
+  targets <- data.frame(
+    name = rep(c("a", "b"), each = 2),
+    region = rep(c("N", "S"), 2),
+    p = c(0.3, 0.4, 0.5, 0.2),
+    moe = 0.05
+  )
+  # min_n_domain reaches n_multi(); min_n_stratum is not one of its arguments
+  from_plan <- n_multi(targets, domains = "region", plan = plan)
+  direct <- n_multi(targets, domains = "region", min_n_domain = 300)
+  expect_equal(from_plan$n, direct$n)
+  expect_equal(from_plan$params$min_n_domain, 300)
+})
+
+test_that("a plan default reaches n_multi without disturbing prop_method", {
+  # Regression: the plan-merge path materializes every formal, so the
+  # unresolved prop_method default arrived as its full choice vector.
+  targets <- data.frame(
+    name = rep(c("a", "b"), each = 2),
+    region = rep(c("N", "S"), 2),
+    p = c(0.3, 0.4, 0.5, 0.2),
+    moe = 0.05
+  )
+  # min_n_domain is applicable to n_multi() but prop_method is not set,
+  # so the merge must leave prop_method at its own default.
+  expect_equal(
+    n_multi(targets, domains = "region",
+            plan = svyplan(min_n_domain = 300))$n,
+    n_multi(targets, domains = "region", min_n_domain = 300)$n
+  )
+  expect_equal(
+    n_multi(targets, plan = svyplan(prop_method = "wilson"))$n,
+    n_multi(targets, prop_method = "wilson")$n
+  )
+  n_targets <- transform(targets, n = 500, moe = NULL)
+  expect_equal(
+    prec_multi(n_targets, domains = "region",
+               plan = svyplan(prop_method = "wilson"))$cv,
+    prec_multi(n_targets, domains = "region", prop_method = "wilson")$cv
   )
 })

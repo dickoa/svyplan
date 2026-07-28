@@ -2,86 +2,156 @@
 % Please edit documentation in R/effective_n.R
 \name{effective_n}
 \alias{effective_n}
-\alias{effective_n.numeric}
 \alias{effective_n.default}
+\alias{effective_n.svyplan_deff}
+\alias{effective_n.svyplan_cluster}
+\alias{effective_n.svyplan_prec}
+\alias{effective_n.svyplan_varcomp}
+\alias{effective_n.svyplan_n}
 \title{Effective Sample Size}
 \usage{
 effective_n(x = NULL, ...)
 
-\method{effective_n}{numeric}(
-  x,
-  ...,
-  y = NULL,
-  x_cal = NULL,
-  prob = NULL,
-  strata_id = NULL,
-  cluster_id = NULL,
-  stages = NULL,
-  method = "kish"
-)
-
 \method{effective_n}{default}(
   x = NULL,
   ...,
-  delta = NULL,
-  psu_size = NULL,
   n = NULL,
-  method = "cluster"
+  deff = NULL,
+  resp_rate = 1,
+  icc = NULL,
+  n_per_psu = NULL,
+  n_per_ssu = NULL,
+  var_ratio = 1,
+  weights = NULL,
+  strata = NULL
 )
+
+\method{effective_n}{svyplan_deff}(x, ..., n = NULL, resp_rate = 1)
+
+\method{effective_n}{svyplan_cluster}(x, ..., n = NULL, resp_rate = NULL, weights = NULL, strata = NULL)
+
+\method{effective_n}{svyplan_prec}(x, ..., n = NULL, resp_rate = NULL, weights = NULL, strata = NULL)
+
+\method{effective_n}{svyplan_varcomp}(
+  x,
+  ...,
+  n = NULL,
+  resp_rate = 1,
+  n_per_psu = NULL,
+  n_per_ssu = NULL,
+  weights = NULL,
+  strata = NULL
+)
+
+\method{effective_n}{svyplan_n}(x, ..., n = NULL, resp_rate = NULL, weights = NULL)
 }
 \arguments{
-\item{x}{A numeric vector of survey weights (for diagnostic methods),
-or \code{NULL} (for the \code{"cluster"} planning method).}
+\item{x}{A \code{svyplan_deff} from \code{\link[=design_effect]{design_effect()}}, a \code{\link[=n_cluster]{n_cluster()}} or
+\code{\link[=prec_cluster]{prec_cluster()}} allocation, a \code{\link[=varcomp]{varcomp()}} estimate, an \code{\link[=n_alloc]{n_alloc()}}
+allocation, or \code{NULL} (default) to build the design effect from the
+component arguments. A \code{\link[=n_prop]{n_prop()}} or \code{\link[=n_mean]{n_mean()}} result is not one of
+these: its design effect is the \code{deff} you supplied rather than
+something to be derived, so pass the two directly as
+\code{effective_n(n = x$n, deff = x$params$deff)}.}
 
-\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
+\item{...}{Additional arguments passed to methods. Unused arguments are
+rejected.}
 
-\item{y}{Outcome variable (for \code{"henry"}, \code{"spencer"}, \code{"cr"}).}
+\item{n}{Gross planned sample size, counted as units issued. Required
+unless it can be derived from \code{weights}, \code{strata$n}, or \code{x}.}
 
-\item{x_cal}{Calibration covariate (for \code{"henry"}).}
+\item{deff}{Design effect to apply directly, instead of building one
+from components.}
 
-\item{prob}{1-draw selection probabilities (for \code{"spencer"}).}
+\item{resp_rate}{Expected response rate, in (0, 1]. Default 1. It nets
+\code{n} down to the units the design expects to analyse before the design
+effect is applied. When \code{x} is a plan, its own rate is used unless you
+override it here.}
 
-\item{strata_id}{Stratum IDs (for \code{"cr"}).}
-
-\item{cluster_id}{Cluster IDs (for \code{"cr"}).}
-
-\item{stages}{Integer vector of stages per stratum (for \code{"cr"}).}
-
-\item{method}{For numeric weights: one of \code{"kish"} (default), \code{"henry"},
-\code{"spencer"}, or \code{"cr"}. For planning (no weights): \code{"cluster"}
-(default and only option).}
-
-\item{delta}{Survey-planning measure of homogeneity, scalar or
-\code{svyplan_varcomp}. This is not a generic mixed-model ICC.}
-
-\item{psu_size}{Mean PSU size (scalar).}
-
-\item{n}{Total sample size (required for the cluster method).}
+\item{icc, n_per_psu, n_per_ssu, var_ratio, weights, strata}{Design components, with
+the same meaning as in \code{\link[=design_effect]{design_effect()}}.}
 }
 \value{
-A numeric scalar.
+A numeric scalar: the effective sample size,
+\code{n * resp_rate / deff}. It is not rounded, and it can exceed \code{n} when
+the design effect is below 1 (a stratification gain, for instance).
 }
 \description{
-Compute the effective sample size, adjusting for design effects.
-This is an S3 generic that mirrors \code{\link[=design_effect]{design_effect()}}.
+Convert a planned sample size into the simple-random-sample size that
+would give the same precision, \code{n * resp_rate / deff}. This is the
+mirror of \code{\link[=design_effect]{design_effect()}} and takes the same arguments.
+}
+\details{
+The design effect is built exactly as in \code{\link[=design_effect]{design_effect()}}, from
+whichever of the clustering, weighting, and stratification components
+you supply. \code{n} is the gross planned sample size; it is taken from the
+arguments when it can be (the length of \code{weights}, the total of
+\code{strata$n}, or the total of the plan you pass as \code{x}), and must be given
+explicitly otherwise.
+
+Sizes are counted as units \strong{issued}, so nonresponse has to be taken
+off before the design effect is applied: a design that issues \code{n} and
+analyses \code{n * resp_rate} of them carries the information of
+\code{n * resp_rate / deff} simple random draws. This is the identity the
+allocation and precision functions plan on, and the one reported in the
+\code{n_eff} column of an \code{\link[=n_alloc]{n_alloc()}} table. Passing a plan as \code{x} picks up
+the response rate it was built with, so \code{effective_n(plan)} and that
+column agree; supply \code{resp_rate} yourself when you pass a bare \code{n} that
+has not already been netted down.
+
+The design effect it divides by is a without-FPC planning quantity, so
+for an \code{\link[=n_alloc]{n_alloc()}} result the effective size inherits that scale: it
+answers how many simple random draws carry the same information under
+the planning model, not how many the finite-population variance from
+\code{\link[=prec_alloc]{prec_alloc()}} would imply once sampling fractions are material. A
+generalized allocation has no single design effect and is refused here
+for the same reason it is in \code{\link[=design_effect]{design_effect()}}.
+
+\code{effective_n()} is a planning tool. To compute the effective sample size
+realized by collected data, use \code{survey::svymean(..., deff = TRUE)} with
+the actual weights, strata, and clusters.
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{effective_n(numeric)}: Method for numeric weights vector.
+\item \code{effective_n(default)}: Build the design effect from planning components.
 
-\item \code{effective_n(default)}: Planning method (no weights needed).
+\item \code{effective_n(svyplan_deff)}: Apply a design effect already built by
+\code{\link[=design_effect]{design_effect()}}.
+
+\item \code{effective_n(svyplan_cluster)}: Use the total sample size and design features of
+a \code{\link[=n_cluster]{n_cluster()}} or \code{\link[=prec_cluster]{prec_cluster()}} allocation.
+
+\item \code{effective_n(svyplan_prec)}: Use the total and design features of a
+\code{\link[=prec_cluster]{prec_cluster()}} result. Other \code{svyplan_prec} types carry the \code{deff}
+you supplied rather than one to be derived, and are rejected.
+
+\item \code{effective_n(svyplan_varcomp)}: Use the design features of a \code{\link[=varcomp]{varcomp()}}
+estimate. \code{n} and the stage takes are your design choice.
+
+\item \code{effective_n(svyplan_n)}: Use the total and design features of an
+\code{\link[=n_alloc]{n_alloc()}} allocation, dividing by the allocation's own variance
+ratio. The frame needs \code{mean} alongside \code{N} and \code{sd}, since without
+the stratum means the population variance that ratio divides by is
+not identified.
 
 }}
 \examples{
-# Effective sample size from weights (Kish)
-set.seed(731)
-w <- runif(100, 1, 5)
-effective_n(w, method = "kish")
+# From a design effect you already built
+effective_n(design_effect(icc = 0.05, n_per_psu = 25), n = 1200)
 
-# Planning: effective n given cluster design
-effective_n(delta = 0.05, psu_size = 25, n = 800, method = "cluster")
+# Straight from the components
+effective_n(n = 1200, icc = 0.05, n_per_psu = 25)
+
+# From planned weights, where n is the number of units
+effective_n(weights = rep(c(1, 4), c(300, 100)))
+
+# From a planned allocation
+effective_n(strata = data.frame(N = c(50000, 120000), n = c(600, 400)))
+
+# From an optimized cluster plan
+effective_n(n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05))
 
 }
 \seealso{
-\code{\link[=design_effect]{design_effect()}} for the underlying design effect computation.
+\code{\link[=design_effect]{design_effect()}} for the design effect itself.
 }

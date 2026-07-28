@@ -13,6 +13,7 @@ power_did(treat, ...)
   ...,
   outcome = c("mean", "prop"),
   var = NULL,
+  sd = NULL,
   effect = NULL,
   n = NULL,
   power = 0.8,
@@ -23,7 +24,7 @@ power_did(treat, ...)
   alternative = c("two.sided", "one.sided"),
   ratio = 1,
   overlap = 0,
-  rho = 0,
+  overlap_cor = 0,
   plan = NULL
 )
 }
@@ -38,15 +39,24 @@ power_did(treat, ...)
 
 \item{outcome}{Outcome scale: \code{"mean"} (default) or \code{"prop"}.}
 
-\item{var}{Outcome variance for \code{outcome = "mean"}.
+\item{var}{Outcome variance. Applies to \code{outcome = "mean"} only; under
+\code{outcome = "prop"} the cell variances follow from \code{treat} and \code{control},
+so supplying it is an error rather than a silent no-op.
 Length 1: common variance for all four cells.
 Length 2: group-specific variances \code{c(var_treat, var_control)},
 assumed equal across waves.
 Length 4: cell-specific variances in order
 \code{c(var_treat_baseline, var_treat_endline, var_control_baseline, var_control_endline)}.}
 
-\item{effect}{Absolute DiD effect size to detect (> 0).
-Leave \code{NULL} to solve for MDE.}
+\item{sd}{Outcome standard deviation, an alternative spelling of \code{var}
+taking the same lengths. Supply at most one of \code{var} or \code{sd}.}
+
+\item{effect}{Absolute DiD effect size to detect (> 0). Defaults to the
+contrast implied by \code{treat} and \code{control},
+\verb{|(treat[2] - treat[1]) - (control[2] - control[1])|}, so it only needs
+to be supplied to plan for an effect other than the one those paths
+describe. Supplying a value that disagrees with them warns. Leave \code{NULL}
+with both \code{n} and \code{power} given to solve for the MDE.}
 
 \item{n}{Per-arm sample size per wave. Scalar (equal treated/control)
 or length-2 vector \code{c(n_treat, n_control)}. Leave \code{NULL} to solve
@@ -74,7 +84,7 @@ Used only when solving for \code{n} (\code{n = NULL}).}
 \item{overlap}{Panel overlap fraction in [0, 1] within each arm
 across baseline and endline.}
 
-\item{rho}{Correlation between baseline and endline outcomes within
+\item{overlap_cor}{Correlation between baseline and endline outcomes within
 overlapping units, in [0, 1].}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
@@ -94,9 +104,13 @@ A \code{svyplan_power} object with components:
 \description{
 Compute sample size, power, or minimum detectable effect (MDE) for a
 two-group, two-period difference-in-differences (DiD) contrast.
-Leave exactly one of \code{n}, \code{power}, or \code{effect} as \code{NULL}.
 }
 \details{
+\code{treat} and \code{control} already determine the contrast, so \code{effect} is
+optional: leave \code{n} or \code{power} as \code{NULL} to solve for it. Leaving both
+\code{n} and \code{power} supplied while \code{effect} is \code{NULL} solves for the MDE
+instead. Exactly one quantity must remain unknown.
+
 The DiD estimand is
 \code{(treat_endline - treat_baseline) - (control_endline - control_baseline)}.
 
@@ -114,12 +128,37 @@ The DiD test statistic variance is then:
 \right)}
 
 When \code{overlap = 0}, this reduces to the classical flat-variance formula.
+\subsection{What \code{treat} and \code{control} are used for}{
+
+Both paths always supply the contrast. Whether they also supply the
+variance depends on \code{outcome}: for \code{"prop"} the four cell variances are
+\eqn{p(1-p)} at each path value, while for \code{"mean"} the variance comes
+entirely from \code{var} and the paths are used for the contrast alone.
+
+Because the contrast is derived, \code{effect} is redundant with the paths and
+is only needed to plan for a different effect than they describe, for
+example a conservative target below the change a pilot observed. Doing so
+warns, since the printed result then shows an \code{effect} that the displayed
+paths do not produce.
+}
+
+\subsection{Normal approximation}{
+
+Critical values and power come from the standard normal, with the
+variance treated as known and no degrees-of-freedom correction, as in
+\code{\link[=power_mean]{power_mean()}} and \code{\link[=power_prop]{power_prop()}}. The cluster count, not the unit
+count, is what governs the accuracy of that approximation for a
+clustered DiD design: \code{deff} inflates the variance but does not model
+the loss of degrees of freedom, so a design with few clusters per arm
+is optimistic here by more than the unit count suggests.
+}
 }
 \examples{
-# DiD sample size for means
+# DiD sample size for means. The effect is the contrast the two paths
+# describe: (55 - 50) - (52 - 50) = 3.
 power_did(
   treat = c(50, 55), control = c(50, 52),
-  outcome = "mean", var = 100, effect = 3
+  outcome = "mean", var = 100
 )
 
 # DiD power for proportions
@@ -137,7 +176,7 @@ power_did(
 # Panel overlap reduces required n
 power_did(
   treat = c(0.50, 0.55), control = c(0.50, 0.48),
-  outcome = "prop", effect = 0.07, overlap = 0.5, rho = 0.6
+  outcome = "prop", effect = 0.07, overlap = 0.5, overlap_cor = 0.6
 )
 
 }

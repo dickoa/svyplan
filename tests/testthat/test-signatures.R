@@ -33,9 +33,12 @@ test_that("generic signatures expose required and optional inputs", {
 })
 
 test_that("short enumerations advertise their choices", {
-  prop_choices <- quote(c("wald", "wilson", "logodds"))
+  prop_choices <- quote(c("wald", "wilson", "logodds", "beta"))
   expect_identical(formals(n_multi.default)$prop_method, prop_choices)
   expect_identical(formals(prec_multi.default)$prop_method, prop_choices)
+  # the multi family offers exactly what the single-indicator engines do
+  expect_identical(formals(n_prop.default)$method, prop_choices)
+  expect_identical(formals(prec_prop.default)$method, prop_choices)
   expect_identical(
     formals(strata_bound)$method,
     quote(c("lh", "cumrootf", "geo", "kozak"))

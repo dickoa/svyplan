@@ -7,9 +7,9 @@ test_that("varcomp 2-stage SRS formula interface works", {
   result <- varcomp(income ~ district, data = frame)
   expect_s3_class(result, "svyplan_varcomp")
   expect_equal(result$stages, 2L)
-  expect_true(result$delta >= 0 && result$delta <= 1)
-  expect_true(result$k > 0)
-  expect_true(result$rel_var > 0)
+  expect_true(result$icc >= 0 && result$icc <= 1)
+  expect_true(result$var_ratio > 0)
+  expect_true(result$unit_relvar > 0)
 })
 
 test_that("varcomp 2-stage SRS vector interface matches formula", {
@@ -31,7 +31,7 @@ test_that("varcomp 2-stage SRS vector interface matches formula", {
     result_formula$varw,
     tolerance = 1e-10
   )
-  expect_equal(result_vector$delta, result_formula$delta, tolerance = 1e-10)
+  expect_equal(result_vector$icc, result_formula$icc, tolerance = 1e-10)
 })
 
 test_that("unstratified variance components have explicit export schemas", {
@@ -47,17 +47,17 @@ test_that("unstratified variance components have explicit export schemas", {
 
   expect_identical(
     names(two_df),
-    c("stages", "varb", "varw", "delta", "k", "rel_var")
+    c("stages", "varb", "varw", "icc", "var_ratio", "unit_relvar")
   )
   expect_identical(
     names(three_df),
     c(
-      "stages", "varb", "varw_psu", "varw_ssu", "delta_psu",
-      "delta_ssu", "k_psu", "k_ssu", "rel_var"
+      "stages", "varb", "varw_psu", "varw_ssu", "icc_psu",
+      "icc_ssu", "var_ratio_psu", "var_ratio_ssu", "unit_relvar"
     )
   )
-  expect_equal(two_df$delta, two_stage$delta)
-  expect_equal(three_df$delta_psu, three_stage$delta[["delta_psu"]])
+  expect_equal(two_df$icc, two_stage$icc)
+  expect_equal(three_df$icc_psu, three_stage$icc[["icc_psu"]])
 })
 
 test_that("varcomp 2-stage SRS known values", {
@@ -81,7 +81,7 @@ test_that("varcomp 2-stage SRS known values", {
 
   expect_equal(result$varb, B2, tolerance = 1e-10)
   expect_equal(result$varw, W2, tolerance = 1e-10)
-  expect_equal(result$delta, B2 / (B2 + W2), tolerance = 1e-10)
+  expect_equal(result$icc, B2 / (B2 + W2), tolerance = 1e-10)
 })
 
 test_that("varcomp 2-stage PPS known values", {
@@ -125,7 +125,7 @@ test_that("varcomp integrates with n_cluster", {
     district = rep(1:20, each = 10)
   )
   vc <- varcomp(income ~ district, data = frame)
-  plan <- n_cluster(stage_cost = c(500, 50), delta = vc, budget = 100000)
+  plan <- n_cluster(stage_cost = c(500, 50), icc = vc, budget = 100000)
   expect_s3_class(plan, "svyplan_cluster")
 })
 
@@ -145,7 +145,7 @@ test_that("varcomp handles lonely SSUs", {
   y <- c(10, 20, 25, 30, 35, 40)
   result <- varcomp(y, stage_id = list(psu_id))
   expect_s3_class(result, "svyplan_varcomp")
-  expect_false(is.na(result$delta))
+  expect_false(is.na(result$icc))
 })
 
 test_that("varcomp.survey.design matches formula interface", {
@@ -167,7 +167,7 @@ test_that("varcomp.survey.design matches formula interface", {
   expect_s3_class(result, "svyplan_varcomp")
   expect_equal(result$varb, ref$varb, tolerance = 1e-10)
   expect_equal(result$varw, ref$varw, tolerance = 1e-10)
-  expect_equal(result$delta, ref$delta, tolerance = 1e-10)
+  expect_equal(result$icc, ref$icc, tolerance = 1e-10)
 })
 
 test_that("varcomp.survey.design works with strata", {
@@ -188,7 +188,7 @@ test_that("varcomp.survey.design works with strata", {
   result <- varcomp(dsgn, ~y)
   expect_s3_class(result, "svyplan_varcomp")
   expect_equal(result$stages, 2L)
-  expect_true(result$delta >= 0 && result$delta <= 1)
+  expect_true(result$icc >= 0 && result$icc <= 1)
 })
 
 test_that("varcomp.survey.design feeds into n_cluster", {
@@ -204,7 +204,7 @@ test_that("varcomp.survey.design feeds into n_cluster", {
     weights = rep(1, 200)
   )
   vc <- varcomp(dsgn, ~income)
-  plan <- n_cluster(stage_cost = c(500, 50), delta = vc, budget = 100000)
+  plan <- n_cluster(stage_cost = c(500, 50), icc = vc, budget = 100000)
   expect_s3_class(plan, "svyplan_cluster")
 })
 
@@ -219,21 +219,21 @@ test_that("3-stage varcomp with non-nested SSU IDs matches nested", {
   res_non <- varcomp(y, stage_id = list(psu_id, ssu_id_non_nested), prob = pp)
   res_nested <- varcomp(y, stage_id = list(psu_id, ssu_id_nested), prob = pp)
 
-  expect_equal(res_non$delta, res_nested$delta, tolerance = 1e-10)
+  expect_equal(res_non$icc, res_nested$icc, tolerance = 1e-10)
   expect_equal(res_non$varb, res_nested$varb, tolerance = 1e-10)
   expect_equal(res_non$varw, res_nested$varw, tolerance = 1e-10)
 })
 
-test_that("all-singleton 2-stage returns delta = 1 with warning", {
+test_that("all-singleton 2-stage returns icc = 1 with warning", {
   psu_id <- 1:10
   y <- rnorm(10, 100, 20)
   expect_warning(
     res <- varcomp(y, stage_id = list(psu_id)),
     "all clusters are singletons"
   )
-  expect_equal(res$delta, 1)
-  expect_false(is.nan(res$delta))
-  expect_true(is.finite(res$k))
+  expect_equal(res$icc, 1)
+  expect_false(is.nan(res$icc))
+  expect_true(is.finite(res$var_ratio))
 })
 
 test_that("varcomp.survey.design validates inputs", {
@@ -262,45 +262,45 @@ test_that("varcomp rejects empty stage_id", {
   )
 })
 
-test_that("varcomp 2-stage SRS constant y gives delta = 0 with warning", {
+test_that("varcomp 2-stage SRS constant y gives icc = 0 with warning", {
   y <- rep(42, 50)
   psu_id <- rep(1:10, each = 5)
   expect_warning(
     res <- varcomp(y, stage_id = list(psu_id)),
-    "approximately zero"
+    "no variance to split"
   )
-  expect_equal(res$delta, 0)
-  expect_equal(res$k, 1)
-  expect_true(is.finite(res$delta))
-  expect_true(is.finite(res$k))
+  expect_equal(res$icc, 0)
+  expect_equal(res$var_ratio, 1)
+  expect_true(is.finite(res$icc))
+  expect_true(is.finite(res$var_ratio))
 })
 
-test_that("varcomp 2-stage PPS constant y gives delta = 0 with warning", {
+test_that("varcomp 2-stage PPS constant y gives icc = 0 with warning", {
   y <- rep(42, 50)
   psu_id <- rep(1:10, each = 5)
   pp <- rep(0.1, 10)
   expect_warning(
     res <- varcomp(y, stage_id = list(psu_id), prob = pp),
-    "approximately zero"
+    "no variance to split"
   )
-  expect_equal(res$delta, 0)
-  expect_equal(res$k, 1)
-  expect_true(is.finite(res$delta))
-  expect_true(is.finite(res$k))
+  expect_equal(res$icc, 0)
+  expect_equal(res$var_ratio, 1)
+  expect_true(is.finite(res$icc))
+  expect_true(is.finite(res$var_ratio))
 })
 
-test_that("varcomp 3-stage PPS constant y gives finite delta with warning", {
+test_that("varcomp 3-stage PPS constant y gives finite icc with warning", {
   y <- rep(42, 60)
   psu_id <- rep(1:6, each = 10)
   ssu_id <- rep(rep(1:2, each = 5), 6)
   pp <- rep(1 / 6, 6)
   expect_warning(
     res <- varcomp(y, stage_id = list(psu_id, ssu_id), prob = pp),
-    "approximately zero"
+    "no variance to split"
   )
-  expect_length(res$delta, 2)
-  expect_true(all(is.finite(res$delta)))
-  expect_true(all(is.finite(res$k)))
+  expect_length(res$icc, 2)
+  expect_true(all(is.finite(res$icc)))
+  expect_true(all(is.finite(res$var_ratio)))
 })
 
 test_that("varcomp rejects NA in outcome vector", {
@@ -339,7 +339,7 @@ test_that("varcomp accepts '/' and '%in%' for multi-stage formula", {
   )
   res_slash <- varcomp(y ~ psu/ssu, data = frame, prob = ~pp)
   res_in <- varcomp(y ~ ssu %in% psu, data = frame, prob = ~pp)
-  expect_equal(res_slash$delta, res_in$delta, tolerance = 1e-10)
+  expect_equal(res_slash$icc, res_in$icc, tolerance = 1e-10)
   expect_equal(res_slash$varb, res_in$varb, tolerance = 1e-10)
   expect_equal(res_slash$varw, res_in$varw, tolerance = 1e-10)
 })
@@ -354,9 +354,9 @@ test_that("3-stage SRS works without prob", {
   vc <- varcomp(y ~ psu/ssu, data = frame)
   expect_s3_class(vc, "svyplan_varcomp")
   expect_equal(vc$stages, 3L)
-  expect_length(vc$delta, 2L)
-  expect_length(vc$k, 2L)
-  expect_true(all(vc$delta >= 0 & vc$delta <= 1))
+  expect_length(vc$icc, 2L)
+  expect_length(vc$var_ratio, 2L)
+  expect_true(all(vc$icc >= 0 & vc$icc <= 1))
 })
 
 test_that("3-stage SRS matches PPS with uniform prob", {
@@ -370,9 +370,9 @@ test_that("3-stage SRS matches PPS with uniform prob", {
   )
   vc_srs <- varcomp(y ~ psu/ssu, data = frame)
   vc_pps <- varcomp(y ~ psu/ssu, data = frame, prob = ~pp)
-  expect_equal(vc_srs$delta, vc_pps$delta, tolerance = 1e-10)
-  expect_equal(vc_srs$k, vc_pps$k, tolerance = 1e-10)
-  expect_equal(vc_srs$rel_var, vc_pps$rel_var, tolerance = 1e-10)
+  expect_equal(vc_srs$icc, vc_pps$icc, tolerance = 1e-10)
+  expect_equal(vc_srs$var_ratio, vc_pps$var_ratio, tolerance = 1e-10)
+  expect_equal(vc_srs$unit_relvar, vc_pps$unit_relvar, tolerance = 1e-10)
   expect_equal(vc_srs$varb, vc_pps$varb, tolerance = 1e-10)
   expect_equal(vc_srs$varw, vc_pps$varw, tolerance = 1e-10)
 })
@@ -384,8 +384,8 @@ test_that("3-stage SRS works with vector interface", {
   ssu <- rep(1:100, each = 4)
   vc_vec <- varcomp(y, stage_id = list(psu, ssu))
   vc_frm <- varcomp(y ~ psu/ssu, data = data.frame(y, psu, ssu))
-  expect_equal(vc_vec$delta, vc_frm$delta, tolerance = 1e-10)
-  expect_equal(vc_vec$k, vc_frm$k, tolerance = 1e-10)
+  expect_equal(vc_vec$icc, vc_frm$icc, tolerance = 1e-10)
+  expect_equal(vc_vec$var_ratio, vc_frm$var_ratio, tolerance = 1e-10)
 })
 
 test_that("survey.design method with unit weights matches frame", {
@@ -404,7 +404,7 @@ test_that("survey.design method with unit weights matches frame", {
   result <- varcomp(dsgn, ~income)
   expect_equal(result$varb, ref$varb, tolerance = 1e-12)
   expect_equal(result$varw, ref$varw, tolerance = 1e-12)
-  expect_equal(result$delta, ref$delta, tolerance = 1e-12)
+  expect_equal(result$icc, ref$icc, tolerance = 1e-12)
 })
 
 test_that("weighted correction shrinks the between component", {
@@ -443,11 +443,11 @@ test_that("survey.design method uses design weights", {
   wtd <- varcomp(dsgn, ~y)
   unw <- varcomp(s$y, stage_id = list(s$psu))
 
-  expect_lt(abs(wtd$delta - truth$delta), 0.1)
-  expect_lt(abs(wtd$delta - truth$delta), abs(unw$delta - truth$delta))
+  expect_lt(abs(wtd$icc - truth$icc), 0.1)
+  expect_lt(abs(wtd$icc - truth$icc), abs(unw$icc - truth$icc))
 })
 
-test_that("weighted 2-stage PPS recovers the population delta", {
+test_that("weighted 2-stage PPS recovers the population icc", {
   skip_if_not_installed("survey")
   set.seed(21)
   M <- 40
@@ -467,8 +467,8 @@ test_that("weighted 2-stage PPS recovers the population delta", {
   wtd <- varcomp(dsgn, ~y, prob = pp)
   unw <- varcomp(s$y, stage_id = list(s$psu), prob = pp)
 
-  expect_lt(abs(wtd$delta - truth$delta), 0.1)
-  expect_lt(abs(wtd$delta - truth$delta), abs(unw$delta - truth$delta))
+  expect_lt(abs(wtd$icc - truth$icc), 0.1)
+  expect_lt(abs(wtd$icc - truth$icc), abs(unw$icc - truth$icc))
 })
 
 test_that("per-stratum weighted results do not depend on other strata", {
@@ -488,8 +488,8 @@ test_that("per-stratum weighted results do not depend on other strata", {
     dsub <- survey::svydesign(ids = ~psu, weights = ~w, data = sub)
     ref <- varcomp(dsub, ~y)
     i <- match(s, vc$strata$stratum)
-    expect_equal(vc$strata$delta_psu[i], ref$delta)
-    expect_equal(vc$strata$k_psu[i], ref$k)
+    expect_equal(vc$strata$icc_psu[i], ref$icc)
+    expect_equal(vc$strata$var_ratio_psu[i], ref$var_ratio)
   }
 })
 
@@ -509,7 +509,7 @@ test_that("3-stage survey.design with unit weights matches frame", {
     weights = rep(1, nrow(frame))
   )
   result <- varcomp(dsgn, ~y)
-  expect_equal(result$delta, ref$delta, tolerance = 1e-12)
+  expect_equal(result$icc, ref$icc, tolerance = 1e-12)
   expect_equal(result$varw, ref$varw, tolerance = 1e-12)
 })
 
@@ -527,9 +527,9 @@ test_that("3-stage weighted components stay finite and bounded", {
   s$w <- 40 / 24
   dsgn <- survey::svydesign(ids = ~psu + ssu, data = s, weights = ~w)
   res <- varcomp(dsgn, ~y)
-  expect_true(all(is.finite(res$delta)))
-  expect_true(all(res$delta >= 0 & res$delta <= 1))
-  expect_true(all(res$k > 0))
+  expect_true(all(is.finite(res$icc)))
+  expect_true(all(res$icc >= 0 & res$icc <= 1))
+  expect_true(all(res$var_ratio > 0))
 })
 
 test_that("survey.design method rejects non-finite weights", {
@@ -548,7 +548,7 @@ test_that("strata gives per-stratum components matching manual splits", {
     y = rnorm(800, rep(c(50, 70), each = 400), 15)
   )
   vc <- varcomp(y ~ ea, data = d, strata = ~region)
-  expect_null(vc$delta)
+  expect_null(vc$icc)
   expect_equal(nrow(vc$strata), 2L)
   expect_equal(vc$strata$stratum, c("N", "S"))
 
@@ -556,9 +556,9 @@ test_that("strata gives per-stratum components matching manual splits", {
     sub <- d[d$region == s, ]
     ref <- varcomp(sub$y, stage_id = list(sub$ea))
     i <- match(s, vc$strata$stratum)
-    expect_equal(vc$strata$delta_psu[i], ref$delta)
-    expect_equal(vc$strata$k_psu[i], ref$k)
-    expect_equal(vc$strata$rel_var[i], ref$rel_var)
+    expect_equal(vc$strata$icc_psu[i], ref$icc)
+    expect_equal(vc$strata$var_ratio_psu[i], ref$var_ratio)
+    expect_equal(vc$strata$unit_relvar[i], ref$unit_relvar)
     expect_equal(vc$strata$sd[i], sd(sub$y))
     expect_equal(vc$strata$mean[i], mean(sub$y))
   }
@@ -577,7 +577,7 @@ test_that("strata works for 3-stage and the vector interface", {
   )
   vc <- varcomp(d$y, stage_id = list(d$psu, d$ssu), strata = d$dom)
   expect_equal(vc$stages, 3L)
-  expect_true(all(c("delta_psu", "delta_ssu", "k_psu", "k_ssu",
+  expect_true(all(c("icc_psu", "icc_ssu", "var_ratio_psu", "var_ratio_ssu",
                     "varw_psu", "varw_ssu") %in% names(vc$strata)))
 })
 
@@ -603,16 +603,15 @@ test_that("stratified varcomp is rejected where a pooled one is needed", {
     y = rnorm(400, 50, 10)
   )
   vc <- varcomp(y ~ ea, data = d, strata = ~region)
-  expect_error(n_cluster(stage_cost = c(500, 50), delta = vc, cv = 0.05),
+  expect_error(n_cluster(stage_cost = c(500, 50), icc = vc, cv = 0.05),
                "stratified varcomp")
-  expect_error(design_effect(delta = vc, psu_size = 10, method = "cluster"),
-               "stratified varcomp")
-  expect_error(prec_cluster(n = c(20, 10), delta = vc),
+  expect_error(design_effect(vc, n_per_psu = 10), "stratified varcomp")
+  expect_error(prec_cluster(n = c(20, 10), icc = vc),
                "stratified varcomp")
   pooled <- varcomp(y ~ ea, data = d)
   pooled_df <- as.data.frame(pooled)
   expect_equal(nrow(pooled_df), 1L)
-  expect_equal(pooled_df$delta, pooled$delta)
+  expect_equal(pooled_df$icc, pooled$icc)
 })
 
 test_that("strata validates inputs", {
@@ -669,7 +668,7 @@ test_that("named per-PSU probabilities are matched by PSU id", {
   a <- varcomp(1:6, stage_id = list(psu), prob = c("1" = 0.2, "2" = 0.3, "3" = 0.5))
   b <- varcomp(1:6, stage_id = list(psu), prob = c("3" = 0.5, "1" = 0.2, "2" = 0.3))
   expect_equal(a$varb, b$varb)
-  expect_equal(a$delta, b$delta)
+  expect_equal(a$icc, b$icc)
   expect_error(
     varcomp(1:6, stage_id = list(psu), prob = c("1" = 0.2, "2" = 0.3, "9" = 0.5)),
     "must match the PSU identifiers"
@@ -690,11 +689,11 @@ test_that("formula and vector 'weights' match the survey.design method", {
   frm <- varcomp(y ~ psu, data = s, weights = ~w)
   expect_equal(frm$varb, ref$varb, tolerance = 1e-12)
   expect_equal(frm$varw, ref$varw, tolerance = 1e-12)
-  expect_equal(frm$delta, ref$delta, tolerance = 1e-12)
+  expect_equal(frm$icc, ref$icc, tolerance = 1e-12)
 
   vec <- varcomp(s$y, stage_id = list(s$psu), weights = s$w)
-  expect_equal(vec$delta, ref$delta, tolerance = 1e-12)
-  expect_equal(vec$k, ref$k, tolerance = 1e-12)
+  expect_equal(vec$icc, ref$icc, tolerance = 1e-12)
+  expect_equal(vec$var_ratio, ref$var_ratio, tolerance = 1e-12)
 })
 
 test_that("'weights' works with a PPS first stage and with strata", {
@@ -711,11 +710,11 @@ test_that("'weights' works with a PPS first stage and with strata", {
   ref <- varcomp(dsgn, ~y, prob = pp)
   frm <- varcomp(y ~ psu, data = s, weights = ~w, prob = pp)
   expect_equal(frm$varb, ref$varb, tolerance = 1e-12)
-  expect_equal(frm$delta, ref$delta, tolerance = 1e-12)
+  expect_equal(frm$icc, ref$icc, tolerance = 1e-12)
 
   ref_s <- varcomp(dsgn, ~y, strata = ~region)
   frm_s <- varcomp(y ~ psu, data = s, weights = ~w, strata = ~region)
-  expect_equal(frm_s$strata$delta_psu, ref_s$strata$delta_psu,
+  expect_equal(frm_s$strata$icc_psu, ref_s$strata$icc_psu,
                tolerance = 1e-12)
   expect_equal(frm_s$strata$sd, ref_s$strata$sd, tolerance = 1e-12)
 })
@@ -729,7 +728,7 @@ test_that("unit 'weights' collapse to the exact frame formulas", {
   ref <- varcomp(y ~ psu, data = frame)
   wtd <- varcomp(y ~ psu, data = frame, weights = rep(1, 100))
   expect_identical(wtd$varb, ref$varb)
-  expect_identical(wtd$delta, ref$delta)
+  expect_identical(wtd$icc, ref$icc)
 })
 
 test_that("'weights' argument is validated", {
@@ -751,4 +750,49 @@ test_that("formula interface warns on a samplyr sample without weights", {
   class(s) <- c("tbl_sample", "data.frame")
   expect_warning(varcomp(y ~ psu, data = s), "population frame")
   expect_no_warning(varcomp(y ~ psu, data = s, weights = ~w))
+})
+
+test_that("a zero-mean outcome keeps icc and var_ratio, which do not use the mean", {
+  # nonconstant, but centred on zero: every relvariance is infinite while the
+  # split between the components is unaffected
+  y <- rep(c(-2, -1, 1, 2), each = 4) + rep(c(-0.2, -0.1, 0.1, 0.2), 4)
+  psu_id <- rep(seq_len(4), each = 4)
+  expect_gt(var(y), 1)
+  expect_equal(mean(y), 0)
+
+  expect_warning(
+    res <- varcomp(y, stage_id = list(psu_id)),
+    "mean is approximately zero"
+  )
+  expect_true(is.infinite(res$varb))
+  expect_true(is.infinite(res$unit_relvar))
+
+  # the same components read off a shifted copy, where nothing is degenerate
+  shifted <- varcomp(y + 100, stage_id = list(psu_id))
+  expect_equal(res$icc, shifted$icc)
+  expect_equal(res$var_ratio, shifted$var_ratio)
+  expect_gt(res$icc, 0.9)
+})
+
+test_that("the two degenerate outcomes are told apart", {
+  psu_id <- rep(seq_len(4), each = 4)
+  collect <- function(expr) {
+    msgs <- character()
+    withCallingHandlers(
+      expr,
+      warning = function(w) {
+        msgs <<- c(msgs, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    )
+    msgs
+  }
+
+  zero_mean <- collect(varcomp(rep(c(-1, 1), 8), stage_id = list(psu_id)))
+  constant <- collect(varcomp(rep(7, 16), stage_id = list(psu_id)))
+
+  expect_true(any(grepl("mean is approximately zero", zero_mean)))
+  expect_false(any(grepl("no variance to split", zero_mean)))
+  expect_true(any(grepl("no variance to split", constant)))
+  expect_false(any(grepl("mean is approximately zero", constant)))
 })

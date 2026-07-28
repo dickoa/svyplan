@@ -2,137 +2,268 @@
 % Please edit documentation in R/design_effect.R
 \name{design_effect}
 \alias{design_effect}
-\alias{design_effect.numeric}
 \alias{design_effect.default}
-\title{Design Effect}
+\alias{design_effect.numeric}
+\alias{design_effect.svyplan_cluster}
+\alias{design_effect.svyplan_prec}
+\alias{design_effect.svyplan_varcomp}
+\alias{design_effect.svyplan_n}
+\title{Planning Design Effect}
 \usage{
 design_effect(x = NULL, ...)
 
-\method{design_effect}{numeric}(
-  x,
+\method{design_effect}{default}(
+  x = NULL,
   ...,
-  y = NULL,
-  x_cal = NULL,
-  prob = NULL,
-  strata_id = NULL,
-  cluster_id = NULL,
-  stages = NULL,
-  method = "kish"
+  icc = NULL,
+  n_per_psu = NULL,
+  n_per_ssu = NULL,
+  var_ratio = 1,
+  weights = NULL,
+  strata = NULL
 )
 
-\method{design_effect}{default}(x = NULL, ..., delta = NULL, psu_size = NULL, method = "cluster")
+\method{design_effect}{numeric}(x, ...)
+
+\method{design_effect}{svyplan_cluster}(x, ..., weights = NULL, strata = NULL)
+
+\method{design_effect}{svyplan_prec}(x, ..., weights = NULL, strata = NULL)
+
+\method{design_effect}{svyplan_varcomp}(
+  x,
+  ...,
+  n_per_psu = NULL,
+  n_per_ssu = NULL,
+  weights = NULL,
+  strata = NULL
+)
+
+\method{design_effect}{svyplan_n}(x, ..., weights = NULL)
 }
 \arguments{
-\item{x}{A numeric vector of survey weights (for diagnostic methods),
-or \code{NULL} (for the \code{"cluster"} planning method). The \code{"cr"} method
-requires weights on the population scale (inverse inclusion
-probabilities): the sum of weights must exceed the sample size,
-overall and within every stratum. Normalized weights are rejected.}
+\item{x}{A \code{svyplan} result to read design features from: a
+\code{\link[=n_cluster]{n_cluster()}} or \code{\link[=prec_cluster]{prec_cluster()}} allocation, a \code{\link[=varcomp]{varcomp()}} estimate,
+or an \code{\link[=n_alloc]{n_alloc()}} allocation. \code{NULL} (default) builds the design
+effect from the component arguments below.}
 
-\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
+\item{...}{Additional arguments passed to methods. Unused arguments are
+rejected.}
 
-\item{y}{Outcome variable (required for \code{"henry"}, \code{"spencer"}, \code{"cr"}).}
+\item{icc}{Homogeneity of units within a cluster, in \eqn{[0, 1]}.
+A scalar for a two-stage design, or \code{c(icc_psu, icc_ssu)} for a
+three-stage design. This is the survey-planning measure returned by
+\code{\link[=varcomp]{varcomp()}}, not a generic mixed-model ICC.}
 
-\item{x_cal}{Calibration covariate (required for \code{"henry"}).}
+\item{n_per_psu}{Units taken per PSU in a two-stage design, or SSUs
+taken per PSU in a three-stage design. Required with \code{icc}.}
 
-\item{prob}{1-draw selection probabilities (required for \code{"spencer"}).}
+\item{n_per_ssu}{Units taken per SSU. Supply only for a three-stage
+design, where \code{icc} has length 2.}
 
-\item{strata_id}{Stratum IDs (required for \code{"cr"}).}
+\item{var_ratio}{Ratio of the components' unit variance to the analysis
+variable's, default 1. A scalar names \code{var_ratio_psu} and, for a three-stage
+\code{icc}, derives \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)}. Supply a length-2
+vector only to override that identity; see Details.}
 
-\item{cluster_id}{Cluster IDs (required for \code{"cr"}).}
+\item{weights}{For an \code{\link[=n_alloc]{n_alloc()}} result only: an \emph{additional}
+anticipated weighting adjustment charged on top of the allocation,
+such as a nonresponse correction or a calibration step. Do not pass
+the allocation's own weights. The stratum takes already carry those,
+and supplying them again counts the same disproportionality twice.
+The \code{allocation} component is exact for the plan; this one is Kish's
+approximation, so with \code{weights} supplied the overall result is
+approximate too and prints as such.}
 
-\item{stages}{Integer vector of stages per stratum (required for \code{"cr"}).}
-
-\item{method}{For numeric weights: one of \code{"kish"} (default), \code{"henry"},
-\code{"spencer"}, or \code{"cr"}. For planning (no weights): \code{"cluster"}
-(default and only option).}
-
-\item{delta}{Measure of homogeneity for cluster planning, scalar or
-\code{svyplan_varcomp} (extracts \code{delta[1]}). This is the same \code{delta}
-used by \code{\link[=n_cluster]{n_cluster()}} and \code{\link[=varcomp]{varcomp()}}, not a generic mixed-model ICC.}
-
-\item{psu_size}{Mean cluster size (scalar).}
+\item{strata}{Stratum-level data frame describing a planned stratified
+allocation, using the \code{\link[=n_alloc]{n_alloc()}} column names. \code{N} with \code{n} gives
+the weighting component; \code{N} with \code{sd} and \code{mean} gives the
+stratification component. Supply all four for both.}
 }
 \value{
-A numeric \code{svyplan_design_effect} object. Use \code{\link[=as.double]{as.double()}} to
-extract the overall design effect and \code{\link[=as.data.frame]{as.data.frame()}} to export its
-components. For the Chen-Rust method, the data frame contains the full
-per-stratum decomposition.
+A \code{svyplan_deff} object: a numeric scalar carrying the component
+decomposition. Use it directly wherever a \code{deff} argument is expected,
+\code{\link[=as.double]{as.double()}} to strip it to a plain number, and \code{\link[=as.data.frame]{as.data.frame()}} to
+export the components.
 }
 \description{
-Estimate the design effect using various methods. This is an S3 generic
-that dispatches on the class of \code{x}.
+Build the design effect you expect a complex design to produce, before
+any data are collected, by combining the design features you are
+planning: clustering, unequal weighting, and stratification. The result
+is a multiplier you pass as \code{deff} to \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}},
+\code{\link[=n_alloc]{n_alloc()}}, or any other sizing or precision function.
 }
 \details{
-The design effect (DEFF) measures how much a complex design inflates
-variance compared to a simple random sample of the same size.
-DEFF = 1 means no inflation, whereas DEFF = 2 means the variance is doubled
-(equivalently, you need twice the sample size for the same precision).
-\subsection{Choosing a method}{
+The design effect (DEFF) is the ratio of the variance under the planned
+design to the variance of a simple random sample of the same size.
+DEFF = 2 means you need twice the sample for the same precision, whereas
+DEFF below 1 means the design is more efficient than simple random
+sampling.
 
-\strong{After data collection (diagnostic)}: use survey weights to assess
-how much precision was lost due to the complex design:
-\itemize{
-\item \strong{kish}: Weights only. Quick, outcome-independent summary.
-Good default for an overall DEFF estimate.
-\item \strong{henry}: Weights + outcome + calibration covariate. Accounts for
-calibration weighting.
-\item \strong{spencer}: Weights + outcome + selection probabilities. Accounts
-for correlation between weights and the outcome.
-\item \strong{cr}: Weights + outcome + strata/cluster IDs. Full Chen-Rust
-decomposition for multistage stratified designs, returning
-per-stratum and overall DEFF values.
+\code{design_effect()} is a \strong{planning} tool. It anticipates a design effect
+from design parameters you choose or estimate beforehand. It does not
+estimate a design effect from collected data: once you have a realized
+sample, use \code{survey::svymean(..., deff = TRUE)} and \code{survey::deff()},
+which compute it from the actual weights, strata, and clusters.
+\subsection{Components}{
+
+Components are selected by which arguments you supply, and multiply
+together:
+
+\deqn{DEFF = DEFF_{cluster} \times DEFF_{weight} \times DEFF_{strata}.}
+
+\strong{Clustering} (\code{icc}, \code{n_per_psu}, \code{n_per_ssu}, \code{var_ratio}) uses the same
+variance model as \code{\link[=n_cluster]{n_cluster()}} and \code{\link[=prec_cluster]{prec_cluster()}}, so the two always
+agree. For a two-stage design with \code{n_per_psu} units taken per PSU,
+\deqn{DEFF_{cluster} = k(1 + \delta(m - 1)),}
+and for a three-stage design taking \code{n_per_psu} SSUs per PSU and
+\code{n_per_ssu} units per SSU,
+\deqn{DEFF_{cluster} = k_1\delta_1 mq + k_2(1 + \delta_2(q - 1)).}
+Estimate \code{icc} (and \code{var_ratio}) from a previous round or pilot with
+\code{\link[=varcomp]{varcomp()}}.
+
+In the three-stage form \eqn{k_1} rescales the components' unit variance
+to the analysis variable and \eqn{k_2} does the same for the within-PSU
+part, which is \eqn{1-\delta_1} of it. The two are therefore linked,
+\deqn{k_2 = k_1(1 - \delta_1),}
+and that identity is what makes the design effect collapse to \eqn{k_1}
+at \eqn{m=q=1}, where one unit is taken per SSU and one SSU per PSU so no
+clustering remains. A scalar \code{var_ratio} supplies \eqn{k_1} and derives
+\eqn{k_2} from it. Supplying both explicitly overrides the identity,
+which is meaningful only when the two ratios come from different
+decompositions; note that \code{varcomp()} estimates \eqn{k_2} from its own
+SSU-level decomposition rather than imposing the identity, so its value
+can differ by several percent on small clusters.
+
+Written on components referenced to the total unit variance,
+\eqn{\delta_1=\sigma_1^2/S^2} and \eqn{\delta_2^{tot}=\sigma_2^2/S^2},
+the same quantity is the familiar
+\eqn{1+\delta_1(mq-1)+\delta_2^{tot}(q-1)}. The package's \code{icc_ssu} is
+referenced to the within-PSU variance instead, so
+\eqn{\delta_2=\delta_2^{tot}/(1-\delta_1)}.
+
+\strong{Unequal weighting} (\code{weights}, or \code{N} and \code{n} in \code{strata}) is Kish's
+weighting loss. From a vector of planned weights,
+\deqn{DEFF_{weight} = n\sum_i w_i^2 / (\sum_i w_i)^2,}
+and from a planned stratified allocation with stratum sizes \eqn{N_h}
+and takes \eqn{n_h} the same quantity is
+\deqn{DEFF_{weight} = n\sum_h N_h^2/n_h / (\sum_h N_h)^2, \quad
+      n = \sum_h n_h.}
+Equal weights give exactly 1. This is the cost of a disproportionate
+allocation, of weighting classes, or of an anticipated nonresponse
+adjustment, and it is never below 1.
+
+\strong{Stratification} (\code{N}, \code{sd}, and \code{mean} in \code{strata}) is the gain from
+stratifying, the only component that can fall below 1. With
+\eqn{W_h = N_h/N},
+\deqn{DEFF_{strata} = \sum_h W_hS_h^2 /
+      \left(\sum_h W_hS_h^2 + \sum_h W_h(\bar y_h - \bar y)^2\right).}
+It measures the gain under \emph{proportional} allocation; any departure from
+proportional is already charged to the weighting component, so the two
+compose without double counting.
+
+Because the clustering component already prices the clustering, do not
+additionally inflate \code{deff} for it elsewhere. Components you leave
+unspecified are simply absent, which is equivalent to setting them to 1.
 }
 
-\strong{Before data collection (planning)}: estimate an expected DEFF
-to inflate a simple-random-sample size calculation:
-\itemize{
-\item \strong{cluster}: Uses \code{delta} (homogeneity) and \code{psu_size} to compute
-DEFF = 1 + (psu_size - 1) * delta. Pass the result as the \code{deff}
-argument to \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}}, or other sizing functions.
-}
+\subsection{What a multiplier can and cannot say}{
 
-The \code{"kish"} method uses only weights and produces a single survey-wide
-DEFF. The \code{"henry"}, \code{"spencer"}, and \code{"cr"} methods are
-\strong{outcome-dependent}: they require \code{y}, and the resulting DEFF varies
-by outcome variable.
+Multiplying the components you supply by hand is Kish's approximation. It
+is exact when the stratum standard deviations are equal, whatever the
+stratum sizes, means and takes, and not otherwise. The gap runs in
+either direction, so it is not a bound: the weighting component charges
+a disproportionate allocation as a loss without knowing which strata
+were favoured, so a Neyman allocation over strata that differ sharply in
+\code{sd} is reported well above its true variance ratio, while a constraint
+that forces units into a low-variance stratum is reported well below it.
+The printed result marks a multi-component product as approximate for
+that reason.
+
+Given an \code{\link[=n_alloc]{n_alloc()}} result there is no need to approximate at all.
+Every quantity the ratio needs is already there, so
+\code{design_effect(alloc)} returns the allocation's own variance ratio,
+\deqn{D = d_0\,n \sum_h W_h^2S_h^2k_h(1+\delta_h(m_h-1))/n_h \Big/
+       \left(\sum_h W_hS_h^2+\sum_h W_h(\bar y_h-\bar y)^2\right),}
+with the per-stratum cluster factors entering stratum by stratum rather
+than averaged, and the scalar \code{deff} the allocation was built under
+counted once. A generalized allocation optimizing several measures has
+no single such ratio and is refused; take the measure-specific numbers
+from \code{\link[=prec_alloc]{prec_alloc()}}.
+
+This ratio is computed without finite population corrections, on the
+same planning scale as the component arguments. \code{\link[=prec_alloc]{prec_alloc()}} applies
+each stratum's FPC, so a ratio derived from its variance need not equal
+\code{design_effect(alloc)} once sampling fractions are material; use
+\code{\link[=prec_alloc]{prec_alloc()}} when the design variance itself is what you want.
 }
 }
 \section{Methods (by class)}{
 \itemize{
-\item \code{design_effect(numeric)}: Method for numeric weights vector.
+\item \code{design_effect(default)}: Build the design effect from planning
+components. Supply the components you are designing for and leave the
+rest \code{NULL}.
 
-\item \code{design_effect(default)}: Planning method (no weights needed).
+\item \code{design_effect(numeric)}: Reject a bare numeric vector, which says
+nothing about which design component it describes.
+
+\item \code{design_effect(svyplan_cluster)}: Read \code{icc}, \code{var_ratio}, and the stage takes from a
+\code{\link[=n_cluster]{n_cluster()}} or \code{\link[=prec_cluster]{prec_cluster()}} allocation.
+
+\item \code{design_effect(svyplan_prec)}: Read the design features off a
+\code{\link[=prec_cluster]{prec_cluster()}} result, the same way as for \code{\link[=n_cluster]{n_cluster()}}. Other
+\code{svyplan_prec} types carry the \code{deff} you supplied rather than one to
+be derived, and are rejected.
+
+\item \code{design_effect(svyplan_varcomp)}: Read \code{icc} and \code{var_ratio} from a \code{\link[=varcomp]{varcomp()}}
+estimate. The stage takes are your design choice, so \code{n_per_psu} (and
+\code{n_per_ssu} for three stages) must be supplied.
+
+\item \code{design_effect(svyplan_n)}: Read the planned allocation from an
+\code{\link[=n_alloc]{n_alloc()}} result. This returns the allocation's own variance ratio,
+computed from the stratum sizes, takes, standard deviations, means and
+any per-stratum cluster factors, rather than a product of separate
+weighting and stratification approximations. Supply \code{weights} only for
+an \emph{additional} anticipated adjustment; see the \code{weights} argument.
 
 }}
 \examples{
-# Kish design effect from weights
-set.seed(208)
-w <- runif(100, 1, 5)
-design_effect(w, method = "kish")
+# Clustering: 25 households per cluster, homogeneity 0.05
+design_effect(icc = 0.05, n_per_psu = 25)
 
-# Planning: cluster design effect
-design_effect(delta = 0.05, psu_size = 25, method = "cluster")
+# Three stages: 10 SSUs per PSU, 4 units per SSU
+design_effect(icc = c(0.01, 0.05), n_per_psu = 10, n_per_ssu = 4)
+
+# Weighting loss from a planned set of weights
+design_effect(weights = rep(c(1, 4), c(300, 100)))
+
+# A planned stratified allocation: weighting loss and stratification gain
+frame <- data.frame(
+  N    = c(50000, 120000),
+  n    = c(600, 400),
+  sd   = c(12, 20),
+  mean = c(55, 48)
+)
+design_effect(strata = frame)
+
+# Clustering and weighting together
+deff <- design_effect(icc = 0.05, n_per_psu = 25, strata = frame)
+deff
+n_prop(p = 0.3, moe = 0.05, deff = deff)
+
+# Read the design features off an existing plan
+plan <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
+design_effect(plan)
 
 }
 \references{
 Kish, L. (1965). \emph{Survey Sampling}. Wiley.
 
-Henry, K. A. and Valliant, R. (2015). A design effect measure
-for calibration weighting in single-stage samples. \emph{Survey
-Methodology}, 41(2), 315--331.
-
-Spencer, B. D. (2000). An approximate design effect for unequal
-weighting when measurements may correlate with selection
-probabilities. \emph{Survey Methodology}, 26(2), 137--138.
-
-Chen, S. and Rust, K. (2017). An extension of Kish's formula
-for design effects to two- and three-stage designs with
-stratification. \emph{Journal of Survey Statistics and Methodology},
-5(2), 111--130.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018).
+\emph{Practical Tools for Designing and Weighting Survey Samples}
+(2nd ed.). Springer. Ch. 9.
 }
 \seealso{
-\code{\link[=effective_n]{effective_n()}} for effective sample size, \code{\link[=varcomp]{varcomp()}} for
-estimating inputs to the \code{"cluster"} method, \code{\link[=n_cluster]{n_cluster()}} for
-directly optimizing a multistage design using \code{delta}.
+\code{\link[=effective_n]{effective_n()}} for the sample size this design effect costs
+you, \code{\link[=varcomp]{varcomp()}} for estimating \code{icc} and \code{var_ratio}, \code{\link[=n_cluster]{n_cluster()}} for
+optimizing a multistage design directly.
 }

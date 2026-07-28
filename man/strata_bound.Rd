@@ -3,21 +3,25 @@
 \encoding{UTF-8}
 \name{strata_bound}
 \alias{strata_bound}
-\title{Optimal Strata Boundaries}
+\title{Strata Boundaries for Survey Design}
 \usage{
 strata_bound(
   x,
   n_strata,
+  ...,
   n = NULL,
   cv = NULL,
   method = c("lh", "cumrootf", "geo", "kozak"),
   alloc = c("neyman", "optimal", "proportional", "power"),
-  power_q = 0.5,
+  alloc_q = 0.5,
   unit_cost = NULL,
-  certain = NULL,
+  take_all_above = NULL,
+  deff = 1,
+  resp_rate = 1,
   n_class = NULL,
-  max_iter = 200L,
-  n_restart = NULL
+  max_iter = NULL,
+  n_restart = NULL,
+  plan = NULL
 )
 }
 \arguments{
@@ -25,7 +29,10 @@ strata_bound(
 contain missing values.}
 
 \item{n_strata}{Required integer: number of strata (including take-all if
-\code{certain} is specified). Must be >= 2.}
+\code{take_all_above} is specified). Must be >= 2.}
+
+\item{...}{Unused. Present so that every optional argument must be named;
+unused arguments are rejected.}
 
 \item{n}{Target total sample size, supplied as a whole number. Specify at
 most one of \code{n} or \code{cv}. Required for methods \code{"lh"} and \code{"kozak"}.}
@@ -37,17 +44,18 @@ Specify at most one of \code{n} or \code{cv}. Required for methods \code{"lh"} a
 \code{"kozak"}.}
 
 \item{method}{Stratification method: \code{"cumrootf"} (Dalenius-Hodges),
-\code{"geo"} (geometric), \code{"lh"} (Lavall\enc{é}{e}e-Hidiroglou), or
-\code{"kozak"}
-(random search). Default \code{"lh"}.}
+\code{"geo"} (geometric), \code{"lh"} (LH-inspired coordinate optimization), or
+\code{"kozak"} (Kozak-inspired random-restart local search). The short method
+names are retained for compatibility; they do not claim exact
+implementations of the published algorithms. Default \code{"lh"}.}
 
 \item{alloc}{Allocation rule: \code{"proportional"}, \code{"neyman"},
 \code{"optimal"}, or \code{"power"} (Bankier compromise). Default \code{"neyman"}.
 See Details.}
 
-\item{power_q}{Bankier power parameter, used only when \code{alloc = "power"}.
-Numeric scalar in \eqn{[0, 1]}. At \code{power_q = 1} the allocation equals
-Neyman. At \code{power_q = 0} it yields near-equal subnational CVs.
+\item{alloc_q}{Bankier power parameter, used only when \code{alloc = "power"}.
+Numeric scalar in \eqn{[0, 1]}. At \code{alloc_q = 1} the allocation equals
+Neyman. At \code{alloc_q = 0} it yields near-equal subnational CVs.
 Default 0.5.}
 
 \item{unit_cost}{Per-stratum unit costs, ordered from lowest to highest
@@ -55,17 +63,37 @@ stratum. Scalar (equal costs) or vector of length \code{n_strata}.
 Default \code{NULL} (equal unit costs, \eqn{c_h = 1} for all strata),
 in which case \code{"optimal"} and \code{"neyman"} coincide.}
 
-\item{certain}{Take-all threshold. Units with \code{x >= certain} form a
+\item{take_all_above}{Take-all threshold. Units with \code{x >= take_all_above} form a
 census stratum.}
 
-\item{n_class}{Positive whole number of histogram bins for \code{"cumrootf"}.
+\item{deff}{Design effect multiplier (> 0), default 1. Inflates the
+variance of the stratified mean exactly as it does in \code{\link[=n_alloc]{n_alloc()}}, so
+that \code{cv} and \code{n} mean the same thing in both. A scalar value leaves the
+boundaries unchanged; see Details.}
+
+\item{resp_rate}{Expected response rate, in (0, 1], default 1. With a
+response rate below 1, \code{n} is the sample fielded and \code{n * resp_rate} the
+number expected to respond, matching \code{\link[=n_alloc]{n_alloc()}}.}
+
+\item{n_class}{Positive whole number of histogram bins. Applies to
+\code{method = "cumrootf"} only; supplying it with another method is an
+error rather than a silent no-op.
 Default \code{NULL} (Freedman-Diaconis rule).}
 
-\item{max_iter}{Positive whole number of maximum iterations for \code{"lh"} and
-\code{"kozak"}. Default 200.}
+\item{max_iter}{Positive whole number of maximum iterations. Applies to
+\code{method = "lh"} and \code{"kozak"} only; supplying it with another method is
+an error rather than a silent no-op. Default \code{NULL} (= 200).}
 
-\item{n_restart}{Positive whole number of random restarts for \code{"kozak"}.
-Default \code{NULL} (= 10 * \code{n_strata}).}
+\item{n_restart}{Positive whole number of random restarts. Applies to
+\code{method = "kozak"} only; supplying it with another method is an error
+rather than a silent no-op. Default \code{NULL} (= 10 * \code{n_strata}).}
+
+\item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults. It can
+supply \code{alloc}, \code{alloc_q}, \code{deff}, \code{resp_rate}, and a scalar
+\code{unit_cost}. A profile carrying a \emph{vector} \code{unit_cost} is rejected,
+because this function orders costs from the lowest to the highest
+stratum while \code{\link[=n_alloc]{n_alloc()}} orders them by frame row, so a vector written
+for one would be silently misapplied by the other.}
 }
 \value{
 A \code{svyplan_strata} object with components:
@@ -77,7 +105,10 @@ A \code{svyplan_strata} object with components:
 allocation in \verb{$strata$n} (the continuous optimum's cv is kept in
 \code{params$cv_continuous}, and the requested target, if any, in
 \code{params$cv_target}).}
-\item{strata}{Data frame with per-stratum summaries.}
+\item{strata}{Data frame with per-stratum summaries: \code{stratum},
+\code{lower}, \code{upper}, \code{N}, \code{share}, \code{sd}, \code{mean}, \code{n}, and \code{take_all}.
+The \code{N}, \code{sd}, and \code{mean} columns are exactly what \code{\link[=n_alloc]{n_alloc()}}
+expects, so the table can be passed straight to it.}
 \item{method}{Algorithm used.}
 \item{alloc}{Allocation method name (character).}
 \item{params}{List of additional parameters.}
@@ -86,9 +117,10 @@ allocation in \verb{$strata$n} (the continuous optimum's cv is kept in
 }
 \description{
 Determine where to cut a continuous stratification variable to form
-optimal strata. Supports four methods: cumulative root frequency
-(Dalenius-Hodges), geometric progression, Lavall\enc{é}{e}e-Hidiroglou
-iterative, and Kozak random search.
+useful strata. Supports four methods: cumulative root frequency
+(Dalenius-Hodges), geometric progression, coordinate optimization inspired
+by Lavall\enc{é}{e}e-Hidiroglou, and random-restart local search inspired
+by Kozak.
 }
 \details{
 \subsection{Choosing a method}{
@@ -101,19 +133,20 @@ first look at reasonable boundary positions.
 \item \strong{geo}: Gunning-Horgan (2004) geometric progression. Non-iterative,
 requires \code{x > 0}. Works well for right-skewed positive variables
 (e.g. income, revenue) where a log-scale spacing is natural.
-\item \strong{lh} (default): Lavall\enc{é}{e}e-Hidiroglou (1988) iterative
-coordinate-wise
-optimization. Requires \code{n} or \code{cv}. The recommended choice when you
-know the sample size or target CV: it directly minimizes the
-objective and is fast even on large frames.
-\item \strong{kozak}: Kozak (2004) random search, escapes local minima. Requires
-\code{n} or \code{cv}. Use for highly skewed or multimodal data where \code{"lh"}
-may get trapped in a local optimum. Slower but more robust.
+\item \strong{lh} (default): coordinate-wise optimization inspired by
+Lavall\enc{é}{e}e-Hidiroglou (1988). It starts from quantile boundaries
+and repeatedly performs bounded one-dimensional minimizations. Requires
+\code{n} or \code{cv}. This is a local heuristic, not the published LH recurrence
+and not a globally optimal algorithm.
+\item \strong{kozak}: random-restart adjacent-boundary local search inspired by
+Kozak (2004). Requires \code{n} or \code{cv}. It can explore more starting points
+than \code{"lh"}, but it can still finish at a local optimum and provides no
+global-optimality guarantee.
 }
 
-In summary, use \code{"lh"} by default. Switch to \code{"kozak"} if the
-distribution is difficult, or fall back to \code{"cumrootf"} or \code{"geo"} when
-you do not yet have \code{n} or \code{cv}.
+In summary, \code{"lh"} is the faster iterative heuristic. \code{"kozak"} spends more
+computation on random restarts and may find a better local solution. Use
+\code{"cumrootf"} or \code{"geo"} when you do not yet have \code{n} or \code{cv}.
 
 Allocation is controlled by the \code{alloc} parameter. Four methods are
 available:
@@ -124,15 +157,37 @@ Minimizes the national CV when unit costs are equal.
 \item \strong{optimal}: \eqn{n_h \propto N_h S_h / \sqrt{c_h}}{n_h ~ N_h * S_h / sqrt(c_h)}.
 Accounts for differential unit costs.
 \item \strong{power}: Bankier (1988) compromise,
-\eqn{n_h \propto S_h N_h^{power\_q}}{n_h ~ S_h * N_h^power_q}.
-The parameter \code{power_q} controls the trade-off between national precision
-(\code{power_q = 1}, equivalent to Neyman) and near-equal subnational CVs
-(\code{power_q = 0}).
+\eqn{n_h \propto S_h N_h^{q}}{n_h ~ S_h * N_h^alloc_q}.
+The parameter \code{alloc_q} controls the trade-off between national precision
+(\code{alloc_q = 1}, equivalent to Neyman) and near-equal subnational CVs
+(\code{alloc_q = 0}).
 }
 
 Stratum allocations are rounded to integers using the ORIC method
 (Cont and Heidari, 2015), which preserves \code{sum(n) = n} while minimizing
 rounding distortion.
+}
+
+\subsection{Design effect, response rate, and the boundaries}{
+
+The variance evaluated here is the one the rest of the package uses,
+\eqn{\mathrm{deff}\sum_h W_h^2S_h^2(1/(n_h r)-1/N_h)} with response rate
+\eqn{r}, so \code{cv = 0.05} means the same thing to \code{strata_bound()} and
+\code{\link[=n_alloc]{n_alloc()}}, and \verb{$n} is a fielded sample in both. Handing \verb{$strata} to
+\code{\link[=n_alloc]{n_alloc()}} with the same \code{cv}, \code{deff}, and \code{resp_rate} reproduces this
+function's continuous total.
+
+A \emph{scalar} \code{deff} scales the variance of every candidate boundary set
+equally, so it does not move the boundaries: it changes the \code{n} a \code{cv}
+target needs and the \code{cv} a given \code{n} achieves. Expect the cutpoints to
+shift only by the local search's own tolerance. Boundaries would respond
+to a design effect that varied across strata, which a scalar argument
+cannot express.
+
+The reported \verb{$cv} is that of the integer allocation in \verb{$strata$n}.
+Because \code{strata_bound()} rounds up in \code{cv} mode and \code{\link[=n_alloc]{n_alloc()}} reports a
+continuous optimum, the two totals differ by the rounding, not by the
+model.
 }
 }
 \examples{
@@ -146,10 +201,23 @@ strata_bound(x, n_strata = 4, method = "cumrootf", n = 100)
 strata_bound(x, n_strata = 4, n = 100)
 
 # Bankier power allocation (compromise between national and subnational CVs)
-strata_bound(x, n_strata = 4, n = 100, alloc = "power", power_q = 0.5)
+strata_bound(x, n_strata = 4, n = 100, alloc = "power", alloc_q = 0.5)
 
 # With take-all stratum
-strata_bound(x, n_strata = 3, n = 80, certain = quantile(x, 0.95))
+strata_bound(x, n_strata = 3, n = 80, take_all_above = quantile(x, 0.95))
+
+# Under a clustered design and imperfect response, on the same scale
+# n_alloc() uses
+sb <- strata_bound(x, n_strata = 4, cv = 0.08, deff = 1.8,
+                   resp_rate = 0.85)
+sb
+
+# The strata table hands straight to n_alloc()
+n_alloc(sb$strata, cv = 0.08, deff = 1.8, resp_rate = 0.85)
+
+# Or carry the design assumptions in a profile
+plan <- svyplan(deff = 1.8, resp_rate = 0.85)
+strata_bound(x, n_strata = 4, cv = 0.08, plan = plan)
 
 }
 \references{
@@ -178,5 +246,7 @@ constraints. \emph{arXiv preprint} arXiv:1501.00014.
 }
 \seealso{
 \link{predict.svyplan_strata} to assign new data to strata,
-\code{\link[=n_alloc]{n_alloc()}} to distribute a sample across an existing set of strata.
+\code{\link[=n_alloc]{n_alloc()}} to distribute a sample across an existing set of strata,
+which accepts \verb{$strata} directly, and \code{\link[=svyplan]{svyplan()}} for reusable design
+defaults.
 }

@@ -1,9 +1,11 @@
 #' Print svyplan objects
 #'
+#' Display and coercion methods shared by every result the package returns.
+#' `print()` gives the human-readable design, while `as.integer()`,
+#' `as.double()`, and `as.data.frame()` extract it in the shapes a
+#' downstream package can consume.
+#'
 #' @param x A svyplan object.
-#' @param object A svyplan object (for `confint` methods).
-#' @param parm Ignored (included for S3 consistency with [confint()]).
-#' @param level Confidence level (default 0.95).
 #' @param row.names,optional Standard [as.data.frame()] arguments.
 #' @param stringsAsFactors Logical. Retained for compatibility when a result
 #'   is converted through [data.frame()].
@@ -11,22 +13,16 @@
 #'   R 4.7.0 and later. Svyplan results already have valid row names.
 #' @param ... Additional arguments are not supported and produce an error.
 #'
-#' @return `x` (or `object`), invisibly. `confint` returns a 2-column
-#'   matrix with the lower and upper confidence limits.
+#' @return `print()` returns `x` invisibly. `format()` returns a character
+#'   vector, `as.integer()` and `as.double()` return numeric vectors, and
+#'   `as.data.frame()` returns a data frame; the shapes are described under
+#'   Details.
 #'
 #' @details
-#' ## confint
-#'
-#' `confint()` computes a confidence interval for the estimated parameter
-#' (proportion or mean). For proportions, the interval type matches the
-#' `method` used to compute the sample size (`"wald"`, `"wilson"`, or
-#' `"logodds"`). For means, a symmetric z-interval is used (requires
-#' `mu` in the original call).
-#'
 #' ## Print and coercion
 #'
-#' Constrained designs (`n_cluster()`, `n_alloc()`, multistage
-#' `n_multi()`) carry two representations: the continuous mathematical
+#' Constrained designs (`n_cluster()`, `n_alloc()`, `n_multi_cluster()`)
+#' carry two representations: the continuous mathematical
 #' optimum in the top-level fields (`n`, `cv`, `cost`, ...) and the
 #' whole-unit field design in `$operational`, whose cost and precision
 #' are recomputed from the integer design. `print()` leads with the
@@ -56,24 +52,31 @@
 #' two group sizes, their integer counterparts, power, effect, type, and the
 #' quantity that was solved for.
 #'
+#' @seealso [confint.svyplan] for confidence intervals on a result.
+#'
 #' @examples
-#' # confint on a proportion sample size
-#' res <- n_prop(p = 0.3, moe = 0.05)
-#' confint(res)
+#' # print leads with the operational (whole-unit) design
+#' n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
 #'
-#' # confint at 90% level
-#' confint(res, level = 0.90)
-#'
-#' # confint on a mean (requires mu)
-#' res_mean <- n_mean(var = 100, mu = 50, moe = 2)
-#' confint(res_mean)
-#'
-#' # confint on a precision result
-#' prec <- prec_prop(p = 0.3, n = 400)
-#' confint(prec)
+#' # the tabular handoff to downstream packages
+#' as.data.frame(n_prop(p = 0.3, moe = 0.05))
 #'
 #' @name print.svyplan
 NULL
+
+#' Format the design effect for printing
+#'
+#' `deff = 1` is the most consequential silent default in survey planning,
+#' so it is always shown rather than suppressed when left at its default.
+#' It is printed without decimals so that an assumed value is visually
+#' distinct from a supplied one.
+#'
+#' @keywords internal
+#' @noRd
+.fmt_deff <- function(deff) {
+  if (is.null(deff)) return(NULL)
+  if (isTRUE(all.equal(unname(deff), 1))) "deff = 1" else sprintf("deff = %.2f", deff)
+}
 
 #' @rdname print.svyplan
 #' @export
@@ -117,9 +120,7 @@ print.svyplan_n <- function(x, ...) {
   if (!is.null(p$cv)) {
     parts <- c(parts, sprintf("cv = %.3f", p$cv))
   }
-  if (!is.null(p$deff) && p$deff != 1) {
-    parts <- c(parts, sprintf("deff = %.2f", p$deff))
-  }
+  parts <- c(parts, .fmt_deff(p$deff))
   if (!is.null(resp_rate) && resp_rate < 1) {
     parts <- c(parts, sprintf("resp_rate = %.2f", resp_rate))
   }
@@ -157,8 +158,8 @@ print.svyplan_n <- function(x, ...) {
 #' @noRd
 .print_multi_n <- function(x) {
   if (!is.null(x$domains)) {
-    min_n_label <- if (!is.null(x$params$min_n)) {
-      sprintf(", min_n = %g", x$params$min_n)
+    min_n_label <- if (!is.null(x$params$min_n_domain)) {
+      sprintf(", min_n_domain = %g", x$params$min_n_domain)
     } else {
       ""
     }
@@ -187,7 +188,7 @@ print.svyplan_n <- function(x, ...) {
 #' @export
 print.svyplan_cluster <- function(x, ...) {
   .check_unused_dots(...)
-  if (!is.null(x$targets)) {
+  if (!is.null(x$indicators)) {
     .print_multi_cluster(x)
   } else {
     .print_single_cluster(x)
@@ -256,8 +257,8 @@ print.svyplan_cluster <- function(x, ...) {
 .print_multi_cluster <- function(x) {
   if (!is.null(x$domains)) {
     joint_label <- if (isTRUE(x$params$joint)) ", joint" else ""
-    min_n_label <- if (!is.null(x$params$min_n)) {
-      sprintf(", min_n = %g", x$params$min_n)
+    min_n_label <- if (!is.null(x$params$min_n_domain)) {
+      sprintf(", min_n_domain = %g", x$params$min_n_domain)
     } else {
       ""
     }
@@ -354,7 +355,9 @@ print.svyplan_cluster <- function(x, ...) {
 #' @export
 print.svyplan_prec <- function(x, ...) {
   .check_unused_dots(...)
-  if (x$type == "multi") {
+  if (x$type == "alloc" && identical(x$method, "bethel")) {
+    .print_bethel_prec(x)
+  } else if (x$type == "multi") {
     .print_multi_prec(x)
   } else {
     .print_single_prec(x)
@@ -456,9 +459,9 @@ print.svyplan_varcomp <- function(x, ...) {
     cat(sprintf(", %s = %.4f", label, x$varw[i]))
   }
   cat("\n")
-  cat(sprintf("delta = %s\n", paste(sprintf("%.4f", x$delta), collapse = ", ")))
-  cat(sprintf("k = %s\n", paste(sprintf("%.4f", x$k), collapse = ", ")))
-  cat(sprintf("Unit relvariance = %.4f\n", x$rel_var))
+  cat(sprintf("icc = %s\n", paste(sprintf("%.4f", x$icc), collapse = ", ")))
+  cat(sprintf("var_ratio = %s\n", paste(sprintf("%.4f", x$var_ratio), collapse = ", ")))
+  cat(sprintf("Unit relvariance = %.4f\n", x$unit_relvar))
 
   invisible(x)
 }
@@ -539,9 +542,7 @@ print.svyplan_power <- function(x, ...) {
     parts <- c(parts, sprintf("p2 = %.3f", p$p2))
   }
   parts <- c(parts, sprintf("alpha = %.2f", p$alpha))
-  if (!is.null(p$deff) && p$deff != 1) {
-    parts <- c(parts, sprintf("deff = %.2f", p$deff))
-  }
+  parts <- c(parts, .fmt_deff(p$deff))
   if (!is.null(resp_rate) && resp_rate < 1) {
     parts <- c(parts, sprintf("resp_rate = %.2f", resp_rate))
   }
@@ -552,7 +553,7 @@ print.svyplan_power <- function(x, ...) {
   }
   if (!is.null(p$overlap) && p$overlap > 0) {
     parts <- c(parts, sprintf("overlap = %.2f", p$overlap))
-    parts <- c(parts, sprintf("rho = %.2f", p$rho))
+    parts <- c(parts, sprintf("overlap_cor = %.2f", p$overlap_cor))
   }
   if (!is.null(p$alternative) && p$alternative == "one.sided") {
     parts <- c(parts, "one-sided")
@@ -631,21 +632,24 @@ format.svyplan_power <- function(x, ...) {
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  method = "wald"
+  method = "wald",
+  df = NULL
 ) {
-  # The number entering the FPC is the net number of responding units.
-  # The design effect inflates variance. It does not reduce the sampling
-  # fraction.  Transformed intervals still use n_eff in their large-sample
-  # variance, consistently with .prec_engine_prop().
+  # Every method reads one variance through the effective size
+  # n_eff = n_net / (deff * fpc), exactly as .prec_engine_prop() does, so a
+  # confidence interval and the margin of error reported for the same design
+  # always agree.
   n_net <- n * resp_rate
-  n_eff <- n_net / deff
+  n_eff <- .effective_from_n(n_net, N, deff)
   z <- qnorm(1 - alpha / 2)
-  method <- match.arg(method, c("wald", "wilson", "logodds"))
+  method <- match.arg(method, c("wald", "wilson", "logodds", "beta"))
+
+  if (is.infinite(n_eff)) {
+    return(c(p, p))
+  }
 
   if (method == "wald") {
-    fpc <- if (is.infinite(N)) 1 else (N - n_net) / (N - 1)
-    fpc <- .clamp_fpc(fpc, n_net, N)
-    se <- sqrt(p * (1 - p) * fpc / n_eff)
+    se <- sqrt(p * (1 - p) / n_eff)
     lo <- p - z * se
     hi <- p + z * se
   } else if (method == "wilson") {
@@ -654,13 +658,15 @@ format.svyplan_power <- function(x, ...) {
     half <- z * sqrt(p * (1 - p) / n_eff + z^2 / (4 * n_eff^2)) / den
     lo <- center - half
     hi <- center + half
-  } else {
-    fpc <- if (is.infinite(N)) 1 else (N - n_net) / (N - 1)
-    fpc <- .clamp_fpc(fpc, n_net, N)
+  } else if (method == "logodds") {
     eta <- qlogis(p)
-    se_eta <- sqrt(fpc / (n_eff * p * (1 - p)))
+    se_eta <- sqrt(1 / (n_eff * p * (1 - p)))
     lo <- plogis(eta - z * se_eta)
     hi <- plogis(eta + z * se_eta)
+  } else {
+    limits <- .beta_limits(p, .kg_effective(n_eff, n_net, alpha, df), alpha)
+    lo <- limits[1L]
+    hi <- limits[2L]
   }
 
   c(max(lo, 0), min(hi, 1))
@@ -683,7 +689,65 @@ format.svyplan_power <- function(x, ...) {
   )
 }
 
-#' @rdname print.svyplan
+#' Confidence intervals for svyplan results
+#'
+#' Compute a confidence interval for the parameter a sizing or precision
+#' result was built around, at the planned sample size.
+#'
+#' @param object A [n_prop()], [n_mean()], [prec_prop()], or [prec_mean()]
+#'   result.
+#' @param parm Ignored (included for S3 consistency with [confint()]).
+#' @param level Confidence level (default 0.95). This is independent of the
+#'   `alpha` used to size the design, so a plan built at `alpha = 0.05` can
+#'   be reported at any level.
+#' @param ... Additional arguments are not supported and produce an error.
+#'
+#' @return A one-row, two-column matrix with the lower and upper confidence
+#'   limits, named for the percentiles they correspond to.
+#'
+#' @details
+#' For proportions, the interval type matches the `method` the result was
+#' computed with (`"wald"`, `"wilson"`, `"logodds"`, or `"beta"`), including
+#' its `df` when the beta method carries one. Only the Wald interval is
+#' symmetric about `p`, so for the other three the limits are not
+#' `p` plus or minus the reported `moe`; `$moe` remains half the interval
+#' width, and `confint()` is the way to read where the interval actually
+#' sits. All four apply `deff`, `resp_rate`, and the finite population
+#' correction through the same effective size the sizing functions use.
+#'
+#' For means, a symmetric z-interval is used, which requires `mu` in the
+#' original call.
+#'
+#' Multi-indicator results (`n_multi()`, `prec_multi()`) and allocation
+#' results have no single parameter to bound, and error rather than
+#' returning an interval for an arbitrary component.
+#'
+#' @seealso [n_prop()] and [prec_prop()] for the methods themselves,
+#'   [print.svyplan] for printing and coercion.
+#'
+#' @examples
+#' # confint on a proportion sample size
+#' res <- n_prop(p = 0.3, moe = 0.05)
+#' confint(res)
+#'
+#' # confint at 90% level
+#' confint(res, level = 0.90)
+#'
+#' # confint on a mean (requires mu)
+#' res_mean <- n_mean(var = 100, mu = 50, moe = 2)
+#' confint(res_mean)
+#'
+#' # confint on a precision result
+#' prec <- prec_prop(p = 0.3, n = 400)
+#' confint(prec)
+#'
+#' # The Korn-Graubard interval is asymmetric for a rare outcome
+#' confint(prec_prop(p = 0.02, n = 150, method = "beta"))
+#'
+#' @name confint.svyplan
+NULL
+
+#' @rdname confint.svyplan
 #' @export
 confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
   .check_unused_dots(...)
@@ -708,7 +772,8 @@ confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
       N = p$N %||% Inf,
       deff = p$deff %||% 1,
       resp_rate = p$resp_rate %||% 1,
-      method = object$method %||% "wald"
+      method = object$method %||% "wald",
+      df = p$df
     )
     return(.ci_matrix(ci[1L], ci[2L], alpha))
   } else if (object$type == "mean") {
@@ -732,7 +797,7 @@ confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
   .ci_matrix(lo, hi, alpha)
 }
 
-#' @rdname print.svyplan
+#' @rdname confint.svyplan
 #' @export
 confint.svyplan_prec <- function(object, parm, level = 0.95, ...) {
   .check_unused_dots(...)
@@ -750,7 +815,8 @@ confint.svyplan_prec <- function(object, parm, level = 0.95, ...) {
       N = p$N %||% Inf,
       deff = p$deff %||% 1,
       resp_rate = p$resp_rate %||% 1,
-      method = object$method %||% "wald"
+      method = object$method %||% "wald",
+      df = p$df
     )
     return(.ci_matrix(ci[1L], ci[2L], alpha))
   } else if (object$type == "mean") {
@@ -897,9 +963,9 @@ as.data.frame.svyplan_varcomp <- function(
       stages = x$stages,
       varb = x$varb,
       varw = x$varw,
-      delta = x$delta,
-      k = x$k,
-      rel_var = x$rel_var,
+      icc = x$icc,
+      var_ratio = x$var_ratio,
+      unit_relvar = x$unit_relvar,
       stringsAsFactors = stringsAsFactors
     )
   } else {
@@ -908,11 +974,11 @@ as.data.frame.svyplan_varcomp <- function(
       varb = x$varb,
       varw_psu = unname(x$varw[1L]),
       varw_ssu = unname(x$varw[2L]),
-      delta_psu = unname(x$delta[1L]),
-      delta_ssu = unname(x$delta[2L]),
-      k_psu = unname(x$k[1L]),
-      k_ssu = unname(x$k[2L]),
-      rel_var = x$rel_var,
+      icc_psu = unname(x$icc[1L]),
+      icc_ssu = unname(x$icc[2L]),
+      var_ratio_psu = unname(x$var_ratio[1L]),
+      var_ratio_ssu = unname(x$var_ratio[2L]),
+      unit_relvar = x$unit_relvar,
       stringsAsFactors = stringsAsFactors
     )
   }
@@ -983,63 +1049,160 @@ as.data.frame.svyplan_power <- function(
   as.data.frame(out, row.names = row.names, optional = optional)
 }
 
-#' Print and coerce design-effect results
+#' Print and coerce planning design effects
 #'
-#' @param x A `svyplan_design_effect` object.
+#' Display and coercion methods for the composed design effect that
+#' [design_effect()] returns. `print()` itemizes the components and the
+#' overall value; the coercion and arithmetic methods let the object stand
+#' in for that overall value wherever a plain number is expected.
+#'
+#' @param x A `svyplan_deff` object from [design_effect()].
 #' @param row.names,optional Standard [as.data.frame()] arguments.
 #' @param stringsAsFactors Logical. Retained for compatibility when a result
 #'   is converted through [data.frame()].
 #' @param validRN Logical. Accepted for compatibility with [data.frame()] in
 #'   R 4.7.0 and later. Svyplan results already have valid row names.
 #' @param e1,e2 Objects supplied to an arithmetic or comparison operator.
+#' @param name,i A field name, one of those listed under Details. `[[` also
+#'   accepts a numeric index, which reads the underlying numeric vector.
 #' @param ... For mathematical transformations, additional arguments passed to
 #'   the underlying operation. The other methods do not support additional
 #'   arguments.
 #'
 #' @return `print()` returns `x` invisibly, `format()` returns a character
-#'   scalar, `as.double()` returns the overall design effect, and
-#'   `as.data.frame()` returns the component table. Arithmetic and mathematical
+#'   scalar, and `as.double()` returns the overall design effect.
+#'   `as.data.frame()` returns a one-row table with the overall value and one
+#'   column per component; `as.list()` returns the same fields as a named
+#'   list, and `$` and `[[` return one of them. Arithmetic and mathematical
 #'   transformations return ordinary numeric results.
 #'
-#' @name print.svyplan_design_effect
+#' @details
+#' A `svyplan_deff` behaves as the numeric overall design effect wherever one
+#' is expected: it can be passed to any `deff` argument, compared, and
+#' arithmetically combined, with the components dropped by any such
+#' operation.
+#'
+#' The decomposition is reached by name, under one set of names shared by
+#' every access route: `deff` for the overall value and `deff_<component>`
+#' for each part, so `d$deff_cluster`, `d[["deff_cluster"]]`,
+#' `as.list(d)$deff_cluster`, and `as.data.frame(d)$deff_cluster` are the
+#' same number. Naming a field that this design effect does not have is an
+#' error listing the ones it does. The overall value is always present, so a
+#' one-component design effect reports it twice, once as `deff` and once as
+#' the component it is made of.
+#'
+#' @seealso [design_effect()], which builds these objects, and
+#'   [print.svyplan] for the sample size and precision results.
+#'
+#' @examples
+#' d <- design_effect(icc = 0.03, n_per_psu = 20,
+#'                    weights = rep(c(1, 3), c(400, 100)))
+#' d
+#'
+#' # one component, by name
+#' d$deff
+#' d$deff_cluster
+#'
+#' # or the whole decomposition, as a list or a one-row table
+#' as.list(d)
+#' as.data.frame(d)
+#'
+#' # it is the overall value wherever a number is expected
+#' as.double(d)
+#' n_prop(p = 0.3, moe = 0.05, deff = d)
+#'
+#' @name print.svyplan_deff
 NULL
 
-#' @rdname print.svyplan_design_effect
+#' @rdname print.svyplan_deff
 #' @export
-print.svyplan_design_effect <- function(x, ...) {
+print.svyplan_deff <- function(x, ...) {
   .check_unused_dots(...)
-  method <- attr(x, "method", exact = TRUE)
-  label <- switch(
-    method,
-    cr = "Chen-Rust",
-    paste0(toupper(substring(method, 1L, 1L)), substring(method, 2L))
-  )
-  cat(sprintf("Design effect (%s)\n", label))
-  cat(sprintf("overall = %.4f\n", as.double(x)))
+  components <- attr(x, "components", exact = TRUE)
+  notes <- attr(x, "notes", exact = TRUE)
+  labels <- c(cluster = "clustering", weight = "weighting",
+              strata = "stratification", allocation = "allocation")
+  shown <- unname(labels[names(components)])
+  width <- max(nchar(c(shown, "overall")))
+  cat("Design effect (planning)\n\n")
+  for (i in seq_along(components)) {
+    cat(sprintf(
+      "  %-*s  %7.4f   %s\n", width, shown[i], components[[i]], notes[[i]]
+    ))
+  }
+  cat(sprintf("  %s\n", strrep("-", width + 11L)))
+  # one component is the result itself; multiplying several is Kish's
+  # composition, which is exact only when the stratum sd agree. The
+  # components carry no sd, so the marker is conservative by design.
+  overall_note <- if (length(components) > 1L) "   approx. (Kish)" else ""
+  cat(sprintf("  %-*s  %7.4f%s\n", width, "overall", as.double(x), overall_note))
   invisible(x)
 }
 
-#' @rdname print.svyplan_design_effect
+#' @rdname print.svyplan_deff
 #' @export
-format.svyplan_design_effect <- function(x, ...) {
+format.svyplan_deff <- function(x, ...) {
   .check_unused_dots(...)
+  components <- attr(x, "components", exact = TRUE)
   sprintf(
-    "svyplan_design_effect [%s, %.4f]",
-    attr(x, "method", exact = TRUE),
+    "svyplan_deff [%s, %.4f]",
+    paste(names(components), collapse = " x "),
     as.double(x)
   )
 }
 
-#' @rdname print.svyplan_design_effect
+#' @rdname print.svyplan_deff
 #' @export
-as.double.svyplan_design_effect <- function(x, ...) {
+as.double.svyplan_deff <- function(x, ...) {
   .check_unused_dots(...)
   unclass(x)[[1L]]
 }
 
-#' @rdname print.svyplan_design_effect
+#' @rdname print.svyplan_deff
 #' @export
-as.data.frame.svyplan_design_effect <- function(
+as.list.svyplan_deff <- function(x, ...) {
+  .check_unused_dots(...)
+  components <- attr(x, "components", exact = TRUE)
+  out <- c(list(deff = as.double(x)), as.list(components))
+  names(out) <- c("deff", paste0("deff_", names(components)))
+  out
+}
+
+#' @rdname print.svyplan_deff
+#' @export
+`$.svyplan_deff` <- function(x, name) {
+  .deff_field(x, name)
+}
+
+#' @rdname print.svyplan_deff
+#' @export
+`[[.svyplan_deff` <- function(x, i, ...) {
+  if (is.character(i)) {
+    return(.deff_field(x, i))
+  }
+  unclass(x)[[i, ...]]
+}
+
+#' Look a design effect field up by name
+#' @keywords internal
+#' @noRd
+.deff_field <- function(x, name) {
+  fields <- as.list(x)
+  if (length(name) != 1L || !name %in% names(fields)) {
+    stop(
+      sprintf(
+        "no field '%s' in a design effect; available: %s",
+        paste(name, collapse = ", "), paste(names(fields), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  fields[[name]]
+}
+
+#' @rdname print.svyplan_deff
+#' @export
+as.data.frame.svyplan_deff <- function(
   x,
   row.names = NULL,
   optional = FALSE,
@@ -1048,37 +1211,26 @@ as.data.frame.svyplan_design_effect <- function(
   ...
 ) {
   .check_unused_dots(...)
-  method <- attr(x, "method", exact = TRUE)
-  components <- attr(x, "components", exact = TRUE)
-  if (is.null(components)) {
-    out <- data.frame(
-      method = method,
-      design_effect = as.double(x),
-      stringsAsFactors = stringsAsFactors
-    )
-  } else {
-    out <- components
-    out$method <- method
-    out$overall <- as.double(x)
-    out <- out[c("method", setdiff(names(out), "method"))]
-  }
-  as.data.frame(out, row.names = row.names, optional = optional)
+  as.data.frame(
+    as.list(x), row.names = row.names, optional = optional,
+    stringsAsFactors = stringsAsFactors
+  )
 }
 
-#' @rdname print.svyplan_design_effect
+#' @rdname print.svyplan_deff
 #' @export
-Ops.svyplan_design_effect <- function(e1, e2) {
-  e1 <- if (inherits(e1, "svyplan_design_effect")) as.double(e1) else e1
+Ops.svyplan_deff <- function(e1, e2) {
+  e1 <- if (inherits(e1, "svyplan_deff")) as.double(e1) else e1
   if (missing(e2)) {
     return(do.call(.Generic, list(e1)))
   }
-  e2 <- if (inherits(e2, "svyplan_design_effect")) as.double(e2) else e2
+  e2 <- if (inherits(e2, "svyplan_deff")) as.double(e2) else e2
   do.call(.Generic, list(e1, e2))
 }
 
-#' @rdname print.svyplan_design_effect
+#' @rdname print.svyplan_deff
 #' @export
-Math.svyplan_design_effect <- function(x, ...) {
+Math.svyplan_deff <- function(x, ...) {
   do.call(.Generic, c(list(as.double(x)), list(...)))
 }
 
@@ -1097,8 +1249,8 @@ print.svyplan_strata <- function(x, ...) {
     x$method,
     cumrootf = "Dalenius-Hodges",
     geo = "Geometric",
-    lh = "Lavall\u00e9e-Hidiroglou",
-    kozak = "Kozak",
+    lh = "LH-inspired coordinate search",
+    kozak = "Kozak-inspired local search",
     x$method
   )
   cat(sprintf("Strata boundaries (%s, %d strata)\n", method_label, x$n_strata))
@@ -1109,7 +1261,7 @@ print.svyplan_strata <- function(x, ...) {
   cat(sprintf("n = %d, cv = %.4f\n", ceiling(x$n), x$cv))
   if (!is.null(x$alloc) && is.character(x$alloc)) {
     if (x$alloc == "power") {
-      cat(sprintf("Allocation: power (power_q = %.2f)\n", x$params$power_q))
+      cat(sprintf("Allocation: power (alloc_q = %.2f)\n", x$params$alloc_q))
     } else {
       cat(sprintf("Allocation: %s\n", x$alloc))
     }
@@ -1130,6 +1282,9 @@ print.svyplan_strata <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .print_alloc_n <- function(x) {
+  if (identical(x$method, "bethel")) {
+    return(.print_bethel_n(x))
+  }
   p <- x$params
   alloc <- p$alloc %||% x$method
   detail <- x$detail
@@ -1158,13 +1313,12 @@ print.svyplan_strata <- function(x, ...) {
     cat("\n")
   }
   parts <- character(0L)
-  if (!is.null(p$min_n) && p$min_n > 0)
-    parts <- c(parts, sprintf("min_n = %g", p$min_n))
+  if (!is.null(p$min_n_stratum) && p$min_n_stratum > 0)
+    parts <- c(parts, sprintf("min_n_stratum = %g", p$min_n_stratum))
   resp_rate <- p$resp_rate
   if (!is.null(resp_rate) && resp_rate < 1)
     parts <- c(parts, sprintf("resp_rate = %.2f", resp_rate))
-  if (!is.null(p$deff) && p$deff != 1)
-    parts <- c(parts, sprintf("deff = %.2f", p$deff))
+  parts <- c(parts, .fmt_deff(p$deff))
   if (length(parts) > 0L)
     cat(sprintf("(%s)\n", paste(parts, collapse = ", ")))
   if (!is.null(x$domains)) {
@@ -1175,6 +1329,162 @@ print.svyplan_strata <- function(x, ...) {
     if (".cost" %in% names(dom)) dom$.cost <- sprintf("%.0f", dom$.cost)
     print(dom, row.names = FALSE, right = FALSE)
   }
+}
+
+#' Print a constraint block, naming what was left out
+#'
+#' `sel` is the subset chosen for display (violations, or binding rows when
+#' everything passes) out of `total`. Says so whenever rows are hidden, so a
+#' one-row block under a "3 constraints" header does not read as the whole
+#' picture.
+#' @keywords internal
+#' @noRd
+.print_constraint_rows <- function(sel, total, label, hint) {
+  if (nrow(sel) == 0L) return(invisible(NULL))
+  shown <- utils::head(
+    sel[c("constraint", ".metric", ".target", ".achieved", ".pass")],
+    6L
+  )
+  if (nrow(sel) < total) {
+    cat(sprintf("showing %d %s of %d\n", nrow(shown), label, total))
+  }
+  print(shown, row.names = FALSE, right = FALSE)
+  if (nrow(shown) < total) cat(hint, "\n", sep = "")
+  invisible(NULL)
+}
+
+#' Print a joint constrained allocation
+#' @keywords internal
+#' @noRd
+.print_bethel_n <- function(x) {
+  opt <- x$optimization
+  op <- x$operational
+  budget_mode <- identical(x$params$mode, "budget_objective")
+  status <- opt$classification %||% "unknown"
+  cat("Joint constrained allocation (Bethel)\n")
+  # Report exceptions, not confirmations: a line that only ever says
+  # "nothing went wrong" buries the lines that do carry news.
+  if (!identical(status, "optimal")) {
+    cat(sprintf("status: %s\n", status))
+  }
+  # The two modes return the same class and the same numbers mean different
+  # things in each, so the question stays even though it never varies.
+  cat(if (budget_mode) {
+    sprintf("question: best design affordable within a budget of %.6g\n",
+            x$params$budget)
+  } else {
+    "question: cheapest design meeting every precision target\n"
+  })
+  n_targets <- nrow(op$constraints)
+  cat(sprintf(
+    "field design: n = %d, cost = %.0f%s\n",
+    op$n, op$cost,
+    if (n_targets == 0L) {
+      ""
+    } else {
+      sprintf(" (%d target%s, %s)", n_targets,
+              if (n_targets == 1L) "" else "s",
+              if (isTRUE(op$all_pass)) "all pass" else "violations")
+    }
+  ))
+  continuous_cost <- x$params$achieved$cost
+  increase <- if (continuous_cost > 0) {
+    100 * (op$cost / continuous_cost - 1)
+  } else {
+    NA_real_
+  }
+  cat(sprintf(
+    "continuous optimum: n = %s, cost = %.0f%s\n",
+    .fmt_continuous_n(x$n), continuous_cost,
+    if (!is.na(increase) && abs(increase) >= 0.005) {
+      sprintf(" (integerizing costs %+.2f%%)", increase)
+    } else {
+      ""
+    }
+  ))
+  if (budget_mode) {
+    cat(sprintf(
+      "objective: weighted relative variance %.6g continuous, %.6g operational\n",
+      x$objective_value, op$objective_value
+    ))
+    if (!isTRUE(opt$budget_binding)) {
+      cat("the budget is not binding: the allocation sits at its upper bounds\n")
+    } else if (is.finite(opt$budget_sensitivity %||% NA_real_)) {
+      cat(sprintf("one more unit of budget changes the objective by %.4g\n",
+                  opt$budget_sensitivity))
+    }
+    obj <- x$objective
+    if (!is.null(obj) && nrow(obj) > 0L) {
+      shown <- utils::head(
+        obj[c("component", "priority", ".cv", ".share")], 6L
+      )
+      print(shown, row.names = FALSE, right = FALSE)
+      if (nrow(obj) > 6L) cat("... see $objective for all components\n")
+    }
+  }
+  violated <- any(!op$constraints$.pass)
+  sel <- if (violated) {
+    op$constraints[!op$constraints$.pass, , drop = FALSE]
+  } else {
+    x$constraints[x$constraints$.binding, , drop = FALSE]
+  }
+  if (violated || nrow(sel) > 1L) {
+    # More than one binding constraint, or any failure, is worth a table.
+    .print_constraint_rows(
+      sel,
+      total = nrow(op$constraints),
+      label = if (violated) "violated" else "binding",
+      hint = "... see $constraints and $operational$constraints for all rows"
+    )
+  } else if (nrow(sel) == 1L) {
+    cat(sprintf(
+      "binding: %s (target %.4g, achieved %.4g)\n",
+      sel$constraint[1L], sel$.target[1L], sel$.achieved[1L]
+    ))
+  }
+  n_lower <- length(opt$active_lower %||% integer(0))
+  n_upper <- length(opt$active_upper %||% integer(0))
+  if (n_lower > 0L || n_upper > 0L) {
+    cat(sprintf("active bounds: %d lower, %d upper\n", n_lower, n_upper))
+  }
+  invisible(x)
+}
+
+#' Print generalized allocation precision
+#' @keywords internal
+#' @noRd
+.print_bethel_prec <- function(x) {
+  d <- x$detail
+  cat(sprintf("Joint allocation precision (%d constraints)\n", nrow(d)))
+  cat(sprintf(
+    "targets: %s\n",
+    if (all(d$.pass)) "all pass" else
+      sprintf("%d violated", sum(!d$.pass))
+  ))
+  violated <- any(!d$.pass)
+  sel <- if (violated) d[!d$.pass, , drop = FALSE] else
+    d[d$.binding, , drop = FALSE]
+  .print_constraint_rows(
+    sel,
+    total = nrow(d),
+    label = if (violated) "violated" else "binding",
+    hint = "... see $detail for all rows"
+  )
+  if (!is.null(x$objective_value)) {
+    cat(sprintf("objective: weighted relative variance %.6g\n",
+                x$objective_value))
+    if (!is.null(x$params$budget)) {
+      cat(sprintf("budget: %.6g, residual %.6g\n",
+                  x$params$budget, x$params$budget_residual))
+    }
+  }
+  if (!is.null(x$bounds) && any(!x$bounds$.pass)) {
+    cat(sprintf(
+      "allocation bounds: %d violated (see $bounds)\n",
+      sum(!x$bounds$.pass)
+    ))
+  }
+  invisible(x)
 }
 
 #' @rdname print.svyplan
@@ -1265,11 +1575,99 @@ predict.svyplan_strata <- function(object, newdata, labels = NULL, ...) {
     )
   }
   out <- cut(newdata, breaks = breaks, include.lowest = TRUE, labels = labels)
-  certain <- object$params$certain %||% NULL
-  if (!is.null(certain)) {
+  take_all_above <- object$params$take_all_above %||% NULL
+  if (!is.null(take_all_above)) {
     # cut() uses right-closed intervals, whereas the take-all contract is
-    # x >= certain.  Preserve the training assignment at equality.
-    out[newdata >= certain] <- levels(out)[object$n_strata]
+    # x >= take_all_above.  Preserve the training assignment at equality.
+    out[newdata >= take_all_above] <- levels(out)[object$n_strata]
   }
   out
+}
+
+#' @rdname print.svyplan
+#' @export
+print.svyplan_twophase <- function(x, ...) {
+  p <- x$params
+  cat("Two-phase allocation (", nrow(x$detail), " phase-2 strata)\n", sep = "")
+  cat(sprintf(
+    "issued: n_phase1 = %s | n_phase2 = %s\n",
+    format(round(x$n[["n_phase1"]])), format(round(x$n[["n_phase2"]]))
+  ))
+  if (!isTRUE(all.equal(unname(x$responding), unname(x$n)))) {
+    cat(sprintf(
+      "expected responding: n_phase1 = %s | n_phase2 = %s\n",
+      format(round(x$responding[["n_phase1"]])),
+      format(round(x$responding[["n_phase2"]]))
+    ))
+  }
+  cat(sprintf(
+    "cv = %s, cost = %s%s\n",
+    if (is.na(x$cv)) "NA" else formatC(x$cv, format = "f", digits = 4),
+    format(round(x$cost)),
+    if (isTRUE(p$fixed_cost > 0)) sprintf(" (fixed: %s)", format(p$fixed_cost)) else ""
+  ))
+  if (!isTRUE(all.equal(p$phase1_deff, 1)) ||
+      !isTRUE(all.equal(p$single_deff, 1))) {
+    cat(sprintf("phase-1 deff = %s, single-phase deff = %s\n",
+                formatC(p$phase1_deff, format = "f", digits = 2),
+                formatC(p$single_deff, format = "f", digits = 2)))
+  }
+  d <- x$detail
+  out <- data.frame(
+    stratum = d$stratum,
+    share = formatC(d$share, format = "f", digits = 3),
+    sd = formatC(d$sd, format = "f", digits = 2),
+    unit_cost = formatC(d$unit_cost, format = "f", digits = 2),
+    stringsAsFactors = FALSE
+  )
+  if (!isTRUE(all.equal(d$deff, rep(1, nrow(d))))) {
+    out$deff <- formatC(d$deff, format = "f", digits = 2)
+  }
+  show_resp <- !isTRUE(all.equal(d$resp_rate, rep(1, nrow(d))))
+  if (show_resp) {
+    out$resp <- formatC(d$resp_rate, format = "f", digits = 2)
+  }
+  out$nu <- formatC(d$nu, format = "f", digits = 4)
+  out$n_issued <- format(round(d$n_issued))
+  out$n_int <- format(d$n_int)
+  if (show_resp) {
+    out$n_resp <- format(round(d$n_resp))
+  }
+  if (any(d$take_all)) {
+    out$take_all <- ifelse(d$take_all, "*", "")
+  }
+  cat("---\n")
+  print(out, row.names = FALSE)
+  o <- x$operational
+  if (!is.null(o)) {
+    cat(sprintf("field design: n_phase1 = %s | n_phase2 = %s (cost %s, cv %s)\n",
+                format(o$n[["n_phase1"]]), format(o$n[["n_phase2"]]),
+                format(round(o$cost)),
+                if (is.na(o$cv)) "NA" else formatC(o$cv, format = "f", digits = 4)))
+    if (!is.null(o$assured)) {
+      cat(sprintf(
+        "assured (%s): issue n_phase1 = %s | n_phase2 = %s (cost %s)\n",
+        formatC(x$params$assurance, format = "f", digits = 2),
+        format(o$assured_phase1), format(sum(o$assured)),
+        format(round(o$assured_cost))))
+    }
+  }
+  s <- x$single_phase
+  if (isTRUE(s$better)) {
+    cat(sprintf(
+      "\nSingle-phase is better here: n = %s, cv = %s, cost = %s\n",
+      format(round(s$n)),
+      if (is.na(s$cv)) "NA" else formatC(s$cv, format = "f", digits = 4),
+      format(round(s$cost))
+    ))
+    cat("Skip phase 1 and measure directly.\n")
+  } else if (is.finite(s$n)) {
+    cat(sprintf(
+      "\nSingle-phase alternative: n = %s, cv = %s, cost = %s (two-phase wins)\n",
+      format(round(s$n)),
+      if (is.na(s$cv)) "NA" else formatC(s$cv, format = "f", digits = 4),
+      format(round(s$cost))
+    ))
+  }
+  invisible(x)
 }
