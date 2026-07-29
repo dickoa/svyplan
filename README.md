@@ -1,29 +1,27 @@
----
-output: github_document
----
-
-
 
 # svyplan
 
 <!-- badges: start -->
-[![CRAN status](https://www.r-pkg.org/badges/version/svyplan)](https://CRAN.R-project.org/package=svyplan)
+
+[![CRAN
+status](https://www.r-pkg.org/badges/version/svyplan)](https://CRAN.R-project.org/package=svyplan)
 [![R-CMD-check](https://gitlab.com/dickoa/svyplan/badges/main/pipeline.svg)](https://gitlab.com/dickoa/svyplan/-/pipelines)
-[![Codecov test coverage](https://codecov.io/gl/dickoa/svyplan/branch/main/graph/badge.svg)](https://app.codecov.io/gl/dickoa/svyplan?branch=main)
+[![Codecov test
+coverage](https://codecov.io/gl/dickoa/svyplan/branch/main/graph/badge.svg)](https://app.codecov.io/gl/dickoa/svyplan?branch=main)
 <!-- badges: end -->
 
 Survey sample size determination, precision analysis, optimal and joint
-multivariate/multidomain allocation, stratification, and power analysis for R.
+multivariate/multidomain allocation, stratification, and power analysis
+for R.
 
 ## Installation
 
-```r
+``` r
 # From GitLab
 pak::pkg_install("gitlab::dickoa/svyplan")
 ```
 
 ## Sample sizes
-
 
 ``` r
 library(svyplan)
@@ -45,7 +43,6 @@ Most sizing and precision functions accept `resp_rate`. In sample-size
 mode, the required sample is inflated by `1 / resp_rate` to account for
 expected non-response:
 
-
 ``` r
 n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 #> Sample size for proportion (wald)
@@ -54,9 +51,8 @@ n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 
 ### Survey plan profiles
 
-When the same design parameters apply across many calls, bundle them into
-a `svyplan()` profile:
-
+When the same design parameters apply across many calls, bundle them
+into a `svyplan()` profile:
 
 ``` r
 plan <- svyplan(deff = 1.5, resp_rate = 0.85, N = 50000)
@@ -85,7 +81,6 @@ n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2.0)
 Given a sample size, how precise will your estimates be? The `prec_*()`
 functions are the inverse of `n_*()`:
 
-
 ``` r
 prec_prop(p = 0.3, n = 400)
 #> Sampling precision for proportion (wald)
@@ -101,9 +96,8 @@ prec_mean(var = 100, n = 400, mu = 50)
 ### Round-trip between size and precision
 
 All `n_*()` and `prec_*()` functions are S3 generics. Pass a precision
-result to `n_*()` to recover the sample size, or pass a sample size result
-to `prec_*()` to compute the achieved precision:
-
+result to `n_*()` to recover the sample size, or pass a sample size
+result to `prec_*()` to compute the achieved precision:
 
 ``` r
 # Start with a precision target
@@ -126,7 +120,6 @@ n_prop(p)
 
 Household surveys track many indicators at once. `n_multi()` finds the
 sample size that satisfies all precision targets simultaneously.
-
 
 ``` r
 targets <- data.frame(
@@ -154,7 +147,6 @@ Per-domain optimization works by specifying domain columns via the
 Programmes like UNICEF MICS and DHS express precision as a **relative
 margin of error** (RME = MOE / p). To use this with svyplan, convert to
 an absolute margin of error: `moe = RME * p`.
-
 
 ``` r
 # RME = 12% for each indicator
@@ -184,7 +176,6 @@ target population and `hh_size` is the average household size.
 
 ## Multistage cluster designs
 
-
 ``` r
 # Optimal 2-stage allocation within a budget
 n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
@@ -200,9 +191,8 @@ prec_cluster(n = c(50, 12), icc = 0.05)
 #> cv = 0.0508
 ```
 
-Variance components can be estimated from frame data and passed
-directly to `n_cluster()`:
-
+Variance components can be estimated from frame data and passed directly
+to `n_cluster()`:
 
 ``` r
 set.seed(104)
@@ -229,16 +219,15 @@ n_cluster(stage_cost = c(500, 50), icc = vc, cv = 0.05)
 #> continuous optimum: n_psu = 12.22966 | n_per_psu = 1.967178 (cv = 0.0500, cost = 7318)
 ```
 
-`icc` is the survey-planning measure of homogeneity used by
-`varcomp()`, `n_cluster()`, and `design_effect()`. It is not the same as
-a generic mixed-model ICC, and values near 0 or 1 correspond to
-degenerate boundary cases for the closed-form cluster optimizer.
+`icc` is the survey-planning measure of homogeneity used by `varcomp()`,
+`n_cluster()`, and `design_effect()`. It is not the same as a generic
+mixed-model ICC, and values near 0 or 1 correspond to degenerate
+boundary cases for the closed-form cluster optimizer.
 
 ## Sensitivity analysis
 
 `predict()` evaluates a result at new parameter combinations, returning
 a data frame suitable for plotting:
-
 
 ``` r
 x <- n_prop(p = 0.3, moe = 0.05, deff = 1.5)
@@ -266,14 +255,14 @@ predict(x, expand.grid(
 ```
 
 Sensitivity analysis is available for single-indicator sample-size and
-precision results, cluster designs, power analyses, and strata boundaries.
-Multi-indicator results are not currently supported by `predict()`.
+precision results, cluster designs, power analyses, and strata
+boundaries. Multi-indicator results are not currently supported by
+`predict()`.
 
 ## Strata boundaries
 
 `strata_bound()` constructs candidate boundaries for a continuous
 stratification variable.
-
 
 ``` r
 set.seed(905)
@@ -294,17 +283,17 @@ strata_bound(x, n_strata = 4, n = 300, method = "cumrootf")
 
 Four methods are available: Dalenius-Hodges (`"cumrootf"`), geometric
 (`"geo"`), LH-inspired coordinate optimization (`"lh"`), and
-Kozak-inspired random-restart local search (`"kozak"`). The latter two are
-heuristics and do not claim global optimality or exact implementation of the
-published algorithms.
+Kozak-inspired random-restart local search (`"kozak"`). The latter two
+are heuristics and do not claim global optimality or exact
+implementation of the published algorithms.
 
 ## Two-phase designs
 
 A large cheap phase 1, then a subsample measured on the expensive
-variable. `n_twophase()` allocates both at once. The frame is one row per
-phase-2 stratum, in the `n_alloc()` column vocabulary but on a narrower
-contract: `sd` is required where `n_alloc()` also accepts `var`.
-
+variable. `n_twophase()` allocates both at once. The frame is one row
+per phase-2 stratum, in the `n_alloc()` column vocabulary but on a
+narrower contract: `sd` is required where `n_alloc()` also accepts
+`var`.
 
 ``` r
 frame <- data.frame(
@@ -335,7 +324,6 @@ Nonresponse follow-up is the same problem with two strata: respondents
 are already measured, so they cost nothing more and are all kept, and
 only the nonrespondents are subsampled.
 
-
 ``` r
 theta <- 0.5
 
@@ -353,12 +341,9 @@ n_twophase(nrfu, phase1_cost = 50, budget = 100000,
 #> issued: n_phase1 = 828 | n_phase2 = 707
 #> cv = 0.0382, cost = 1e+05
 #> ---
-#>         stratum share   sd unit_cost     nu n_issued n_int
-#>     respondents 0.500 1.00      0.00 1.0000      414   414
-#>  nonrespondents 0.500 1.00    200.00 0.7071      293   293
-#>  take_all
-#>         *
-#>          
+#>         stratum share   sd unit_cost     nu n_issued n_int take_all
+#>     respondents 0.500 1.00      0.00 1.0000      414   414        *
+#>  nonrespondents 0.500 1.00    200.00 0.7071      293   293         
 #> field design: n_phase1 = 828 | n_phase2 = 707 (cost 1e+05, cv 0.0382)
 #> 
 #> Single-phase is better here: n = 1000, cv = 0.0316, cost = 1e+05
@@ -367,7 +352,7 @@ n_twophase(nrfu, phase1_cost = 50, budget = 100000,
 
 Neither phase has to be a simple random sample, and both can lose sample
 to nonresponse. `phase1_deff` and `resp_rate` act on the between-stratum
-component; `deff` and `resp_rate` frame columns act on each stratum's
+component; `deff` and `resp_rate` frame columns act on each stratum’s
 residual; `single_deff` and `single_resp_rate` describe the comparator.
 Each divides its own component, so a single factor on the combined
 variance would be the wrong model. Issued and expected-responding counts
@@ -382,7 +367,6 @@ Solve for sample size, power, or minimum detectable effect. Supports
 design effects, finite population correction, response rate adjustment,
 panel overlap, unequal groups, and allocation ratios. Arcsine and
 log-odds methods available for rare proportions.
-
 
 ``` r
 # Sample size to detect a 5pp change from 70% with deff = 2
@@ -418,25 +402,20 @@ power_did(treat = c(0.50, 0.55), control = c(0.50, 0.48),
 #> (treat = (0.500, 0.550), control = (0.500, 0.480), alpha = 0.05, deff = 1)
 ```
 
-`plot()` draws the power-vs-sample-size curve with reference lines at the solved point:
-
+`plot()` draws the power-vs-sample-size curve with reference lines at
+the solved point:
 
 ``` r
 pw <- power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
 plot(pw)
 ```
 
-<div class="figure">
 <img src="man/figures/README-power-plot-1.png" alt="Power increases with total sample size. Dashed reference lines mark 80 percent power at the required sample size for detecting a change from 70 to 75 percent with a design effect of 2."  />
-<p class="caption">plot of chunk power-plot</p>
-</div>
-
 
 ## Stratified allocation
 
 Given a sampling frame with stratum sizes and variabilities, `n_alloc()`
 distributes the total sample across strata:
-
 
 ``` r
 frame <- data.frame(
@@ -453,7 +432,6 @@ n_alloc(frame, n = 600, alloc = "neyman")
 ```
 
 Constraints and alternative solve modes are also supported:
-
 
 ``` r
 frame_constraints <- transform(
@@ -472,7 +450,6 @@ n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n_stratum = 40)
 ```
 
 Domain-level CV targets can be enforced via the `domains` parameter:
-
 
 ``` r
 frame_domains <- data.frame(
@@ -500,7 +477,6 @@ n_alloc(frame_domains, domains = "province",
 For several indicators and overlapping domains, pass long `measures` and
 `targets` tables. The allocation rule is then determined jointly by the
 precision requirements:
-
 
 ``` r
 joint_frame <- data.frame(
@@ -537,13 +513,13 @@ joint_fit
 ```
 
 The fitted object distinguishes the certified continuous optimum from a
-feasible integer operational recommendation. Use `prec_alloc(joint_fit)` or
-`prec_alloc(joint_fit, n = joint_fit$detail$n_int)` to inspect either design.
+feasible integer operational recommendation. Use `prec_alloc(joint_fit)`
+or `prec_alloc(joint_fit, n = joint_fit$detail$n_int)` to inspect either
+design.
 
-The same API handles fixed-take multistage designs. Stage populations, fixed
-takes, and costs belong in `frame`; indicator-specific homogeneity parameters
-belong in `measures`. Here only the PSU counts are optimized:
-
+The same API handles fixed-take multistage designs. Stage populations,
+fixed takes, and costs belong in `frame`; indicator-specific homogeneity
+parameters belong in `measures`. Here only the PSU counts are optimized:
 
 ``` r
 cluster_frame <- within(joint_frame, {
@@ -569,9 +545,9 @@ cluster_fit$detail[, c("stratum", "n_psu_int", "n_per_psu", "n_int")]
 #> 4 South rural        19         8   152
 ```
 
-Public `n` remains the ultimate-unit sample size. Thus the field design obeys
-`n_int = n_psu_int * n_per_psu`; three-stage designs additionally multiply by
-the fixed `n_per_ssu`.
+Public `n` remains the ultimate-unit sample size. Thus the field design
+obeys `n_int = n_psu_int * n_per_psu`; three-stage designs additionally
+multiply by the fixed `n_per_ssu`.
 
 `prec_alloc()` computes the precision for a given allocation (inverse of
 `n_alloc()`).
@@ -583,10 +559,9 @@ See `?n_alloc` and the vignette for the full workflow.
 
 ## Design effects
 
-`design_effect()` anticipates the design effect of a plan by combining the
-design features you are choosing. Components multiply, and each is selected
-by the arguments you supply.
-
+`design_effect()` anticipates the design effect of a plan by combining
+the design features you are choosing. Components multiply, and each is
+selected by the arguments you supply.
 
 ``` r
 # Clustering alone: 20 households per cluster
@@ -627,9 +602,9 @@ design_effect(n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05))
 #>   overall      1.6392
 ```
 
-This is a planning tool. To measure the design effect a *collected* sample
-actually achieved, use `survey::svymean(..., deff = TRUE)`, which computes
-it from the realized weights, strata, and clusters.
+This is a planning tool. To measure the design effect a *collected*
+sample actually achieved, use `survey::svymean(..., deff = TRUE)`, which
+computes it from the realized weights, strata, and clusters.
 
 ## References
 
@@ -637,6 +612,5 @@ Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
 
 Kish, L. (1965). *Survey Sampling*. Wiley.
 
-Valliant, R., Dever, J. A., and Kreuter, F. (2018).
-*Practical Tools for Designing and Weighting Survey Samples*
-(2nd ed.). Springer.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). *Practical Tools for
+Designing and Weighting Survey Samples* (2nd ed.). Springer.
