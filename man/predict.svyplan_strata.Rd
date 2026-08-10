@@ -2,7 +2,7 @@
 % Please edit documentation in R/print.R
 \name{predict.svyplan_strata}
 \alias{predict.svyplan_strata}
-\title{Assign Observations to Strata}
+\title{Assign observations to strata}
 \usage{
 \method{predict}{svyplan_strata}(object, newdata, labels = NULL, ...)
 }

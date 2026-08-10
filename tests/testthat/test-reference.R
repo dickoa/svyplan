@@ -248,3 +248,78 @@ test_that("VDK Example 5.2 at 250000 cannot fund its targets", {
     "cheapest target-feasible design costs 265192, short by 15191"
   )
 })
+
+## surveyplanning (Breidaks, Liberts, Jukams; CSB Latvia) v4.0
+# Values produced by their functions and pasted in as literals, so the
+# comparison does not depend on that package being installed.
+
+test_that("prec_alloc stratum precision matches surveyplanning expvar", {
+  # expvar(Yh = "Yh", H = "H", s2h = "s2h", nh = "nh", poph = "poph",
+  #        Dom = "dom", dataset = data.table(
+  #          H = 1:4, Yh = c(4000, 9000, 12000, 900), s2h = c(9, 16, 25, 4),
+  #          poph = c(800, 1200, 1500, 300), nh = c(100, 150, 200, 60),
+  #          dom = c("N", "N", "S", "S")))
+  f <- data.frame(
+    N = c(800, 1200, 1500, 300),
+    sd = sqrt(c(9, 16, 25, 4)),
+    mean = c(4000, 9000, 12000, 900) / c(800, 1200, 1500, 300),
+    dom = c("N", "N", "S", "S")
+  )
+  p <- prec_alloc(f, n = c(100, 150, 200, 60), domains = "dom")
+
+  # their var and se are on the stratum-total scale, ours on the mean scale
+  expect_equal(p$detail$.se * f$N,
+               c(224.49944, 366.60606, 493.71044, 69.28203),
+               tolerance = 1e-7)
+  expect_equal((p$detail$.se * f$N)^2,
+               c(50400, 134400, 243750, 4800), tolerance = 1e-7)
+  # cv is scale free, so it compares directly (theirs is a percentage)
+  expect_equal(p$detail$.cv * 100,
+               c(5.612486, 4.073401, 4.114254, 7.698004), tolerance = 1e-6)
+  expect_equal(p$domains$.cv * 100, c(3.306798, 3.864712), tolerance = 1e-6)
+  expect_equal(p$cv * 100, 2.541673, tolerance = 1e-6)
+})
+
+test_that("n_alloc reproduces surveyplanning optsize, including take-all", {
+  # optsize(H = "H", n = 600, poph = "poph", s2h = "s2h", dataset = ...)
+  f <- data.frame(N = c(800, 1200, 1500, 300), sd = sqrt(c(9, 16, 25, 4)))
+  expect_equal(n_alloc(f, n = 600, alloc = "neyman")$detail$n,
+               c(94.11765, 188.23529, 294.11765, 23.52941), tolerance = 1e-6)
+
+  # with fullsampleh = c(0, 0, 0, 1)
+  expect_equal(
+    n_alloc(transform(f, take_all = c(FALSE, FALSE, FALSE, TRUE)),
+            n = 600, alloc = "neyman")$detail$n,
+    c(48.97959, 97.95918, 153.06122, 300), tolerance = 1e-6
+  )
+})
+
+test_that("the solved proportion matches surveyplanning min_prop", {
+  # min_prop(n = 15e3, pop = 2e6, RMoE = 0.1, R = 0.75, deff_sam = 1.4)
+  # their RMoE is moe/p, so the equivalent cv target is RMoE / qnorm(0.975)
+  r <- prec_prop(n = 15e3, cv = 0.1 / qnorm(0.975), N = 2e6,
+                 resp_rate = 0.75, deff = 1.4)
+  expect_equal(r$params$p, 0.0453788177, tolerance = 1e-9)
+  # min_count is pop * min_prop
+  expect_equal(r$params$p * 2e6, 90757.6353, tolerance = 1e-6)
+})
+
+test_that("n_alloc reproduces optsize with per-stratum Rh and deffh", {
+  # optsize(H = "H", n = 600, poph = "poph", s2h = "s2h", Rh = "Rh",
+  #         deffh = "deffh", dataset = data.table(
+  #           H = 1:4, s2h = c(9, 16, 25, 4), poph = c(800, 1200, 1500, 300),
+  #           Rh = c(.9, .8, .85, 1), deffh = c(1.5, 1.2, 2, 1)))
+  f <- data.frame(N = c(800, 1200, 1500, 300), sd = sqrt(c(9, 16, 25, 4)))
+  d <- c(1.5, 1.2, 2, 1)
+  r <- c(0.9, 0.8, 0.85, 1)
+
+  expect_equal(n_alloc(f, n = 600, alloc = "neyman", deff = d, resp_rate = r)$detail$n,
+               c(88.18253, 167.31458, 327.42642, 17.07647), tolerance = 1e-7)
+
+  # with fullsampleh = c(0, 0, 0, 1)
+  expect_equal(
+    n_alloc(transform(f, take_all = c(FALSE, FALSE, FALSE, TRUE)),
+            n = 600, alloc = "neyman", deff = d, resp_rate = r)$detail$n,
+    c(45.38290, 86.10799, 168.50911, 300), tolerance = 1e-7
+  )
+})

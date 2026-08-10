@@ -1,4 +1,4 @@
-#' Sampling Precision for a Multistage Cluster Allocation
+#' Sampling precision for a multistage cluster allocation
 #'
 #' Compute the sampling error (SE, MOE, CV) for a given multistage sample
 #' allocation. This is the inverse of [n_cluster()].
@@ -16,8 +16,17 @@
 #'   variable's, default 1. A scalar names `var_ratio_psu`; for three stages
 #'   `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)` follows from the decomposition. See
 #'   [design_effect()].
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). The effective stage-1 size is `n * resp_rate`.
+#' @param resp_rate_psu Expected **PSU-level** response rate, in (0, 1\].
+#'   Default 1 (no adjustment). The effective stage-1 size is
+#'   `n * resp_rate_psu`. It describes clusters that cannot be worked, not
+#'   nonresponse among the ultimate units inside a cluster.
+#' @param resp_rate_ssu Expected SSU-level response rate, in (0, 1\].
+#'   Three-stage designs only; default 1. The effective stage-2 size is
+#'   `n[2] * resp_rate_ssu`.
+#' @param resp_rate Expected ultimate-unit response rate, in (0, 1\].
+#'   Default 1. It scales the final stage, so it also shrinks the realized
+#'   cluster and therefore the clustering penalty. See [n_cluster()] for the
+#'   decomposition.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_prec` object with components `$se`, `$moe`, and `$cv`.
@@ -33,17 +42,18 @@
 #' Stage count is determined by `length(n)`.
 #'
 #' **2-stage** (Valliant et al., 2018, Eq. 9.2.23):
-#' \deqn{CV = \sqrt{\frac{V \cdot k}{n_1 \cdot n_2} (1 + \delta (n_2 - 1))}}
+#' \deqn{CV = \sqrt{\frac{V \cdot k}{n_1 \cdot n_2} (1 + \delta (n_2 - 1))}}{CV = sqrt((V * k)/(n_1 * n_2) (1 + delta (n_2 - 1)))}
 #'
 #' **3-stage**:
 #' \deqn{CV = \sqrt{\frac{V}{n_1 \cdot n_2 \cdot n_3} (k_1 \delta_1 n_2 n_3
-#'   + k_2 (1 + \delta_2 (n_3 - 1)))}}
+#'   + k_2 (1 + \delta_2 (n_3 - 1)))}}{CV = sqrt(V/(n_1 * n_2 * n_3) (k_1 delta_1 n_2 n_3 + k_2 (1 + delta_2 (n_3 - 1))))}
 #'
 #' @references
 #' Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 #' *Practical Tools for Designing and Weighting Survey Samples*
 #' (2nd ed.). Springer. Ch. 9.
 #'
+#' @family precision functions
 #' @seealso [n_cluster()] for the inverse operation, [varcomp()] for
 #'   estimating variance components.
 #'
@@ -73,9 +83,18 @@ prec_cluster.default <- function(
   icc = NULL,
   unit_relvar = 1,
   var_ratio = 1,
+  resp_rate_psu = 1,
+  resp_rate_ssu = 1,
   resp_rate = 1,
   plan = NULL
 ) {
+  # See n_cluster.default(): the plan merge erases the difference between a
+  # supplied unit relvariance and the default one.
+  .check_relvar_identified(
+    icc,
+    !missing(unit_relvar) || "unit_relvar" %in% names(plan$defaults),
+    "prec_cluster()"
+  )
   .plan <- .merge_plan_args(plan, prec_cluster.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_cluster.default, c(.plan, list(...))))
   .check_unused_dots(...)
@@ -90,8 +109,8 @@ prec_cluster.default <- function(
       )
     }
     icc <- vc$icc
-    unit_relvar <- vc$unit_relvar
     var_ratio <- vc$var_ratio
+    if (!is.na(vc$unit_relvar)) unit_relvar <- vc$unit_relvar
   }
 
   if (!is.numeric(n) || length(n) < 2L) {
@@ -115,7 +134,15 @@ prec_cluster.default <- function(
   icc <- .reorder_stage_vec(icc, "icc")
   var_ratio <- .reorder_stage_vec(var_ratio, "var_ratio")
   check_icc(icc, expected_length = stages - 1L)
-  check_resp_rate(resp_rate)
+  check_resp_rate(resp_rate_psu, "resp_rate_psu")
+  check_resp_rate(resp_rate_ssu, "resp_rate_ssu")
+  check_resp_rate(resp_rate, "resp_rate")
+  if (stages == 2L && !isTRUE(all.equal(resp_rate_ssu, 1))) {
+    stop(
+      "'resp_rate_ssu' is not applicable for 2-stage designs: the units inside a PSU are the ultimate ones, so their nonresponse is 'resp_rate'",
+      call. = FALSE
+    )
+  }
   check_scalar(unit_relvar, "unit_relvar")
   if (
     !is.numeric(var_ratio) ||
@@ -131,8 +158,21 @@ prec_cluster.default <- function(
     stop("all elements of 'n' must be positive", call. = FALSE)
   }
 
-  n_eff <- n
-  n_eff[1L] <- n[1L] * resp_rate
+  # Each stage keeps the share of its own units that respond. The last stage
+  # always carries the ultimate-unit rate, whether the design has two stages
+  # or three.
+  rates <- if (stages == 2L) {
+    c(resp_rate_psu, resp_rate)
+  } else {
+    c(resp_rate_psu, resp_rate_ssu, resp_rate)
+  }
+  n_eff <- n * rates
+  .check_expected_take(n[[stages]], resp_rate,
+                       if (stages == 2L) "n_per_psu" else "n_per_ssu",
+                       "resp_rate")
+  if (stages == 3L) {
+    .check_expected_take(n[[2L]], resp_rate_ssu, "n_per_psu", "resp_rate_ssu")
+  }
 
   if (stages == 2L) {
     var_ratio <- rep_len(var_ratio, 1L)
@@ -147,6 +187,8 @@ prec_cluster.default <- function(
     icc = icc,
     unit_relvar = unit_relvar,
     var_ratio = var_ratio,
+    resp_rate_psu = resp_rate_psu,
+    resp_rate_ssu = resp_rate_ssu,
     resp_rate = resp_rate,
     stages = stages
   )
@@ -169,6 +211,8 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
     icc = p$icc,
     unit_relvar = p$unit_relvar,
     var_ratio = p$var_ratio,
+    resp_rate_psu = p$resp_rate_psu %||% 1,
+    resp_rate_ssu = p$resp_rate_ssu %||% 1,
     resp_rate = p$resp_rate %||% 1
   )
   out <- do.call(

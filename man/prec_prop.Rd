@@ -4,14 +4,16 @@
 \alias{prec_prop}
 \alias{prec_prop.default}
 \alias{prec_prop.svyplan_n}
-\title{Sampling Precision for a Proportion}
+\title{Sampling precision for a proportion}
 \usage{
 prec_prop(p, ...)
 
 \method{prec_prop}{default}(
-  p,
+  p = NULL,
   n,
   ...,
+  cv = NULL,
+  rmoe = NULL,
   alpha = 0.05,
   N = Inf,
   deff = 1,
@@ -24,13 +26,24 @@ prec_prop(p, ...)
 \method{prec_prop}{svyplan_n}(p, ...)
 }
 \arguments{
-\item{p}{For the default method: expected proportion, in (0, 1).
+\item{p}{For the default method: expected proportion, in (0, 1). Leave
+it \code{NULL} and give \code{cv} or \code{rmoe} to solve for it instead.
 For \code{svyplan_n} objects: a sample size result from \code{\link[=n_prop]{n_prop()}}.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{n}{Sample size, measured as gross units drawn and bounded by a
 finite \code{N}.}
+
+\item{cv}{Target relative standard error, supplied instead of \code{p} to solve
+for the smallest proportion the design measures that precisely. Specify
+exactly one of \code{p}, \code{cv}, or \code{rmoe}.}
+
+\item{rmoe}{Target margin of error relative to the proportion, \code{moe / p},
+supplied instead of \code{p} to solve for the smallest proportion the design
+can report at that relative half-width. Unlike the \code{cv} solve this one
+reads the interval rather than the variance and so depends on \code{method}.
+Specify exactly one of \code{p}, \code{cv}, or \code{rmoe}.}
 
 \item{alpha}{Significance level, default 0.05.}
 
@@ -47,30 +60,45 @@ adjustment). The effective sample size is \code{n * resp_rate}.}
 \code{"beta"} (Korn-Graubard). See \code{\link[=n_prop]{n_prop()}} for how to choose.}
 
 \item{df}{Degrees of freedom of the variance estimator, typically sampled
-PSUs minus strata. Used by \code{method = "beta"} only. \code{NULL} (default)
-applies no adjustment. See \code{\link[=n_prop]{n_prop()}}.}
+PSUs minus strata, and available from \code{\link[=design_df]{design_df()}}. It switches the
+interval quantile from normal to t under every method. \code{NULL}
+(default) applies no adjustment. See \code{\link[=n_prop]{n_prop()}}.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
 A \code{svyplan_prec} object with \code{type = "proportion"}:
 \describe{
-\item{\code{se}}{Standard error of the planned estimate, computed on the
-net sample \code{n * resp_rate}.}
-\item{\code{moe}}{Margin of error, \code{qnorm(1 - alpha / 2) * se}. For the
-three asymmetric methods this is half the interval's length, not
-an offset from either limit, so \code{p - moe} and \code{p + moe} are not
+\item{\code{se}}{Sampling standard error of the planned estimate, computed
+on the net sample \code{n * resp_rate}. It describes the estimator, so it
+is the same under all four methods and moves only with \code{p}, \code{n},
+\code{deff}, \code{N}, and \code{resp_rate}.}
+\item{\code{moe}}{Half the length of the interval the chosen \code{method}
+builds at that standard error. Only under \code{"wald"} is this
+\code{qnorm(1 - alpha / 2) * se}; the other three close at a different
+half-width, which is the whole of what distinguishes them. None of
+the three is symmetric about \code{p}, so \code{p - moe} and \code{p + moe} are not
 the endpoints; use \code{\link[=confint]{confint()}} for those.}
-\item{\code{cv}}{Relative standard error, \code{se / p}.}
+\item{\code{cv}}{Relative standard error, \code{se / p}, and therefore also the
+same under all four methods.}
+\item{\code{rmoe}}{Margin of error relative to the proportion, \code{moe / p}.
+It reads the interval, so like \code{moe} it is method-specific.}
 \item{\code{method}}{The interval method used.}
+\item{\code{expected_cases}}{Positive cases the design expects to yield,
+\code{n * resp_rate * p}, the same quantity \code{\link[=n_prop]{n_prop()}} reports and the
+one its \code{min_cases} constraint acts on.}
+\item{\code{solved}}{\code{"p"} when the proportion was solved for, and absent
+otherwise. The solved value is in \code{params$p}, whichever of \code{cv} or
+\code{rmoe} asked for it.}
 \item{\code{params}}{The validated inputs (\code{p}, \code{n}, \code{alpha}, \code{N},
-\code{deff}, \code{resp_rate}, \code{df}). \code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the
+\code{deff}, \code{resp_rate}, \code{df}, and \code{rmoe} when the proportion was solved
+from one). \code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the
 \code{\link[=n_prop]{n_prop()}} round trip read the design back from here.}
 }
 
 Nothing here is rounded: \code{n} is taken as given, so passing a
-continuous \code{n} back from \code{\link[=n_prop]{n_prop()}} reproduces its \code{se}, \code{moe} and
-\code{cv} exactly.
+continuous \code{n} back from \code{\link[=n_prop]{n_prop()}} reproduces its \code{se}, \code{moe}, \code{cv}
+and \code{rmoe} exactly.
 }
 \description{
 Compute the sampling error (SE, margin of error, CV) for estimating a
@@ -97,11 +125,75 @@ same variance through \code{n_eff}, so all four respond to \code{deff} and \code
 and all four return zero at a census. They differ only in the interval
 built around that variance; see \code{\link[=n_prop]{n_prop()}} for how to choose.
 
-\verb{$moe} is half the length of that interval. Only the Wald interval is
-symmetric about \code{p}, so for the other three \code{p - moe} and \code{p + moe} are
-not the limits: use \code{\link[=confint]{confint()}} for those. The \code{"beta"} method makes this
-most visible, since its interval is deliberately asymmetric for a rare
-outcome.
+That division of labour is worth stating plainly, because it decides what
+each returned quantity answers. \code{se} and \code{cv} describe the estimator and
+are identical under all four methods; changing \code{method} on the same design
+does not move them. \code{moe} and \code{rmoe} describe the interval and are the
+only place the methods differ. Reading \code{se} back out of a half-width as
+\code{moe / q} would make the reported standard error of the estimate change
+when nothing but the interval construction had.
+\subsection{The four precision quantities}{
+
+The package reports the same precision four ways, along two axes. One
+axis is what is being described, the estimator's sampling variance or
+the interval drawn around it; the other is whether it is stated in the
+estimand's units or as a fraction of it.\tabular{lll}{
+    \tab Absolute \tab Relative \cr
+   Sampling \tab \code{se} \tab \code{cv} \cr
+   Interval \tab \code{moe} \tab \code{rmoe} \cr
+}
+
+
+The sampling row is free of \code{alpha} and of \code{method}. The interval row
+depends on both: \code{alpha} fixes the confidence level and \code{method} fixes
+the construction, and \code{rmoe = moe / p} inherits each. \code{rmoe = q * cv}
+holds under \code{"wald"} alone, where \code{q} is the interval quantile the
+design uses, normal by default and \code{t} on \code{df} degrees of freedom when
+\code{df} is supplied; under the other three the interval does not close at
+\code{q * se}, and reading a relative margin of error off the CV that way
+overstates the precision by 4 to 10 percent at \code{p = 0.02}, \code{n = 900},
+\code{deff = 2}.
+
+\code{\link[=n_prop]{n_prop()}} takes any of \code{moe}, \code{rmoe}, and \code{cv} as the target, \code{cv}
+under \code{"wald"} alone for the reason above, and all four quantities are
+reported back by both functions.
+
+\verb{$moe} is half the length of that interval, which equals \code{q * se} under
+\code{"wald"} alone. Only the Wald interval is symmetric about \code{p}, so for the
+other three \code{p - moe} and \code{p + moe} are not the limits: use \code{\link[=confint]{confint()}}
+for those. The \code{"beta"} method makes this most visible, since its interval
+is deliberately asymmetric for a rare outcome.
+
+Supplying \code{cv} in place of \code{p} solves the same equation in the remaining
+direction. \code{\link[=n_prop]{n_prop()}} fixes the proportion and the precision and returns
+the sample size. This function fixes the proportion and the sample size and
+returns the precision. Giving \code{n} and \code{cv} returns the proportion. That
+third reading answers which estimates a fielded design can carry: because
+\code{se(p) / p} falls as \code{p} rises, the solution is a floor, and every larger
+proportion meets the target. It is the planning form of a publication
+threshold. \code{expected_cases} is reported alongside it, so the precision
+floor and the \code{min_cases} floor \code{\link[=n_prop]{n_prop()}} applies can be read together.
+
+The solution is closed form, \code{p = 1 / (1 + n_eff * cv^2)}, and because
+\code{cv} reads the sampling variance rather than an interval, it is the same
+under all four methods: \code{method} changes the interval this design would
+report, not the smallest proportion it can measure to a given relative
+standard error. Every positive \code{cv} has a root in (0, 1), so no target is
+unattainable. A census is an error, having no sampling variance for any
+proportion to be measured against.
+
+Giving \code{n} and \code{rmoe} asks the same question of the interval instead of
+the variance, and the answer is method-specific: the smallest proportion
+the design can report at a relative margin of error of \code{rmoe} under the
+chosen construction. There is no closed form, and two properties the
+\code{cv} solve does not share bound it. The Wilson and Korn-Graubard
+half-widths do not vanish as \code{p} approaches 1, so their relative margin
+of error has a positive floor and a target below it is refused with the
+floor named. The back-transformed log-odds half-width turns upward once
+the logit spread outgrows \code{logit(p)}, near \code{p = 0.999} at \code{n = 1500} but
+as low as \code{p = 0.97} at \code{n = 30}, so under \code{"logodds"} the target is met
+on an interval rather than on every larger proportion, and the reported
+root is its lower end.
 
 When called on a \code{svyplan_n} object, parameters are extracted from the
 stored result. Any argument of the default method (e.g. \code{method}, \code{deff},
@@ -109,6 +201,7 @@ stored result. Any argument of the default method (e.g. \code{method}, \code{def
 error. Passing a different \code{method} evaluates the stored sample
 size under that formula. The round-trip will not be exact because \code{n}
 was determined under the original method.
+}
 }
 \examples{
 # Precision with n = 400
@@ -121,8 +214,31 @@ prec_prop(p = 0.3, n = 400, deff = 1.5, resp_rate = 0.8)
 rare <- prec_prop(p = 0.02, n = 900, deff = 2, method = "beta", df = 25)
 confint(rare)
 
+# Smallest proportion 1500 units can report at a 10 percent CV
+floor <- prec_prop(n = 1500, cv = 0.10, N = 2e6)
+floor$params$p
+
+# The same question of the interval: a 20 percent relative margin of
+# error under the Korn-Graubard construction
+prec_prop(n = 1500, rmoe = 0.20, method = "beta", N = 2e6)$params$p
+
+# How that floor moves with the sample size
+predict(floor, expand.grid(n = c(500, 1500, 5000)))
+
 }
 \seealso{
 \code{\link[=n_prop]{n_prop()}} for the inverse (compute n from a precision target),
 \code{\link[=prec_mean]{prec_mean()}} for continuous variables.
+
+Other precision functions:
+\code{\link[=prec_alloc]{prec_alloc()}},
+\code{\link[=prec_change]{prec_change()}},
+\code{\link[=prec_cluster]{prec_cluster()}},
+\code{\link[=prec_mean]{prec_mean()}},
+\code{\link[=prec_multi]{prec_multi()}},
+\code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
+\code{\link[=prec_panel]{prec_panel()}},
+\code{\link[=prec_pooled]{prec_pooled()}},
+\code{\link[=prec_twophase]{prec_twophase()}}
 }
+\concept{precision functions}

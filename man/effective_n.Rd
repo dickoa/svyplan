@@ -8,7 +8,7 @@
 \alias{effective_n.svyplan_prec}
 \alias{effective_n.svyplan_varcomp}
 \alias{effective_n.svyplan_n}
-\title{Effective Sample Size}
+\title{Effective sample size}
 \usage{
 effective_n(x = NULL, ...)
 
@@ -64,7 +64,7 @@ unless it can be derived from \code{weights}, \code{strata$n}, or \code{x}.}
 from components.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1. It nets
-\code{n} down to the units the design expects to analyse before the design
+\code{n} down to the units the design expects to analyze before the design
 effect is applied. When \code{x} is a plan, its own rate is used unless you
 override it here.}
 
@@ -91,7 +91,7 @@ explicitly otherwise.
 
 Sizes are counted as units \strong{issued}, so nonresponse has to be taken
 off before the design effect is applied: a design that issues \code{n} and
-analyses \code{n * resp_rate} of them carries the information of
+analyzes \code{n * resp_rate} of them carries the information of
 \code{n * resp_rate / deff} simple random draws. This is the identity the
 allocation and precision functions plan on, and the one reported in the
 \code{n_eff} column of an \code{\link[=n_alloc]{n_alloc()}} table. Passing a plan as \code{x} picks up

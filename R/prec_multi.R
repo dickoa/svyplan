@@ -1,4 +1,4 @@
-#' Multi-Indicator Sampling Precision
+#' Multi-indicator sampling precision
 #'
 #' Compute the sampling error (SE, MOE, CV) for multiple survey indicators
 #' given a sample size. This is the inverse of [n_multi()].
@@ -31,7 +31,9 @@
 #' @param plan A [svyplan()] profile providing default design parameters.
 #'
 #' @return A `svyplan_prec` object with a `$detail` data frame containing
-#'   per-indicator precision.
+#'   per-indicator precision: `.se`, `.moe`, `.rmoe`, and `.cv`. `.rmoe`
+#'   is `.moe` as a fraction of the row's `p` or `abs(mu)`, and `NA` for a
+#'   row carrying neither.
 #'
 #' @details
 #' ## Building the indicators data frame
@@ -68,9 +70,13 @@
 #'   \item{`prop_method`}{Proportion CI method: `"wald"` (default),
 #'     `"wilson"`, `"logodds"`, or `"beta"`. Only for rows with `p`.}
 #'   \item{`df`}{Degrees of freedom of the variance estimator, typically
-#'     sampled PSUs minus strata. Read by `"beta"` rows only; `NA` (the
-#'     default) applies no adjustment.}
-#'   \item{`resp_rate`}{Expected response rate (default 1).}
+#'     sampled PSUs minus strata, and available from [design_df()]. It
+#'     switches that row's interval quantile from normal to t, under every
+#'     proportion method and on mean rows alike; `NA` (the default) applies
+#'     no adjustment.}
+#'   \item{`resp_rate`}{Expected response rate at the ultimate unit
+#'     (default 1). [prec_multi_cluster()] spends its rate at stage 1 and
+#'     names the column `resp_rate_psu`.}
 #' }
 #'
 #' Domain columns are specified via the `domains` parameter.
@@ -80,6 +86,7 @@
 #' `indicators$prop_method` column to choose `"wald"`, `"wilson"`,
 #' `"logodds"` or `"beta"` for proportion rows.
 #'
+#' @family precision functions
 #' @seealso [n_multi()] for the inverse, [prec_multi_cluster()] for
 #'   multistage cluster designs, and [prec_prop()] and [prec_mean()] for
 #'   single-indicator precision.
@@ -148,6 +155,10 @@ prec_multi.default <- function(
 
   indicators <- .indicators_var_from_sd(indicators, domains)
   .check_indicator_columns(indicators, domains)
+  .stop_min_cases_column(
+    indicators,
+    "prec_multi() reads the sizes you already have; a case floor is a sizing constraint, so it belongs to n_multi()"
+  )
 
   if (!"n" %in% names(indicators)) {
     stop("'indicators' must contain an 'n' column for prec_multi", call. = FALSE)
@@ -172,7 +183,7 @@ prec_multi.default <- function(
                      domain_cols = domain_cols)
 }
 
-#' Multi-Indicator Precision for Cluster Designs
+#' Multi-indicator precision for cluster designs
 #'
 #' Compute achieved precision for several indicators under a two- or
 #' three-stage cluster allocation. This is the inverse of
@@ -193,7 +204,8 @@ prec_multi.default <- function(
 #' @param plan Optional [svyplan()] profile providing design metadata.
 #'
 #' @return A `svyplan_prec` object with per-indicator cluster precision in
-#'   `$detail`.
+#'   `$detail`: `.se`, `.moe`, `.rmoe`, and `.cv`, with `.rmoe` measured
+#'   against the row's `p` or `abs(mu)`.
 #'
 #' @examples
 #' indicators <- data.frame(
@@ -205,6 +217,7 @@ prec_multi.default <- function(
 #' )
 #' prec_multi_cluster(indicators)
 #'
+#' @family precision functions
 #' @seealso [n_multi_cluster()] for the inverse, [prec_multi()] for the
 #'   single-stage counterpart, and [prec_cluster()] for one indicator.
 #'
@@ -247,6 +260,10 @@ prec_multi_cluster.default <- function(
   }
   indicators <- .indicators_var_from_sd(indicators, domains)
   .check_indicator_columns(indicators, domains)
+  .stop_min_cases_column(
+    indicators,
+    "prec_multi_cluster() reads the sizes you already have; a case floor is a sizing constraint, so it belongs to n_multi()"
+  )
 
   if (!"n" %in% names(indicators)) {
     stop("'indicators' must contain an 'n' column", call. = FALSE)
@@ -412,7 +429,8 @@ prec_multi_cluster.default <- function(
         alpha = indicators$alpha[i],
         N = indicators$N[i],
         deff = indicators$deff[i],
-        resp_rate = indicators$resp_rate[i]
+        resp_rate = indicators$resp_rate[i],
+        df = .row_df(indicators, i)
       )
     }
     se_vec[i] <- res_i$se
@@ -426,6 +444,7 @@ prec_multi_cluster.default <- function(
     name = labels,
     .se = se_vec,
     .moe = moe_vec,
+    .rmoe = .rmoe_from_moe(moe_vec, .indicator_estimand(indicators, nr)),
     .cv = cv_vec
   )
 
@@ -450,6 +469,9 @@ prec_multi_cluster.default <- function(
                                 mode = "cv") {
   if (!"alpha" %in% names(indicators)) {
     indicators$alpha <- 0.05
+  }
+  if (!"resp_rate_psu" %in% names(indicators)) {
+    indicators$resp_rate_psu <- 1
   }
   if (!"resp_rate" %in% names(indicators)) {
     indicators$resp_rate <- 1
@@ -546,7 +568,9 @@ prec_multi_cluster.default <- function(
   n2 <- indicators$n_per_psu
   n3 <- if (stages == 3L) indicators$n_per_ssu else rep(NA_real_, nr)
 
-  rr <- indicators$resp_rate
+  rr <- indicators$resp_rate_psu
+  rs <- .indicator_rate(indicators, "resp_rate_ssu", nr)
+  ru <- .indicator_rate(indicators, "resp_rate", nr)
   n1_eff <- n1 * rr
 
   cv_vec <- numeric(nr)
@@ -570,20 +594,23 @@ prec_multi_cluster.default <- function(
   }
   k2 <- indicators$var_ratio_ssu
 
+  # Stage sizes arrive gross; the variance reads what each stage realizes.
+  n2r <- if (stages == 2L) n2 * ru else n2 * rs
+  n3r <- if (stages == 3L) n3 * ru else n3
   for (i in seq_len(nr)) {
     if (stages == 2L) {
       cv_vec[i] <- sqrt(
-        unit_relvar[i] * k1[i] / (n1_eff[i] * n2[i]) * (1 + delta1[i] * (n2[i] - 1))
+        unit_relvar[i] * k1[i] / (n1_eff[i] * n2r[i]) * (1 + delta1[i] * (n2r[i] - 1))
       )
     } else {
       cv_vec[i] <- sqrt(
         unit_relvar[i] /
-          (n1_eff[i] * n2[i] * n3[i]) *
+          (n1_eff[i] * n2r[i] * n3r[i]) *
           (k1[i] *
             delta1[i] *
-            n2[i] *
-            n3[i] +
-            k2[i] * (1 + delta2[i] * (n3[i] - 1)))
+            n2r[i] *
+            n3r[i] +
+            k2[i] * (1 + delta2[i] * (n3r[i] - 1)))
       )
     }
   }
@@ -591,17 +618,27 @@ prec_multi_cluster.default <- function(
   se_vec <- rep(NA_real_, nr)
   moe_vec <- rep(NA_real_, nr)
 
+  # The inverse of .convert_moe_to_cv(): the cluster model delivers a sampling
+  # CV, and each row's own interval method turns that back into a margin of
+  # error. Reading moe as z * se would assume the Wald half-width for all four.
   if (identical(mode, "moe")) {
     has_p <- "p" %in% names(indicators)
     has_mu <- "mu" %in% names(indicators)
+    has_method <- "prop_method" %in% names(indicators)
     for (i in seq_len(nr)) {
-      z <- qnorm(1 - indicators$alpha[i] / 2)
+      df_i <- .row_df(indicators, i)
       if (has_p && !is.na(indicators$p[i])) {
-        moe_vec[i] <- cv_vec[i] * z * indicators$p[i]
+        p_i <- indicators$p[i]
+        se_vec[i] <- cv_vec[i] * p_i
+        method_i <- if (has_method) indicators$prop_method[i] else "wald"
+        moe_vec[i] <- .prec_engine_prop(
+          p_i, (1 - p_i) / (p_i * cv_vec[i]^2), indicators$alpha[i],
+          Inf, 1, 1, method_i, df_i
+        )$moe
       } else if (has_mu && !is.na(indicators$mu[i])) {
-        moe_vec[i] <- cv_vec[i] * z * indicators$mu[i]
+        se_vec[i] <- cv_vec[i] * abs(indicators$mu[i])
+        moe_vec[i] <- .q_alpha(indicators$alpha[i], df_i) * se_vec[i]
       }
-      se_vec[i] <- moe_vec[i] / z
     }
   }
 
@@ -609,6 +646,7 @@ prec_multi_cluster.default <- function(
     name = labels,
     .se = se_vec,
     .moe = moe_vec,
+    .rmoe = .rmoe_from_moe(moe_vec, .indicator_estimand(indicators, nr)),
     .cv = cv_vec
   )
 

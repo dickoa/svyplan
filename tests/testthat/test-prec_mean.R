@@ -112,3 +112,29 @@ test_that("prec_mean validates inputs", {
   expect_error(prec_mean(var = 100, n = 400, N = -1), "must be greater than 1")
   expect_error(prec_mean(var = 100, n = 400, mu = 0), "must not be zero")
 })
+
+## Solving for the mean
+
+test_that("solving for mu inverts the precision it reports", {
+  r <- prec_mean(var = 25, n = 1500, cv = 0.10, N = 2e6)
+  expect_identical(r$solved, "mu")
+  expect_equal(r$cv, 0.10)
+  expect_equal(r$params$mu, r$se / 0.10)
+  expect_equal(prec_mean(var = 25, n = 1500, mu = r$params$mu, N = 2e6)$cv, 0.10)
+})
+
+test_that("mu and cv are mutually exclusive but both stay optional", {
+  expect_error(prec_mean(var = 25, n = 400, mu = 5, cv = 0.1),
+               "at most one of 'mu' or 'cv'")
+  bare <- prec_mean(var = 25, n = 400)
+  expect_true(is.na(bare$cv))
+  expect_null(bare$solved)
+})
+
+test_that("predict on a solved mean varies cv, not mu", {
+  r <- prec_mean(var = 25, n = 1500, cv = 0.10)
+  grid <- predict(r, expand.grid(n = c(500, 1500)))
+  expect_true("mu" %in% names(grid))
+  expect_equal(grid$cv, rep(0.10, 2))
+  expect_equal(grid$mu[2], r$params$mu)
+})

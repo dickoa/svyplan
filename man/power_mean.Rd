@@ -3,7 +3,7 @@
 \name{power_mean}
 \alias{power_mean}
 \alias{power_mean.default}
-\title{Power Analysis for Means}
+\title{Power analysis for means}
 \usage{
 power_mean(var = NULL, ...)
 
@@ -107,7 +107,7 @@ conventions: 0.2 (small), 0.5 (medium), 0.8 (large).
 When \code{var} is a length-2 vector, the variance of the difference is:
 
 \deqn{V = \sigma^2_1 / r + \sigma^2_2 - 2 \cdot \text{overlap} \cdot
-  \rho \cdot \sigma_1 \sigma_2}
+  \rho \cdot \sigma_1 \sigma_2}{V = sigma^2_1 / r + sigma^2_2 - 2 * overlap * rho * sigma_1 sigma_2}
 
 where \code{r} is the allocation ratio n1/n2 (default 1). When \code{var} is
 scalar and \code{ratio = 1}, this simplifies to the familiar
@@ -115,8 +115,8 @@ scalar and \code{ratio = 1}, this simplifies to the familiar
 
 With a finite \code{N} the correction applies to the marginal terms but not
 to the overlap covariance, which carries a single \eqn{1/N}: for two
-SRSWOR samples sharing \eqn{k = overlap \cdot n_1} units,
-\eqn{Cov(\bar y_1, \bar y_2) = \rho S_1S_2\{k/(n_1n_2) - 1/N\}}. At
+SRSWOR samples sharing \eqn{k = overlap \cdot n_1}{k = overlap * n_1} units,
+\eqn{Cov(\bar y_1, \bar y_2) = \rho S_1S_2\{k/(n_1n_2) - 1/N\}}{Cov(ybar_1, ybar_2) = rho S_1S_2\{k/(n_1n_2) - 1/N\}}. At
 \code{overlap_cor = 1} with equal sizes and variances the population terms
 cancel exactly and the difference variance is
 \eqn{2S^2(1 - overlap)/n}, free of \code{N}.
@@ -130,6 +130,13 @@ it is what makes \code{deff} and a finite \code{N} insertable directly into the
 variance. At small \code{n} the sizes are correspondingly smaller than
 \code{\link[stats:power.t.test]{stats::power.t.test()}}, which uses a noncentral t; use that function
 instead when the sample is small enough for the difference to matter.
+
+The \code{df} argument that \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}} and \code{\link[=n_alloc]{n_alloc()}} accept has
+no counterpart here, and its absence is a decision rather than an
+omission. There the quantile is the half-width of a confidence interval
+and a t quantile substitutes for a normal one directly; here it is a
+normal deviate for an alternative, and a t-based power calculation is a
+different procedure. Passing \code{df} is an error that says so.
 }
 }
 \examples{
@@ -161,4 +168,8 @@ Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
 \seealso{
 \code{\link[=power_prop]{power_prop()}} for proportions, \code{\link[=power_did]{power_did()}} for
 difference-in-differences, \code{\link[=n_mean]{n_mean()}} for estimation precision.
+With \code{overlap} set, this is the two-occasion change of one population:
+\code{\link[=n_change]{n_change()}} and \code{\link[=prec_change]{prec_change()}} size and evaluate the same quantity as
+an estimate with a margin of error rather than as a test, and
+\code{\link[=design_overlap]{design_overlap()}} derives the overlap from a rotation schedule.
 }

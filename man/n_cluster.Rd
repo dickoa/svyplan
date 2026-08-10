@@ -4,7 +4,7 @@
 \alias{n_cluster}
 \alias{n_cluster.default}
 \alias{n_cluster.svyplan_prec}
-\title{Optimal Multistage Cluster Allocation}
+\title{Optimal multistage cluster allocation}
 \usage{
 n_cluster(stage_cost = NULL, ...)
 
@@ -19,6 +19,8 @@ n_cluster(stage_cost = NULL, ...)
   n_psu = NULL,
   n_per_psu = NULL,
   n_per_ssu = NULL,
+  resp_rate_psu = 1,
+  resp_rate_ssu = 1,
   resp_rate = 1,
   fixed_cost = 0,
   plan = NULL
@@ -77,8 +79,24 @@ where the number of households per cluster is fixed.}
 \item{n_per_ssu}{Fixed SSU take size (stage-3 sample size per SSU). \code{NULL}
 (default) means optimize. Only valid for 3-stage designs.}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
-adjustment). The stage-1 sample size is inflated by \code{1 / resp_rate}.}
+\item{resp_rate_psu}{Expected \strong{PSU-level} response rate, in (0, 1].
+Default 1 (no adjustment). It is the share of selected clusters that can
+be worked at all, and the stage-1 sample size is inflated by
+\code{1 / resp_rate_psu} to cover the loss. Nonresponse among the ultimate
+units inside a cluster is a different quantity that acts at a different
+stage; the plain \code{resp_rate} carries that meaning elsewhere in the
+package.}
+
+\item{resp_rate_ssu}{Expected \strong{SSU-level} response rate, in (0, 1].
+Three-stage designs only; default 1. It is the share of selected
+second-stage units, typically households, that can be interviewed at
+all. A 2-stage design has no such stage, since the units inside a PSU
+are the ultimate ones, and supplying it there is an error.}
+
+\item{resp_rate}{Expected \strong{ultimate-unit} response rate, in (0, 1].
+Default 1. It is the share of selected final-stage units, typically
+persons, that respond. This is the plain \code{resp_rate} the rest of the
+package uses.}
 
 \item{fixed_cost}{Fixed overhead cost (C0). Default 0.
 The total cost model becomes
@@ -87,7 +105,7 @@ In budget mode, only \code{budget - fixed_cost} is available for variable
 costs. In CV mode, \code{fixed_cost} is added to the variable cost.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults
-(including \code{stage_cost}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{resp_rate}, \code{fixed_cost}).}
+(including \code{stage_cost}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{resp_rate_psu}, \code{fixed_cost}).}
 }
 \value{
 A \code{svyplan_cluster} object with components:
@@ -173,6 +191,36 @@ in very few PSUs. When \code{icc} is near 1, most variability is between PSUs,
 so the optimum collapses toward taking very few units in many PSUs. In both
 cases the analytical allocation becomes degenerate, so \code{n_cluster()}
 rejects values numerically too close to 0 or 1.
+}
+
+\subsection{Nonresponse acts at whichever stage it happens}{
+
+A cluster design can lose units at more than one stage, and the losses are
+not interchangeable, so each has its own argument named for the stage it
+acts on. Writing the three-stage CV out with realized takes shows why:
+
+\deqn{cv^2 = \frac{V k_1 \delta_1}{a\,r_{psu}}
+  + \frac{V k_2 (1 + \delta_2 (q r - 1))}{a\,r_{psu}\, m\,r_{ssu}\, q\,r}}{cv^2 = (V k_1 delta_1)/(a r_psu) + (V k_2 (1 + delta_2 (q r - 1)))/(a r_psu m r_ssu q r)}
+
+\code{resp_rate_psu} divides both terms, so losing whole PSUs is a pure
+sample-size loss. \code{resp_rate_ssu} divides only the second. \code{resp_rate}
+divides the second \emph{and} enters the \eqn{\delta_2} bracket, because it
+shrinks the realized final-stage take and so changes the clustering
+penalty itself. None is recoverable from the others.
+
+It follows that the later-stage rates move the cost-optimal design while
+the PSU rate does not. For two stages the optimal take becomes
+\deqn{b^* = \sqrt{\frac{C_1 (1 - \mathrm{icc})}{C_2\,\mathrm{icc}\,r}},}{b^* = sqrt((C_1 (1 - icc))/(C_2 icc r)),}
+with \code{r} the ultimate-unit rate; \code{resp_rate_psu} is absent because it
+scales cost without moving that trade-off. Sizes and costs stay \strong{gross}:
+\verb{$n} counts units to issue and \verb{$cost} pays for them, while the variance
+reads what they realize.
+
+This is a deterministic expected-take approximation. It substitutes the
+expected realized stage counts into the planning variance and assumes
+response is noninformative for it. Below one expected respondent per unit
+the substitution stops describing the design, and that is an error naming
+the approximation rather than the design.
 
 These functions assume sampling fractions are negligible at each stage
 (equivalent to sampling with replacement). No finite population correction
@@ -215,4 +263,16 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 \code{\link[=prec_cluster]{prec_cluster()}} for the inverse, \code{\link[=varcomp]{varcomp()}} for estimating
 variance components, \code{\link[=n_multi_cluster]{n_multi_cluster()}} for several indicators at once,
 and \code{\link[=n_alloc]{n_alloc()}} for a stratified multistage allocation.
+
+Other sample size functions:
+\code{\link[=n_alloc]{n_alloc()}},
+\code{\link[=n_change]{n_change()}},
+\code{\link[=n_mean]{n_mean()}},
+\code{\link[=n_multi]{n_multi()}},
+\code{\link[=n_multi_cluster]{n_multi_cluster()}},
+\code{\link[=n_panel]{n_panel()}},
+\code{\link[=n_pooled]{n_pooled()}},
+\code{\link[=n_prop]{n_prop()}},
+\code{\link[=n_twophase]{n_twophase()}}
 }
+\concept{sample size functions}

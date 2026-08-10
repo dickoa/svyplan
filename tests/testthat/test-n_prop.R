@@ -329,8 +329,9 @@ test_that("the beta method honours deff, N, resp_rate and df", {
   expect_equal(res$moe, 0)
 
   expect_error(n_prop(p = 0.3, cv = 0.1, method = "beta"), "requires 'moe'")
-  expect_error(n_prop(p = 0.3, moe = 0.05, method = "wilson", df = 10),
-               "applies to method = 'beta' only")
+  # df now sets the interval quantile for every method
+  expect_gt(n_prop(p = 0.3, moe = 0.05, method = "wilson", df = 10)$n,
+            n_prop(p = 0.3, moe = 0.05, method = "wilson")$n)
   expect_error(prec_prop(p = 0.3, n = 100, method = "beta", df = 0.5),
                "'df' must be a number >= 1")
 })
@@ -347,4 +348,110 @@ test_that("reported moe equals the confint half-width for every method", {
       }
     }
   }
+})
+
+## Minimum expected number of positive cases
+
+test_that("the count constraint binds only when it exceeds precision", {
+  precision_only <- n_prop(p = 0.02, moe = 0.02)
+  bound <- n_prop(p = 0.02, moe = 0.02, min_cases = 30)
+  slack <- n_prop(p = 0.02, moe = 0.02, min_cases = 2)
+
+  expect_equal(bound$n, 30 / 0.02)
+  expect_gt(bound$n, precision_only$n)
+  expect_identical(bound$binding, "min_cases")
+
+  expect_equal(slack$n, precision_only$n)
+  expect_identical(slack$binding, "precision")
+  expect_null(precision_only$binding)
+})
+
+test_that("the response rate inflates a count-driven size by 1 / resp_rate", {
+  full <- n_prop(p = 0.02, moe = 0.02, min_cases = 30)
+  netted <- n_prop(p = 0.02, moe = 0.02, min_cases = 30, resp_rate = 0.8)
+  expect_equal(netted$n, full$n / 0.8)
+  expect_equal(netted$expected_cases, 30)
+})
+
+test_that("deff leaves a count-driven size untouched", {
+  plain <- n_prop(p = 0.02, moe = 0.02, min_cases = 30)
+  clustered <- n_prop(p = 0.02, moe = 0.02, min_cases = 30, deff = 2)
+  # deff raises the precision-driven size but not the count-driven one, so
+  # it can only change which constraint binds
+  expect_equal(plain$n, 1500)
+  expect_identical(clustered$binding, "min_cases")
+  expect_equal(clustered$n, 1500)
+
+  bigger <- n_prop(p = 0.02, moe = 0.02, min_cases = 30, deff = 10)
+  expect_identical(bigger$binding, "precision")
+  expect_equal(bigger$n, n_prop(p = 0.02, moe = 0.02, deff = 10)$n)
+})
+
+test_that("expected cases are reported on every proportion result", {
+  res <- n_prop(p = 0.3, moe = 0.05)
+  expect_equal(res$expected_cases, res$n * 0.3)
+
+  netted <- n_prop(p = 0.3, moe = 0.05, resp_rate = 0.8)
+  expect_equal(netted$expected_cases, netted$n * 0.8 * 0.3)
+
+  prec <- prec_prop(p = 0.02, n = 900, deff = 2)
+  expect_equal(prec$expected_cases, 900 * 0.02)
+  expect_null(n_mean(var = 4, moe = 0.5)$expected_cases)
+})
+
+test_that("expected cases agree across the round trip", {
+  res <- n_prop(p = 0.02, moe = 0.02, min_cases = 30, resp_rate = 0.9)
+  back <- prec_prop(res)
+  expect_equal(back$expected_cases, res$expected_cases)
+  expect_equal(n_prop(back)$n, res$n)
+  expect_equal(n_prop(back)$expected_cases, res$expected_cases)
+})
+
+test_that("the count constraint survives the precision round trip", {
+  res <- n_prop(p = 0.02, moe = 0.02, min_cases = 30)
+  expect_equal(res$params$min_cases, 30)
+  # the size comes back exactly because the precision prec_prop() reports
+  # is the precision at the floored size, so inverting it returns that
+  # size whether or not the floor itself travelled
+  expect_equal(n_prop(prec_prop(res))$n, res$n)
+  expect_equal(n_prop(prec_prop(res), min_cases = 60)$n, 60 / 0.02)
+})
+
+test_that("min_cases is validated", {
+  expect_error(n_prop(p = 0.02, moe = 0.02, min_cases = 0),
+               "'min_cases' must be positive")
+  expect_error(n_prop(p = 0.02, moe = 0.02, min_cases = -5),
+               "'min_cases' must be positive")
+  expect_error(n_prop(p = 0.02, moe = 0.02, min_cases = c(10, 20)),
+               "'min_cases' must be a numeric scalar")
+  expect_error(n_prop(p = 0.02, moe = 0.02, min_cases = 30, N = 1000),
+               "unattainable")
+})
+
+test_that("min_cases applies to every interval method", {
+  for (m in c("wald", "wilson", "logodds", "beta")) {
+    res <- n_prop(p = 0.02, moe = 0.02, method = m, min_cases = 30)
+    expect_equal(res$n, 1500)
+    expect_identical(res$binding, "min_cases")
+  }
+})
+
+test_that("predict varies the case floor", {
+  res <- n_prop(p = 0.02, moe = 0.02, min_cases = 30)
+  grid <- predict(res, data.frame(min_cases = c(10, 30, 60)))
+  expect_equal(grid$n, c(500, 1500, 3000))
+  expect_identical(grid$min_cases, c(10, 30, 60))
+})
+
+test_that("proportion results print their expected cases", {
+  out <- capture.output(print(n_prop(p = 0.3, moe = 0.05)))
+  expect_match(out[3], "^expected cases = ")
+  expect_false(grepl("binding", out[3]))
+
+  bound <- capture.output(print(n_prop(p = 0.02, moe = 0.02, min_cases = 30)))
+  expect_match(bound[3], "expected cases = 30.0")
+  expect_match(bound[3], "min_cases = 30, binding: min_cases")
+
+  prec <- capture.output(print(prec_prop(p = 0.02, n = 900)))
+  expect_match(prec[4], "expected cases = 18.0")
 })

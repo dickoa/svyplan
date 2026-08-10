@@ -439,3 +439,144 @@ test_that("power_prop applies the overlap correction like power_mean", {
     "one population"
   )
 })
+
+## Log-odds pooled null under unequal allocation
+
+# The statistic power_prop(method = "logodds") powers, written out from the
+# formulas in ?power_prop so these tests do not lean on the implementation.
+logodds_power_ref <- function(p1, p2, n, alpha = 0.05, N = c(Inf, Inf),
+                              deff = 1, alternative = "two.sided") {
+  n <- if (length(n) == 1L) c(n, n) else n
+  N <- if (length(N) == 1L) c(N, N) else N
+  z_a <- if (alternative == "two.sided") {
+    qnorm(1 - alpha / 2)
+  } else {
+    qnorm(1 - alpha)
+  }
+  d <- log(p1 / (1 - p1)) - log(p2 / (1 - p2))
+  p_bar <- (n[1] * p1 + n[2] * p2) / (n[1] + n[2])
+  q_bar <- 1 - p_bar
+  f <- vapply(1:2, function(i) {
+    if (is.infinite(N[i])) 1 else max(0, 1 - n[i] / N[i])
+  }, numeric(1L))
+  V0 <- deff * (f[1] / (n[1] * p_bar * q_bar) + f[2] / (n[2] * p_bar * q_bar))
+  VA <- deff * (f[1] / (n[1] * p1 * (1 - p1)) +
+                  f[2] / (n[2] * p2 * (1 - p2)))
+  pw <- pnorm((abs(d) - z_a * sqrt(V0)) / sqrt(VA))
+  if (alternative == "two.sided") {
+    pw <- pw + pnorm((-abs(d) - z_a * sqrt(V0)) / sqrt(VA))
+  }
+  min(pw, 1)
+}
+
+test_that("the log-odds pooled null is weighted by the allocation", {
+  # Hand-calculated from the closed form in ?power_prop at ratio 4.
+  z_a <- qnorm(0.975)
+  z_b <- qnorm(0.80)
+  p1 <- 0.1; p2 <- 0.2; r <- 4
+  d <- log(p1 / 0.9) - log(p2 / 0.8)
+  p_bar <- (r * p1 + p2) / (r + 1)
+  V0 <- (1 / r + 1) / (p_bar * (1 - p_bar))
+  VA <- 1 / (r * p1 * 0.9) + 1 / (p2 * 0.8)
+  n2 <- ((z_a * sqrt(V0) + z_b * sqrt(VA)) / abs(d))^2
+
+  res <- power_prop(p1 = p1, p2 = p2, ratio = r, method = "logodds")
+  expect_equal(unname(res$n), c(r * n2, n2), tolerance = 1e-10)
+  expect_equal(ceiling(unname(res$n)), c(523, 131))
+
+  # The unweighted null the allocation-weighted one replaces.
+  pb0 <- (p1 + p2) / 2
+  n2_flat <- ((z_a * sqrt((1 / r + 1) / (pb0 * (1 - pb0))) + z_b * sqrt(VA)) /
+                abs(d))^2
+  expect_gt(n2, n2_flat * 1.1)
+})
+
+test_that("equal allocation leaves the log-odds pooled null at the midpoint", {
+  z_a <- qnorm(0.975)
+  z_b <- qnorm(0.80)
+  p1 <- 0.1; p2 <- 0.2
+  d <- log(p1 / 0.9) - log(p2 / 0.8)
+  p_bar <- (p1 + p2) / 2
+  V0 <- 2 / (p_bar * (1 - p_bar))
+  VA <- 1 / (p1 * 0.9) + 1 / (p2 * 0.8)
+  n_ref <- ((z_a * sqrt(V0) + z_b * sqrt(VA)) / abs(d))^2
+
+  res <- power_prop(p1 = p1, p2 = p2, method = "logodds")
+  expect_equal(unname(res$n), n_ref, tolerance = 1e-10)
+  expect_equal(res$n, power_prop(p1 = p1, p2 = p2, ratio = 1,
+                                 method = "logodds")$n)
+})
+
+test_that("the log-odds power path weights the null by the realized sizes", {
+  for (n in list(c(400, 100), c(150, 600), 250, c(523, 131))) {
+    for (alt in c("two.sided", "one.sided")) {
+      res <- power_prop(p1 = 0.1, p2 = 0.2, n = n, power = NULL,
+                        alternative = alt, method = "logodds")
+      expect_equal(res$power,
+                   logodds_power_ref(0.1, 0.2, n, alternative = alt),
+                   tolerance = 1e-12)
+    }
+  }
+  res <- power_prop(p1 = 0.12, p2 = 0.2, n = c(800, 200), power = NULL,
+                    deff = 1.6, alpha = 0.10, method = "logodds")
+  expect_equal(res$power,
+               logodds_power_ref(0.12, 0.2, c(800, 200), alpha = 0.10,
+                                 deff = 1.6),
+               tolerance = 1e-12)
+})
+
+test_that("log-odds sizing inverts to its target power at any allocation", {
+  for (r in c(0.25, 0.5, 1, 2, 4, 7)) {
+    for (target in c(0.8, 0.9)) {
+      # One-sided, where the closed form and the power formula are the same
+      # equation and the inversion is exact.
+      res <- power_prop(p1 = 0.1, p2 = 0.2, ratio = r, power = target,
+                        alternative = "one.sided", method = "logodds")
+      back <- power_prop(p1 = 0.1, p2 = 0.2, n = res$n, power = NULL,
+                         alternative = "one.sided", method = "logodds")
+      expect_equal(back$power, target, tolerance = 1e-10)
+      expect_equal(logodds_power_ref(0.1, 0.2, res$n,
+                                     alternative = "one.sided"),
+                   target, tolerance = 1e-10)
+
+      # Two-sided, where the closed form drops the far tail, as it does under
+      # every method. The size is conservative by that amount and no more.
+      res2 <- power_prop(p1 = 0.1, p2 = 0.2, ratio = r, power = target,
+                         method = "logodds")
+      back2 <- power_prop(p1 = 0.1, p2 = 0.2, n = res2$n, power = NULL,
+                          method = "logodds")
+      expect_gte(back2$power, target)
+      expect_lt(back2$power - target, 1e-4)
+      expect_equal(logodds_power_ref(0.1, 0.2, res2$n), back2$power,
+                   tolerance = 1e-12)
+    }
+  }
+})
+
+test_that("the log-odds pooled null carries the finite population correction", {
+  for (N in list(c(5000, 5000), c(4000, 1500))) {
+    res <- power_prop(p1 = 0.1, p2 = 0.2, ratio = 4, N = N,
+                      method = "logodds")
+    back <- power_prop(p1 = 0.1, p2 = 0.2, n = res$n, N = N, power = NULL,
+                       method = "logodds")
+    expect_equal(back$power, 0.80, tolerance = 1e-6)
+    expect_equal(logodds_power_ref(0.1, 0.2, res$n, N = N), 0.80,
+                 tolerance = 1e-6)
+    # a finite population is easier than an infinite one
+    inf_n <- power_prop(p1 = 0.1, p2 = 0.2, ratio = 4, method = "logodds")$n
+    expect_lt(res$n[[2]], inf_n[[2]])
+  }
+  res <- power_prop(p1 = 0.1, p2 = 0.2, n = c(1200, 300), N = c(3000, 900),
+                    power = NULL, method = "logodds")
+  expect_equal(res$power,
+               logodds_power_ref(0.1, 0.2, c(1200, 300), N = c(3000, 900)),
+               tolerance = 1e-12)
+})
+
+test_that("the log-odds pooled null is invariant to relabelling the groups", {
+  a <- power_prop(p1 = 0.1, p2 = 0.2, n = c(500, 125), power = NULL,
+                  method = "logodds")
+  b <- power_prop(p1 = 0.2, p2 = 0.1, n = c(125, 500), power = NULL,
+                  method = "logodds")
+  expect_equal(a$power, b$power, tolerance = 1e-12)
+})

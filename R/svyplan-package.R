@@ -14,7 +14,7 @@
 #'     related to Kish's \emph{roh}. \cr
 #'   `var_ratio` \tab \eqn{k} \tab Ratio of the stage components' unit
 #'     variance to the analysis variable's. Defaults to 1. \cr
-#'   `unit_relvar` \tab \eqn{V} \tab Unit relvariance, \eqn{S^2/\bar{y}^2},
+#'   `unit_relvar` \tab \eqn{V} \tab Unit relvariance, \eqn{S^2/\bar{y}^2}{S^2/ybar^2},
 #'     that is the squared population coefficient of variation. \cr
 #'   `deff` \tab \eqn{DEFF} \tab Design effect. \cr
 #'   `n_psu` \tab \eqn{n_1} \tab Number of PSUs selected. \cr
@@ -44,8 +44,9 @@
 #' for Designing and Weighting Survey Samples}, 2nd edition. Springer.
 "_PACKAGE"
 
-#' @importFrom graphics abline barplot hist points
-#' @importFrom grDevices nclass.FD
+#' @importFrom graphics abline axis barplot hist mtext par plot.new
+#'   plot.window points rect strwidth text title
+#' @importFrom grDevices adjustcolor nclass.FD
 #' @importFrom stats lm.fit optim optimize plogis pnorm predict qlogis quantile qnorm sd terms uniroot var weighted.mean setNames
 #' @importFrom utils modifyList
 NULL

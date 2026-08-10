@@ -1,4 +1,4 @@
-#' Power Analysis for Means
+#' Power analysis for means
 #'
 #' Compute sample size, power, or minimum detectable effect (MDE) for a
 #' two-sample test of means. Leave exactly one of `n`, `power`, or `effect`
@@ -65,7 +65,7 @@
 #' When `var` is a length-2 vector, the variance of the difference is:
 #'
 #' \deqn{V = \sigma^2_1 / r + \sigma^2_2 - 2 \cdot \text{overlap} \cdot
-#'   \rho \cdot \sigma_1 \sigma_2}
+#'   \rho \cdot \sigma_1 \sigma_2}{V = sigma^2_1 / r + sigma^2_2 - 2 * overlap * rho * sigma_1 sigma_2}
 #'
 #' where `r` is the allocation ratio n1/n2 (default 1). When `var` is
 #' scalar and `ratio = 1`, this simplifies to the familiar
@@ -73,8 +73,8 @@
 #'
 #' With a finite `N` the correction applies to the marginal terms but not
 #' to the overlap covariance, which carries a single \eqn{1/N}: for two
-#' SRSWOR samples sharing \eqn{k = overlap \cdot n_1} units,
-#' \eqn{Cov(\bar y_1, \bar y_2) = \rho S_1S_2\{k/(n_1n_2) - 1/N\}}. At
+#' SRSWOR samples sharing \eqn{k = overlap \cdot n_1}{k = overlap * n_1} units,
+#' \eqn{Cov(\bar y_1, \bar y_2) = \rho S_1S_2\{k/(n_1n_2) - 1/N\}}{Cov(ybar_1, ybar_2) = rho S_1S_2\{k/(n_1n_2) - 1/N\}}. At
 #' `overlap_cor = 1` with equal sizes and variances the population terms
 #' cancel exactly and the difference variance is
 #' \eqn{2S^2(1 - overlap)/n}, free of `N`.
@@ -90,6 +90,13 @@
 #' [stats::power.t.test()], which uses a noncentral t; use that function
 #' instead when the sample is small enough for the difference to matter.
 #'
+#' The `df` argument that [n_prop()], [n_mean()] and [n_alloc()] accept has
+#' no counterpart here, and its absence is a decision rather than an
+#' omission. There the quantile is the half-width of a confidence interval
+#' and a t quantile substitutes for a normal one directly; here it is a
+#' normal deviate for an alternative, and a t-based power calculation is a
+#' different procedure. Passing `df` is an error that says so.
+#'
 #' @references
 #' Valliant, R., Dever, J. A., & Kreuter, F. (2018). *Practical Tools for
 #'   Designing and Weighting Survey Samples* (2nd ed.). Springer. Chapter 4.
@@ -98,6 +105,10 @@
 #'
 #' @seealso [power_prop()] for proportions, [power_did()] for
 #'   difference-in-differences, [n_mean()] for estimation precision.
+#'   With `overlap` set, this is the two-occasion change of one population:
+#'   [n_change()] and [prec_change()] size and evaluate the same quantity as
+#'   an estimate with a margin of error rather than as a test, and
+#'   [design_overlap()] derives the overlap from a rotation schedule.
 #'
 #' @examples
 #' # Sample size to detect a difference of 5 with variance 100
@@ -138,6 +149,7 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
                        plan = NULL) {
   .plan <- .merge_plan_args(plan, power_mean.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(power_mean.default, c(.plan, list(...))))
+  .stop_power_df(...)
   .check_unused_dots(...)
   alternative <- match.arg(alternative)
   var <- .resolve_var(var, sd)

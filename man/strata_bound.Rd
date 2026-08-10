@@ -3,7 +3,7 @@
 \encoding{UTF-8}
 \name{strata_bound}
 \alias{strata_bound}
-\title{Strata Boundaries for Survey Design}
+\title{Strata boundaries for survey design}
 \usage{
 strata_bound(
   x,
@@ -31,8 +31,8 @@ contain missing values.}
 \item{n_strata}{Required integer: number of strata (including take-all if
 \code{take_all_above} is specified). Must be >= 2.}
 
-\item{...}{Unused. Present so that every optional argument must be named;
-unused arguments are rejected.}
+\item{...}{Unused. Present so that every optional argument must be named.
+Unused arguments are rejected.}
 
 \item{n}{Target total sample size, supplied as a whole number. Specify at
 most one of \code{n} or \code{cv}. Required for methods \code{"lh"} and \code{"kozak"}.}
@@ -46,7 +46,7 @@ Specify at most one of \code{n} or \code{cv}. Required for methods \code{"lh"} a
 \item{method}{Stratification method: \code{"cumrootf"} (Dalenius-Hodges),
 \code{"geo"} (geometric), \code{"lh"} (LH-inspired coordinate optimization), or
 \code{"kozak"} (Kozak-inspired random-restart local search). The short method
-names are retained for compatibility; they do not claim exact
+names are retained for compatibility and do not claim exact
 implementations of the published algorithms. Default \code{"lh"}.}
 
 \item{alloc}{Allocation rule: \code{"proportional"}, \code{"neyman"},
@@ -69,23 +69,23 @@ census stratum.}
 \item{deff}{Design effect multiplier (> 0), default 1. Inflates the
 variance of the stratified mean exactly as it does in \code{\link[=n_alloc]{n_alloc()}}, so
 that \code{cv} and \code{n} mean the same thing in both. A scalar value leaves the
-boundaries unchanged; see Details.}
+boundaries unchanged. See Details.}
 
 \item{resp_rate}{Expected response rate, in (0, 1], default 1. With a
 response rate below 1, \code{n} is the sample fielded and \code{n * resp_rate} the
 number expected to respond, matching \code{\link[=n_alloc]{n_alloc()}}.}
 
 \item{n_class}{Positive whole number of histogram bins. Applies to
-\code{method = "cumrootf"} only; supplying it with another method is an
+\code{method = "cumrootf"} only. Supplying it with another method is an
 error rather than a silent no-op.
 Default \code{NULL} (Freedman-Diaconis rule).}
 
 \item{max_iter}{Positive whole number of maximum iterations. Applies to
-\code{method = "lh"} and \code{"kozak"} only; supplying it with another method is
+\code{method = "lh"} and \code{"kozak"} only. Supplying it with another method is
 an error rather than a silent no-op. Default \code{NULL} (= 200).}
 
 \item{n_restart}{Positive whole number of random restarts. Applies to
-\code{method = "kozak"} only; supplying it with another method is an error
+\code{method = "kozak"} only. Supplying it with another method is an error
 rather than a silent no-op. Default \code{NULL} (= 10 * \code{n_strata}).}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults. It can
@@ -168,10 +168,34 @@ Stratum allocations are rounded to integers using the ORIC method
 rounding distortion.
 }
 
+\subsection{What the boundaries are optimal for}{
+
+Every quantity the search reads comes from \code{x}: the stratum standard
+deviations \eqn{S_h} are the standard deviations of \code{x} inside each
+candidate stratum, and the variance being minimized is that of the
+estimated total or mean \strong{of \code{x}}. The boundaries returned are therefore
+optimal for estimating \code{x} itself.
+
+Surveys rarely measure \code{x}. It is an auxiliary variable already on the
+frame, and the study variable \code{y} is what will be collected. Nothing here
+models \eqn{E(y \mid x)}{E(y | x)} or \eqn{\mathrm{Var}(y \mid x)}{Var(y | x)}, so for any \code{y}
+other than \code{x} these boundaries are a proxy, good in proportion to how
+closely \code{y} tracks \code{x}. A frame with household expenditure stratified for
+a poverty rate is the usual case, and it is a reasonable one; a frame
+stratified on establishment size for a variable unrelated to size is not.
+
+Two consequences worth planning around. The reported \verb{$cv} is the CV for
+\code{x}, not for the survey's own indicators, so it bounds what the design
+achieves only to the extent that \code{y} and \code{x} share a stratum structure.
+And with several study variables no single \code{x} is optimal for all of
+them: choose the \code{x} closest to the indicator that matters most, or
+compare the boundary sets a few candidate \code{x} produce before committing.
+}
+
 \subsection{Design effect, response rate, and the boundaries}{
 
 The variance evaluated here is the one the rest of the package uses,
-\eqn{\mathrm{deff}\sum_h W_h^2S_h^2(1/(n_h r)-1/N_h)} with response rate
+\eqn{\mathrm{deff}\sum_h W_h^2S_h^2(1/(n_h r)-1/N_h)}{deff sum_h W_h^2S_h^2(1/(n_h r)-1/N_h)} with response rate
 \eqn{r}, so \code{cv = 0.05} means the same thing to \code{strata_bound()} and
 \code{\link[=n_alloc]{n_alloc()}}, and \verb{$n} is a fielded sample in both. Handing \verb{$strata} to
 \code{\link[=n_alloc]{n_alloc()}} with the same \code{cv}, \code{deff}, and \code{resp_rate} reproduces this

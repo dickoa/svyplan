@@ -23,7 +23,7 @@
   plan
 }
 
-#' Strata Boundaries for Survey Design
+#' Strata boundaries for survey design
 #'
 #' Determine where to cut a continuous stratification variable to form
 #' useful strata. Supports four methods: cumulative root frequency
@@ -35,8 +35,8 @@
 #'   contain missing values.
 #' @param n_strata Required integer: number of strata (including take-all if
 #'   `take_all_above` is specified). Must be >= 2.
-#' @param ... Unused. Present so that every optional argument must be named;
-#'   unused arguments are rejected.
+#' @param ... Unused. Present so that every optional argument must be named.
+#'   Unused arguments are rejected.
 #' @param n Target total sample size, supplied as a whole number. Specify at
 #'   most one of `n` or `cv`. Required for methods `"lh"` and `"kozak"`.
 #' @param cv Target coefficient of variation (relative standard error).
@@ -47,7 +47,7 @@
 #' @param method Stratification method: `"cumrootf"` (Dalenius-Hodges),
 #'   `"geo"` (geometric), `"lh"` (LH-inspired coordinate optimization), or
 #'   `"kozak"` (Kozak-inspired random-restart local search). The short method
-#'   names are retained for compatibility; they do not claim exact
+#'   names are retained for compatibility and do not claim exact
 #'   implementations of the published algorithms. Default `"lh"`.
 #' @param alloc Allocation rule: `"proportional"`, `"neyman"`,
 #'   `"optimal"`, or `"power"` (Bankier compromise). Default `"neyman"`.
@@ -65,19 +65,19 @@
 #' @param deff Design effect multiplier (> 0), default 1. Inflates the
 #'   variance of the stratified mean exactly as it does in [n_alloc()], so
 #'   that `cv` and `n` mean the same thing in both. A scalar value leaves the
-#'   boundaries unchanged; see Details.
+#'   boundaries unchanged. See Details.
 #' @param resp_rate Expected response rate, in (0, 1\], default 1. With a
 #'   response rate below 1, `n` is the sample fielded and `n * resp_rate` the
 #'   number expected to respond, matching [n_alloc()].
 #' @param n_class Positive whole number of histogram bins. Applies to
-#'   `method = "cumrootf"` only; supplying it with another method is an
+#'   `method = "cumrootf"` only. Supplying it with another method is an
 #'   error rather than a silent no-op.
 #'   Default `NULL` (Freedman-Diaconis rule).
 #' @param max_iter Positive whole number of maximum iterations. Applies to
-#'   `method = "lh"` and `"kozak"` only; supplying it with another method is
+#'   `method = "lh"` and `"kozak"` only. Supplying it with another method is
 #'   an error rather than a silent no-op. Default `NULL` (= 200).
 #' @param n_restart Positive whole number of random restarts. Applies to
-#'   `method = "kozak"` only; supplying it with another method is an error
+#'   `method = "kozak"` only. Supplying it with another method is an error
 #'   rather than a silent no-op. Default `NULL` (= 10 * `n_strata`).
 #' @param plan Optional [svyplan()] object providing design defaults. It can
 #'   supply `alloc`, `alloc_q`, `deff`, `resp_rate`, and a scalar
@@ -147,10 +147,33 @@
 #' (Cont and Heidari, 2015), which preserves `sum(n) = n` while minimizing
 #' rounding distortion.
 #'
+#' ## What the boundaries are optimal for
+#'
+#' Every quantity the search reads comes from `x`: the stratum standard
+#' deviations \eqn{S_h} are the standard deviations of `x` inside each
+#' candidate stratum, and the variance being minimized is that of the
+#' estimated total or mean **of `x`**. The boundaries returned are therefore
+#' optimal for estimating `x` itself.
+#'
+#' Surveys rarely measure `x`. It is an auxiliary variable already on the
+#' frame, and the study variable `y` is what will be collected. Nothing here
+#' models \eqn{E(y \mid x)}{E(y | x)} or \eqn{\mathrm{Var}(y \mid x)}{Var(y | x)}, so for any `y`
+#' other than `x` these boundaries are a proxy, good in proportion to how
+#' closely `y` tracks `x`. A frame with household expenditure stratified for
+#' a poverty rate is the usual case, and it is a reasonable one; a frame
+#' stratified on establishment size for a variable unrelated to size is not.
+#'
+#' Two consequences worth planning around. The reported `$cv` is the CV for
+#' `x`, not for the survey's own indicators, so it bounds what the design
+#' achieves only to the extent that `y` and `x` share a stratum structure.
+#' And with several study variables no single `x` is optimal for all of
+#' them: choose the `x` closest to the indicator that matters most, or
+#' compare the boundary sets a few candidate `x` produce before committing.
+#'
 #' ## Design effect, response rate, and the boundaries
 #'
 #' The variance evaluated here is the one the rest of the package uses,
-#' \eqn{\mathrm{deff}\sum_h W_h^2S_h^2(1/(n_h r)-1/N_h)} with response rate
+#' \eqn{\mathrm{deff}\sum_h W_h^2S_h^2(1/(n_h r)-1/N_h)}{deff sum_h W_h^2S_h^2(1/(n_h r)-1/N_h)} with response rate
 #' \eqn{r}, so `cv = 0.05` means the same thing to `strata_bound()` and
 #' [n_alloc()], and `$n` is a fielded sample in both. Handing `$strata` to
 #' [n_alloc()] with the same `cv`, `deff`, and `resp_rate` reproduces this

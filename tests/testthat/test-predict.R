@@ -58,7 +58,7 @@ test_that("no duplicate columns when newdata overlaps result names", {
   nd <- data.frame(moe = c(0.03, 0.05))
   res <- predict(x, nd)
   expect_equal(sum(names(res) == "moe"), 1L)
-  expect_equal(ncol(res), 4L)
+  expect_equal(ncol(res), 5L)
 
   nd2 <- data.frame(cv = c(0.05, 0.10))
   res2 <- predict(x, nd2)
@@ -75,10 +75,10 @@ test_that("no duplicate columns when newdata overlaps result names", {
   expect_equal(sum(names(res4) == "n"), 1L)
 })
 
-test_that("predict.svyplan_n errors on both moe and cv in newdata", {
+test_that("predict.svyplan_n errors on more than one precision target in newdata", {
   x <- n_prop(p = 0.3, moe = 0.05)
   nd <- data.frame(moe = 0.05, cv = 0.10)
-  expect_error(predict(x, nd), "cannot contain both")
+  expect_error(predict(x, nd), "cannot contain more than one of")
 })
 
 test_that("predict.svyplan_n errors for multi-indicator results", {
@@ -155,7 +155,7 @@ test_that("predict.svyplan_cluster varies unit_relvar", {
 
 test_that("predict.svyplan_cluster uses original mode when no cv/budget in newdata", {
   x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
-  nd <- data.frame(resp_rate = c(0.8, 0.9, 1.0))
+  nd <- data.frame(resp_rate_psu = c(0.8, 0.9, 1.0))
   res <- predict(x, nd)
 
   expect_equal(nrow(res), 3L)

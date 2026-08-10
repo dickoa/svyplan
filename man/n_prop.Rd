@@ -4,7 +4,7 @@
 \alias{n_prop}
 \alias{n_prop.default}
 \alias{n_prop.svyplan_prec}
-\title{Sample Size for a Proportion}
+\title{Sample size for a proportion}
 \usage{
 n_prop(p, ...)
 
@@ -13,16 +13,18 @@ n_prop(p, ...)
   ...,
   moe = NULL,
   cv = NULL,
+  rmoe = NULL,
   alpha = 0.05,
   N = Inf,
   deff = 1,
   resp_rate = 1,
   method = c("wald", "wilson", "logodds", "beta"),
   df = NULL,
+  min_cases = NULL,
   plan = NULL
 )
 
-\method{n_prop}{svyplan_prec}(p, ..., moe = NULL, cv = NULL)
+\method{n_prop}{svyplan_prec}(p, ..., moe = NULL, cv = NULL, rmoe = NULL)
 }
 \arguments{
 \item{p}{For the default method: expected proportion, in (0, 1).
@@ -33,14 +35,22 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_prop]
 \item{moe}{Desired margin of error, the half-width of the confidence
 interval on the proportion scale. For example, \code{moe = 0.05} means
 the 95 percent CI should be no wider than +/- 5 percentage points.
-Specify exactly one of \code{moe} or \code{cv}.}
+Specify exactly one of \code{moe}, \code{cv}, or \code{rmoe}.}
 
 \item{cv}{Target coefficient of variation (relative standard error).
 For example, \code{cv = 0.10} means the standard error should be at
 most 10 percent of the estimate. Use \code{cv} when you want precision
 to scale with the estimate (common in economic surveys). Use \code{moe}
 when you want a fixed absolute precision (common in health/DHS
-surveys). Specify exactly one of \code{moe} or \code{cv}.}
+surveys). Specify exactly one of \code{moe}, \code{cv}, or \code{rmoe}.}
+
+\item{rmoe}{Target margin of error relative to \code{p}, so \code{rmoe = 0.12}
+asks for a 95 percent interval whose half-width is 12 percent of the
+proportion. This is how MICS and DHS state a precision requirement.
+It is \code{moe / p}, and therefore fixes the same interval \code{moe} does
+while scaling with the estimate the way \code{cv} does; see the precision
+quantities section of \code{\link[=prec_prop]{prec_prop()}}. Specify exactly one of \code{moe},
+\code{cv}, or \code{rmoe}.}
 
 \item{alpha}{Significance level, default 0.05.}
 
@@ -65,11 +75,17 @@ population.}
 \code{"beta"}.}
 
 \item{df}{Degrees of freedom of the variance estimator the planned design
-will have, typically sampled PSUs minus strata. Used by
-\code{method = "beta"} only, where it widens the interval for a variance
-estimated from few clusters (Korn and Graubard, 1998, eq. 2.2). \code{NULL}
-(default) applies no adjustment, which is equivalent to \code{df = n - 1},
-the value a simple random sample would have.}
+will have, typically sampled PSUs minus strata, and available from
+\code{\link[=design_df]{design_df()}} where the plan is in hand. It widens the interval for a
+variance estimated from few clusters. \code{NULL} (default) applies no
+adjustment, treating the variance as known. See Details, including for
+what an unset \code{df} means under \code{method = "beta"}, where the reference
+is the value a simple random sample would have rather than infinity.}
+
+\item{min_cases}{Minimum expected number of positive cases the sample
+must yield, an alternative constraint to precision for a rare outcome.
+The returned \code{n} satisfies both. \code{NULL} (default) sizes on precision
+alone. See Details.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -83,16 +99,26 @@ units to release, not the completed interviews. \verb{$n} and
 round trip through \code{\link[=prec_prop]{prec_prop()}} exact; \code{print()} and
 \code{as.integer()} round it up to the whole units you would field.
 Take the field figure from \code{as.integer()} rather than from \verb{$n}.}
-\item{\code{se}, \code{moe}, \code{cv}}{Precision the design achieves at that \code{n},
-the same values \code{\link[=prec_prop]{prec_prop()}} reports for the same inputs. \code{moe}
-is \code{qnorm(1 - alpha / 2) * se}; for the three asymmetric methods
-it is half the interval's length rather than an offset from either
-limit, so read the limits with \code{\link[=confint]{confint()}}.}
+\item{\code{se}, \code{moe}, \code{cv}, \code{rmoe}}{Precision the design achieves at that \code{n},
+the same values \code{\link[=prec_prop]{prec_prop()}} reports for the same inputs. \code{se} is
+the sampling standard error and \code{cv} is \code{se / p}, so both are the
+same under all four methods. \code{moe} is half the length of the
+interval the chosen \code{method} builds, which equals
+\code{qnorm(1 - alpha / 2) * se} under \code{"wald"} alone; for the three
+asymmetric methods it is not an offset from either limit, so read
+the limits with \code{\link[=confint]{confint()}}. \code{rmoe} is \code{moe / p}, so a target
+stated as a relative margin of error reads back in the units it
+was stated in.}
 \item{\code{method}}{The interval method used.}
+\item{\code{expected_cases}}{Positive cases the design expects to yield,
+\code{n * resp_rate * p}.}
+\item{\code{binding}}{Which constraint set the size, \code{"precision"} or
+\code{"min_cases"}. \code{NULL} when no \code{min_cases} was given, there being
+nothing for precision to bind against.}
 \item{\code{params}}{The validated inputs (\code{p}, \code{alpha}, \code{N}, \code{deff},
-\code{resp_rate}, \code{df}, and whichever of \code{moe} or \code{cv} was the target).
-\code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the \code{\link[=prec_prop]{prec_prop()}} round trip read the
-design back from here.}
+\code{resp_rate}, \code{df}, \code{min_cases} when given, and whichever of \code{moe},
+\code{cv}, or \code{rmoe} was the target). \code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the
+\code{\link[=prec_prop]{prec_prop()}} round trip read the design back from here.}
 }
 }
 \description{
@@ -103,22 +129,24 @@ with a specified margin of error or coefficient of variation.
 Four confidence interval methods are available:
 \itemize{
 \item \strong{Wald} (\code{"wald"}): Standard normal approximation
-(Cochran, 1977, Ch. 3). Supports both \code{moe} and \code{cv} modes,
+(Cochran, 1977, Ch. 3). Supports \code{moe}, \code{rmoe}, and \code{cv} targets,
 with optional finite population correction.
-\item \strong{Wilson} (\code{"wilson"}): Wilson (1927) score interval. Only \code{moe}
-mode, with optional finite population correction.
+\item \strong{Wilson} (\code{"wilson"}): Wilson (1927) score interval. \code{moe} and
+\code{rmoe} targets only, with optional finite population correction.
 \item \strong{Log-odds} (\code{"logodds"}): Log-odds (logit) transform interval.
-Only \code{moe} mode, with optional finite population correction.
+\code{moe} and \code{rmoe} targets only, with optional finite population
+correction.
 \item \strong{Beta} (\code{"beta"}): Korn-Graubard (1998) interval, the Clopper-Pearson
 limits evaluated at the effective sample size, optionally widened for
-the degrees of freedom of the variance estimator via \code{df}. Only \code{moe}
-mode, with optional finite population correction. This is the method
+the degrees of freedom of the variance estimator via \code{df}. \code{moe} and
+\code{rmoe} targets only, with optional finite population correction. This
+is the method
 \code{survey::svyciprop(method = "beta")} reports, and the two agree exactly
 on a design where they see the same effective size.
 }
 
 All four read one variance,
-\eqn{\mathrm{deff}\,\frac{N}{N-1}\,p(1-p)(1/n-1/N)}. They differ only in
+\eqn{\mathrm{deff}\,\frac{N}{N-1}\,p(1-p)(1/n-1/N)}{deff N/(N-1) p(1-p)(1/n-1/N)}. They differ only in
 the interval built around it, so they agree closely whenever the margin
 of error is small and diverge only where the normal approximation itself
 is doubtful. In practice the choice matters for a rare or near-universal
@@ -126,7 +154,7 @@ outcome and is immaterial otherwise; see the section below.
 
 The design effect and the finite population correction enter every method
 through the effective sample size
-\eqn{n_\mathrm{eff}=n_\mathrm{net}/(\mathrm{deff}\cdot\mathrm{fpc})}, the
+\eqn{n_\mathrm{eff}=n_\mathrm{net}/(\mathrm{deff}\cdot\mathrm{fpc})}{n_eff=n_net/(deff * fpc)}, the
 size at which an infinite-population simple random sample would carry the
 same variance. For Wald this reproduces the usual closed form exactly; for
 the other three it is the approximation that keeps \code{deff} and \code{N} acting
@@ -142,19 +170,29 @@ several times the lower one.
 \subsection{Choosing a method}{
 
 Reach for Wald unless you have a reason not to. It is the only method
-that also solves a \code{cv} target, it is what every survey text and every
-sample size table reports, and for a proportion between roughly 0.1 and
-0.9 at any usable sample size the four methods differ by less than a
-percent of the margin of error.
+that also solves a \code{cv} target, and it is what every survey text and
+every sample size table reports. \code{moe} and \code{rmoe} targets are available
+under all four.
 
-The exception is a rare or near-universal outcome. As \code{p} approaches 0 or
-1 the Wald interval loses coverage and can extend past 0 or 1, while the
-score interval stays inside the parameter space and keeps its nominal
-coverage far better. Planning a survey for a 2 percent prevalence is the
-case that justifies \code{method = "wilson"}.
+How much the choice costs depends on the sample size, and the four
+methods converge on each other slowly. Over \code{p} from 0.1 to 0.9, the
+widest and narrowest margins of error differ by 8.2 percent at
+\code{n = 100}, 3.8 percent at 500, 2.7 percent at 1000, and 1.2 percent at
+5000. Below a few thousand the choice is worth a moment; at survey scale
+it usually is not.
+
+The case that decides it is a rare or near-universal outcome. As \code{p}
+approaches 0 or 1 the Wald interval loses coverage and can extend past 0
+or 1. \code{\link[=confint]{confint()}} truncates it at the boundary when it does, and \code{moe}
+is then no longer half the reported interval's length. Wilson and
+log-odds lie strictly inside \eqn{(0, 1)} and beta inside \eqn{[0, 1]},
+all three by construction, so none of them needs that truncation.
+Planning a survey for a 2 percent prevalence is the case that justifies
+\code{method = "wilson"}: the score interval keeps its nominal coverage far
+better there.
 
 Log-odds is the narrower case again: it respects the parameter space like
-Wilson but keeps the estimate at the centre of the interval on the logit
+Wilson but keeps the estimate at the center of the interval on the logit
 scale, which matters when the plan will be reported as an odds ratio or
 fed into a logistic model. If you are not doing either, prefer Wilson.
 
@@ -163,18 +201,47 @@ absolute terms, not merely when \code{p} is small: a few dozen cases or fewer,
 which is the regime Korn and Graubard wrote for and the one where the
 normality of the estimated proportion breaks down however large the
 sample is. Rare-outcome domain estimates in a clustered survey are the
-standard case. It is the most conservative of the four, it is the only
-one whose interval is guaranteed to stay inside \eqn{[0, 1]} by
-construction rather than by clamping, and it is the only one that can
-account for a variance estimated from few clusters, through \code{df}. Its
-cost is a larger planned sample.
+standard case. Beta is the widest of the four over most of the range,
+and so the most demanding to plan for, but not everywhere: for a very
+rare outcome at a small sample, log-odds is wider still. Nor is it the
+only method that answers to a variance estimated from few clusters. All
+four read \code{df} through the same t quantile and widen by it, so \code{df}
+alone is not a reason to choose beta.
 
-A note on where the methods bind. For \emph{sizing}, the choice is close to
-immaterial: across the usual range the four sizes differ by a few
-percent, far less than the uncertainty in the assumed \code{p}, \code{deff}, and
+A note on where the methods bind. For \emph{sizing}, the choice is usually
+secondary: over the range measured above the four sizes differ by a few
+percent, less than the uncertainty in the assumed \code{p}, \code{deff}, and
 response rate. For \emph{assessing} an achieved design the choice can dominate,
 because that is where small realized samples of rare outcomes appear. If
 you are unsure, plan with Wald and report with \code{"beta"}.
+}
+
+\subsection{A minimum expected number of cases}{
+
+For a rare outcome in a small domain the constraint that actually binds
+is often not a margin of error but a count: an indicator nobody will
+publish on fewer than 30 observed cases, a subgroup analysis that needs
+enough events to fit anything to. \code{min_cases} states that requirement
+directly. The size it demands is
+\deqn{n_\mathrm{cases} = \mathrm{min\_cases} / (p \cdot
+      \mathrm{resp\_rate}),}{n_cases = min_cases / (p * resp_rate),}
+and the result is the larger of that and the size precision asks for, so
+both constraints hold. \code{binding} says which one decided, and
+\code{expected_cases} reports the count either way.
+
+\code{deff} does not enter this size, and that is deliberate rather than an
+omission. A design effect describes how precisely the proportion is
+estimated; the number of positive cases that turn up in a sample of
+\eqn{n} is a property of the sample size and the prevalence alone. The
+response rate does enter, because the cases are counted among
+respondents and the returned \code{n} is gross, on the same footing as every
+other size the package reports.
+
+\code{expected_cases} is reported on every proportion result, with or without
+\code{min_cases}, since it is the number the method guidance above turns on:
+\code{"beta"} earns its place when the expected count of positive cases is
+small in absolute terms, and that count was previously left for the
+reader to work out.
 }
 
 \subsection{Finite population correction}{
@@ -186,9 +253,49 @@ Cochran (1977, Ch. 3) form with an \code{N/(N-1)} factor to account for
 the Bernoulli finite-population variance. This differs from
 \code{\link[=n_mean]{n_mean()}}, where no \code{N/(N-1)} adjustment is needed because the
 variance is already defined on \code{N-1} degrees of freedom.
+}
 
-All methods use the normal (z) quantile. This is standard for survey
-sampling where the sample size is large enough for the CLT to apply.
+\subsection{Degrees of freedom}{
+
+The interval quantile is the normal one by default, which treats the
+variance as known. That is standard for survey sampling where the sample
+is large enough for the central limit theorem to apply, and it is what a
+\code{df} of \code{NULL} selects.
+
+Supplying \code{df} says the variance will be estimated from a design with
+that many degrees of freedom, and switches the quantile to
+\eqn{t_{1-\alpha/2}(\mathrm{df})}{t_(1-alpha/2)(df)}. It is opt-in rather than derived: in
+\code{\link[=n_cluster]{n_cluster()}} the df depends on the PSU count being solved for, so an
+automatic version would need a fixed point. Read it off a plan you
+already have with \code{\link[=design_df]{design_df()}}, or pass a count directly.
+
+The three interval methods and the Korn-Graubard one reach the same
+widening by different routes. \code{"wald"}, \code{"wilson"} and \code{"logodds"}
+substitute the quantile in the half-width. \code{"beta"} instead scales the
+effective sample size by the squared ratio of the two t quantiles
+(Korn and Graubard, 1998, eq. 2.2), which is the same widening expressed
+on the sample size rather than on the interval. Both hold
+\eqn{\mathrm{moe} = q \cdot \mathrm{se}}{moe = q * se} with the one quantile, so a
+margin of error and the standard error reported beside it always agree.
+
+The two routes differ in what an \emph{unset} \code{df} means, because they differ
+in what they measure it against. For the three substituting methods
+\code{NULL} and \code{Inf} are the same statement, the normal quantile. For
+\code{"beta"} the reference is the value a simple random sample of the same
+size would have, so \code{NULL} is equivalent to \code{df = n - 1}, and \code{df = Inf}
+claims more degrees of freedom than an SRS has and narrows the interval
+accordingly.
+
+The coefficient of variation is \emph{not} uniformly invariant to \code{df}. Only
+\code{"wald"} and the mean engine build \code{se} without a quantile in it, so
+only their \code{cv} is unchanged; \code{"wilson"}, \code{"logodds"} and \code{"beta"} build
+the half-width first and read \code{se} back out of it, so their \code{cv} moves
+with the quantile.
+
+\code{df} is deliberately absent from the power functions. There the
+quantile is a normal deviate for an alternative rather than an interval
+half-width, and a t-based power calculation is a different procedure,
+not a substituted quantile.
 
 When called on a \code{svyplan_prec} object, parameters are extracted from the
 stored result. Any argument of the default method (e.g. \code{method}, \code{deff},
@@ -219,10 +326,13 @@ n_prop(p = 0.02, moe = 0.01, method = "beta", df = 25)
 # With design effect and response rate
 n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 
-# MICS/DHS-style relative margin of error (RME)
-# RME = moe / p, so moe = RME * p
-p <- 0.2
-n_prop(p = p, moe = 0.12 * p, deff = 1.5, resp_rate = 0.9)
+# At least 30 expected cases of a rare outcome, whatever precision asks
+rare <- n_prop(p = 0.02, moe = 0.02, min_cases = 30)
+rare$binding
+rare$expected_cases
+
+# MICS/DHS-style relative margin of error: 12 percent of the proportion
+n_prop(p = 0.2, rmoe = 0.12, deff = 1.5, resp_rate = 0.9)
 
 }
 \references{
@@ -249,4 +359,16 @@ fiducial limits illustrated in the case of the binomial.
 \code{\link[=n_mean]{n_mean()}} for continuous variables, \code{\link[=n_cluster]{n_cluster()}} for
 multistage designs, \code{\link[=n_multi]{n_multi()}} for multiple indicators,
 \code{\link[=prec_prop]{prec_prop()}} for the inverse.
+
+Other sample size functions:
+\code{\link[=n_alloc]{n_alloc()}},
+\code{\link[=n_change]{n_change()}},
+\code{\link[=n_cluster]{n_cluster()}},
+\code{\link[=n_mean]{n_mean()}},
+\code{\link[=n_multi]{n_multi()}},
+\code{\link[=n_multi_cluster]{n_multi_cluster()}},
+\code{\link[=n_panel]{n_panel()}},
+\code{\link[=n_pooled]{n_pooled()}},
+\code{\link[=n_twophase]{n_twophase()}}
 }
+\concept{sample size functions}

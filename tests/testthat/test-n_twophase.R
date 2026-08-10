@@ -348,16 +348,30 @@ test_that("the whole-unit design respects budget, pool and target", {
 })
 
 test_that("the assurance issue is the smallest that clears the level", {
-  for (r in c(0.5, 0.7, 0.9)) {
-    for (m in c(20, 100, 500)) {
-      for (lvl in c(0.8, 0.95)) {
-        g <- svyplan:::.twophase_assure(m, r, lvl)
+  # The grid reaches below a level of a half and up to a response rate of
+  # 0.99, the two places where the expected count is not the right place to
+  # start looking: below a half the answer sits under it, and at a high rate
+  # the expected count itself overshoots.
+  for (r in c(0.05, 0.5, 0.7, 0.9, 0.99, 1)) {
+    for (m in c(1, 2, 20, 100, 500)) {
+      for (lvl in c(0.01, 0.1, 0.49, 0.5, 0.51, 0.8, 0.95, 0.999)) {
+        g <- svyplan:::.assure_size(m, r, lvl)
         expect_gte(stats::pbinom(m - 1, g, r, lower.tail = FALSE), lvl)
         expect_lt(stats::pbinom(m - 1, g - 1, r, lower.tail = FALSE), lvl)
+        # Never fewer issued than the respondents required.
+        expect_gte(g, m)
       }
     }
   }
-  expect_equal(svyplan:::.twophase_assure(0, 0.5, 0.9), 0)
+  expect_equal(svyplan:::.assure_size(0, 0.5, 0.9), 0)
+  # Two cases the walk from the expected count got wrong.
+  expect_equal(svyplan:::.assure_size(100, 0.64, 0.1), 144)
+  expect_equal(svyplan:::.assure_size(2, 0.99, 0.8), 2)
+  # A rate shorter than the counts is recycled rather than read as NA.
+  expect_equal(
+    svyplan:::.assure_size(c(10, 20), 0.5, 0.9),
+    c(svyplan:::.assure_size(10, 0.5, 0.9), svyplan:::.assure_size(20, 0.5, 0.9))
+  )
 })
 
 test_that("assurance inflates issue over the expectation and costs more", {
@@ -775,4 +789,14 @@ test_that("stratum means that cancel do not pass for a usable 'mu'", {
   # an explicit 'mu' is the user's own number and is used as given
   expect_s3_class(n_twophase(f, phase1_cost = 1, cv = 0.05, mu = 3),
                   "svyplan_twophase")
+})
+
+test_that("a two-phase assurance level prints as itself", {
+  fr <- data.frame(N = c(1000, 2000), sd = c(10, 15), mean = c(5, 8),
+                   unit_cost = c(2, 3))
+  out <- capture.output(print(
+    n_twophase(fr, phase1_cost = 1, cv = 0.05, assurance = 0.999)
+  ))
+  expect_true(any(grepl("assured (0.999)", out, fixed = TRUE)))
+  expect_false(any(grepl("assured (1.00)", out, fixed = TRUE)))
 })

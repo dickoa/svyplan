@@ -1,4 +1,4 @@
-#' Power Analysis for Difference-in-Differences Designs
+#' Power analysis for difference-in-differences designs
 #'
 #' Compute sample size, power, or minimum detectable effect (MDE) for a
 #' two-group, two-period difference-in-differences (DiD) contrast.
@@ -43,6 +43,10 @@
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The required sample size is inflated by `1 / resp_rate`.
 #' @param alternative Character: `"two.sided"` (default) or `"one.sided"`.
+#'   Use `"two.sided"` when the intervention could plausibly move the
+#'   outcome in either direction (the usual default). Use `"one.sided"`
+#'   when only one direction is of interest, which requires a smaller
+#'   sample for the same power.
 #' @param ratio Allocation ratio `n_treat / n_control` (default 1).
 #'   Used only when solving for `n` (`n = NULL`).
 #' @param overlap Panel overlap fraction in \[0, 1\] within each arm
@@ -71,14 +75,14 @@
 #'
 #' \deqn{V_{\text{arm}} = V_{\text{pre}} + V_{\text{post}}
 #'   - 2 \cdot \text{overlap} \cdot \rho \cdot
-#'   \sqrt{V_{\text{pre}} \cdot V_{\text{post}}}}
+#'   \sqrt{V_{\text{pre}} \cdot V_{\text{post}}}}{V_arm = V_pre + V_post - 2 * overlap * rho * sqrt(V_pre * V_post)}
 #'
 #' The DiD test statistic variance is then:
 #'
 #' \deqn{V_d = \text{deff} \left(
 #'   \frac{V_{\text{trt}} \cdot \text{fpc}_t}{n_t} +
 #'   \frac{V_{\text{ctrl}} \cdot \text{fpc}_c}{n_c}
-#' \right)}
+#' \right)}{V_d = deff ( (V_trt * fpc_t)/n_t + (V_ctrl * fpc_c)/n_c )}
 #'
 #' When `overlap = 0`, this reduces to the classical flat-variance formula.
 #'
@@ -104,6 +108,13 @@
 #' clustered DiD design: `deff` inflates the variance but does not model
 #' the loss of degrees of freedom, so a design with few clusters per arm
 #' is optimistic here by more than the unit count suggests.
+#'
+#' The `df` argument that [n_prop()], [n_mean()] and [n_alloc()] accept has
+#' no counterpart here, and its absence is a decision rather than an
+#' omission. There the quantile is the half-width of a confidence interval
+#' and a t quantile substitutes for a normal one directly; here it is a
+#' normal deviate for an alternative, and a t-based power calculation is a
+#' different procedure. Passing `df` is an error that says so.
 #'
 #' @references
 #' Valliant, R., Dever, J. A., & Kreuter, F. (2018). *Practical Tools for
@@ -171,6 +182,7 @@ power_did.default <- function(
 ) {
   .plan <- .merge_plan_args(plan, power_did.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(power_did.default, c(.plan, list(...))))
+  .stop_power_df(...)
   .check_unused_dots(...)
   outcome <- match.arg(outcome)
   if (outcome == "prop" && (!is.null(var) || !is.null(sd))) {
@@ -391,7 +403,7 @@ power_did.default <- function(
 #' Returns the per-unit variance and, alongside it, the census term the
 #' finite population correction subtracts. The overlap covariance carries a
 #' single \eqn{1/N} rather than the arm's marginal factor, so the change
-#' variance splits as \eqn{v/n - v^{census}/N} with the census term the
+#' variance splits as \eqn{v/n - v^{census}/N}{v/n - v^census/N} with the census term the
 #' same expression at full overlap. See `.diff_var_fpc()`.
 #' @keywords internal
 #' @noRd

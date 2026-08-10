@@ -72,7 +72,7 @@ test_that("joint result schemas are stable across one to three stages", {
   constraint_names <- c(
     "constraint", "name", "domain", "level", ".metric", ".target",
     ".achieved", ".ratio", ".residual", ".tolerance", ".se", ".cv",
-    ".moe", ".pass", ".binding", ".multiplier", ".sensitivity"
+    ".moe", ".rmoe", ".pass", ".binding", ".multiplier", ".sensitivity"
   )
   bounds_names <- c(
     "stratum", "n", ".lower", ".upper", ".lower_violation",

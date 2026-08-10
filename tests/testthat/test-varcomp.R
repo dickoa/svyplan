@@ -188,7 +188,38 @@ test_that("varcomp.survey.design works with strata", {
   result <- varcomp(dsgn, ~y)
   expect_s3_class(result, "svyplan_varcomp")
   expect_equal(result$stages, 2L)
-  expect_true(result$icc >= 0 && result$icc <= 1)
+
+  # The design's own strata are used, so the result is per-stratum without
+  # having to name them again. Asserting only that an icc is in [0, 1] would
+  # pass whether or not they were read.
+  expect_false(is.null(result$strata))
+  expect_equal(nrow(result$strata), 4L)
+  expect_setequal(as.character(result$strata$stratum), as.character(1:4))
+  expect_true(all(result$strata$icc_psu >= 0 & result$strata$icc_psu <= 1))
+
+  # and naming them explicitly is the same calculation
+  explicit <- varcomp(dsgn, ~y, strata = ~stratum)
+  expect_equal(result$strata$icc_psu, explicit$strata$icc_psu)
+})
+
+test_that("an explicit strata argument overrides the design's own", {
+  skip_if_not_installed("survey")
+  set.seed(1)
+  frame <- data.frame(
+    y = rnorm(200, 50, 10),
+    cluster = rep(1:20, each = 10),
+    stratum = rep(1:4, each = 50),
+    other = rep(c("a", "b"), each = 100)
+  )
+  dsgn <- survey::svydesign(
+    ids = ~cluster, strata = ~stratum, data = frame,
+    weights = rep(1, 200), nest = TRUE
+  )
+  native <- varcomp(dsgn, ~y)
+  override <- varcomp(dsgn, ~y, strata = ~other)
+  expect_equal(nrow(native$strata), 4L)
+  expect_equal(nrow(override$strata), 2L)
+  expect_setequal(as.character(override$strata$stratum), c("a", "b"))
 })
 
 test_that("varcomp.survey.design feeds into n_cluster", {
@@ -420,12 +451,12 @@ test_that("weighted correction shrinks the between component", {
     data = frame,
     weights = rep(7, 200)
   )
-  result <- varcomp(dsgn, ~income)
+  result <- varcomp(dsgn, ~income, weights = rep(7, 200))
   expect_lt(result$varb, ref$varb)
   expect_equal(result$varw, ref$varw, tolerance = 1e-12)
 })
 
-test_that("survey.design method uses design weights", {
+test_that("survey.design method applies within-cluster weights", {
   skip_if_not_installed("survey")
   set.seed(7)
   M <- 50
@@ -440,7 +471,7 @@ test_that("survey.design method uses design weights", {
     out
   }))
   dsgn <- survey::svydesign(ids = ~psu, weights = ~w, data = s)
-  wtd <- varcomp(dsgn, ~y)
+  wtd <- varcomp(dsgn, ~y, weights = ~w)
   unw <- varcomp(s$y, stage_id = list(s$psu))
 
   expect_lt(abs(wtd$icc - truth$icc), 0.1)
@@ -464,7 +495,7 @@ test_that("weighted 2-stage PPS recovers the population icc", {
     out
   }))
   dsgn <- survey::svydesign(ids = ~psu, weights = ~w, data = s)
-  wtd <- varcomp(dsgn, ~y, prob = pp)
+  wtd <- varcomp(dsgn, ~y, prob = pp, weights = ~w)
   unw <- varcomp(s$y, stage_id = list(s$psu), prob = pp)
 
   expect_lt(abs(wtd$icc - truth$icc), 0.1)
@@ -481,12 +512,12 @@ test_that("per-stratum weighted results do not depend on other strata", {
     w = rep(c(2, 8), each = 200)
   )
   dsgn <- survey::svydesign(ids = ~psu, weights = ~w, data = d)
-  vc <- varcomp(dsgn, ~y, strata = ~region)
+  vc <- varcomp(dsgn, ~y, strata = ~region, weights = ~w)
 
   for (s in c("N", "S")) {
     sub <- d[d$region == s, ]
     dsub <- survey::svydesign(ids = ~psu, weights = ~w, data = sub)
-    ref <- varcomp(dsub, ~y)
+    ref <- varcomp(dsub, ~y, weights = ~w)
     i <- match(s, vc$strata$stratum)
     expect_equal(vc$strata$icc_psu[i], ref$icc)
     expect_equal(vc$strata$var_ratio_psu[i], ref$var_ratio)
@@ -526,7 +557,7 @@ test_that("3-stage weighted components stay finite and bounded", {
                            function(ix) sample(ix, 24))), ]
   s$w <- 40 / 24
   dsgn <- survey::svydesign(ids = ~psu + ssu, data = s, weights = ~w)
-  res <- varcomp(dsgn, ~y)
+  res <- varcomp(dsgn, ~y, weights = ~w)
   expect_true(all(is.finite(res$icc)))
   expect_true(all(res$icc >= 0 & res$icc <= 1))
   expect_true(all(res$var_ratio > 0))
@@ -684,7 +715,7 @@ test_that("formula and vector 'weights' match the survey.design method", {
     w = rep(c(5, 9), each = 60)
   )
   dsgn <- survey::svydesign(ids = ~psu, weights = ~w, data = s)
-  ref <- varcomp(dsgn, ~y)
+  ref <- varcomp(dsgn, ~y, weights = ~w)
 
   frm <- varcomp(y ~ psu, data = s, weights = ~w)
   expect_equal(frm$varb, ref$varb, tolerance = 1e-12)
@@ -707,12 +738,12 @@ test_that("'weights' works with a PPS first stage and with strata", {
   )
   pp <- rep(1 / 16, 16)
   dsgn <- survey::svydesign(ids = ~psu, weights = ~w, data = s)
-  ref <- varcomp(dsgn, ~y, prob = pp)
+  ref <- varcomp(dsgn, ~y, prob = pp, weights = ~w)
   frm <- varcomp(y ~ psu, data = s, weights = ~w, prob = pp)
   expect_equal(frm$varb, ref$varb, tolerance = 1e-12)
   expect_equal(frm$icc, ref$icc, tolerance = 1e-12)
 
-  ref_s <- varcomp(dsgn, ~y, strata = ~region)
+  ref_s <- varcomp(dsgn, ~y, strata = ~region, weights = ~w)
   frm_s <- varcomp(y ~ psu, data = s, weights = ~w, strata = ~region)
   expect_equal(frm_s$strata$icc_psu, ref_s$strata$icc_psu,
                tolerance = 1e-12)
@@ -844,4 +875,353 @@ test_that("a constant outcome is degenerate whether or not weights are given", {
     expect_identical(res$icc, 0)
     expect_identical(res$var_ratio, 1)
   }
+})
+
+## Back-out of an icc from a published design effect
+
+test_that("varcomp inverts the two-stage clustering identity", {
+  vc <- varcomp(deff = 1.8, n_per_psu = 20)
+  expect_s3_class(vc, "svyplan_varcomp")
+  expect_identical(vc$source, "deff")
+  expect_identical(vc$stages, 2L)
+  expect_equal(vc$icc, (1.8 - 1) / 19)
+  expect_identical(vc$var_ratio, 1)
+  expect_identical(vc$params$n_per_psu, 20)
+
+  vk <- varcomp(deff = 1.8, n_per_psu = 20, var_ratio = 1.2)
+  expect_equal(vk$icc, (1.8 / 1.2 - 1) / 19)
+  expect_identical(vk$var_ratio, 1.2)
+})
+
+test_that("a design effect identifies icc and var_ratio and nothing else", {
+  vc <- varcomp(deff = 1.8, n_per_psu = 20)
+  expect_identical(vc$varb, NA_real_)
+  expect_identical(vc$varw, NA_real_)
+  expect_identical(vc$unit_relvar, NA_real_)
+  expect_null(vc$strata)
+})
+
+test_that("the round trip returns the design effect at the source take", {
+  vc <- varcomp(deff = 1.8, n_per_psu = 20)
+  expect_equal(as.double(design_effect(vc, n_per_psu = 20)), 1.8)
+  vk <- varcomp(deff = 2.4, n_per_psu = 15, var_ratio = 1.3)
+  expect_equal(as.double(design_effect(vk, n_per_psu = 15)), 2.4)
+})
+
+test_that("re-planning at another take moves the design effect", {
+  vc <- varcomp(deff = 1.8, n_per_psu = 20)
+  smaller <- as.double(design_effect(vc, n_per_psu = 12))
+  expect_lt(smaller, 1.8)
+  expect_equal(smaller, 1 + vc$icc * 11)
+})
+
+test_that("design_effect does not read the source take back", {
+  vc <- varcomp(deff = 1.8, n_per_psu = 20)
+  expect_error(design_effect(vc), "supply the take you are planning for")
+  expect_error(design_effect(vc), "n_per_psu = 20")
+})
+
+test_that("the identifying take is the size-weighted average", {
+  takes <- c(18, 22, 20, 25, 15)
+  vc <- varcomp(deff = 1.8, n_per_psu = takes)
+  b_star <- sum(takes^2) / sum(takes)
+  expect_equal(vc$params$n_per_psu, b_star)
+  expect_equal(vc$params$n_per_psu_nominal, mean(takes))
+  expect_equal(vc$icc, (1.8 - 1) / (b_star - 1))
+
+  # b* = b_bar (1 + cv_b^2) with the population cv, and never below b_bar
+  cv_b <- sqrt(mean((takes - mean(takes))^2)) / mean(takes)
+  expect_equal(b_star, mean(takes) * (1 + cv_b^2))
+  expect_gt(b_star, mean(takes))
+})
+
+test_that("a constant take reduces to itself", {
+  vc <- varcomp(deff = 1.8, n_per_psu = rep(20, 7))
+  expect_equal(vc$params$n_per_psu, 20)
+  expect_equal(vc$icc, varcomp(deff = 1.8, n_per_psu = 20)$icc)
+  expect_equal(varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0)$icc,
+               varcomp(deff = 1.8, n_per_psu = 20)$icc)
+})
+
+test_that("cv_take is the summary form of the same reduction", {
+  takes <- c(18, 22, 20, 25, 15)
+  cv_b <- sqrt(mean((takes - mean(takes))^2)) / mean(takes)
+  expect_equal(
+    varcomp(deff = 1.8, n_per_psu = mean(takes), cv_take = cv_b)$icc,
+    varcomp(deff = 1.8, n_per_psu = takes)$icc
+  )
+})
+
+test_that("varying takes raise the icc relative to the nominal one", {
+  nominal <- varcomp(deff = 1.8, n_per_psu = 20)$icc
+  weighted <- varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)$icc
+  expect_lt(weighted, nominal)
+  # the relative understatement tracks the relative gap in the take
+  expect_equal((nominal - weighted) / weighted, (20 * 1.09 - 20) / (20 - 1),
+               tolerance = 0.02)
+})
+
+test_that("a published standard error forms the same design effect", {
+  se <- 0.021
+  p <- 0.30
+  n <- 1200
+  deff <- se^2 / (p * (1 - p) / n)
+  expect_equal(
+    varcomp(se = se, p = p, n = n, n_per_psu = 20)$icc,
+    varcomp(deff = deff, n_per_psu = 20)$icc
+  )
+  expect_equal(
+    varcomp(se = 1.2, var = 900, n = 1200, n_per_psu = 20)$icc,
+    varcomp(deff = 1.2^2 / (900 / 1200), n_per_psu = 20)$icc
+  )
+})
+
+test_that("a design effect below var_ratio gives a negative icc and warns", {
+  expect_warning(vc <- varcomp(deff = 0.8, n_per_psu = 20),
+                 "beat simple random sampling")
+  expect_lt(vc$icc, 0)
+  expect_equal(vc$icc, (0.8 - 1) / 19)
+  # the warning says where the value will be refused
+  expect_error(design_effect(vc, n_per_psu = 20), "must be in \\[0, 1\\]")
+  expect_error(
+    n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5,
+              unit_relvar = 0.6),
+    "must be in \\[0, 1\\]"
+  )
+})
+
+test_that("an icc above 1 warns rather than being clamped", {
+  expect_warning(vc <- varcomp(deff = 30, n_per_psu = 20),
+                 "unequal weighting")
+  expect_gt(vc$icc, 1)
+})
+
+test_that("the back-out validates its inputs", {
+  expect_error(varcomp(deff = 1.8), "'n_per_psu' is required")
+  expect_error(varcomp(deff = 1.8, n_per_psu = 1), "must exceed 1")
+  expect_error(varcomp(deff = 1.8, n_per_psu = 0.5), "must exceed 1")
+  expect_error(varcomp(deff = 1.8, n_per_psu = -2), "positive and finite")
+  expect_error(varcomp(deff = 1.8, n_per_psu = NA_real_), "positive and finite")
+  expect_error(varcomp(deff = 0, n_per_psu = 20), "'deff' must be positive")
+  expect_error(varcomp(deff = 1.8, n_per_psu = 20, cv_take = -0.1),
+               "non-negative")
+  expect_error(varcomp(deff = 1.8, n_per_psu = c(10, 20), cv_take = 0.2),
+               "takes that were not supplied")
+  expect_error(varcomp(deff = 1.8, n_per_psu = 20, var_ratio = 0),
+               "'var_ratio' must be positive")
+})
+
+test_that("a three-stage back-out is refused as under-identified", {
+  expect_error(varcomp(deff = 1.8, n_per_psu = 20, n_per_ssu = 4),
+               "does not identify a three-stage design")
+})
+
+test_that("the two back-out entry points do not mix", {
+  expect_error(varcomp(deff = 1.8, se = 0.02, n_per_psu = 20),
+               "either 'deff' or 'se'")
+  expect_error(varcomp(deff = 1.8, n_per_psu = 20, p = 0.3),
+               "'deff' is already the design effect")
+  expect_error(varcomp(se = 0.021, n = 1200, n_per_psu = 20),
+               "'p' for a proportion or 'var' for a mean")
+  expect_error(varcomp(se = 0.021, p = 0.3, var = 4, n = 1200, n_per_psu = 20),
+               "'p' for a proportion or 'var' for a mean")
+  expect_error(varcomp(se = 0.021, p = 1.3, n = 1200, n_per_psu = 20),
+               "'p' must be in \\(0, 1\\)")
+})
+
+test_that("back-out arguments and data do not mix", {
+  set.seed(88)
+  y <- rnorm(40)
+  psu <- rep(1:8, each = 5)
+  expect_error(varcomp(y, stage_id = list(psu), deff = 1.8, n_per_psu = 20),
+               "takes no data")
+  expect_error(varcomp(y, stage_id = list(psu), n_per_psu = 20),
+               "belongs to the design effect back-out")
+  expect_error(varcomp(y, stage_id = list(psu), cv_take = 0.2, var_ratio = 2),
+               "belong to the design effect back-out")
+})
+
+test_that("an estimated varcomp keeps the data provenance", {
+  set.seed(404)
+  frame <- data.frame(y = rnorm(200, 50, 10), psu = rep(1:20, each = 10))
+  vc <- varcomp(y ~ psu, data = frame)
+  expect_identical(vc$source, "data")
+  expect_identical(vc$params, list())
+  expect_identical(varcomp(y ~ psu, data = frame, strata = NULL)$source, "data")
+})
+
+test_that("the unit relvariance a design effect cannot give is demanded", {
+  vc <- varcomp(deff = 1.8, n_per_psu = 20)
+  expect_error(n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5),
+               "not identified by a design effect")
+  expect_error(prec_cluster(n = c(40, 20), icc = vc),
+               "not identified by a design effect")
+
+  res <- n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5,
+                   unit_relvar = 0.6)
+  expect_s3_class(res, "svyplan_cluster")
+  expect_equal(res$params$unit_relvar, 0.6)
+  expect_equal(unname(res$params$icc), vc$icc)
+})
+
+test_that("a plan supplies the unit relvariance a design effect cannot", {
+  vc <- varcomp(deff = 1.8, n_per_psu = 20)
+  bare <- svyplan(stage_cost = c(500, 50))
+  expect_error(n_cluster(icc = vc, budget = 1e5, plan = bare),
+               "not identified by a design effect")
+  filled <- svyplan(stage_cost = c(500, 50), unit_relvar = 0.6)
+  expect_equal(
+    n_cluster(icc = vc, budget = 1e5, plan = filled)$cv,
+    n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5,
+              unit_relvar = 0.6)$cv
+  )
+})
+
+test_that("an estimated varcomp still overrides a supplied unit relvariance", {
+  set.seed(77)
+  frame <- data.frame(y = rnorm(200, 50, 10), psu = rep(1:20, each = 10))
+  vc <- varcomp(y ~ psu, data = frame)
+  expect_equal(
+    n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5)$cv,
+    n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5,
+              unit_relvar = 99)$cv
+  )
+})
+
+test_that("a backed-out varcomp prints and exports its provenance", {
+  vc <- varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)
+  out <- capture.output(print(vc))
+  expect_match(out[1], "from a design effect")
+  expect_match(out[4], "deff = 1.8000 at n_per_psu = 21.8")
+  expect_match(out[4], "nominal 20")
+  expect_match(out[5], "not identified by a design effect")
+  expect_match(format(vc), "from deff")
+
+  df <- as.data.frame(vc)
+  expect_identical(nrow(df), 1L)
+  expect_identical(df$source, "deff")
+  expect_equal(df$n_per_psu, 21.8)
+  expect_true(is.na(df$unit_relvar))
+
+  plain <- capture.output(print(varcomp(deff = 1.8, n_per_psu = 20)))
+  expect_false(grepl("nominal", plain[4]))
+})
+
+test_that("a backed-out icc drives the cluster functions", {
+  vc <- varcomp(deff = 2.0, n_per_psu = 25)
+  deff_at_10 <- as.double(design_effect(vc, n_per_psu = 10))
+  expect_equal(effective_n(vc, n = 1000, n_per_psu = 10), 1000 / deff_at_10)
+  prec <- prec_cluster(n = c(50, 10), icc = vc, unit_relvar = 0.5)
+  expect_equal(
+    prec$cv,
+    sqrt(0.5 / 500 * (1 + vc$icc * 9)),
+    tolerance = 1e-8
+  )
+})
+
+test_that("the back-out refuses data arguments alongside a design effect", {
+  expect_error(varcomp(deff = 1.8, n_per_psu = 20, weights = rep(1, 4)),
+               "without 'weights'")
+  expect_error(varcomp(deff = 1.8, n_per_psu = 20, strata = ~region),
+               "without 'strata'")
+  expect_error(varcomp(deff = 1.8, n_per_psu = 20, prob = rep(0.25, 4)),
+               "without 'prob'")
+})
+
+test_that("two-stage probs recover the conditional weights exactly", {
+  skip_if_not_installed("survey")
+  set.seed(4242)
+  NP <- 40; nb <- 20
+  psu <- rep(seq_len(NP), each = nb)
+  y <- rnorm(NP, 0, 1)[psu] + rnorm(NP * nb, 0, 3)
+  keep <- sort(sample(NP, 10))
+  s <- do.call(rbind, lapply(keep, function(g) {
+    ix <- sample(which(psu == g), 5)
+    data.frame(psu = g, y = y[ix], p1 = 10 / NP, p2 = 5 / nb,
+               w_full = (NP / 10) * (nb / 5), w_within = nb / 5)
+  }))
+
+  # The stage probabilities are kept apart, so the method recovers exactly the
+  # within-cluster weights the estimator documents that it needs.
+  auto <- varcomp(survey::svydesign(ids = ~psu, probs = ~p1 + p2, data = s), ~y)
+  ref <- varcomp(s$y, stage_id = list(s$psu), weights = s$w_within)
+  expect_equal(auto$icc, ref$icc, tolerance = 1e-12)
+  expect_equal(auto$varb, ref$varb, tolerance = 1e-12)
+
+  # The full design weight is a different, wrong answer, which is what makes
+  # the recovery worth doing rather than a refactor.
+  wrong <- varcomp(s$y, stage_id = list(s$psu), weights = s$w_full)
+  expect_false(isTRUE(all.equal(wrong$icc, ref$icc, tolerance = 1e-3)))
+})
+
+test_that("three-stage probs recover the conditional weights", {
+  skip_if_not_installed("survey")
+  set.seed(4243)
+  s <- expand.grid(el = 1:3, ssu = 1:4, psu = 1:12)
+  s$y <- rnorm(12, 0, 1)[s$psu] + rnorm(48, 0, 0.7)[with(s, (psu - 1) * 4 + ssu)] +
+    rnorm(nrow(s), 0, 2)
+  s$p1 <- 0.25; s$p2 <- 0.5; s$p3 <- 0.6
+
+  auto <- varcomp(
+    survey::svydesign(ids = ~psu + ssu, probs = ~p1 + p2 + p3, data = s), ~y
+  )
+  ref <- varcomp(s$y, stage_id = list(s$psu, s$ssu),
+                 weights = rep(1 / (0.5 * 0.6), nrow(s)))
+  expect_equal(auto$icc, ref$icc, tolerance = 1e-12)
+  expect_equal(auto$stages, 3L)
+})
+
+test_that("a weights-only multistage design is refused, not guessed at", {
+  skip_if_not_installed("survey")
+  set.seed(4244)
+  s <- data.frame(psu = rep(1:10, each = 5), y = rnorm(50), w = 16)
+  dsgn <- survey::svydesign(ids = ~psu, weights = ~w, data = s)
+
+  # A constant full weight is equally consistent with a census inside each
+  # cluster and with a two-stage design that folded stage 2 into the weight.
+  expect_error(varcomp(dsgn, ~y), "cannot be recovered")
+  expect_error(varcomp(dsgn, ~y), "weights=")
+
+  # Naming the conditional weights resolves it.
+  expect_s3_class(varcomp(dsgn, ~y, weights = rep(4, 50)), "svyplan_varcomp")
+
+  # Unit weights carry no stage to separate, so they still go straight through.
+  unit <- survey::svydesign(ids = ~psu, weights = rep(1, 50), data = s)
+  expect_equal(varcomp(unit, ~y)$icc,
+               varcomp(y ~ psu, data = s)$icc, tolerance = 1e-12)
+})
+
+test_that("recovered components are near-unbiased for the frame components", {
+  skip_if_not_installed("survey")
+  set.seed(4245)
+  NP <- 60; nb <- 30
+
+  # The estimand is the frame's own B^2 / W^2 relvariance icc, recomputed per
+  # replicate, not the superpopulation ratio sigma_b^2 / (sigma_b^2 +
+  # sigma_w^2). Benchmarking against the latter measures the wrong thing and
+  # makes the biased estimator look like the better one.
+  one <- function() {
+    psu <- rep(seq_len(NP), each = nb)
+    y <- rnorm(NP, 0, 1)[psu] + rnorm(NP * nb, 0, 3)
+    keep <- sort(sample(NP, 15))
+    s <- do.call(rbind, lapply(keep, function(g) {
+      ix <- sample(which(psu == g), 6)
+      data.frame(psu = g, y = y[ix], p1 = 15 / NP, p2 = 6 / nb,
+                 w_full = (NP / 15) * (nb / 6))
+    }))
+    c(
+      frame = varcomp(y, stage_id = list(psu))$icc,
+      recovered = varcomp(
+        survey::svydesign(ids = ~psu, probs = ~p1 + p2, data = s), ~y
+      )$icc,
+      full = varcomp(s$y, stage_id = list(s$psu), weights = s$w_full)$icc
+    )
+  }
+  est <- vapply(seq_len(60), function(i) one(), numeric(3L))
+  bias_recovered <- mean(est["recovered", ] - est["frame", ])
+  bias_full <- mean(est["full", ] - est["frame", ])
+
+  # Averaged over replicates, so the test does not turn on one draw.
+  expect_lt(abs(bias_recovered), 0.015)
+  expect_lt(abs(bias_recovered), abs(bias_full))
 })

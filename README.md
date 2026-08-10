@@ -30,6 +30,7 @@ library(svyplan)
 n_prop(p = 0.3, moe = 0.05)
 #> Sample size for proportion (wald)
 #> n = 323 (p = 0.30, moe = 0.050, deff = 1)
+#> expected cases = 96.8
 
 # Mean with finite population and design effect
 n_mean(var = 100, moe = 2, N = 5000, deff = 1.5)
@@ -47,6 +48,7 @@ expected non-response:
 n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 #> Sample size for proportion (wald)
 #> n = 606 (net: 485) (p = 0.30, moe = 0.050, deff = 1.50, resp_rate = 0.80)
+#> expected cases = 145.2
 ```
 
 ### Survey plan profiles
@@ -61,6 +63,7 @@ plan <- svyplan(deff = 1.5, resp_rate = 0.85, N = 50000)
 n_prop(p = 0.3, moe = 0.05, plan = plan)
 #> Sample size for proportion (wald)
 #> n = 564 (net: 480) (p = 0.30, moe = 0.050, deff = 1.50, resp_rate = 0.85)
+#> expected cases = 143.8
 
 # Or pipe (positional or named args)
 plan |> n_mean(100, moe = 2)
@@ -74,6 +77,7 @@ plan |> n_mean(var = 100, moe = 2)
 n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2.0)
 #> Sample size for proportion (wald)
 #> n = 750 (net: 638) (p = 0.30, moe = 0.050, deff = 2.00, resp_rate = 0.85)
+#> expected cases = 191.1
 ```
 
 ## Precision analysis
@@ -85,12 +89,13 @@ functions are the inverse of `n_*()`:
 prec_prop(p = 0.3, n = 400)
 #> Sampling precision for proportion (wald)
 #> n = 400
-#> se = 0.0229, moe = 0.0449, cv = 0.0764
+#> se = 0.0229, moe = 0.0449, cv = 0.0764, rmoe = 0.1497
+#> expected cases = 120.0
 
 prec_mean(var = 100, n = 400, mu = 50)
 #> Sampling precision for mean
 #> n = 400
-#> se = 0.5000, moe = 0.9800, cv = 0.0100
+#> se = 0.5000, moe = 0.9800, cv = 0.0100, rmoe = 0.0196
 ```
 
 ### Round-trip between size and precision
@@ -108,12 +113,14 @@ p <- prec_prop(s)
 p
 #> Sampling precision for proportion (wald)
 #> n = 485
-#> se = 0.0255, moe = 0.0500, cv = 0.0850
+#> se = 0.0255, moe = 0.0500, cv = 0.0850, rmoe = 0.1667
+#> expected cases = 145.2
 
 # Recover the original n
 n_prop(p)
 #> Sample size for proportion (wald)
 #> n = 485 (p = 0.30, moe = 0.050, deff = 1.50)
+#> expected cases = 145.2
 ```
 
 ## Multi-indicator surveys
@@ -144,21 +151,19 @@ Per-domain optimization works by specifying domain columns via the
 
 ### MICS/DHS-style relative margin of error
 
-Programmes like UNICEF MICS and DHS express precision as a **relative
-margin of error** (RME = MOE / p). To use this with svyplan, convert to
-an absolute margin of error: `moe = RME * p`.
+Programs like UNICEF MICS and DHS express precision as a **relative
+margin of error**, the margin of error as a fraction of the indicator.
+State it directly with `rmoe`.
 
 ``` r
-# RME = 12% for each indicator
-rme <- 0.12
-targets_rme <- data.frame(
+targets_rmoe <- data.frame(
   name = c("stunting", "vaccination", "anemia"),
   p    = c(0.25, 0.70, 0.12),
+  rmoe = 0.12,
   deff = c(2.0, 1.5, 2.5)
 )
-targets_rme$moe <- rme * targets_rme$p
 
-n_multi(targets_rme)
+n_multi(targets_rmoe)
 #> Multi-indicator sample size
 #> n = 4891 (binding: anemia)
 #> ---
@@ -183,6 +188,7 @@ n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
 #> field design: n_psu = 80 | n_per_psu = 15 -> total n = 1200
 #> cv = 0.0376, cost = 100000
 #> continuous optimum: n_psu = 84.08997 | n_per_psu = 13.78405 (cv = 0.0376, cost = 100000)
+#> design df = 79
 
 # Precision for a given allocation
 prec_cluster(n = c(50, 12), icc = 0.05)
@@ -217,6 +223,7 @@ n_cluster(stage_cost = c(500, 50), icc = vc, cv = 0.05)
 #> field design: n_psu = 13 | n_per_psu = 2 -> total n = 26
 #> cv = 0.0484, cost = 7800
 #> continuous optimum: n_psu = 12.22966 | n_per_psu = 1.967178 (cv = 0.0500, cost = 7318)
+#> design df = 12
 ```
 
 `icc` is the survey-planning measure of homogeneity used by `varcomp()`,
@@ -235,23 +242,23 @@ predict(x, expand.grid(
   deff = c(1, 1.5, 2, 2.5),
   resp_rate = c(0.7, 0.8, 0.9, 1.0)
 ))
-#>    deff resp_rate         n         se  moe         cv
-#> 1   1.0       0.7  460.9751 0.02551067 0.05 0.08503558
-#> 2   1.5       0.7  691.4626 0.02551067 0.05 0.08503558
-#> 3   2.0       0.7  921.9501 0.02551067 0.05 0.08503558
-#> 4   2.5       0.7 1152.4376 0.02551067 0.05 0.08503558
-#> 5   1.0       0.8  403.3532 0.02551067 0.05 0.08503558
-#> 6   1.5       0.8  605.0298 0.02551067 0.05 0.08503558
-#> 7   2.0       0.8  806.7064 0.02551067 0.05 0.08503558
-#> 8   2.5       0.8 1008.3829 0.02551067 0.05 0.08503558
-#> 9   1.0       0.9  358.5362 0.02551067 0.05 0.08503558
-#> 10  1.5       0.9  537.8042 0.02551067 0.05 0.08503558
-#> 11  2.0       0.9  717.0723 0.02551067 0.05 0.08503558
-#> 12  2.5       0.9  896.3404 0.02551067 0.05 0.08503558
-#> 13  1.0       1.0  322.6825 0.02551067 0.05 0.08503558
-#> 14  1.5       1.0  484.0238 0.02551067 0.05 0.08503558
-#> 15  2.0       1.0  645.3651 0.02551067 0.05 0.08503558
-#> 16  2.5       1.0  806.7064 0.02551067 0.05 0.08503558
+#>    deff resp_rate         n         se  moe         cv      rmoe
+#> 1   1.0       0.7  460.9751 0.02551067 0.05 0.08503558 0.1666667
+#> 2   1.5       0.7  691.4626 0.02551067 0.05 0.08503558 0.1666667
+#> 3   2.0       0.7  921.9501 0.02551067 0.05 0.08503558 0.1666667
+#> 4   2.5       0.7 1152.4376 0.02551067 0.05 0.08503558 0.1666667
+#> 5   1.0       0.8  403.3532 0.02551067 0.05 0.08503558 0.1666667
+#> 6   1.5       0.8  605.0298 0.02551067 0.05 0.08503558 0.1666667
+#> 7   2.0       0.8  806.7064 0.02551067 0.05 0.08503558 0.1666667
+#> 8   2.5       0.8 1008.3829 0.02551067 0.05 0.08503558 0.1666667
+#> 9   1.0       0.9  358.5362 0.02551067 0.05 0.08503558 0.1666667
+#> 10  1.5       0.9  537.8042 0.02551067 0.05 0.08503558 0.1666667
+#> 11  2.0       0.9  717.0723 0.02551067 0.05 0.08503558 0.1666667
+#> 12  2.5       0.9  896.3404 0.02551067 0.05 0.08503558 0.1666667
+#> 13  1.0       1.0  322.6825 0.02551067 0.05 0.08503558 0.1666667
+#> 14  1.5       1.0  484.0238 0.02551067 0.05 0.08503558 0.1666667
+#> 15  2.0       1.0  645.3651 0.02551067 0.05 0.08503558 0.1666667
+#> 16  2.5       1.0  806.7064 0.02551067 0.05 0.08503558 0.1666667
 ```
 
 Sensitivity analysis is available for single-indicator sample-size and
@@ -361,6 +368,177 @@ are reported separately.
 Every result carries the single-phase comparison, because two-phase
 sampling is not always an improvement.
 
+## Change and panel designs
+
+The families above size one occasion. A survey that runs more than once
+is sized against the change between two occasions, and, if the same
+units are followed, against how many to recruit so that enough of them
+are still responding later.
+
+`n_change()` and `prec_change()` are the `n_*`/`prec_*` pair for a
+change in a mean or a proportion. Two independent rounds cost twice a
+single occasion. Measuring the same units twice is cheaper, because the
+change is a difference and the unit-level correlation cancels part of
+it: `overlap` is the share of the first occasion’s responding sample
+measured again, `overlap_cor` the correlation among those shared units,
+and only their product buys anything.
+
+``` r
+n_change(p = c(0.30, 0.36), moe = 0.02)
+#> Sample size for change (proportion scale)
+#> n = 4230 per occasion (p = 0.3 to 0.36, moe = 0.02, deff = 1)
+#> No between-occasion covariance (overlap x overlap_cor = 0)
+
+n_change(p = c(0.30, 0.36), moe = 0.02, overlap = 0.75, overlap_cor = 0.5)
+#> Sample size for change (proportion scale)
+#> n = 2646 per occasion (p = 0.3 to 0.36, moe = 0.02, deff = 1)
+#> overlap = 0.75, overlap_cor = 0.5 (62.5% of the independent variance)
+```
+
+The overlap is a property of the design, fixed once the rotation is
+declared; the correlation is a property of the variable and has to come
+from a previous round of the same survey. `design_overlap()` supplies
+the design half. Give it the occasions a unit spends in and out of
+sample over its whole life and it returns the overlap at every lag the
+schedule reaches:
+
+``` r
+cps <- design_overlap("4-8-4")
+cps[c(1, 12)]
+#> [1] 0.75 0.50
+```
+
+Those are the two published CPS figures, 75 percent of the sample shared
+between consecutive months and 50 percent between the same month a year
+apart. A schedule is a finite life, not a repeating pattern, and reading
+`"4-8-4"` as “four in, eight out, repeat” gives 87.5 percent instead.
+Each lag is a different design question, so name the one the change
+spans rather than passing the profile whole.
+
+Two notations for a schedule are in print and both are accepted, told
+apart by the `0`, which no spell can be. `"4-8-4"` counts occasions per
+spell; `"1-1-0-0-1-1"` carries one flag per occasion, and is the same
+life as `"2-2-2"`. A string of all 1s is a valid sentence in both and a
+different design in each, so it is refused rather than resolved by
+precedence: `"1-1-1"` is three consecutive occasions as a pattern and
+in-out-in as spells, whose consecutive overlaps are 2/3 and 0. Write
+`"3"` or `"1-0-1"`.
+
+`plot()` draws the schedule as the chart rotation designs are published
+as, one row per cohort and one column per time period:
+
+``` r
+plot(design_overlap("1-1-0-0-1-1"))
+```
+
+<img src="man/figures/README-overlap-chart-1.png" alt="A rotation chart. Ten rows, one per cohort, and ten time periods. Each cohort is in sample for two consecutive periods, out for two, then in for two more, and a new cohort enters at every period. The total row climbs from one to four and holds at four from period six, which is marked as the steady state."  />
+
+A cohort enters at every period drawn, so the total row climbs through
+the launch and settles at the sample the overlaps divide by, which is
+marked. Everything left of that mark is the gradual start a rotating
+design has unless the first period’s sample is split into cohorts of
+unequal life.
+
+One conversion is the planner’s to make: `design_overlap()` counts the
+units the design *issues* at both occasions, while `overlap` in the
+sizing and power functions is the share of the first occasion’s
+*respondents* measured again, and the two are the same number only at
+full response.
+
+A panel loses units at every wave, so the sample that carries the
+analysis is smaller than the one recruited. `n_panel()` sizes the
+recruitment. It does not restate the arguments of `n_prop()` or
+`n_mean()`: it takes one of their results and reads it as both the
+responding sample to reach and the estimand to report precision for. The
+rates below are the UK LFS, 73 percent response at recruitment and then
+quarterly retention of a surviving cohort.
+
+``` r
+target <- n_prop(p = 0.5, moe = 0.031)
+
+n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956), resp_rate = 0.728)
+#> Panel recruitment (fixed, 5-wave life)
+#> issue 1815 to hold 1000 responding at wave 5
+#> recruitment response 0.728, retention 0.878 to 0.963 (61% of the life's loss at wave 1)
+#> proportion (wald): se = 0.01582, moe = 0.031, cv = 0.0316
+#> ---
+#>  wave retention q      n_resp se      moe     cv    
+#>  1              0.728  1321   0.01376 0.02696 0.0275
+#>  2    0.878     0.6392 1160   0.01468 0.02878 0.0294
+#>  3    0.963     0.6155 1117   0.01496 0.02932 0.0299
+#>  4    0.936     0.5761 1046   0.01546 0.03031 0.0309
+#>  5    0.956     0.5508 1000   0.01582 0.031   0.0316
+```
+
+`resp_rate` and `retention` are separate arguments because a panel’s
+loss is concentrated at recruitment, and an average rate spread over the
+waves would under-issue. `design = "rotating"` runs the same rates as a
+rotating panel, where an equal cohort enters every occasion and the
+estimate pools every cohort alive. That returns a different quantity
+under a different name: `n_entrants` is what the design takes each
+occasion, `n_in_sample` what its live cohorts hold between them, and on
+these rates they differ by a factor of five. `assurance` reports the
+recruitment that clears the target with a stated probability rather than
+in expectation, exactly in both designs. `prec_panel()` runs the pair in
+the other direction, reporting the responding sample and the precision
+left at each wave for a recruitment already budgeted.
+
+`start` reports what a rotating design delivers while it is being
+brought up to that steady state, by occasion in `$launch` and by
+occasion and wave in `$launch_waves`.
+
+``` r
+n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
+        resp_rate = 0.728, design = "rotating",
+        start = "immediate")$launch[, c("period", "n_in_sample", "n_resp", "moe")]
+#>   period n_in_sample    n_resp        moe
+#> 1      1    1606.836 1169.7767 0.02865277
+#> 2      2    1606.836 1055.6065 0.03016248
+#> 3      3    1606.836 1032.8056 0.03049361
+#> 4      4    1606.836 1007.4856 0.03087441
+#> 5      5    1606.836  999.3389 0.03100000
+#> 6      6    1606.836  999.3389 0.03100000
+```
+
+Splitting the first occasion into one cohort per stage of the life fills
+the sample at once, and `design_overlap()` reports the same overlaps
+either way, so the launch is a question about response rather than about
+who is interviewed with whom. That is why it is worth reporting. Every
+unit at the first occasion is at wave 1, so it holds at least as many
+respondents as the design ever holds again, and strictly more as soon as
+any wave retains less than all of the one before. Here that is 1172
+against the design’s 1001, temporarily more precise. A gradual launch,
+one cohort an occasion, approaches the same figure from below at 234.
+
+A repeated survey rarely publishes only occasions and changes. An annual
+average built from quarterly rounds is an estimate in its own right, and
+it is the one place overlap costs rather than pays: the covariance a
+rotation induces is subtracted when two occasions are differenced and
+added when they are averaged. That is the ordinary case, holding
+whenever the overlap exceeds the sampling fraction; `?prec_pooled` works
+the boundary below it. `n_pooled()` and `prec_pooled()` size that
+estimate, the equal-weight mean of the occasion estimates, with the
+correlation stated per lag because a panel’s falls away with distance.
+
+``` r
+prec_pooled(var = 100, n = 500, occasions = 4)
+#> Sampling precision for pooled estimate (mean scale)
+#> n = 500 per occasion, 4 occasions (var = 100, deff = 1)
+#> No between-occasion covariance (overlap x overlap_cor = 0)
+#> se = 0.2236, moe = 0.4383
+prec_pooled(var = 100, n = 500, occasions = 4, overlap = 0.75, cor_decay = 0.8)
+#> Sampling precision for pooled estimate (mean scale)
+#> n = 500 per occasion, 4 occasions (var = 100, deff = 1)
+#> overlap = 0.75, overlap_cor = 0.8 at lag 1, shared out to lag 3
+#> se = 0.3586, moe = 0.7029
+```
+
+So the change and the average pull in opposite directions against one
+design lever, while the level at a single occasion is unaffected by
+either, being a function of that occasion’s size alone. It is a
+reference line rather than a third position, and a design serving both
+arms is sized by taking the larger of `n_change()` and `n_pooled()`.
+
 ## Power analysis
 
 Solve for sample size, power, or minimum detectable effect. Supports
@@ -429,6 +607,7 @@ n_alloc(frame, n = 600, alloc = "neyman")
 #> field design: n = 600, cv = 0.0079, cost = 600
 #> continuous optimum: n = 600, cv = 0.0079, se = 0.4305
 #> (deff = 1)
+#> design df = 597
 ```
 
 Constraints and alternative solve modes are also supported:
@@ -447,6 +626,7 @@ n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n_stratum = 40)
 #> field design: n = 3403, cv = 0.0076, cost = 3500
 #> continuous optimum: n = 3403.425, cv = 0.0076, se = 0.4125
 #> (min_n_stratum = 40, deff = 1)
+#> design df = 401
 ```
 
 Domain-level CV targets can be enforced via the `domains` parameter:
@@ -467,11 +647,12 @@ n_alloc(frame_domains, domains = "province",
 #> field design: n = 112, cv = 0.0270, cost = 112
 #> continuous optimum: n = 110.7422, cv = 0.0272, se = 1.4076
 #> (deff = 1)
+#> design df = 108
 #> Domains: 2
 #> ---
-#>  province .domain .n       .se      .moe     .cv    .cost
-#>  North    5_North 59.23404 2.032000 3.982647 0.0400 59   
-#>  South    5_South 51.50815 1.948447 3.818886 0.0368 52
+#>  province .domain .n       .se      .moe     .rmoe      .cv    .cost
+#>  North    5_North 59.23404 2.032000 3.982647 0.07839856 0.0400 59   
+#>  South    5_South 51.50815 1.948447 3.818886 0.07221797 0.0368 52
 ```
 
 For several indicators and overlapping domains, pass long `measures` and
@@ -590,6 +771,7 @@ deff
 n_prop(p = 0.3, moe = 0.05, deff = deff)
 #> Sample size for proportion (wald)
 #> n = 848 (p = 0.30, moe = 0.050, deff = 2.63)
+#> expected cases = 254.4
 effective_n(deff, n = 1000)
 #> [1] 380.5354
 

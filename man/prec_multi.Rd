@@ -5,7 +5,7 @@
 \alias{prec_multi.default}
 \alias{prec_multi.svyplan_n}
 \alias{prec_multi.svyplan_cluster}
-\title{Multi-Indicator Sampling Precision}
+\title{Multi-indicator sampling precision}
 \usage{
 prec_multi(indicators, ...)
 
@@ -55,7 +55,9 @@ on a per-row basis.}
 }
 \value{
 A \code{svyplan_prec} object with a \verb{$detail} data frame containing
-per-indicator precision.
+per-indicator precision: \code{.se}, \code{.moe}, \code{.rmoe}, and \code{.cv}. \code{.rmoe}
+is \code{.moe} as a fraction of the row's \code{p} or \code{abs(mu)}, and \code{NA} for a
+row carrying neither.
 }
 \description{
 Compute the sampling error (SE, MOE, CV) for multiple survey indicators
@@ -96,9 +98,13 @@ indicator row.}
 \item{\code{prop_method}}{Proportion CI method: \code{"wald"} (default),
 \code{"wilson"}, \code{"logodds"}, or \code{"beta"}. Only for rows with \code{p}.}
 \item{\code{df}}{Degrees of freedom of the variance estimator, typically
-sampled PSUs minus strata. Read by \code{"beta"} rows only; \code{NA} (the
-default) applies no adjustment.}
-\item{\code{resp_rate}}{Expected response rate (default 1).}
+sampled PSUs minus strata, and available from \code{\link[=design_df]{design_df()}}. It
+switches that row's interval quantile from normal to t, under every
+proportion method and on mean rows alike; \code{NA} (the default) applies
+no adjustment.}
+\item{\code{resp_rate}}{Expected response rate at the ultimate unit
+(default 1). \code{\link[=prec_multi_cluster]{prec_multi_cluster()}} spends its rate at stage 1 and
+names the column \code{resp_rate_psu}.}
 }
 
 Domain columns are specified via the \code{domains} parameter.
@@ -126,4 +132,16 @@ prec_multi(data.frame(p = 0.05, n = 400), prop_method = "wilson")
 \code{\link[=n_multi]{n_multi()}} for the inverse, \code{\link[=prec_multi_cluster]{prec_multi_cluster()}} for
 multistage cluster designs, and \code{\link[=prec_prop]{prec_prop()}} and \code{\link[=prec_mean]{prec_mean()}} for
 single-indicator precision.
+
+Other precision functions:
+\code{\link[=prec_alloc]{prec_alloc()}},
+\code{\link[=prec_change]{prec_change()}},
+\code{\link[=prec_cluster]{prec_cluster()}},
+\code{\link[=prec_mean]{prec_mean()}},
+\code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
+\code{\link[=prec_panel]{prec_panel()}},
+\code{\link[=prec_pooled]{prec_pooled()}},
+\code{\link[=prec_prop]{prec_prop()}},
+\code{\link[=prec_twophase]{prec_twophase()}}
 }
+\concept{precision functions}

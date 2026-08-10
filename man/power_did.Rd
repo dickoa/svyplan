@@ -3,7 +3,7 @@
 \name{power_did}
 \alias{power_did}
 \alias{power_did.default}
-\title{Power Analysis for Difference-in-Differences Designs}
+\title{Power analysis for difference-in-differences designs}
 \usage{
 power_did(treat, ...)
 
@@ -76,7 +76,11 @@ A scalar applies to both arms. Use a length-2 vector
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The required sample size is inflated by \code{1 / resp_rate}.}
 
-\item{alternative}{Character: \code{"two.sided"} (default) or \code{"one.sided"}.}
+\item{alternative}{Character: \code{"two.sided"} (default) or \code{"one.sided"}.
+Use \code{"two.sided"} when the intervention could plausibly move the
+outcome in either direction (the usual default). Use \code{"one.sided"}
+when only one direction is of interest, which requires a smaller
+sample for the same power.}
 
 \item{ratio}{Allocation ratio \code{n_treat / n_control} (default 1).
 Used only when solving for \code{n} (\code{n = NULL}).}
@@ -118,14 +122,14 @@ Per-arm variance of the before-after change accounts for panel overlap:
 
 \deqn{V_{\text{arm}} = V_{\text{pre}} + V_{\text{post}}
   - 2 \cdot \text{overlap} \cdot \rho \cdot
-  \sqrt{V_{\text{pre}} \cdot V_{\text{post}}}}
+  \sqrt{V_{\text{pre}} \cdot V_{\text{post}}}}{V_arm = V_pre + V_post - 2 * overlap * rho * sqrt(V_pre * V_post)}
 
 The DiD test statistic variance is then:
 
 \deqn{V_d = \text{deff} \left(
   \frac{V_{\text{trt}} \cdot \text{fpc}_t}{n_t} +
   \frac{V_{\text{ctrl}} \cdot \text{fpc}_c}{n_c}
-\right)}
+\right)}{V_d = deff ( (V_trt * fpc_t)/n_t + (V_ctrl * fpc_c)/n_c )}
 
 When \code{overlap = 0}, this reduces to the classical flat-variance formula.
 \subsection{What \code{treat} and \code{control} are used for}{
@@ -151,6 +155,13 @@ count, is what governs the accuracy of that approximation for a
 clustered DiD design: \code{deff} inflates the variance but does not model
 the loss of degrees of freedom, so a design with few clusters per arm
 is optimistic here by more than the unit count suggests.
+
+The \code{df} argument that \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}} and \code{\link[=n_alloc]{n_alloc()}} accept has
+no counterpart here, and its absence is a decision rather than an
+omission. There the quantile is the half-width of a confidence interval
+and a t quantile substitutes for a normal one directly; here it is a
+normal deviate for an alternative, and a t-based power calculation is a
+different procedure. Passing \code{df} is an error that says so.
 }
 }
 \examples{

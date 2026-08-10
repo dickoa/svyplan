@@ -302,8 +302,8 @@ test_that("round-trip methods honor ... overrides", {
 
   cl <- n_cluster(cv = 0.05, icc = 0.05, unit_relvar = 1,
                   stage_cost = c(500, 50))
-  c1 <- prec_cluster(cl, resp_rate = 0.9)
-  c2 <- prec_cluster(n = cl$n, icc = 0.05, unit_relvar = 1, resp_rate = 0.9)
+  c1 <- prec_cluster(cl, resp_rate_psu = 0.9)
+  c2 <- prec_cluster(n = cl$n, icc = 0.05, unit_relvar = 1, resp_rate_psu = 0.9)
   expect_equal(c1$cv, c2$cv)
 })
 

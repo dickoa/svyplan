@@ -545,6 +545,19 @@ test_that("n_cluster 2-stage fixed n_per_psu CV mode", {
   expect_equal(result$cost, cost_expected, tolerance = 1e-4)
 })
 
+# Conditional on a fixed middle take, the final-stage optimum is not the
+# unrestricted sqrt((1 - icc_ssu) / icc_ssu * C2 / C3): that take ignores both
+# the fixed n_per_psu and the per-PSU cost C1. These two tests previously
+# asserted the unrestricted formula, which is the defect rather than the
+# contract.
+n3_conditional <- function(n2, icc_psu, icc_ssu, stage_cost) {
+  k2 <- 1 - icc_psu
+  a <- icc_psu + k2 * icc_ssu / n2
+  g <- k2 * (1 - icc_ssu) / n2
+  sqrt(g * (stage_cost[1L] + stage_cost[2L] * n2) /
+         (a * stage_cost[3L] * n2))
+}
+
 test_that("n_cluster 3-stage fixed n_per_psu budget mode", {
   result <- n_cluster(
     stage_cost = c(500, 100, 50),
@@ -553,14 +566,23 @@ test_that("n_cluster 3-stage fixed n_per_psu budget mode", {
     n_per_psu = 10
   )
 
-  n3_opt <- sqrt((1 - 0.05) / 0.05 * 100 / 50)
-  n2 <- 10
-  n1_expected <- 500000 / (500 + 100 * n2 + 50 * n2 * n3_opt)
+  n3_opt <- n3_conditional(10, 0.01, 0.05, c(500, 100, 50))
+  n1_expected <- 500000 / (500 + 100 * 10 + 50 * 10 * n3_opt)
 
   expect_equal(result$n[["n_per_psu"]], 10, tolerance = 1e-6)
   expect_equal(result$n[["n_per_ssu"]], n3_opt, tolerance = 1e-6)
   expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
   expect_equal(result$cost, 500000)
+
+  # The property the formula exists for: no other final take buys more
+  # precision from the same budget.
+  cv_at <- function(q) {
+    n1 <- 500000 / (500 + 100 * 10 + 50 * 10 * q)
+    prec_cluster(n = c(n1, 10, q), icc = c(0.01, 0.05))$cv
+  }
+  expect_equal(result$n[["n_per_ssu"]],
+               stats::optimize(cv_at, c(1.0001, 200), tol = 1e-10)$minimum,
+               tolerance = 1e-5)
 })
 
 test_that("n_cluster 3-stage fixed n_per_psu CV mode", {
@@ -572,16 +594,29 @@ test_that("n_cluster 3-stage fixed n_per_psu CV mode", {
   )
 
   k2 <- 1 - 0.01
-  n3_opt <- sqrt((1 - 0.05) / 0.05 * 100 / 50)
-  n2 <- 10
+  n3_opt <- n3_conditional(10, 0.01, 0.05, c(500, 100, 50))
   n1_expected <- 1 /
-    (0.05^2 * n2 * n3_opt) *
-    (1 * 0.01 * n2 * n3_opt + k2 * (1 + 0.05 * (n3_opt - 1)))
+    (0.05^2 * 10 * n3_opt) *
+    (1 * 0.01 * 10 * n3_opt + k2 * (1 + 0.05 * (n3_opt - 1)))
 
   expect_equal(result$n[["n_per_psu"]], 10, tolerance = 1e-6)
   expect_equal(result$n[["n_per_ssu"]], n3_opt, tolerance = 1e-6)
   expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
   expect_equal(result$cv, 0.05, tolerance = 1e-6)
+
+  # And no other final take reaches that CV more cheaply.
+  cost_at <- function(q) {
+    p <- prec_cluster(n = c(1, 10, q), icc = c(0.01, 0.05))
+    (p$cv / 0.05)^2 * (500 + 100 * 10 + 50 * 10 * q)
+  }
+  expect_equal(result$n[["n_per_ssu"]],
+               stats::optimize(cost_at, c(1.0001, 200), tol = 1e-10)$minimum,
+               tolerance = 1e-5)
+  expect_lt(result$cost,
+            local({
+              q <- sqrt((1 - 0.05) / 0.05 * 100 / 50)
+              cost_at(q)
+            }))
 })
 
 test_that("n_cluster rejects all stages fixed (2-stage)", {
@@ -902,4 +937,190 @@ test_that("3-stage operational budget design fits and beats naive ceiling", {
   naive <- ceiling(x$n)
   naive_cost <- naive[[1]] * (500 + 100 * naive[[2]] + 50 * naive[[2]] * naive[[3]])
   expect_true(naive_cost > 20000 || op$cv <= x$cv * 1.5)
+})
+
+## Three-stage whole-unit search over the ultimate take
+
+# Reference design, written straight from the documented three-stage cv so it
+# shares no algebra with the search it checks. Enumerates every whole design in
+# the box and returns the cheapest that meets the target, or the most precise
+# that fits the budget.
+op3_reference <- function(stage_cost, icc, var_ratio, unit_relvar = 1,
+                          cv = NULL, budget = NULL, n_psu = NULL,
+                          n_per_psu = NULL, n_per_ssu = NULL,
+                          resp_rate_psu = 1, resp_rate_ssu = 1, resp_rate = 1,
+                          m_max = 60L, q_max = 20000L) {
+  ms <- if (is.null(n_per_psu)) seq_len(m_max) else as.integer(n_per_psu)
+  qs <- if (is.null(n_per_ssu)) seq_len(q_max) else as.integer(n_per_ssu)
+  m <- rep(ms, times = length(qs))
+  q <- rep(qs, each = length(ms))
+  mr <- m * resp_rate_ssu
+  qr <- q * resp_rate
+  numer <- unit_relvar / (resp_rate_psu * mr * qr) *
+    (var_ratio[1L] * icc[1L] * mr * qr +
+       var_ratio[2L] * (1 + icc[2L] * (qr - 1)))
+  per_psu <- stage_cost[1L] + stage_cost[2L] * m + stage_cost[3L] * m * q
+  if (is.null(budget)) {
+    a <- if (is.null(n_psu)) pmax(1, ceiling(numer / cv^2 - 1e-9)) else
+      rep(as.integer(n_psu), length(m))
+    key <- a * per_psu
+    key[numer / a > cv^2 + 1e-12] <- Inf
+  } else {
+    a <- if (is.null(n_psu)) floor(budget / per_psu) else
+      rep(as.integer(n_psu), length(m))
+    key <- numer / a
+    key[a < 1 | a * per_psu > budget + 1e-8] <- Inf
+  }
+  i <- which.min(key)
+  list(n = c(a[i], m[i], q[i]), cost = a[i] * per_psu[i],
+       cv = sqrt(numer[i] / a[i]))
+}
+
+test_that("the three-stage search finds the whole-unit optimum a q window misses", {
+  x <- suppressWarnings(n_cluster(
+    cv = 0.05, stage_cost = c(1000, 200, 0.02),
+    icc = c(0.02, 0.0005), unit_relvar = 1.5
+  ))
+  op <- x$operational
+  expect_identical(as.integer(op$n), c(13L, 1L, 833L))
+  expect_equal(op$cost, 15816.58, tolerance = 1e-6)
+  expect_lte(op$cv, 0.05)
+  # The optimum sits where the PSU count is a tight ceiling, five times below
+  # the continuous take and past any window anchored on it.
+  expect_gt(x$n[["n_per_ssu"]], 4000)
+  expect_gt(op$n[["n_per_ssu"]], 400)
+})
+
+test_that("three-stage cv designs match an exhaustive whole-unit search", {
+  grid <- expand.grid(
+    C3 = c(0.02, 5, 60), icc2 = c(0.0005, 0.05), cv = c(0.05, 0.1),
+    V = c(1, 1.5)
+  )
+  for (i in seq_len(nrow(grid))) {
+    g <- grid[i, ]
+    icc <- c(0.02, g$icc2)
+    vr <- c(1, 1 - 0.02)
+    x <- suppressWarnings(n_cluster(
+      cv = g$cv, stage_cost = c(1000, 200, g$C3), icc = icc,
+      unit_relvar = g$V
+    ))
+    ref <- op3_reference(c(1000, 200, g$C3), icc, vr, g$V, cv = g$cv)
+    expect_lte(x$operational$cv, g$cv + 1e-12)
+    expect_equal(x$operational$cost, ref$cost, tolerance = 1e-9)
+  }
+})
+
+test_that("three-stage budget designs match an exhaustive whole-unit search", {
+  grid <- expand.grid(C3 = c(1, 20, 50), icc2 = c(0.005, 0.05),
+                      budget = c(20000, 250000))
+  for (i in seq_len(nrow(grid))) {
+    g <- grid[i, ]
+    icc <- c(0.01, g$icc2)
+    vr <- c(1, 1 - 0.01)
+    x <- suppressWarnings(n_cluster(
+      budget = g$budget, stage_cost = c(500, 100, g$C3), icc = icc
+    ))
+    ref <- op3_reference(c(500, 100, g$C3), icc, vr, budget = g$budget)
+    expect_lte(x$operational$cost, g$budget + 1e-8)
+    expect_lte(x$operational$cv, ref$cv * (1 + 1e-9))
+  }
+})
+
+test_that("a cheap final stage buys a take past any window on the continuous one", {
+  # The most precise affordable design spends the residual budget on ultimate
+  # units, so the take runs well past where a window around the continuous
+  # optimum would stop.
+  x <- suppressWarnings(n_cluster(budget = 5e4, stage_cost = c(1000, 200, 0.02),
+                                  icc = c(0.02, 0.0005)))
+  op <- x$operational
+  expect_gt(op$n[["n_per_ssu"]], 400)
+  expect_lte(op$cost, 5e4 + 1e-8)
+  ref <- op3_reference(c(1000, 200, 0.02), c(0.02, 0.0005), c(1, 1 - 0.02),
+                       budget = 5e4, q_max = 6000L)
+  expect_lte(op$cv, ref$cv * (1 + 1e-9))
+})
+
+test_that("the three-stage search is exact with stages fixed", {
+  cost <- c(500, 100, 20)
+  icc <- c(0.01, 0.03)
+  vr <- c(1, 1 - 0.01)
+  combos <- list(
+    list(n_psu = 40), list(n_per_psu = 6), list(n_per_ssu = 4),
+    list(n_psu = 40, n_per_psu = 6), list(n_psu = 40, n_per_ssu = 4),
+    list(n_per_psu = 6, n_per_ssu = 4)
+  )
+  for (fix in combos) {
+    for (mode in list(list(cv = 0.05), list(budget = 3e5))) {
+      args <- c(list(stage_cost = cost, icc = icc), fix, mode)
+      x <- suppressWarnings(do.call(n_cluster, args))
+      ref <- do.call(op3_reference, c(
+        list(cost, icc, vr), fix, mode, list(q_max = 5000L)
+      ))
+      if (is.null(mode$budget)) {
+        expect_lte(x$operational$cv, 0.05 + 1e-12)
+        expect_equal(x$operational$cost, ref$cost, tolerance = 1e-9)
+      } else {
+        expect_lte(x$operational$cost, 3e5 + 1e-8)
+        expect_lte(x$operational$cv, ref$cv * (1 + 1e-9))
+      }
+    }
+  }
+})
+
+test_that("stage response rates keep the three-stage search exact", {
+  cost <- c(800, 150, 3)
+  icc <- c(0.02, 0.01)
+  vr <- c(1, 1 - 0.02)
+  x <- suppressWarnings(n_cluster(
+    cv = 0.06, stage_cost = cost, icc = icc, resp_rate_psu = 0.9,
+    resp_rate_ssu = 0.85, resp_rate = 0.8
+  ))
+  ref <- op3_reference(cost, icc, vr, cv = 0.06, resp_rate_psu = 0.9,
+                       resp_rate_ssu = 0.85, resp_rate = 0.8)
+  expect_lte(x$operational$cv, 0.06 + 1e-12)
+  expect_equal(x$operational$cost, ref$cost, tolerance = 1e-9)
+})
+
+test_that("a loose target settles on a single PSU rather than below one", {
+  x <- suppressWarnings(n_cluster(cv = 0.4, stage_cost = c(500, 100, 20),
+                                  icc = c(0.005, 0.02)))
+  op <- x$operational
+  expect_identical(op$n[["n_psu"]], 1L)
+  expect_lte(op$cv, 0.4 + 1e-12)
+  ref <- op3_reference(c(500, 100, 20), c(0.005, 0.02), c(1, 1 - 0.005),
+                       cv = 0.4)
+  expect_equal(op$cost, ref$cost, tolerance = 1e-9)
+})
+
+test_that("n_multi_cluster reaches the same three-stage design as n_cluster", {
+  ind <- data.frame(name = "x", var = 1.5, mu = 1, cv = 0.05,
+                    icc_psu = 0.02, icc_ssu = 0.0005)
+  nc <- suppressWarnings(n_cluster(cv = 0.05, icc = c(0.02, 0.0005),
+                                   unit_relvar = 1.5,
+                                   stage_cost = c(1000, 200, 0.02)))
+  nm <- suppressWarnings(n_multi_cluster(ind, stage_cost = c(1000, 200, 0.02)))
+  expect_identical(as.integer(nm$operational$n), as.integer(nc$operational$n))
+  expect_equal(nm$operational$cost, nc$operational$cost)
+
+  ncb <- suppressWarnings(n_cluster(budget = 2e5, icc = c(0.02, 0.005),
+                                    stage_cost = c(500, 100, 20)))
+  nmb <- suppressWarnings(n_multi_cluster(
+    data.frame(name = "x", var = 1, mu = 1, cv = 0.05,
+               icc_psu = 0.02, icc_ssu = 0.005),
+    stage_cost = c(500, 100, 20), budget = 2e5
+  ))
+  expect_identical(as.integer(nmb$operational$n), as.integer(ncb$operational$n))
+})
+
+test_that("the binding indicator drives the multi-indicator three-stage search", {
+  ind <- data.frame(
+    name = c("loose", "tight"), var = c(1, 1.5), mu = c(1, 1),
+    cv = c(0.2, 0.05), icc_psu = c(0.01, 0.02), icc_ssu = c(0.02, 0.0005)
+  )
+  nm <- suppressWarnings(n_multi_cluster(ind, stage_cost = c(1000, 200, 0.02)))
+  tight <- suppressWarnings(n_multi_cluster(ind[2, ],
+                                            stage_cost = c(1000, 200, 0.02)))
+  expect_identical(as.integer(nm$operational$n),
+                   as.integer(tight$operational$n))
+  expect_true(all(nm$operational$cv_by_target <= ind$cv + 1e-12))
 })

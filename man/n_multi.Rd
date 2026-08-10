@@ -4,7 +4,7 @@
 \alias{n_multi}
 \alias{n_multi.default}
 \alias{n_multi.svyplan_prec}
-\title{Multi-Indicator Sample Size}
+\title{Multi-indicator sample size}
 \usage{
 n_multi(indicators, ...)
 
@@ -12,6 +12,7 @@ n_multi(indicators, ...)
   indicators,
   ...,
   domains = NULL,
+  domain_sampling = c("separate", "natural"),
   min_n_domain = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
   plan = NULL
@@ -32,9 +33,9 @@ each row needs:
 \item \strong{What to measure}: \code{p} for a proportion (e.g. 0.30 for
 30\\% stunting) \strong{or} \code{var} for a continuous variable's
 population variance. Each row must use exactly one.
-\item \strong{How precise}: \code{moe} (margin of error) \strong{or}
-\code{cv} (coefficient of variation). Each row must
-specify exactly one.
+\item \strong{How precise}: \code{moe} (margin of error), \code{rmoe} (margin of
+error relative to the estimand) \strong{or} \code{cv} (coefficient of
+variation). Each row must specify exactly one.
 }
 
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_multi]{prec_multi()}}.}
@@ -45,6 +46,22 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_multi
 as domain variables, or \code{NULL} (default) for no domains. All names
 must exist in \code{indicators}. When specified, sizing runs
 independently for each domain combination.}
+
+\item{domain_sampling}{How the per-domain requirements combine into one
+overall size, either \code{"separate"} (default) or \code{"natural"}. It applies
+only when domains are present.
+
+\code{"separate"} treats the domains as disjoint quotas drawn independently,
+the usual case for regional or urban/rural domains in one national
+survey, and reports \code{n} as their sum. Every quota has to be met, so no
+smaller total delivers the design.
+
+\code{"natural"} treats them as analytic domains that arise at their own rate
+inside one sample. It requires a \code{share} column giving each domain's
+expected share of the population, constant within a domain, and reports
+\code{n} as \code{max(.n / share)}. That is an \emph{expected yield}: a sample of that
+size delivers each domain's quota on average, not with certainty in any
+one realized sample.}
 
 \item{min_n_domain}{Numeric scalar or \code{NULL} (default). Minimum total sample
 size per domain. It applies only when domains are present. Per-domain
@@ -73,9 +90,16 @@ domains.
 
 \strong{With domains}, the object additionally contains:
 \describe{
-\item{\code{n}}{The largest sample size required across domains.}
+\item{\code{n}}{The overall size, read according to \code{domain_sampling}:
+the sum of the domain quotas under \code{"separate"}, or the size whose
+expected yield meets every quota under \code{"natural"}. It is not the
+largest domain requirement, which is a different and smaller
+number.}
+\item{\code{n_domain_max}}{The largest single domain requirement, and the
+one \code{binding} refers to.}
 \item{\code{domains}}{Data frame with one row per domain, including
-domain variables, \code{.n}, and \code{.binding}.}
+domain variables, \code{.n}, \code{.binding}, and \code{.share} under
+\code{"natural"}.}
 }
 }
 \description{
@@ -94,8 +118,10 @@ decisions per row are:
 expenditure")? This determines whether you fill the \code{p} or \code{var}
 column.
 \item \strong{Precision target}: do you want an absolute margin of error
-(\code{moe}, e.g. +/- 5 percentage points) or a relative
-coefficient of variation (\code{cv}, e.g. 10 percent relative error)?
+(\code{moe}, e.g. +/- 5 percentage points), the same margin stated
+relative to the estimand (\code{rmoe}, e.g. 12 percent of the
+proportion, as MICS and DHS state it), or a relative coefficient of
+variation (\code{cv}, e.g. 10 percent relative error)?
 }
 
 A minimal example for three health indicators:
@@ -132,6 +158,10 @@ CV = SE / abs(mean).}
 interval you want. For proportions, this is on the probability
 scale (e.g. 0.05 for +/- 5 percentage points). For means,
 it is in the same units as the variable (e.g. 10 dollars).}
+\item{\code{rmoe}}{Margin of error relative to the row's estimand, so
+0.12 asks for a half-width of 12 percent of \code{p} or of \code{abs(mu)}.
+It is converted to \code{moe} on ingestion, so the row needs \code{p} or
+\code{mu}, and it is read under the row's own \code{prop_method}.}
 \item{\code{cv}}{Target coefficient of variation (relative standard
 error). For example, 0.10 means the SE should be at most 10\\%
 of the estimate.}
@@ -151,21 +181,43 @@ positive counts is small enough that the interval should stay
 inside \verb{[0, 1]} by construction. It is used only for rows with
 \code{p}. See \code{\link[=n_prop]{n_prop()}} for how to choose.}
 \item{\code{df}}{Degrees of freedom of the planned variance estimator,
-typically sampled PSUs minus strata. Read by \code{"beta"} rows only,
-where it widens the interval for a variance estimated from few
-clusters; \code{NA} (the default) applies no adjustment. Supplying it
-on a row using any other method is an error, so a mixed table
-carries \code{NA} on its non-beta rows.}
+typically sampled PSUs minus strata, and available from
+\code{\link[=design_df]{design_df()}}. It switches that row's interval quantile from normal
+to t, under every method; \code{NA} (the default) applies no adjustment.
+A df is a property of the design rather than of an indicator, so
+every row of a single-domain table shares one value. The column
+earns its place when the rows are \emph{domains}, each covering its own
+set of strata: \code{design_df(alloc)$domains$.df} gives one value per
+domain to match in.}
+\item{\code{min_cases}}{Minimum expected number of positive cases the row
+must yield, a floor on that row's own size, as in
+\code{\link[=n_prop]{n_prop()}}\verb{(min_cases = )}. Proportion rows only; \code{NA} (the
+default) sizes the row on precision alone. The row that ends up
+largest is still the binding one, whichever constraint raised it.
+Single-stage \code{n_multi()} only: a multistage design sizes stages
+against a cost and has no single total for a count to raise.}
 \item{\code{unit_relvar}}{Unit relvariance. If omitted, derived
 automatically from \code{p} (as \code{(1 - p) / p}) or from
 \code{var} / \code{mu^2}.}
-\item{\code{resp_rate}}{Expected response rate, in (0, 1]. Default 1
-(no adjustment). A value of 0.90 inflates the sample size by
-\code{1 / 0.90} to compensate for 10 percent non-response.}
+\item{\code{resp_rate}}{Expected response rate at the ultimate unit, in
+(0, 1]. Default 1 (no adjustment). A value of 0.90 inflates the
+sample size by \code{1 / 0.90} to compensate for 10 percent
+non-response. It means the same thing in \code{\link[=n_multi_cluster]{n_multi_cluster()}},
+which additionally takes \code{resp_rate_psu} for whole clusters that
+cannot be worked and \code{resp_rate_ssu} for second-stage units in a
+three-stage design. Naming a stage the design does not have is an
+error rather than a column carried along and ignored.}
 }
 
 Domain columns are specified via the \code{domains} parameter. When domains
-are present, sizing runs independently for each domain combination.
+are present, sizing runs independently for each domain combination, and
+\code{domain_sampling} decides how those requirements combine into the one
+number \code{n} reports. The two readings answer different questions and give
+different sizes, so the choice belongs to the design rather than to a
+default: separate quotas need every requirement met and therefore their
+sum, while natural domains need a sample large enough that the rarest
+demanding domain turns up often enough. Neither is the largest single
+requirement, which \code{n_domain_max} reports separately.
 
 Columns beyond those listed are carried along and ignored, so the table
 can keep questionnaire modules, sources, or other bookkeeping. The
@@ -200,16 +252,14 @@ indicators <- data.frame(
 )
 n_multi(indicators)
 
-# MICS/DHS-style: specify precision as a relative margin of error (RME).
-# RME = moe / p, so convert with moe = RME * p before calling n_multi().
-rme <- 0.12
-targets_rme <- data.frame(
+# MICS/DHS-style: state precision as a relative margin of error
+targets_rmoe <- data.frame(
   name = c("stunting", "vaccination", "anemia"),
   p    = c(0.30, 0.70, 0.10),
+  rmoe = 0.12,
   deff = c(2.0, 1.5, 2.5)
 )
-targets_rme$moe <- rme * targets_rme$p
-n_multi(targets_rme)
+n_multi(targets_rmoe)
 
 # Continuous indicators: 'var' for the dispersion, 'mu' for the mean.
 # A CV target needs 'mu', because a relative standard error is relative
@@ -313,4 +363,16 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 \code{\link[=n_alloc]{n_alloc()}} to split a multi-indicator size across strata or domains,
 \code{\link[=n_multi_cluster]{n_multi_cluster()}} for multistage cluster designs, and \code{\link[=prec_multi]{prec_multi()}}
 for the inverse.
+
+Other sample size functions:
+\code{\link[=n_alloc]{n_alloc()}},
+\code{\link[=n_change]{n_change()}},
+\code{\link[=n_cluster]{n_cluster()}},
+\code{\link[=n_mean]{n_mean()}},
+\code{\link[=n_multi_cluster]{n_multi_cluster()}},
+\code{\link[=n_panel]{n_panel()}},
+\code{\link[=n_pooled]{n_pooled()}},
+\code{\link[=n_prop]{n_prop()}},
+\code{\link[=n_twophase]{n_twophase()}}
 }
+\concept{sample size functions}

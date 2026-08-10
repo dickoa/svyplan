@@ -1,4 +1,4 @@
-#' Planning Design Effect
+#' Planning design effect
 #'
 #' Build the design effect you expect a complex design to produce, before
 #' any data are collected, by combining the design features you are
@@ -36,15 +36,15 @@
 #' Components are selected by which arguments you supply, and multiply
 #' together:
 #'
-#' \deqn{DEFF = DEFF_{cluster} \times DEFF_{weight} \times DEFF_{strata}.}
+#' \deqn{DEFF = DEFF_{cluster} \times DEFF_{weight} \times DEFF_{strata}.}{DEFF = DEFF_cluster * DEFF_weight * DEFF_strata.}
 #'
 #' **Clustering** (`icc`, `n_per_psu`, `n_per_ssu`, `var_ratio`) uses the same
 #' variance model as [n_cluster()] and [prec_cluster()], so the two always
 #' agree. For a two-stage design with `n_per_psu` units taken per PSU,
-#' \deqn{DEFF_{cluster} = k(1 + \delta(m - 1)),}
+#' \deqn{DEFF_{cluster} = k(1 + \delta(m - 1)),}{DEFF_cluster = k(1 + delta(m - 1)),}
 #' and for a three-stage design taking `n_per_psu` SSUs per PSU and
 #' `n_per_ssu` units per SSU,
-#' \deqn{DEFF_{cluster} = k_1\delta_1 mq + k_2(1 + \delta_2(q - 1)).}
+#' \deqn{DEFF_{cluster} = k_1\delta_1 mq + k_2(1 + \delta_2(q - 1)).}{DEFF_cluster = k_1 delta_1 mq + k_2(1 + delta_2(q - 1)).}
 #' Estimate `icc` (and `var_ratio`) from a previous round or pilot with
 #' [varcomp()].
 #'
@@ -62,19 +62,19 @@
 #' can differ by several percent on small clusters.
 #'
 #' Written on components referenced to the total unit variance,
-#' \eqn{\delta_1=\sigma_1^2/S^2} and \eqn{\delta_2^{tot}=\sigma_2^2/S^2},
+#' \eqn{\delta_1=\sigma_1^2/S^2} and \eqn{\delta_2^{tot}=\sigma_2^2/S^2}{delta_2^tot=sigma_2^2/S^2},
 #' the same quantity is the familiar
-#' \eqn{1+\delta_1(mq-1)+\delta_2^{tot}(q-1)}. The package's `icc_ssu` is
+#' \eqn{1+\delta_1(mq-1)+\delta_2^{tot}(q-1)}{1+delta_1(mq-1)+delta_2^tot(q-1)}. The package's `icc_ssu` is
 #' referenced to the within-PSU variance instead, so
-#' \eqn{\delta_2=\delta_2^{tot}/(1-\delta_1)}.
+#' \eqn{\delta_2=\delta_2^{tot}/(1-\delta_1)}{delta_2=delta_2^tot/(1-delta_1)}.
 #'
 #' **Unequal weighting** (`weights`, or `N` and `n` in `strata`) is Kish's
 #' weighting loss. From a vector of planned weights,
-#' \deqn{DEFF_{weight} = n\sum_i w_i^2 / (\sum_i w_i)^2,}
+#' \deqn{DEFF_{weight} = n\sum_i w_i^2 / (\sum_i w_i)^2,}{DEFF_weight = n sum_i w_i^2 / (sum_i w_i)^2,}
 #' and from a planned stratified allocation with stratum sizes \eqn{N_h}
 #' and takes \eqn{n_h} the same quantity is
 #' \deqn{DEFF_{weight} = n\sum_h N_h^2/n_h / (\sum_h N_h)^2, \quad
-#'       n = \sum_h n_h.}
+#'       n = \sum_h n_h.}{DEFF_weight = n sum_h N_h^2/n_h / (sum_h N_h)^2, n = sum_h n_h.}
 #' Equal weights give exactly 1. This is the cost of a disproportionate
 #' allocation, of weighting classes, or of an anticipated nonresponse
 #' adjustment, and it is never below 1.
@@ -83,8 +83,8 @@
 #' stratifying, the only component that can fall below 1. With
 #' \eqn{W_h = N_h/N},
 #' \deqn{DEFF_{strata} = \sum_h W_hS_h^2 /
-#'       \left(\sum_h W_hS_h^2 + \sum_h W_h(\bar y_h - \bar y)^2\right).}
-#' It measures the gain under *proportional* allocation; any departure from
+#'       \left(\sum_h W_hS_h^2 + \sum_h W_h(\bar y_h - \bar y)^2\right).}{DEFF_strata = sum_h W_hS_h^2 / (sum_h W_hS_h^2 + sum_h W_h(ybar_h - ybar)^2 ).}
+#' It measures the gain under *proportional* allocation. Any departure from
 #' proportional is already charged to the weighting component, so the two
 #' compose without double counting.
 #'
@@ -99,7 +99,7 @@
 #' stratum sizes, means and takes, and not otherwise. The gap runs in
 #' either direction, so it is not a bound: the weighting component charges
 #' a disproportionate allocation as a loss without knowing which strata
-#' were favoured, so a Neyman allocation over strata that differ sharply in
+#' were favored, so a Neyman allocation over strata that differ sharply in
 #' `sd` is reported well above its true variance ratio, while a constraint
 #' that forces units into a low-variance stratum is reported well below it.
 #' The printed result marks a multi-component product as approximate for
@@ -108,18 +108,20 @@
 #' Given an [n_alloc()] result there is no need to approximate at all.
 #' Every quantity the ratio needs is already there, so
 #' `design_effect(alloc)` returns the allocation's own variance ratio,
-#' \deqn{D = d_0\,n \sum_h W_h^2S_h^2k_h(1+\delta_h(m_h-1))/n_h \Big/
-#'        \left(\sum_h W_hS_h^2+\sum_h W_h(\bar y_h-\bar y)^2\right),}
+#' \deqn{D = n \sum_h W_h^2S_h^2d_hk_h(1+\delta_h(m_h-1))/n_h \Big/
+#'        \left(\sum_h W_hS_h^2+\sum_h W_h(\bar y_h-\bar y)^2\right),}{D = n sum_h W_h^2S_h^2d_hk_h(1+delta_h(m_h-1))/n_h / (sum_h W_hS_h^2+sum_h W_h(ybar_h-ybar)^2 ),}
 #' with the per-stratum cluster factors entering stratum by stratum rather
-#' than averaged, and the scalar `deff` the allocation was built under
-#' counted once. A generalized allocation optimizing several measures has
-#' no single such ratio and is refused; take the measure-specific numbers
+#' than averaged, and the `deff` the allocation was built under counted
+#' once. A per-stratum `deff` weights its own stratum's contribution and a
+#' scalar factors straight back out. A generalized allocation optimizing
+#' several measures has
+#' no single such ratio and is refused. Take the measure-specific numbers
 #' from [prec_alloc()].
 #'
 #' This ratio is computed without finite population corrections, on the
 #' same planning scale as the component arguments. [prec_alloc()] applies
 #' each stratum's FPC, so a ratio derived from its variance need not equal
-#' `design_effect(alloc)` once sampling fractions are material; use
+#' `design_effect(alloc)` once sampling fractions are material. Use
 #' [prec_alloc()] when the design variance itself is what you want.
 #'
 #' @references
@@ -187,12 +189,12 @@ design_effect <- function(x = NULL, ...) {
 #' @param var_ratio Ratio of the components' unit variance to the analysis
 #'   variable's, default 1. A scalar names `var_ratio_psu` and, for a three-stage
 #'   `icc`, derives `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)`. Supply a length-2
-#'   vector only to override that identity; see Details.
+#'   vector only to override that identity. See Details.
 #' @param weights Numeric vector of planned sampling weights, one per
 #'   sampled unit. Only their relative variability matters.
 #' @param strata Stratum-level data frame describing a planned stratified
 #'   allocation, using the [n_alloc()] column names. `N` with `n` gives
-#'   the weighting component; `N` with `sd` and `mean` gives the
+#'   the weighting component. `N` with `sd` and `mean` gives the
 #'   stratification component. Supply all four for both.
 #'
 #' @export
@@ -292,6 +294,18 @@ design_effect.svyplan_varcomp <- function(x, ..., n_per_psu = NULL,
       call. = FALSE
     )
   }
+  if (identical(x$source, "deff") && is.null(n_per_psu)) {
+    # The source take is provenance, not a default: re-planning at a
+    # different take is the reason to back an icc out at all, so falling
+    # back to it would quietly return the previous design's number.
+    stop(
+      sprintf(
+        "'n_per_psu' is required. This 'icc' was backed out of a design effect at n_per_psu = %.4g; supply the take you are planning for",
+        x$params$n_per_psu
+      ),
+      call. = FALSE
+    )
+  }
   .deff_compose(
     icc = x$icc,
     n_per_psu = n_per_psu,
@@ -307,14 +321,14 @@ design_effect.svyplan_varcomp <- function(x, ..., n_per_psu = NULL,
 #'   computed from the stratum sizes, takes, standard deviations, means and
 #'   any per-stratum cluster factors, rather than a product of separate
 #'   weighting and stratification approximations. Supply `weights` only for
-#'   an *additional* anticipated adjustment; see the `weights` argument.
+#'   an *additional* anticipated adjustment. See the `weights` argument.
 #' @param weights For an [n_alloc()] result only: an *additional*
 #'   anticipated weighting adjustment charged on top of the allocation,
 #'   such as a nonresponse correction or a calibration step. Do not pass
 #'   the allocation's own weights. The stratum takes already carry those,
 #'   and supplying them again counts the same disproportionality twice.
-#'   The `allocation` component is exact for the plan; this one is Kish's
-#'   approximation, so with `weights` supplied the overall result is
+#'   The `allocation` component is exact for the plan, while this one is
+#'   Kish's approximation, so with `weights` supplied the overall result is
 #'   approximate too and prints as such.
 #' @export
 design_effect.svyplan_n <- function(x, ..., weights = NULL) {
@@ -387,10 +401,14 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
                "every 'sd' is zero, so the ratio is 0 or undefined"),
          call. = FALSE)
   }
-  # the scalar deff the allocation was built under is part of its variance
-  # model, so it belongs in the ratio exactly once
-  scalar <- x$params$deff %||% 1
-  value <- scalar * sum(n) * sum(W^2 * detail$sd^2 * factor_h / n) / parts$total
+  # the deff the allocation was built under is part of its variance model, so
+  # it belongs in the ratio exactly once. Per-stratum values weight their own
+  # stratum's contribution; a scalar factors straight back out.
+  deff_h <- x$params$deff %||% 1
+  if (length(deff_h) > 1L && length(deff_h) != nrow(detail)) {
+    stop("'deff' length does not match the allocation's strata", call. = FALSE)
+  }
+  value <- sum(n) * sum(W^2 * detail$sd^2 * deff_h * factor_h / n) / parts$total
   list(
     value = value,
     note = sprintf("%d strata, n = %.4g (direct variance ratio)",

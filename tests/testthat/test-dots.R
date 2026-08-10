@@ -14,6 +14,13 @@ test_that("planning and precision functions reject unused arguments", {
   expect_error(n_alloc(frame, n = 50, aloc = "optimal"),
                "unused argument.*aloc")
 
+  expect_error(n_panel(n_mean(100, moe = 2), retention = 0.9, resp_rte = 0.8),
+               "unused argument.*resp_rte")
+  expect_error(
+    prec_panel(500, n_mean(100, moe = 2), retention = 0.9, resp_rte = 0.8),
+    "unused argument.*resp_rte"
+  )
+
   expect_error(prec_prop(0.3, n = 100, alpa = 0.1),
                "unused argument.*alpa")
   expect_error(prec_mean(100, n = 100, alpa = 0.1),

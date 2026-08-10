@@ -1,4 +1,4 @@
-#' Grid Exploration for svyplan Objects
+#' Grid exploration for svyplan objects
 #'
 #' Evaluate a svyplan result at new parameter combinations.
 #' Returns a data frame with the varied parameters and resulting
@@ -17,18 +17,32 @@
 #' @return A data frame with `newdata` columns followed by result
 #'   columns. The result columns depend on the object type:
 #'
-#'   - `svyplan_n`: `n`, `se`, `moe`, `cv`
+#'   - `svyplan_n`: `n`, `se`, `moe`, `cv`, `rmoe`, except for a
+#'     `type = "change"` result, which reports one size per occasion as
+#'     `n1` and `n2` in place of `n`
 #'   - `svyplan_cluster`: `n_psu`, `n_per_psu`, (opt. `n_per_ssu`), `total_n`, `cv`, `cost`
 #'   - `svyplan_power`: `n`, `power`, `effect`
-#'   - `svyplan_prec`: `se`, `moe`, `cv`
+#'   - `svyplan_prec`: `se`, `moe`, `cv`, `rmoe`
 #'
 #' @details
 #' Valid parameters for `newdata` by object type:
 #'
-#' - **`n_prop`**: `p`, `moe`, `cv`, `alpha`, `N`, `deff`, `resp_rate`,
-#'   `df` (`method = "beta"` only)
-#' - **`n_mean`**: `var`, `mu`, `moe`, `cv`, `alpha`, `N`, `deff`,
+#' - **`n_prop`**: `p`, `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`,
+#'   `resp_rate`, `df` (`method = "beta"` only)
+#' - **`n_mean`**: `var`, `mu`, `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`,
 #'   `resp_rate`
+#' - **`n_change`**: `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`, `resp_rate`,
+#'   `ratio`, `overlap`, `overlap_cor`, and `change` on the mean scale only,
+#'   since two proportions determine it. The occasion variances are held at
+#'   the values the result was built from, so vary the design rather than the
+#'   estimand: sweeping `overlap` and `overlap_cor` is what prices a rotation
+#'   against a fresh sample each round.
+#' - **`n_pooled`**: `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`, `resp_rate`,
+#'   `mu` on the mean scale, and `occasions` only where the overlap and
+#'   correlation are flat across lags, a shaped profile being a statement
+#'   about a horizon that changing the horizon would contradict. The lag
+#'   profiles themselves cannot be varied, a grid row having nowhere to hold
+#'   a vector.
 #' - **`n_cluster`**: `cv`, `budget`, `unit_relvar`, `resp_rate`, `fixed_cost`,
 #'   stage deltas (`icc` or `icc_psu`, plus `icc_ssu` for 3-stage),
 #'   stage ratios (`var_ratio` or `var_ratio_psu`, plus `var_ratio_ssu` for 3-stage),
@@ -41,11 +55,12 @@
 #'   `deff`, `alternative`, `overlap`, `overlap_cor`, `resp_rate` (excluding the
 #'   solved-for parameter). Not supported for objects with vector `n`.
 #' - **`prec_prop`**: `p`, `n`, `alpha`, `N`, `deff`, `resp_rate`,
-#'   `df` (`method = "beta"` only)
+#'   `df` (`method = "beta"` only). A result that solved for `p` varies the
+#'   target it solved from, `cv` or `rmoe`, in place of `p`.
 #' - **`prec_mean`**: `var`, `n`, `mu`, `alpha`, `N`, `deff`, `resp_rate`
 #'
-#' For `svyplan_n` objects, `moe` and `cv` are mutually exclusive in
-#' `newdata`. If one appears, that mode is used. If neither appears, the
+#' For `svyplan_n` objects, `moe`, `rmoe`, and `cv` are mutually exclusive
+#' in `newdata`. If one appears, that mode is used. If none appears, the
 #' original mode is preserved.
 #'
 #' Similarly, for `svyplan_cluster` objects, `cv` and `budget` are
@@ -121,37 +136,107 @@ predict.svyplan_n <- function(object, newdata, ...) {
   }
 
   if (object$type == "proportion") {
-    allowed <- c("p", "moe", "cv", "alpha", "N", "deff", "resp_rate", "df")
+    allowed <- c("p", "moe", "cv", "rmoe", "alpha", "N", "deff", "resp_rate",
+                 "df", "min_cases")
     base <- object$params
     method <- object$method %||% "wald"
 
     .validate_newdata(newdata, allowed)
-    base <- .resolve_exclusive(newdata, base, "moe", "cv")
+    base <- .resolve_exclusive(newdata, base, "moe", "cv", "rmoe")
 
     .predict_grid(newdata, base, function(p) {
       res <- n_prop.default(
-        p = p$p, moe = p$moe, cv = p$cv,
+        p = p$p, moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N,
         deff = p$deff, resp_rate = p$resp_rate,
-        method = method, df = p$df
+        method = method, df = p$df, min_cases = p$min_cases
       )
-      data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv)
+      data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv,
+                 rmoe = res$rmoe)
     })
 
   } else if (object$type == "mean") {
-    allowed <- c("var", "mu", "moe", "cv", "alpha", "N", "deff", "resp_rate")
+    allowed <- c("var", "mu", "moe", "cv", "rmoe", "alpha", "N", "deff",
+                 "resp_rate")
     base <- object$params
 
     .validate_newdata(newdata, allowed)
-    base <- .resolve_exclusive(newdata, base, "moe", "cv")
+    base <- .resolve_exclusive(newdata, base, "moe", "cv", "rmoe")
 
     .predict_grid(newdata, base, function(p) {
       res <- n_mean.default(
-        var = p$var, mu = p$mu, moe = p$moe, cv = p$cv,
+        var = p$var, mu = p$mu, moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N,
         deff = p$deff, resp_rate = p$resp_rate
       )
-      data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv)
+      data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv,
+                 rmoe = res$rmoe)
+    })
+
+  } else if (object$type == "change") {
+    base <- object$params
+    # 'change' is p[2] - p[1] on the proportion scale, so varying it there
+    # would ask for a change the two proportions contradict.
+    allowed <- c("moe", "cv", "rmoe", "alpha", "N", "deff", "resp_rate",
+                 "ratio", "overlap", "overlap_cor",
+                 if (is.null(base$p)) "change")
+
+    .validate_newdata(newdata, allowed)
+    base <- .resolve_exclusive(newdata, base, "moe", "cv", "rmoe")
+
+    .predict_grid(newdata, base, function(p) {
+      res <- n_change.default(
+        var = if (is.null(p$p)) p$var else NULL,
+        p = p$p,
+        change = if (is.null(p$p)) p$change else NULL,
+        moe = p$moe, cv = p$cv, rmoe = p$rmoe,
+        alpha = p$alpha, N = p$N, deff = p$deff, resp_rate = p$resp_rate,
+        ratio = p$ratio, overlap = p$overlap, overlap_cor = p$overlap_cor,
+        df = p$df
+      )
+      data.frame(n1 = res$n[1L], n2 = res$n[length(res$n)],
+                 se = res$se, moe = res$moe, cv = res$cv, rmoe = res$rmoe)
+    })
+
+  } else if (object$type == "pooled") {
+    base <- object$params
+    # The lag profiles are stored one entry per lag, so a grid can only vary
+    # 'occasions' where they are flat and a shorter or longer profile is the
+    # same statement. Varying the profiles themselves would need a column
+    # holding a vector, which a data frame row cannot.
+    # An issued profile is only a respondent one at full response, so a
+    # grid cannot move the response rate under it any more than a direct
+    # call could.
+    if (identical(base$overlap_basis, "issued") &&
+          "resp_rate" %in% names(newdata)) {
+      .check_overlap_basis("issued", min(newdata$resp_rate))
+    }
+    flat <- length(unique(base$overlap)) == 1L &&
+      length(unique(base$overlap_cor)) == 1L
+    allowed <- c("moe", "cv", "rmoe", "alpha", "N", "deff", "resp_rate",
+                 if (flat) "occasions",
+                 if (is.null(base$p)) "mu")
+
+    .validate_newdata(newdata, allowed)
+    base <- .resolve_exclusive(newdata, base, "moe", "cv", "rmoe")
+    if (flat) {
+      base$overlap <- base$overlap[1L]
+      base$overlap_cor <- base$overlap_cor[1L]
+    }
+
+    .predict_grid(newdata, base, function(p) {
+      res <- n_pooled.default(
+        var = if (is.null(p$p)) p$var else NULL,
+        p = p$p,
+        mu = if (is.null(p$p)) p$mu else NULL,
+        occasions = p$occasions,
+        moe = p$moe, cv = p$cv, rmoe = p$rmoe,
+        alpha = p$alpha, N = p$N, deff = p$deff, resp_rate = p$resp_rate,
+        overlap = p$overlap, overlap_cor = p$overlap_cor, df = p$df,
+        .overlap_basis = p$overlap_basis
+      )
+      data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv,
+                 rmoe = res$rmoe)
     })
 
   } else if (object$type == "alloc") {
@@ -261,7 +346,8 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
   )
 
   allowed <- unique(c(
-    "cv", "budget", "unit_relvar", "resp_rate", "fixed_cost",
+    "cv", "budget", "unit_relvar", "resp_rate_psu", "resp_rate_ssu",
+    "resp_rate", "fixed_cost",
     "n_psu", "n_per_psu", "n_per_ssu",
     icc_meta$allowed, k_meta$allowed, cost_meta$allowed
   ))
@@ -276,7 +362,9 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
 
   base <- list(
     stage_cost = p$stage_cost, icc = p$icc, unit_relvar = p$unit_relvar,
-    var_ratio = p$var_ratio, resp_rate = p$resp_rate %||% 1, n_psu = p$n_psu,
+    var_ratio = p$var_ratio, resp_rate_psu = p$resp_rate_psu %||% 1,
+    resp_rate_ssu = p$resp_rate_ssu %||% 1, resp_rate = p$resp_rate %||% 1,
+    n_psu = p$n_psu,
     n_per_psu = p$n_per_psu, n_per_ssu = p$n_per_ssu,
     fixed_cost = p$fixed_cost %||% 0
   )
@@ -312,7 +400,9 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
       unit_relvar = params$unit_relvar, var_ratio = row_k,
       cv = params$cv, budget = params$budget,
       n_psu = params$n_psu, n_per_psu = params$n_per_psu,
-      n_per_ssu = params$n_per_ssu, resp_rate = params$resp_rate,
+      n_per_ssu = params$n_per_ssu, resp_rate_psu = params$resp_rate_psu,
+      resp_rate_ssu = params$resp_rate_ssu %||% 1,
+      resp_rate = params$resp_rate %||% 1,
       fixed_cost = params$fixed_cost
     )
     out <- as.list(res$n)
@@ -426,34 +516,61 @@ predict.svyplan_prec <- function(object, newdata, ...) {
     )
   }
 
+  # A result that solved for the level varies 'cv' instead of the level, and
+  # reports the level back, mirroring how power objects treat solved-for
+  # parameters.
+  solved <- object$solved
+
   if (object$type == "proportion") {
     allowed <- c("p", "n", "alpha", "N", "deff", "resp_rate", "df")
     base <- object$params
     method <- object$method %||% "wald"
+    if (identical(solved, "p")) {
+      # The grid varies whichever target the level was solved from, so an
+      # 'rmoe' solve stays an 'rmoe' solve: re-solving it through 'cv'
+      # would drop the interval method the target was stated against.
+      metric <- if (is.null(base$rmoe)) "cv" else "rmoe"
+      allowed <- c(setdiff(allowed, "p"), metric)
+      base$p <- NULL
+      base[[metric]] <- object[[metric]]
+    }
 
     .validate_newdata(newdata, allowed)
 
     .predict_grid(newdata, base, function(p) {
       res <- prec_prop.default(
-        p = p$p, n = p$n, alpha = p$alpha, N = p$N,
+        p = p$p, n = p$n, cv = p$cv, rmoe = p$rmoe, alpha = p$alpha, N = p$N,
         deff = p$deff, resp_rate = p$resp_rate,
         method = method, df = p$df
       )
-      data.frame(se = res$se, moe = res$moe, cv = res$cv)
+      out <- data.frame(se = res$se, moe = res$moe, cv = res$cv,
+                        rmoe = res$rmoe)
+      if (identical(solved, "p")) out <- cbind(data.frame(p = res$params$p), out)
+      out
     })
 
   } else if (object$type == "mean") {
     allowed <- c("var", "n", "mu", "alpha", "N", "deff", "resp_rate")
     base <- object$params
+    if (identical(solved, "mu")) {
+      allowed <- c(setdiff(allowed, "mu"), "cv")
+      base$mu <- NULL
+      base$cv <- object$cv
+    }
 
     .validate_newdata(newdata, allowed)
 
     .predict_grid(newdata, base, function(p) {
       res <- prec_mean.default(
-        var = p$var, n = p$n, mu = p$mu, alpha = p$alpha,
+        var = p$var, n = p$n, mu = p$mu, cv = p$cv, alpha = p$alpha,
         N = p$N, deff = p$deff, resp_rate = p$resp_rate
       )
-      data.frame(se = res$se, moe = res$moe, cv = res$cv)
+      out <- data.frame(se = res$se, moe = res$moe, cv = res$cv,
+                        rmoe = res$rmoe)
+      if (identical(solved, "mu")) {
+        out <- cbind(data.frame(mu = res$params$mu), out)
+      }
+      out
     })
 
   } else {
@@ -514,19 +631,18 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 
 #' @keywords internal
 #' @noRd
-.resolve_exclusive <- function(newdata, base, name1, name2) {
-  has1 <- name1 %in% names(newdata)
-  has2 <- name2 %in% names(newdata)
-  if (has1 && has2) {
+.resolve_exclusive <- function(newdata, base, ...) {
+  names <- c(...)
+  present <- names[names %in% names(newdata)]
+  if (length(present) > 1L) {
     stop(
-      sprintf("newdata cannot contain both '%s' and '%s'", name1, name2),
+      sprintf("newdata cannot contain more than one of %s",
+              paste(sQuote(names), collapse = ", ")),
       call. = FALSE
     )
   }
-  if (has1) {
-    base[[name2]] <- NULL
-  } else if (has2) {
-    base[[name1]] <- NULL
+  if (length(present) == 1L) {
+    for (dropped in setdiff(names, present)) base[[dropped]] <- NULL
   }
   base
 }

@@ -4,7 +4,7 @@
 \alias{prec_cluster}
 \alias{prec_cluster.default}
 \alias{prec_cluster.svyplan_cluster}
-\title{Sampling Precision for a Multistage Cluster Allocation}
+\title{Sampling precision for a multistage cluster allocation}
 \usage{
 prec_cluster(n, ...)
 
@@ -14,6 +14,8 @@ prec_cluster(n, ...)
   icc = NULL,
   unit_relvar = 1,
   var_ratio = 1,
+  resp_rate_psu = 1,
+  resp_rate_ssu = 1,
   resp_rate = 1,
   plan = NULL
 )
@@ -39,8 +41,19 @@ variable's, default 1. A scalar names \code{var_ratio_psu}; for three stages
 \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)} follows from the decomposition. See
 \code{\link[=design_effect]{design_effect()}}.}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
-adjustment). The effective stage-1 size is \code{n * resp_rate}.}
+\item{resp_rate_psu}{Expected \strong{PSU-level} response rate, in (0, 1].
+Default 1 (no adjustment). The effective stage-1 size is
+\code{n * resp_rate_psu}. It describes clusters that cannot be worked, not
+nonresponse among the ultimate units inside a cluster.}
+
+\item{resp_rate_ssu}{Expected SSU-level response rate, in (0, 1].
+Three-stage designs only; default 1. The effective stage-2 size is
+\code{n[2] * resp_rate_ssu}.}
+
+\item{resp_rate}{Expected ultimate-unit response rate, in (0, 1].
+Default 1. It scales the final stage, so it also shrinks the realized
+cluster and therefore the clustering penalty. See \code{\link[=n_cluster]{n_cluster()}} for the
+decomposition.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -62,11 +75,11 @@ result of \code{n_cluster()} directly: \code{prec_cluster(n_cluster(...))}.
 Stage count is determined by \code{length(n)}.
 
 \strong{2-stage} (Valliant et al., 2018, Eq. 9.2.23):
-\deqn{CV = \sqrt{\frac{V \cdot k}{n_1 \cdot n_2} (1 + \delta (n_2 - 1))}}
+\deqn{CV = \sqrt{\frac{V \cdot k}{n_1 \cdot n_2} (1 + \delta (n_2 - 1))}}{CV = sqrt((V * k)/(n_1 * n_2) (1 + delta (n_2 - 1)))}
 
 \strong{3-stage}:
 \deqn{CV = \sqrt{\frac{V}{n_1 \cdot n_2 \cdot n_3} (k_1 \delta_1 n_2 n_3
-  + k_2 (1 + \delta_2 (n_3 - 1)))}}
+  + k_2 (1 + \delta_2 (n_3 - 1)))}}{CV = sqrt(V/(n_1 * n_2 * n_3) (k_1 delta_1 n_2 n_3 + k_2 (1 + delta_2 (n_3 - 1))))}
 }
 \examples{
 # Direct usage
@@ -86,4 +99,16 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 \seealso{
 \code{\link[=n_cluster]{n_cluster()}} for the inverse operation, \code{\link[=varcomp]{varcomp()}} for
 estimating variance components.
+
+Other precision functions:
+\code{\link[=prec_alloc]{prec_alloc()}},
+\code{\link[=prec_change]{prec_change()}},
+\code{\link[=prec_mean]{prec_mean()}},
+\code{\link[=prec_multi]{prec_multi()}},
+\code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
+\code{\link[=prec_panel]{prec_panel()}},
+\code{\link[=prec_pooled]{prec_pooled()}},
+\code{\link[=prec_prop]{prec_prop()}},
+\code{\link[=prec_twophase]{prec_twophase()}}
 }
+\concept{precision functions}

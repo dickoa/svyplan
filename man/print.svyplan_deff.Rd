@@ -10,6 +10,8 @@
 \alias{as.data.frame.svyplan_deff}
 \alias{Ops.svyplan_deff}
 \alias{Math.svyplan_deff}
+\alias{[<-.svyplan_deff}
+\alias{[[<-.svyplan_deff}
 \title{Print and coerce planning design effects}
 \usage{
 \method{print}{svyplan_deff}(x, ...)
@@ -36,6 +38,10 @@
 \method{Ops}{svyplan_deff}(e1, e2)
 
 \method{Math}{svyplan_deff}(x, ...)
+
+\method{[}{svyplan_deff}(x, i) <- value
+
+\method{[[}{svyplan_deff}(x, i) <- value
 }
 \arguments{
 \item{x}{A \code{svyplan_deff} object from \code{\link[=design_effect]{design_effect()}}.}
@@ -56,6 +62,9 @@ is converted through \code{\link[=data.frame]{data.frame()}}.}
 R 4.7.0 and later. Svyplan results already have valid row names.}
 
 \item{e1, e2}{Objects supplied to an arithmetic or comparison operator.}
+
+\item{value}{Replacement value. Replacement is refused, a design effect
+being the product of the components it carries.}
 }
 \value{
 \code{print()} returns \code{x} invisibly, \code{format()} returns a character

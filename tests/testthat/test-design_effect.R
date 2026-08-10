@@ -574,3 +574,13 @@ test_that("other prec types carry the deff you supplied, and are rejected", {
   expect_error(design_effect(pp), "reads a cluster design")
   expect_error(effective_n(pp), "reads a cluster design")
 })
+
+test_that("a planning design effect cannot be modified in place", {
+  d <- design_effect(icc = 0.05, n_per_psu = 5)
+  expect_error({d[1] <- 99}, "cannot be modified in place")
+  expect_error({d[[1]] <- 99}, "cannot be modified in place")
+  expect_error(pmax(d, 99), "cannot be modified in place")
+  # A replacement would leave the value no longer the product of the
+  # components the object still carries.
+  expect_equal(as.double(d), prod(attr(d, "components")), tolerance = 1e-12)
+})

@@ -292,3 +292,88 @@ test_that("prec_multi rejects gross n above a finite row N with the label", {
                    n = c(50, 120), N = c(Inf, 100))
   expect_error(prec_multi(tg), "for bad")
 })
+
+test_that("prop_method reaches the multistage path and Wald is unchanged", {
+  base <- data.frame(name = "stunting", p = 0.10, moe = 0.03, icc_psu = 0.02)
+  sizes <- vapply(c("wald", "wilson", "logodds", "beta"), function(m) {
+    tg <- base
+    tg$prop_method <- m
+    n_multi_cluster(tg, stage_cost = c(500, 50))$total_n
+  }, numeric(1L))
+
+  # A Wald moe target still converts as moe / (z p), so the Wald size is the
+  # one the package returned before the conversion became method-specific.
+  expect_equal(unname(sizes[["wald"]]), 546.5310, tolerance = 1e-4)
+  expect_equal(unname(sizes[["wald"]]),
+               n_multi_cluster(base, stage_cost = c(500, 50))$total_n,
+               tolerance = 1e-10)
+
+  # The stricter intervals demand more, in the order they demand it in the
+  # single-indicator path.
+  expect_true(all(diff(unname(sizes)) > 0))
+})
+
+test_that("the multistage moe round trip closes under every method", {
+  for (m in c("wald", "wilson", "logodds", "beta")) {
+    tg <- data.frame(name = "stunting", p = 0.10, moe = 0.03, icc_psu = 0.02,
+                     prop_method = m)
+    achieved <- prec_multi_cluster(n_multi_cluster(tg, stage_cost = c(500, 50)))
+    expect_equal(achieved$detail$.moe, 0.03, tolerance = 1e-8)
+    expect_equal(achieved$detail$.se, achieved$detail$.cv * 0.10,
+                 tolerance = 1e-12)
+  }
+})
+
+test_that("a negative mean keeps the multistage moe conversion positive", {
+  tg <- data.frame(name = "balance", var = 100, mu = -10, moe = 1,
+                   icc_psu = 0.05)
+  res <- n_multi_cluster(tg, stage_cost = c(500, 50))
+  expect_gt(res$detail$.cv_target, 0)
+  expect_equal(res$detail$.cv_target, res$detail$.cv_achieved,
+               tolerance = 1e-6)
+
+  achieved <- prec_multi_cluster(res)
+  expect_gt(achieved$detail$.se, 0)
+  expect_equal(achieved$detail$.moe, 1, tolerance = 1e-8)
+})
+
+test_that("prec_multi applies a row's df to mean indicators", {
+  tg <- data.frame(name = "x", var = 100, n = 100, mu = 10, df = 5)
+  expect_equal(prec_multi(tg)$detail$.moe,
+               prec_mean(var = 100, n = 100, mu = 10, df = 5)$moe,
+               tolerance = 1e-10)
+
+  # The quantile has to move, otherwise the row silently reports the normal
+  # interval that the documented promise says df replaces.
+  expect_gt(prec_multi(tg)$detail$.moe,
+            prec_multi(data.frame(name = "x", var = 100, n = 100, mu = 10))$detail$.moe)
+})
+
+test_that("df is applied per row across mixed indicator types", {
+  tg <- data.frame(
+    name = c("prop", "mean"),
+    p    = c(0.3, NA),
+    var  = c(NA, 100),
+    n    = c(100, 100),
+    mu   = c(NA, 10),
+    df   = c(NA, 5)
+  )
+  res <- prec_multi(tg)
+  expect_equal(res$detail$.moe[1],
+               prec_prop(p = 0.3, n = 100)$moe, tolerance = 1e-10)
+  expect_equal(res$detail$.moe[2],
+               prec_mean(var = 100, n = 100, mu = 10, df = 5)$moe,
+               tolerance = 1e-10)
+})
+
+test_that("a negative mean does not misdirect budget-mode binding", {
+  # The demanding indicator carries the negative mean. A signed conversion
+  # makes its target negative, so the worst-ratio search cannot select it.
+  tg <- data.frame(name = c("balance", "income"), var = c(100, 400),
+                   mu = c(-10, 50), moe = c(1, 10), icc_psu = c(0.05, 0.05))
+  res <- n_multi_cluster(tg, stage_cost = c(500, 50), budget = 200000)
+
+  expect_true(all(res$detail$.cv_target > 0))
+  expect_equal(res$binding, "balance")
+  expect_true(res$detail$.binding[res$detail$name == "balance"])
+})

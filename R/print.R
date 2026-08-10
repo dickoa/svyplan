@@ -71,11 +71,65 @@ NULL
 #' It is printed without decimals so that an assumed value is visually
 #' distinct from a supplied one.
 #'
+#' Name the stages a cluster design loses units at
+#'
+#' Three rates acting at three stages are not interchangeable, so the print
+#' says which one is set rather than showing a single netted figure.
+#' @keywords internal
+#' @noRd
+.print_stage_rates <- function(p) {
+  rates <- c(resp_rate_psu = p$resp_rate_psu %||% 1,
+             resp_rate_ssu = p$resp_rate_ssu %||% 1,
+             resp_rate = p$resp_rate %||% 1)
+  set <- rates[rates < 1]
+  if (length(set) == 0L) {
+    return(invisible(NULL))
+  }
+  cat(sprintf("(%s)\n", paste(sprintf("%s = %.2f", names(set), set),
+                              collapse = ", ")))
+  invisible(NULL)
+}
+
 #' @keywords internal
 #' @noRd
 .fmt_deff <- function(deff) {
   if (is.null(deff)) return(NULL)
-  if (isTRUE(all.equal(unname(deff), 1))) "deff = 1" else sprintf("deff = %.2f", deff)
+  if (isTRUE(all.equal(unname(deff), rep(1, length(deff))))) {
+    "deff = 1"
+  } else {
+    sprintf("deff = %s", .fmt_by_stratum(deff, "%.2f"))
+  }
+}
+
+#' Format a probability without letting it round onto a bound
+#'
+#' Two decimals everywhere it already reads well, and more where rounding
+#' would print a value the validators refuse or the surrounding condition
+#' denies: an assurance of 0.999 shown as 1.00 names a level `n_panel()` and
+#' `n_twophase()` both reject, and a response rate of 0.999 shown as 1.00
+#' contradicts the test that made the line appear at all.
+#' @keywords internal
+#' @noRd
+.fmt_prob <- function(p) {
+  out <- sprintf("%.2f", p)
+  # Enough significant digits that nothing inside (0, 1) can print as a
+  # bound: "%g" alone rounds 0.9999999 to 1.
+  if (out %in% c("0.00", "1.00") && p > 0 && p < 1) {
+    return(sprintf("%.15g", p))
+  }
+  out
+}
+
+#' Format a design parameter that may vary by stratum
+#'
+#' A single value prints as itself; values that differ print as their range,
+#' so the header stays one line however many strata there are.
+#' @keywords internal
+#' @noRd
+.fmt_by_stratum <- function(x, fmt) {
+  u <- unique(x)
+  if (length(u) == 1L) return(sprintf(fmt, u))
+  sprintf(paste0(fmt, " to ", fmt, " by stratum"), min(x), max(x))
 }
 
 #' @rdname print.svyplan
@@ -86,10 +140,181 @@ print.svyplan_n <- function(x, ...) {
     .print_alloc_n(x)
   } else if (x$type == "multi") {
     .print_multi_n(x)
+  } else if (x$type == "change") {
+    .print_change_n(x)
+  } else if (x$type == "pooled") {
+    .print_pooled_n(x)
   } else {
     .print_single_n(x)
   }
   invisible(x)
+}
+
+#' Report a size that buys one estimate averaged over several occasions
+#'
+#' The size is per occasion. The distinct units the series consumes is
+#' smaller than `occasions * n` whenever the occasions overlap, and the
+#' number of interviews is not, so the header states which quantity it is.
+#' @keywords internal
+#' @noRd
+.print_pooled_n <- function(x) {
+  p <- x$params
+  cat(sprintf("Sample size for pooled estimate (%s)\n", .pooled_scale_label(p)))
+  cat(sprintf("n = %d per occasion", ceiling(x$n)))
+  if (!is.null(p$resp_rate) && p$resp_rate < 1) {
+    cat(sprintf(" (net: %d)", ceiling(x$n * p$resp_rate)))
+  }
+  cat(sprintf(", %d occasions", p$occasions))
+  parts <- c(.fmt_pooled_estimand(p), .fmt_deff(p$deff))
+  cat(sprintf(" (%s)\n", paste(parts, collapse = ", ")))
+  cat(.fmt_lag_overlap(p))
+  cat(sprintf("se = %.4g, moe = %.4g", x$se, x$moe))
+  if (!is.na(x$cv)) cat(sprintf(", cv = %.4g", x$cv))
+  if (!is.null(x$rmoe) && !is.na(x$rmoe)) {
+    cat(sprintf(", rmoe = %.4g", x$rmoe))
+  }
+  cat("\n")
+}
+
+#' @keywords internal
+#' @noRd
+.pooled_scale_label <- function(p) {
+  if (is.null(p$p)) "mean scale" else "proportion scale"
+}
+
+#' @keywords internal
+#' @noRd
+.fmt_pooled_estimand <- function(p) {
+  if (!is.null(p$p)) {
+    return(sprintf("p = %.3g", p$p))
+  }
+  c(
+    sprintf("var = %.4g", p$var),
+    if (!is.null(p$mu)) sprintf("mu = %.4g", p$mu)
+  )
+}
+
+#' Describe a lag profile without printing every entry of it
+#'
+#' A twelve-occasion average carries eleven overlaps and eleven
+#' correlations, which is a table rather than a line. The consecutive figure
+#' is the one a planner states, so it leads, and the rest is summarized by
+#' how far the shared units reach.
+#' @keywords internal
+#' @noRd
+.fmt_lag_overlap <- function(p) {
+  ov <- p$overlap %||% 0
+  rho <- p$overlap_cor %||% 0
+  if (all(ov * rho == 0)) {
+    return("No between-occasion covariance (overlap x overlap_cor = 0)\n")
+  }
+  reach <- max(which(ov > 0))
+  sprintf(
+    "overlap = %.3g, overlap_cor = %.3g at lag 1, shared out to lag %d\n",
+    ov[1L], rho[1L], reach
+  )
+}
+
+#' Report a size that buys one change measured on two occasions
+#'
+#' The size is per occasion, and a positive overlap means the occasions are
+#' not disjoint, so the header says which it is rather than leaving a
+#' reader to total two numbers that partly count the same units.
+#' @keywords internal
+#' @noRd
+.print_change_n <- function(x) {
+  p <- x$params
+  cat(sprintf("Sample size for change (%s)\n", .change_scale_label(p)))
+  cat(.fmt_change_n(x$n, p$resp_rate))
+  parts <- c(
+    .fmt_change_estimand(p),
+    if (!is.null(p$moe)) sprintf("moe = %.4g", p$moe),
+    if (!is.null(p$rmoe)) sprintf("rmoe = %.3f", p$rmoe),
+    if (!is.null(p$cv)) sprintf("cv = %.3f", p$cv),
+    .fmt_deff(p$deff),
+    if (!is.null(p$resp_rate) && p$resp_rate < 1) {
+      sprintf("resp_rate = %s", .fmt_prob(p$resp_rate))
+    }
+  )
+  cat(sprintf(" (%s)\n", paste(parts, collapse = ", ")))
+  cat(.fmt_overlap(p))
+}
+
+#' @keywords internal
+#' @noRd
+.change_scale_label <- function(p) {
+  if (is.null(p$p)) "mean scale" else "proportion scale"
+}
+
+#' @keywords internal
+#' @noRd
+.fmt_change_n <- function(n, resp_rate) {
+  net <- !is.null(resp_rate) && resp_rate < 1
+  if (length(n) == 1L) {
+    out <- sprintf("n = %d per occasion", ceiling(n))
+    if (net) {
+      out <- sprintf("%s (net: %d)", out, ceiling(n * resp_rate))
+    }
+    return(out)
+  }
+  out <- sprintf("n = %d then %d", ceiling(n[1L]), ceiling(n[2L]))
+  if (net) {
+    out <- sprintf(
+      "%s (net: %d then %d)", out,
+      ceiling(n[1L] * resp_rate), ceiling(n[2L] * resp_rate)
+    )
+  }
+  out
+}
+
+#' @keywords internal
+#' @noRd
+.fmt_change_estimand <- function(p) {
+  if (!is.null(p$p)) {
+    return(sprintf("p = %.3g to %.3g", p$p[1L], p$p[2L]))
+  }
+  c(
+    sprintf("var = %s", paste(sprintf("%.4g", p$var), collapse = ", ")),
+    if (!is.null(p$change)) sprintf("change = %.4g", p$change)
+  )
+}
+
+#' Report the overlap and the correlation as the one product they are
+#'
+#' Either at zero leaves the change with no covariance term, so the line
+#' names that state rather than printing two numbers whose joint meaning a
+#' reader has to reconstruct. It says what the model does, not that the
+#' occasions are disjoint: a full overlap at zero correlation shares every
+#' unit and still contributes nothing.
+#' @keywords internal
+#' @noRd
+.fmt_overlap <- function(p) {
+  overlap <- p$overlap %||% 0
+  overlap_cor <- p$overlap_cor %||% 0
+  if (overlap == 0 || overlap_cor == 0) {
+    return("No between-occasion covariance (overlap x overlap_cor = 0)\n")
+  }
+  sprintf(
+    "overlap = %.3g, overlap_cor = %.3g (%.1f%% of the independent variance)\n",
+    overlap, overlap_cor, 100 * .change_var_share(p)
+  )
+}
+
+#' Share of the two-independent-samples variance the overlap leaves
+#'
+#' Reported without the finite population terms, which cancel at full
+#' overlap and would otherwise make the percentage depend on `N` as well as
+#' on the schedule the planner controls.
+#' @keywords internal
+#' @noRd
+.change_var_share <- function(p) {
+  v <- p$var
+  ratio <- p$ratio %||%
+    (if (length(p$n) == 2L) p$n[1L] / p$n[2L] else 1)
+  base <- v[1L] / ratio + v[2L]
+  cross <- 2 * p$overlap * p$overlap_cor * sqrt(v[1L] * v[2L])
+  if (base <= 0) return(NA_real_)
+  max(0, base - cross) / base
 }
 
 #' @keywords internal
@@ -109,7 +334,7 @@ print.svyplan_n <- function(x, ...) {
 
   parts <- character(0L)
   if (!is.null(p$p)) {
-    parts <- c(parts, sprintf("p = %.2f", p$p))
+    parts <- c(parts, sprintf("p = %s", .fmt_prob(p$p)))
   }
   if (!is.null(p$var)) {
     parts <- c(parts, sprintf("var = %.2f", p$var))
@@ -117,21 +342,61 @@ print.svyplan_n <- function(x, ...) {
   if (!is.null(p$moe)) {
     parts <- c(parts, sprintf("moe = %.3f", p$moe))
   }
+  if (!is.null(p$rmoe)) {
+    parts <- c(parts, sprintf("rmoe = %.3f", p$rmoe))
+  }
   if (!is.null(p$cv)) {
     parts <- c(parts, sprintf("cv = %.3f", p$cv))
   }
   parts <- c(parts, .fmt_deff(p$deff))
   if (!is.null(resp_rate) && resp_rate < 1) {
-    parts <- c(parts, sprintf("resp_rate = %.2f", resp_rate))
+    parts <- c(parts, sprintf("resp_rate = %s", .fmt_prob(resp_rate)))
   }
   if (length(parts) > 0L) {
     cat(sprintf(" (%s)", paste(parts, collapse = ", ")))
   }
   cat("\n")
 
+  .print_expected_cases(x$expected_cases, x$binding, p$min_cases)
+
   if (!is.null(x$domains)) {
     cat(sprintf("Domains: %d\n", nrow(x$domains)))
   }
+}
+
+#' Report the expected count of positive cases, and what it bound against
+#'
+#' Printed for every proportion result, since it is the number the choice
+#' between the interval methods turns on. The binding constraint is named
+#' only when there were two of them to choose between.
+#' Report the design degrees of freedom a plan can derive
+#'
+#' Counted from the whole-unit design rather than the continuous optimum,
+#' so it is the number the fielded design would have. Silent when the plan
+#' does not know its PSU or stratum counts.
+#' @keywords internal
+#' @noRd
+.print_design_df <- function(x) {
+  value <- tryCatch(suppressWarnings(design_df(x)), error = function(e) NULL)
+  if (is.null(value)) {
+    return(invisible(NULL))
+  }
+  cat(sprintf("design df = %g\n", as.double(value)))
+  invisible(NULL)
+}
+
+#' @keywords internal
+#' @noRd
+.print_expected_cases <- function(cases, binding = NULL, min_cases = NULL) {
+  if (is.null(cases)) {
+    return(invisible(NULL))
+  }
+  cat(sprintf("expected cases = %.1f", cases))
+  if (!is.null(binding)) {
+    cat(sprintf(" (min_cases = %.4g, binding: %s)", min_cases, binding))
+  }
+  cat("\n")
+  invisible(NULL)
 }
 
 #' Format continuous total sample size for display
@@ -163,12 +428,26 @@ print.svyplan_n <- function(x, ...) {
     } else {
       ""
     }
+    natural <- identical(x$params$domain_sampling, "natural")
     cat(sprintf(
-      "Multi-indicator sample size (%d domains%s)\n",
+      "Multi-indicator sample size (%d domains, %s%s)\n",
       nrow(x$domains),
+      if (natural) "natural incidence" else "separate quotas",
       min_n_label
     ))
-    cat(sprintf("n = %d (binding: %s)\n", ceiling(x$n), x$binding))
+    # Both numbers are labelled: the total is what you field, the largest
+    # single domain is a different quantity and was once printed as 'n'.
+    cat(sprintf(
+      "n = %d (%s)\n",
+      ceiling(x$n),
+      if (natural) "largest quota / share" else "sum of domain quotas"
+    ))
+    if (!is.null(x$n_domain_max)) {
+      cat(sprintf(
+        "Largest single domain = %d (binding: %s)\n",
+        ceiling(x$n_domain_max), x$binding
+      ))
+    }
     cat("---\n")
     dom <- x$domains
     dom$.n <- ceiling(dom$.n)
@@ -216,8 +495,11 @@ print.svyplan_cluster <- function(x, ...) {
   )
   cat("field design: ")
   cat(paste(stage_parts, collapse = " | "))
-  resp_rate <- x$params$resp_rate
-  if (!is.null(resp_rate) && resp_rate < 1) {
+  # Every stage's loss removes observations from the same total, so the net
+  # figure reads their product.
+  resp_rate <- (x$params$resp_rate_psu %||% 1) *
+    (x$params$resp_rate_ssu %||% 1) * (x$params$resp_rate %||% 1)
+  if (resp_rate < 1) {
     net_total <- ceiling(total_display * resp_rate)
     cat(sprintf(
       " -> total n = %s (net: %s)\n",
@@ -226,6 +508,7 @@ print.svyplan_cluster <- function(x, ...) {
   } else {
     cat(sprintf(" -> total n = %s\n", .fmt_count_n(total_display)))
   }
+  .print_stage_rates(x$params)
   fc <- x$params$fixed_cost
   op_cv <- if (!is.null(op)) op$cv else x$cv
   op_cost <- if (!is.null(op)) op$cost else x$cost
@@ -246,6 +529,7 @@ print.svyplan_cluster <- function(x, ...) {
     "continuous optimum: %s (cv = %.4f, cost = %.0f)\n",
     paste(cont_parts, collapse = " | "), x$cv, x$cost
   ))
+  .print_design_df(x)
 
   if (!is.null(x$domains)) {
     cat(sprintf("Domains: %d\n", nrow(x$domains)))
@@ -359,10 +643,54 @@ print.svyplan_prec <- function(x, ...) {
     .print_bethel_prec(x)
   } else if (x$type == "multi") {
     .print_multi_prec(x)
+  } else if (x$type == "change") {
+    .print_change_prec(x)
+  } else if (x$type == "pooled") {
+    .print_pooled_prec(x)
   } else {
     .print_single_prec(x)
   }
   invisible(x)
+}
+
+#' @keywords internal
+#' @noRd
+.print_pooled_prec <- function(x) {
+  p <- x$params
+  cat(sprintf(
+    "Sampling precision for pooled estimate (%s)\n", .pooled_scale_label(p)
+  ))
+  cat(sprintf("n = %d per occasion", ceiling(p$n)))
+  if (!is.null(p$resp_rate) && p$resp_rate < 1) {
+    cat(sprintf(" (net: %d)", ceiling(p$n * p$resp_rate)))
+  }
+  cat(sprintf(", %d occasions", p$occasions))
+  parts <- c(.fmt_pooled_estimand(p), .fmt_deff(p$deff))
+  cat(sprintf(" (%s)\n", paste(parts, collapse = ", ")))
+  cat(.fmt_lag_overlap(p))
+  cat(sprintf("se = %.4g, moe = %.4g", x$se, x$moe))
+  if (!is.na(x$cv)) cat(sprintf(", cv = %.4g", x$cv))
+  if (!is.null(x$rmoe) && !is.na(x$rmoe)) {
+    cat(sprintf(", rmoe = %.4g", x$rmoe))
+  }
+  cat("\n")
+}
+
+#' @keywords internal
+#' @noRd
+.print_change_prec <- function(x) {
+  p <- x$params
+  cat(sprintf("Sampling precision for change (%s)\n", .change_scale_label(p)))
+  cat(.fmt_change_n(p$n, p$resp_rate))
+  parts <- c(.fmt_change_estimand(p), .fmt_deff(p$deff))
+  cat(sprintf(" (%s)\n", paste(parts, collapse = ", ")))
+  cat(.fmt_overlap(p))
+  cat(sprintf("se = %.4g, moe = %.4g", x$se, x$moe))
+  if (!is.na(x$cv)) cat(sprintf(", cv = %.4g", x$cv))
+  if (!is.null(x$rmoe) && !is.na(x$rmoe)) {
+    cat(sprintf(", rmoe = %.4g", x$rmoe))
+  }
+  cat("\n")
 }
 
 #' @keywords internal
@@ -395,20 +723,32 @@ print.svyplan_prec <- function(x, ...) {
     )
     cat(paste(stage_parts, collapse = " | "))
     cat(sprintf(" -> total n = %s", .fmt_count_n(total_display)))
-    resp_rate <- p$resp_rate
+    resp_rate <- p$resp_rate_psu
     if (!is.null(resp_rate) && resp_rate < 1) {
       cat(sprintf(" (net: %s)", .fmt_count_n(ceiling(total_display * resp_rate))))
     }
     cat("\n")
   } else {
-    method_label <- if (!is.null(x$method)) paste0(" (", x$method, ")") else ""
-    cat(sprintf("Sampling precision for %s%s\n", type_label, method_label))
-    cat(sprintf("n = %d", ceiling(p$n)))
+    notes <- c(x$method, if (!is.null(x$solved)) paste("solved for", x$solved))
+    note_label <- if (length(notes) > 0L) {
+      sprintf(" (%s)", paste(notes, collapse = ", "))
+    } else {
+      ""
+    }
+    cat(sprintf("Sampling precision for %s%s\n", type_label, note_label))
+    # An allocation carries one n per stratum; the header reports the total.
+    n_display <- sum(ceiling(p$n))
+    cat(sprintf("n = %d", n_display))
+    if (length(p$n) > 1L) cat(sprintf(" (%d strata)", length(p$n)))
     resp_rate <- p$resp_rate
-    if (!is.null(resp_rate) && resp_rate < 1) {
-      cat(sprintf(" (net: %d)", ceiling(p$n * resp_rate)))
+    if (!is.null(resp_rate) && all(resp_rate < 1)) {
+      cat(sprintf(" (net: %d)", ceiling(sum(p$n * resp_rate))))
     }
     cat("\n")
+  }
+
+  if (!is.null(x$solved)) {
+    cat(sprintf("%s = %.4g\n", x$solved, p[[x$solved]]))
   }
 
   if (!is.na(x$se[1L])) {
@@ -420,7 +760,13 @@ print.svyplan_prec <- function(x, ...) {
     }
     cat(sprintf("cv = %.4f", x$cv[1L]))
   }
+  if (!is.null(x$rmoe) && !is.na(x$rmoe[1L])) {
+    cat(sprintf(", rmoe = %.4f", x$rmoe[1L]))
+  }
   cat("\n")
+
+  .print_expected_cases(x$expected_cases)
+  .print_domains_block(x$domains)
 }
 
 #' @keywords internal
@@ -447,6 +793,9 @@ print.svyplan_varcomp <- function(x, ...) {
     print(tab, row.names = FALSE, right = FALSE)
     return(invisible(x))
   }
+  if (identical(x$source, "deff")) {
+    return(.print_varcomp_deff(x))
+  }
   cat(sprintf("Variance components (%d-stage)\n", x$stages))
   cat(sprintf("varb = %.4f", x$varb))
   varw_names <- names(x$varw)
@@ -463,6 +812,34 @@ print.svyplan_varcomp <- function(x, ...) {
   cat(sprintf("var_ratio = %s\n", paste(sprintf("%.4f", x$var_ratio), collapse = ", ")))
   cat(sprintf("Unit relvariance = %.4f\n", x$unit_relvar))
 
+  invisible(x)
+}
+
+#' Report an icc backed out of a published design effect
+#'
+#' The design effect is not stored, being recoverable from the identity, so
+#' it is reformed here at the take that identifies the icc. That take is
+#' shown alongside the nominal one whenever the two differ, which is the
+#' only visible sign that realized takes varied.
+#' @keywords internal
+#' @noRd
+.print_varcomp_deff <- function(x) {
+  take <- x$params$n_per_psu
+  nominal <- x$params$n_per_psu_nominal
+  cat("Variance components (2-stage, from a design effect)\n")
+  cat(sprintf("icc = %.4f\n", x$icc))
+  cat(sprintf("var_ratio = %.4f\n", x$var_ratio))
+  cat(sprintf(
+    "deff = %.4f at n_per_psu = %.4g%s\n",
+    x$var_ratio * (1 + x$icc * (take - 1)),
+    take,
+    if (isTRUE(abs(take - nominal) > 1e-8)) {
+      sprintf(" (size-weighted; nominal %.4g)", nominal)
+    } else {
+      ""
+    }
+  ))
+  cat("varb, varw and unit_relvar are not identified by a design effect\n")
   invisible(x)
 }
 
@@ -541,10 +918,10 @@ print.svyplan_power <- function(x, ...) {
   if (!is.null(p$p2)) {
     parts <- c(parts, sprintf("p2 = %.3f", p$p2))
   }
-  parts <- c(parts, sprintf("alpha = %.2f", p$alpha))
+  parts <- c(parts, sprintf("alpha = %s", .fmt_prob(p$alpha)))
   parts <- c(parts, .fmt_deff(p$deff))
   if (!is.null(resp_rate) && resp_rate < 1) {
-    parts <- c(parts, sprintf("resp_rate = %.2f", resp_rate))
+    parts <- c(parts, sprintf("resp_rate = %s", .fmt_prob(resp_rate)))
   }
   if (!is.null(p$var) && length(p$var) == 4L) {
     parts <- c(parts, sprintf(
@@ -552,8 +929,8 @@ print.svyplan_power <- function(x, ...) {
     ))
   }
   if (!is.null(p$overlap) && p$overlap > 0) {
-    parts <- c(parts, sprintf("overlap = %.2f", p$overlap))
-    parts <- c(parts, sprintf("overlap_cor = %.2f", p$overlap_cor))
+    parts <- c(parts, sprintf("overlap = %s", .fmt_prob(p$overlap)))
+    parts <- c(parts, sprintf("overlap_cor = %s", .fmt_prob(p$overlap_cor)))
   }
   if (!is.null(p$alternative) && p$alternative == "one.sided") {
     parts <- c(parts, "one-sided")
@@ -607,7 +984,10 @@ format.svyplan_prec <- function(x, ...) {
 #' @export
 format.svyplan_varcomp <- function(x, ...) {
   .check_unused_dots(...)
-  paste0("svyplan_varcomp [", x$stages, "-stage]")
+  paste0(
+    "svyplan_varcomp [", x$stages, "-stage",
+    if (identical(x$source, "deff")) ", from deff" else "", "]"
+  )
 }
 
 #' @rdname print.svyplan
@@ -641,7 +1021,7 @@ format.svyplan_power <- function(x, ...) {
   # always agree.
   n_net <- n * resp_rate
   n_eff <- .effective_from_n(n_net, N, deff)
-  z <- qnorm(1 - alpha / 2)
+  z <- .q_alpha(alpha, df)
   method <- match.arg(method, c("wald", "wilson", "logodds", "beta"))
 
   if (is.infinite(n_eff)) {
@@ -784,17 +1164,55 @@ confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
         call. = FALSE
       )
     }
+  } else if (object$type == "change") {
+    est <- .change_ci_estimand(p)
+  } else if (object$type == "pooled") {
+    est <- .pooled_ci_estimand(p)
   } else {
     stop("confint not supported for this type", call. = FALSE)
   }
 
   alpha <- 1 - level
-  z <- qnorm(1 - alpha / 2)
+  z <- .q_alpha(alpha, p$df)
   moe <- z * object$se
 
   lo <- est - moe
   hi <- est + moe
   .ci_matrix(lo, hi, alpha)
+}
+
+#' The change an interval on a change is centred on
+#'
+#' A change sized from `moe` alone has no known level, and the interval
+#' would then be centred on nothing. The message names `change` rather than
+#' the interval so the fix is the argument to add.
+#' @keywords internal
+#' @noRd
+.change_ci_estimand <- function(p) {
+  if (is.null(p$change)) {
+    stop(
+      "'change' (or 'p') is required to compute a confidence interval for a change",
+      call. = FALSE
+    )
+  }
+  p$change
+}
+
+#' The level an interval on a pooled estimate is centred on
+#'
+#' A size solved from `moe` alone knows the spread but not the level, and
+#' the interval would then be centred on nothing. The message names `mu`
+#' rather than the interval so the fix is the argument to add.
+#' @keywords internal
+#' @noRd
+.pooled_ci_estimand <- function(p) {
+  if (is.null(p$mu)) {
+    stop(
+      "'mu' (or 'p') is required to compute a confidence interval for a pooled estimate",
+      call. = FALSE
+    )
+  }
+  p$mu
 }
 
 #' @rdname confint.svyplan
@@ -827,12 +1245,16 @@ confint.svyplan_prec <- function(object, parm, level = 0.95, ...) {
         call. = FALSE
       )
     }
+  } else if (object$type == "change") {
+    est <- .change_ci_estimand(p)
+  } else if (object$type == "pooled") {
+    est <- .pooled_ci_estimand(p)
   } else {
     stop("confint not supported for this precision type", call. = FALSE)
   }
 
   alpha <- 1 - level
-  z <- qnorm(1 - alpha / 2)
+  z <- .q_alpha(alpha, p$df)
   moe <- z * object$se
 
   lo <- est - moe
@@ -958,6 +1380,18 @@ as.data.frame.svyplan_varcomp <- function(
   .check_unused_dots(...)
   out <- if (!is.null(x$strata)) {
     x$strata
+  } else if (identical(x$source, "deff")) {
+    data.frame(
+      stages = x$stages,
+      varb = x$varb,
+      varw = x$varw,
+      icc = x$icc,
+      var_ratio = x$var_ratio,
+      unit_relvar = x$unit_relvar,
+      n_per_psu = x$params$n_per_psu,
+      source = x$source,
+      stringsAsFactors = stringsAsFactors
+    )
   } else if (x$stages == 2L) {
     data.frame(
       stages = x$stages,
@@ -1057,6 +1491,8 @@ as.data.frame.svyplan_power <- function(
 #' in for that overall value wherever a plain number is expected.
 #'
 #' @param x A `svyplan_deff` object from [design_effect()].
+#' @param value Replacement value. Replacement is refused, a design effect
+#'   being the product of the components it carries.
 #' @param row.names,optional Standard [as.data.frame()] arguments.
 #' @param stringsAsFactors Logical. Retained for compatibility when a result
 #'   is converted through [data.frame()].
@@ -1316,19 +1752,57 @@ print.svyplan_strata <- function(x, ...) {
   if (!is.null(p$min_n_stratum) && p$min_n_stratum > 0)
     parts <- c(parts, sprintf("min_n_stratum = %g", p$min_n_stratum))
   resp_rate <- p$resp_rate
-  if (!is.null(resp_rate) && resp_rate < 1)
-    parts <- c(parts, sprintf("resp_rate = %.2f", resp_rate))
+  if (!is.null(resp_rate) && any(resp_rate < 1))
+    parts <- c(parts, sprintf("resp_rate = %s", .fmt_by_stratum(resp_rate, "%.2f")))
   parts <- c(parts, .fmt_deff(p$deff))
   if (length(parts) > 0L)
     cat(sprintf("(%s)\n", paste(parts, collapse = ", ")))
-  if (!is.null(x$domains)) {
-    cat(sprintf("Domains: %d\n", nrow(x$domains)))
-    cat("---\n")
-    dom <- x$domains
-    if (".cv" %in% names(dom)) dom$.cv <- sprintf("%.4f", dom$.cv)
-    if (".cost" %in% names(dom)) dom$.cost <- sprintf("%.0f", dom$.cost)
-    print(dom, row.names = FALSE, right = FALSE)
+  .print_psu_fraction_note(detail)
+  .print_design_df(x)
+  .print_domains_block(x$domains)
+}
+
+#' Disclose an appreciable first-stage sampling fraction
+#'
+#' `N_psu` bounds the allocation but activates no first-stage correction, so a
+#' design taking a large share of the available PSUs is planned conservatively:
+#' the between-PSU term keeps its full with-replacement size. That is a
+#' property of the result worth seeing, but not an event to act on, so it is
+#' disclosed here rather than warned about. `predict()` re-runs the allocation
+#' once per grid row, and a warning would repeat with it.
+#' @keywords internal
+#' @noRd
+.print_psu_fraction_note <- function(detail, threshold = 0.1) {
+  if (is.null(detail) || !".psu_frac" %in% names(detail)) {
+    return(invisible(NULL))
   }
+  hit <- which(is.finite(detail$.psu_frac) & detail$.psu_frac >= threshold)
+  if (length(hit) == 0L) {
+    return(invisible(NULL))
+  }
+  bound <- !is.na(detail$.bound_source) & detail$.bound_source == "N_psu"
+  cat(sprintf(
+    "note: samples %s of the available PSUs in %s%s; precision uses a with-replacement first stage and may be conservative\n",
+    paste0(format(round(100 * detail$.psu_frac[hit]), trim = TRUE), "%",
+           collapse = ", "),
+    paste(detail$stratum[hit], collapse = ", "),
+    if (any(bound)) sprintf(" (bound active in %s)",
+                            paste(detail$stratum[bound], collapse = ", ")) else ""
+  ))
+  invisible(NULL)
+}
+
+#' Print the per-domain precision table an allocation carries
+#' @keywords internal
+#' @noRd
+.print_domains_block <- function(dom) {
+  if (is.null(dom)) return(invisible(NULL))
+  cat(sprintf("Domains: %d\n", nrow(dom)))
+  cat("---\n")
+  if (".cv" %in% names(dom)) dom$.cv <- sprintf("%.4f", dom$.cv)
+  if (".cost" %in% names(dom)) dom$.cost <- sprintf("%.0f", dom$.cost)
+  print(dom, row.names = FALSE, right = FALSE)
+  invisible(NULL)
 }
 
 #' Print a constraint block, naming what was left out
@@ -1530,7 +2004,7 @@ as.double.svyplan_strata <- function(x, ...) {
   as.double(x$n)
 }
 
-#' Assign Observations to Strata
+#' Assign observations to strata
 #'
 #' Apply strata boundaries from a [strata_bound()] result to a numeric
 #' vector, returning a factor of stratum assignments.
@@ -1647,7 +2121,7 @@ print.svyplan_twophase <- function(x, ...) {
     if (!is.null(o$assured)) {
       cat(sprintf(
         "assured (%s): issue n_phase1 = %s | n_phase2 = %s (cost %s)\n",
-        formatC(x$params$assurance, format = "f", digits = 2),
+        .fmt_prob(x$params$assurance),
         format(o$assured_phase1), format(sum(o$assured)),
         format(round(o$assured_cost))))
     }
@@ -1670,4 +2144,691 @@ print.svyplan_twophase <- function(x, ...) {
     ))
   }
   invisible(x)
+}
+
+#' Print and coerce design degrees of freedom
+#'
+#' Display and coercion methods for the count that [design_df()] returns.
+#' `print()` shows the count and the numbers it was formed from; the
+#' coercion and arithmetic methods let the object stand in for that count
+#' wherever a plain number is expected.
+#'
+#' @param x A `svyplan_df` object from [design_df()].
+#' @param value Replacement value. Replacement is refused, the count being
+#'   derived from the strata and domains it carries.
+#' @param row.names,optional Standard [as.data.frame()] arguments.
+#' @param stringsAsFactors Logical. Retained for compatibility when a result
+#'   is converted through [data.frame()].
+#' @param validRN Logical. Accepted for compatibility with [data.frame()] in
+#'   R 4.7.0 and later. Svyplan results already have valid row names.
+#' @param e1,e2 Objects supplied to an arithmetic or comparison operator.
+#' @param name,i A field name, one of those listed under Details. `[[` also
+#'   accepts a numeric index, which reads the underlying numeric vector.
+#' @param ... For mathematical transformations, additional arguments passed
+#'   to the underlying operation. The other methods do not support
+#'   additional arguments.
+#'
+#' @return `print()` returns `x` invisibly, `format()` returns a character
+#'   scalar, and `as.double()` returns the degrees of freedom.
+#'   `as.data.frame()` returns a one-row table of the scalar fields;
+#'   `as.list()` returns every field, including the per-stratum and
+#'   per-domain tables, and `$` and `[[` return one of them. Arithmetic and
+#'   mathematical transformations return ordinary numeric results.
+#'
+#' @details
+#' A `svyplan_df` behaves as the numeric degrees of freedom wherever one is
+#' expected: it can be passed to any `df` argument, compared, and
+#' arithmetically combined, with the detail dropped by any such operation.
+#'
+#' The fields are `df` for the count itself, `n_units` for the units it
+#' counts and `stage` for what those units are (`"psu"` or `"element"`),
+#' `n_strata` for the constraints subtracted, and the `strata` and
+#' `domains` tables, which are `NULL` for an unstratified or domain-free
+#' plan. Naming a field the object does not have is an error listing the
+#' ones it does.
+#'
+#' @seealso [design_df()], which builds these objects, and
+#'   [print.svyplan_deff] for the design effect's counterpart.
+#'
+#' @examples
+#' d <- design_df(n_psu = 300, n_strata = 20)
+#' d
+#' d$df
+#' as.double(d) + 1
+#' as.data.frame(d)
+#'
+#' @name print.svyplan_df
+NULL
+
+#' @rdname print.svyplan_df
+#' @export
+print.svyplan_df <- function(x, ...) {
+  .check_unused_dots(...)
+  unit_label <- if (identical(attr(x, "stage", exact = TRUE), "psu")) {
+    "PSUs"
+  } else {
+    "units"
+  }
+  n_units <- attr(x, "n_units", exact = TRUE)
+  n_strata <- attr(x, "n_strata", exact = TRUE)
+  cat("Design degrees of freedom (planning)\n\n")
+  cat(sprintf("  df = %g   (%g %s - %d strat%s)\n",
+              as.double(x), n_units, unit_label, n_strata,
+              if (n_strata == 1L) "um" else "a"))
+  strata <- attr(x, "strata", exact = TRUE)
+  if (!is.null(strata)) {
+    flagged <- strata$.status != "ok"
+    if (any(flagged)) {
+      cat(sprintf("  no df from %s: %s\n",
+                  if (sum(flagged) > 1L) "these strata" else "this stratum",
+                  paste(sprintf("%s (%s)", strata$stratum[flagged],
+                                strata$.status[flagged]), collapse = ", ")))
+    }
+  }
+  domains <- attr(x, "domains", exact = TRUE)
+  if (!is.null(domains)) {
+    cat(sprintf("  %d domains, df from %g to %g\n", nrow(domains),
+                min(domains$.df), max(domains$.df)))
+  }
+  invisible(x)
+}
+
+#' @rdname print.svyplan_df
+#' @export
+format.svyplan_df <- function(x, ...) {
+  .check_unused_dots(...)
+  sprintf("svyplan_df [%s, %g]", attr(x, "stage", exact = TRUE), as.double(x))
+}
+
+#' @rdname print.svyplan_df
+#' @export
+as.double.svyplan_df <- function(x, ...) {
+  .check_unused_dots(...)
+  unclass(x)[[1L]]
+}
+
+#' @rdname print.svyplan_df
+#' @export
+as.list.svyplan_df <- function(x, ...) {
+  .check_unused_dots(...)
+  list(
+    df = as.double(x),
+    n_units = attr(x, "n_units", exact = TRUE),
+    n_strata = attr(x, "n_strata", exact = TRUE),
+    stage = attr(x, "stage", exact = TRUE),
+    strata = attr(x, "strata", exact = TRUE),
+    domains = attr(x, "domains", exact = TRUE)
+  )
+}
+
+#' @rdname print.svyplan_df
+#' @export
+`$.svyplan_df` <- function(x, name) {
+  .df_field(x, name)
+}
+
+#' @rdname print.svyplan_df
+#' @export
+`[[.svyplan_df` <- function(x, i, ...) {
+  if (is.character(i)) {
+    return(.df_field(x, i))
+  }
+  unclass(x)[[i, ...]]
+}
+
+#' Look a degrees-of-freedom field up by name
+#' @keywords internal
+#' @noRd
+.df_field <- function(x, name) {
+  fields <- as.list(x)
+  if (length(name) != 1L || !name %in% names(fields)) {
+    stop(
+      sprintf(
+        "no field '%s' in a design df; available: %s",
+        paste(name, collapse = ", "), paste(names(fields), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  fields[[name]]
+}
+
+#' @rdname print.svyplan_df
+#' @export
+as.data.frame.svyplan_df <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  validRN = TRUE,
+  ...
+) {
+  .check_unused_dots(...)
+  # The two tables are data frames in their own right and are read from
+  # $strata and $domains; a one-row export carries the scalars only.
+  out <- data.frame(
+    df = as.double(x),
+    n_units = attr(x, "n_units", exact = TRUE),
+    n_strata = attr(x, "n_strata", exact = TRUE),
+    stage = attr(x, "stage", exact = TRUE),
+    stringsAsFactors = stringsAsFactors
+  )
+  as.data.frame(out, row.names = row.names, optional = optional)
+}
+
+#' @rdname print.svyplan_df
+#' @export
+Ops.svyplan_df <- function(e1, e2) {
+  e1 <- if (inherits(e1, "svyplan_df")) as.double(e1) else e1
+  if (missing(e2)) {
+    return(do.call(.Generic, list(e1)))
+  }
+  e2 <- if (inherits(e2, "svyplan_df")) as.double(e2) else e2
+  do.call(.Generic, list(e1, e2))
+}
+
+#' @rdname print.svyplan_df
+#' @export
+Math.svyplan_df <- function(x, ...) {
+  do.call(.Generic, c(list(as.double(x)), list(...)))
+}
+
+#' Print, format and coerce a rotation overlap
+#'
+#' A `svyplan_overlap` from [design_overlap()] is a numeric vector of
+#' overlap fractions indexed by lag, so `x[1]` and `x[12]` are plain
+#' numbers ready for an `overlap` argument. `$` reaches the counts and the
+#' schedule behind them.
+#'
+#' @param x A `svyplan_overlap` object.
+#' @param e1,e2 Operands. Arithmetic and comparison return bare numerics,
+#'   the counts and the schedule describing the profile as computed and not
+#'   whatever it was transformed into.
+#' @param i Lag to extract, by position or by its name, so `x[12]` and
+#'   `x[["12"]]` are both the twelve-occasion overlap. The result is a bare
+#'   number, carrying neither the class nor the lag as a name.
+#' @param value Replacement value. Replacement is refused, an overlap being
+#'   computed from a schedule rather than assembled.
+#' @param name Field to extract: `overlap`, `shared`, `n_occasion`,
+#'   `schedule`, `lag` or `life`.
+#' @param row.names,optional,stringsAsFactors,validRN Standard
+#'   `as.data.frame()` arguments.
+#' @param ... Additional arguments are not supported and produce an error.
+#' @return `print()` returns `x` invisibly; `format()` a string;
+#'   `as.double()` the overlap vector; `as.data.frame()` one row per lag;
+#'   `Ops()` and `Math()` bare numerics. Replacement is an error.
+#'
+#' @details
+#' The values, the shared counts and the schedule describe one design, so
+#' nothing may move the values while leaving the rest: subsetting and
+#' arithmetic return bare numerics, and replacement is an error. That also
+#' settles `pmax()` and `pmin()`, which copy the attributes of their first
+#' argument without dispatching to any method and would otherwise return
+#' something still labelled an overlap whose counts no longer follow from its
+#' values. They assign through `[<-`, so they are refused here too. Convert
+#' with `as.double(x)` and they work as usual.
+#' @name print.svyplan_overlap
+NULL
+
+#' @rdname print.svyplan_overlap
+#' @export
+print.svyplan_overlap <- function(x, ...) {
+  .check_unused_dots(...)
+  w <- attr(x, "schedule", exact = TRUE)
+  cat("Rotation overlap (planning)\n\n")
+  cat(sprintf(
+    "  %s-occasion life, %s in sample each occasion\n",
+    .fmt_count_n(attr(x, "life", exact = TRUE)),
+    .fmt_count_n(attr(x, "n_occasion", exact = TRUE))
+  ))
+  cat(sprintf("  schedule: %s\n\n", .fmt_schedule(w)))
+  # n_occasion is constant by construction and is already in the header;
+  # as.data.frame() keeps it, since a table read into code wants it.
+  tab <- as.data.frame(x)[c("lag", "shared", "overlap")]
+  shown <- utils::head(tab, 16L)
+  shown$overlap <- sprintf("%.4g", shown$overlap)
+  print(shown, row.names = FALSE, right = FALSE)
+  if (nrow(tab) > nrow(shown)) {
+    cat(sprintf(
+      "  %d further lag%s, read them with as.data.frame()\n",
+      nrow(tab) - nrow(shown),
+      if (nrow(tab) - nrow(shown) > 1L) "s" else ""
+    ))
+  }
+  invisible(x)
+}
+
+#' Render a schedule as the spells a planner declared
+#'
+#' Run-length form, since that is how a rotation is named and argued about;
+#' the per-occasion vector it expands to is what the arithmetic reads.
+#' @keywords internal
+#' @noRd
+.fmt_schedule <- function(w) {
+  r <- rle(w)
+  paste(
+    vapply(
+      seq_along(r$lengths),
+      function(i) {
+        if (r$values[i] == 0) {
+          sprintf("%d out", r$lengths[i])
+        } else if (isTRUE(all.equal(r$values[i], 1))) {
+          sprintf("%d in", r$lengths[i])
+        } else {
+          sprintf("%d in at %.4g", r$lengths[i], r$values[i])
+        }
+      },
+      character(1L)
+    ),
+    collapse = ", "
+  )
+}
+
+#' @rdname print.svyplan_overlap
+#' @export
+format.svyplan_overlap <- function(x, ...) {
+  .check_unused_dots(...)
+  sprintf(
+    "svyplan_overlap [life %g, lag 1 = %.4g]",
+    attr(x, "life", exact = TRUE), unclass(x)[[1L]]
+  )
+}
+
+#' @rdname print.svyplan_overlap
+#' @export
+as.double.svyplan_overlap <- function(x, ...) {
+  .check_unused_dots(...)
+  # unclass() drops only the class; the counts and the schedule ride along
+  # as attributes and would surface in anything expecting a bare vector.
+  out <- unclass(x)
+  attributes(out) <- NULL
+  out
+}
+
+#' @rdname print.svyplan_overlap
+#' @export
+as.list.svyplan_overlap <- function(x, ...) {
+  .check_unused_dots(...)
+  list(
+    overlap = as.double(x),
+    shared = attr(x, "shared", exact = TRUE),
+    n_occasion = attr(x, "n_occasion", exact = TRUE),
+    schedule = attr(x, "schedule", exact = TRUE),
+    lag = as.integer(names(x)),
+    life = attr(x, "life", exact = TRUE)
+  )
+}
+
+#' @rdname print.svyplan_overlap
+#' @export
+`[.svyplan_overlap` <- function(x, i) {
+  # A lag is picked out to be passed as `overlap`, so it has to come back
+  # bare. The default would carry the lag along as a name, and a name on a
+  # numeric survives arithmetic: it would reappear on the `$effect` or
+  # `$moe` of whatever the number was handed to. The counts and the schedule
+  # go too, and for a stronger reason: a subset is no longer the overlap
+  # profile they describe, so an `x[]` still carrying them would report a
+  # schedule against values that no longer come from it.
+  v <- unclass(x)
+  attributes(v) <- list(names = names(x))
+  if (missing(i)) {
+    return(unname(v))
+  }
+  unname(v[i])
+}
+
+#' @rdname print.svyplan_overlap
+#' @export
+Ops.svyplan_overlap <- function(e1, e2) {
+  # Arithmetic returns bare numerics, as it does for the other classed
+  # numerics in the package. Keeping the class would leave a vector whose
+  # values had moved while `shared`, `n_occasion` and `schedule` had not, so
+  # a doubled overlap would still claim to have come from the schedule that
+  # produced the original, and could sit above 1.
+  e1 <- if (inherits(e1, "svyplan_overlap")) as.double(e1) else e1
+  if (missing(e2)) {
+    return(do.call(.Generic, list(e1)))
+  }
+  e2 <- if (inherits(e2, "svyplan_overlap")) as.double(e2) else e2
+  do.call(.Generic, list(e1, e2))
+}
+
+#' @rdname print.svyplan_overlap
+#' @export
+Math.svyplan_overlap <- function(x, ...) {
+  do.call(.Generic, c(list(as.double(x)), list(...)))
+}
+
+#' @rdname print.svyplan_overlap
+#' @export
+`[[.svyplan_overlap` <- function(x, i) {
+  unname(unclass(x)[[i]])
+}
+
+#' @rdname print.svyplan_overlap
+#' @export
+`$.svyplan_overlap` <- function(x, name) {
+  fields <- as.list(x)
+  if (length(name) != 1L || !name %in% names(fields)) {
+    stop(
+      sprintf(
+        "no field '%s' in a rotation overlap; available: %s",
+        paste(name, collapse = ", "), paste(names(fields), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  fields[[name]]
+}
+
+#' @rdname print.svyplan_overlap
+#' @export
+as.data.frame.svyplan_overlap <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  validRN = TRUE,
+  ...
+) {
+  .check_unused_dots(...)
+  data.frame(
+    lag = as.integer(names(x)),
+    shared = attr(x, "shared", exact = TRUE),
+    n_occasion = attr(x, "n_occasion", exact = TRUE),
+    overlap = as.double(x),
+    row.names = row.names,
+    stringsAsFactors = stringsAsFactors
+  )
+}
+
+#' Print, format and coerce a panel recruitment
+#'
+#' Display and coercion methods for the object [n_panel()] and
+#' [prec_panel()] return. `print()` leads with the number to recruit and the
+#' responding sample it is expected to leave, then the wave-by-wave table.
+#' The coercions return the recruitment count, which is a number of units to
+#' release and not the analysis sample: those differ by the whole of the
+#' panel's attrition, and it is why `svyplan_panel` is a sibling of
+#' `svyplan_n` rather than a subtype.
+#'
+#' @param x A `svyplan_panel` object.
+#' @param row.names,optional,stringsAsFactors,validRN Standard
+#'   `as.data.frame()` arguments.
+#' @param ... Additional arguments are not supported and produce an error.
+#' @return `print()` returns `x` invisibly; `format()` a string;
+#'   `as.double()` the recruitment count and `as.integer()` the whole units
+#'   that count rounds up to; `as.data.frame()` the wave table.
+#' @name print.svyplan_panel
+NULL
+
+#' @rdname print.svyplan_panel
+#' @export
+print.svyplan_panel <- function(x, ...) {
+  .check_unused_dots(...)
+  k <- nrow(x$waves)
+  cat(sprintf("Panel recruitment (%s, %d-wave life)\n", x$design, k))
+  cat(.fmt_panel_headline(x))
+  cat(.fmt_panel_launch(x))
+  cat(.fmt_panel_rates(x))
+  cat(.fmt_panel_precision(x))
+  if (!is.null(x$n_assured)) {
+    cat(sprintf(
+      "assured (%s): %s %s%s\n",
+      .fmt_prob(x$params$assurance), .fmt_count_n(ceiling(x$n_assured)),
+      if (identical(x$design, "fixed")) "issued" else "entrants per occasion",
+      # A level a finite frame cannot supply is named on the line that
+      # reports it, the number being a requirement rather than a design.
+      if (isFALSE(x$assured_feasible)) {
+        sprintf(", beyond the population of %s", .fmt_count_n(x$target$params$N))
+      } else {
+        ""
+      }
+    ))
+  }
+  cat(if (identical(x$design, "fixed")) {
+    "---\n"
+  } else {
+    "--- (the cohorts alive at one occasion)\n"
+  })
+  print(.fmt_panel_waves(x), row.names = FALSE, right = FALSE)
+  invisible(x)
+}
+
+#' Counts for the whole units a planner would actually release
+#'
+#' Every count in the printed block is derived from the rounded-up
+#' recruitment, so the headline and the wave it names agree. The stored
+#' fields stay continuous, which is what keeps the round trip exact.
+#' @keywords internal
+#' @noRd
+.panel_shown <- function(x) {
+  recruit <- ceiling(.panel_recruit(x))
+  wave <- recruit * x$waves$q
+  list(
+    recruit = recruit,
+    wave = wave,
+    head = if (identical(x$design, "fixed")) {
+      wave[[x$target_wave]]
+    } else {
+      sum(wave)
+    },
+    in_sample = if (identical(x$design, "rotating")) recruit * x$n_cohorts
+  )
+}
+
+#' Name the launch and the two counts that bracket it
+#'
+#' The occasion-1 figure against the steady-state one is the whole content:
+#' a gradual launch opens below the design and climbs, an immediate one opens
+#' at or above it, every unit there being at wave 1 and no later wave holding
+#' more than wave 1 does. The two coincide where nothing is lost after
+#' recruitment. The table carries the rest.
+#' @keywords internal
+#' @noRd
+.fmt_panel_launch <- function(x) {
+  if (is.null(x$launch)) {
+    return("")
+  }
+  # whole units on the display path, as every other count printed here is
+  recruit <- ceiling(.panel_recruit(x))
+  scale <- recruit / .panel_recruit(x)
+  settled <- which(x$launch$steady_state)[[1L]]
+  sprintf(
+    "launch (%s): %s responding at occasion 1, %s from occasion %d\n",
+    x$start,
+    .fmt_count_n(round(x$launch$n_resp[[1L]] * scale)),
+    .fmt_count_n(round(x$launch$n_resp[[settled]] * scale)),
+    x$launch$period[[settled]]
+  )
+}
+
+#' State the recruitment and what it leaves, in that order
+#'
+#' The two designs answer with different quantities, so the line names the
+#' quantity rather than printing a number a reader has to attribute. In the
+#' reverse direction the recruitment was supplied and may not reach the
+#' target, which the line says outright.
+#' @keywords internal
+#' @noRd
+.fmt_panel_headline <- function(x) {
+  shown <- .panel_shown(x)
+  where <- if (identical(x$design, "fixed")) {
+    sprintf("at wave %d", x$target_wave)
+  } else {
+    sprintf("per occasion, pooled over %d cohorts", x$n_cohorts)
+  }
+  lead <- if (identical(x$design, "fixed")) {
+    sprintf("issue %s to hold", .fmt_count_n(shown$recruit))
+  } else {
+    sprintf("%s entrants per occasion to hold", .fmt_count_n(shown$recruit))
+  }
+  need <- ceiling(x$n_target)
+  out <- sprintf(
+    "%s %s responding %s%s\n", lead, .fmt_count_n(round(shown$head)), where,
+    if (round(shown$head) < need) {
+      sprintf(", short of the %s the target needs", .fmt_count_n(need))
+    } else {
+      ""
+    }
+  )
+  if (identical(x$design, "rotating")) {
+    out <- paste0(out, sprintf(
+      "%s in sample across %d live cohorts\n",
+      .fmt_count_n(shown$in_sample), x$n_cohorts
+    ))
+  }
+  out
+}
+
+#' @keywords internal
+#' @noRd
+.fmt_panel_rates <- function(x) {
+  ret <- x$params$retention
+  u <- unique(signif(ret, 10))
+  ret_txt <- if (length(u) == 1L) {
+    sprintf("%.3g", u)
+  } else {
+    sprintf("%.3g to %.3g", min(ret), max(ret))
+  }
+  share <- x$waves$loss_share[1L]
+  loss_txt <- if (is.na(share)) {
+    "no loss over the life"
+  } else {
+    sprintf("%.0f%% of the life's loss at wave 1", 100 * share)
+  }
+  sprintf(
+    "recruitment response %.3g, retention %s (%s)\n",
+    x$params$resp_rate, ret_txt, loss_txt
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.fmt_panel_precision <- function(x) {
+  label <- if (is.null(x$method)) x$type else sprintf("%s (%s)", x$type, x$method)
+  sprintf(
+    "%s: se = %.4g, moe = %.4g%s\n", label, x$se, x$moe,
+    if (is.na(x$cv)) "" else sprintf(", cv = %.3g", x$cv)
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.fmt_panel_waves <- function(x) {
+  w <- x$waves
+  out <- data.frame(
+    wave = w$wave,
+    retention = ifelse(is.na(w$retention), "", sprintf("%.3g", w$retention)),
+    q = sprintf("%.4g", w$q),
+    n_resp = format(round(.panel_shown(x)$wave)),
+    se = sprintf("%.4g", w$se),
+    moe = sprintf("%.4g", w$moe),
+    stringsAsFactors = FALSE
+  )
+  if (!all(is.na(w$cv))) {
+    out$cv <- sprintf("%.3g", w$cv)
+  }
+  out
+}
+
+#' @rdname print.svyplan_panel
+#' @export
+format.svyplan_panel <- function(x, ...) {
+  .check_unused_dots(...)
+  sprintf(
+    "svyplan_panel [%s, %d waves, recruit %g]",
+    x$design, nrow(x$waves), .panel_recruit(x)
+  )
+}
+
+#' @rdname print.svyplan_panel
+#' @export
+as.double.svyplan_panel <- function(x, ...) {
+  .check_unused_dots(...)
+  .panel_recruit(x)
+}
+
+#' @rdname print.svyplan_panel
+#' @export
+as.integer.svyplan_panel <- function(x, ...) {
+  .check_unused_dots(...)
+  # The assured count, when one was asked for, stays in $n_assured: which
+  # number to field is the planner's call and must not turn on whether an
+  # argument was set.
+  as.integer(ceiling(.panel_recruit(x)))
+}
+
+#' @rdname print.svyplan_panel
+#' @export
+as.data.frame.svyplan_panel <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  validRN = TRUE,
+  ...
+) {
+  .check_unused_dots(...)
+  out <- x$waves
+  if (!is.null(row.names)) {
+    rownames(out) <- row.names
+  }
+  out
+}
+
+#' Refuse in-place modification of a computed planning quantity
+#'
+#' These classes carry values and the quantities they were computed from, and
+#' a replacement changes the first while leaving the second: a doubled overlap
+#' still claiming its schedule, a design effect no longer the product of its
+#' components. Neither is a thing the package produces, so the assignment is
+#' named rather than performed. Arithmetic returns bare numerics for the same
+#' reason, and is the way to work with the values.
+#' @keywords internal
+#' @noRd
+.no_replacement <- function(what, from) {
+  stop(
+    sprintf(
+      "a %s cannot be modified in place: its values and the quantities behind them describe one design, and a replacement would leave them contradicting each other; recompute with %s, or take as.double(x) to work with the numbers",
+      what, from
+    ),
+    call. = FALSE
+  )
+}
+
+#' @rdname print.svyplan_overlap
+#' @export
+`[<-.svyplan_overlap` <- function(x, i, value) {
+  .no_replacement("rotation overlap", "design_overlap()")
+}
+
+#' @rdname print.svyplan_overlap
+#' @export
+`[[<-.svyplan_overlap` <- function(x, i, value) {
+  .no_replacement("rotation overlap", "design_overlap()")
+}
+
+#' @rdname print.svyplan_deff
+#' @export
+`[<-.svyplan_deff` <- function(x, i, value) {
+  .no_replacement("planning design effect", "design_effect()")
+}
+
+#' @rdname print.svyplan_deff
+#' @export
+`[[<-.svyplan_deff` <- function(x, i, value) {
+  .no_replacement("planning design effect", "design_effect()")
+}
+
+#' @rdname print.svyplan_df
+#' @export
+`[<-.svyplan_df` <- function(x, i, value) {
+  .no_replacement("design degrees of freedom", "design_df()")
+}
+
+#' @rdname print.svyplan_df
+#' @export
+`[[<-.svyplan_df` <- function(x, i, value) {
+  .no_replacement("design degrees of freedom", "design_df()")
 }

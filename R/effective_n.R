@@ -1,4 +1,4 @@
-#' Effective Sample Size
+#' Effective sample size
 #'
 #' Convert a planned sample size into the simple-random-sample size that
 #' would give the same precision, `n * resp_rate / deff`. This is the
@@ -28,7 +28,7 @@
 #'
 #' Sizes are counted as units **issued**, so nonresponse has to be taken
 #' off before the design effect is applied: a design that issues `n` and
-#' analyses `n * resp_rate` of them carries the information of
+#' analyzes `n * resp_rate` of them carries the information of
 #' `n * resp_rate / deff` simple random draws. This is the identity the
 #' allocation and precision functions plan on, and the one reported in the
 #' `n_eff` column of an [n_alloc()] table. Passing a plan as `x` picks up
@@ -84,7 +84,7 @@ effective_n <- function(x = NULL, ...) {
 #' @param deff Design effect to apply directly, instead of building one
 #'   from components.
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1. It nets
-#'   `n` down to the units the design expects to analyse before the design
+#'   `n` down to the units the design expects to analyze before the design
 #'   effect is applied. When `x` is a plan, its own rate is used unless you
 #'   override it here.
 #' @param icc,n_per_psu,n_per_ssu,var_ratio,weights,strata Design components, with
@@ -204,7 +204,28 @@ effective_n.svyplan_n <- function(x, ..., n = NULL, resp_rate = NULL,
 #' @keywords internal
 #' @noRd
 .effective_n_resp <- function(resp_rate, x) {
-  resp_rate %||% x$params$resp_rate %||% 1
+  # A cluster plan can lose units at more than one stage, and every loss
+  # removes observations from the same total, so the share of the drawn
+  # sample that responds is their product.
+  stored <- if (inherits(x, "svyplan_cluster")) {
+    (x$params$resp_rate_psu %||% 1) *
+      (x$params$resp_rate_ssu %||% 1) *
+      (x$params$resp_rate %||% 1)
+  } else {
+    x$params$resp_rate
+  }
+  rate <- resp_rate %||% stored %||% 1
+  if (length(rate) > 1L) {
+    # Per-stratum rates net down to one overall rate, the share of the drawn
+    # sample expected to respond: sum(n_h r_h) / sum(n_h).
+    n_h <- x$detail[["n"]]
+    if (is.null(n_h) || length(n_h) != length(rate)) {
+      stop("'resp_rate' length does not match the allocation's strata",
+           call. = FALSE)
+    }
+    rate <- sum(n_h * rate) / sum(n_h)
+  }
+  rate
 }
 
 #' Recover the gross sample size from whichever component supplies it

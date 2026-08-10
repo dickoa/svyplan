@@ -1,7 +1,7 @@
 Package: svyplan
 Type: Package
 Title: Survey Sample Size Determination and Precision Analysis
-Version: 0.9.0
+Version: 0.11.0
 Authors@R: person(given = "Ahmadou",
                   family = "Dicko",
                   email = "mail@ahmadoudicko.com",
@@ -9,15 +9,18 @@ Authors@R: person(given = "Ahmadou",
                   role = c("aut", "cre"))
 Description: Tools for survey sample size determination, precision
     analysis, optimal allocation, joint multivariate and multidomain
-    allocation, two-phase allocation, stratification, and power analysis.
-    Computes sample sizes for proportions and means, evaluates sampling
-    precision for a given design, optimizes multistage cluster allocations,
-    estimates variance components from frame data, computes design effects,
-    constructs strata boundaries, allocates two-phase designs, and
-    performs statistical power analysis for two-sample tests. Sample size and precision functions
-    support response rate adjustment and bidirectional round-trip via
-    S3 dispatch. Sensitivity analysis is available through
-    predict methods. Based on methods from Cochran (1977,
+    allocation, two-phase allocation, stratification, power analysis, and
+    planning for surveys repeated over time. Computes sample sizes for
+    proportions and means, evaluates sampling precision for a given design,
+    optimizes multistage cluster allocations, estimates variance components
+    from frame data, computes design effects, constructs strata boundaries,
+    allocates two-phase designs, sizes the change between two occasions,
+    derives the sample overlap a rotation schedule produces, sizes the
+    recruitment a panel needs to hold a responding sample against attrition,
+    and performs statistical power analysis for two-sample tests. Sample size
+    and precision functions support response rate adjustment and
+    bidirectional round-trip via S3 dispatch. Sensitivity analysis is
+    available through predict methods. Based on methods from Cochran (1977,
     ISBN:978-0-471-16240-7), Kish (1965, ISBN:978-0-471-48900-9),
     Saerndal, Swensson, and Wretman (1992, ISBN:978-0-387-40620-6),
     Fuller (2009, ISBN:978-0-470-45460-2), and Valliant, Dever, and
@@ -37,9 +40,10 @@ Suggests:
 VignetteBuilder: knitr
 License: GPL (>= 2)
 Encoding: UTF-8
+Language: en-US
 URL: https://dickoa.gitlab.io/svyplan,
         https://gitlab.com/dickoa/svyplan
 BugReports: https://gitlab.com/dickoa/svyplan/-/work_items
 Roxygen: list(markdown = TRUE)
 Config/testthat/edition: 3
-Config/roxygen2/version: 8.0.0
+Config/roxygen2/version: 8.1.0

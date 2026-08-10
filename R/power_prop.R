@@ -1,4 +1,4 @@
-#' Power Analysis for Proportions
+#' Power analysis for proportions
 #'
 #' Compute sample size, power, or minimum detectable effect (MDE) for a
 #' two-sample test of proportions. Leave exactly one of `n`, `power`, or
@@ -76,8 +76,8 @@
 #' \eqn{p_1 q_1 / n_1 + p_2 q_2 / n_2} for both the critical value and the
 #' power shift. [stats::power.prop.test()] instead evaluates the critical
 #' value under the null, using the pooled variance
-#' \eqn{\bar{p} \bar{q} (1/n_1 + 1/n_2)} with
-#' \eqn{\bar{p} = (p_1 + p_2) / 2}. Both conventions are standard, and they
+#' \eqn{\bar{p} \bar{q} (1/n_1 + 1/n_2)}{pbar qbar (1/n_1 + 1/n_2)} with
+#' \eqn{\bar{p} = (p_1 + p_2) / 2}{pbar = (p_1 + p_2) / 2}. Both conventions are standard, and they
 #' differ by a few tenths of a percent in the resulting size:
 #'
 #' ```
@@ -92,6 +92,38 @@
 #' same design stay on one scale. The pooled form has no finite-population
 #' analogue that keeps that correspondence.
 #'
+#' `method = "logodds"` does carry a pooled null, because the statistic it
+#' powers has one. It refers the log-odds difference to a critical value
+#' computed under the null and a power shift computed under the alternative,
+#' rejecting when
+#'
+#' \deqn{|\mathrm{logit}(\hat p_1) - \mathrm{logit}(\hat p_2)|
+#'   > z_{\alpha} \sqrt{V_0},}{|logit(phat_1) - logit(phat_2)| > z_alpha sqrt(V_0),}
+#'
+#' with the two variances
+#'
+#' \deqn{V_0 = d \left( \frac{f_1}{n_1 \bar{p} \bar{q}}
+#'                    + \frac{f_2}{n_2 \bar{p} \bar{q}} \right), \qquad
+#'       V_A = d \left( \frac{f_1}{n_1 p_1 q_1}
+#'                    + \frac{f_2}{n_2 p_2 q_2} \right),}{V_0 = d ( f_1/(n_1 pbar qbar) + f_2/(n_2 pbar qbar) ), V_A = d ( f_1/(n_1 p_1 q_1) + f_2/(n_2 p_2 q_2) ),}
+#'
+#' where \eqn{d} is `deff` and \eqn{f_i} the finite population correction of
+#' group \eqn{i}. Under the null the two groups share one proportion, and the
+#' estimator of it is the pooled one, so \eqn{\bar{p}}{pbar} is the
+#' **sample-size-weighted** mean
+#'
+#' \deqn{\bar{p} = \frac{n_1 p_1 + n_2 p_2}{n_1 + n_2}
+#'               = \frac{r p_1 + p_2}{r + 1},}{pbar = (n_1 p_1 + n_2 p_2)/(n_1 + n_2) = (r p_1 + p_2)/(r + 1),}
+#'
+#' with \eqn{r} the allocation `ratio`. At `ratio = 1` this is
+#' \eqn{(p_1 + p_2) / 2}; away from it the weighted and unweighted nulls give
+#' materially different sizes, so the weighting is not a refinement. Sizing
+#' `p1 = 0.1` against `p2 = 0.2` at `ratio = 4` needs 523 and 131, against
+#' 457 and 115 for an unweighted null: 14 percent more fieldwork, because the
+#' larger group is the one with the smaller proportion and pulls the pooled
+#' null toward it. Both the size-solving and the power-computing path use this
+#' \eqn{\bar{p}}{pbar}, so `power_prop()` inverts itself under any allocation.
+#'
 #' ## Normal approximation
 #'
 #' All three methods compute critical values and power from the standard
@@ -102,6 +134,13 @@
 #' `"arcsine"` and `"logodds"` improve the normal approximation for an
 #' extreme proportion, but none of the three is exact at small `n`.
 #'
+#' The `df` argument that [n_prop()], [n_mean()] and [n_alloc()] accept has
+#' no counterpart here, and its absence is a decision rather than an
+#' omission. There the quantile is the half-width of a confidence interval
+#' and a t quantile substitutes for a normal one directly; here it is a
+#' normal deviate for an alternative, and a t-based power calculation is a
+#' different procedure. Passing `df` is an error that says so.
+#'
 #' @references
 #' Valliant, R., Dever, J. A., & Kreuter, F. (2018). *Practical Tools for
 #'   Designing and Weighting Survey Samples* (2nd ed.). Springer. Chapter 4.
@@ -110,6 +149,10 @@
 #'
 #' @seealso [power_mean()] for continuous outcomes, [power_did()] for
 #'   difference-in-differences, [n_prop()] for estimation precision.
+#'   With `overlap` set, this is the two-occasion change of one population:
+#'   [n_change()] and [prec_change()] size and evaluate the same quantity as
+#'   an estimate with a margin of error rather than as a test, and
+#'   [design_overlap()] derives the overlap from a rotation schedule.
 #'
 #' @examples
 #' # Sample size to detect a 5pp change from 30%
@@ -153,6 +196,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
                        plan = NULL) {
   .plan <- .merge_plan_args(plan, power_prop.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(power_prop.default, c(.plan, list(...))))
+  .stop_power_df(...)
   .check_unused_dots(...)
   check_proportion(p1, "p1")
   alternative <- match.arg(alternative)
@@ -250,7 +294,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
     2 * overlap * overlap_cor * sqrt(p1 * (1 - p1) * p2 * (1 - p2))
 }
 
-# --- Wald internals ---
+## Wald internals
 
 .power_prop_n_wald <- function(p1, p2, power, alpha, N_pair, deff,
                                alternative, overlap, overlap_cor, ratio, resp_rate) {
@@ -350,7 +394,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   roots[[which.min(dists)]]
 }
 
-# --- Arcsine internals ---
+## Arcsine internals
 
 .power_prop_n_arcsine <- function(p1, p2, power, alpha, N_pair, deff,
                                    alternative, ratio, resp_rate) {
@@ -433,7 +477,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   roots[[which.min(dists)]]
 }
 
-# --- Log-odds internals ---
+## Log-odds internals
 
 .power_prop_n_logodds <- function(p1, p2, power, alpha, N_pair, deff,
                                    alternative, ratio, resp_rate) {
@@ -441,7 +485,11 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   z_b <- qnorm(power)
   q1 <- 1 - p1; q2 <- 1 - p2
   diff_phi <- log(p1 / q1) - log(p2 / q2)
-  p_bar <- (p1 + p2) / 2
+  # The null variance is evaluated at the pooled proportion, which is the
+  # sample-size-weighted mean of the two. Group 1 receives 'ratio' times what
+  # group 2 does, so the weights are ratio and 1; 'resp_rate' is common to
+  # both groups and cancels.
+  p_bar <- (ratio * p1 + p2) / (ratio + 1)
   q_bar <- 1 - p_bar
 
   if (all(is.infinite(N_pair))) {
@@ -479,7 +527,10 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   z_a <- .z_alpha(alpha, alternative)
   q1 <- 1 - p1; q2 <- 1 - p2
   diff_phi <- log(p1 / q1) - log(p2 / q2)
-  p_bar <- (p1 + p2) / 2
+  # Pooled null proportion, weighted by the sizes actually realized here. The
+  # size-solving path weights by 'ratio', which is these two sizes in the same
+  # proportion, so the two paths agree.
+  p_bar <- (n_vec[1] * p1 + n_vec[2] * p2) / (n_vec[1] + n_vec[2])
   q_bar <- 1 - p_bar
 
   fpc1 <- .fpc_factor(n_vec[1], N_pair[1])

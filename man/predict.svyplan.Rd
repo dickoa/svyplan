@@ -6,7 +6,7 @@
 \alias{predict.svyplan_cluster}
 \alias{predict.svyplan_power}
 \alias{predict.svyplan_prec}
-\title{Grid Exploration for svyplan Objects}
+\title{Grid exploration for svyplan objects}
 \usage{
 \method{predict}{svyplan_n}(object, newdata, ...)
 
@@ -33,10 +33,12 @@ values from the object.}
 A data frame with \code{newdata} columns followed by result
 columns. The result columns depend on the object type:
 \itemize{
-\item \code{svyplan_n}: \code{n}, \code{se}, \code{moe}, \code{cv}
+\item \code{svyplan_n}: \code{n}, \code{se}, \code{moe}, \code{cv}, \code{rmoe}, except for a
+\code{type = "change"} result, which reports one size per occasion as
+\code{n1} and \code{n2} in place of \code{n}
 \item \code{svyplan_cluster}: \code{n_psu}, \code{n_per_psu}, (opt. \code{n_per_ssu}), \code{total_n}, \code{cv}, \code{cost}
 \item \code{svyplan_power}: \code{n}, \code{power}, \code{effect}
-\item \code{svyplan_prec}: \code{se}, \code{moe}, \code{cv}
+\item \code{svyplan_prec}: \code{se}, \code{moe}, \code{cv}, \code{rmoe}
 }
 }
 \description{
@@ -47,10 +49,22 @@ quantities, suitable for sensitivity analysis or plotting.
 \details{
 Valid parameters for \code{newdata} by object type:
 \itemize{
-\item \strong{\code{n_prop}}: \code{p}, \code{moe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
-\code{df} (\code{method = "beta"} only)
-\item \strong{\code{n_mean}}: \code{var}, \code{mu}, \code{moe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
+\item \strong{\code{n_prop}}: \code{p}, \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
+\code{resp_rate}, \code{df} (\code{method = "beta"} only)
+\item \strong{\code{n_mean}}: \code{var}, \code{mu}, \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
 \code{resp_rate}
+\item \strong{\code{n_change}}: \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
+\code{ratio}, \code{overlap}, \code{overlap_cor}, and \code{change} on the mean scale only,
+since two proportions determine it. The occasion variances are held at
+the values the result was built from, so vary the design rather than the
+estimand: sweeping \code{overlap} and \code{overlap_cor} is what prices a rotation
+against a fresh sample each round.
+\item \strong{\code{n_pooled}}: \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
+\code{mu} on the mean scale, and \code{occasions} only where the overlap and
+correlation are flat across lags, a shaped profile being a statement
+about a horizon that changing the horizon would contradict. The lag
+profiles themselves cannot be varied, a grid row having nowhere to hold
+a vector.
 \item \strong{\code{n_cluster}}: \code{cv}, \code{budget}, \code{unit_relvar}, \code{resp_rate}, \code{fixed_cost},
 stage deltas (\code{icc} or \code{icc_psu}, plus \code{icc_ssu} for 3-stage),
 stage ratios (\code{var_ratio} or \code{var_ratio_psu}, plus \code{var_ratio_ssu} for 3-stage),
@@ -63,12 +77,13 @@ parameter). Not supported for objects with vector \code{n}.
 \code{deff}, \code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate} (excluding the
 solved-for parameter). Not supported for objects with vector \code{n}.
 \item \strong{\code{prec_prop}}: \code{p}, \code{n}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
-\code{df} (\code{method = "beta"} only)
+\code{df} (\code{method = "beta"} only). A result that solved for \code{p} varies the
+target it solved from, \code{cv} or \code{rmoe}, in place of \code{p}.
 \item \strong{\code{prec_mean}}: \code{var}, \code{n}, \code{mu}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}
 }
 
-For \code{svyplan_n} objects, \code{moe} and \code{cv} are mutually exclusive in
-\code{newdata}. If one appears, that mode is used. If neither appears, the
+For \code{svyplan_n} objects, \code{moe}, \code{rmoe}, and \code{cv} are mutually exclusive
+in \code{newdata}. If one appears, that mode is used. If none appears, the
 original mode is preserved.
 
 Similarly, for \code{svyplan_cluster} objects, \code{cv} and \code{budget} are

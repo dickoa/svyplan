@@ -290,3 +290,38 @@ test_that("print omits the subset label when every constraint is shown", {
   expect_false(any(grepl("showing", out, fixed = TRUE)))
   expect_false(any(grepl("see $constraints", out, fixed = TRUE)))
 })
+
+## Probabilities never print as a bound they are not
+
+test_that("a probability that rounds onto a bound keeps its own digits", {
+  # Two decimals wherever they read well, and more where rounding would name
+  # a value the validators refuse.
+  expect_identical(svyplan:::.fmt_prob(0.95), "0.95")
+  expect_identical(svyplan:::.fmt_prob(0.8), "0.80")
+  expect_identical(svyplan:::.fmt_prob(0.05), "0.05")
+  expect_identical(svyplan:::.fmt_prob(0.999), "0.999")
+  expect_identical(svyplan:::.fmt_prob(0.9999999), "0.9999999")
+  expect_identical(svyplan:::.fmt_prob(0.001), "0.001")
+  # The bounds themselves are legal for some arguments and print plainly.
+  expect_identical(svyplan:::.fmt_prob(1), "1.00")
+  expect_identical(svyplan:::.fmt_prob(0), "0.00")
+})
+
+test_that("a response rate below 1 never prints as 1", {
+  # The line appears only because the rate is below 1, so showing 1.00 would
+  # contradict the test that produced it.
+  out <- capture.output(print(n_prop(0.3, moe = 0.05, resp_rate = 0.999)))
+  expect_true(any(grepl("resp_rate = 0.999", out, fixed = TRUE)))
+  expect_false(any(grepl("resp_rate = 1.00", out, fixed = TRUE)))
+  expect_true(any(grepl(
+    "resp_rate = 0.80",
+    capture.output(print(n_prop(0.3, moe = 0.05, resp_rate = 0.8))),
+    fixed = TRUE
+  )))
+})
+
+test_that("a small alpha prints as itself", {
+  out <- capture.output(print(power_mean(var = 100, effect = 2, alpha = 0.001)))
+  expect_true(any(grepl("alpha = 0.001", out, fixed = TRUE)))
+  expect_false(any(grepl("alpha = 0.00,", out, fixed = TRUE)))
+})

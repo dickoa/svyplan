@@ -1,12 +1,19 @@
 #' @keywords internal
 #' @noRd
-.alloc_weights <- function(alloc, q, N_h, S_h, cost_h) {
+.alloc_weights <- function(alloc, q, N_h, S_h, cost_h,
+                           deff_h = 1, resp_rate_h = 1) {
+  # A variance-optimal rule minimizes sum(W^2 S^2 deff / (R n)) against a
+  # gross cost constraint, which pulls sqrt(deff / R) into the weight.
+  # Proportional is a count rule, not an optimum: its spec is that the
+  # responding sample be proportional to N, so it takes 1 / R and no deff.
+  # Both collapse to the current weights under scalar deff and resp_rate.
+  var_adj <- sqrt(deff_h / resp_rate_h)
   switch(
     alloc,
-    proportional = N_h,
-    neyman = N_h * S_h,
-    optimal = N_h * S_h / sqrt(cost_h),
-    power = S_h * N_h^q
+    proportional = N_h / resp_rate_h,
+    neyman = N_h * S_h * var_adj,
+    optimal = N_h * S_h * var_adj / sqrt(cost_h),
+    power = S_h * N_h^q * var_adj
   )
 }
 

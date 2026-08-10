@@ -4,7 +4,7 @@
 \alias{prec_alloc}
 \alias{prec_alloc.default}
 \alias{prec_alloc.svyplan_n}
-\title{Precision for a Constrained Allocation}
+\title{Precision for a constrained allocation}
 \usage{
 prec_alloc(frame, ...)
 
@@ -20,6 +20,7 @@ prec_alloc(frame, ...)
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
+  df = NULL,
   unit_cost = NULL,
   min_n_stratum = NULL,
   plan = NULL
@@ -37,11 +38,11 @@ For \code{svyplan_n} objects: an allocation result from \code{\link[=n_alloc]{n_
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{n}{Stratum sample sizes, length \code{nrow(frame)}. For a fitted joint
-allocation, omission uses its continuous allocation; pass \verb{$detail$n_int}
+allocation, omission uses its continuous allocation. Pass \verb{$detail$n_int}
 to assess the operational recommendation. A named vector is matched to
-\code{frame$stratum}; an unnamed vector is positional. In fixed-take
+\code{frame$stratum}, an unnamed vector is positional. In fixed-take
 multistage mode these are ultimate-unit sizes. Explicit adopted sizes must
-correspond to whole PSU counts; omission from a fitted result retains its
+correspond to whole PSU counts. Omission from a fitted result retains its
 continuous first-stage allocation.}
 
 \item{measures}{Optional long indicator table for joint assessment. See the
@@ -65,9 +66,19 @@ domain identifiers, or \code{NULL} (default) for no domains.}
 
 \item{alpha}{Significance level, default 0.05.}
 
-\item{deff}{Design effect multiplier (> 0).}
+\item{deff}{Design effect multiplier (> 0). A scalar applies to every
+stratum. A length-\code{nrow(frame)} vector gives one per stratum and
+overrides a \code{deff} column in \code{frame}.}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1.}
+\item{resp_rate}{Expected response rate, in (0, 1]. Default 1. A scalar
+applies to every stratum. A length-\code{nrow(frame)} vector gives one per
+stratum and overrides a \code{resp_rate} column in \code{frame}.}
+
+\item{df}{Degrees of freedom of the variance estimator the allocation
+will have, typically sampled PSUs minus strata, and available from
+\code{\link[=design_df]{design_df()}}. It switches the quantile used to translate a \code{moe}
+target in and to report \code{moe} out; a \code{cv} target carries no quantile
+and is unaffected. \code{NULL} (default) applies no adjustment.}
 
 \item{unit_cost}{Optional scalar or length-\code{nrow(frame)} vector of
 per-stratum unit costs, overriding \code{frame$unit_cost}. Fixed-take
@@ -77,13 +88,22 @@ multistage joint assessment instead uses the stage costs stored in
 \item{min_n_stratum}{Optional minimum sample size per stratum, applied as the
 lower bound the assessment reports against in \verb{$bounds}. It is the same
 argument \code{\link[=n_alloc]{n_alloc()}} takes, so a design and its assessment can be held
-to one floor. Joint assessment only; supplying it without \code{measures} and
+to one floor. Joint assessment only: supplying it without \code{measures} and
 \code{targets} is an error.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
-A \code{svyplan_prec} object with \code{type = "alloc"}. For joint
+A \code{svyplan_prec} object with \code{type = "alloc"}. Top-level \code{se},
+\code{moe}, and \code{cv} describe the whole population. \verb{$detail} carries the
+stratum table documented in \code{\link[=n_alloc]{n_alloc()}}, including per-stratum \code{.se},
+\code{.moe}, \code{.rmoe}, \code{.cv}, and the variance \code{.share}. When \code{domains} is
+given, \verb{$domains} reports \code{.n}, \code{.se}, \code{.moe}, \code{.rmoe}, \code{.cv}, and
+\code{.cost} per domain,
+the same table \code{\link[=n_alloc]{n_alloc()}} returns, so a design and its assessment can
+be compared row for row.
+
+For joint
 assessment, \verb{$detail} is the constraint dictionary described in
 \code{\link[=n_alloc]{n_alloc()}}: target and achieved precision, ratio/residual/tolerance,
 pass/binding flags, and (when available) multiplier/sensitivity columns.
@@ -136,4 +156,16 @@ prec_alloc(jf, n = c(120, 150), measures = jm, targets = jt)
 }
 \seealso{
 \code{\link[=n_alloc]{n_alloc()}}.
+
+Other precision functions:
+\code{\link[=prec_change]{prec_change()}},
+\code{\link[=prec_cluster]{prec_cluster()}},
+\code{\link[=prec_mean]{prec_mean()}},
+\code{\link[=prec_multi]{prec_multi()}},
+\code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
+\code{\link[=prec_panel]{prec_panel()}},
+\code{\link[=prec_pooled]{prec_pooled()}},
+\code{\link[=prec_prop]{prec_prop()}},
+\code{\link[=prec_twophase]{prec_twophase()}}
 }
+\concept{precision functions}

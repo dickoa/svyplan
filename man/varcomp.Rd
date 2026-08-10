@@ -5,19 +5,36 @@
 \alias{varcomp.formula}
 \alias{varcomp.default}
 \alias{varcomp.survey.design}
-\title{Estimate Variance Components}
+\title{Estimate variance components}
 \usage{
 varcomp(x, ...)
 
 \method{varcomp}{formula}(x, ..., data = NULL, prob = NULL, strata = NULL, weights = NULL)
 
-\method{varcomp}{default}(x, ..., stage_id = NULL, prob = NULL, strata = NULL, weights = NULL)
+\method{varcomp}{default}(
+  x,
+  ...,
+  stage_id = NULL,
+  prob = NULL,
+  strata = NULL,
+  weights = NULL,
+  deff = NULL,
+  se = NULL,
+  p = NULL,
+  var = NULL,
+  n = NULL,
+  n_per_psu = NULL,
+  n_per_ssu = NULL,
+  cv_take = NULL,
+  var_ratio = NULL
+)
 
-\method{varcomp}{survey.design}(x, ..., prob = NULL, strata = NULL)
+\method{varcomp}{survey.design}(x, ..., prob = NULL, strata = NULL, weights = NULL)
 }
 \arguments{
 \item{x}{A formula, numeric vector, or survey design object
-(see Details).}
+(see Details). Leave unset to back an \code{icc} out of a published design
+effect.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
@@ -46,6 +63,31 @@ components.}
 
 \item{stage_id}{A list of stage-ID vectors (required for vector interface).
 Length determines the number of stage boundaries (stages - 1).}
+
+\item{deff}{A published design effect to back an \code{icc} out of, with \code{x}
+unset. Requires \code{n_per_psu}. See Details.}
+
+\item{se}{A published standard error, an alternative to \code{deff} for the
+same back-out. Requires \code{n} and one of \code{p} or \code{var}.}
+
+\item{p}{Proportion the published \code{se} refers to.}
+
+\item{var}{Unit variance the published \code{se} refers to, for a mean.}
+
+\item{n}{Sample size the published \code{se} was computed on.}
+
+\item{n_per_psu}{Units per PSU the published design effect refers to:
+the size-weighted average take, a vector of realized takes, or a
+nominal take with \code{cv_take}. See Details.}
+
+\item{n_per_ssu}{Units per SSU. Not accepted on the back-out, which a
+scalar design effect does not identify.}
+
+\item{cv_take}{Coefficient of variation of the realized takes, when
+\code{n_per_psu} is their nominal mean.}
+
+\item{var_ratio}{Ratio of the clustered component's unit variance to the
+analysis variable's, 1 when unset. See \code{\link[=design_effect]{design_effect()}}.}
 }
 \value{
 A \code{svyplan_varcomp} object with components:
@@ -61,14 +103,23 @@ length 2 (\code{icc_psu}, \code{icc_ssu}) for 3-stage.}
 \item{\code{stages}}{Number of stages (2 or 3).}
 \item{\code{strata}}{Per-stratum component table when \code{strata} is
 supplied, otherwise \code{NULL} (see Details).}
+\item{\code{source}}{\code{"data"} when the components were estimated, \code{"deff"}
+when \code{icc} was backed out of a design effect.}
+\item{\code{params}}{The take that identifies a backed-out \code{icc},
+\code{n_per_psu} alongside the nominal \code{n_per_psu_nominal}. Empty on the
+estimated path, where the take is a later design choice.}
 }
 The result can be exported with \code{\link[=as.data.frame]{as.data.frame()}}. Unstratified results
 become a one-row two- or three-stage component table. Stratified results
-return the table stored in \verb{$strata}.
+return the table stored in \verb{$strata}. A backed-out result adds
+\code{n_per_psu} and \code{source} to that row, and carries \code{NA} in the three
+fields a design effect does not identify.
 }
 \description{
 Estimate between- and within-stage variance components using nested
-ANOVA decomposition. Supports SRS and PPS first-stage designs.
+ANOVA decomposition, from frame data, from a sample, or from a previous
+round's published design effect. Supports SRS and PPS first-stage
+designs.
 }
 \details{
 The interface is determined by the class of \code{x}:
@@ -80,10 +131,12 @@ LHS is the analysis variable, RHS terms express nesting using
 outermost stage comes first, whereas with \code{\%in\%} the innermost comes
 first. Be careful not to reverse the order.
 \item \strong{Numeric vector}: \code{varcomp(y, stage_id = list(cluster_ids))}.
-\item \strong{survey.design}: \code{varcomp(design, ~y)}. Cluster structure and
-design weights are extracted from the design object. Requires the
-survey package. For a PPS first stage, also pass the PSU selection
-probabilities via \code{prob}.
+\item \strong{survey.design}: \code{varcomp(design, ~y)}. Cluster structure,
+first-stage strata, and within-cluster weights are extracted from the
+design object; \code{strata} and \code{weights} override what is extracted.
+Requires the survey package. For a PPS first stage, also pass the PSU
+selection probabilities via \code{prob}. Which designs can supply their own
+weights is set out under Details.
 }
 
 The formula and vector interfaces compute frame components: \code{data}
@@ -107,6 +160,25 @@ Informative within-cluster sampling remains approximate. In the
 element-stage estimation noise but not SSU-stage subsampling noise,
 so when few SSUs are sampled per PSU the between-PSU component (and
 \code{icc_psu}) is conservative: biased upward, never downward.
+\subsection{What a survey.design can supply on its own}{
+
+The \code{survey.design} method needs those same within-cluster weights, and
+whether it can recover them depends on how the design was built rather
+than on how deep its \code{ids} goes. A design built with per-stage
+probabilities, \code{svydesign(ids = ~psu, probs = ~p1 + p2)}, keeps the
+stages apart, and the columns after the first multiply to exactly the
+weight required. A design built with \verb{weights=} stores one combined
+weight per element however many stages \code{ids} names, and the stage-1
+factor cannot be divided back out of it.
+
+Unit weights describe a frame and pass straight through. Any other
+single-column weight is refused rather than guessed at, because a design
+declared as \code{ids = ~psu} carrying a full design weight is equally
+consistent with a census inside each selected cluster and with a
+two-stage design that folded its second stage into the weight, and those
+give materially different components. Supply the conditional weights
+through \verb{weights=} in that case, as a one-sided formula naming a design
+variable or as a numeric vector.
 
 When \code{prob} is \code{NULL}, SRS first-stage is assumed. When provided, PPS
 variance estimation is used. \code{prob} must sum to 1 across the PSUs
@@ -129,17 +201,73 @@ Unlike the traditional ANOVA
 intraclass correlation coefficient, \code{icc} is constrained to \eqn{[0, 1]}
 and should not be compared directly to mixed-model ICCs (e.g. from lme4)
 which can be negative.
+}
+
+\subsection{From a published design effect}{
+
+The most widely available source of an \code{icc} is a previous round's
+report, which publishes a design effect and an average cluster take
+rather than the microdata the other interfaces need. Leaving \code{x} unset
+inverts the two-stage clustering identity used by \code{\link[=design_effect]{design_effect()}},
+\deqn{D = k(1 + \delta(b - 1)) \quad\Longrightarrow\quad
+      \delta = (D/k - 1)/(b - 1),}{D = k(1 + delta(b - 1)) => delta = (D/k - 1)/(b - 1),}
+and returns the \code{icc} in a \code{svyplan_varcomp} the cluster functions
+accept:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{vc <- varcomp(deff = 1.8, n_per_psu = 20)
+n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5)
+}\if{html}{\out{</div>}}
+
+A scalar design effect fixes one product and nothing more, so \code{varb},
+\code{varw} and \code{unit_relvar} come back \code{NA_real_}: they are not identified.
+Functions that need the unit relvariance, such as \code{\link[=n_cluster]{n_cluster()}} with a
+\code{cv} target, say so and ask for it directly.
+
+Where the report gives a standard error instead of a design effect,
+\code{se} with the quantity it refers to forms the design effect against the
+simple random sample of the same size, \eqn{D = s^2 / (pq/n)} for a
+proportion and \eqn{D = s^2 / (S^2/n)} for a mean.
+\subsection{Which take identifies the icc}{
+
+The \eqn{b} in the identity is the \strong{size-weighted} average number of
+sampled units per PSU,
+\deqn{b^* = \sum_i b_i^2 / \sum_i b_i = \bar b (1 + cv_b^2),}{b^* = sum_i b_i^2 / sum_i b_i = bbar (1 + cv_b^2),}
+with \eqn{cv_b} the population coefficient of variation of the realized
+takes. A \emph{planned} take is a constant, so \eqn{cv_b = 0} and
+\eqn{b^* = b}: the forward direction in \code{\link[=design_effect]{design_effect()}} never meets
+the distinction. A \emph{published} design effect was achieved with takes
+that varied, and since \eqn{\delta} moves inversely with \eqn{b - 1},
+using the nominal take understates it by roughly the same relative
+amount that \eqn{b^*} exceeds the nominal figure, about 9 percent at a
+30 percent coefficient of variation. Report tables carry the nominal
+figure, which is the one a reader reaches for, so supply the realized
+takes or their coefficient of variation where they are known:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{varcomp(deff = 1.8, n_per_psu = 20)                  # constant take
+varcomp(deff = 1.8, n_per_psu = takes)               # realized takes
+varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)   # summary form
+}\if{html}{\out{</div>}}
+
+The take is stored in \verb{$params} as provenance, since the same \code{icc}
+means different things at a take of 12 and of 30, and
+\code{\link[=design_effect]{design_effect()}} does not read it back: the reason to back an \code{icc}
+out at all is to re-plan at a different take, and defaulting to the old
+one would return the old design's number.
+}
+
+}
+
 \subsection{Component estimands}{
 
 For two-stage SRS, let \eqn{M} be the number of PSUs, \eqn{N_i} the
 ultimate-unit count in PSU \eqn{i}, \eqn{t_i} its outcome total, and
 \eqn{S_i^2} its within-PSU variance. With
-\eqn{t_U=M\bar t}, the complete-frame components returned are
+\eqn{t_U=M\bar t}{t_U=M tbar}, the complete-frame components returned are
 \deqn{V_b=s^2(t_i)/\bar t^2, \qquad
-      V_w=M\sum_iN_i^2S_i^2/t_U^2.}
+      V_w=M\sum_iN_i^2S_i^2/t_U^2.}{V_b=s^2(t_i)/tbar^2, V_w=M sum_iN_i^2S_i^2/t_U^2.}
 For PPS with one-draw probabilities \eqn{p_i}, they are
 \deqn{V_b=\sum_i p_i(t_i/p_i-t_U)^2/t_U^2, \qquad
-      V_w=\sum_iN_i^2S_i^2/(p_it_U^2).}
+      V_w=\sum_iN_i^2S_i^2/(p_it_U^2).}{V_b=sum_i p_i(t_i/p_i-t_U)^2/t_U^2, V_w=sum_iN_i^2S_i^2/(p_it_U^2).}
 In both cases \code{unit_relvar} is the ultimate-unit variance divided by the
 squared ultimate-unit mean, \code{icc = varb / (varb + varw)}, and
 \code{var_ratio = (varb + varw) / unit_relvar}.
@@ -185,11 +313,14 @@ to 1 within each stratum.
 \itemize{
 \item \code{varcomp(formula)}: Method for formula interface.
 
-\item \code{varcomp(default)}: Default method for numeric vectors.
+\item \code{varcomp(default)}: Default method for numeric vectors, and for the
+back-out from a published design effect (leave \code{x} unset).
 
 \item \code{varcomp(survey.design)}: Method for survey design objects. Pass a one-sided
 formula (e.g., \code{~y}) to specify the outcome variable. Cluster
-structure and design weights are extracted from the design.
+structure, first-stage strata, and within-cluster weights are
+extracted from the design; \code{strata} and \code{weights} override what is
+extracted.
 
 }}
 \examples{
@@ -246,6 +377,19 @@ vc3_pps <- varcomp(income ~ district/village, data = frame3, prob = ~pp)
 varcomp(frame3$income,
         stage_id = list(frame3$district, frame3$village))
 
+# Back an icc out of a previous round's published design effect
+vc <- varcomp(deff = 1.8, n_per_psu = 20)
+vc
+
+# Re-plan at a different take: the reason to back the icc out
+design_effect(vc, n_per_psu = 12)
+
+# Realized takes varied around a nominal 20
+varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)
+
+# From a published standard error instead
+varcomp(se = 0.021, p = 0.30, n = 1200, n_per_psu = 20)
+
 }
 \references{
 Valliant, R., Dever, J. A., and Kreuter, F. (2018).
@@ -256,5 +400,6 @@ Hansen, M. H., Hurwitz, W. N., and Madow, W. G. (1953).
 \emph{Sample Survey Methods and Theory} (Vol. I). Wiley.
 }
 \seealso{
-\code{\link[=n_cluster]{n_cluster()}} which accepts a \code{svyplan_varcomp} as \code{icc}.
+\code{\link[=n_cluster]{n_cluster()}} which accepts a \code{svyplan_varcomp} as \code{icc},
+\code{\link[=design_effect]{design_effect()}} for the forward identity the back-out inverts.
 }

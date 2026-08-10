@@ -4,7 +4,7 @@
 \alias{n_mean}
 \alias{n_mean.default}
 \alias{n_mean.svyplan_prec}
-\title{Sample Size for a Mean}
+\title{Sample size for a mean}
 \usage{
 n_mean(var = NULL, ...)
 
@@ -15,14 +15,16 @@ n_mean(var = NULL, ...)
   mu = NULL,
   moe = NULL,
   cv = NULL,
+  rmoe = NULL,
   alpha = 0.05,
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  df = NULL,
   plan = NULL
 )
 
-\method{n_mean}{svyplan_prec}(var, ..., moe = NULL, cv = NULL)
+\method{n_mean}{svyplan_prec}(var, ..., moe = NULL, cv = NULL, rmoe = NULL)
 }
 \arguments{
 \item{var}{For the default method: population variance \eqn{S^2}.
@@ -37,21 +39,27 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_mean]
 \code{var}. Supply exactly one of \code{var} or \code{sd}. Stratum frames and
 published survey reports usually quote standard deviations.}
 
-\item{mu}{Population mean. Required when \code{cv} is
-specified, because CV is defined as SE / mean.}
+\item{mu}{Population mean. Required when \code{cv} or \code{rmoe} is
+specified, both being defined against the mean.}
 
 \item{moe}{Desired margin of error, the half-width of the confidence
 interval, in the same units as the variable. For example, if
 measuring income in dollars, \code{moe = 50} means the 95 percent CI
-should be no wider than +/- $50. Specify exactly one of \code{moe}
-or \code{cv}.}
+should be no wider than +/- $50. Specify exactly one of \code{moe},
+\code{cv}, or \code{rmoe}.}
 
 \item{cv}{Target coefficient of variation (relative standard error).
 For example, \code{cv = 0.05} means the standard error should be at
 most 5 percent of the estimate. Use \code{cv} when you want precision
 to scale with the estimate (common in economic surveys). Use \code{moe}
 when you want a fixed absolute precision. Requires \code{mu}. Specify
-exactly one of \code{moe} or \code{cv}.}
+exactly one of \code{moe}, \code{cv}, or \code{rmoe}.}
+
+\item{rmoe}{Target margin of error relative to \code{mu}, so \code{rmoe = 0.05}
+asks for a 95 percent interval whose half-width is 5 percent of the
+mean. It is \code{moe / abs(mu)}, taken on the magnitude so that a
+negative mean gives a positive margin of error, and it requires
+\code{mu}. Specify exactly one of \code{moe}, \code{cv}, or \code{rmoe}.}
 
 \item{alpha}{Significance level, default 0.05.}
 
@@ -67,6 +75,12 @@ designs (e.g., stratified sampling with Neyman allocation).}
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The required sample size is inflated by \code{1 / resp_rate}.}
 
+\item{df}{Degrees of freedom of the variance estimator the planned design
+will have, typically sampled PSUs minus strata, and available from
+\code{\link[=design_df]{design_df()}}. It switches the interval quantile from normal to t.
+\code{NULL} (default) applies no adjustment. See \code{\link[=n_prop]{n_prop()}} for the full
+account.}
+
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
@@ -79,14 +93,14 @@ units to release, not the completed interviews. \verb{$n} and
 round trip through \code{\link[=prec_mean]{prec_mean()}} exact; \code{print()} and
 \code{as.integer()} round it up to the whole units you would field.
 Take the field figure from \code{as.integer()} rather than from \verb{$n}.}
-\item{\code{se}, \code{moe}, \code{cv}}{Precision the design achieves at that \code{n},
-the same values \code{\link[=prec_mean]{prec_mean()}} reports for the same inputs. \code{moe}
-is \code{qnorm(1 - alpha / 2) * se}, and the interval is symmetric
-about the mean. \code{cv} is \code{NA} unless \code{mu} was supplied, since a
-relative standard error needs a mean to be relative to.}
+\item{\code{se}, \code{moe}, \code{cv}, \code{rmoe}}{Precision the design achieves at that
+\code{n}, the same values \code{\link[=prec_mean]{prec_mean()}} reports for the same inputs.
+\code{moe} is \code{qnorm(1 - alpha / 2) * se}, and the interval is symmetric
+about the mean. \code{cv} and \code{rmoe} are \code{NA} unless \code{mu} was supplied,
+both needing a mean to be relative to.}
 \item{\code{params}}{The validated inputs (\code{var}, \code{alpha}, \code{N}, \code{deff},
-\code{resp_rate}, \code{mu} when given, and whichever of \code{moe} or \code{cv} was
-the target). Dispersion is always stored as \code{var}, including when
+\code{resp_rate}, \code{mu} when given, and whichever of \code{moe}, \code{cv}, or
+\code{rmoe} was the target). Dispersion is always stored as \code{var}, including when
 you supplied \code{sd}. \code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the \code{\link[=prec_mean]{prec_mean()}}
 round trip read the design back from here.}
 }
@@ -99,6 +113,7 @@ with a specified margin of error or coefficient of variation.
 Two modes:
 \itemize{
 \item \strong{MOE mode}: \code{n = deff * z^2 * var / (moe^2 + deff * z^2 * var / N)}.
+An \code{rmoe} target enters here as \code{moe = rmoe * abs(mu)}.
 \item \strong{CV mode}: Computes \code{CVpop = sqrt(var) / abs(mu)}, then
 \code{n = deff * CVpop^2 / (cv^2 + deff * CVpop^2 / N)}.
 }
@@ -123,13 +138,13 @@ sampling where the sample size is large enough for the CLT to apply.
 \subsection{Sample size for a total}{
 
 A separate \code{n_total()} function is not needed because the sample size
-for a population total \eqn{\hat{Y} = N \bar{y}} is identical to
+for a population total \eqn{\hat{Y} = N \bar{y}}{Yhat = N ybar} is identical to
 the sample size for the mean. The two are related by a factor of
 \eqn{N}:
 \itemize{
-\item \strong{CV mode}: \eqn{CV(\hat{Y}) = CV(\bar{y})}, so the required
+\item \strong{CV mode}: \eqn{CV(\hat{Y}) = CV(\bar{y})}{CV(Yhat) = CV(ybar)}, so the required
 sample size is the same. Use \code{n_mean(var, mu, cv)} directly.
-\item \strong{MOE mode}: \eqn{MOE(\hat{Y}) = N \times MOE(\bar{y})}, so
+\item \strong{MOE mode}: \eqn{MOE(\hat{Y}) = N \times MOE(\bar{y})}{MOE(Yhat) = N * MOE(ybar)}, so
 divide the target MOE for the total by \eqn{N}:
 \code{n_mean(var, moe = moe_total / N, N = N)}.
 }
@@ -144,10 +159,13 @@ n_mean(var = 100, moe = 2)
 # CV mode
 n_mean(var = 100, mu = 50, cv = 0.05)
 
+# Relative MOE mode: interval half-width 5 percent of the mean
+n_mean(var = 100, mu = 50, rmoe = 0.05)
+
 # With FPC, design effect, and response rate
 n_mean(var = 100, moe = 2, N = 5000, deff = 1.5, resp_rate = 0.8)
 
-# --- Sample size for a total ---
+## Sample size for a total
 # Target: estimate total income (N = 10000) with MOE of 500000
 n_mean(var = 2500, moe = 500000 / 10000, N = 10000)
 
@@ -165,4 +183,16 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 \seealso{
 \code{\link[=n_prop]{n_prop()}} for proportions, \code{\link[=n_cluster]{n_cluster()}} for multistage designs,
 \code{\link[=n_multi]{n_multi()}} for multiple indicators, \code{\link[=prec_mean]{prec_mean()}} for the inverse.
+
+Other sample size functions:
+\code{\link[=n_alloc]{n_alloc()}},
+\code{\link[=n_change]{n_change()}},
+\code{\link[=n_cluster]{n_cluster()}},
+\code{\link[=n_multi]{n_multi()}},
+\code{\link[=n_multi_cluster]{n_multi_cluster()}},
+\code{\link[=n_panel]{n_panel()}},
+\code{\link[=n_pooled]{n_pooled()}},
+\code{\link[=n_prop]{n_prop()}},
+\code{\link[=n_twophase]{n_twophase()}}
 }
+\concept{sample size functions}

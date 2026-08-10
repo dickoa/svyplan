@@ -18,9 +18,9 @@ test_that("prec_cluster computes CV for 3-stage", {
   expect_equal(result$cv, cv_exp, tolerance = 1e-6)
 })
 
-test_that("prec_cluster with resp_rate deflates stage-1", {
+test_that("prec_cluster with resp_rate_psu deflates stage-1", {
   base <- prec_cluster(n = c(50, 12), icc = 0.05)
-  rr <- prec_cluster(n = c(50, 12), icc = 0.05, resp_rate = 0.8)
+  rr <- prec_cluster(n = c(50, 12), icc = 0.05, resp_rate_psu = 0.8)
   cv_exp <- sqrt(1 / (40 * 12) * (1 + 0.05 * 11))
   expect_equal(rr$cv, cv_exp, tolerance = 1e-6)
   expect_true(rr$cv > base$cv)

@@ -23,6 +23,9 @@ reference:
   contents:
   - n_prop
   - n_mean
+  - n_change
+  - n_panel
+  - n_pooled
   - n_cluster
   - n_multi
   - n_multi_cluster
@@ -34,6 +37,9 @@ reference:
   contents:
   - prec_prop
   - prec_mean
+  - prec_change
+  - prec_panel
+  - prec_pooled
   - prec_cluster
   - prec_multi
   - prec_multi_cluster
@@ -58,10 +64,12 @@ reference:
   - strata_bound
   - predict.svyplan_strata
 
-- title: Design effects
-  desc: Plan design effects and effective sample sizes.
+- title: Design effects and degrees of freedom
+  desc: Plan design effects, effective sample sizes, and design df.
   contents:
   - design_effect
+  - design_df
+  - design_overlap
   - effective_n
 
 - title: Confidence intervals
@@ -74,6 +82,9 @@ reference:
   contents:
   - print.svyplan
   - print.svyplan_deff
+  - print.svyplan_df
+  - print.svyplan_overlap
+  - print.svyplan_panel
 
 - title: Predict methods
   desc: Grid exploration for svyplan objects.
@@ -84,3 +95,4 @@ reference:
   desc: Plot svyplan objects.
   contents:
   - plot.svyplan
+  - plot.svyplan_overlap

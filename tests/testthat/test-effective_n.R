@@ -112,7 +112,7 @@ test_that("effective_n takes a response rate for a bare n", {
 
 test_that("a cluster plan carries its own response rate", {
   plan <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
-                    resp_rate = 0.8)
+                    resp_rate_psu = 0.8)
   expect_equal(
     as.double(effective_n(plan)),
     plan$total_n * 0.8 / as.double(design_effect(plan))

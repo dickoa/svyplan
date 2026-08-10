@@ -52,6 +52,7 @@
     se = se,
     moe = moe,
     cv = cv,
+    rmoe = .rmoe_for_result(moe, type, params),
     indicators = indicators,
     targets = targets,
     detail = detail,
@@ -59,6 +60,8 @@
     domains = domains,
     operational = operational
   )
+  cases <- .expected_cases(n, params, type)
+  if (!is.null(cases)) out$expected_cases <- cases
   # Preserve the exact legacy schema unless the optional generalized
   # allocation diagnostics are actually present.
   if (!is.null(constraints)) out$constraints <- constraints
@@ -67,6 +70,71 @@
   if (!is.null(objective_value)) out$objective_value <- objective_value
 
   structure(out, class = c("svyplan_n", "list"))
+}
+
+#' The achieved margin of error on the estimand's own scale
+#'
+#' Reported wherever `moe` is, so a target stated as `rmoe` reads back in
+#' the units it was stated in. The scale is the estimand the interval
+#' bounds, `p` for a proportion and `mu` for a mean; a result whose
+#' estimand has no known scale reports `NA`, which is what `$cv` already
+#' does in an allocation over a frame carrying neither.
+#' @keywords internal
+#' @noRd
+.rmoe_for_result <- function(moe, type, params) {
+  estimand <- switch(
+    type,
+    proportion = params$p,
+    mean = params$mu,
+    change = params$change,
+    pooled = params$mu,
+    multi = .indicator_estimand(params$indicators, length(moe)),
+    alloc = .alloc_estimand(params$frame),
+    NULL
+  )
+  .rmoe_from_moe(moe, estimand)
+}
+
+#' The population mean an allocation's overall margin of error refers to
+#'
+#' The size-weighted mean of the stratum means, which is the estimand the
+#' top-level `se` and `moe` describe. `NULL` when the frame carries neither
+#' `mean` nor `p`, the same state that leaves `$cv` `NA`.
+#' @keywords internal
+#' @noRd
+.alloc_estimand <- function(frame) {
+  if (!is.data.frame(frame) || !"N" %in% names(frame)) {
+    return(NULL)
+  }
+  mean_h <- if ("mean" %in% names(frame)) {
+    frame$mean
+  } else if ("p" %in% names(frame)) {
+    frame$p
+  } else {
+    return(NULL)
+  }
+  if (!is.numeric(mean_h) || anyNA(mean_h)) {
+    return(NULL)
+  }
+  .aggregate_mean(frame$N / sum(frame$N), mean_h)
+}
+
+#' The per-row estimand of an indicator table, or NULL when it has none
+#'
+#' A table may hold proportion rows, mean rows, or both, so the scale is
+#' taken column by column rather than from the table's type.
+#' @keywords internal
+#' @noRd
+.indicator_estimand <- function(indicators, n_rows) {
+  if (!is.data.frame(indicators) || nrow(indicators) != n_rows) {
+    return(NULL)
+  }
+  out <- rep(NA_real_, n_rows)
+  if ("p" %in% names(indicators)) out <- as.numeric(indicators$p)
+  if ("mu" %in% names(indicators)) {
+    out <- ifelse(is.na(out), as.numeric(indicators$mu), out)
+  }
+  out
 }
 
 #' Compute precision measures from n and params
@@ -83,10 +151,10 @@
 
   if (type == "proportion") {
     .prec_engine_prop(params$p, n, params$alpha, N, deff, resp_rate,
-                      method %||% "wald")
+                      method %||% "wald", params$df)
   } else if (type == "mean") {
     .prec_engine_mean(params$var, params$mu, n, params$alpha, N, deff,
-                      resp_rate)
+                      resp_rate, params$df)
   } else {
     list(se = NA_real_, moe = NA_real_, cv = NA_real_)
   }
@@ -124,6 +192,8 @@
     is.null(operational) || is.list(operational)
   )
 
+  .warn_single_psu((operational$n %||% n)[[1L]])
+
   structure(
     list(
       n = n,
@@ -156,6 +226,8 @@
   params = list(),
   detail = NULL,
   bounds = NULL,
+  domains = NULL,
+  solved = NULL,
   objective = NULL,
   objective_value = NULL
 ) {
@@ -171,6 +243,7 @@
     is.list(params),
     is.null(detail) || is.data.frame(detail),
     is.null(bounds) || is.data.frame(bounds),
+    is.null(domains) || is.data.frame(domains),
     is.null(objective) || is.data.frame(objective),
     is.null(objective_value) ||
       (is.numeric(objective_value) && length(objective_value) == 1L)
@@ -180,12 +253,19 @@
     se = se,
     moe = moe,
     cv = cv,
+    rmoe = .rmoe_for_result(moe, type, params),
     type = type,
     method = method,
     params = params,
     detail = detail
   )
+  cases <- .expected_cases(params$n, params, type)
+  if (!is.null(cases)) out$expected_cases <- cases
   if (!is.null(bounds)) out$bounds <- bounds
+  if (!is.null(domains)) out$domains <- domains
+  # Recorded only when the level was solved for, so a result computed in
+  # the usual direction keeps the schema it has always had.
+  if (!is.null(solved)) out$solved <- solved
   if (!is.null(objective)) out$objective <- objective
   if (!is.null(objective_value)) out$objective_value <- objective_value
 
@@ -202,12 +282,18 @@
   var_ratio,
   unit_relvar,
   stages,
-  strata = NULL
+  strata = NULL,
+  source = "data",
+  params = list()
 ) {
   stopifnot(
     is.numeric(stages),
     length(stages) == 1L,
-    is.null(strata) || is.data.frame(strata)
+    is.null(strata) || is.data.frame(strata),
+    is.character(source),
+    length(source) == 1L,
+    source %in% c("data", "deff"),
+    is.list(params)
   )
   if (is.null(strata)) {
     stopifnot(
@@ -235,7 +321,9 @@
       var_ratio = var_ratio,
       unit_relvar = unit_relvar,
       stages = stages,
-      strata = strata
+      strata = strata,
+      source = source,
+      params = params
     ),
     class = c("svyplan_varcomp", "list")
   )
@@ -345,6 +433,123 @@
     notes = notes,
     class = c("svyplan_deff", "numeric")
   )
+}
+
+#' Construct a svyplan_df object
+#'
+#' A classed numeric scalar, following `svyplan_deff`, so a planned design's
+#' degrees of freedom stay usable as a plain number wherever one is
+#' expected while still carrying the per-stratum and per-domain detail they
+#' were counted from.
+#' @keywords internal
+#' @noRd
+.new_svyplan_df <- function(df, n_units, n_strata, stage, strata = NULL,
+                            domains = NULL) {
+  stopifnot(
+    is.numeric(df),
+    length(df) == 1L,
+    !is.na(df),
+    is.finite(df),
+    is.numeric(n_units),
+    length(n_units) == 1L,
+    is.numeric(n_strata),
+    length(n_strata) == 1L,
+    is.character(stage),
+    length(stage) == 1L,
+    stage %in% c("psu", "element"),
+    is.null(strata) || is.data.frame(strata),
+    is.null(domains) || is.data.frame(domains)
+  )
+
+  structure(
+    as.double(df),
+    n_units = as.double(n_units),
+    n_strata = as.integer(n_strata),
+    stage = stage,
+    strata = strata,
+    domains = domains,
+    class = c("svyplan_df", "numeric")
+  )
+}
+
+#' Construct a svyplan_panel object
+#'
+#' A sibling of `svyplan_n` rather than a subtype: the headline number is a
+#' recruitment count, and the methods registered for an analysis sample
+#' would each answer a different question about it. The recruitment is
+#' stored under a design-specific name, `n_issued` for the one cohort a
+#' fixed panel releases and `n_entrants` for what a rotating design takes on
+#' each occasion, because those are different quantities and one name over
+#' both is how the wrong one gets read.
+#' @keywords internal
+#' @noRd
+.new_svyplan_panel <- function(design, n_recruit, n_target, n_resp, n_assured,
+                               assured_feasible, target_wave, waves, prec,
+                               target, solved, params, start = NULL,
+                               launch = NULL, launch_waves = NULL) {
+  stopifnot(
+    is.character(design),
+    length(design) == 1L,
+    design %in% c("fixed", "rotating"),
+    is.numeric(n_recruit),
+    length(n_recruit) == 1L,
+    is.numeric(n_target),
+    length(n_target) == 1L,
+    is.numeric(n_resp),
+    length(n_resp) == 1L,
+    is.null(n_assured) || (is.numeric(n_assured) && length(n_assured) == 1L),
+    is.null(assured_feasible) ||
+      (is.logical(assured_feasible) && length(assured_feasible) == 1L),
+    is.data.frame(waves),
+    is.list(prec),
+    is.list(params),
+    is.null(start) ||
+      (is.character(start) && length(start) == 1L &&
+         start %in% c("gradual", "immediate")),
+    is.null(launch) || is.data.frame(launch),
+    is.null(launch_waves) || is.data.frame(launch_waves),
+    # a launch is a property of a rotating design, and the three fields are
+    # one fact, so they arrive together or not at all
+    is.null(start) == is.null(launch),
+    is.null(start) == is.null(launch_waves),
+    is.null(start) || !identical(design, "fixed")
+  )
+  k <- nrow(waves)
+
+  out <- list(design = design)
+  if (!is.null(start)) out$start <- start
+  if (identical(design, "fixed")) {
+    out$n_issued <- n_recruit
+    out$target_wave <- target_wave
+  } else {
+    out$n_entrants <- n_recruit
+    out$n_in_sample <- k * n_recruit
+    out$n_cohorts <- k
+  }
+  out$n_target <- n_target
+  out$n_resp <- n_resp
+  if (!is.null(n_assured)) {
+    out$n_assured <- n_assured
+    out$assured_feasible <- isTRUE(assured_feasible)
+  }
+  out$se <- prec$se
+  out$moe <- prec$moe
+  out$cv <- prec$cv
+  out$rmoe <- prec$rmoe
+  out$type <- target$type
+  out$method <- target$method
+  out$waves <- waves
+  if (!is.null(launch)) {
+    out$launch <- launch
+    out$launch_waves <- launch_waves
+  }
+  out$target <- target
+  # Recorded only in the forward direction, matching svyplan_prec, so a
+  # result read from a recruitment carries no claim to have solved for it.
+  if (!is.null(solved)) out$solved <- solved
+  out$params <- params
+
+  structure(out, class = c("svyplan_panel", "list"))
 }
 
 #' Construct a svyplan_twophase object

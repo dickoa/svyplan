@@ -4,7 +4,7 @@
 \alias{n_multi_cluster}
 \alias{n_multi_cluster.default}
 \alias{n_multi_cluster.svyplan_prec}
-\title{Multi-Indicator Sample Size for Cluster Designs}
+\title{Multi-indicator sample size for cluster designs}
 \usage{
 n_multi_cluster(indicators, ...)
 
@@ -18,6 +18,7 @@ n_multi_cluster(indicators, ...)
   n_per_psu = NULL,
   n_per_ssu = NULL,
   allocation = c("separate", "joint"),
+  domain_sampling = c("separate", "natural"),
   min_n_domain = NULL,
   fixed_cost = 0,
   plan = NULL
@@ -27,8 +28,9 @@ n_multi_cluster(indicators, ...)
 }
 \arguments{
 \item{indicators}{For the default method, a non-empty data frame with one row
-per indicator. Each row requires \code{p} or \code{var}, a \code{cv} or \code{moe} target,
-and \code{icc_psu}. Three-stage designs also require \code{icc_ssu}. Optional
+per indicator. Each row requires \code{p} or \code{var}, a \code{cv}, \code{moe}, or
+\code{rmoe} target, and \code{icc_psu}. Three-stage designs also require
+\code{icc_ssu}. Optional
 \code{var_ratio_psu} defaults to 1; three-stage \code{var_ratio_ssu} is derived as
 \code{var_ratio_psu * (1 - icc_psu)} when absent, the value the variance
 decomposition implies (see \code{\link[=design_effect]{design_effect()}}). For the \code{svyplan_prec}
@@ -41,7 +43,12 @@ rejected.}
 
 \item{domains}{Optional character vector naming domain columns in
 \code{indicators}. The function solves each domain independently unless
-\code{allocation = "joint"} in budget mode.}
+\code{allocation = "joint"} in budget mode. Domains are sized as separate
+quotas, so \verb{$total_n} is their sum and \verb{$n} carries no aggregate stage
+vector; the fieldable per-domain stage sizes are in \verb{$domains}.
+\code{domain_sampling = "natural"} is refused here, because a domain's
+expected yield in a multistage design depends on how its members sit
+inside PSUs and SSUs rather than on its population share alone.}
 
 \item{budget}{Optional total budget. Supply precision indicators or a budget,
 according to the target schema described in Details.}
@@ -58,6 +65,13 @@ only for three-stage designs.}
 (one budget split across domains to minimize the worst precision
 ratio). \code{"joint"} applies only when \code{domains} and \code{budget} are
 supplied.}
+
+\item{domain_sampling}{How the per-domain requirements combine into one
+overall size. Only \code{"separate"} (the default) is available here, and
+\verb{$total_n} is then the sum of the per-domain totals. \code{"natural"} is
+refused: a domain's expected yield in a multistage design depends on
+how its members sit inside PSUs and SSUs rather than on its share of
+the population alone, and that model is not in the package.}
 
 \item{min_n_domain}{Optional positive minimum total sample size per domain. In
 joint budget mode it is a constraint. In independent domain mode,
@@ -78,10 +92,30 @@ requirements for several survey indicators. Domain-level planning and a
 shared budget across domains are supported.
 }
 \details{
+The indicator columns follow \code{\link[=n_multi]{n_multi()}}, with one difference that matters.
+Nonresponse is named for the stage it acts on: \code{resp_rate_psu} for
+clusters that cannot be worked at all, \code{resp_rate_ssu} for second-stage
+units in a three-stage design, and \code{resp_rate} for the ultimate units.
+They are not interchangeable, and \code{\link[=n_cluster]{n_cluster()}} sets out why. A column
+naming a stage the design does not have is an error rather than a column
+carried along and ignored, since a silently dropped response rate plans a
+design with none.
+
 Margin-of-error indicators are converted to CV before optimization. For each
 candidate allocation, the required stage-1 size is the maximum across all
 indicators. The solver minimizes total cost for precision indicators or the
 worst precision ratio under a fixed budget.
+
+That conversion respects the row's \code{prop_method}. The multistage model is
+driven by a relative standard error, and only the Wald interval has
+half-width \code{z * se}, so a proportion row's \code{moe} is restated as the
+sampling CV at the effective sample size its own method needs to close the
+interval to that margin. A stricter interval therefore asks for a larger
+design, in the same order it does in \code{\link[=n_prop]{n_prop()}}. Under \code{"wald"} the
+restatement is \code{moe / (z * p)} exactly. A mean row converts as
+\verb{moe / (z * |mu|)}, on the magnitude so that a negative mean yields a
+positive target. \code{\link[=prec_multi_cluster]{prec_multi_cluster()}} inverts the same way, so a design
+sized from a \code{moe} target reports that \code{moe} back.
 
 Homogeneity values numerically close to 0 or 1 are rejected because they
 make the analytical cluster optimum degenerate. The result includes an
@@ -117,4 +151,16 @@ n_multi_cluster(indicators, stage_cost = c(500, 50))
 \code{\link[=n_multi]{n_multi()}} for simple designs, \code{\link[=n_cluster]{n_cluster()}} for a single
 indicator, \code{\link[=n_alloc]{n_alloc()}} for stratified multistage allocation, and
 \code{\link[=prec_multi_cluster]{prec_multi_cluster()}} for the inverse calculation.
+
+Other sample size functions:
+\code{\link[=n_alloc]{n_alloc()}},
+\code{\link[=n_change]{n_change()}},
+\code{\link[=n_cluster]{n_cluster()}},
+\code{\link[=n_mean]{n_mean()}},
+\code{\link[=n_multi]{n_multi()}},
+\code{\link[=n_panel]{n_panel()}},
+\code{\link[=n_pooled]{n_pooled()}},
+\code{\link[=n_prop]{n_prop()}},
+\code{\link[=n_twophase]{n_twophase()}}
 }
+\concept{sample size functions}

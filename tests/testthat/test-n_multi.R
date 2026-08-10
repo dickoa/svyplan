@@ -22,7 +22,11 @@ test_that("n_multi rejects non-data-frame", {
 
 test_that("2-stage operational budget design never exceeds the budget", {
   targets <- data.frame(name = "x", p = 0.5, cv = 0.1, icc_psu = 0.05)
-  x <- n_multi_cluster(targets, stage_cost = c(500, 50), budget = 1200)
+  # a budget this small buys one PSU, which warns
+  expect_warning(
+    x <- n_multi_cluster(targets, stage_cost = c(500, 50), budget = 1200),
+    "single PSU"
+  )
 
   expect_lte(x$operational$cost, 1200 + 1e-8)
   expect_true(all(x$operational$n == as.integer(x$operational$n)))
@@ -62,7 +66,7 @@ test_that("n_multi requires p or var column", {
 })
 
 test_that("n_multi requires moe or cv column", {
-  expect_error(nm(data.frame(p = 0.3)), "must contain 'moe' or 'cv'")
+  expect_error(nm(data.frame(p = 0.3)), "must contain a 'moe', 'rmoe', or 'cv' column")
 })
 
 test_that("n_multi rejects p outside (0,1)", {
@@ -85,9 +89,10 @@ test_that("n_multi_cluster requires stage_cost with a fixed n_psu", {
   expect_error(nm(df, n_psu = 50), "'stage_cost' is required")
 })
 
-test_that("multistage requires cv or moe column", {
+test_that("multistage requires a cv, moe, or rmoe column", {
   df <- data.frame(p = 0.3, icc_psu = 0.02)
-  expect_error(nm(df, stage_cost = c(500, 50)), "'moe' or 'cv'")
+  expect_error(nm(df, stage_cost = c(500, 50)),
+               "must contain a 'moe', 'rmoe', or 'cv' column")
 })
 
 test_that("multistage requires icc_psu column", {
@@ -404,7 +409,7 @@ test_that("per-domain results differ when parameters differ", {
   expect_true(res$domains$.n[1] != res$domains$.n[2])
 })
 
-test_that("multi-indicator multi-domain takes max across domains", {
+test_that("multi-indicator multi-domain totals the domain quotas", {
   df <- data.frame(
     name = rep(c("a", "b"), each = 2),
     p = c(0.3, 0.4, 0.1, 0.2),
@@ -412,7 +417,92 @@ test_that("multi-indicator multi-domain takes max across domains", {
     region = rep(c("R1", "R2"), 2)
   )
   res <- nm(df, domains = "region")
-  expect_equal(res$n, max(res$domains$.n), tolerance = 1e-6)
+
+  # Disjoint domains sampled separately need every quota, so the overall size
+  # is their sum. The largest single quota is a different number and is
+  # reported under its own name rather than as $n.
+  expect_equal(res$n, sum(res$domains$.n), tolerance = 1e-6)
+  expect_equal(res$n_domain_max, max(res$domains$.n), tolerance = 1e-6)
+  expect_gt(res$n, res$n_domain_max)
+})
+
+test_that("natural domain sampling sizes for expected yield", {
+  df <- data.frame(
+    name = rep("a", 2),
+    p = c(0.3, 0.3),
+    moe = rep(0.05, 2),
+    region = c("R1", "R2"),
+    share = c(0.25, 0.75)
+  )
+  res <- nm(df, domains = "region", domain_sampling = "natural")
+  expect_equal(res$n, max(res$domains$.n / res$domains$.share),
+               tolerance = 1e-9)
+  expect_equal(res$domains$.share, c(0.25, 0.75))
+
+  # The rare domain binds: it needs the same quota but turns up a third as
+  # often, so it sets the overall size.
+  expect_equal(res$n, res$domains$.n[1] / 0.25, tolerance = 1e-9)
+})
+
+test_that("natural domain sampling validates its shares", {
+  base <- data.frame(
+    name = rep("a", 2), p = c(0.3, 0.3), moe = rep(0.05, 2),
+    region = c("R1", "R2")
+  )
+  expect_error(nm(base, domains = "region", domain_sampling = "natural"),
+               "needs a 'share' column")
+
+  over <- base; over$share <- c(0.7, 0.8)
+  expect_error(nm(over, domains = "region", domain_sampling = "natural"),
+               "cannot exceed 1")
+
+  bad <- base; bad$share <- c(0, 0.5)
+  expect_error(nm(bad, domains = "region", domain_sampling = "natural"),
+               "must be in \\(0, 1\\]")
+
+  # Shares below 1 are allowed: the domains may cover part of a population.
+  partial <- base; partial$share <- c(0.2, 0.3)
+  expect_s3_class(nm(partial, domains = "region",
+                     domain_sampling = "natural"), "svyplan_n")
+})
+
+test_that("a share that varies inside one domain is refused", {
+  df <- data.frame(
+    name = rep(c("a", "b"), each = 2),
+    p = rep(0.3, 4), moe = rep(0.05, 4),
+    region = rep(c("R1", "R2"), 2),
+    share = c(0.4, 0.6, 0.5, 0.6)
+  )
+  expect_error(nm(df, domains = "region", domain_sampling = "natural"),
+               "constant within one")
+})
+
+test_that("multistage domains report no aggregate stage vector", {
+  df <- data.frame(
+    name = rep("a", 2), p = c(0.3, 0.3), cv = c(0.1, 0.1),
+    icc_psu = c(0.02, 0.05), region = c("N", "S")
+  )
+  res <- n_multi_cluster(df, stage_cost = c(500, 50), domains = "region")
+
+  # A componentwise maximum across domains is not a design anyone fields, and
+  # its product disagreed with the reported total. The per-domain stage sizes
+  # are the fieldable object.
+  expect_true(all(is.na(res$n)))
+  expect_equal(names(res$n), c("n_psu", "n_per_psu"))
+  expect_equal(res$total_n, sum(ceiling(res$domains$.total_n)))
+  expect_true(all(c("n_psu", "n_per_psu") %in% names(res$domains)))
+})
+
+test_that("natural domain sampling is refused for multistage designs", {
+  df <- data.frame(
+    name = rep("a", 2), p = c(0.3, 0.3), cv = c(0.1, 0.1),
+    icc_psu = c(0.02, 0.05), region = c("N", "S"), share = c(0.4, 0.6)
+  )
+  expect_error(
+    n_multi_cluster(df, stage_cost = c(500, 50), domains = "region",
+                    domain_sampling = "natural"),
+    "not available for multistage"
+  )
 })
 
 test_that("domains with two grouping columns work", {
@@ -1192,20 +1282,20 @@ test_that("resp_rate is not misdetected as a domain column", {
   expect_null(res$domains)
 })
 
-test_that("2-stage resp_rate: per-indicator inflation in optimization", {
+test_that("2-stage resp_rate_psu: per-indicator inflation in optimization", {
   df_equal <- data.frame(
     name = c("a", "b"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
     icc_psu = c(0.02, 0.05),
-    resp_rate = c(1, 1)
+    resp_rate_psu = c(1, 1)
   )
   df_diff <- data.frame(
     name = c("a", "b"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
     icc_psu = c(0.02, 0.05),
-    resp_rate = c(0.5, 0.9)
+    resp_rate_psu = c(0.5, 0.9)
   )
   res_eq <- nm(df_equal, stage_cost = c(500, 50))
   res_diff <- nm(df_diff, stage_cost = c(500, 50))
@@ -1225,7 +1315,7 @@ test_that("2-stage resp_rate: per-indicator vs global min gives different result
     p = c(0.30, 0.10),
     cv = c(0.10, 0.08),
     icc_psu = c(0.02, 0.05),
-    resp_rate = c(0.5, 0.9)
+    resp_rate_psu = c(0.5, 0.9)
   )
   res <- nm(df, stage_cost = c(500, 50))
   # Verify the resp_rate-adjusted CV still meets target for binding indicator
@@ -1236,7 +1326,7 @@ test_that("2-stage resp_rate: per-indicator vs global min gives different result
   )
 })
 
-test_that("2-stage budget mode: resp_rate affects CV achieved", {
+test_that("2-stage budget mode: resp_rate_psu affects CV achieved", {
   df_no_rr <- data.frame(
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
@@ -1246,7 +1336,7 @@ test_that("2-stage budget mode: resp_rate affects CV achieved", {
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
     icc_psu = c(0.02, 0.05),
-    resp_rate = c(0.8, 0.7)
+    resp_rate_psu = c(0.8, 0.7)
   )
   res_no <- nm(df_no_rr, stage_cost = c(500, 50), budget = 100000)
   res_rr <- nm(df_rr, stage_cost = c(500, 50), budget = 100000)
@@ -1254,14 +1344,14 @@ test_that("2-stage budget mode: resp_rate affects CV achieved", {
   expect_true(max(res_rr$detail$.cv_achieved) > max(res_no$detail$.cv_achieved))
 })
 
-test_that("3-stage resp_rate: per-indicator inflation works", {
+test_that("3-stage resp_rate_psu: per-indicator inflation works", {
   df <- data.frame(
     name = c("a", "b"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
     icc_psu = c(0.01, 0.02),
     icc_ssu = c(0.05, 0.08),
-    resp_rate = c(0.8, 0.7)
+    resp_rate_psu = c(0.8, 0.7)
   )
   res <- nm(df, stage_cost = c(500, 100, 50))
   expect_s3_class(res, "svyplan_cluster")
@@ -1313,7 +1403,7 @@ test_that("uniform resp_rate matches no resp_rate", {
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
     icc_psu = c(0.02, 0.05),
-    resp_rate = c(1, 1)
+    resp_rate_psu = c(1, 1)
   )
   res1 <- nm(df1, stage_cost = c(500, 50))
   res2 <- nm(df2, stage_cost = c(500, 50))
@@ -1985,9 +2075,12 @@ test_that("the dispersion may be given as sd or var, but not both", {
   # and the same spelling works for the cluster and precision entry points
   clustered <- data.frame(name = "y", sd = 10, mu = 50, cv = 0.1,
                           icc_psu = 0.02)
-  expect_s3_class(
-    n_multi_cluster(clustered, stage_cost = c(cost_psu = 500, cost_ssu = 50)),
-    "svyplan_cluster"
+  expect_warning(
+    expect_s3_class(
+      n_multi_cluster(clustered, stage_cost = c(cost_psu = 500, cost_ssu = 50)),
+      "svyplan_cluster"
+    ),
+    "single PSU"
   )
   expect_equal(
     prec_multi(data.frame(name = "y", sd = 10, mu = 50, n = 500))$cv,
@@ -2110,9 +2203,112 @@ test_that("beta needs a MOE target and a valid df", {
             prop_method = "beta"),
     "'df' values must be positive"
   )
-  # df is meaningless outside beta and is rejected rather than ignored
+  # df is the interval quantile for every method, not a beta-only knob, so
+  # a Wald row reads it and widens
+  wide <- n_multi(data.frame(name = "a", p = 0.3, moe = 0.05, df = 20))
+  plain <- n_multi(data.frame(name = "a", p = 0.3, moe = 0.05))
+  expect_gt(wide$n, plain$n)
+})
+
+## Per-indicator minimum expected cases
+
+test_that("a per-row case floor raises only that row's size", {
+  ind <- data.frame(
+    name = c("a", "b"),
+    p = c(0.3, 0.02),
+    moe = c(0.05, 0.01),
+    min_cases = c(NA, 60)
+  )
+  res <- n_multi(ind)
+  base <- n_multi(ind[, setdiff(names(ind), "min_cases")])
+
+  expect_equal(res$detail$.n[1L], base$detail$.n[1L])
+  expect_equal(res$detail$.n[2L], 60 / 0.02)
+  expect_equal(res$n, 3000)
+  expect_identical(res$binding, "b")
+  # the floor lifts the row's size, so the achieved cv beats the target
+  expect_lt(res$detail$.cv_achieved[2L], res$detail$.cv_target[2L])
+})
+
+test_that("a slack case floor leaves the multi-indicator size alone", {
+  ind <- data.frame(
+    name = c("a", "b"),
+    p = c(0.3, 0.02),
+    moe = c(0.05, 0.01),
+    min_cases = c(NA, 10)
+  )
+  base <- n_multi(ind[, setdiff(names(ind), "min_cases")])
+  expect_equal(n_multi(ind)$n, base$n)
+  expect_equal(n_multi(ind)$detail$.n, base$detail$.n)
+})
+
+test_that("a case floor can make a row binding that was not", {
+  ind <- data.frame(
+    name = c("a", "b"),
+    p = c(0.3, 0.02),
+    moe = c(0.05, 0.05),
+    min_cases = c(NA, 200)
+  )
+  expect_identical(n_multi(ind[, 1:3])$binding, "a")
+  expect_identical(n_multi(ind)$binding, "b")
+  expect_equal(n_multi(ind)$n, 200 / 0.02)
+})
+
+test_that("a case floor carries into domain mode", {
+  ind <- data.frame(
+    name = rep(c("a", "b"), 2),
+    region = rep(c("N", "S"), each = 2),
+    p = c(0.3, 0.02, 0.3, 0.02),
+    moe = c(0.05, 0.01, 0.05, 0.01),
+    min_cases = c(NA, 60, NA, NA)
+  )
+  res <- n_multi(ind, domains = "region")
+  expect_equal(res$domains$.n[res$domains$region == "N"], 3000)
+  expect_lt(res$domains$.n[res$domains$region == "S"], 3000)
+})
+
+test_that("a case floor is refused where it has no size to raise", {
   expect_error(
-    n_multi(data.frame(name = "a", p = 0.3, moe = 0.05, df = 20)),
-    "'df' applies to method"
+    n_multi(data.frame(name = "m", var = 4, mu = 10, cv = 0.05,
+                       min_cases = 30)),
+    "applies to proportion rows only"
+  )
+  expect_error(
+    n_multi_cluster(
+      data.frame(name = c("a", "b"), p = c(0.3, 0.02), cv = c(0.05, 0.10),
+                 icc_psu = c(0.05, 0.05), min_cases = c(NA, 60)),
+      stage_cost = c(500, 50), budget = 1e6
+    ),
+    "multistage design sizes stages against a cost"
+  )
+  expect_error(
+    prec_multi(data.frame(name = "a", p = 0.3, n = 500, min_cases = 30)),
+    "belongs to n_multi"
+  )
+  expect_error(
+    n_multi(data.frame(name = "a", p = 0.3, moe = 0.05, min_cases = -5)),
+    "'min_cases' values must be positive and finite"
+  )
+})
+
+test_that("an all-NA case floor column changes nothing", {
+  ind <- data.frame(
+    name = c("a", "b"),
+    p = c(0.3, 0.02),
+    moe = c(0.05, 0.01),
+    min_cases = c(NA_real_, NA_real_)
+  )
+  expect_equal(n_multi(ind)$n, n_multi(ind[, 1:3])$n)
+  # and it stays inert where the column could not be honoured at all
+  expect_equal(
+    n_multi_cluster(
+      data.frame(name = "a", p = 0.3, cv = 0.05, icc_psu = 0.05,
+                 min_cases = NA_real_),
+      stage_cost = c(500, 50), budget = 1e6
+    )$n,
+    n_multi_cluster(
+      data.frame(name = "a", p = 0.3, cv = 0.05, icc_psu = 0.05),
+      stage_cost = c(500, 50), budget = 1e6
+    )$n
   )
 })

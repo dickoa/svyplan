@@ -85,7 +85,7 @@ check_scalar <- function(x, name, positive = TRUE) {
 #' the scale of the terms that formed it is that zero, and is returned as
 #' an exact one so every caller can keep testing for it directly. The
 #' tolerance is the same relative one [varcomp()] uses to decide that an
-#' outcome is centred on zero.
+#' outcome is centered on zero.
 #' @keywords internal
 #' @noRd
 .aggregate_mean <- function(share, mean) {
@@ -144,7 +144,7 @@ check_proportion <- function(x, name) {
 #' analysis variable and `var_ratio_ssu` does the same for the within-PSU part,
 #' `S_w^2 = S^2 (1 - icc_psu)`. So `var_ratio_ssu` is not free once `var_ratio_psu` and
 #' `icc_psu` are known:
-#' \deqn{k_{ssu} = k_{psu}(1 - \delta_{psu}).}
+#' \deqn{k_{ssu} = k_{psu}(1 - \delta_{psu}).}{k_ssu = k_psu(1 - delta_psu).}
 #' Equivalently `var_ratio_psu icc_psu + var_ratio_ssu = var_ratio_psu`, which is what makes
 #' `D` collapse to `var_ratio_psu` when `m = q = 1` and there is no clustering left
 #' to inflate anything. Defaulting `var_ratio_ssu` to 1 asserts that the within-PSU
@@ -178,14 +178,19 @@ check_proportion <- function(x, name) {
   rep_len(var_ratio, 2L)
 }
 
-#' Check that exactly one of moe/cv is specified
+#' Check that exactly one of moe/cv/rmoe is specified
+#'
+#' `rmoe` is the margin of error relative to the estimand, so it competes
+#' with both of the others: it fixes the same interval half-width `moe`
+#' does, and it states it in the relative units `cv` uses.
 #' @keywords internal
 #' @noRd
-check_precision <- function(moe, cv) {
+check_precision <- function(moe, cv, rmoe = NULL) {
   has_moe <- !is.null(moe)
   has_cv <- !is.null(cv)
-  if (has_moe == has_cv) {
-    stop("specify exactly one of 'moe' or 'cv'", call. = FALSE)
+  has_rmoe <- !is.null(rmoe)
+  if (has_moe + has_cv + has_rmoe != 1L) {
+    stop("specify exactly one of 'moe', 'cv', or 'rmoe'", call. = FALSE)
   }
   if (has_moe) {
     check_scalar(moe, "moe")
@@ -193,7 +198,79 @@ check_precision <- function(moe, cv) {
   if (has_cv) {
     check_scalar(cv, "cv")
   }
+  if (has_rmoe) {
+    check_scalar(rmoe, "rmoe")
+  }
   invisible(TRUE)
+}
+
+#' Turn a relative margin of error into an absolute one
+#'
+#' The single conversion point for the scalar interfaces. `abs()` on the
+#' estimand keeps a negative mean giving a positive margin of error, the
+#' same convention `.convert_moe_to_cv()` uses in the other direction.
+#' Neither current caller can observe the sign, `p` being positive and the
+#' mean formulas reading `moe` squared, so `abs()` is what keeps the
+#' helper right for a caller that reads it unsquared, as
+#' `.indicators_moe_from_rmoe()` does on the table side.
+#' @keywords internal
+#' @noRd
+.moe_from_rmoe <- function(rmoe, estimand, estimand_name) {
+  if (is.null(estimand) || anyNA(estimand)) {
+    stop(
+      sprintf("'%s' is required when 'rmoe' is specified", estimand_name),
+      call. = FALSE
+    )
+  }
+  if (any(estimand == 0)) {
+    stop(
+      sprintf("'rmoe' is undefined at '%s' = 0", estimand_name),
+      call. = FALSE
+    )
+  }
+  rmoe * abs(estimand)
+}
+
+#' Express a margin of error relative to the estimand it bounds
+#'
+#' It answers where `cv` answers, and in the same two edge states: `NA`
+#' when the estimand is unknown, which is what an allocation over a frame
+#' carrying no `mean` or `p` reports, and `Inf` at an estimand of zero,
+#' which no relative quantity is defined against. Both fall out of the
+#' division, so neither is special-cased.
+#' @keywords internal
+#' @noRd
+.rmoe_from_moe <- function(moe, estimand) {
+  if (is.null(estimand) || length(estimand) == 0L) {
+    return(rep(NA_real_, length(moe)))
+  }
+  moe / abs(estimand)
+}
+
+#' Refuse an expected take the planning approximation cannot carry
+#'
+#' Response enters these formulas as a deterministic expected take, `take *
+#' rate`. Below one expected respondent that substitution stops describing
+#' the design: the within-unit variance term it feeds is built for a take
+#' that yields at least one observation. The design itself is perfectly
+#' valid, so the message says the approximation is unsupported there rather
+#' than that the design is impossible.
+#' @keywords internal
+#' @noRd
+.check_expected_take <- function(take, rate, take_name, rate_name) {
+  if (!is.finite(take) || !is.finite(rate)) {
+    return(invisible(TRUE))
+  }
+  if (take * rate >= 1 - 1e-9) {
+    return(invisible(TRUE))
+  }
+  stop(
+    sprintf(
+      "'%s' = %.4g at '%s' = %.4g expects %.4g responses per unit, and this package's expected-take planning approximation is unsupported below one. Raise '%s', raise '%s', or plan the stage with a design that does not rely on it",
+      take_name, take, rate_name, rate, take * rate, take_name, rate_name
+    ),
+    call. = FALSE
+  )
 }
 
 #' Check alpha in (0, 1)
@@ -208,6 +285,64 @@ check_alpha <- function(alpha) {
 #' @noRd
 check_deff <- function(deff) {
   check_scalar(deff, "deff")
+  invisible(TRUE)
+}
+
+#' Resolve a design parameter that may vary by stratum
+#'
+#' Three sources, in decreasing precedence: a length-H vector argument, a
+#' frame column (NA falling back to the scalar), and the scalar argument.
+#' This is the `unit_cost` precedent extended to parameters whose scalar
+#' default is not `NULL`, so "supplied" cannot be detected by missingness.
+#' The `measures` tables of joint mode read `NA` the same way.
+#' @keywords internal
+#' @noRd
+.alloc_resolve_h <- function(arg, frame, name, H, validate) {
+  if (length(arg) > 1L) {
+    if (length(arg) != H) {
+      stop(sprintf("'%s' must have length 1 or nrow(frame)", name),
+           call. = FALSE)
+    }
+    out <- arg
+  } else {
+    check_scalar(arg, name, positive = FALSE)
+    out <- if (name %in% names(frame)) {
+      col <- frame[[name]]
+      if (!is.numeric(col)) {
+        stop(sprintf("'frame$%s' must be numeric", name), call. = FALSE)
+      }
+      ifelse(is.na(col), arg, col)
+    } else {
+      rep(arg, H)
+    }
+  }
+  validate(out, name)
+  as.numeric(out)
+}
+
+#' Subset a design parameter that may be scalar or per stratum
+#' @keywords internal
+#' @noRd
+.subset_h <- function(x, idx) {
+  if (length(x) == 1L) x else x[idx]
+}
+
+#' @keywords internal
+#' @noRd
+.check_deff_h <- function(x, name = "deff") {
+  if (!is.numeric(x) || anyNA(x) || any(!is.finite(x)) || any(x <= 0)) {
+    stop(sprintf("'%s' must contain positive finite values", name),
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+#' @keywords internal
+#' @noRd
+.check_resp_rate_h <- function(x, name = "resp_rate") {
+  if (!is.numeric(x) || anyNA(x) || any(x <= 0) || any(x > 1)) {
+    stop(sprintf("'%s' must contain values in (0, 1]", name), call. = FALSE)
+  }
   invisible(TRUE)
 }
 
@@ -322,6 +457,30 @@ check_icc <- function(icc, expected_length = NULL) {
   if (!is.null(expected_length) && length(icc) != expected_length) {
     stop(
       sprintf("'icc' must have length %d (stages - 1)", expected_length),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+#' Require a unit relvariance a design effect could not supply
+#'
+#' A `varcomp()` estimated from data carries its own `unit_relvar` and
+#' overrides whatever the caller passed. One backed out of a design effect
+#' has none to give: a scalar design effect fixes the product
+#' `var_ratio (1 + icc (b - 1))` and says nothing about the scale of the
+#' outcome. Leaving the default in place would price a CV off a
+#' relvariance of 1 without ever saying so.
+#' @keywords internal
+#' @noRd
+.check_relvar_identified <- function(icc, supplied, context) {
+  if (inherits(icc, "svyplan_varcomp") && identical(icc$source, "deff") &&
+      !supplied) {
+    stop(
+      sprintf(
+        "'unit_relvar' is not identified by a design effect, which fixes 'icc' and 'var_ratio' only. Supply 'unit_relvar' directly to %s",
+        context
+      ),
       call. = FALSE
     )
   }
@@ -686,6 +845,17 @@ check_icc <- function(icc, expected_length = NULL) {
 #' @keywords internal
 #' @noRd
 check_overlap <- function(overlap) {
+  # A lag profile is numeric and in [0, 1], so the generic message below would
+  # be true and useless. The settled design is that the lag is named where it
+  # is extracted: a schedule passed whole carries none, and defaulting to the
+  # consecutive figure would answer an annual-lag question with the monthly
+  # number. `[` returns a bare number for exactly this reason.
+  if (inherits(overlap, "svyplan_overlap")) {
+    stop(
+      "'overlap' is one lag, and a rotation overlap covers every lag its schedule reaches; name the one this change spans, as in design_overlap(\"4-8-4\")[1] between consecutive occasions or [12] a year apart on monthly ones",
+      call. = FALSE
+    )
+  }
   if (
     !is.numeric(overlap) ||
       length(overlap) != 1L ||
@@ -713,7 +883,7 @@ check_overlap_cor <- function(overlap_cor) {
 #' Check response rate in (0, 1]
 #' @keywords internal
 #' @noRd
-check_resp_rate <- function(resp_rate) {
+check_resp_rate <- function(resp_rate, name = "resp_rate") {
   if (
     !is.numeric(resp_rate) ||
       length(resp_rate) != 1L ||
@@ -721,7 +891,7 @@ check_resp_rate <- function(resp_rate) {
       resp_rate <= 0 ||
       resp_rate > 1
   ) {
-    stop("'resp_rate' must be a number in (0, 1]", call. = FALSE)
+    stop(sprintf("'%s' must be a number in (0, 1]", name), call. = FALSE)
   }
   invisible(TRUE)
 }
@@ -801,6 +971,68 @@ check_resp_rate <- function(resp_rate) {
     stop("'ratio' cannot be used when 'n' is provided", call. = FALSE)
   }
   ratio
+}
+
+#' Two-sided interval quantile, normal or t
+#'
+#' Every confidence interval in the package is a half-width `q * se`, and
+#' `q` is the normal quantile when the variance is treated as known and the
+#' t quantile on `df` when it is estimated from a design with that many
+#' degrees of freedom. Routing every interval site through one function is
+#' what keeps a target and the sensitivity of that target to it reading the
+#' same quantile: they are the same expression differentiated, and a
+#' mismatch between them misreports without failing.
+#'
+#' `.z_alpha()` below is deliberately separate and stays normal-only. It
+#' serves the power functions, where the quantile is a normal deviate for
+#' an alternative rather than an interval half-width, and a t-based power
+#' calculation is a different procedure than a quantile substitution.
+#' @keywords internal
+#' @noRd
+.q_alpha <- function(alpha, df = NULL) {
+  q <- qnorm(1 - alpha / 2)
+  if (is.null(df) || all(is.na(df))) {
+    return(q)
+  }
+  df <- rep_len(as.double(df), length(alpha))
+  use <- !is.na(df)
+  check_df(df[use])
+  q[use] <- stats::qt(1 - alpha[use] / 2, df[use])
+  q
+}
+
+#' Check degrees of freedom for an interval quantile
+#'
+#' Below one degree of freedom the t quantile is undefined and no interval
+#' is identified from the design at all.
+#' @keywords internal
+#' @noRd
+check_df <- function(df, name = "df") {
+  # Inf is admitted and is the identity: qt at infinite df is the normal
+  # quantile, which is the same statement as treating the variance as known.
+  if (!is.numeric(df) || anyNA(df) || any(df < 1)) {
+    stop(sprintf("'%s' must be a number >= 1", name), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+#' Refuse degrees of freedom where the quantile is not an interval
+#'
+#' A power calculation's quantile is a normal deviate for an alternative,
+#' not the half-width of a confidence interval, so substituting a t
+#' quantile for it does not produce a t-based power calculation; that is a
+#' different procedure. The argument is refused with the reason rather
+#' than reported as an unknown name.
+#' @keywords internal
+#' @noRd
+.stop_power_df <- function(...) {
+  if ("df" %in% (...names() %||% character(0))) {
+    stop(
+      "'df' is not accepted by the power functions: their quantile is a normal deviate for an alternative, not an interval half-width, and a t-based power calculation is a different procedure rather than a substituted quantile. It applies to n_prop(), n_mean(), n_alloc() and their precision counterparts",
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
 }
 
 #' Compute z_alpha for power functions
@@ -912,22 +1144,114 @@ check_resp_rate <- function(resp_rate) {
   max(0, 1 - n / N)
 }
 
+#' Smallest proportion a design measures to a given CV
+#'
+#' The relative standard error se(p)/p decreases in p, so the CV target has
+#' one root over the range that matters and the equality solution is also the
+#' threshold: every larger p meets the target. `se` is the sampling standard
+#' error under every interval method, so the root is the same under all four
+#' and inverts in closed form from se^2 = p q / n_eff. The interval method
+#' governs `moe` rather than `se`, so it does not enter here and the
+#' signature does not carry it.
+#' @keywords internal
+#' @noRd
+.prec_solve_prop <- function(cv, n, N, deff, resp_rate) {
+  n_net <- n * resp_rate
+  if (!is.infinite(N) && n_net >= N) {
+    stop(
+      "a census carries no sampling variance, so every proportion meets any 'cv'; supply 'p' instead",
+      call. = FALSE
+    )
+  }
+
+  # Every positive cv has a root in (0, 1) here, so there is no unattainable
+  # case to report: p -> 1 as cv -> 0 and p -> 0 as cv grows.
+  1 / (1 + .effective_from_n(n_net, N, deff) * cv^2)
+}
+
+#' Smallest proportion a design measures to a given relative margin of error
+#'
+#' The counterpart of `.prec_solve_prop()` on the interval row of the
+#' package's precision 2x2. `moe(p) / p` reads the interval the chosen
+#' method builds rather than the sampling variance, so unlike the `cv`
+#' solve this one is genuinely method-specific and has no closed form.
+#'
+#' Two properties the `cv` solve does not share govern the search:
+#'
+#' - Wilson and Korn-Graubard half-widths do not vanish as `p` approaches
+#'   1, so their relative margin of error has a positive floor and a target
+#'   below it is unattainable rather than merely extreme.
+#' - The back-transformed log-odds half-width turns upward once the logit
+#'   spread outgrows `logit(p)`, near `p = 0.999` at `n = 1500` but as low
+#'   as `p = 0.97` at `n = 30`. `moe(p) / p` is therefore decreasing then
+#'   increasing, and the bracket ends at that turn: the root below it is
+#'   the smallest proportion meeting the target, which is what this solve
+#'   reports.
+#' @keywords internal
+#' @noRd
+.prec_solve_prop_rmoe <- function(rmoe, n, alpha, N, deff, resp_rate, method,
+                                  df = NULL) {
+  n_net <- n * resp_rate
+  if (!is.infinite(N) && n_net >= N) {
+    stop(
+      "a census carries no sampling variance, so every proportion meets any 'rmoe'; supply 'p' instead",
+      call. = FALSE
+    )
+  }
+  relative <- function(p) {
+    .prec_engine_prop(p, n, alpha, N, deff, resp_rate, method, df)$moe / p
+  }
+  lower <- 1e-12
+  cap <- 1 - 1e-9
+  upper <- if (method == "logodds") {
+    exp(stats::optimize(
+      function(l) relative(exp(l)), c(log(lower), log(cap))
+    )$minimum)
+  } else {
+    cap
+  }
+  attainable <- relative(upper)
+  if (rmoe <= attainable) {
+    stop(
+      sprintf(
+        "'rmoe' = %.4g is unattainable: at n = %.4g the '%s' interval's relative margin of error never falls below %.4g",
+        rmoe, n, method, attainable
+      ),
+      call. = FALSE
+    )
+  }
+  if (relative(lower) <= rmoe) {
+    return(lower)
+  }
+  uniroot(
+    function(p) relative(p) - rmoe, c(lower, upper),
+    tol = .Machine$double.eps^0.75
+  )$root
+}
+
 #' Shared precision engine for proportions
 #'
 #' One documented variance equation: n_net = n * resp_rate responding
 #' units drive both the leading term and the FPC's sampling fraction;
 #' deff multiplies the SRSWOR variance at n_net, so
 #' se^2 = deff * p * q * fpc(n_net) / n_net with fpc(n) = (N - n)/(N - 1).
-#' All three methods read that variance through one quantity, the effective
+#' All four methods read that variance through one quantity, the effective
 #' size n_eff = n_net / (deff * fpc) at which an infinite-population SRS
 #' would reproduce it. A census drives fpc to 0, n_eff to infinity, and
 #' every method's margin of error to 0.
+#'
+#' `se` is that sampling standard error and `cv` is se/p, so both are the
+#' same under all four methods: they describe the estimator, not the
+#' interval drawn around it. The methods differ only in `moe`, the half-width
+#' of the interval they construct at that variance. Deriving `se` as moe/q
+#' instead would make the reported standard error move when only the interval
+#' construction changed.
 #' @keywords internal
 #' @noRd
 .prec_engine_prop <- function(p, n, alpha, N, deff, resp_rate, method,
                               df = NULL) {
-  z <- qnorm(1 - alpha / 2)
-  q <- 1 - p
+  q <- .q_alpha(alpha, df)
+  q_complement <- 1 - p
   n_net <- n * resp_rate
   fpc <- if (is.infinite(N)) 1 else (N - n_net) / (N - 1)
   fpc <- .clamp_fpc(fpc, n_net, N)
@@ -938,19 +1262,18 @@ check_resp_rate <- function(resp_rate) {
     return(list(se = 0, moe = 0, cv = 0))
   }
 
-  if (method == "wald") {
-    se <- sqrt(p * q / n_eff)
-    moe <- z * se
+  se <- sqrt(p * q_complement / n_eff)
+
+  moe <- if (method == "wald") {
+    q * se
   } else if (method == "wilson") {
-    moe <- .wilson_moe(p, n_eff, z)
-    se <- moe / z
+    .wilson_moe(p, n_eff, q)
   } else if (method == "logodds") {
-    moe <- .logodds_moe(p, n_net, alpha, N, deff)
-    se <- moe / z
+    .logodds_moe(p, n_net, alpha, N, deff, df)
   } else {
-    moe <- .beta_moe(p, .kg_effective(n_eff, n_net, alpha, df), alpha)
-    se <- moe / z
+    .beta_moe(p, .kg_effective(n_eff, n_net, alpha, df), alpha)
   }
+
   list(se = se, moe = moe, cv = se / p)
 }
 
@@ -988,7 +1311,7 @@ check_resp_rate <- function(resp_rate) {
 
 #' Half-width of the Wilson score interval
 #'
-#' Centred at `(n p + z^2/2) / (n + z^2)` with half-width
+#' Centered at `(n p + z^2/2) / (n + z^2)` with half-width
 #' `z sqrt(n p q + z^2/4) / (n + z^2)`, evaluated at the effective sample
 #' size `n_eff` so that the design effect and the finite population
 #' correction enter through the same variance the other methods use. The
@@ -1013,11 +1336,7 @@ check_resp_rate <- function(resp_rate) {
   if (is.null(df) || is.infinite(n_eff)) {
     return(n_eff)
   }
-  # With fewer than one degree of freedom the t quantile is undefined and no
-  # interval is identified from the design.
-  if (!is.numeric(df) || length(df) != 1L || is.na(df) || df < 1) {
-    stop("'df' must be a number >= 1", call. = FALSE)
-  }
+  check_df(df)
   reference <- max(n_net - 1, 1)
   n_eff * (stats::qt(1 - alpha / 2, reference) /
              stats::qt(1 - alpha / 2, df))^2
@@ -1064,7 +1383,7 @@ check_resp_rate <- function(resp_rate) {
 #' margin of error shrinks.
 #' @keywords internal
 #' @noRd
-.logodds_moe <- function(p, n_net, alpha, N, deff = 1) {
+.logodds_moe <- function(p, n_net, alpha, N, deff = 1, df = NULL) {
   if (!is.infinite(N) && n_net >= N) {
     warning("net sample size >= population size; moe is 0", call. = FALSE)
     return(0)
@@ -1072,24 +1391,44 @@ check_resp_rate <- function(resp_rate) {
   bernoulli <- if (is.infinite(N)) 1 else N / (N - 1)
   fraction <- if (is.infinite(N)) 0 else 1 / N
   var_p <- deff * bernoulli * p * (1 - p) * (1 / n_net - fraction)
-  spread <- qnorm(1 - alpha / 2) * sqrt(var_p) / (p * (1 - p))
-  centre <- qlogis(p)
-  (plogis(centre + spread) - plogis(centre - spread)) / 2
+  spread <- .q_alpha(alpha, df) * sqrt(var_p) / (p * (1 - p))
+  center <- qlogis(p)
+  (plogis(center + spread) - plogis(center - spread)) / 2
 }
 
 #' Shared precision engine for means
 #'
 #' Same convention as .prec_engine_prop(), with fpc(n) = 1 - n / N.
+#' Smallest mean a design measures to a given CV
+#'
+#' The standard error of a mean does not involve the mean, so the CV target
+#' inverts directly. Only the magnitude is recoverable, `cv` being defined
+#' against `abs(mu)`, and the positive root is returned.
 #' @keywords internal
 #' @noRd
-.prec_engine_mean <- function(var, mu, n, alpha, N, deff, resp_rate) {
-  z <- qnorm(1 - alpha / 2)
+.prec_solve_mean <- function(cv, var, n, alpha, N, deff, resp_rate,
+                             df = NULL) {
+  se <- .prec_engine_mean(var, NULL, n, alpha, N, deff, resp_rate, df)$se
+  if (se == 0) {
+    stop(
+      "a census carries no sampling variance, so every mean meets any 'cv'; supply 'mu' instead",
+      call. = FALSE
+    )
+  }
+  se / cv
+}
+
+#' @keywords internal
+#' @noRd
+.prec_engine_mean <- function(var, mu, n, alpha, N, deff, resp_rate,
+                              df = NULL) {
+  q <- .q_alpha(alpha, df)
   n_net <- n * resp_rate
   n_eff <- n_net / deff
   fpc <- if (is.infinite(N)) 1 else 1 - n_net / N
   fpc <- .clamp_fpc(fpc, n_net, N)
   se <- sqrt(var * fpc / n_eff)
-  list(se = se, moe = z * se,
+  list(se = se, moe = q * se,
        cv = if (!is.null(mu)) se / abs(mu) else NA_real_)
 }
 
@@ -1157,6 +1496,87 @@ check_resp_rate <- function(resp_rate) {
     )
   }
   invisible(TRUE)
+}
+
+#' Expected number of positive cases a proportion design will yield
+#'
+#' A count, not a variance: `deff` has no part in it, since a design effect
+#' says how precisely the proportion is estimated and nothing about how
+#' many cases turn up. The sample is gross, so the response rate nets it
+#' down first. `NULL` for anything but a proportion, which is what makes
+#' the field conditional on the constructors.
+#' @keywords internal
+#' @noRd
+.expected_cases <- function(n, params, type) {
+  if (!identical(type, "proportion") || is.null(params$p) || is.null(n)) {
+    return(NULL)
+  }
+  n * (params$resp_rate %||% 1) * params$p
+}
+
+#' Sample size the minimum expected count of positive cases demands
+#'
+#' Gross units, on the same footing as every other size the package
+#' returns: the count is realized among respondents, so the drawn sample
+#' carries the `1 / resp_rate` inflation.
+#' @keywords internal
+#' @noRd
+.n_from_min_cases <- function(min_cases, p, resp_rate) {
+  check_scalar(min_cases, "min_cases")
+  min_cases / (p * resp_rate)
+}
+
+#' Smallest issued size whose respondent count clears a target with
+#' probability at least `level`
+#'
+#' Planning at the expected respondent count leaves about half the designs
+#' short, so an assurance level converts a required number of respondents
+#' into an issued number. Shared by `n_twophase()` and `n_panel()`, whose
+#' assurance vocabulary is one thing.
+#'
+#' The tail is non-decreasing in the issued size, so the answer is bracketed
+#' and bisected rather than walked. **Walking up from the expected count
+#' returns a size that is not the smallest**, in two directions: below a level
+#' of a half the answer lies under the expected count, and at a high response
+#' rate the expected count itself overshoots, `need = 2` at a rate of 0.99
+#' clearing 0.8 assurance with 2 issued where `ceiling(2 / 0.99)` is 3. The
+#' bracket is anchored at `need - 1`, which clears no level at all, fewer
+#' issued than needed carrying no chance of reaching it. The expected count is
+#' the upper end of the first bracket, which is a starting point rather than a
+#' contract: correctness rests on that anchor and on the monotonicity, so any
+#' other start converges on the same answer and only the count of
+#' `pbinom()` calls changes.
+#' @keywords internal
+#' @noRd
+.assure_size <- function(m, r, level) {
+  r <- rep_len(r, length(m))
+  vapply(seq_along(m), function(i) {
+    need <- ceiling(m[i])
+    if (need <= 0) {
+      return(0)
+    }
+    clears <- function(g) {
+      stats::pbinom(need - 1L, g, r[i], lower.tail = FALSE) >= level
+    }
+    lo <- need - 1L
+    # A rate is at most 1, so this is at least `need` and no separate floor is
+    # needed.
+    hi <- ceiling(need / r[i])
+    step <- max(1, hi - lo)
+    while (!clears(hi)) {
+      lo <- hi
+      hi <- hi + step
+      step <- step * 2
+      if (hi > 1e9) {
+        stop("the assurance search did not converge", call. = FALSE)
+      }
+    }
+    while (hi - lo > 1) {
+      mid <- lo + (hi - lo) %/% 2
+      if (clears(mid)) hi <- mid else lo <- mid
+    }
+    as.double(hi)
+  }, numeric(1))
 }
 
 #' Validate computed variance term before sqrt
@@ -1250,13 +1670,13 @@ check_resp_rate <- function(resp_rate) {
 #'
 #' The marginal terms carry their own finite population correction; the
 #' overlap covariance does not. For two SRSWOR samples drawn from one
-#' population of size \eqn{N} and sharing \eqn{k = overlap \cdot n_1} units,
-#' \deqn{Cov(\bar y_1, \bar y_2) = \rho S_1S_2\{k/(n_1n_2) - 1/N\},}
+#' population of size \eqn{N} and sharing \eqn{k = overlap \cdot n_1}{k = overlap * n_1} units,
+#' \deqn{Cov(\bar y_1, \bar y_2) = \rho S_1S_2\{k/(n_1n_2) - 1/N\},}{Cov(ybar_1, ybar_2) = rho S_1S_2\{k/(n_1n_2) - 1/N\},}
 #' so the population term enters once as \eqn{1/N} rather than through
 #' sample 2's marginal factor. Collecting terms,
 #' \deqn{V = \frac{v_1}{n_1} + \frac{v_2}{n_2}
 #'       - \frac{2\rho\,overlap\sqrt{v_1v_2}}{n_2}
-#'       - \frac{v_1 + v_2 - 2\rho\sqrt{v_1v_2}}{N},}
+#'       - \frac{v_1 + v_2 - 2\rho\sqrt{v_1v_2}}{N},}{V = v_1/n_1 + v_2/n_2 - (2 rho overlap sqrt(v_1v_2))/n_2 - (v_1 + v_2 - 2 rho sqrt(v_1v_2))/N,}
 #' a per-unit part less a census part. At \eqn{\rho = 1} with equal sizes
 #' and variances the census part is zero, the population terms cancel
 #' exactly, and the whole reduces to \eqn{2S^2(1 - overlap)/n}.
@@ -1273,6 +1693,477 @@ check_resp_rate <- function(resp_rate) {
       if (is.infinite(N_pair[1])) 0 else 2 * cross / N_pair[1]
   }
   deff * V
+}
+
+#' Resolve the two occasions' variances and the change they bound
+#'
+#' A change is planned on one of two scales. On the mean scale the
+#' dispersion is supplied directly and the expected change is optional,
+#' needed only by the relative measures. On the proportion scale the two
+#' occasion proportions supply both: the variances are \eqn{p(1-p)} and the
+#' change is \eqn{p_2 - p_1}, so supplying `change` as well would let the
+#' two disagree and is refused rather than silently preferred.
+#'
+#' The proportion scale carries the same \eqn{N/(N-1)} adjustment
+#' `.prec_engine_prop()` applies, because the variance the change formula
+#' wants is the population variance \eqn{S^2} on \eqn{N-1} degrees of
+#' freedom and a Bernoulli population's is \eqn{Np(1-p)/(N-1)}, not
+#' \eqn{p(1-p)}. Without it a finite `N` would make one occasion of
+#' `prec_change(p = )` disagree with `prec_prop()` on the same design. The
+#' mean scale needs no adjustment: `var` is already defined on \eqn{N-1}.
+#' @keywords internal
+#' @noRd
+.change_inputs <- function(var, sd, p, change, N_pair) {
+  has_var <- !is.null(var) || !is.null(sd)
+  has_p <- !is.null(p)
+  if (has_var + has_p != 1L) {
+    stop("specify exactly one of 'var' (or 'sd') or 'p'", call. = FALSE)
+  }
+  if (has_p) {
+    if (!is.null(change)) {
+      stop(
+        "'change' is p[2] - p[1] on the proportion scale; do not supply it",
+        call. = FALSE
+      )
+    }
+    if (!is.numeric(p) || length(p) != 2L) {
+      stop("'p' must be two proportions, one per occasion", call. = FALSE)
+    }
+    check_proportion(p[1L], "p[1]")
+    check_proportion(p[2L], "p[2]")
+    adj <- ifelse(is.infinite(N_pair), 1, N_pair / (N_pair - 1))
+    return(list(
+      var_pair = p * (1 - p) * adj, change = p[2L] - p[1L], p = p
+    ))
+  }
+  var <- .resolve_var(var, sd)
+  if (!is.null(change)) check_scalar(change, "change", positive = FALSE)
+  list(var_pair = .as_pair(var, "var"), change = change, p = NULL)
+}
+
+#' Refuse a between-occasion correlation two proportions cannot have
+#'
+#' Two Bernoulli variables with means \eqn{p_1} and \eqn{p_2} admit
+#' correlations only up to the Frechet-Hoeffding bound
+#' \eqn{(\min(p_1,p_2) - p_1p_2)/\sqrt{p_1q_1p_2q_2}}{(min(p_1,p_2) - p_1p_2)/sqrt(p_1q_1p_2q_2)}. Above it no joint
+#' distribution exists, so the covariance the change formula subtracts
+#' describes nothing. Checked only where the marginals are known, which is
+#' the proportion scale, and only where the correlation is used at all.
+#' @keywords internal
+#' @noRd
+.check_bernoulli_cor <- function(p, overlap_cor, overlap) {
+  if (is.null(p) || overlap == 0 || overlap_cor == 0) {
+    return(invisible(TRUE))
+  }
+  bound <- (min(p) - p[1L] * p[2L]) /
+    sqrt(p[1L] * (1 - p[1L]) * p[2L] * (1 - p[2L]))
+  if (overlap_cor > bound * (1 + 1e-9)) {
+    stop(
+      sprintf(
+        "'overlap_cor' (%.4g) exceeds the largest correlation two proportions of %.4g and %.4g can have (%.4g)",
+        overlap_cor, p[1L], p[2L], bound
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+#' Check a size supplied per occasion
+#'
+#' One size means both occasions are the same size, which is the ordinary
+#' repeated survey; two mean the second occasion was resized, which is what
+#' makes `overlap` directional.
+#' @keywords internal
+#' @noRd
+.check_change_n <- function(n) {
+  if (!is.numeric(n) || anyNA(n) || !all(is.finite(n))) {
+    stop("'n' must be finite numeric", call. = FALSE)
+  }
+  if (!length(n) %in% c(1L, 2L)) {
+    stop(
+      "'n' must be length 1 (equal occasions) or 2 (one size per occasion)",
+      call. = FALSE
+    )
+  }
+  if (any(n <= 0)) {
+    stop("'n' must be positive", call. = FALSE)
+  }
+  n
+}
+
+#' Sampling variance of a change between two occasions of one population
+#'
+#' A thin wrapper over `.diff_var_fpc()` that nets the gross sizes down and
+#' pairs a scalar `n`, so the size the user states is the size every entry
+#' point in the package states: units drawn, not interviews completed.
+#' @keywords internal
+#' @noRd
+.change_var <- function(n, var_pair, N_pair, deff, resp_rate, overlap,
+                        overlap_cor) {
+  n_vec <- if (length(n) == 1L) c(n, n) else n
+  V <- .diff_var_fpc(
+    n_vec * resp_rate, var_pair, N_pair, deff, overlap, overlap_cor
+  )
+  .safe_variance(V, "change variance")
+}
+
+#' Precision of a change at a given size
+#' @keywords internal
+#' @noRd
+.prec_engine_change <- function(n, var_pair, change, N_pair, deff, resp_rate,
+                                overlap, overlap_cor, alpha, df = NULL) {
+  se <- sqrt(
+    .change_var(n, var_pair, N_pair, deff, resp_rate, overlap, overlap_cor)
+  )
+  list(
+    se = se,
+    moe = .q_alpha(alpha, df) * se,
+    cv = if (!is.null(change)) se / abs(change) else NA_real_
+  )
+}
+
+#' Second-occasion size that reaches a target standard error on the change
+#'
+#' The change variance is \eqn{A/n_2 + B} in the net second-occasion size,
+#' with the finite population terms collected into a constant \eqn{B} that
+#' no sample size can move. Both coefficients are exact on \eqn{n \le N},
+#' where the correction factor is still \eqn{1 - n/N}, so the inversion is a
+#' division rather than a search. \eqn{B \le 0} always, since the population
+#' term it carries is \eqn{-(v_1 + v_2 - 2\rho\sqrt{v_1v_2})/N}{-(v_1 + v_2 - 2 rho sqrt(v_1v_2))/N} at the common
+#' \eqn{N} that a positive overlap requires, so the divisor cannot vanish.
+#'
+#' \eqn{A} can vanish. At equal sizes, equal variances, full overlap and unit
+#' correlation the two occasions share every unit and the change is measured
+#' without sampling error at any size, so no size is identified and the
+#' caller is told which input to relax rather than handed a zero.
+#' @keywords internal
+#' @noRd
+.n_change_from_se <- function(target_se, var_pair, N_pair, deff, resp_rate,
+                              ratio, overlap, overlap_cor) {
+  cross <- if (overlap > 0) overlap_cor * sqrt(var_pair[1] * var_pair[2]) else 0
+  A <- var_pair[1] / ratio + var_pair[2] - 2 * overlap * cross
+  B <- -var_pair[1] / N_pair[1] - var_pair[2] / N_pair[2] +
+    if (is.infinite(N_pair[1])) 0 else 2 * cross / N_pair[1]
+  if (A <= sqrt(.Machine$double.eps) * sum(var_pair)) {
+    stop(
+      "the change carries no sampling variance at any size (overlap and overlap_cor leave nothing to sample); reduce either, or size the occasions unequally",
+      call. = FALSE
+    )
+  }
+  n2_net <- A / (target_se^2 / deff - B)
+  n2 <- n2_net / resp_rate
+  if (ratio == 1) n2 else c(ratio * n2, n2)
+}
+
+#' Number of occasions entering a pooled estimate
+#' @keywords internal
+#' @noRd
+.MAX_OCCASIONS <- 1000L
+
+.check_occasions <- function(occasions) {
+  if (
+    !is.numeric(occasions) || length(occasions) != 1L || anyNA(occasions) ||
+      !is.finite(occasions) || occasions < 2 ||
+      occasions != round(occasions)
+  ) {
+    stop("'occasions' must be a whole number of at least 2", call. = FALSE)
+  }
+  # The covariance is assembled and decomposed densely, so the cost is
+  # quadratic in memory and cubic in time. The bound is far above any
+  # planning horizon (a thousand monthly occasions is eighty years) and
+  # exists so that a mistyped figure fails immediately rather than
+  # allocating for minutes.
+  if (occasions > .MAX_OCCASIONS) {
+    stop(
+      sprintf(
+        "'occasions' must be at most %d; the covariance is assembled densely, so a larger horizon is a typing error more often than a design",
+        .MAX_OCCASIONS
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+#' Resolve the overlap at every lag a pooled estimate spans
+#'
+#' A bare number is respondent overlap, the reading every other entry point
+#' in the package uses. A `svyplan_overlap` is issued overlap, which is a
+#' different quantity below full response, so it is accepted only where the
+#' two coincide and refused with the conversion named otherwise. Beyond a
+#' schedule's life nothing is shared, which is why an object shorter than
+#' the horizon is padded with zeros rather than rejected.
+#' @keywords internal
+#' @noRd
+.resolve_lag_overlap <- function(overlap, occasions, resp_rate,
+                                 basis = NULL) {
+  max_lag <- occasions - 1L
+  if (inherits(overlap, "svyplan_overlap")) {
+    .check_overlap_basis("issued", resp_rate)
+    ov <- as.numeric(overlap)
+    return(list(
+      overlap = c(ov, rep(0, max(0L, max_lag - length(ov))))[seq_len(max_lag)],
+      basis = "issued"
+    ))
+  }
+  if (
+    !is.numeric(overlap) || anyNA(overlap) || any(overlap < 0) ||
+      any(overlap > 1)
+  ) {
+    stop("'overlap' must be numbers in [0, 1]", call. = FALSE)
+  }
+  # A stored profile carries the basis it was resolved under, so a round
+  # trip that lowers the response rate meets the same refusal the first
+  # call would have.
+  basis <- basis %||% "respondent"
+  .check_overlap_basis(basis, resp_rate)
+  if (length(overlap) == 1L) {
+    return(list(overlap = rep(overlap, max_lag), basis = basis))
+  }
+  if (length(overlap) != max_lag) {
+    stop(
+      sprintf(
+        "'overlap' must be one number or one per lag (%d for %d occasions)",
+        max_lag, occasions
+      ),
+      call. = FALSE
+    )
+  }
+  list(overlap = overlap, basis = basis)
+}
+
+#' An issued overlap is only a respondent overlap at full response
+#'
+#' The refusal names the conversion rather than performing it, since which
+#' assumption to make about response persisting across occasions is the
+#' planner's to state. Checked wherever a profile is resolved, so a stored
+#' one meets it again on a round trip or in a grid.
+#' @keywords internal
+#' @noRd
+.check_overlap_basis <- function(basis, resp_rate) {
+  if (identical(basis, "issued") && !isTRUE(all.equal(resp_rate, 1))) {
+    stop(
+      "design_overlap() reports the overlap between issued samples, and this variance is formed on respondents; the two coincide only at resp_rate = 1. Supply the respondent overlap you expect, which under independent response is resp_rate times the issued figure",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+#' Resolve the correlation at every lag
+#'
+#' A panel's correlation falls away with distance, so a single number is the
+#' wrong shape for anything but a first look and `cor_decay` is the form most
+#' panels have. The two are alternatives rather than a value and a modifier,
+#' so supplying both is refused.
+#' @keywords internal
+#' @noRd
+.resolve_lag_cor <- function(overlap_cor, cor_decay, max_lag) {
+  if (!is.null(cor_decay)) {
+    if (!is.null(overlap_cor)) {
+      stop("supply exactly one of 'overlap_cor' or 'cor_decay'", call. = FALSE)
+    }
+    if (
+      !is.numeric(cor_decay) || length(cor_decay) != 1L || anyNA(cor_decay) ||
+        cor_decay < 0 || cor_decay > 1
+    ) {
+      stop("'cor_decay' must be a number in [0, 1]", call. = FALSE)
+    }
+    return(cor_decay^seq_len(max_lag))
+  }
+  cor <- overlap_cor %||% 0
+  if (!is.numeric(cor) || anyNA(cor) || any(cor < 0) || any(cor > 1)) {
+    stop("'overlap_cor' must be numbers in [0, 1]", call. = FALSE)
+  }
+  if (length(cor) == 1L) {
+    return(rep(cor, max_lag))
+  }
+  if (length(cor) != max_lag) {
+    stop(
+      sprintf(
+        "'overlap_cor' must be one number or one per lag (%d for %d occasions)",
+        max_lag, max_lag + 1L
+      ),
+      call. = FALSE
+    )
+  }
+  cor
+}
+
+#' Covariance between two occasion means at each lag
+#'
+#' The kernel `.diff_var_fpc()` already commits the package to, read at a
+#' general lag. A lag whose overlap is zero contributes exactly zero,
+#' population term included, which is the same piecewise rule
+#' `prec_change()` applies at `overlap = 0` and the only one under which a
+#' fresh sample each round pools to `V_level / occasions` exactly.
+#' @keywords internal
+#' @noRd
+.pooled_lag_cov <- function(var, n_net, N, ov, rho) {
+  pop <- if (is.infinite(N)) 0 else 1 / N
+  out <- rho * var * (ov / n_net - pop)
+  out[ov <= 0] <- 0
+  out
+}
+
+#' The occasion-by-occasion covariance a rotation implies
+#' @keywords internal
+#' @noRd
+.pooled_kernel <- function(var, n_net, N, occasions, ov, rho) {
+  c0 <- var * .fpc_factor(n_net, N) / n_net
+  lag <- abs(outer(seq_len(occasions), seq_len(occasions), "-"))
+  matrix(
+    c(c0, .pooled_lag_cov(var, n_net, N, ov, rho))[lag + 1L],
+    occasions, occasions
+  )
+}
+
+#' The assembled covariance must be a covariance
+#'
+#' Checked on the matrix and not on the quantity reported from it. A kernel
+#' that is not positive semidefinite can still give a positive pooled
+#' variance, so `.safe_variance()` on the result passes cases this rejects.
+#' The failure is ordinary rather than exotic: a lag's covariance changes
+#' sign once its overlap falls below the sampling fraction, and a Toeplitz
+#' kernel whose signs vary across lags need not be positive semidefinite.
+#' An AR(1) correlation does not escape it, since the assembled matrix is a
+#' difference of two positive semidefinite parts and not the Schur product
+#' of the overlap and correlation kernels alone.
+#' @keywords internal
+#' @noRd
+.check_lag_psd <- function(K, n_gross, n_net, N, ov, rho, occasions) {
+  ev <- eigen(K, symmetric = TRUE, only.values = TRUE)$values
+  diag_term <- K[1L, 1L]
+  # The tolerance is relative to the spectrum, not to an absolute floor.
+  # Positive semidefiniteness is a property of the correlation structure and
+  # cannot depend on the units the outcome is measured in: an absolute floor
+  # rejects a design at one scale and accepts the same design rescaled. The
+  # zero matrix, which a census at full overlap gives, has scale zero and
+  # passes on the equality.
+  scale <- max(abs(ev))
+  if (min(ev) >= -sqrt(.Machine$double.eps) * scale) {
+    return(invisible(NULL))
+  }
+  cov_m <- .pooled_lag_cov(1, n_net, N, ov, rho)
+  neg <- which(cov_m < 0)
+  msg <- sprintf(
+    "the assembled between-occasion covariance is not a valid covariance (minimum eigenvalue %.3g against a diagonal of %.3g)",
+    min(ev), diag_term
+  )
+  if (length(neg) && !is.infinite(N)) {
+    msg <- paste0(
+      msg,
+      sprintf(
+        "; at a sampling fraction of %.3g the covariance at lag %d is negative, which happens once a lag's overlap falls below n/N",
+        n_net / N, neg[1L]
+      )
+    )
+  }
+  # Interviews per cohort, not calendar span: a cohort interviewed k times
+  # contributes k(k-1)/2 shared pairs against k occasions of membership, so
+  # sum(overlap) is (k - 1)/2 whether or not the schedule has gaps in it.
+  # Reading the last positive lag instead would call "4-8-4" a life of
+  # sixteen where it is eight, and understate what the design consumes. The
+  # sum is only complete when the profile has run out of shared units inside
+  # the horizon, so the diagnostic is dropped when it has not.
+  complete <- length(ov) > 0L && ov[length(ov)] == 0
+  interviews <- 1 + 2 * sum(ov)
+  if (complete && !is.infinite(N) && interviews > 0 &&
+        occasions * n_gross / interviews > N) {
+    msg <- paste0(
+      msg,
+      sprintf(
+        ". Over %d occasions a rotation interviewing each cohort %.3g times at this size draws %.2f times the population, so the schedule could not be fielded either",
+        occasions, interviews, occasions * n_gross / (interviews * N)
+      )
+    )
+  }
+  stop(
+    paste0(
+      msg,
+      ". Reduce the sampling fraction, shorten the horizon, or supply an overlap and correlation that hold together across lags"
+    ),
+    call. = FALSE
+  )
+}
+
+#' Variance of the equal-weight mean of the occasion estimates
+#' @keywords internal
+#' @noRd
+.pooled_var <- function(n, var, N, deff, resp_rate, occasions, ov, rho) {
+  n_net <- n * resp_rate
+  K <- .pooled_kernel(var, n_net, N, occasions, ov, rho)
+  .check_lag_psd(K, n, n_net, N, ov, rho, occasions)
+  .safe_variance(deff * sum(K) / occasions^2, "pooled variance")
+}
+
+#' Precision of a pooled estimate at a given size
+#' @keywords internal
+#' @noRd
+.prec_engine_pooled <- function(n, var, mu, N, deff, resp_rate, occasions,
+                                ov, rho, alpha, df = NULL) {
+  se <- sqrt(.pooled_var(n, var, N, deff, resp_rate, occasions, ov, rho))
+  list(
+    se = se,
+    moe = .q_alpha(alpha, df) * se,
+    cv = if (!is.null(mu)) se / abs(mu) else NA_real_
+  )
+}
+
+#' Gross size per occasion that reaches a target standard error
+#'
+#' The pooled variance is \eqn{deff\{A/(n r) + B\}} in the gross size, with
+#' \eqn{r} the response rate and the finite population terms collected into
+#' \eqn{B}. \eqn{B \le 0} always, since its bracket is at least
+#' `occasions` under the nonnegative correlation contract, so the divisor
+#' cannot vanish and no target is unattainable for want of precision. The
+#' size can still exceed \eqn{N}, which is the ordinary boundary and is
+#' checked where every other size is.
+#' @keywords internal
+#' @noRd
+.n_pooled_from_se <- function(target_se, var, N, deff, resp_rate, occasions,
+                              ov, rho) {
+  m <- seq_len(occasions - 1L)
+  w <- 2 * (occasions - m)
+  pos <- ov > 0
+  A <- var * (occasions + sum(w[pos] * rho[pos] * ov[pos])) / occasions^2
+  B <- if (is.infinite(N)) {
+    0
+  } else {
+    -var * (occasions + sum(w[pos] * rho[pos])) / (N * occasions^2)
+  }
+  deff * A / (resp_rate * (target_se^2 - deff * B))
+}
+
+#' Resolve the dispersion and level a pooled estimate is planned on
+#'
+#' The proportion scale carries the same \eqn{N/(N-1)} adjustment
+#' `.change_inputs()` applies and for the same reason: the variance the
+#' engine wants is \eqn{S^2} on \eqn{N-1} degrees of freedom.
+#' @keywords internal
+#' @noRd
+.pooled_inputs <- function(var, sd, p, mu, N) {
+  has_var <- !is.null(var) || !is.null(sd)
+  has_p <- !is.null(p)
+  if (has_var + has_p != 1L) {
+    stop("specify exactly one of 'var' (or 'sd') or 'p'", call. = FALSE)
+  }
+  if (has_p) {
+    if (!is.null(mu)) {
+      stop(
+        "'mu' is 'p' on the proportion scale; do not supply it",
+        call. = FALSE
+      )
+    }
+    check_proportion(p, "p")
+    adj <- if (is.infinite(N)) 1 else N / (N - 1)
+    return(list(var = p * (1 - p) * adj, mu = p, p = p))
+  }
+  var <- .resolve_var(var, sd)
+  check_scalar(var, "var")
+  if (!is.null(mu)) check_scalar(mu, "mu", positive = FALSE)
+  list(var = var, mu = mu, p = NULL)
 }
 
 #' Null-coalescing operator
@@ -1425,7 +2316,8 @@ check_resp_rate <- function(resp_rate) {
   c(
     indicator = "name", indicators = "name", label = "name",
     mean = "mu", method = "prop_method",
-    icc = "icc_psu", var_ratio = "var_ratio_psu"
+    icc = "icc_psu", var_ratio = "var_ratio_psu",
+    rme = "rmoe", RMoE = "rmoe"
   )
 }
 
@@ -1453,6 +2345,54 @@ check_resp_rate <- function(resp_rate) {
   }
   indicators$var <- values^2
   indicators$sd <- NULL
+  indicators
+}
+
+#' Take a relative margin of error target in a table and make it absolute
+#'
+#' Follows `.indicators_var_from_sd()`: accept the alternate spelling,
+#' refuse it alongside the one it competes with, convert once, and let
+#' every path downstream see only `moe`. A row's scale is its own `p` or
+#' `mu`, so an `rmoe` row without one is an error rather than a row that
+#' quietly drops out of the target set.
+#' @keywords internal
+#' @noRd
+.indicators_moe_from_rmoe <- function(indicators, domains = NULL) {
+  nms <- setdiff(names(indicators), domains)
+  if (!"rmoe" %in% nms) {
+    return(indicators)
+  }
+  values <- indicators$rmoe
+  if (!is.numeric(values)) {
+    stop("'rmoe' values must be numeric", call. = FALSE)
+  }
+  set <- !is.na(values)
+  if (any(values[set] <= 0) || any(!is.finite(values[set]))) {
+    stop("'rmoe' values must be positive and finite", call. = FALSE)
+  }
+  for (other in c("moe", "cv")) {
+    if (other %in% nms && any(set & !is.na(indicators[[other]]))) {
+      stop(
+        sprintf("each row must have only one of 'rmoe' or '%s'", other),
+        call. = FALSE
+      )
+    }
+  }
+  scale <- rep(NA_real_, nrow(indicators))
+  if ("p" %in% nms) scale <- indicators$p
+  if ("mu" %in% nms) {
+    scale <- ifelse(is.na(scale), indicators$mu, scale)
+  }
+  if (any(set & (is.na(scale) | scale == 0))) {
+    stop(
+      "'rmoe' rows need the estimand it is relative to: 'p' for a proportion or 'mu' for a mean, and not zero",
+      call. = FALSE
+    )
+  }
+  moe <- if ("moe" %in% nms) indicators$moe else rep(NA_real_, nrow(indicators))
+  moe[set] <- values[set] * abs(scale[set])
+  indicators$moe <- moe
+  indicators$rmoe <- NULL
   indicators
 }
 
@@ -1495,10 +2435,73 @@ check_resp_rate <- function(resp_rate) {
   if (is.na(value)) NULL else value
 }
 
+#' Per-row minimum expected case counts, as a floor on each row's size
+#'
+#' Returns one gross size per row, `NA` where the row sets no floor, so the
+#' caller can take an elementwise maximum against the sizes precision asks
+#' for. A count of positive cases is defined for a proportion only, so a
+#' floor on a mean row is refused rather than ignored.
+#' @keywords internal
+#' @noRd
+.multi_min_cases_n <- function(indicators) {
+  if (!"min_cases" %in% names(indicators)) {
+    return(NULL)
+  }
+  set <- !is.na(indicators$min_cases)
+  if (!any(set)) {
+    return(NULL)
+  }
+  is_prop <- if ("p" %in% names(indicators)) {
+    !is.na(indicators$p)
+  } else {
+    rep(FALSE, nrow(indicators))
+  }
+  bad <- which(set & !is_prop)
+  if (length(bad) > 0L) {
+    stop(
+      sprintf(
+        "'min_cases' counts positive cases and applies to proportion rows only; row(s) %s carry a mean",
+        paste(bad, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  out <- rep(NA_real_, nrow(indicators))
+  out[set] <- vapply(
+    which(set),
+    function(i) {
+      .n_from_min_cases(indicators$min_cases[i], indicators$p[i],
+                        indicators$resp_rate[i])
+    },
+    numeric(1L)
+  )
+  out
+}
+
+#' Refuse a sizing-only case floor where there is no size to set
+#' @keywords internal
+#' @noRd
+.stop_min_cases_column <- function(indicators, context) {
+  if ("min_cases" %in% names(indicators) && any(!is.na(indicators$min_cases))) {
+    stop(
+      sprintf("'min_cases' sizes a single-stage indicator table and %s", context),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 #' Validate common optional columns in a multi-indicator table
 #' @keywords internal
 #' @noRd
 .validate_common_columns <- function(indicators) {
+  if ("min_cases" %in% names(indicators)) {
+    vals <- indicators$min_cases[!is.na(indicators$min_cases)]
+    if (length(vals) > 0L &&
+        (!is.numeric(vals) || any(vals <= 0) || any(!is.finite(vals)))) {
+      stop("'min_cases' values must be positive and finite", call. = FALSE)
+    }
+  }
   if ("df" %in% names(indicators)) {
     vals <- indicators$df[!is.na(indicators$df)]
     if (length(vals) > 0L && (!is.numeric(vals) || any(vals <= 0))) {
@@ -1540,7 +2543,7 @@ check_resp_rate <- function(resp_rate) {
 #' Weighted variance
 #'
 #' Normalizes the weights to sum to 1, then takes the weighted mean of the
-#' squared deviations from the weighted centre and rescales by n / (n - 1)
+#' squared deviations from the weighted center and rescales by n / (n - 1)
 #' so unit weights reproduce [var()].
 #' @keywords internal
 #' @noRd
@@ -1563,8 +2566,8 @@ check_resp_rate <- function(resp_rate) {
     stop("sum of weights must be positive", call. = FALSE)
   }
   share <- w / total
-  centre <- sum(share * x)
-  n / (n - 1) * sum(share * (x - centre)^2)
+  center <- sum(share * x)
+  n / (n - 1) * sum(share * (x - center)^2)
 }
 
 #' Resolve the dispersion input of the mean-based functions

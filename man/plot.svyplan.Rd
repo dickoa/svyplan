@@ -66,14 +66,14 @@ sb <- strata_bound(rlnorm(2000, 6, 1), n_strata = 4, n = 200,
                     method = "cumrootf")
 plot(sb)
 
-# Custom colour
+# Custom color
 plot(sb, col = "steelblue")
 
 # Power curve with defaults
 pw <- power_prop(p1 = 0.30, p2 = 0.40, power = 0.80)
 plot(pw)
 
-# Custom line width and colour
+# Custom line width and color
 plot(pw, lwd = 2, col = "darkred")
 
 # Budget frontier: what each budget buys on the objective indicator

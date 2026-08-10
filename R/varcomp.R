@@ -1,10 +1,13 @@
-#' Estimate Variance Components
+#' Estimate variance components
 #'
 #' Estimate between- and within-stage variance components using nested
-#' ANOVA decomposition. Supports SRS and PPS first-stage designs.
+#' ANOVA decomposition, from frame data, from a sample, or from a previous
+#' round's published design effect. Supports SRS and PPS first-stage
+#' designs.
 #'
 #' @param x A formula, numeric vector, or survey design object
-#'   (see Details).
+#'   (see Details). Leave unset to back an `icc` out of a published design
+#'   effect.
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'
 #' @return A `svyplan_varcomp` object with components:
@@ -20,10 +23,17 @@
 #'   \item{`stages`}{Number of stages (2 or 3).}
 #'   \item{`strata`}{Per-stratum component table when `strata` is
 #'     supplied, otherwise `NULL` (see Details).}
+#'   \item{`source`}{`"data"` when the components were estimated, `"deff"`
+#'     when `icc` was backed out of a design effect.}
+#'   \item{`params`}{The take that identifies a backed-out `icc`,
+#'     `n_per_psu` alongside the nominal `n_per_psu_nominal`. Empty on the
+#'     estimated path, where the take is a later design choice.}
 #' }
 #' The result can be exported with [as.data.frame()]. Unstratified results
 #' become a one-row two- or three-stage component table. Stratified results
-#' return the table stored in `$strata`.
+#' return the table stored in `$strata`. A backed-out result adds
+#' `n_per_psu` and `source` to that row, and carries `NA` in the three
+#' fields a design effect does not identify.
 #'
 #' @details
 #' The interface is determined by the class of `x`:
@@ -35,10 +45,12 @@
 #'   outermost stage comes first, whereas with `%in%` the innermost comes
 #'   first. Be careful not to reverse the order.
 #' - **Numeric vector**: `varcomp(y, stage_id = list(cluster_ids))`.
-#' - **survey.design**: `varcomp(design, ~y)`. Cluster structure and
-#'   design weights are extracted from the design object. Requires the
-#'   survey package. For a PPS first stage, also pass the PSU selection
-#'   probabilities via `prob`.
+#' - **survey.design**: `varcomp(design, ~y)`. Cluster structure,
+#'   first-stage strata, and within-cluster weights are extracted from the
+#'   design object; `strata` and `weights` override what is extracted.
+#'   Requires the survey package. For a PPS first stage, also pass the PSU
+#'   selection probabilities via `prob`. Which designs can supply their own
+#'   weights is set out under Details.
 #'
 #' The formula and vector interfaces compute frame components: `data`
 #' is treated as a complete population. To estimate components from a
@@ -62,6 +74,26 @@
 #' so when few SSUs are sampled per PSU the between-PSU component (and
 #' `icc_psu`) is conservative: biased upward, never downward.
 #'
+#' ## What a survey.design can supply on its own
+#'
+#' The `survey.design` method needs those same within-cluster weights, and
+#' whether it can recover them depends on how the design was built rather
+#' than on how deep its `ids` goes. A design built with per-stage
+#' probabilities, `svydesign(ids = ~psu, probs = ~p1 + p2)`, keeps the
+#' stages apart, and the columns after the first multiply to exactly the
+#' weight required. A design built with `weights=` stores one combined
+#' weight per element however many stages `ids` names, and the stage-1
+#' factor cannot be divided back out of it.
+#'
+#' Unit weights describe a frame and pass straight through. Any other
+#' single-column weight is refused rather than guessed at, because a design
+#' declared as `ids = ~psu` carrying a full design weight is equally
+#' consistent with a census inside each selected cluster and with a
+#' two-stage design that folded its second stage into the weight, and those
+#' give materially different components. Supply the conditional weights
+#' through `weights=` in that case, as a one-sided formula naming a design
+#' variable or as a numeric vector.
+#'
 #' When `prob` is `NULL`, SRS first-stage is assumed. When provided, PPS
 #' variance estimation is used. `prob` must sum to 1 across the PSUs
 #' present in the data. On a complete frame these are the one-draw
@@ -84,17 +116,71 @@
 #' and should not be compared directly to mixed-model ICCs (e.g. from lme4)
 #' which can be negative.
 #'
+#' ## From a published design effect
+#'
+#' The most widely available source of an `icc` is a previous round's
+#' report, which publishes a design effect and an average cluster take
+#' rather than the microdata the other interfaces need. Leaving `x` unset
+#' inverts the two-stage clustering identity used by [design_effect()],
+#' \deqn{D = k(1 + \delta(b - 1)) \quad\Longrightarrow\quad
+#'       \delta = (D/k - 1)/(b - 1),}{D = k(1 + delta(b - 1)) => delta = (D/k - 1)/(b - 1),}
+#' and returns the `icc` in a `svyplan_varcomp` the cluster functions
+#' accept:
+#'
+#' ```r
+#' vc <- varcomp(deff = 1.8, n_per_psu = 20)
+#' n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5)
+#' ```
+#'
+#' A scalar design effect fixes one product and nothing more, so `varb`,
+#' `varw` and `unit_relvar` come back `NA_real_`: they are not identified.
+#' Functions that need the unit relvariance, such as [n_cluster()] with a
+#' `cv` target, say so and ask for it directly.
+#'
+#' Where the report gives a standard error instead of a design effect,
+#' `se` with the quantity it refers to forms the design effect against the
+#' simple random sample of the same size, \eqn{D = s^2 / (pq/n)} for a
+#' proportion and \eqn{D = s^2 / (S^2/n)} for a mean.
+#'
+#' ### Which take identifies the icc
+#'
+#' The \eqn{b} in the identity is the **size-weighted** average number of
+#' sampled units per PSU,
+#' \deqn{b^* = \sum_i b_i^2 / \sum_i b_i = \bar b (1 + cv_b^2),}{b^* = sum_i b_i^2 / sum_i b_i = bbar (1 + cv_b^2),}
+#' with \eqn{cv_b} the population coefficient of variation of the realized
+#' takes. A *planned* take is a constant, so \eqn{cv_b = 0} and
+#' \eqn{b^* = b}: the forward direction in [design_effect()] never meets
+#' the distinction. A *published* design effect was achieved with takes
+#' that varied, and since \eqn{\delta} moves inversely with \eqn{b - 1},
+#' using the nominal take understates it by roughly the same relative
+#' amount that \eqn{b^*} exceeds the nominal figure, about 9 percent at a
+#' 30 percent coefficient of variation. Report tables carry the nominal
+#' figure, which is the one a reader reaches for, so supply the realized
+#' takes or their coefficient of variation where they are known:
+#'
+#' ```r
+#' varcomp(deff = 1.8, n_per_psu = 20)                  # constant take
+#' varcomp(deff = 1.8, n_per_psu = takes)               # realized takes
+#' varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)   # summary form
+#' ```
+#'
+#' The take is stored in `$params` as provenance, since the same `icc`
+#' means different things at a take of 12 and of 30, and
+#' [design_effect()] does not read it back: the reason to back an `icc`
+#' out at all is to re-plan at a different take, and defaulting to the old
+#' one would return the old design's number.
+#'
 #' ## Component estimands
 #'
 #' For two-stage SRS, let \eqn{M} be the number of PSUs, \eqn{N_i} the
 #' ultimate-unit count in PSU \eqn{i}, \eqn{t_i} its outcome total, and
 #' \eqn{S_i^2} its within-PSU variance. With
-#' \eqn{t_U=M\bar t}, the complete-frame components returned are
+#' \eqn{t_U=M\bar t}{t_U=M tbar}, the complete-frame components returned are
 #' \deqn{V_b=s^2(t_i)/\bar t^2, \qquad
-#'       V_w=M\sum_iN_i^2S_i^2/t_U^2.}
+#'       V_w=M\sum_iN_i^2S_i^2/t_U^2.}{V_b=s^2(t_i)/tbar^2, V_w=M sum_iN_i^2S_i^2/t_U^2.}
 #' For PPS with one-draw probabilities \eqn{p_i}, they are
 #' \deqn{V_b=\sum_i p_i(t_i/p_i-t_U)^2/t_U^2, \qquad
-#'       V_w=\sum_iN_i^2S_i^2/(p_it_U^2).}
+#'       V_w=\sum_iN_i^2S_i^2/(p_it_U^2).}{V_b=sum_i p_i(t_i/p_i-t_U)^2/t_U^2, V_w=sum_iN_i^2S_i^2/(p_it_U^2).}
 #' In both cases `unit_relvar` is the ultimate-unit variance divided by the
 #' squared ultimate-unit mean, `icc = varb / (varb + varw)`, and
 #' `var_ratio = (varb + varw) / unit_relvar`.
@@ -143,7 +229,8 @@
 #' Hansen, M. H., Hurwitz, W. N., and Madow, W. G. (1953).
 #' *Sample Survey Methods and Theory* (Vol. I). Wiley.
 #'
-#' @seealso [n_cluster()] which accepts a `svyplan_varcomp` as `icc`.
+#' @seealso [n_cluster()] which accepts a `svyplan_varcomp` as `icc`,
+#'   [design_effect()] for the forward identity the back-out inverts.
 #'
 #' @examples
 #' # 2-stage SRS using formula (PSU = district)
@@ -199,8 +286,27 @@
 #' varcomp(frame3$income,
 #'         stage_id = list(frame3$district, frame3$village))
 #'
+#' # Back an icc out of a previous round's published design effect
+#' vc <- varcomp(deff = 1.8, n_per_psu = 20)
+#' vc
+#'
+#' # Re-plan at a different take: the reason to back the icc out
+#' design_effect(vc, n_per_psu = 12)
+#'
+#' # Realized takes varied around a nominal 20
+#' varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)
+#'
+#' # From a published standard error instead
+#' varcomp(se = 0.021, p = 0.30, n = 1200, n_per_psu = 20)
+#'
 #' @export
 varcomp <- function(x, ...) {
+  # The back-out route has no data to dispatch on, and UseMethod() would
+  # dispatch on the first element of ..., which is then a published summary
+  # rather than an object.
+  if (missing(x) || is.null(x)) {
+    return(varcomp.default(NULL, ...))
+  }
   UseMethod("varcomp")
 }
 
@@ -263,30 +369,101 @@ varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL,
   .varcomp_formula(x, data = data, prob = prob, strata = strata, w = weights)
 }
 
-#' @describeIn varcomp Default method for numeric vectors.
+#' @describeIn varcomp Default method for numeric vectors, and for the
+#'   back-out from a published design effect (leave `x` unset).
 #'
 #' @param stage_id A list of stage-ID vectors (required for vector interface).
 #'   Length determines the number of stage boundaries (stages - 1).
+#' @param deff A published design effect to back an `icc` out of, with `x`
+#'   unset. Requires `n_per_psu`. See Details.
+#' @param se A published standard error, an alternative to `deff` for the
+#'   same back-out. Requires `n` and one of `p` or `var`.
+#' @param p Proportion the published `se` refers to.
+#' @param var Unit variance the published `se` refers to, for a mean.
+#' @param n Sample size the published `se` was computed on.
+#' @param n_per_psu Units per PSU the published design effect refers to:
+#'   the size-weighted average take, a vector of realized takes, or a
+#'   nominal take with `cv_take`. See Details.
+#' @param n_per_ssu Units per SSU. Not accepted on the back-out, which a
+#'   scalar design effect does not identify.
+#' @param cv_take Coefficient of variation of the realized takes, when
+#'   `n_per_psu` is their nominal mean.
+#' @param var_ratio Ratio of the clustered component's unit variance to the
+#'   analysis variable's, 1 when unset. See [design_effect()].
 #'
 #' @export
 varcomp.default <- function(x, ..., stage_id = NULL, prob = NULL,
-                            strata = NULL, weights = NULL) {
+                            strata = NULL, weights = NULL,
+                            deff = NULL, se = NULL, p = NULL, var = NULL,
+                            n = NULL, n_per_psu = NULL, n_per_ssu = NULL,
+                            cv_take = NULL, var_ratio = NULL) {
   .check_unused_dots(...)
+  back_out <- !is.null(deff) || !is.null(se)
+  if (back_out) {
+    data_args <- names(Filter(Negate(is.null), list(
+      x = x, stage_id = stage_id, prob = prob, strata = strata,
+      weights = weights
+    )))
+    if (length(data_args) > 0L) {
+      stop(
+        sprintf(
+          "'deff' backs an 'icc' out of a published design effect and takes no data; call varcomp(deff = , n_per_psu = ) without %s",
+          paste0("'", data_args, "'", collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+    return(.varcomp_from_deff(
+      deff = deff, se = se, p = p, var = var, n = n,
+      n_per_psu = n_per_psu, n_per_ssu = n_per_ssu, cv_take = cv_take,
+      var_ratio = var_ratio
+    ))
+  }
+  .stop_deff_only_args(n_per_psu = n_per_psu, n_per_ssu = n_per_ssu,
+                       cv_take = cv_take, p = p, var = var, n = n,
+                       var_ratio = var_ratio)
   if (is.numeric(x)) {
     .varcomp_vector(x, stage_id = stage_id, prob = prob, strata = strata,
                     w = weights)
   } else {
-    stop("'x' must be a formula, numeric vector, or survey design object",
-         call. = FALSE)
+    stop(
+      "'x' must be a formula, numeric vector, or survey design object, or unset with 'deff' to back an icc out of a published design effect",
+      call. = FALSE
+    )
   }
+}
+
+#' Reject back-out arguments supplied without a design effect
+#'
+#' These name a published design rather than the data in hand, so they have
+#' nothing to act on once components are being estimated.
+#' @keywords internal
+#' @noRd
+.stop_deff_only_args <- function(...) {
+  supplied <- names(Filter(Negate(is.null), list(...)))
+  if (length(supplied) > 0L) {
+    stop(
+      sprintf(
+        "%s %s the design effect back-out. Supply 'deff' (or 'se'), or drop %s",
+        paste0("'", supplied, "'", collapse = ", "),
+        if (length(supplied) == 1L) "belongs to" else "belong to",
+        if (length(supplied) == 1L) "it" else "them"
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }
 
 #' @describeIn varcomp Method for survey design objects. Pass a one-sided
 #'   formula (e.g., `~y`) to specify the outcome variable. Cluster
-#'   structure and design weights are extracted from the design.
+#'   structure, first-stage strata, and within-cluster weights are
+#'   extracted from the design; `strata` and `weights` override what is
+#'   extracted.
 #'
 #' @export
-varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
+varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
+                                  weights = NULL) {
   dots <- list(...)
   is_formula <- vapply(dots, inherits, logical(1L), "formula")
   formula_idx <- which(is_formula)
@@ -299,21 +476,21 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
   }
   .stop_unused_dots(names(dots), setdiff(seq_along(dots), formula_idx))
 
-  if (inherits(strata, "formula")) {
-    strata_name <- all.vars(strata)
-    if (length(strata_name) != 1L) {
-      stop("'strata' formula must reference exactly one variable",
-           call. = FALSE)
-    }
-    strata <- x$variables[[strata_name]]
-    if (is.null(strata)) {
-      stop(sprintf("variable '%s' not found in design variables", strata_name),
-           call. = FALSE)
-    }
-  }
+  strata <- .varcomp_design_var(strata, x, "strata")
+  weights <- .varcomp_design_var(weights, x, "weights")
   formula <- dots[[formula_idx]]
 
-  w <- .varcomp_check_w(as.numeric(stats::weights(x)), "design weights")
+  # The design's own strata are the ones it was built with, so an explicit
+  # 'strata' is an override rather than the only way to supply them.
+  if (is.null(strata) && isTRUE(x$has.strata)) {
+    strata <- x$strata[[1L]]
+  }
+
+  w <- if (is.null(weights)) {
+    .varcomp_survey_within_w(x)
+  } else {
+    .varcomp_check_w(as.numeric(weights), "'weights'")
+  }
 
   y_name <- all.vars(formula)
   if (length(y_name) != 1L) {
@@ -336,6 +513,213 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 
   stage_id <- lapply(seq_len(n_stages), function(j) cl[[j]])
   .varcomp_dispatch(y, stage_id, prob, w, strata)
+}
+
+#' Resolve a formula or vector argument against a design's variables
+#' @keywords internal
+#' @noRd
+.varcomp_design_var <- function(value, x, what) {
+  if (!inherits(value, "formula")) {
+    return(value)
+  }
+  nm <- all.vars(value)
+  if (length(nm) != 1L) {
+    stop(sprintf("'%s' formula must reference exactly one variable", what),
+         call. = FALSE)
+  }
+  out <- x$variables[[nm]]
+  if (is.null(out)) {
+    stop(sprintf("variable '%s' not found in design variables", nm),
+         call. = FALSE)
+  }
+  out
+}
+
+#' Within-cluster weights implied by a survey design
+#'
+#' The component estimator needs weights whose sum inside a cluster estimates
+#' that cluster's population size, so the stage-1 factor has to be excluded.
+#' A design built with per-stage `probs=` keeps the stages apart in `allprob`,
+#' and the columns after the first multiply to exactly that weight. A design
+#' built with `weights=` stores one combined column however deep its `ids=`
+#' goes, and the stage-1 factor cannot be divided back out of it.
+#'
+#' Unit weights carry no stage to separate, so the frame formulas apply inside
+#' each cluster and those designs pass. Any other single-column weight is
+#' refused rather than guessed at, because a design declared as `ids = ~psu`
+#' with a full design weight is equally consistent with a census inside each
+#' selected cluster and with a two-stage design that folded its second stage
+#' into the weight, and the two give materially different components.
+#' @keywords internal
+#' @noRd
+.varcomp_survey_within_w <- function(x) {
+  allprob <- x$allprob
+
+  # Column 1 is the first-stage probability whatever depth 'ids' declares, so
+  # the later columns are the conditional ones whenever any are stored.
+  if (ncol(allprob) >= 2L) {
+    within <- 1 / apply(allprob[, -1L, drop = FALSE], 1L, prod)
+    return(.varcomp_check_w(as.numeric(within), "within-cluster weights"))
+  }
+
+  if (is.null(.varcomp_check_w(as.numeric(stats::weights(x)), "design weights"))) {
+    return(NULL)
+  }
+
+  stop(
+    "this design stores one combined weight per element, so the within-cluster weights the component estimator needs cannot be recovered from it: the stage-1 factor cannot be separated out. Supply them through 'weights=', rebuild the design with per-stage 'probs=' so the stages stay apart, or use the formula or vector interface",
+    call. = FALSE
+  )
+}
+
+#' Back an icc out of a published design effect
+#'
+#' Inverts the two-stage clustering identity
+#' `deff = var_ratio * (1 + icc * (b - 1))` at the take that identifies it.
+#' Only `icc` and `var_ratio` come back: a scalar design effect fixes their
+#' product and nothing else, so the components and the unit relvariance are
+#' returned unidentified.
+#' @keywords internal
+#' @noRd
+.varcomp_from_deff <- function(deff, se, p, var, n, n_per_psu, n_per_ssu,
+                               cv_take, var_ratio) {
+  if (!is.null(deff) && !is.null(se)) {
+    stop("supply either 'deff' or 'se', not both", call. = FALSE)
+  }
+  if (!is.null(n_per_ssu)) {
+    stop(
+      "a scalar design effect does not identify a three-stage design: it fixes one product of two homogeneities and cannot say how the clustering splits between the stages. Estimate the stages with the formula or survey.design interface",
+      call. = FALSE
+    )
+  }
+  if (is.null(n_per_psu)) {
+    stop(
+      "'n_per_psu' is required: the design effect identifies an 'icc' only at the take it was achieved with",
+      call. = FALSE
+    )
+  }
+  var_ratio <- var_ratio %||% 1
+  check_scalar(var_ratio, "var_ratio")
+
+  if (is.null(deff)) {
+    deff <- .deff_from_published_se(se, p, var, n)
+  } else {
+    .stop_se_only_args(p = p, var = var, n = n)
+    check_scalar(deff, "deff")
+  }
+
+  take <- .varcomp_take(n_per_psu, cv_take)
+  if (take$value <= 1) {
+    stop(
+      "'n_per_psu' must exceed 1: at one unit per PSU the design effect carries no clustering and no 'icc' is identified",
+      call. = FALSE
+    )
+  }
+
+  icc <- (deff / var_ratio - 1) / (take$value - 1)
+  if (icc < 0) {
+    warning(
+      sprintf(
+        "'deff' is below 'var_ratio', so 'icc' is negative (%.4g): the published design beat simple random sampling at this take. design_effect(), n_cluster() and prec_cluster() require 'icc' in [0, 1] and will reject it",
+        icc
+      ),
+      call. = FALSE
+    )
+  } else if (icc > 1) {
+    warning(
+      sprintf(
+        "'icc' is above 1 (%.4g): the identity charges the whole design effect to clustering, so a published figure that also carries unequal weighting needs 'var_ratio' or a weighting-free design effect. design_effect(), n_cluster() and prec_cluster() require 'icc' in [0, 1] and will reject it",
+        icc
+      ),
+      call. = FALSE
+    )
+  }
+
+  .new_svyplan_varcomp(
+    varb        = NA_real_,
+    varw        = NA_real_,
+    icc         = icc,
+    var_ratio   = var_ratio,
+    unit_relvar = NA_real_,
+    stages      = 2L,
+    source      = "deff",
+    params      = list(n_per_psu = take$value, n_per_psu_nominal = take$nominal)
+  )
+}
+
+#' Reduce the realized takes to the one that identifies the icc
+#'
+#' The `b` in the clustering identity is the size-weighted average take,
+#' `sum(b_i^2) / sum(b_i) = b_bar (1 + cv_b^2)`, with `cv_b` the population
+#' coefficient of variation of the takes. A planned take is a constant, so
+#' the two coincide going forward; a published design effect was achieved
+#' with takes that varied, and using their arithmetic mean understates the
+#' `icc` by about the same relative amount.
+#' @keywords internal
+#' @noRd
+.varcomp_take <- function(n_per_psu, cv_take) {
+  if (!is.numeric(n_per_psu) || length(n_per_psu) == 0L ||
+      anyNA(n_per_psu) || any(!is.finite(n_per_psu)) || any(n_per_psu <= 0)) {
+    stop("'n_per_psu' must be positive and finite", call. = FALSE)
+  }
+  if (length(n_per_psu) > 1L) {
+    if (!is.null(cv_take)) {
+      stop(
+        "'cv_take' summarizes takes that were not supplied; drop it when 'n_per_psu' holds the realized takes",
+        call. = FALSE
+      )
+    }
+    nominal <- mean(n_per_psu)
+    return(list(value = sum(n_per_psu^2) / sum(n_per_psu), nominal = nominal))
+  }
+  if (is.null(cv_take)) {
+    return(list(value = n_per_psu, nominal = n_per_psu))
+  }
+  if (!is.numeric(cv_take) || length(cv_take) != 1L || is.na(cv_take) ||
+      !is.finite(cv_take) || cv_take < 0) {
+    stop("'cv_take' must be a non-negative finite scalar", call. = FALSE)
+  }
+  list(value = n_per_psu * (1 + cv_take^2), nominal = n_per_psu)
+}
+
+#' Design effect implied by a published standard error
+#' @keywords internal
+#' @noRd
+.deff_from_published_se <- function(se, p, var, n) {
+  check_scalar(se, "se")
+  check_scalar(n, "n")
+  if (is.null(p) == is.null(var)) {
+    stop(
+      "'se' needs the quantity it refers to: 'p' for a proportion or 'var' for a mean, and exactly one of them",
+      call. = FALSE
+    )
+  }
+  srs_var <- if (is.null(var)) {
+    check_proportion(p, "p")
+    p * (1 - p) / n
+  } else {
+    check_scalar(var, "var")
+    var / n
+  }
+  se^2 / srs_var
+}
+
+#' Reject standard-error arguments supplied alongside a design effect
+#' @keywords internal
+#' @noRd
+.stop_se_only_args <- function(...) {
+  supplied <- names(Filter(Negate(is.null), list(...)))
+  if (length(supplied) > 0L) {
+    stop(
+      sprintf(
+        "%s describe%s a published standard error; 'deff' is already the design effect they would form",
+        paste0("'", supplied, "'", collapse = ", "),
+        if (length(supplied) == 1L) "s" else ""
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }
 
 #' Validate sampling weights. Unit weights collapse to NULL so the
@@ -799,22 +1183,22 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 #' @keywords internal
 #' @noRd
 .vc_unit_relvar <- function(y, w) {
-  centre <- if (is.null(w)) mean(y) else sum(w * y) / sum(w)
+  center <- if (is.null(w)) mean(y) else sum(w * y) / sum(w)
   spread <- if (is.null(w)) var(y) else .wtdvar(y, w)
   total_w <- if (is.null(w)) length(y) else sum(w)
   eps <- .vc_eps()
   scale <- max(abs(y))
-  # Centring a constant outcome cancels exactly only when every observation
+  # Centering a constant outcome cancels exactly only when every observation
   # carries the same weight, so a weighted variance bottoms out at rounding
   # noise instead of at zero. Dispersion that far below the outcome's own
   # magnitude is not variance to split.
   if (spread <= (eps * scale)^2) {
     spread <- 0
   }
-  den <- if (abs(centre) <= eps * sqrt(spread)) {
+  den <- if (abs(center) <= eps * sqrt(spread)) {
     0
   } else {
-    (centre * total_w)^2
+    (center * total_w)^2
   }
   list(den = den, unit = .vc_component(spread * total_w^2, den))
 }
@@ -851,7 +1235,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL) {
 #' Warn when the relvariances are undefined but the ratios are not
 #'
 #' Relvariance is variance over the square of the mean, so an outcome
-#' centred on zero has none, however variable it is. That is a different
+#' centered on zero has none, however variable it is. That is a different
 #' condition from a constant outcome and it leaves `icc` and `var_ratio`
 #' perfectly well defined, since neither depends on the mean.
 #' @keywords internal

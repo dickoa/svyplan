@@ -20,10 +20,10 @@ test_that("svyplan with all core params", {
 })
 
 test_that("svyplan with cluster context", {
-  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.85)
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate_psu = 0.85)
   expect_equal(plan$defaults$stage_cost, c(500, 50))
   expect_equal(plan$defaults$icc, 0.05)
-  expect_equal(plan$defaults$resp_rate, 0.85)
+  expect_equal(plan$defaults$resp_rate_psu, 0.85)
 })
 
 test_that("svyplan with extended defaults", {
@@ -262,10 +262,10 @@ test_that("power_did uses plan defaults", {
 })
 
 test_that("n_cluster uses plan for stage_cost/icc", {
-  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.85)
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate_psu = 0.85)
   res <- n_cluster(cv = 0.05, plan = plan)
   ref <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
-                   resp_rate = 0.85)
+                   resp_rate_psu = 0.85)
   expect_equal(res$n, ref$n)
   expect_equal(res$cv, ref$cv)
 })
@@ -291,9 +291,9 @@ test_that("n_cluster requires stage_cost and icc", {
 })
 
 test_that("prec_cluster uses plan defaults", {
-  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.9)
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate_psu = 0.9)
   res <- prec_cluster(n = c(50, 12), plan = plan)
-  ref <- prec_cluster(n = c(50, 12), icc = 0.05, resp_rate = 0.9)
+  ref <- prec_cluster(n = c(50, 12), icc = 0.05, resp_rate_psu = 0.9)
   expect_equal(res$cv, ref$cv)
 })
 
@@ -431,10 +431,10 @@ test_that("pipe: plan |> power_did", {
 })
 
 test_that("pipe: plan |> n_cluster (stage_cost/icc from plan)", {
-  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.85)
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate_psu = 0.85)
   res <- plan |> n_cluster(cv = 0.05)
   ref <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
-                   resp_rate = 0.85)
+                   resp_rate_psu = 0.85)
   expect_equal(res$n, ref$n)
 })
 
@@ -562,7 +562,7 @@ test_that("named pipe: plan |> power_did(treat = ...) matches all styles", {
 })
 
 test_that("named pipe: plan |> n_cluster(cv = ...) matches all styles", {
-  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.85)
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate_psu = 0.85)
   res_named_plan <- n_cluster(cv = 0.05, plan = plan)
   res_pos_pipe <- plan |> n_cluster(cv = 0.05)
   expect_equal(res_pos_pipe$n, res_named_plan$n)

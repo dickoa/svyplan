@@ -4,7 +4,7 @@
 \alias{prec_mean}
 \alias{prec_mean.default}
 \alias{prec_mean.svyplan_n}
-\title{Sampling Precision for a Mean}
+\title{Sampling precision for a mean}
 \usage{
 prec_mean(var = NULL, ...)
 
@@ -14,10 +14,12 @@ prec_mean(var = NULL, ...)
   ...,
   sd = NULL,
   mu = NULL,
+  cv = NULL,
   alpha = 0.05,
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  df = NULL,
   plan = NULL
 )
 
@@ -38,6 +40,10 @@ published survey reports usually quote standard deviations.}
 
 \item{mu}{Population mean. Required for the CV component.}
 
+\item{cv}{Target relative standard error, supplied instead of \code{mu} to solve
+for the smallest mean the design measures that precisely. Supply at most
+one of \code{mu} or \code{cv}. Omitting both leaves \code{cv} undefined, as before.}
+
 \item{alpha}{Significance level, default 0.05.}
 
 \item{N}{Population size. \code{Inf} (default) means no finite population
@@ -48,6 +54,12 @@ efficient designs (e.g., stratified sampling with Neyman allocation).}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The effective sample size is \code{n * resp_rate}.}
+
+\item{df}{Degrees of freedom of the variance estimator the planned design
+will have, typically sampled PSUs minus strata, and available from
+\code{\link[=design_df]{design_df()}}. It switches the interval quantile from normal to t.
+\code{NULL} (default) applies no adjustment. See \code{\link[=n_prop]{n_prop()}} for the full
+account.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -62,11 +74,13 @@ interval is symmetric, so the limits are \code{mu - moe} and
 \item{\code{cv}}{Relative standard error, \code{se / abs(mu)}. \code{NA} when \code{mu} is
 not supplied, since a relative standard error needs a mean to be
 relative to.}
+\item{\code{solved}}{\code{"mu"} when the mean was solved for, and absent
+otherwise. The solved value is in \code{params$mu}.}
 \item{\code{params}}{The validated inputs (\code{var}, \code{n}, \code{alpha}, \code{N},
-\code{deff}, \code{resp_rate}, and \code{mu} when given). Dispersion is always
-stored as \code{var}, including when you supplied \code{sd}. \code{\link[=predict]{predict()}},
-\code{\link[=confint]{confint()}} and the \code{\link[=n_mean]{n_mean()}} round trip read the design back
-from here.}
+\code{deff}, \code{resp_rate}, and \code{mu} when given or solved for). Dispersion
+is always stored as \code{var}, including when you supplied \code{sd}.
+\code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the \code{\link[=n_mean]{n_mean()}} round trip read the
+design back from here.}
 }
 
 Nothing here is rounded: \code{n} is taken as given, so passing a
@@ -82,6 +96,14 @@ Computes the standard error for the given sample size and design
 parameters, then derives the margin of error and coefficient of
 variation. The effective sample size is \code{n * resp_rate / deff}, with
 optional finite population correction.
+
+Supplying \code{cv} in place of \code{mu} solves the same equation in the remaining
+direction, returning the smallest mean the design measures that precisely.
+The standard error of a mean does not involve the mean, so this is a
+division rather than a search, and only the magnitude is recoverable: \code{cv}
+is defined against \code{abs(mu)}, and the positive root is returned. See
+\code{\link[=prec_prop]{prec_prop()}} for the proportion case, where the same reading answers which
+estimates a fielded design can carry.
 \subsection{Round-trip with n_mean}{
 
 \code{prec_mean()} is the inverse of \code{\link[=n_mean]{n_mean()}}: if you compute
@@ -93,12 +115,12 @@ directly: \code{prec_mean(res)}.
 \subsection{Precision of a total}{
 
 A separate \code{prec_total()} is not needed. The precision of the
-estimated total \eqn{\hat{Y} = N \bar{y}} is a rescaling of the
+estimated total \eqn{\hat{Y} = N \bar{y}}{Yhat = N ybar} is a rescaling of the
 mean precision:
 \itemize{
-\item \eqn{SE(\hat{Y}) = N \times SE(\bar{y})}
-\item \eqn{MOE(\hat{Y}) = N \times MOE(\bar{y})}
-\item \eqn{CV(\hat{Y}) = CV(\bar{y})}
+\item \eqn{SE(\hat{Y}) = N \times SE(\bar{y})}{SE(Yhat) = N * SE(ybar)}
+\item \eqn{MOE(\hat{Y}) = N \times MOE(\bar{y})}{MOE(Yhat) = N * MOE(ybar)}
+\item \eqn{CV(\hat{Y}) = CV(\bar{y})}{CV(Yhat) = CV(ybar)}
 }
 
 Call \code{prec_mean()} and multiply \verb{$se} and \verb{$moe} by \eqn{N} for
@@ -113,11 +135,14 @@ prec_mean(var = 100, n = 400, mu = 50)
 # Without mu (CV will be NA)
 prec_mean(var = 100, n = 400)
 
+# Smallest mean 400 units can report at a 5 percent CV
+prec_mean(var = 100, n = 400, cv = 0.05)$params$mu
+
 # Round-trip from n_mean
 res <- n_mean(var = 100, moe = 2)
 prec_mean(res)
 
-# --- Precision of a total ---
+## Precision of a total
 # Precision of a mean, then scale to total
 N <- 10000
 p <- prec_mean(var = 2500, n = 400, mu = 300, N = N)
@@ -129,4 +154,16 @@ p$cv        # CV is the same for mean and total
 \seealso{
 \code{\link[=n_mean]{n_mean()}} for the inverse (compute n from a precision target),
 \code{\link[=prec_prop]{prec_prop()}} for proportions.
+
+Other precision functions:
+\code{\link[=prec_alloc]{prec_alloc()}},
+\code{\link[=prec_change]{prec_change()}},
+\code{\link[=prec_cluster]{prec_cluster()}},
+\code{\link[=prec_multi]{prec_multi()}},
+\code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
+\code{\link[=prec_panel]{prec_panel()}},
+\code{\link[=prec_pooled]{prec_pooled()}},
+\code{\link[=prec_prop]{prec_prop()}},
+\code{\link[=prec_twophase]{prec_twophase()}}
 }
+\concept{precision functions}

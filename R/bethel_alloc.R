@@ -52,6 +52,8 @@
   measures = NULL,
   targets = NULL,
   alpha = NULL,
+  df = NULL,
+  q_target = NULL,
   variance_model = "one_stage_wald"
 ) {
   # Zero columns are allowed: a budget-objective problem may carry no hard
@@ -124,6 +126,8 @@
       measures = measures,
       targets = targets,
       alpha = alpha,
+      df = df,
+      q_target = q_target,
       variance_model = variance_model
     ),
     class = c("svyplan_bethel_problem", "list")
@@ -645,9 +649,9 @@
       call. = FALSE
     )
   }
-  if (any(c("cv", "moe") %in% names(objective))) {
+  if (any(c("cv", "moe", "rmoe") %in% names(objective))) {
     stop(
-      "objective components are always minimized in relative-variance units; put 'cv' or 'moe' requirements in 'targets'",
+      "objective components are always minimized in relative-variance units; put 'cv', 'moe', or 'rmoe' requirements in 'targets'",
       call. = FALSE
     )
   }
@@ -728,7 +732,8 @@
 #' Normalize target rows and their frame-domain membership
 #' @keywords internal
 #' @noRd
-.bethel_target_spec <- function(frame, targets, alpha, allow_empty = FALSE) {
+.bethel_target_spec <- function(frame, targets, alpha, df = NULL,
+                                allow_empty = FALSE) {
   if (allow_empty &&
       (is.null(targets) || (is.data.frame(targets) && nrow(targets) == 0L))) {
     return(list(
@@ -738,13 +743,15 @@
       domain = character(0),
       level = character(0),
       alpha = numeric(0),
+      df = numeric(0),
       constraint = character(0),
       membership = matrix(FALSE, nrow(frame), 0L),
       indices = list(),
       targets = data.frame(
         name = character(0), domain = character(0), level = character(0),
-        cv = numeric(0), moe = numeric(0), alpha = numeric(0),
-        constraint = character(0), stringsAsFactors = FALSE
+        cv = numeric(0), moe = numeric(0), rmoe = numeric(0),
+        alpha = numeric(0),
+        df = numeric(0), constraint = character(0), stringsAsFactors = FALSE
       )
     ))
   }
@@ -761,19 +768,24 @@
     rep(NA_real_, nrow(targets))
   t_moe <- if ("moe" %in% names(targets)) targets$moe else
     rep(NA_real_, nrow(targets))
-  if (!is.numeric(t_cv) || !is.numeric(t_moe)) {
-    stop("target 'cv' and 'moe' columns must be numeric", call. = FALSE)
+  t_rmoe <- if ("rmoe" %in% names(targets)) targets$rmoe else
+    rep(NA_real_, nrow(targets))
+  if (!is.numeric(t_cv) || !is.numeric(t_moe) || !is.numeric(t_rmoe)) {
+    stop("target 'cv', 'moe', and 'rmoe' columns must be numeric",
+         call. = FALSE)
   }
   has_cv <- !is.na(t_cv)
   has_moe <- !is.na(t_moe)
-  if (any(has_cv == has_moe) ||
+  has_rmoe <- !is.na(t_rmoe)
+  if (any(has_cv + has_moe + has_rmoe != 1L) ||
       any(has_cv & (!is.finite(t_cv) | t_cv <= 0)) ||
-      any(has_moe & (!is.finite(t_moe) | t_moe <= 0))) {
-    stop("each target row must specify exactly one positive finite 'cv' or 'moe'",
+      any(has_moe & (!is.finite(t_moe) | t_moe <= 0)) ||
+      any(has_rmoe & (!is.finite(t_rmoe) | t_rmoe <= 0))) {
+    stop("each target row must specify exactly one positive finite 'cv', 'moe', or 'rmoe'",
          call. = FALSE)
   }
-  metric <- ifelse(has_cv, "cv", "moe")
-  target_value <- ifelse(has_cv, t_cv, t_moe)
+  metric <- ifelse(has_cv, "cv", ifelse(has_moe, "moe", "rmoe"))
+  target_value <- ifelse(has_cv, t_cv, ifelse(has_moe, t_moe, t_rmoe))
   has_domain <- "domain" %in% names(targets)
   has_level <- "level" %in% names(targets)
   if (xor(has_domain, has_level)) {
@@ -804,6 +816,16 @@
   if (any(!is.finite(t_alpha) | t_alpha <= 0 | t_alpha >= 1)) {
     stop("'targets$alpha' must contain values in (0, 1)", call. = FALSE)
   }
+  # df follows alpha's precedence: a per-target column wins, the scalar
+  # argument fills what it leaves, and NA throughout means the normal
+  # quantile. Unlike alpha it has no default, so NA is a real state.
+  t_df <- if ("df" %in% names(targets)) targets$df else
+    rep(NA_real_, nrow(targets))
+  if (!is.numeric(t_df)) {
+    stop("'targets$df' must be numeric", call. = FALSE)
+  }
+  if (!is.null(df)) t_df[is.na(t_df)] <- as.double(df)
+  check_df(t_df[!is.na(t_df)], "targets$df")
   requirement_key <- .bethel_key(
     t_name, domain, ifelse(is.na(level), "<overall>", level), metric
   )
@@ -834,6 +856,7 @@
   targets$domain <- domain
   targets$level <- level
   targets$alpha <- t_alpha
+  targets$df <- t_df
   list(
     name = t_name,
     metric = metric,
@@ -841,6 +864,7 @@
     domain = domain,
     level = level,
     alpha = t_alpha,
+    df = t_df,
     constraint = constraint,
     membership = geometry$membership,
     indices = geometry$indices,
@@ -859,12 +883,14 @@
   deff = 1,
   resp_rate = 1,
   alpha = 0.05,
+  df = NULL,
   min_n_stratum = NULL,
   objective = NULL
 ) {
   check_deff(deff)
   check_resp_rate(resp_rate)
   check_alpha(alpha)
+  if (!is.null(df)) check_df(df)
   if (!is.null(min_n_stratum)) check_scalar(min_n_stratum, "min_n_stratum")
   if (!is.data.frame(frame) || nrow(frame) == 0L) {
     stop("'frame' must be a non-empty data frame", call. = FALSE)
@@ -929,7 +955,7 @@
     stop("'measures' must have unique stratum x name rows", call. = FALSE)
   }
   target_spec <- .bethel_target_spec(
-    frame, targets, alpha, allow_empty = !is.null(objective)
+    frame, targets, alpha, df, allow_empty = !is.null(objective)
   )
   objective_spec <- if (is.null(objective)) NULL else
     .bethel_objective_spec(frame, objective)
@@ -1074,6 +1100,7 @@
   domain <- target_spec$domain
   level <- target_spec$level
   t_alpha <- target_spec$alpha
+  t_df <- target_spec$df
   constraint <- target_spec$constraint
   H <- nrow(frame)
   K <- length(t_name)
@@ -1152,17 +1179,28 @@
   resp_hk <- resp_all[, seq_len(K), drop = FALSE]
   G <- membership[, seq_len(K), drop = FALSE]
   Vmax <- numeric(K)
+  # One quantile per constraint, formed once. The ceiling below and the
+  # sensitivity reported for it are the same expression differentiated, so
+  # they must read the same q or both misreport in silence.
+  q_target <- .q_alpha(t_alpha, t_df)
   for (k in seq_len(K)) {
-    if (metric[k] == "cv") {
-      if (negligible_total(k)) {
-        stop(sprintf("CV is undefined for constraint '%s' with zero or negligible total",
-                     constraint[k]), call. = FALSE)
-      }
-      Vmax[k] <- (target_value[k] * abs(total[k]))^2
-    } else {
-      z <- stats::qnorm(1 - t_alpha[k] / 2)
-      Vmax[k] <- (domain_N[k] * target_value[k] / z)^2
+    if (metric[k] == "moe") {
+      Vmax[k] <- (domain_N[k] * target_value[k] / q_target[k])^2
+      next
     }
+    # Both relative metrics measure against the total, so both need it to
+    # be non-negligible. An 'rmoe' target r is a margin of error
+    # r * |total| / domain_N, whose ceiling ((r / q) |total|)^2 is the CV
+    # ceiling at cv = r / q: the solver sees one relative branch, and only
+    # the reporting below distinguishes them.
+    if (negligible_total(k)) {
+      stop(sprintf("%s is undefined for constraint '%s' with zero or negligible total",
+                   if (metric[k] == "cv") "CV" else "relative margin of error",
+                   constraint[k]), call. = FALSE)
+    }
+    scaled <- if (metric[k] == "cv") target_value[k] else
+      target_value[k] / q_target[k]
+    Vmax[k] <- (scaled * abs(total[k]))^2
   }
   bound <- Vmax - B
   objective_part <- NULL
@@ -1222,6 +1260,8 @@
     measures = measures,
     targets = target_spec$targets,
     alpha = t_alpha,
+    df = t_df,
+    q_target = q_target,
     variance_model = stage$variance_model
   )
   problem$objective <- objective_part
@@ -1341,10 +1381,19 @@
   }
   se_total <- sqrt(variance)
   se <- se_total / problem$domain_N
-  moe <- stats::qnorm(1 - problem$alpha / 2) * se
+  # The quantile the problem was built with, not a freshly formed one: the
+  # ceiling at .bethel_problem() and this report must not drift apart.
+  q <- problem$q_target %||% .q_alpha(problem$alpha, problem$df)
+  moe <- q * se
   cv <- se_total / abs(problem$total)
   metric <- problem$constraint_meta$.metric
-  achieved <- as.numeric(ifelse(metric == "cv", cv, moe))
+  # The estimand a relative margin of error is measured against is the
+  # domain mean, so rmoe = q se / |mean| = q cv. Reporting it as moe or as
+  # cv would return the constraint in units it was not stated in.
+  rmoe <- .rmoe_from_moe(moe, problem$total / problem$domain_N)
+  achieved <- as.numeric(ifelse(
+    metric == "cv", cv, ifelse(metric == "moe", moe, rmoe)
+  ))
   target <- problem$constraint_meta$.target
   ratio <- achieved / target
   out <- problem$constraint_meta
@@ -1355,6 +1404,7 @@
   out$.se <- se
   out$.cv <- cv
   out$.moe <- moe
+  out$.rmoe <- rmoe
   out$.pass <- ratio <= 1 + tolerance
   out$.binding <- abs(ratio - 1) <= max(1e-6, 10 * tolerance)
   if (is.null(lambda)) {
@@ -1366,14 +1416,18 @@
            call. = FALSE)
     }
     out$.multiplier <- lambda
+    # d(Vmax)/d(target), one branch per ceiling above.
     sensitivity <- numeric(nrow(out))
     cv_idx <- metric == "cv"
     sensitivity[cv_idx] <- -2 * lambda[cv_idx] * target[cv_idx] *
       problem$total[cv_idx]^2
-    moe_idx <- !cv_idx
-    z <- stats::qnorm(1 - problem$alpha[moe_idx] / 2)
+    moe_idx <- metric == "moe"
     sensitivity[moe_idx] <- -2 * lambda[moe_idx] *
-      problem$domain_N[moe_idx]^2 * target[moe_idx] / z^2
+      problem$domain_N[moe_idx]^2 * target[moe_idx] / q[moe_idx]^2
+    # Vmax = (r / q)^2 total^2, so this is the CV sensitivity over q^2.
+    rmoe_idx <- metric == "rmoe"
+    sensitivity[rmoe_idx] <- -2 * lambda[rmoe_idx] * target[rmoe_idx] *
+      problem$total[rmoe_idx]^2 / q[rmoe_idx]^2
     out$.sensitivity <- sensitivity
   }
   lower_violation <- allocation < problem$lower - tolerance
@@ -1915,7 +1969,8 @@
   resp_rate,
   min_n_stratum,
   objective = NULL,
-  budget = NULL
+  budget = NULL,
+  df = NULL
 ) {
   control <- .bethel_control()
   problem <- .build_bethel_problem(
@@ -1926,6 +1981,7 @@
     deff = deff,
     resp_rate = resp_rate,
     alpha = alpha,
+    df = df,
     min_n_stratum = min_n_stratum,
     objective = objective
   )
@@ -2116,6 +2172,7 @@
   min_n_stratum = NULL,
   objective = NULL,
   budget = NULL,
+  df = NULL,
   .allow_fractional_stages = FALSE
 ) {
   if (is.null(n)) stop("'n' is required", call. = FALSE)
@@ -2127,6 +2184,7 @@
     deff = deff,
     resp_rate = resp_rate,
     alpha = alpha,
+    df = df,
     min_n_stratum = min_n_stratum,
     objective = objective
   )

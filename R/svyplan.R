@@ -1,4 +1,4 @@
-#' Survey Plan Profile
+#' Survey plan profile
 #'
 #' Create a reusable profile that captures shared design defaults
 #' for survey sample size and power calculations. A plan can be passed
@@ -132,9 +132,10 @@ update.svyplan <- function(object, ...) {
 #' @noRd
 .svyplan_allowed_defaults <- function() {
   c(
-    "alpha", "N", "deff", "resp_rate",
+    "alpha", "N", "deff", "resp_rate", "df",
     "prop_method",
     "stage_cost", "icc", "unit_relvar", "var_ratio", "fixed_cost",
+    "resp_rate_psu", "resp_rate_ssu",
     "unit_cost",
     "alternative", "ratio", "overlap", "overlap_cor",
     "alloc", "min_n_stratum", "min_n_domain", "alloc_q",
@@ -182,6 +183,13 @@ update.svyplan <- function(object, ...) {
   if ("N" %in% nms) check_population_size(defaults$N)
   if ("deff" %in% nms) check_deff(defaults$deff)
   if ("resp_rate" %in% nms) check_resp_rate(defaults$resp_rate)
+  if ("resp_rate_psu" %in% nms)
+    check_resp_rate(defaults$resp_rate_psu, "resp_rate_psu")
+  if ("resp_rate_ssu" %in% nms)
+    check_resp_rate(defaults$resp_rate_ssu, "resp_rate_ssu")
+  # design_df() returns a classed numeric, so a plan can store the count a
+  # plan object already knows: svyplan(df = design_df(alloc)).
+  if ("df" %in% nms) check_df(as.double(defaults$df))
 
   stage_cost <- NULL
   if ("stage_cost" %in% nms) {

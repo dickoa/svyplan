@@ -3,7 +3,7 @@
 \name{svyplan}
 \alias{svyplan}
 \alias{update.svyplan}
-\title{Survey Plan Profile}
+\title{Survey plan profile}
 \usage{
 svyplan(...)
 

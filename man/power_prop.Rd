@@ -3,7 +3,7 @@
 \name{power_prop}
 \alias{power_prop}
 \alias{power_prop.default}
-\title{Power Analysis for Proportions}
+\title{Power analysis for proportions}
 \usage{
 power_prop(p1, ...)
 
@@ -119,8 +119,8 @@ are more reliable.
 \eqn{p_1 q_1 / n_1 + p_2 q_2 / n_2} for both the critical value and the
 power shift. \code{\link[stats:power.prop.test]{stats::power.prop.test()}} instead evaluates the critical
 value under the null, using the pooled variance
-\eqn{\bar{p} \bar{q} (1/n_1 + 1/n_2)} with
-\eqn{\bar{p} = (p_1 + p_2) / 2}. Both conventions are standard, and they
+\eqn{\bar{p} \bar{q} (1/n_1 + 1/n_2)}{pbar qbar (1/n_1 + 1/n_2)} with
+\eqn{\bar{p} = (p_1 + p_2) / 2}{pbar = (p_1 + p_2) / 2}. Both conventions are standard, and they
 differ by a few tenths of a percent in the resulting size:
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{power_prop(p1 = 0.3, p2 = 0.4, power = 0.8)$n   # 353.2
@@ -133,6 +133,38 @@ finite population correction, and \code{resp_rate} act on in \code{\link[=n_prop
 \code{\link[=prec_prop]{prec_prop()}}, so a power calculation and a precision calculation for the
 same design stay on one scale. The pooled form has no finite-population
 analogue that keeps that correspondence.
+
+\code{method = "logodds"} does carry a pooled null, because the statistic it
+powers has one. It refers the log-odds difference to a critical value
+computed under the null and a power shift computed under the alternative,
+rejecting when
+
+\deqn{|\mathrm{logit}(\hat p_1) - \mathrm{logit}(\hat p_2)|
+  > z_{\alpha} \sqrt{V_0},}{|logit(phat_1) - logit(phat_2)| > z_alpha sqrt(V_0),}
+
+with the two variances
+
+\deqn{V_0 = d \left( \frac{f_1}{n_1 \bar{p} \bar{q}}
+                   + \frac{f_2}{n_2 \bar{p} \bar{q}} \right), \qquad
+      V_A = d \left( \frac{f_1}{n_1 p_1 q_1}
+                   + \frac{f_2}{n_2 p_2 q_2} \right),}{V_0 = d ( f_1/(n_1 pbar qbar) + f_2/(n_2 pbar qbar) ), V_A = d ( f_1/(n_1 p_1 q_1) + f_2/(n_2 p_2 q_2) ),}
+
+where \eqn{d} is \code{deff} and \eqn{f_i} the finite population correction of
+group \eqn{i}. Under the null the two groups share one proportion, and the
+estimator of it is the pooled one, so \eqn{\bar{p}}{pbar} is the
+\strong{sample-size-weighted} mean
+
+\deqn{\bar{p} = \frac{n_1 p_1 + n_2 p_2}{n_1 + n_2}
+              = \frac{r p_1 + p_2}{r + 1},}{pbar = (n_1 p_1 + n_2 p_2)/(n_1 + n_2) = (r p_1 + p_2)/(r + 1),}
+
+with \eqn{r} the allocation \code{ratio}. At \code{ratio = 1} this is
+\eqn{(p_1 + p_2) / 2}; away from it the weighted and unweighted nulls give
+materially different sizes, so the weighting is not a refinement. Sizing
+\code{p1 = 0.1} against \code{p2 = 0.2} at \code{ratio = 4} needs 523 and 131, against
+457 and 115 for an unweighted null: 14 percent more fieldwork, because the
+larger group is the one with the smaller proportion and pulls the pooled
+null toward it. Both the size-solving and the power-computing path use this
+\eqn{\bar{p}}{pbar}, so \code{power_prop()} inverts itself under any allocation.
 }
 
 \subsection{Normal approximation}{
@@ -144,6 +176,13 @@ lets \code{deff}, a finite \code{N}, and \code{resp_rate} enter the variance dir
 The choice of \code{method} addresses accuracy in \eqn{p}, not in \eqn{n}:
 \code{"arcsine"} and \code{"logodds"} improve the normal approximation for an
 extreme proportion, but none of the three is exact at small \code{n}.
+
+The \code{df} argument that \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}} and \code{\link[=n_alloc]{n_alloc()}} accept has
+no counterpart here, and its absence is a decision rather than an
+omission. There the quantile is the half-width of a confidence interval
+and a t quantile substitutes for a normal one directly; here it is a
+normal deviate for an alternative, and a t-based power calculation is a
+different procedure. Passing \code{df} is an error that says so.
 }
 }
 \examples{
@@ -177,4 +216,8 @@ Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
 \seealso{
 \code{\link[=power_mean]{power_mean()}} for continuous outcomes, \code{\link[=power_did]{power_did()}} for
 difference-in-differences, \code{\link[=n_prop]{n_prop()}} for estimation precision.
+With \code{overlap} set, this is the two-occasion change of one population:
+\code{\link[=n_change]{n_change()}} and \code{\link[=prec_change]{prec_change()}} size and evaluate the same quantity as
+an estimate with a margin of error rather than as a test, and
+\code{\link[=design_overlap]{design_overlap()}} derives the overlap from a rotation schedule.
 }

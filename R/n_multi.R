@@ -1,4 +1,4 @@
-#' Multi-Indicator Sample Size
+#' Multi-indicator sample size
 #'
 #' Compute the sample size that satisfies precision requirements for
 #' multiple survey indicators simultaneously under a simple sampling design.
@@ -16,9 +16,9 @@
 #'     \item **What to measure**: `p` for a proportion (e.g. 0.30 for
 #'       30\% stunting) **or** `var` for a continuous variable's
 #'       population variance. Each row must use exactly one.
-#'     \item **How precise**: `moe` (margin of error) **or**
-#'       `cv` (coefficient of variation). Each row must
-#'       specify exactly one.
+#'     \item **How precise**: `moe` (margin of error), `rmoe` (margin of
+#'       error relative to the estimand) **or** `cv` (coefficient of
+#'       variation). Each row must specify exactly one.
 #'   }
 #'
 #'   For `svyplan_prec` objects: a precision result from [prec_multi()].
@@ -27,6 +27,21 @@
 #'   as domain variables, or `NULL` (default) for no domains. All names
 #'   must exist in `indicators`. When specified, sizing runs
 #'   independently for each domain combination.
+#' @param domain_sampling How the per-domain requirements combine into one
+#'   overall size, either `"separate"` (default) or `"natural"`. It applies
+#'   only when domains are present.
+#'
+#'   `"separate"` treats the domains as disjoint quotas drawn independently,
+#'   the usual case for regional or urban/rural domains in one national
+#'   survey, and reports `n` as their sum. Every quota has to be met, so no
+#'   smaller total delivers the design.
+#'
+#'   `"natural"` treats them as analytic domains that arise at their own rate
+#'   inside one sample. It requires a `share` column giving each domain's
+#'   expected share of the population, constant within a domain, and reports
+#'   `n` as `max(.n / share)`. That is an *expected yield*: a sample of that
+#'   size delivers each domain's quota on average, not with certainty in any
+#'   one realized sample.
 #' @param min_n_domain Numeric scalar or `NULL` (default). Minimum total sample
 #'   size per domain. It applies only when domains are present. Per-domain
 #'   sample sizes are floored to `min_n_domain`.
@@ -51,9 +66,16 @@
 #'
 #'   **With domains**, the object additionally contains:
 #'   \describe{
-#'     \item{`n`}{The largest sample size required across domains.}
+#'     \item{`n`}{The overall size, read according to `domain_sampling`:
+#'       the sum of the domain quotas under `"separate"`, or the size whose
+#'       expected yield meets every quota under `"natural"`. It is not the
+#'       largest domain requirement, which is a different and smaller
+#'       number.}
+#'     \item{`n_domain_max`}{The largest single domain requirement, and the
+#'       one `binding` refers to.}
 #'     \item{`domains`}{Data frame with one row per domain, including
-#'       domain variables, `.n`, and `.binding`.}
+#'       domain variables, `.n`, `.binding`, and `.share` under
+#'       `"natural"`.}
 #'   }
 #'
 #' @details
@@ -67,8 +89,10 @@
 #'    expenditure")? This determines whether you fill the `p` or `var`
 #'    column.
 #' 2. **Precision target**: do you want an absolute margin of error
-#'    (`moe`, e.g. +/- 5 percentage points) or a relative
-#'    coefficient of variation (`cv`, e.g. 10 percent relative error)?
+#'    (`moe`, e.g. +/- 5 percentage points), the same margin stated
+#'    relative to the estimand (`rmoe`, e.g. 12 percent of the
+#'    proportion, as MICS and DHS state it), or a relative coefficient of
+#'    variation (`cv`, e.g. 10 percent relative error)?
 #'
 #' A minimal example for three health indicators:
 #'
@@ -104,6 +128,10 @@
 #'     interval you want. For proportions, this is on the probability
 #'     scale (e.g. 0.05 for +/- 5 percentage points). For means,
 #'     it is in the same units as the variable (e.g. 10 dollars).}
+#'   \item{`rmoe`}{Margin of error relative to the row's estimand, so
+#'     0.12 asks for a half-width of 12 percent of `p` or of `abs(mu)`.
+#'     It is converted to `moe` on ingestion, so the row needs `p` or
+#'     `mu`, and it is read under the row's own `prop_method`.}
 #'   \item{`cv`}{Target coefficient of variation (relative standard
 #'     error). For example, 0.10 means the SE should be at most 10\%
 #'     of the estimate.}
@@ -123,21 +151,43 @@
 #'     inside `[0, 1]` by construction. It is used only for rows with
 #'     `p`. See [n_prop()] for how to choose.}
 #'   \item{`df`}{Degrees of freedom of the planned variance estimator,
-#'     typically sampled PSUs minus strata. Read by `"beta"` rows only,
-#'     where it widens the interval for a variance estimated from few
-#'     clusters; `NA` (the default) applies no adjustment. Supplying it
-#'     on a row using any other method is an error, so a mixed table
-#'     carries `NA` on its non-beta rows.}
+#'     typically sampled PSUs minus strata, and available from
+#'     [design_df()]. It switches that row's interval quantile from normal
+#'     to t, under every method; `NA` (the default) applies no adjustment.
+#'     A df is a property of the design rather than of an indicator, so
+#'     every row of a single-domain table shares one value. The column
+#'     earns its place when the rows are *domains*, each covering its own
+#'     set of strata: `design_df(alloc)$domains$.df` gives one value per
+#'     domain to match in.}
+#'   \item{`min_cases`}{Minimum expected number of positive cases the row
+#'     must yield, a floor on that row's own size, as in
+#'     [n_prop()]`(min_cases = )`. Proportion rows only; `NA` (the
+#'     default) sizes the row on precision alone. The row that ends up
+#'     largest is still the binding one, whichever constraint raised it.
+#'     Single-stage `n_multi()` only: a multistage design sizes stages
+#'     against a cost and has no single total for a count to raise.}
 #'   \item{`unit_relvar`}{Unit relvariance. If omitted, derived
 #'     automatically from `p` (as `(1 - p) / p`) or from
 #'     `var` / `mu^2`.}
-#'   \item{`resp_rate`}{Expected response rate, in (0, 1\]. Default 1
-#'     (no adjustment). A value of 0.90 inflates the sample size by
-#'     `1 / 0.90` to compensate for 10 percent non-response.}
+#'   \item{`resp_rate`}{Expected response rate at the ultimate unit, in
+#'     (0, 1\]. Default 1 (no adjustment). A value of 0.90 inflates the
+#'     sample size by `1 / 0.90` to compensate for 10 percent
+#'     non-response. It means the same thing in [n_multi_cluster()],
+#'     which additionally takes `resp_rate_psu` for whole clusters that
+#'     cannot be worked and `resp_rate_ssu` for second-stage units in a
+#'     three-stage design. Naming a stage the design does not have is an
+#'     error rather than a column carried along and ignored.}
 #' }
 #'
 #' Domain columns are specified via the `domains` parameter. When domains
-#' are present, sizing runs independently for each domain combination.
+#' are present, sizing runs independently for each domain combination, and
+#' `domain_sampling` decides how those requirements combine into the one
+#' number `n` reports. The two readings answer different questions and give
+#' different sizes, so the choice belongs to the design rather than to a
+#' default: separate quotas need every requirement met and therefore their
+#' sum, while natural domains need a sample large enough that the rarest
+#' demanding domain turns up often enough. Neither is the largest single
+#' requirement, which `n_domain_max` reports separately.
 #'
 #' Columns beyond those listed are carried along and ignored, so the table
 #' can keep questionnaire modules, sources, or other bookkeeping. The
@@ -169,6 +219,7 @@
 #' *Practical Tools for Designing and Weighting Survey Samples*
 #' (2nd ed.). Springer.
 #'
+#' @family sample size functions
 #' @seealso [n_prop()] and [n_mean()] for single-indicator sizing,
 #'   [n_alloc()] to split a multi-indicator size across strata or domains,
 #'   [n_multi_cluster()] for multistage cluster designs, and [prec_multi()]
@@ -183,16 +234,14 @@
 #' )
 #' n_multi(indicators)
 #'
-#' # MICS/DHS-style: specify precision as a relative margin of error (RME).
-#' # RME = moe / p, so convert with moe = RME * p before calling n_multi().
-#' rme <- 0.12
-#' targets_rme <- data.frame(
+#' # MICS/DHS-style: state precision as a relative margin of error
+#' targets_rmoe <- data.frame(
 #'   name = c("stunting", "vaccination", "anemia"),
 #'   p    = c(0.30, 0.70, 0.10),
+#'   rmoe = 0.12,
 #'   deff = c(2.0, 1.5, 2.5)
 #' )
-#' targets_rme$moe <- rme * targets_rme$p
-#' n_multi(targets_rme)
+#' n_multi(targets_rmoe)
 #'
 #' # Continuous indicators: 'var' for the dispersion, 'mu' for the mean.
 #' # A CV target needs 'mu', because a relative standard error is relative
@@ -298,6 +347,7 @@ n_multi.default <- function(
   indicators,
   ...,
   domains = NULL,
+  domain_sampling = c("separate", "natural"),
   min_n_domain = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
   plan = NULL
@@ -306,6 +356,7 @@ n_multi.default <- function(
   if (!is.null(.plan)) return(do.call(n_multi.default, c(.plan, list(...))))
   .check_multi_split_args(list(...), "n_multi_cluster()")
   .check_unused_dots(...)
+  domain_sampling <- match.arg(domain_sampling)
   if (!is.data.frame(indicators) || nrow(indicators) == 0L) {
     stop("'indicators' must be a non-empty data frame", call. = FALSE)
   }
@@ -334,6 +385,7 @@ n_multi.default <- function(
   }
 
   indicators <- .indicators_var_from_sd(indicators, domains)
+  indicators <- .indicators_moe_from_rmoe(indicators, domains)
   info <- .validate_targets(indicators, FALSE, domains = domains)
   indicators <- .fill_defaults(indicators, FALSE, prop_method = prop_method)
 
@@ -368,20 +420,22 @@ n_multi.default <- function(
       min_n_domain,
       fixed_cost = 0,
       mode = mode,
-      prop_method = prop_method
+      prop_method = prop_method,
+      domain_sampling = domain_sampling
     )
   }
 }
 
-#' Multi-Indicator Sample Size for Cluster Designs
+#' Multi-indicator sample size for cluster designs
 #'
 #' Compute a two- or three-stage cluster allocation that satisfies precision
 #' requirements for several survey indicators. Domain-level planning and a
 #' shared budget across domains are supported.
 #'
 #' @param indicators For the default method, a non-empty data frame with one row
-#'   per indicator. Each row requires `p` or `var`, a `cv` or `moe` target,
-#'   and `icc_psu`. Three-stage designs also require `icc_ssu`. Optional
+#'   per indicator. Each row requires `p` or `var`, a `cv`, `moe`, or
+#'   `rmoe` target, and `icc_psu`. Three-stage designs also require
+#'   `icc_ssu`. Optional
 #'   `var_ratio_psu` defaults to 1; three-stage `var_ratio_ssu` is derived as
 #'   `var_ratio_psu * (1 - icc_psu)` when absent, the value the variance
 #'   decomposition implies (see [design_effect()]). For the `svyplan_prec`
@@ -391,7 +445,12 @@ n_multi.default <- function(
 #' @param stage_cost Numeric vector of per-stage costs with length 2 or 3.
 #' @param domains Optional character vector naming domain columns in
 #'   `indicators`. The function solves each domain independently unless
-#'   `allocation = "joint"` in budget mode.
+#'   `allocation = "joint"` in budget mode. Domains are sized as separate
+#'   quotas, so `$total_n` is their sum and `$n` carries no aggregate stage
+#'   vector; the fieldable per-domain stage sizes are in `$domains`.
+#'   `domain_sampling = "natural"` is refused here, because a domain's
+#'   expected yield in a multistage design depends on how its members sit
+#'   inside PSUs and SSUs rather than on its population share alone.
 #' @param budget Optional total budget. Supply precision indicators or a budget,
 #'   according to the target schema described in Details.
 #' @param n_psu Optional fixed stage-1 sample size.
@@ -403,6 +462,12 @@ n_multi.default <- function(
 #'   (one budget split across domains to minimize the worst precision
 #'   ratio). `"joint"` applies only when `domains` and `budget` are
 #'   supplied.
+#' @param domain_sampling How the per-domain requirements combine into one
+#'   overall size. Only `"separate"` (the default) is available here, and
+#'   `$total_n` is then the sum of the per-domain totals. `"natural"` is
+#'   refused: a domain's expected yield in a multistage design depends on
+#'   how its members sit inside PSUs and SSUs rather than on its share of
+#'   the population alone, and that model is not in the package.
 #' @param min_n_domain Optional positive minimum total sample size per domain. In
 #'   joint budget mode it is a constraint. In independent domain mode,
 #'   domains below the floor produce a warning.
@@ -414,10 +479,30 @@ n_multi.default <- function(
 #'   which optional arguments are supplied.
 #'
 #' @details
+#' The indicator columns follow [n_multi()], with one difference that matters.
+#' Nonresponse is named for the stage it acts on: `resp_rate_psu` for
+#' clusters that cannot be worked at all, `resp_rate_ssu` for second-stage
+#' units in a three-stage design, and `resp_rate` for the ultimate units.
+#' They are not interchangeable, and [n_cluster()] sets out why. A column
+#' naming a stage the design does not have is an error rather than a column
+#' carried along and ignored, since a silently dropped response rate plans a
+#' design with none.
+#'
 #' Margin-of-error indicators are converted to CV before optimization. For each
 #' candidate allocation, the required stage-1 size is the maximum across all
 #' indicators. The solver minimizes total cost for precision indicators or the
 #' worst precision ratio under a fixed budget.
+#'
+#' That conversion respects the row's `prop_method`. The multistage model is
+#' driven by a relative standard error, and only the Wald interval has
+#' half-width `z * se`, so a proportion row's `moe` is restated as the
+#' sampling CV at the effective sample size its own method needs to close the
+#' interval to that margin. A stricter interval therefore asks for a larger
+#' design, in the same order it does in [n_prop()]. Under `"wald"` the
+#' restatement is `moe / (z * p)` exactly. A mean row converts as
+#' `moe / (z * |mu|)`, on the magnitude so that a negative mean yields a
+#' positive target. [prec_multi_cluster()] inverts the same way, so a design
+#' sized from a `moe` target reports that `moe` back.
 #'
 #' Homogeneity values numerically close to 0 or 1 are rejected because they
 #' make the analytical cluster optimum degenerate. The result includes an
@@ -439,6 +524,7 @@ n_multi.default <- function(
 #' [n_alloc()] gives the stronger guarantee where it applies, returning
 #' feasibility and KKT diagnostics for its convex continuous problem.
 #'
+#' @family sample size functions
 #' @seealso [n_multi()] for simple designs, [n_cluster()] for a single
 #'   indicator, [n_alloc()] for stratified multistage allocation, and
 #'   [prec_multi_cluster()] for the inverse calculation.
@@ -473,6 +559,7 @@ n_multi_cluster.default <- function(
   n_per_psu = NULL,
   n_per_ssu = NULL,
   allocation = c("separate", "joint"),
+  domain_sampling = c("separate", "natural"),
   min_n_domain = NULL,
   fixed_cost = 0,
   plan = NULL
@@ -498,6 +585,7 @@ n_multi_cluster.default <- function(
     stop("'allocation' must be \"separate\" or \"joint\"", call. = FALSE)
   }
   allocation <- match.arg(allocation)
+  domain_sampling <- match.arg(domain_sampling)
   joint <- identical(allocation, "joint")
   if (!is.null(min_n_domain) &&
       (!is.numeric(min_n_domain) || length(min_n_domain) != 1L || is.na(min_n_domain) ||
@@ -523,6 +611,7 @@ n_multi_cluster.default <- function(
   check_fixed_cost(fixed_cost, budget)
 
   indicators <- .indicators_var_from_sd(indicators, domains)
+  indicators <- .indicators_moe_from_rmoe(indicators, domains)
   info <- .validate_targets(
     indicators,
     TRUE,
@@ -579,9 +668,56 @@ n_multi_cluster.default <- function(
       joint,
       min_n_domain,
       fixed_cost,
-      mode = mode
+      mode = mode,
+      domain_sampling = domain_sampling
     )
   }
+}
+
+#' A per-row rate column, defaulting to full response when absent
+#'
+#' Read rather than filled, so a stage that a design does not have never
+#' materializes a column that a round trip would then have to explain.
+#' @keywords internal
+#' @noRd
+.indicator_rate <- function(indicators, name, nr) {
+  if (!name %in% names(indicators)) {
+    return(rep(1, nr))
+  }
+  v <- indicators[[name]]
+  v[is.na(v)] <- 1
+  v
+}
+
+#' Refuse the response-rate column that belongs to the other interface
+#'
+#' The two interfaces spend a response rate at different stages, so each
+#' names its own column. An unrecognized column would otherwise be carried
+#' along and ignored, which for a response rate means silently planning a
+#' design with none.
+#' @keywords internal
+#' @noRd
+.check_resp_rate_column <- function(indicators, multistage, stages = 2L) {
+  if (!multistage) {
+    wrong <- intersect(c("resp_rate_psu", "resp_rate_ssu"), names(indicators))
+    if (length(wrong) == 0L) {
+      return(invisible(TRUE))
+    }
+    stop(
+      sprintf(
+        "column(s) %s name sampling stages this design does not have; a single-stage design loses ultimate units, so its rate is the plain 'resp_rate'",
+        paste(sQuote(wrong), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  if (stages == 2L && "resp_rate_ssu" %in% names(indicators)) {
+    stop(
+      "column 'resp_rate_ssu' is not applicable for 2-stage designs: the units inside a PSU are the ultimate ones, so their nonresponse is 'resp_rate'",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }
 
 #' Report arguments that moved to the cluster-specific API
@@ -631,6 +767,7 @@ n_multi_cluster.default <- function(
   }
 
   .check_indicator_columns(indicators, domains)
+  .check_resp_rate_column(indicators, multistage, stages %||% 2L)
 
   has_p <- "p" %in% names(indicators)
   has_var <- "var" %in% names(indicators)
@@ -641,7 +778,8 @@ n_multi_cluster.default <- function(
   has_moe <- "moe" %in% names(indicators)
   has_cv <- "cv" %in% names(indicators)
   if (!has_moe && !has_cv) {
-    stop("'indicators' must contain 'moe' or 'cv' column", call. = FALSE)
+    stop("'indicators' must contain a 'moe', 'rmoe', or 'cv' column",
+         call. = FALSE)
   }
 
   if (has_p) {
@@ -714,7 +852,7 @@ n_multi_cluster.default <- function(
 
   if (multistage) {
     if (!has_cv && !has_moe) {
-      stop("multistage mode requires 'cv' or 'moe' column in indicators",
+      stop("multistage mode requires a 'cv', 'moe', or 'rmoe' column in indicators",
            call. = FALSE)
     }
     if (has_moe && any(!is.na(indicators$moe))) {
@@ -861,10 +999,20 @@ n_multi_cluster.default <- function(
     }
   }
 
-  if (!"resp_rate" %in% names(indicators)) {
-    indicators$resp_rate <- 1
+  # The simple path spends this at the ultimate unit and the multistage path
+  # at stage 1, so the two carry different column names rather than one name
+  # with two meanings.
+  rate_cols <- if (multistage) {
+    c("resp_rate_psu", "resp_rate")
   } else {
-    indicators$resp_rate[is.na(indicators$resp_rate)] <- 1
+    "resp_rate"
+  }
+  for (rate_col in rate_cols) {
+    if (!rate_col %in% names(indicators)) {
+      indicators[[rate_col]] <- 1
+    } else {
+      indicators[[rate_col]][is.na(indicators[[rate_col]])] <- 1
+    }
   }
 
   if (!"prop_method" %in% names(indicators)) {
@@ -927,8 +1075,19 @@ n_multi_cluster.default <- function(
 
 #' Convert moe to cv in multistage indicators
 #'
-#' For proportion rows: cv = moe / (z * p).
-#' For mean rows: cv = moe / (z * mu).
+#' The multistage model is driven by a relative standard error, so a margin
+#' of error target has to be restated as one. For a mean row that is exact:
+#' `cv = moe / (z |mu|)`, on the magnitude because a mean may be negative
+#' while a CV may not.
+#'
+#' For a proportion row it is exact only under `"wald"`, the one method whose
+#' half-width is `z se`. The others close their interval at a different
+#' standard error, so the restatement goes through the effective sample size
+#' the row's own method needs to reach that margin and reports the sampling
+#' CV there. Under `"wald"` this reproduces `moe / (z p)`, so no Wald result
+#' moves; under the other three it is what makes `prop_method` reach the
+#' multistage path at all.
+#'
 #' Rows that already have cv are left unchanged.
 #' @keywords internal
 #' @noRd
@@ -945,13 +1104,19 @@ n_multi_cluster.default <- function(
 
   has_p <- "p" %in% names(indicators)
   has_var <- "var" %in% names(indicators)
+  has_method <- "prop_method" %in% names(indicators)
 
   for (i in which(moe_rows)) {
-    z <- qnorm(1 - indicators$alpha[i] / 2)
+    df_i <- .row_df(indicators, i)
     if (has_p && !is.na(indicators$p[i])) {
-      indicators$cv[i] <- indicators$moe[i] / (z * indicators$p[i])
+      p_i <- indicators$p[i]
+      method_i <- if (has_method) indicators$prop_method[i] else "wald"
+      n_eff <- .n_prop_effective(p_i, indicators$moe[i], indicators$alpha[i],
+                                 method_i, df_i)
+      indicators$cv[i] <- sqrt(p_i * (1 - p_i) / n_eff) / p_i
     } else if (has_var && !is.na(indicators$var[i])) {
-      indicators$cv[i] <- indicators$moe[i] / (z * indicators$mu[i])
+      z <- .q_alpha(indicators$alpha[i], df_i)
+      indicators$cv[i] <- indicators$moe[i] / (z * abs(indicators$mu[i]))
     }
   }
 
@@ -966,6 +1131,14 @@ n_multi_cluster.default <- function(
   simple <- .compute_simple_n(indicators)
   n_vec <- simple$n
   cv_target_vec <- simple$cv_target
+
+  # A case floor raises the row's own size, so the binding row is chosen
+  # among sizes that already satisfy both constraints. `.cv_target` keeps
+  # its precision meaning; `.cv_achieved` is read at the size that wins.
+  floor_n <- .multi_min_cases_n(indicators)
+  if (!is.null(floor_n)) {
+    n_vec <- pmax(n_vec, floor_n, na.rm = TRUE)
+  }
 
   idx <- which.max(n_vec)
   n_max <- n_vec[idx]
@@ -990,7 +1163,8 @@ n_multi_cluster.default <- function(
         .prec_engine_mean(indicators$var[i],
                           if (has_mu) indicators$mu[i] else NULL,
                           n_max, indicators$alpha[i], indicators$N[i],
-                          indicators$deff[i], indicators$resp_rate[i])
+                          indicators$deff[i], indicators$resp_rate[i],
+                          .row_df(indicators, i))
       }
     )
     prec$cv
@@ -1056,7 +1230,8 @@ n_multi_cluster.default <- function(
         alpha = indicators$alpha[i],
         N = indicators$N[i],
         deff = indicators$deff[i],
-        resp_rate = indicators$resp_rate[i]
+        resp_rate = indicators$resp_rate[i],
+        df = .row_df(indicators, i)
       )
     }
     n_vec[i] <- res_i$n
@@ -1073,6 +1248,10 @@ n_multi_cluster.default <- function(
                             n_per_psu = NULL, n_per_ssu = NULL, fixed_cost = 0,
                             domain_cols = character(0), mode = "cv",
                             prop_method = "wald") {
+  .stop_min_cases_column(
+    indicators,
+    "a multistage design sizes stages against a cost, with no single total for a count to raise. Size the count-driven indicator with n_prop(min_cases = ) and set the stage takes around it"
+  )
   stages <- length(stage_cost)
   if (stages == 2L) {
     .n_multi_2stage(indicators, stage_cost, budget, n_psu, n_per_psu, fixed_cost,
@@ -1099,8 +1278,8 @@ n_multi_cluster.default <- function(
     .Machine$integer.max
   }
   base <- seq_len(min(base_limit, upper_i))
-  centre <- max(1L, as.integer(round(continuous)))
-  local <- seq.int(max(1L, centre - 20L), min(upper_i, centre + 20L))
+  center <- max(1L, as.integer(round(continuous)))
+  local <- seq.int(max(1L, center - 20L), min(upper_i, center + 20L))
   unique(c(base, local))
 }
 
@@ -1175,9 +1354,9 @@ n_multi_cluster.default <- function(
 #' Constraint-preserving whole-unit design for three-stage n_multi
 #' @keywords internal
 #' @noRd
-.op_multi_3stage <- function(n1_required, cv_fn, cv_t, stage_cost, budget,
+.op_multi_3stage <- function(coef, cv_fn, cv_t, stage_cost, budget,
                              n_psu, n_per_psu, n_per_ssu, fixed_cost,
-                             cont_m, cont_q) {
+                             cont_m) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   C3 <- stage_cost[3L]
@@ -1185,61 +1364,22 @@ n_multi_cluster.default <- function(
   a_fixed <- if (is.null(n_psu)) NULL else max(1L, as.integer(round(n_psu)))
   a_min <- a_fixed %||% 1L
 
-  if (is.null(variable_budget)) {
-    upper_m <- upper_q <- Inf
+  upper_m <- if (is.null(variable_budget)) {
+    Inf
   } else {
-    per <- variable_budget / a_min
-    upper_m <- (per - C1) / (C2 + C3)
-    upper_q <- (per - C1 - C2) / C3
+    (variable_budget / a_min - C1) / (C2 + C3)
   }
   m_cand <- .multi_stage_candidates(n_per_psu, cont_m, upper_m)
-  q_cand <- .multi_stage_candidates(n_per_ssu, cont_q, upper_q)
-  grid <- expand.grid(m = m_cand, q = q_cand)
-  per_psu <- C1 + C2 * grid$m + C3 * grid$m * grid$q
 
-  if (!is.null(budget)) {
-    a <- if (is.null(a_fixed)) {
-      as.integer(floor(variable_budget / per_psu))
-    } else {
-      rep(a_fixed, nrow(grid))
-    }
-    cost <- a * per_psu
-    keep <- a >= 1L & cost <= variable_budget + 1e-8
-    if (!any(keep)) {
-      stop("no whole-unit n_multi design fits the budget", call. = FALSE)
-    }
-    grid <- grid[keep, , drop = FALSE]
-    a <- a[keep]
-    cost <- cost[keep]
-    ratios <- vapply(seq_along(a), function(i) {
-      max(cv_fn(a[i], grid$m[i], grid$q[i]) / cv_t)
-    }, numeric(1L))
-    j <- which.min(ratios + 1e-12 * (grid$m + grid$q))
-  } else {
-    need <- vapply(seq_len(nrow(grid)), function(i) {
-      max(n1_required(grid$m[i], grid$q[i]))
-    }, numeric(1L))
-    if (is.null(a_fixed)) {
-      a <- pmax(1L, as.integer(ceiling(need - 1e-9)))
-    } else {
-      a <- rep(a_fixed, nrow(grid))
-      keep <- a + 1e-9 >= need
-      if (!any(keep)) {
-        stop("target CV is not achievable with the fixed whole PSU count",
-             call. = FALSE)
-      }
-      grid <- grid[keep, , drop = FALSE]
-      per_psu <- per_psu[keep]
-      a <- a[keep]
-    }
-    cost <- a * (C1 + C2 * grid$m + C3 * grid$m * grid$q)
-    j <- which.min(cost + 1e-9 * a * grid$m * grid$q +
-                     1e-12 * (grid$m + grid$q))
-  }
-
-  a_best <- a[j]
-  m_best <- as.integer(grid$m[j])
-  q_best <- as.integer(grid$q[j])
+  hit <- .op_cluster3_search(
+    coef$alpha, coef$beta, coef$gamma, stage_cost, variable_budget,
+    n_psu, n_per_ssu, m_cand,
+    msg_budget = "no whole-unit n_multi design fits the budget",
+    msg_cv = "target CV is not achievable with the fixed whole PSU count"
+  )
+  a_best <- hit[["n_psu"]]
+  m_best <- hit[["n_per_psu"]]
+  q_best <- hit[["n_per_ssu"]]
   cvs <- cv_fn(a_best, m_best, q_best)
   list(
     n = c(n_psu = a_best, n_per_psu = m_best, n_per_ssu = q_best),
@@ -1265,18 +1405,20 @@ n_multi_cluster.default <- function(
   icc <- indicators$icc_psu
   unit_relvar <- indicators$unit_relvar
   var_ratio <- indicators$var_ratio_psu
-  rr <- indicators$resp_rate
+  rr <- indicators$resp_rate_psu
+  ru <- indicators$resp_rate
   labels <- if ("name" %in% names(indicators)) indicators$name else seq_len(nr)
 
-  # n1_actual_j = unit_relvar_j * k_j * (1 + icc_j*(n_per_psu-1)) / (n_per_psu * cv_j^2 * rr_j)
+  # n_per_psu is the gross take; each row reads the take it realizes.
   n1_required <- function(n_per_psu) {
     vapply(
       seq_len(nr),
       function(j) {
+        mr <- n_per_psu * ru[j]
         unit_relvar[j] *
           var_ratio[j] *
-          (1 + icc[j] * (n_per_psu - 1)) /
-          (n_per_psu * cv_t[j]^2 * rr[j])
+          (1 + icc[j] * (mr - 1)) /
+          (mr * cv_t[j]^2 * rr[j])
       },
       numeric(1L)
     )
@@ -1286,11 +1428,12 @@ n_multi_cluster.default <- function(
     vapply(
       seq_len(nr),
       function(j) {
+        mr <- n_per_psu * ru[j]
         sqrt(
           unit_relvar[j] *
             var_ratio[j] /
-            (n1 * rr[j] * n_per_psu) *
-            (1 + icc[j] * (n_per_psu - 1))
+            (n1 * rr[j] * mr) *
+            (1 + icc[j] * (mr - 1))
         )
       },
       numeric(1L)
@@ -1304,14 +1447,45 @@ n_multi_cluster.default <- function(
       n1_opt <- max(n1_vals)
       total_cost <- fixed_cost + n1_opt * (C1 + C2 * n_per_psu_opt)
       binding_idx <- which.max(n1_vals)
+    } else if (!is.null(n_psu)) {
+      # A fixed PSU count leaves the take as the only free stage, so it is
+      # solved rather than cost-optimized: inverting n1_required() for the
+      # gross take gives m = A (1 - icc) / (r (n_psu - A icc)) with
+      # A = unit_relvar * var_ratio / (cv^2 * resp_rate_psu). The design is
+      # feasible only above the between-PSU floor A * icc, which no take can
+      # get under however large it grows.
+      A <- unit_relvar * var_ratio / (cv_t^2 * rr)
+      floor_psu <- A * icc
+      if (any(n_psu <= floor_psu + 1e-12)) {
+        stop(
+          sprintf(
+            "a fixed 'n_psu' of %g cannot reach the target for %s: the between-PSU term alone needs more than %g clusters however large the take",
+            n_psu,
+            paste(sQuote(labels[n_psu <= floor_psu + 1e-12]), collapse = ", "),
+            max(floor_psu[n_psu <= floor_psu + 1e-12])
+          ),
+          call. = FALSE
+        )
+      }
+      takes <- A * (1 - icc) / (ru * (n_psu - floor_psu))
+      binding_idx <- which.max(takes)
+      n_per_psu_opt <- max(takes)
+      n1_opt <- n_psu
+      total_cost <- fixed_cost + n1_opt * (C1 + C2 * n_per_psu_opt)
     } else {
       cost_fn <- function(n_per_psu) {
         n1 <- max(n1_required(n_per_psu))
         n1 * (C1 + C2 * n_per_psu)
       }
 
-      upper <- max(10, sqrt(C1 / C2 * (1 - icc) / icc))
-      opt <- optimize(cost_fn, interval = c(1, upper))
+      # The cost-optimal take is sqrt(C1 (1 - icc) / (C2 icc r)) in the
+      # ultimate response rate r, so it grows as r falls. A bracket drawn at
+      # the r = 1 scale sits below the optimum and optimize() returns its own
+      # upper bound. Doubled so the optimum stays interior with several
+      # indicators, whose optima need not coincide.
+      upper <- max(10, 2 * max(sqrt(C1 / C2 * (1 - icc) / (icc * ru))))
+      opt <- optimize(cost_fn, interval = c(1, upper),
+                      tol = .Machine$double.eps^0.5)
       n_per_psu_opt <- opt$minimum
 
       n1_vals <- n1_required(n_per_psu_opt)
@@ -1329,6 +1503,7 @@ n_multi_cluster.default <- function(
       unit_relvar,
       var_ratio,
       rr,
+      ru,
       C1,
       C2,
       var_budget,
@@ -1411,24 +1586,29 @@ n_multi_cluster.default <- function(
   unit_relvar <- indicators$unit_relvar
   var_ratio_psu <- indicators$var_ratio_psu
   var_ratio_ssu <- indicators$var_ratio_ssu
-  rr <- indicators$resp_rate
+  rr <- indicators$resp_rate_psu
+  rs <- .indicator_rate(indicators, "resp_rate_ssu", nr)
+  ru <- indicators$resp_rate
   labels <- if ("name" %in% names(indicators)) {
     indicators$name
   } else {
     seq_len(nr)
   }
 
+  # Both stage takes are gross; each row reads the takes it realizes.
   n1_required <- function(n_per_psu, n_per_ssu) {
     vapply(
       seq_len(nr),
       function(j) {
+        mr <- n_per_psu * rs[j]
+        qr <- n_per_ssu * ru[j]
         unit_relvar[j] /
-          (cv_t[j]^2 * n_per_psu * n_per_ssu * rr[j]) *
+          (cv_t[j]^2 * mr * qr * rr[j]) *
           (var_ratio_psu[j] *
             icc_psu[j] *
-            n_per_psu *
-            n_per_ssu +
-            var_ratio_ssu[j] * (1 + icc_ssu[j] * (n_per_ssu - 1)))
+            mr *
+            qr +
+            var_ratio_ssu[j] * (1 + icc_ssu[j] * (qr - 1)))
       },
       numeric(1L)
     )
@@ -1438,18 +1618,50 @@ n_multi_cluster.default <- function(
     vapply(
       seq_len(nr),
       function(j) {
+        mr <- n_per_psu * rs[j]
+        qr <- n_per_ssu * ru[j]
         sqrt(
           unit_relvar[j] /
-            (n1 * rr[j] * n_per_psu * n_per_ssu) *
+            (n1 * rr[j] * mr * qr) *
             (var_ratio_psu[j] *
               icc_psu[j] *
-              n_per_psu *
-              n_per_ssu +
-              var_ratio_ssu[j] * (1 + icc_ssu[j] * (n_per_ssu - 1)))
+              mr *
+              qr +
+              var_ratio_ssu[j] * (1 + icc_ssu[j] * (qr - 1)))
         )
       },
       numeric(1L)
     )
+  }
+
+  # The same requirement written in the gross takes, as
+  # alpha + beta / n_per_psu + gamma / (n_per_psu * n_per_ssu), which is
+  # n1_required() rearranged so the whole-unit search can invert it for the
+  # stage-3 take. Both modes divide by the target, since budget mode ranks
+  # designs by the largest cv-to-target ratio.
+  search_coef <- list(
+    alpha = unit_relvar * var_ratio_psu * icc_psu / (rr * cv_t^2),
+    beta = unit_relvar * var_ratio_ssu * icc_ssu / (rr * rs * cv_t^2),
+    gamma = unit_relvar * var_ratio_ssu * (1 - icc_ssu) / (rr * rs * ru * cv_t^2)
+  )
+
+  # n1_required() is alpha + beta / ps + gamma / (ps ss) in the gross takes,
+  # and search_coef already carries every stage's response rate. Inverting it
+  # for whichever stage is free keeps the fixed-stage branches on that one
+  # representation rather than re-deriving the algebra per branch, which is
+  # how they came to omit resp_rate_ssu and resp_rate.
+  ps_required <- function(ss, n1) {
+    room <- n1 - search_coef$alpha
+    per <- (search_coef$beta + search_coef$gamma / ss) / room
+    per[room <= 0] <- Inf
+    max(per)
+  }
+
+  ss_required <- function(ps, n1) {
+    room <- n1 - search_coef$alpha - search_coef$beta / ps
+    per <- search_coef$gamma / (ps * room)
+    per[room <= 0] <- Inf
+    max(per)
   }
 
   solve_for <- if (!is.null(n_psu) && !is.null(n_per_psu)) {
@@ -1524,22 +1736,7 @@ n_multi_cluster.default <- function(
           rr = rr, labels = labels, context = "n_multi_cluster()"
         )
 
-        n_per_psu_required_fn <- function(ss) {
-          n_per_psu_per <- vapply(
-            seq_len(nr),
-            function(j) {
-              denom <- cv_t[j]^2 *
-                n_psu *
-                rr[j] /
-                (unit_relvar[j] * var_ratio_ssu[j]) -
-                var_ratio_psu[j] * icc_psu[j] / var_ratio_ssu[j]
-              if (denom <= 0) Inf
-              else (1 + icc_ssu[j] * (ss - 1)) / (ss * denom)
-            },
-            numeric(1L)
-          )
-          max(n_per_psu_per)
-        }
+        n_per_psu_required_fn <- function(ss) ps_required(ss, n_psu)
 
         cost_fn_fixed <- function(ss) {
           ps <- n_per_psu_required_fn(ss)
@@ -1670,17 +1867,7 @@ n_multi_cluster.default <- function(
           unit_relvar, var_ratio_psu, icc_psu,
           rr = rr, labels = labels, context = "n_multi_cluster()"
         )
-        psu_per <- vapply(
-          seq_len(nr),
-          function(j) {
-            denom <- cv_t[j]^2 * n_psu * rr[j] / (unit_relvar[j] * var_ratio_ssu[j]) -
-              var_ratio_psu[j] * icc_psu[j] / var_ratio_ssu[j]
-            if (denom <= 0) Inf
-            else (1 + icc_ssu[j] * (n_per_ssu - 1)) / (n_per_ssu * denom)
-          },
-          numeric(1L)
-        )
-        n_per_psu_opt <- max(psu_per)
+        n_per_psu_opt <- ps_required(n_per_ssu, n_psu)
         if (!is.finite(n_per_psu_opt) || n_per_psu_opt <= 0) {
           stop(
             "target CV is too small for the given fixed stage sizes and parameters",
@@ -1706,20 +1893,7 @@ n_multi_cluster.default <- function(
           n_per_psu = n_per_psu,
           rr = rr, labels = labels, context = "n_multi_cluster()"
         )
-        ssu_per <- vapply(
-          seq_len(nr),
-          function(j) {
-            a <- var_ratio_psu[j] * icc_psu[j]
-            b <- var_ratio_ssu[j]
-            d2 <- icc_ssu[j]
-            denom <- n_per_psu * (cv_t[j]^2 * n_psu * rr[j] / unit_relvar[j] - a) -
-              b * d2
-            if (denom <= 0) Inf
-            else b * (1 - d2) / denom
-          },
-          numeric(1L)
-        )
-        n_per_ssu_opt <- max(ssu_per)
+        n_per_ssu_opt <- ss_required(n_per_psu, n_psu)
         if (!is.finite(n_per_ssu_opt) || n_per_ssu_opt <= 0) {
           stop(
             "target CV is too small for the given fixed stage sizes and parameters",
@@ -1744,6 +1918,8 @@ n_multi_cluster.default <- function(
       var_ratio_psu,
       var_ratio_ssu,
       rr,
+      rs,
+      ru,
       C1,
       C2,
       C3,
@@ -1763,9 +1939,9 @@ n_multi_cluster.default <- function(
   n_vec <- c(n_psu = n1_opt, n_per_psu = n_per_psu_opt, n_per_ssu = n_per_ssu_opt)
   total_n <- prod(n_vec)
   operational <- .op_multi_3stage(
-    n1_required, cv_achieved_fn, cv_t, stage_cost, budget,
+    search_coef, cv_achieved_fn, cv_t, stage_cost, budget,
     n_psu, n_per_psu, n_per_ssu, fixed_cost,
-    cont_m = n_per_psu_opt, cont_q = n_per_ssu_opt
+    cont_m = n_per_psu_opt
   )
 
   n1_per <- n1_required(n_per_psu_opt, n_per_ssu_opt)
@@ -1821,7 +1997,8 @@ n_multi_cluster.default <- function(
   min_n_domain = NULL,
   fixed_cost = 0,
   mode = "moe",
-  prop_method = "wald"
+  prop_method = "wald",
+  domain_sampling = "separate"
 ) {
   key <- .domain_key(indicators, domain_cols)
   domain_levels <- unique(key)
@@ -1875,7 +2052,8 @@ n_multi_cluster.default <- function(
       min_n_domain,
       fixed_cost,
       mode = mode,
-      prop_method = prop_method
+      prop_method = prop_method,
+      domain_sampling = domain_sampling
     )
   } else {
     .aggregate_simple_domains(
@@ -1886,9 +2064,51 @@ n_multi_cluster.default <- function(
       split_idx,
       min_n_domain,
       mode = mode,
-      prop_method = prop_method
+      prop_method = prop_method,
+      domain_sampling = domain_sampling
     )
   }
+}
+
+#' Domain shares for a natural-incidence total
+#'
+#' Under natural incidence each domain turns up in one population sample at
+#' its own rate, so the size that yields every domain quota is
+#' `max(.n / share)`: the binding domain is the one whose requirement is
+#' largest relative to how often it appears. The shares have to describe
+#' parts of one population, so they may sum to less than 1 when the domains
+#' cover only part of it, but not to more.
+#' @keywords internal
+#' @noRd
+.domain_shares <- function(indicators, domain_levels, split_idx) {
+  if (!"share" %in% names(indicators)) {
+    stop(
+      "domain_sampling = \"natural\" needs a 'share' column giving each domain's expected share of the population. Without it there is no one overall size to report, only the per-domain requirements in $domains",
+      call. = FALSE
+    )
+  }
+  shares <- vapply(domain_levels, function(lev) {
+    v <- indicators$share[split_idx[[lev]]]
+    if (anyNA(v) || any(!is.finite(v)) || any(v <= 0) || any(v > 1)) {
+      stop("'share' must be in (0, 1] for every indicator row", call. = FALSE)
+    }
+    if (diff(range(v)) > 1e-8) {
+      stop(
+        sprintf("'share' identifies a domain, so it must be constant within one; it varies within %s", lev),
+        call. = FALSE
+      )
+    }
+    v[1L]
+  }, numeric(1L))
+
+  total <- sum(shares)
+  if (total > 1 + 1e-6) {
+    stop(
+      sprintf("domain 'share' values sum to %.4f; they are shares of one population and cannot exceed 1", total),
+      call. = FALSE
+    )
+  }
+  as.numeric(shares)
 }
 
 #' Aggregate simple-mode domain results
@@ -1902,7 +2122,8 @@ n_multi_cluster.default <- function(
   split_idx,
   min_n_domain = NULL,
   mode = "moe",
-  prop_method = "wald"
+  prop_method = "wald",
+  domain_sampling = "separate"
 ) {
   domain_rows <- lapply(domain_levels, function(lev) {
     res <- results[[lev]]
@@ -1921,20 +2142,30 @@ n_multi_cluster.default <- function(
     domains$.binding[floored] <- "(min_n_domain)"
   }
 
-  n_max <- max(domains$.n)
-  overall_binding_idx <- which.max(domains$.n)
-  binding_label <- domains$.binding[overall_binding_idx]
+  n_domain_max <- max(domains$.n)
+  binding_label <- domains$.binding[which.max(domains$.n)]
+
+  if (identical(domain_sampling, "natural")) {
+    domains$.share <- .domain_shares(indicators, domain_levels, split_idx)
+    yields <- domains$.n / domains$.share
+    n_overall <- max(yields)
+    binding_label <- domains$.binding[which.max(yields)]
+  } else {
+    n_overall <- sum(domains$.n)
+  }
 
   res <- .new_svyplan_n(
-    n = n_max,
+    n = n_overall,
     type = "multi",
     params = list(domain_cols = domain_cols, mode = mode,
-                  prop_method = prop_method),
+                  prop_method = prop_method,
+                  domain_sampling = domain_sampling),
     indicators = indicators,
     detail = NULL,
     binding = binding_label,
     domains = domains
   )
+  res$n_domain_max <- n_domain_max
   if (!is.null(min_n_domain)) {
     res$params$min_n_domain <- min_n_domain
   }
@@ -1958,8 +2189,15 @@ n_multi_cluster.default <- function(
   min_n_domain = NULL,
   fixed_cost = 0,
   mode = "cv",
-  prop_method = "wald"
+  prop_method = "wald",
+  domain_sampling = "separate"
 ) {
+  if (identical(domain_sampling, "natural")) {
+    stop(
+      "domain_sampling = \"natural\" is not available for multistage designs: the expected yield of a domain then depends on how its members sit inside PSUs and SSUs, not on its share of the population alone, and that model is not in the package. Size the domains separately and read $domains",
+      call. = FALSE
+    )
+  }
   stages <- results[[1L]]$stages
   stage_names <- names(results[[1L]]$n)
 
@@ -2004,17 +2242,16 @@ n_multi_cluster.default <- function(
   total_cost <- sum(domains$.cost)
   worst_cv_idx <- which.max(domains$.cv)
 
-  n_vec <- vapply(
-    seq_len(stages),
-    function(s) {
-      max(domains[[stage_names[s]]])
-    },
-    numeric(1L)
-  )
+  # Domains are sized independently, so there is no single stage vector to
+  # report: a componentwise maximum across domains is not a design anyone
+  # fields, and its product does not equal the total above. The per-domain
+  # stage sizes in $domains are the fieldable object, and $total_n their sum.
+  n_vec <- rep(NA_real_, stages)
   names(n_vec) <- stage_names
 
   params <- list(stage_cost = stage_cost, domain_cols = domain_cols,
-                  mode = mode, prop_method = prop_method)
+                  mode = mode, prop_method = prop_method,
+                  domain_sampling = domain_sampling)
   if (!is.null(budget)) {
     params$budget <- budget
   }
@@ -2084,6 +2321,12 @@ n_multi_cluster.default <- function(
       unit_relvar = sub$unit_relvar,
       var_ratio_psu = sub$var_ratio_psu,
       var_ratio_ssu = sub$var_ratio_ssu,
+      resp_rate_psu = sub$resp_rate_psu,
+      resp_rate_ssu = if ("resp_rate_ssu" %in% names(sub)) {
+        sub$resp_rate_ssu
+      } else {
+        rep(1, length(rows))
+      },
       resp_rate = sub$resp_rate,
       labels = labels
     )
@@ -2099,6 +2342,7 @@ n_multi_cluster.default <- function(
         p$icc_psu,
         p$unit_relvar,
         p$var_ratio_psu,
+        p$resp_rate_psu,
         p$resp_rate,
         C1,
         C2,
@@ -2114,6 +2358,8 @@ n_multi_cluster.default <- function(
         p$unit_relvar,
         p$var_ratio_psu,
         p$var_ratio_ssu,
+        p$resp_rate_psu,
+        p$resp_rate_ssu,
         p$resp_rate,
         C1,
         C2,
@@ -2293,6 +2539,7 @@ n_multi_cluster.default <- function(
   icc,
   unit_relvar,
   var_ratio,
+  resp_rate_psu,
   resp_rate,
   C1,
   C2,
@@ -2301,6 +2548,26 @@ n_multi_cluster.default <- function(
   n_per_psu = NULL
 ) {
   nr <- length(cv_t)
+
+  # Same convention as n1_required() and cv_achieved_fn() in the CV-mode
+  # solver: the stage take is gross and each row reads the take it realizes.
+  # Ranking budget designs on the gross take would both pick the wrong design
+  # and report a CV the precision functions do not reproduce.
+  cv_fn <- function(n1, take) {
+    vapply(
+      seq_len(nr),
+      function(j) {
+        mr <- take * resp_rate[j]
+        sqrt(
+          unit_relvar[j] *
+            var_ratio[j] /
+            (n1 * resp_rate_psu[j] * mr) *
+            (1 + icc[j] * (mr - 1))
+        )
+      },
+      numeric(1L)
+    )
+  }
 
   if (!is.null(n_per_psu)) {
     n_per_psu_opt <- n_per_psu
@@ -2317,20 +2584,7 @@ n_multi_cluster.default <- function(
       if (n1 <= 0) {
         return(1e12)
       }
-      cv_ratios <- vapply(
-        seq_len(nr),
-        function(j) {
-          sqrt(
-            unit_relvar[j] *
-              var_ratio[j] /
-              (n1 * resp_rate[j] * n_per_psu) *
-              (1 + icc[j] * (n_per_psu - 1))
-          ) /
-            cv_t[j]
-        },
-        numeric(1L)
-      )
-      max(cv_ratios)
+      max(cv_fn(n1, n_per_psu) / cv_t)
     }
 
     upper <- max(10, budget / (C1 + C2))
@@ -2348,18 +2602,7 @@ n_multi_cluster.default <- function(
     }
   }
 
-  cv_achieved <- vapply(
-    seq_len(nr),
-    function(j) {
-      sqrt(
-        unit_relvar[j] *
-          var_ratio[j] /
-          (n1_opt * resp_rate[j] * n_per_psu_opt) *
-          (1 + icc[j] * (n_per_psu_opt - 1))
-      )
-    },
-    numeric(1L)
-  )
+  cv_achieved <- cv_fn(n1_opt, n_per_psu_opt)
   ratios <- cv_achieved / cv_t
   binding_idx <- which.max(ratios)
 
@@ -2382,6 +2625,8 @@ n_multi_cluster.default <- function(
   unit_relvar,
   var_ratio_psu,
   var_ratio_ssu,
+  resp_rate_psu,
+  resp_rate_ssu,
   resp_rate,
   C1,
   C2,
@@ -2393,18 +2638,22 @@ n_multi_cluster.default <- function(
 ) {
   nr <- length(cv_t)
 
+  # Mirrors cv_achieved_fn() in the CV-mode solver: both stage takes are
+  # gross and each row reads the takes it realizes.
   cv_fn <- function(n1, n_per_psu, n_per_ssu) {
     vapply(
       seq_len(nr),
       function(j) {
+        mr <- n_per_psu * resp_rate_ssu[j]
+        qr <- n_per_ssu * resp_rate[j]
         sqrt(
           unit_relvar[j] /
-            (n1 * resp_rate[j] * n_per_psu * n_per_ssu) *
+            (n1 * resp_rate_psu[j] * mr * qr) *
             (var_ratio_psu[j] *
               icc_psu[j] *
-              n_per_psu *
-              n_per_ssu +
-              var_ratio_ssu[j] * (1 + icc_ssu[j] * (n_per_ssu - 1)))
+              mr *
+              qr +
+              var_ratio_ssu[j] * (1 + icc_ssu[j] * (qr - 1)))
         )
       },
       numeric(1L)

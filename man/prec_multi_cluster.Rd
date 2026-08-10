@@ -4,7 +4,7 @@
 \alias{prec_multi_cluster}
 \alias{prec_multi_cluster.default}
 \alias{prec_multi_cluster.svyplan_cluster}
-\title{Multi-Indicator Precision for Cluster Designs}
+\title{Multi-indicator precision for cluster designs}
 \usage{
 prec_multi_cluster(indicators, ...)
 
@@ -39,7 +39,8 @@ to \code{\link[=n_multi_cluster]{n_multi_cluster()}}. Costs do not enter the pre
 }
 \value{
 A \code{svyplan_prec} object with per-indicator cluster precision in
-\verb{$detail}.
+\verb{$detail}: \code{.se}, \code{.moe}, \code{.rmoe}, and \code{.cv}, with \code{.rmoe} measured
+against the row's \code{p} or \code{abs(mu)}.
 }
 \description{
 Compute achieved precision for several indicators under a two- or
@@ -60,4 +61,16 @@ prec_multi_cluster(indicators)
 \seealso{
 \code{\link[=n_multi_cluster]{n_multi_cluster()}} for the inverse, \code{\link[=prec_multi]{prec_multi()}} for the
 single-stage counterpart, and \code{\link[=prec_cluster]{prec_cluster()}} for one indicator.
+
+Other precision functions:
+\code{\link[=prec_alloc]{prec_alloc()}},
+\code{\link[=prec_change]{prec_change()}},
+\code{\link[=prec_cluster]{prec_cluster()}},
+\code{\link[=prec_mean]{prec_mean()}},
+\code{\link[=prec_multi]{prec_multi()}},
+\code{\link[=prec_panel]{prec_panel()}},
+\code{\link[=prec_pooled]{prec_pooled()}},
+\code{\link[=prec_prop]{prec_prop()}},
+\code{\link[=prec_twophase]{prec_twophase()}}
 }
+\concept{precision functions}

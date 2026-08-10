@@ -4,7 +4,7 @@
 \alias{n_twophase}
 \alias{n_twophase.default}
 \alias{n_twophase.svyplan_prec}
-\title{Two-Phase Sample Allocation}
+\title{Two-phase sample allocation}
 \usage{
 n_twophase(frame, ...)
 
@@ -38,8 +38,8 @@ required where \code{\link[=n_alloc]{n_alloc()}} also accepts \code{var}, and th
 \code{p}/\code{mean} rules differ, so a table built for one may need adjusting
 before it is passed to the other. Columns:
 \describe{
-\item{\code{N}}{Stratum size (\strong{required}). Only relative size matters;
-the stratum weights are \code{N / sum(N)}.}
+\item{\code{N}}{Stratum size (\strong{required}). Only relative size matters,
+since the stratum weights are \code{N / sum(N)}.}
 \item{\code{sd}}{Within-stratum standard deviation of the expensive
 variable (\strong{required}).}
 \item{\code{mean}}{Stratum mean. Supply it to let the between-stratum
@@ -61,7 +61,7 @@ is treated as carrying less information per issued unit.}
 \item{\code{take_all}}{Logical. \code{TRUE} carries every unit phase 1
 successfully classified into phase 2. On the issued-unit scale
 \code{nu} is measured on, that is \code{nu = resp_rate}, the phase-1
-classification rate, and not 1; among classified units the
+classification rate, and not 1. Among classified units the
 fraction is one. The two coincide only when phase 1 classifies
 everyone. Default \code{FALSE}.}
 \item{\code{stratum}}{Optional label.}
@@ -95,8 +95,8 @@ Required in \code{cv} mode when no \code{mean} column is supplied.}
 optimize it. Supply it when the screener has already run, when phase 1
 is an existing survey or panel, or when its size is set by field
 capacity rather than by this design. The relative allocation across
-strata is unchanged, since it is \verb{S_h sqrt(d_2h / c_h)} in every mode;
-what changes is the overall scale, which is then pinned by the budget
+strata is unchanged, since it is \verb{S_h sqrt(d_2h / c_h)} in every mode.
+What changes is the overall scale, which is then pinned by the budget
 left after paying for phase 1, or by what it takes to reach \code{cv} at
 that size. Because the optimizing choice of \code{n_phase1} is the best
 member of this family, fixing it can only match or lose to leaving it
@@ -105,7 +105,7 @@ costing. Two ways it can fail. The budget may not reach phase 2 at
 all, once the screening and any \code{take_all} strata are paid for. And a
 target \code{cv} may sit below the floor that remains when phase 2 carries
 every classified unit through, which is the between-stratum component
-\verb{d_1 A / r_1} plus the phase-2 residual at \code{nu_h = resp_rate}; no
+\verb{d_1 A / r_1} plus the phase-2 residual at \code{nu_h = resp_rate}. No
 amount of subsampling can beat it, because both parts are already
 paid for.}
 
@@ -171,14 +171,14 @@ issue, \code{sum(W_h * nu_h) * n_phase1}.}
 \item{\code{responding}}{The same two quantities in expected
 \strong{respondents}, \verb{r_1 n_a} and \verb{sum(r_\{2h\} W_h nu_h) n_a}. Issued
 and responding are different quantities and neither is an
-effective sample size; there is no single effective size for a
+effective sample size. There is no single effective size for a
 two-phase design, because the two variance components carry
 different design effects.}
 \item{\code{cv}}{Coefficient of variation achieved.}
 \item{\code{cost}}{Total cost, including \code{fixed_cost}.}
 \item{\code{detail}}{Per-stratum table: \code{stratum}, \code{N}, \code{share}, \code{sd},
 \code{unit_cost}, \code{deff}, \code{resp_rate}, \code{nu} (the subsampling fraction,
-as a share of the phase-1 units \emph{issued}; with \code{resp_rate} below 1
+as a share of the phase-1 units \emph{issued}, and with \code{resp_rate} below 1
 it is capped there, since phase 2 can only draw from the units
 phase 1 classified, and the fraction taken among those classified
 units is \code{nu / resp_rate}),
@@ -198,7 +198,7 @@ achieve, and never wins on cost alone.}
 the per-stratum \code{n_int}, and the \code{cost} and \code{cv} it actually
 achieves. Budget mode floors and then buys back whole units in order
 of variance reduction per unit cost, so the integer design stays
-inside the budget; cv mode rounds up. Both are bounded by the
+inside the budget, while cv mode rounds up. Both are bounded by the
 phase-2 pool, so a stratum whose expected phase-1 yield rounds below
 one unit is left unsampled with a warning, and the operational \code{cv}
 is then \code{Inf}. With \code{assurance} set it also carries \code{assured},
@@ -219,7 +219,7 @@ target precision, or precision for a fixed budget.
 \details{
 One allocator covers the two designs that usually get separate
 treatments. Double sampling for stratification subsamples every phase-2
-stratum; nonresponse follow-up carries the phase-1 respondents through
+stratum. Nonresponse follow-up carries the phase-1 respondents through
 untouched and subsamples only the nonrespondents. Both are the same
 problem with different strata marked \code{take_all}.
 
@@ -230,7 +230,7 @@ the phase-1 stratum carried into phase 2. Ignoring the finite population
 correction,
 
 \deqn{V = \frac{1}{n_a}\left[A + \sum_h \frac{W_h S_h^2}{\nu_h}\right],
-      \qquad C = n_a\left[c_a + \sum_h c_h W_h \nu_h\right],}
+      \qquad C = n_a\left[c_a + \sum_h c_h W_h \nu_h\right],}{V = 1/n_a [A + sum_h (W_h S_h^2)/nu_h ], C = n_a [c_a + sum_h c_h W_h nu_h ],}
 
 where \eqn{A} is the between-stratum component. Minimizing \eqn{VC},
 which is free of \eqn{n_a}, gives
@@ -238,19 +238,19 @@ which is free of \eqn{n_a}, gives
 \deqn{\nu_h = \frac{S_h}{\sqrt{c_h}}
       \sqrt{\frac{\tilde c_a}{\tilde A}}, \qquad
       \tilde A = A + \sum_{h \in P} W_h S_h^2, \qquad
-      \tilde c_a = c_a + \sum_{h \in P} c_h W_h,}
+      \tilde c_a = c_a + \sum_{h \in P} c_h W_h,}{nu_h = S_h/sqrt(c_h) sqrt(ctilde_a/Atilde), Atilde = A + sum_(h in P) W_h S_h^2, ctilde_a = c_a + sum_(h in P) c_h W_h,}
 
 where \eqn{P} is the set of pinned strata. The shape is Neyman-like,
-\eqn{\nu_h \propto S_h/\sqrt{c_h}}, but the overall scale is set by the
+\eqn{\nu_h \propto S_h/\sqrt{c_h}}{nu_h proportional to S_h/sqrt(c_h)}, but the overall scale is set by the
 \emph{between}-stratum variance: weak stratification pushes every
-\eqn{\nu_h} up, towards keeping everything phase 1 found.
+\eqn{\nu_h} up, toward keeping everything phase 1 found.
 
 Any \eqn{\nu_h} above the cap is truncated there and the stratum joins
-\eqn{P}, which changes \eqn{\tilde A} and \eqn{\tilde c_a} and so the
+\eqn{P}, which changes \eqn{\tilde A}{Atilde} and \eqn{\tilde c_a}{ctilde_a} and so the
 remaining strata are re-solved. The cap is \code{resp_rate}, not 1: phase 2
 can only subsample the units phase 1 succeeded in classifying, so a
 stratum is "take-all" once it keeps all of those, not all of \eqn{N_h}.
-Strata are pinned one at a time in decreasing \eqn{S_h/\sqrt{c_h}},
+Strata are pinned one at a time in decreasing \eqn{S_h/\sqrt{c_h}}{S_h/sqrt(c_h)},
 because pinning lowers the multiplier and can bring others back below
 the cap.
 \subsection{The finite population correction}{
@@ -260,16 +260,16 @@ the variance as a whole:
 
 \deqn{V = A\left(\frac{1}{n_a}-\frac{1}{N}\right)
       + \sum_h W_h S_h^2
-        \left\{\frac{1}{\nu_h n_a}-\frac{1}{N}\right\}.}
+        \left\{\frac{1}{\nu_h n_a}-\frac{1}{N}\right\}.}{V = A (1/n_a-1/N ) + sum_h W_h S_h^2 \{1/(nu_h n_a)-1/N \}.}
 
 Phase 1 estimates the stratum weights, so a phase-1 census makes the
-between-stratum term vanish; the phase-2 terms vanish only when phase 2
+between-stratum term vanish. The phase-2 terms vanish only when phase 2
 also measures every unit it found. Scaling the whole variance by
 \eqn{1 - n_a/N} would subtract \eqn{1/(\nu_h N)} in place of
 \eqn{1/N} and so report a phase-1 census as a zero-variance design.
 Note that with \code{resp_rate} below 1 a phase-1 census is not a complete
 classification of the frame, and the residual it leaves is real rather
-than an artefact.
+than an artifact.
 }
 
 \subsection{Two design effects, not one}{
@@ -277,29 +277,29 @@ than an artefact.
 The variance has two components and each carries its own design effect,
 
 \deqn{V \approx \frac{1}{n_a}\left[d_1 A
-      + \sum_h \frac{d_{2h} W_h S_h^2}{\nu_h}\right],}
+      + \sum_h \frac{d_{2h} W_h S_h^2}{\nu_h}\right],}{V approx 1/n_a [d_1 A + sum_h (d_2h W_h S_h^2)/nu_h ],}
 
-so the optimum becomes \eqn{\nu_h \propto S_h\sqrt{d_{2h}/c_h}} and
-\eqn{\tilde A} is built from \eqn{d_1 A} and the pinned strata's
-\eqn{d_{2h} W_h S_h^2}. Inflating the combined variance by a single
+so the optimum becomes \eqn{\nu_h \propto S_h\sqrt{d_{2h}/c_h}}{nu_h proportional to S_h sqrt(d_2h/c_h)} and
+\eqn{\tilde A}{Atilde} is built from \eqn{d_1 A} and the pinned strata's
+\eqn{d_{2h} W_h S_h^2}{d_2h W_h S_h^2}. Inflating the combined variance by a single
 design effect instead is a different and wrong model.
 
 The two are design effects \strong{for different variables}. \code{phase1_deff}
-applies to what phase 1 explains, the between-stratum contrast;
-the \code{deff} column applies to what is left for phase 2 to measure, the
+applies to what phase 1 explains, the between-stratum contrast.
+The \code{deff} column applies to what is left for phase 2 to measure, the
 within-stratum residual. A clustered phase 1 raises the first. A
 stratifier that absorbs geographic variation lowers the second.
 
 They are not independent, and the trap runs in the direction that looks
 attractive. A stratifier built purely from between-cluster structure
 shrinks the residual and so lowers \code{deff}, but it drives the fitted
-values towards constancy within clusters and so raises \code{phase1_deff}
-towards the cluster size. Under a clustered phase 1 the first term can
+values toward constancy within clusters and so raises \code{phase1_deff}
+toward the cluster size. Under a clustered phase 1 the first term can
 then dominate and the design loses to a plain single-phase sample even
-though the residual design effect looks favourable. When the
+though the residual design effect looks favorable. When the
 stratification explains little, the phase-2 residual is close to the
-whole variance and the stratum \code{deff} should be close to \code{single_deff};
-setting it well below with a weak stratifier assumes away the cost of
+whole variance and the stratum \code{deff} should be close to \code{single_deff}.
+Setting it well below with a weak stratifier assumes away the cost of
 the design.
 }
 
@@ -315,20 +315,20 @@ and \verb{d_\{2h\}} becoming \verb{d_\{2h\}/r_\{2h\}}, so a phase-2 stratum that
 responds poorly is subsampled differently rather than the whole design
 being inflated by one factor. A response rate common to everything
 scales the sample needed for a precision target but cancels from the
-relative allocation; phase- or stratum-specific rates change it.
+relative allocation. Phase- or stratum-specific rates change it.
 
 This is an expected-information calculation and \strong{not} a bias
 adjustment. Dividing by a response rate assumes response is ignorable
 within the strata you supplied, which is a substantive assumption
 about the strata, not a property of the arithmetic. No sample size
 removes nonresponse bias. Where that assumption is uncomfortable,
-modelling the nonresponse as a follow-up phase, as below, is the
+modeling the nonresponse as a follow-up phase, as below, is the
 alternative the design itself offers.
 
 Nonresponse follow-up is the two-stratum case: respondents with
 \code{unit_cost = 0} and \code{take_all = TRUE}, nonrespondents free, and no
 between-stratum component. The optimum reduces to
-\eqn{\nu = \sqrt{c_1/(c_2\theta)}} for a phase-1 response rate
+\eqn{\nu = \sqrt{c_1/(c_2\theta)}}{nu = sqrt(c_1/(c_2 theta))} for a phase-1 response rate
 \eqn{\theta}, which is the standard result.
 }
 }
@@ -350,7 +350,7 @@ flat <- transform(frame, mean = c(55, 56, 55, 56))
 n_twophase(flat, phase1_cost = 1, budget = 50000)
 
 # Nonresponse follow-up: respondents are already measured, so they cost
-# nothing more and are all kept; only the nonrespondents are subsampled.
+# nothing more and are all kept. Only the nonrespondents are subsampled.
 theta <- 0.5
 nrfu <- data.frame(
   stratum   = c("respondents", "nonrespondents"),
@@ -383,4 +383,16 @@ Sect. 17.5.2. Springer.
 \code{\link[=prec_twophase]{prec_twophase()}} for the inverse, \code{\link[=n_alloc]{n_alloc()}} for
 single-phase stratified allocation, \code{\link[=n_cluster]{n_cluster()}} for the multistage
 analogue.
+
+Other sample size functions:
+\code{\link[=n_alloc]{n_alloc()}},
+\code{\link[=n_change]{n_change()}},
+\code{\link[=n_cluster]{n_cluster()}},
+\code{\link[=n_mean]{n_mean()}},
+\code{\link[=n_multi]{n_multi()}},
+\code{\link[=n_multi_cluster]{n_multi_cluster()}},
+\code{\link[=n_panel]{n_panel()}},
+\code{\link[=n_pooled]{n_pooled()}},
+\code{\link[=n_prop]{n_prop()}}
 }
+\concept{sample size functions}

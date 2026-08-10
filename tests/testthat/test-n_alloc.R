@@ -689,7 +689,12 @@ test_that("cluster mode guards n_per_psu against the stratum population", {
   fr$icc_psu <- c(1e-6, 0.05)
   fr$cost_psu <- c(30000, 300)
   fr$cost_ssu <- c(3, 30)
-  expect_warning(res <- n_alloc(fr, n = 200), "clamped to 'N'")
+  # the frame also drives one stratum to a single PSU, which warns in its
+  # own right, so both conditions are caught here
+  expect_warning(
+    expect_warning(res <- n_alloc(fr, n = 200), "clamped to 'N'"),
+    "single PSU"
+  )
   expect_equal(res$detail$n_per_psu[1], 300)
 })
 
@@ -762,7 +767,8 @@ test_that("operational element metrics match the integer allocation", {
 test_that("cluster-mode operational design uses whole PSUs within budget", {
   fr <- data.frame(N = 1000, sd = 10, mean = 50, icc_psu = 0.05,
                    cost_psu = 500, cost_ssu = 50)
-  x <- n_alloc(fr, budget = 1200)
+  # a budget this small buys one PSU, which warns
+  expect_warning(x <- n_alloc(fr, budget = 1200), "single PSU")
   d <- x$detail
   op <- x$operational
   expect_true(all(d$n_psu_int == round(d$n_psu_int)))
@@ -796,15 +802,13 @@ test_that("cluster operational designs enforce lower and take-all bounds", {
     "cannot fund.*lower bounds"
   )
 
+  # take_all claimed an ultimate-unit census with a within-PSU take of 2 still
+  # in force, and reported cv = 0 for it. Taking every PSU is not a census.
   census <- data.frame(
     N = 5, sd = 1, mean = 1, icc_psu = 0.05,
     n_per_psu = 2, take_all = TRUE
   )
-  x <- n_alloc(census, n = 5)
-  expect_equal(x$detail$n_int, 5L)
-  expect_equal(x$detail$n_int,
-               x$detail$n_psu_int * x$detail$n_per_psu_int)
-  expect_equal(x$operational$cv, 0)
+  expect_error(n_alloc(census, n = 5), "does not imply an ultimate-unit census")
 })
 
 test_that("cluster n-mode preserves the requested integer total when the take is free", {
@@ -814,7 +818,7 @@ test_that("cluster n-mode preserves the requested integer total when the take is
     icc_psu = c(0.03, 0.08, 0.12),
     cost_psu = 500, cost_ssu = 50
   )
-  x <- n_alloc(fr, n = 73, min_n_stratum = 8)
+  expect_warning(x <- n_alloc(fr, n = 73, min_n_stratum = 8), "single PSU")
   d <- x$detail
 
   expect_equal(sum(d$n_int), 73L)
@@ -900,7 +904,12 @@ test_that("randomized clustered operational invariants hold", {
         (fr$cost_psu + fr$cost_ssu * fr$n_per_psu)
     )
     budget <- min_cost * runif(1, 1, 3)
-    x <- try(n_alloc(fr, budget = budget, min_n_stratum = min_n_stratum), silent = TRUE)
+    # random budgets leave some strata on a single PSU, which warns; the
+    # bounds and cost are what this property is about
+    x <- suppressWarnings(
+      try(n_alloc(fr, budget = budget, min_n_stratum = min_n_stratum),
+          silent = TRUE)
+    )
     if (!inherits(x, "try-error")) {
       d <- x$detail
       expect_true(all(d$n_int >= ceiling(d$.lower - 1e-9)))
@@ -970,4 +979,263 @@ test_that("the aggregate CV does not depend on the outcome's unit", {
     rescaled <- transform(f, sd = sd * scale, mean = mean * scale)
     expect_equal(n_alloc(rescaled, n = 200)$cv, ref)
   }
+})
+
+## Stratum and domain precision on allocation objects
+
+test_that("stratum precision matches a direct stratified-SRS computation", {
+  f <- data.frame(
+    stratum = letters[1:4],
+    N = c(800, 1200, 1500, 300),
+    sd = c(3, 4, 5, 2),
+    mean = c(5, 7.5, 8, 3)
+  )
+  n <- c(100, 150, 200, 60)
+  d <- prec_alloc(f, n = n)$detail
+
+  # se of the stratum's own mean, S_h sqrt((1 - n_h/N_h) / n_h)
+  expect_equal(d$.se, f$sd * sqrt((1 - n / f$N) / n))
+  expect_equal(d$.moe, qnorm(0.975) * d$.se)
+  expect_equal(d$.cv, d$.se / f$mean)
+})
+
+test_that("the variance share is a partition of the aggregate variance", {
+  f <- data.frame(N = c(800, 1200, 1500, 300), sd = c(3, 4, 5, 2),
+                  mean = c(5, 7.5, 8, 3))
+  p <- prec_alloc(f, n = c(100, 150, 200, 60))
+  W <- f$N / sum(f$N)
+  expect_equal(sum(p$detail$.share), 1)
+  expect_equal(sum(W^2 * p$detail$.se^2), p$se^2)
+  expect_equal(p$detail$.share, W^2 * p$detail$.se^2 / p$se^2)
+})
+
+test_that("prec_alloc reports the same domain table n_alloc does", {
+  f <- data.frame(N = c(800, 1200, 1500, 300), sd = c(3, 4, 5, 2),
+                  mean = c(5, 7.5, 8, 3), dom = c("N", "N", "S", "S"))
+  fit <- n_alloc(f, cv = 0.05, domains = "dom")
+  assessed <- prec_alloc(f, n = fit$detail$n, domains = "dom")
+  expect_equal(assessed$domains, fit$domains)
+  expect_equal(assessed$cv, fit$cv)
+})
+
+test_that("stratum CV is absent when the frame carries no mean", {
+  d <- prec_alloc(data.frame(N = c(800, 1200), sd = c(3, 4)),
+                  n = c(100, 150))$detail
+  expect_true(all(is.na(d$.cv)))
+  expect_true(all(is.finite(d$.se)))
+})
+
+test_that("a take-all stratum with no variability contributes no variance", {
+  f <- data.frame(N = c(500, 1000), sd = c(0, 4), mean = c(2, 7),
+                  take_all = c(TRUE, FALSE))
+  d <- n_alloc(f, n = 700)$detail
+  expect_identical(d$.se[1], 0)
+  expect_identical(d$.share[1], 0)
+  expect_identical(d$.share[2], 1)
+})
+
+## Per-stratum deff and resp_rate
+
+test_that("the four allocation rules carry their response and deff factors", {
+  f <- data.frame(N = c(800, 1200, 1500, 300), sd = sqrt(c(9, 16, 25, 4)),
+                  unit_cost = c(1, 2, 4, 1.5))
+  d <- c(1.5, 1.2, 2, 1)
+  r <- c(0.9, 0.8, 0.85, 1)
+  adj <- sqrt(d / r)
+  n <- 600
+  prop_to <- function(a) n * a / sum(a)
+
+  expect_equal(n_alloc(f, n = n, alloc = "neyman", deff = d, resp_rate = r)$detail$n,
+               prop_to(f$N * f$sd * adj))
+  expect_equal(n_alloc(f, n = n, alloc = "optimal", deff = d, resp_rate = r)$detail$n,
+               prop_to(f$N * f$sd * adj / sqrt(f$unit_cost)))
+  expect_equal(n_alloc(f, n = n, alloc = "power", alloc_q = 0.5,
+                       deff = d, resp_rate = r)$detail$n,
+               prop_to(f$sd * f$N^0.5 * adj))
+  # proportional is a count rule: 1 / r, and no deff
+  expect_equal(n_alloc(f, n = n, alloc = "proportional",
+                       deff = d, resp_rate = r)$detail$n,
+               prop_to(f$N / r))
+})
+
+test_that("proportional allocation self-weights the responding sample", {
+  f <- data.frame(N = c(800, 1200, 1500, 300), sd = rep(1, 4))
+  r <- c(0.6, 0.9, 0.95, 0.75)
+  n_h <- n_alloc(f, n = 600, alloc = "proportional", resp_rate = r)$detail$n
+  respondent_weight <- f$N / (n_h * r)
+  expect_equal(respondent_weight, rep(respondent_weight[1], 4))
+})
+
+test_that("a constant vector is identical to the scalar it repeats", {
+  f <- data.frame(N = c(800, 1200, 1500, 300), sd = sqrt(c(9, 16, 25, 4)),
+                  mean = c(5, 7, 8, 3))
+  for (a in c("neyman", "optimal", "proportional", "power")) {
+    scalar <- n_alloc(f, n = 600, alloc = a, deff = 1.7, resp_rate = 0.8)
+    vector <- n_alloc(f, n = 600, alloc = a, deff = rep(1.7, 4),
+                      resp_rate = rep(0.8, 4))
+    expect_identical(vector$detail$n, scalar$detail$n)
+    expect_identical(vector$cv, scalar$cv)
+    expect_identical(vector$se, scalar$se)
+  }
+})
+
+test_that("frame columns and vector arguments are two routes to one design", {
+  f <- data.frame(N = c(800, 1200, 1500, 300), sd = sqrt(c(9, 16, 25, 4)))
+  d <- c(1.5, 1.2, 2, 1)
+  r <- c(0.9, 0.8, 0.85, 1)
+  from_args <- n_alloc(f, n = 600, deff = d, resp_rate = r)$detail$n
+  from_cols <- n_alloc(transform(f, deff = d, resp_rate = r), n = 600)$detail$n
+  expect_identical(from_cols, from_args)
+
+  # NA in a column falls back to the scalar argument
+  expect_identical(
+    n_alloc(transform(f, deff = c(1.5, 1.2, NA, NA)), n = 600, deff = 2)$detail$n,
+    n_alloc(f, n = 600, deff = c(1.5, 1.2, 2, 2))$detail$n
+  )
+  # a vector argument overrides the column outright
+  expect_identical(
+    n_alloc(transform(f, deff = rep(9, 4)), n = 600, deff = d)$detail$n,
+    n_alloc(f, n = 600, deff = d)$detail$n
+  )
+})
+
+test_that("params keeps the arguments as supplied", {
+  f <- data.frame(N = c(800, 1200), sd = c(3, 4))
+  expect_identical(n_alloc(f, n = 200, deff = 1.5)$params$deff, 1.5)
+  expect_identical(n_alloc(f, n = 200, deff = c(1.5, 2))$params$deff, c(1.5, 2))
+})
+
+test_that("per-stratum values reach the domain and precision tables", {
+  f <- data.frame(N = c(800, 1200, 1500, 300), sd = sqrt(c(9, 16, 25, 4)),
+                  mean = c(5, 7, 8, 3), dom = c("A", "A", "B", "B"))
+  d <- c(1.5, 1.2, 2, 1)
+  r <- c(0.9, 0.8, 0.85, 1)
+  fit <- n_alloc(f, n = 600, domains = "dom", deff = d, resp_rate = r)
+  n_h <- fit$detail$n
+  # each stratum's own se reads its own deff and response rate
+  expect_equal(fit$detail$.se,
+               f$sd * sqrt(pmax(0, 1 - n_h * r / f$N) / (n_h * r / d)))
+  assessed <- prec_alloc(f, n = n_h, domains = "dom", deff = d, resp_rate = r)
+  expect_equal(assessed$domains, fit$domains)
+})
+
+test_that("malformed per-stratum values are rejected", {
+  f <- data.frame(N = c(800, 1200, 1500), sd = c(3, 4, 5))
+  expect_error(n_alloc(f, n = 300, deff = c(1, 2)), "length 1 or nrow\\(frame\\)")
+  expect_error(n_alloc(f, n = 300, deff = c(1, 2, -1)), "positive finite")
+  expect_error(n_alloc(f, n = 300, resp_rate = c(1, 0.5, 1.5)), "\\(0, 1\\]")
+  expect_error(n_alloc(transform(f, resp_rate = c(0.9, 0.8, 0)), n = 300),
+               "\\(0, 1\\]")
+})
+
+test_that("effective_n nets a per-stratum response rate to one overall rate", {
+  f <- data.frame(N = c(800, 1200, 1500, 300), sd = sqrt(c(9, 16, 25, 4)),
+                  mean = c(5, 7, 8, 3))
+  r <- c(0.9, 0.8, 0.85, 1)
+  fit <- n_alloc(f, n = 600, resp_rate = r)
+  overall <- sum(fit$detail$n * r) / sum(fit$detail$n)
+  expect_equal(as.double(effective_n(fit)),
+               600 * overall / as.double(design_effect(fit)))
+})
+
+## Classic cluster mode: the PSU universe as a feasibility bound
+
+test_that("N_psu bounds the classic cluster allocation and its integerization", {
+  fr <- data.frame(
+    stratum = c("A", "B"), N = c(50000, 60000), sd = c(10, 12),
+    icc_psu = c(0.05, 0.05), n_per_psu = c(10, 10),
+    cost_psu = c(500, 500), cost_ssu = c(10, 10), N_psu = c(60, 600)
+  )
+  res <- n_alloc(fr, n = 2000)
+  d <- res$detail
+
+  # Unbounded, stratum A wanted about 82 PSUs from a universe of 60.
+  expect_true(all(d$n_psu <= d$N_psu + 1e-8))
+  expect_true(all(d$n_psu_int <= d$N_psu))
+  expect_equal(d$.upper[1], 60 * 10)
+  expect_true(d$.binding[1])
+  expect_equal(d$.bound_source[1], "N_psu")
+  expect_equal(d$.psu_frac, d$n_psu / d$N_psu)
+})
+
+test_that("a missing N_psu leaves the unbounded approximation alone", {
+  fr <- data.frame(
+    stratum = c("A", "B"), N = c(50000, 60000), sd = c(10, 12),
+    icc_psu = c(0.05, 0.05), n_per_psu = c(10, 10),
+    cost_psu = c(500, 500), cost_ssu = c(10, 10)
+  )
+  d <- n_alloc(fr, n = 2000)$detail
+  expect_equal(d$n, c(819.6721, 1180.3279), tolerance = 1e-4)
+  expect_false(".psu_frac" %in% names(d))
+  expect_true(all(is.na(d$.bound_source)))
+})
+
+test_that("N_psu is validated and requires icc_psu", {
+  base <- data.frame(
+    stratum = c("A", "B"), N = c(5000, 6000), sd = c(10, 12),
+    icc_psu = c(0.05, 0.05), n_per_psu = c(10, 10)
+  )
+  bad <- base; bad$N_psu <- c(60.5, 600)
+  expect_error(n_alloc(bad, n = 200), "positive whole numbers")
+
+  too_many <- base; too_many$N_psu <- c(50000, 600)
+  expect_error(n_alloc(too_many, n = 200), "must not exceed")
+
+  orphan <- data.frame(stratum = c("A", "B"), N = c(500, 600),
+                       sd = c(10, 12), N_psu = c(5, 6))
+  expect_error(n_alloc(orphan, n = 200), "require a 'icc_psu' column")
+})
+
+test_that("an unreachable total blames the PSU universe, not the population", {
+  fr <- data.frame(
+    stratum = c("A", "B"), N = c(50000, 60000), sd = c(10, 12),
+    icc_psu = c(0.05, 0.05), n_per_psu = c(10, 10),
+    cost_psu = c(500, 500), cost_ssu = c(10, 10), N_psu = c(60, 600)
+  )
+  # 6600 ultimate units are reachable, far short of the 50000 + 60000 frame.
+  err <- tryCatch(n_alloc(fr, n = 8000), error = conditionMessage)
+  expect_match(err, "PSU universe")
+  expect_match(err, "with-replacement first-stage approximation")
+  expect_match(err, "not a statement that the target is unattainable")
+})
+
+test_that("a PSU universe below the lower bound is a distinct message", {
+  fr <- data.frame(
+    stratum = "A", N = 5000, sd = 10, icc_psu = 0.05, n_per_psu = 10,
+    N_psu = 3
+  )
+  expect_error(n_alloc(fr, n = 30, min_n_stratum = 100),
+               "PSU universe 'N_psu' caps the stratum below its own lower bound")
+})
+
+test_that("an appreciable PSU sampling fraction is disclosed, not warned about", {
+  fr <- data.frame(
+    stratum = c("A", "B"), N = c(50000, 60000), sd = c(10, 12),
+    icc_psu = c(0.05, 0.05), n_per_psu = c(10, 10),
+    cost_psu = c(500, 500), cost_ssu = c(10, 10), N_psu = c(60, 600)
+  )
+  expect_no_warning(res <- n_alloc(fr, n = 2000))
+  expect_output(print(res), "with-replacement first stage")
+  expect_output(print(res), "bound active in A")
+
+  fr$N_psu <- c(6000, 6000)
+  expect_silent(out <- capture.output(print(n_alloc(fr, n = 2000))))
+  expect_false(any(grepl("with-replacement first stage", out)))
+})
+
+test_that("integerization is bounded by N_psu independently of the element bound", {
+  # The element bound counts ultimate units, and the whole-unit take the
+  # operational search settles on need not be the fractional cost-optimal one
+  # that set it. Here the element bound is met exactly (19 * 5 = 95) by a
+  # design that would draw 19 PSUs from a universe of 10, so the PSU count
+  # has to be bounded in its own right.
+  fr <- data.frame(
+    stratum = "A", N = 5000, sd = 10, mean = 50, icc_psu = 0.05,
+    cost_psu = 475, cost_ssu = 100, N_psu = 10
+  )
+  d <- n_alloc(fr, n = 95)$detail
+  expect_equal(d$n_per_psu, 9.5, tolerance = 1e-9)
+  expect_equal(d$.upper, 95)
+  expect_lte(d$n_psu_int, d$N_psu)
+  expect_equal(d$n_psu_int, 10L)
 })
