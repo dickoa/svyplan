@@ -13,6 +13,9 @@ prec_multi_cluster(indicators, ...)
   ...,
   domains = NULL,
   stage_cost = NULL,
+  resp_rate_psu = 1,
+  resp_rate_ssu = 1,
+  resp_rate = 1,
   plan = NULL
 )
 
@@ -34,6 +37,15 @@ rejected.}
 
 \item{stage_cost}{Optional per-stage costs to retain for a later round trip
 to \code{\link[=n_multi_cluster]{n_multi_cluster()}}. Costs do not enter the precision calculation.}
+
+\item{resp_rate_psu}{Default expected PSU response rate, in (0, 1].
+Used where the indicator column is absent or \code{NA}.}
+
+\item{resp_rate_ssu}{Default expected SSU response rate for a three-stage
+design, in (0, 1]. It is not applicable to a two-stage design.}
+
+\item{resp_rate}{Default expected ultimate-unit response rate, in (0, 1].
+Non-missing indicator columns override these three defaults row by row.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} profile providing design metadata.}
 }

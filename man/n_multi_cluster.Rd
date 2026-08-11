@@ -21,6 +21,9 @@ n_multi_cluster(indicators, ...)
   domain_sampling = c("separate", "natural"),
   min_n_domain = NULL,
   fixed_cost = 0,
+  resp_rate_psu = 1,
+  resp_rate_ssu = 1,
+  resp_rate = 1,
   plan = NULL
 )
 
@@ -78,6 +81,15 @@ joint budget mode it is a constraint. In independent domain mode,
 domains below the floor produce a warning.}
 
 \item{fixed_cost}{Non-negative fixed overhead cost. The default is 0.}
+
+\item{resp_rate_psu}{Default expected PSU response rate, in (0, 1].
+Used where the indicator column is absent or \code{NA}.}
+
+\item{resp_rate_ssu}{Default expected SSU response rate for a three-stage
+design, in (0, 1]. It is not applicable to a two-stage design.}
+
+\item{resp_rate}{Default expected ultimate-unit response rate, in (0, 1].
+Non-missing indicator columns override these three defaults row by row.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} profile providing \code{stage_cost} and other
 applicable defaults.}

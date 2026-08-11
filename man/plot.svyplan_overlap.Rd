@@ -79,6 +79,12 @@ reason \code{\link[=n_panel]{n_panel()}}'s own \code{start} gives. When \code{pa
 \code{start} is not, the chart draws the launch that panel was planned with,
 rather than defaulting past it.
 
+Lynn's printed Figure 5 labels Samples 1 through 10 only. Its total row of
+1,800 through period 10 nevertheless assumes that a new 300-unit sample
+continues to enter in periods 6 through 10. This chart draws those implicit
+Samples 11 through 15 as well, so every displayed total is supported by the
+cohort rows above it.
+
 A take that varies over the life shades its cell in proportion, so a
 schedule that subsamples later waves is visible as it is drawn.
 }
@@ -95,6 +101,15 @@ plot(design_overlap("4-8-4"))
 # The same design brought up at once instead: full from period 1, and the
 # overlaps are unchanged by that
 plot(design_overlap("6"), start = "immediate")
+
+# Lynn Figure 5: six 300-unit launch samples, then 300 new units per period
+lynn_target <- prec_prop(n = 1800, p = 0.5)
+lynn_panel <- prec_panel(
+  300, target = lynn_target, retention = rep(1, 5),
+  design = "rotating", start = "immediate"
+)
+plot(design_overlap("6"), panel = lynn_panel, n_period = 10,
+     main = "1-1-1-1-1-1 rotating panel: immediate start")
 
 # Labelled in units rather than cohort shares
 target <- n_prop(p = 0.5, moe = 0.031)

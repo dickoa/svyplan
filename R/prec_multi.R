@@ -28,6 +28,9 @@
 #'   [prec_prop()] for proportion rows and ignored for mean rows.
 #'   An optional `prop_method` column in `indicators` overrides this default
 #'   on a per-row basis.
+#' @param resp_rate Default expected response rate at the ultimate unit, in
+#'   (0, 1\]. Used for rows whose `resp_rate` column is absent or `NA`; a
+#'   non-missing row value overrides it.
 #' @param plan A [svyplan()] profile providing default design parameters.
 #'
 #' @return A `svyplan_prec` object with a `$detail` data frame containing
@@ -119,6 +122,7 @@ prec_multi.default <- function(
   ...,
   domains = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
+  resp_rate = 1,
   plan = NULL
 ) {
   merged <- .merge_plan_args(
@@ -148,6 +152,7 @@ prec_multi.default <- function(
       call. = FALSE
     )
   }
+  check_resp_rate(resp_rate)
 
   if (!is.data.frame(indicators) || nrow(indicators) == 0L) {
     stop("'indicators' must be a non-empty data frame", call. = FALSE)
@@ -155,6 +160,7 @@ prec_multi.default <- function(
 
   indicators <- .indicators_var_from_sd(indicators, domains)
   .check_indicator_columns(indicators, domains)
+  .check_resp_rate_column(indicators, FALSE)
   .stop_min_cases_column(
     indicators,
     "prec_multi() reads the sizes you already have; a case floor is a sizing constraint, so it belongs to n_multi()"
@@ -180,6 +186,7 @@ prec_multi.default <- function(
   }
   domain_cols <- domains %||% character(0)
   .prec_multi_simple(indicators, prop_method = prop_method,
+                     resp_rate = resp_rate,
                      domain_cols = domain_cols)
 }
 
@@ -201,6 +208,12 @@ prec_multi.default <- function(
 #'   `indicators`.
 #' @param stage_cost Optional per-stage costs to retain for a later round trip
 #'   to [n_multi_cluster()]. Costs do not enter the precision calculation.
+#' @param resp_rate_psu Default expected PSU response rate, in (0, 1\].
+#'   Used where the indicator column is absent or `NA`.
+#' @param resp_rate_ssu Default expected SSU response rate for a three-stage
+#'   design, in (0, 1\]. It is not applicable to a two-stage design.
+#' @param resp_rate Default expected ultimate-unit response rate, in (0, 1\].
+#'   Non-missing indicator columns override these three defaults row by row.
 #' @param plan Optional [svyplan()] profile providing design metadata.
 #'
 #' @return A `svyplan_prec` object with per-indicator cluster precision in
@@ -242,6 +255,9 @@ prec_multi_cluster.default <- function(
   ...,
   domains = NULL,
   stage_cost = NULL,
+  resp_rate_psu = 1,
+  resp_rate_ssu = 1,
+  resp_rate = 1,
   plan = NULL
 ) {
   merged <- .merge_plan_args(
@@ -295,6 +311,13 @@ prec_multi_cluster.default <- function(
   } else {
     2L
   }
+  .check_resp_rate_column(indicators, TRUE, stages)
+  check_resp_rate(resp_rate_psu, "resp_rate_psu")
+  check_resp_rate(resp_rate_ssu, "resp_rate_ssu")
+  check_resp_rate(resp_rate)
+  if (stages == 2L && resp_rate_ssu != 1) {
+    stop("'resp_rate_ssu' is not applicable for 2-stage designs", call. = FALSE)
+  }
   if (!is.null(stage_cost)) {
     target_stages <- if ("n_per_ssu" %in% names(indicators)) 3L else 2L
     if (target_stages == 3L && length(stage_cost) != 3L) {
@@ -313,13 +336,17 @@ prec_multi_cluster.default <- function(
     indicators,
     stages = stages,
     stage_cost = stage_cost,
-    domain_cols = domains %||% character(0)
+    domain_cols = domains %||% character(0),
+    resp_rate_psu = resp_rate_psu,
+    resp_rate_ssu = resp_rate_ssu,
+    resp_rate = resp_rate
   )
 }
 
 #' @keywords internal
 #' @noRd
 .prec_multi_simple <- function(indicators, prop_method = "wald",
+                              resp_rate = 1,
                               domain_cols = character(0)) {
   if (!"alpha" %in% names(indicators)) {
     indicators$alpha <- 0.05
@@ -331,7 +358,9 @@ prec_multi_cluster.default <- function(
     indicators$N <- Inf
   }
   if (!"resp_rate" %in% names(indicators)) {
-    indicators$resp_rate <- 1
+    indicators$resp_rate <- resp_rate
+  } else {
+    indicators$resp_rate[is.na(indicators$resp_rate)] <- resp_rate
   }
   if (!"prop_method" %in% names(indicators)) {
     indicators$prop_method <- prop_method
@@ -466,15 +495,30 @@ prec_multi_cluster.default <- function(
 #' @noRd
 .prec_multi_cluster <- function(indicators, stages, stage_cost = NULL,
                                 domain_cols = character(0),
-                                mode = "cv") {
+                                mode = "cv",
+                                resp_rate_psu = 1,
+                                resp_rate_ssu = 1,
+                                resp_rate = 1) {
   if (!"alpha" %in% names(indicators)) {
     indicators$alpha <- 0.05
   }
   if (!"resp_rate_psu" %in% names(indicators)) {
-    indicators$resp_rate_psu <- 1
+    indicators$resp_rate_psu <- resp_rate_psu
+  } else {
+    indicators$resp_rate_psu[is.na(indicators$resp_rate_psu)] <- resp_rate_psu
   }
   if (!"resp_rate" %in% names(indicators)) {
-    indicators$resp_rate <- 1
+    indicators$resp_rate <- resp_rate
+  } else {
+    indicators$resp_rate[is.na(indicators$resp_rate)] <- resp_rate
+  }
+  if (stages == 3L) {
+    if (!"resp_rate_ssu" %in% names(indicators)) {
+      indicators$resp_rate_ssu <- resp_rate_ssu
+    } else {
+      indicators$resp_rate_ssu[is.na(indicators$resp_rate_ssu)] <-
+        resp_rate_ssu
+    }
   }
   if (!"var_ratio_psu" %in% names(indicators)) {
     indicators$var_ratio_psu <- 1
@@ -678,6 +722,9 @@ prec_multi.svyplan_n <- function(indicators, ...) {
   if ("prop_method" %in% names(dots)) {
     tgt$prop_method <- NA_character_
   }
+  if ("resp_rate" %in% names(dots)) {
+    tgt$resp_rate <- NA_real_
+  }
   tgt$n <- x$n
   tgt$moe <- NULL
   tgt$cv <- NULL
@@ -722,6 +769,12 @@ prec_multi_cluster.svyplan_cluster <- function(indicators, ...) {
     )
   }
   tgt <- x$indicators
+  for (rate in intersect(
+    c("resp_rate_psu", "resp_rate_ssu", "resp_rate"),
+    names(dots)
+  )) {
+    tgt[[rate]] <- NA_real_
+  }
   tgt$cv <- NULL
   tgt$moe <- NULL
   tgt$n <- x$n[1L]
@@ -754,7 +807,10 @@ prec_multi_cluster.svyplan_cluster <- function(indicators, ...) {
     domain_cols = dom_cols,
     mode = mode
   )
-  allowed <- c("stage_cost", "domains")
+  allowed <- c(
+    "stage_cost", "domains",
+    "resp_rate_psu", "resp_rate_ssu", "resp_rate"
+  )
   dot_names <- names(dots) %||% rep("", length(dots))
   unknown <- setdiff(dot_names, allowed)
   if (length(unknown) > 0L || any(!nzchar(dot_names))) {
@@ -778,6 +834,16 @@ prec_multi_cluster.svyplan_cluster <- function(indicators, ...) {
       stop("'domains' must name columns in indicators", call. = FALSE)
     }
     args$domain_cols <- dots$domains %||% character(0)
+  }
+  for (rate in intersect(
+    c("resp_rate_psu", "resp_rate_ssu", "resp_rate"),
+    names(dots)
+  )) {
+    check_resp_rate(dots[[rate]], rate)
+    if (rate == "resp_rate_ssu" && x$stages == 2L && dots[[rate]] != 1) {
+      stop("'resp_rate_ssu' is not applicable for 2-stage designs", call. = FALSE)
+    }
+    args[[rate]] <- dots[[rate]]
   }
   res <- do.call(.prec_multi_cluster, args)
   for (p in c("budget", "n_psu", "n_per_psu", "n_per_ssu", "joint", "fixed_cost",

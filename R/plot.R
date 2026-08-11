@@ -273,6 +273,12 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #' `start` is not, the chart draws the launch that panel was planned with,
 #' rather than defaulting past it.
 #'
+#' Lynn's printed Figure 5 labels Samples 1 through 10 only. Its total row of
+#' 1,800 through period 10 nevertheless assumes that a new 300-unit sample
+#' continues to enter in periods 6 through 10. This chart draws those implicit
+#' Samples 11 through 15 as well, so every displayed total is supported by the
+#' cohort rows above it.
+#'
 #' A take that varies over the life shades its cell in proportion, so a
 #' schedule that subsamples later waves is visible as it is drawn.
 #'
@@ -297,6 +303,15 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #' # The same design brought up at once instead: full from period 1, and the
 #' # overlaps are unchanged by that
 #' plot(design_overlap("6"), start = "immediate")
+#'
+#' # Lynn Figure 5: six 300-unit launch samples, then 300 new units per period
+#' lynn_target <- prec_prop(n = 1800, p = 0.5)
+#' lynn_panel <- prec_panel(
+#'   300, target = lynn_target, retention = rep(1, 5),
+#'   design = "rotating", start = "immediate"
+#' )
+#' plot(design_overlap("6"), panel = lynn_panel, n_period = 10,
+#'      main = "1-1-1-1-1-1 rotating panel: immediate start")
 #'
 #' # Labelled in units rather than cohort shares
 #' target <- n_prop(p = 0.5, moe = 0.031)
@@ -453,8 +468,8 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
 #'
 #' A gradual launch is one cohort an occasion and nothing else. An immediate
 #' launch adds, at the first occasion, one cohort per stage of the life, so
-#' the design holds its whole sample at once; those cohorts are the tails of
-#' the schedule, the shortest lasting one occasion.
+#' the design holds its whole sample at once. They are ordered like Lynn's
+#' Figure 5: the one-occasion tail first, up through the full-life cohort.
 #' @keywords internal
 #' @noRd
 .chart_cohorts <- function(w, start, n_period) {
@@ -463,7 +478,7 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
   if (identical(start, "gradual")) {
     return(entering)
   }
-  launch <- lapply(seq_len(life), function(k) {
+  launch <- lapply(seq.int(life, 1L), function(k) {
     list(entry = 1L, w = w[k:life])
   })
   c(launch, entering[-1L])

@@ -433,10 +433,21 @@ test_that("display and export methods are explicit", {
     strata = data.frame(N = c(10, 20), n = c(5, 5), sd = c(2, 3),
                         mean = c(5, 8))
   )
-  expect_output(print(deff), "Design effect \\(planning\\)")
-  expect_output(print(deff), "clustering")
-  expect_output(print(deff), "stratification")
-  expect_output(print(deff), "overall")
+  expect_output(print(deff), "^Planning design effect: [0-9.]+$")
+  expect_output(print(deff), "Clustering", fixed = TRUE, negate = TRUE)
+
+  s <- summary(deff)
+  expect_s3_class(s, "summary.svyplan_deff")
+  expect_equal(s$deff, as.double(deff))
+  expect_identical(s$components, attr(deff, "components"))
+  expect_identical(s$notes, attr(deff, "notes"))
+  expect_output(print(s), "Analysis of design effects")
+  expect_output(print(s), "Clustering")
+  expect_output(print(s), "Weighting")
+  expect_output(print(s), "Stratification")
+  expect_output(print(s), "Overall")
+  expect_output(print(s), "Components combine multiplicatively")
+  expect_output(print(s), "approximate multiplicative decomposition")
   expect_match(format(deff), "^svyplan_deff \\[")
 
   df <- as.data.frame(deff)
@@ -444,6 +455,55 @@ test_that("display and export methods are explicit", {
   expect_named(df, c("deff", "deff_cluster", "deff_weight", "deff_strata"))
   expect_equal(df$deff, as.double(deff))
   expect_equal(df$deff, df$deff_cluster * df$deff_weight * df$deff_strata)
+})
+
+test_that("a one-component summary names its model without a product note", {
+  deff <- design_effect(icc = 0.05, n_per_psu = 25, var_ratio = 1.4)
+  shown <- capture.output(summary(deff))
+
+  expect_match(paste(shown, collapse = "\n"), "Clustering\\s+3\\.0800")
+  expect_match(paste(shown, collapse = "\n"), "Overall\\s+3\\.0800")
+  expect_true(any(grepl("Basis: cluster variance model", shown, fixed = TRUE)))
+  expect_true(any(grepl("var_ratio = 1.4", shown, fixed = TRUE)))
+  expect_false(any(grepl("combine multiplicatively", shown, fixed = TRUE)))
+})
+
+test_that("three-stage summary discloses both ICCs, takes, and variance ratios", {
+  deff <- design_effect(
+    icc = c(0.01, 0.05),
+    n_per_psu = 10,
+    n_per_ssu = 4,
+    var_ratio = c(1.2, 1.1)
+  )
+  shown <- paste(capture.output(summary(deff)), collapse = "\n")
+
+  expect_match(shown, "icc = \\(0.01, 0.05\\)")
+  expect_match(shown, "n_per_psu = 10")
+  expect_match(shown, "n_per_ssu = 4")
+  expect_match(shown, "var_ratio = \\(1.2, 1.1\\)")
+})
+
+test_that("allocation summaries distinguish direct and adjusted ratios", {
+  frame <- data.frame(
+    stratum = c("Urban", "Rural"),
+    N = c(50000, 150000),
+    sd = c(0.45, 0.48),
+    mean = c(0.35, 0.25),
+    icc_psu = c(0.03, 0.08),
+    cost_psu = c(300, 600),
+    cost_ssu = c(40, 60)
+  )
+  alloc <- n_alloc(frame, cv = 0.05)
+  direct <- paste(capture.output(summary(design_effect(alloc))), collapse = "\n")
+  adjusted <- paste(
+    capture.output(summary(design_effect(alloc, weights = c(1, 1, 2, 2)))),
+    collapse = "\n"
+  )
+
+  expect_match(direct, "Basis: direct allocation variance ratio")
+  expect_match(direct, "per-stratum clustering")
+  expect_match(adjusted, "direct allocation variance ratio with a Kish weighting adjustment")
+  expect_match(adjusted, "Components combine multiplicatively")
 })
 
 test_that("unused arguments are rejected", {

@@ -14,6 +14,7 @@ prec_multi(indicators, ...)
   ...,
   domains = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
+  resp_rate = 1,
   plan = NULL
 )
 
@@ -50,6 +51,10 @@ for round-trip conversion back to \code{\link[=n_multi]{n_multi()}}.}
 \code{\link[=prec_prop]{prec_prop()}} for proportion rows and ignored for mean rows.
 An optional \code{prop_method} column in \code{indicators} overrides this default
 on a per-row basis.}
+
+\item{resp_rate}{Default expected response rate at the ultimate unit, in
+(0, 1]. Used for rows whose \code{resp_rate} column is absent or \code{NA}; a
+non-missing row value overrides it.}
 
 \item{plan}{A \code{\link[=svyplan]{svyplan()}} profile providing default design parameters.}
 }

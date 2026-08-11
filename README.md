@@ -1,5 +1,5 @@
 
-# svyplan
+# svyplan <img src="man/figures/svyplan_hex.png" align="right" width="140" />
 
 <!-- badges: start -->
 
@@ -47,7 +47,7 @@ expected non-response:
 ``` r
 n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 #> Sample size for proportion (wald)
-#> n = 606 (net: 485) (p = 0.30, moe = 0.050, deff = 1.50, resp_rate = 0.80)
+#> n = 606 gross (net: 485) (p = 0.30, moe = 0.050, deff = 1.50, resp_rate = 0.80)
 #> expected cases = 145.2
 ```
 
@@ -62,21 +62,21 @@ plan <- svyplan(deff = 1.5, resp_rate = 0.85, N = 50000)
 # Pass as argument
 n_prop(p = 0.3, moe = 0.05, plan = plan)
 #> Sample size for proportion (wald)
-#> n = 564 (net: 480) (p = 0.30, moe = 0.050, deff = 1.50, resp_rate = 0.85)
+#> n = 564 gross (net: 480) (p = 0.30, moe = 0.050, deff = 1.50, resp_rate = 0.85)
 #> expected cases = 143.8
 
 # Or pipe (positional or named args)
 plan |> n_mean(100, moe = 2)
 #> Sample size for mean
-#> n = 169 (net: 144) (var = 100.00, moe = 2.000, deff = 1.50, resp_rate = 0.85)
+#> n = 169 gross (net: 144) (var = 100.00, moe = 2.000, deff = 1.50, resp_rate = 0.85)
 plan |> n_mean(var = 100, moe = 2)
 #> Sample size for mean
-#> n = 169 (net: 144) (var = 100.00, moe = 2.000, deff = 1.50, resp_rate = 0.85)
+#> n = 169 gross (net: 144) (var = 100.00, moe = 2.000, deff = 1.50, resp_rate = 0.85)
 
 # Explicit args always override plan defaults
 n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2.0)
 #> Sample size for proportion (wald)
-#> n = 750 (net: 638) (p = 0.30, moe = 0.050, deff = 2.00, resp_rate = 0.85)
+#> n = 750 gross (net: 638) (p = 0.30, moe = 0.050, deff = 2.00, resp_rate = 0.85)
 #> expected cases = 191.1
 ```
 
@@ -747,11 +747,7 @@ selected by the arguments you supply.
 ``` r
 # Clustering alone: 20 households per cluster
 design_effect(icc = 0.05, n_per_psu = 20)
-#> Design effect (planning)
-#> 
-#>   clustering   1.9500   icc = 0.05, n_per_psu = 20
-#>   ---------------------
-#>   overall      1.9500
+#> Planning design effect: 1.9500
 
 # Clustering, unequal weighting, and the stratification gain together
 frame <- data.frame(
@@ -759,13 +755,7 @@ frame <- data.frame(
 )
 deff <- design_effect(icc = 0.05, n_per_psu = 20, strata = frame)
 deff
-#> Design effect (planning)
-#> 
-#>   clustering       1.9500   icc = 0.05, n_per_psu = 20
-#>   weighting        1.3899   2 strata, n = 1000
-#>   stratification   0.9696   2 strata, between-stratum share 0.03038
-#>   -------------------------
-#>   overall          2.6279   approx. (Kish)
+#> Planning design effect: 2.6279
 
 # Use it wherever a deff is expected
 n_prop(p = 0.3, moe = 0.05, deff = deff)
@@ -777,11 +767,7 @@ effective_n(deff, n = 1000)
 
 # Or read the features off a plan you already built
 design_effect(n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05))
-#> Design effect (planning)
-#> 
-#>   clustering   1.6392   icc = 0.05, n_per_psu = 13.78
-#>   ---------------------
-#>   overall      1.6392
+#> Planning design effect: 1.6392
 ```
 
 This is a planning tool. To measure the design effect a *collected*

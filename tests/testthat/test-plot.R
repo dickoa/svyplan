@@ -223,6 +223,19 @@ test_that("the chart draws an immediate launch, full from the first period", {
   # sample is the design's own from period 1 and never climbs
   co <- .chart_cohorts(x$schedule, "immediate", 10L)
   expect_length(co, x$life + 10L - 1L)
+  # Lynn orders the six launch samples by remaining life: Sample 1 appears
+  # once, Sample 2 twice, ..., and Sample 6 for all six waves. Sample 7 is
+  # the first ordinary entrant, at period 2.
+  expect_identical(
+    vapply(co[seq_len(x$life)], function(z) length(z$w), integer(1L)),
+    seq_len(x$life)
+  )
+  expect_identical(
+    vapply(co[seq_len(x$life)], `[[`, integer(1L), "entry"),
+    rep(1L, x$life)
+  )
+  expect_identical(co[[x$life + 1L]]$entry, 2L)
+  expect_identical(length(co[[x$life + 1L]]$w), x$life)
   totals <- .chart_totals(co, 10L)
   expect_equal(totals, rep(x$n_occasion, 10L), tolerance = 1e-12)
 

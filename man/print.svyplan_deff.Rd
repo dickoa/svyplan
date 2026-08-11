@@ -2,6 +2,8 @@
 % Please edit documentation in R/print.R
 \name{print.svyplan_deff}
 \alias{print.svyplan_deff}
+\alias{summary.svyplan_deff}
+\alias{print.summary.svyplan_deff}
 \alias{format.svyplan_deff}
 \alias{as.double.svyplan_deff}
 \alias{as.list.svyplan_deff}
@@ -15,6 +17,10 @@
 \title{Print and coerce planning design effects}
 \usage{
 \method{print}{svyplan_deff}(x, ...)
+
+\method{summary}{svyplan_deff}(object, ...)
+
+\method{print}{summary.svyplan_deff}(x, ...)
 
 \method{format}{svyplan_deff}(x, ...)
 
@@ -44,11 +50,14 @@
 \method{[[}{svyplan_deff}(x, i) <- value
 }
 \arguments{
-\item{x}{A \code{svyplan_deff} object from \code{\link[=design_effect]{design_effect()}}.}
+\item{x}{A \code{svyplan_deff} object from \code{\link[=design_effect]{design_effect()}}, or its summary for
+the summary print method.}
 
 \item{...}{For mathematical transformations, additional arguments passed to
 the underlying operation. The other methods do not support additional
 arguments.}
+
+\item{object}{A \code{svyplan_deff} object to summarize.}
 
 \item{name, i}{A field name, one of those listed under Details. \code{[[} also
 accepts a numeric index, which reads the underlying numeric vector.}
@@ -67,8 +76,11 @@ R 4.7.0 and later. Svyplan results already have valid row names.}
 being the product of the components it carries.}
 }
 \value{
-\code{print()} returns \code{x} invisibly, \code{format()} returns a character
-scalar, and \code{as.double()} returns the overall design effect.
+\code{print()} returns \code{x} invisibly. \code{summary()} returns a
+\code{summary.svyplan_deff} object containing the overall value, named
+components, component notes, and the basis of the decomposition.
+\code{format()} returns a character scalar, and \code{as.double()} returns the
+overall design effect.
 \code{as.data.frame()} returns a one-row table with the overall value and one
 column per component; \code{as.list()} returns the same fields as a named
 list, and \code{$} and \code{[[} return one of them. Arithmetic and mathematical
@@ -76,9 +88,10 @@ transformations return ordinary numeric results.
 }
 \description{
 Display and coercion methods for the composed design effect that
-\code{\link[=design_effect]{design_effect()}} returns. \code{print()} itemizes the components and the
-overall value; the coercion and arithmetic methods let the object stand
-in for that overall value wherever a plain number is expected.
+\code{\link[=design_effect]{design_effect()}} returns. \code{print()} gives the overall value, while
+\code{summary()} gives an ANOVA-style decomposition and the assumptions behind
+each component. The coercion and arithmetic methods let the object stand
+in for the overall value wherever a plain number is expected.
 }
 \details{
 A \code{svyplan_deff} behaves as the numeric overall design effect wherever one
@@ -99,6 +112,7 @@ the component it is made of.
 d <- design_effect(icc = 0.03, n_per_psu = 20,
                    weights = rep(c(1, 3), c(400, 100)))
 d
+summary(d)
 
 # one component, by name
 d$deff

@@ -235,6 +235,68 @@ test_that("svyplan_df fields are reached by name and unknown ones error", {
   expect_match(format(d), "svyplan_df \\[psu, 280\\]")
 })
 
+test_that("summary replaces the meaningless scalar numeric summary", {
+  d <- design_df(n_psu = 300, n_strata = 20)
+  s <- summary(d)
+
+  expect_s3_class(s, "summary.svyplan_df")
+  expect_identical(
+    names(s),
+    c("df", "n_units", "n_strata", "stage", "strata", "domains", "basis")
+  )
+  expect_equal(s$df, 280)
+  expect_equal(s$n_units, 300)
+  expect_identical(s$n_strata, 20L)
+  expect_identical(s$stage, "psu")
+  expect_null(s$strata)
+  expect_null(s$domains)
+  expect_match(s$basis, "PSUs minus contributing strata")
+
+  out <- capture.output(expect_invisible(print(s)))
+  expect_match(out[1L], "Analysis of design degrees of freedom")
+  expect_true(any(grepl("Overall", out, fixed = TRUE)))
+  expect_true(any(grepl("Counted stage: PSU", out, fixed = TRUE)))
+  expect_true(any(grepl("Per-stratum counts were not supplied", out,
+                        fixed = TRUE)))
+  expect_false(any(grepl("Min.", out, fixed = TRUE)))
+  expect_error(summary(d, digits = 2), "unused argument")
+})
+
+test_that("summary prints additive strata and separate domain detail", {
+  frame <- alloc_cluster_frame()
+  frame$province <- c("N", "N", "S")
+  d <- design_df(n_alloc(frame, n = 3000, domains = "province"))
+  s <- summary(d)
+
+  expect_identical(s$strata, d$strata)
+  expect_identical(s$domains, d$domains)
+  expect_equal(sum(s$strata$df), s$df)
+
+  out <- capture.output(print(s))
+  expect_true(any(grepl("Stratum", out, fixed = TRUE)))
+  expect_true(any(grepl("Constraints", out, fixed = TRUE)))
+  expect_true(any(grepl("Design df", out, fixed = TRUE)))
+  expect_true(any(grepl("Overall", out, fixed = TRUE)))
+  expect_true(any(grepl("Domain degrees of freedom", out, fixed = TRUE)))
+  expect_true(any(grepl("not additive to the overall row", out,
+                        fixed = TRUE)))
+  expect_true(any(grepl("province", out, fixed = TRUE)))
+})
+
+test_that("summary distinguishes sampled and counted units for a census", {
+  frame <- data.frame(
+    stratum = c("a", "b", "c"), N = c(100, 2000, 500),
+    sd = c(5, 8, 3), mean = c(10, 20, 5),
+    take_all = c(TRUE, FALSE, FALSE)
+  )
+  s <- summary(design_df(n_alloc(frame, n = 400)))
+  out <- capture.output(print(s))
+
+  expect_true(any(grepl("Sampled", out, fixed = TRUE)))
+  expect_true(any(grepl("Counted", out, fixed = TRUE)))
+  expect_true(any(grepl("census", out, fixed = TRUE)))
+})
+
 test_that("a multi-indicator result has no single design to count", {
   res <- n_multi(data.frame(name = "a", p = 0.3, moe = 0.05))
   expect_error(design_df(res), "sizes several indicators against one design")

@@ -15,6 +15,7 @@ n_multi(indicators, ...)
   domain_sampling = c("separate", "natural"),
   min_n_domain = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
+  resp_rate = 1,
   plan = NULL
 )
 
@@ -73,6 +74,10 @@ sample sizes are floored to \code{min_n_domain}.}
 An optional \code{prop_method} column in \code{indicators} overrides this default
 on a per-row basis. \code{"wilson"}, \code{"logodds"} and \code{"beta"} size from an
 interval half-width, so those rows need \code{moe} rather than \code{cv}.}
+
+\item{resp_rate}{Default expected response rate at the ultimate unit, in
+(0, 1]. Used for rows whose \code{resp_rate} column is absent or \code{NA}; a
+non-missing row value overrides it.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }

@@ -2526,10 +2526,13 @@ check_df <- function(df, name = "df") {
       stop("'N' values must be greater than 1 (or Inf)", call. = FALSE)
     }
   }
-  if ("resp_rate" %in% names(indicators)) {
-    vals <- indicators$resp_rate[!is.na(indicators$resp_rate)]
-    if (any(vals <= 0 | vals > 1)) {
-      stop("'resp_rate' values must be in (0, 1]", call. = FALSE)
+  for (rate in intersect(
+    c("resp_rate_psu", "resp_rate_ssu", "resp_rate"),
+    names(indicators)
+  )) {
+    vals <- indicators[[rate]][!is.na(indicators[[rate]])]
+    if (!is.numeric(vals) || any(vals <= 0 | vals > 1)) {
+      stop(sprintf("'%s' values must be in (0, 1]", rate), call. = FALSE)
     }
   }
   if ("n" %in% names(indicators)) {

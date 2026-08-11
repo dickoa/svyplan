@@ -4,6 +4,42 @@ Initial CRAN release.
 
 ## Sample size determination
 
+* Planning design effects now print as a compact overall figure. Their new
+  `summary()` method gives an ANOVA-style component table, followed by the
+  multiplicative basis and the assumptions behind each component. Cluster
+  summaries disclose stage takes, ICCs, and variance ratios; allocation
+  summaries distinguish a direct variance ratio from an additional Kish
+  weighting adjustment.
+* Classic `n_alloc()` and `prec_alloc()` results now have structured
+  `summary()` methods. The fitted-design summary evaluates the operational
+  whole-unit allocation and keeps the mathematical optimum separate; the
+  precision summary evaluates the supplied allocation exactly, including
+  fractional values. Both disaggregate allocation, response-adjusted counts,
+  costs and weights, achieved stratum precision, variance shares, domains,
+  and assumptions. Fitted designs additionally report bounds and design
+  degrees of freedom. Cluster summaries use the operational PSU counts and
+  takes when recomputing field cost and precision.
+* Generalized Bethel `n_alloc()` and `prec_alloc()` results now have a
+  dedicated `summary.svyplan_bethel` diagnostic summary. It separates the
+  continuous optimum, operational integer recommendation, and supplied
+  assessment; retains every precision constraint and objective component;
+  disaggregates stratum and multistage decisions, bounds, and resolved
+  target-stratum planning inputs; and reports solver certification, active
+  constraints, multiplier identifiability, and budget sensitivity. Constraint
+  rows are explicitly non-additive, while objective contributions are labelled
+  as the additive decomposition they are.
+* The multi-indicator family now accepts response-rate defaults as ordinary
+  arguments as well as per-indicator columns. `n_multi()` and `prec_multi()`
+  take `resp_rate`; their cluster counterparts take `resp_rate_psu`,
+  `resp_rate_ssu`, and `resp_rate`. Non-missing row values still override the
+  scalar default, and the same defaults now flow from `svyplan()` profiles and
+  through inverse round trips. Stage-specific response-rate columns are
+  validated before optimization, so zero or out-of-range rates produce a
+  direct argument error instead of an optimizer failure or infinite
+  precision.
+* Single-indicator sample-size printing labels a response-adjusted size as
+  gross and formats count-like values without integer `sprintf()` coercion,
+  so very large but finite response-adjusted plans remain printable.
 * `n_prop()`: sample size for a proportion (Wald, Wilson, log-odds, and
   Korn-Graubard beta methods).
   The Wilson, log-odds, and beta sizes are obtained by inverting the interval
@@ -66,7 +102,11 @@ Initial CRAN release.
   both terms, while in cluster mode it marks an element-level census that
   leaves the PSU stage sampling, so the stratum still contributes. The
   result is a `svyplan_df`, a numeric scalar usable as any `df` argument
-  and carrying `$strata` and `$domains` tables whose entries sum to it.
+  and carrying `$strata` and `$domains` detail tables. The per-stratum
+  contributions sum to the overall count.
+  Its compact `print()` reports the headline count; `summary()` now gives an
+  additive per-stratum analysis with an overall row and reports per-domain
+  degrees of freedom separately as non-additive subpopulation counts.
   Per-domain df is exact rather than approximate, the allocation API
   expressing a domain as a union of whole strata; an analytic domain
   cutting across strata is not derivable from a plan and is documented as
@@ -703,7 +743,10 @@ continuous stage size upward independently.
   `design = "rotating"` labels the rows and the total row in units instead
   of cohort shares, issuing whole units as `print()` does so that one object
   reports one recruitment. `type = "overlap"` draws the lag profile instead,
-  which is the table `print()` reports.
+  which is the table `print()` reports. For an immediate start, the launch
+  rows now follow Lynn Figure 5's order: one remaining wave, then two, through
+  the full six-wave life. The chart also draws the later entrants that the
+  printed report leaves implicit but its constant total requires.
 * Three-stage designs derive `var_ratio_ssu` instead of defaulting it to 1. In the
   multiplier
   `D = var_ratio_psu icc_psu m q + var_ratio_ssu (1 + icc_ssu (q - 1))`, `var_ratio_psu`

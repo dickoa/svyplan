@@ -12,7 +12,7 @@ knitr::opts_chunk$set(
 options(width = 80)
 ```
 
-# svyplan
+# svyplan <img src="man/figures/svyplan_hex.png" align="right" width="140" />
 
 <!-- badges: start -->
 [![CRAN status](https://www.r-pkg.org/badges/version/svyplan)](https://CRAN.R-project.org/package=svyplan)

@@ -51,6 +51,9 @@
 #'   An optional `prop_method` column in `indicators` overrides this default
 #'   on a per-row basis. `"wilson"`, `"logodds"` and `"beta"` size from an
 #'   interval half-width, so those rows need `moe` rather than `cv`.
+#' @param resp_rate Default expected response rate at the ultimate unit, in
+#'   (0, 1\]. Used for rows whose `resp_rate` column is absent or `NA`; a
+#'   non-missing row value overrides it.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_n` object. The output class is the same with or without
@@ -350,6 +353,7 @@ n_multi.default <- function(
   domain_sampling = c("separate", "natural"),
   min_n_domain = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
+  resp_rate = 1,
   plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, n_multi.default, match.call(), environment())
@@ -367,6 +371,7 @@ n_multi.default <- function(
       stop("'min_n_domain' must be a positive numeric scalar", call. = FALSE)
     }
   }
+  check_resp_rate(resp_rate)
   # An unresolved default arrives either as a missing argument or, through
   # the plan-merge path, as the full choice vector itself.
   if (identical(prop_method, c("wald", "wilson", "logodds", "beta"))) {
@@ -387,7 +392,12 @@ n_multi.default <- function(
   indicators <- .indicators_var_from_sd(indicators, domains)
   indicators <- .indicators_moe_from_rmoe(indicators, domains)
   info <- .validate_targets(indicators, FALSE, domains = domains)
-  indicators <- .fill_defaults(indicators, FALSE, prop_method = prop_method)
+  indicators <- .fill_defaults(
+    indicators,
+    FALSE,
+    prop_method = prop_method,
+    resp_rate = resp_rate
+  )
 
   rv_final <- indicators$unit_relvar[!is.na(indicators$unit_relvar)]
   if (
@@ -472,6 +482,12 @@ n_multi.default <- function(
 #'   joint budget mode it is a constraint. In independent domain mode,
 #'   domains below the floor produce a warning.
 #' @param fixed_cost Non-negative fixed overhead cost. The default is 0.
+#' @param resp_rate_psu Default expected PSU response rate, in (0, 1\].
+#'   Used where the indicator column is absent or `NA`.
+#' @param resp_rate_ssu Default expected SSU response rate for a three-stage
+#'   design, in (0, 1\]. It is not applicable to a two-stage design.
+#' @param resp_rate Default expected ultimate-unit response rate, in (0, 1\].
+#'   Non-missing indicator columns override these three defaults row by row.
 #' @param plan Optional [svyplan()] profile providing `stage_cost` and other
 #'   applicable defaults.
 #'
@@ -562,6 +578,9 @@ n_multi_cluster.default <- function(
   domain_sampling = c("separate", "natural"),
   min_n_domain = NULL,
   fixed_cost = 0,
+  resp_rate_psu = 1,
+  resp_rate_ssu = 1,
+  resp_rate = 1,
   plan = NULL
 ) {
   .plan <- .merge_plan_args(
@@ -596,6 +615,12 @@ n_multi_cluster.default <- function(
   check_stage_cost(stage_cost)
   stage_cost <- .reorder_stage_cost(stage_cost)
   stages <- length(stage_cost)
+  check_resp_rate(resp_rate_psu, "resp_rate_psu")
+  check_resp_rate(resp_rate_ssu, "resp_rate_ssu")
+  check_resp_rate(resp_rate)
+  if (stages == 2L && resp_rate_ssu != 1) {
+    stop("'resp_rate_ssu' is not applicable for 2-stage designs", call. = FALSE)
+  }
   if (!is.null(budget)) check_scalar(budget, "budget")
   if (!is.null(n_psu)) check_scalar(n_psu, "n_psu")
   if (!is.null(n_per_psu)) check_scalar(n_per_psu, "n_per_psu")
@@ -619,7 +644,14 @@ n_multi_cluster.default <- function(
     stages = stages,
     context = "n_multi_cluster()"
   )
-  indicators <- .fill_defaults(indicators, TRUE)
+  indicators <- .fill_defaults(
+    indicators,
+    TRUE,
+    stages = stages,
+    resp_rate_psu = resp_rate_psu,
+    resp_rate_ssu = resp_rate_ssu,
+    resp_rate = resp_rate
+  )
   indicators <- .convert_moe_to_cv(indicators)
 
   rv_final <- indicators$unit_relvar[!is.na(indicators$unit_relvar)]
@@ -956,7 +988,15 @@ n_multi_cluster.default <- function(
 #' Fill default values in indicators
 #' @keywords internal
 #' @noRd
-.fill_defaults <- function(indicators, multistage, prop_method = "wald") {
+.fill_defaults <- function(
+  indicators,
+  multistage,
+  prop_method = "wald",
+  stages = if (multistage) 2L else 1L,
+  resp_rate_psu = 1,
+  resp_rate_ssu = 1,
+  resp_rate = 1
+) {
   if (!"alpha" %in% names(indicators)) {
     indicators$alpha <- 0.05
   } else {
@@ -999,19 +1039,23 @@ n_multi_cluster.default <- function(
     }
   }
 
-  # The simple path spends this at the ultimate unit and the multistage path
-  # at stage 1, so the two carry different column names rather than one name
-  # with two meanings.
+  # A simple design has only ultimate-unit nonresponse. A multistage design
+  # keeps a separate rate for every stage it actually has.
   rate_cols <- if (multistage) {
-    c("resp_rate_psu", "resp_rate")
+    c(
+      resp_rate_psu = resp_rate_psu,
+      if (stages == 3L) c(resp_rate_ssu = resp_rate_ssu),
+      resp_rate = resp_rate
+    )
   } else {
-    "resp_rate"
+    c(resp_rate = resp_rate)
   }
-  for (rate_col in rate_cols) {
+  for (rate_col in names(rate_cols)) {
     if (!rate_col %in% names(indicators)) {
-      indicators[[rate_col]] <- 1
+      indicators[[rate_col]] <- unname(rate_cols[[rate_col]])
     } else {
-      indicators[[rate_col]][is.na(indicators[[rate_col]])] <- 1
+      indicators[[rate_col]][is.na(indicators[[rate_col]])] <-
+        unname(rate_cols[[rate_col]])
     }
   }
 
@@ -2820,6 +2864,9 @@ n_multi.svyplan_prec <- function(indicators, ...) {
   if ("prop_method" %in% names(dots)) {
     tgt$prop_method <- NA_character_
   }
+  if ("resp_rate" %in% names(dots)) {
+    tgt$resp_rate <- NA_real_
+  }
   tgt$n <- NULL
   tgt$n_per_psu <- NULL
   tgt$n_per_ssu <- NULL
@@ -2863,6 +2910,12 @@ n_multi_cluster.svyplan_prec <- function(indicators, ...) {
   }
 
   tgt <- x$params$indicators
+  for (rate in intersect(
+    c("resp_rate_psu", "resp_rate_ssu", "resp_rate"),
+    names(dots)
+  )) {
+    tgt[[rate]] <- NA_real_
+  }
   tgt$n <- NULL
   tgt$n_per_psu <- NULL
   tgt$n_per_ssu <- NULL

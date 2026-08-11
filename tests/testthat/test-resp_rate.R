@@ -49,8 +49,18 @@ test_that("resp_rate validation works", {
 test_that("print shows net when resp_rate < 1", {
   result <- n_prop(p = 0.3, moe = 0.05, resp_rate = 0.8)
   out <- capture.output(print(result))
+  expect_match(out[2], "gross")
   expect_match(out[2], "net:")
   expect_match(out[2], "resp_rate = 0.80")
+})
+
+test_that("single-size print labels gross n and handles large finite counts", {
+  result <- n_prop(p = 0.5, moe = 0.05, deff = 1.8, resp_rate = 0.1)
+  out <- capture.output(print(result))
+  expect_match(out[2], "n = 6915 gross \\(net: 692\\)")
+
+  huge <- n_prop(p = 0.5, moe = 0.05, resp_rate = 1e-9)
+  expect_no_error(capture.output(print(huge)))
 })
 
 test_that("print hides net when resp_rate = 1", {
@@ -70,6 +80,118 @@ test_that("resp_rate = 0.99 barely inflates", {
   rr <- n_prop(p = 0.3, moe = 0.05, resp_rate = 0.99)
   expect_equal(rr$n, base$n / 0.99, tolerance = 1e-6)
   expect_true(abs(rr$n - base$n) < 5)
+})
+
+test_that("n_multi accepts a scalar response-rate default", {
+  indicators <- data.frame(
+    name = c("a", "b"),
+    p = c(0.3, 0.5),
+    moe = c(0.05, 0.04)
+  )
+  scalar <- n_multi(indicators, resp_rate = 0.8)
+  column <- n_multi(transform(indicators, resp_rate = 0.8))
+  expect_equal(scalar$n, column$n)
+  expect_equal(scalar$detail$.n, column$detail$.n)
+  expect_equal(scalar$indicators$resp_rate, c(0.8, 0.8))
+})
+
+test_that("multi response-rate columns override the scalar row by row", {
+  indicators <- data.frame(
+    p = c(0.3, 0.5),
+    moe = c(0.05, 0.04),
+    resp_rate = c(0.6, NA)
+  )
+  result <- n_multi(indicators, resp_rate = 0.8)
+  expect_equal(result$indicators$resp_rate, c(0.6, 0.8))
+  expect_equal(
+    result$detail$.n,
+    c(
+      n_prop(0.3, moe = 0.05, resp_rate = 0.6)$n,
+      n_prop(0.5, moe = 0.04, resp_rate = 0.8)$n
+    )
+  )
+})
+
+test_that("prec_multi accepts response rate directly and through a plan", {
+  indicators <- data.frame(p = c(0.3, 0.5), n = c(500, 500))
+  direct <- prec_multi(indicators, resp_rate = 0.8)
+  column <- prec_multi(transform(indicators, resp_rate = 0.8))
+  planned <- prec_multi(indicators, plan = svyplan(resp_rate = 0.8))
+  expect_equal(direct$detail, column$detail)
+  expect_equal(planned$detail, column$detail)
+
+  sized <- n_multi(
+    transform(indicators, n = NULL, moe = c(0.05, 0.04)),
+    plan = svyplan(resp_rate = 0.8)
+  )
+  expect_equal(sized$indicators$resp_rate, c(0.8, 0.8))
+})
+
+test_that("multi round trips can override the response rate", {
+  sized <- n_multi(data.frame(p = 0.3, moe = 0.05), resp_rate = 0.8)
+  precision <- prec_multi(sized, resp_rate = 0.5)
+  expect_equal(precision$params$indicators$resp_rate, 0.5)
+  expect_gt(precision$detail$.moe, 0.05)
+
+  resized <- n_multi(precision, resp_rate = 0.9)
+  expect_equal(resized$indicators$resp_rate, 0.9)
+})
+
+test_that("multi-cluster scalar stage rates match indicator columns", {
+  indicators <- data.frame(p = 0.3, cv = 0.1, icc_psu = 0.05)
+  direct <- n_multi_cluster(
+    indicators,
+    stage_cost = c(500, 50),
+    resp_rate_psu = 0.9,
+    resp_rate = 0.8
+  )
+  column <- n_multi_cluster(
+    transform(indicators, resp_rate_psu = 0.9, resp_rate = 0.8),
+    stage_cost = c(500, 50)
+  )
+  expect_equal(direct$n, column$n)
+  expect_equal(direct$total_n, column$total_n)
+
+  achieved <- prec_multi_cluster(
+    data.frame(p = 0.3, n = 40, n_per_psu = 10, icc_psu = 0.05),
+    resp_rate_psu = 0.9,
+    resp_rate = 0.8
+  )
+  achieved_column <- prec_multi_cluster(data.frame(
+    p = 0.3, n = 40, n_per_psu = 10, icc_psu = 0.05,
+    resp_rate_psu = 0.9, resp_rate = 0.8
+  ))
+  expect_equal(achieved$detail, achieved_column$detail)
+})
+
+test_that("multi-cluster validates every stage response rate", {
+  three_stage <- data.frame(
+    p = 0.3, cv = 0.1, icc_psu = 0.05, icc_ssu = 0.1
+  )
+  for (rate in c("resp_rate_psu", "resp_rate_ssu", "resp_rate")) {
+    bad <- three_stage
+    bad[[rate]] <- 0
+    expect_error(
+      n_multi_cluster(bad, stage_cost = c(500, 100, 50)),
+      paste0("'", rate, "' values must be in")
+    )
+  }
+
+  expect_error(
+    prec_multi_cluster(data.frame(
+      p = 0.3, n = 20, n_per_psu = 10, icc_psu = 0.05,
+      resp_rate_psu = 0
+    )),
+    "'resp_rate_psu' values must be in"
+  )
+  expect_error(
+    n_multi_cluster(
+      data.frame(p = 0.3, cv = 0.1, icc_psu = 0.05),
+      stage_cost = c(500, 50),
+      resp_rate_ssu = 0.9
+    ),
+    "not applicable for 2-stage"
+  )
 })
 
 test_that("prec_prop resp_rate deflates effective n", {
@@ -148,6 +270,10 @@ test_that("stage columns are refused where the design has no such stage", {
   tg2 <- data.frame(name = c("a", "b"), p = c(0.30, 0.10),
                     moe = c(0.05, 0.05), resp_rate_psu = c(0.5, 0.9))
   expect_error(n_multi(tg2), "stages this design does not have")
+  expect_error(
+    prec_multi(transform(tg2, moe = NULL, n = 500)),
+    "stages this design does not have"
+  )
 
   # A 2-stage cluster design has no SSU stage; those units are the ultimate
   # ones, so their nonresponse is 'resp_rate'.
@@ -156,6 +282,10 @@ test_that("stage columns are refused where the design has no such stage", {
                     resp_rate_ssu = c(0.9, 0.9))
   expect_error(n_multi_cluster(tg3, stage_cost = c(500, 50)),
                "not applicable for 2-stage")
+  expect_error(
+    prec_multi_cluster(transform(tg3, cv = NULL, n = 50, n_per_psu = 10)),
+    "not applicable for 2-stage"
+  )
 })
 
 test_that("a cluster frame's two rates act at different stages", {

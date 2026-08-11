@@ -409,10 +409,26 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
     stop("'deff' length does not match the allocation's strata", call. = FALSE)
   }
   value <- sum(n) * sum(W^2 * detail$sd^2 * deff_h * factor_h / n) / parts$total
+  clustered <- is.data.frame(x$params$frame) &&
+    !is.null(x$params$frame[["icc_psu"]]) &&
+    !is.null(detail[["n_per_psu"]])
+  qualifications <- c(
+    if (clustered) "per-stratum clustering",
+    if (!isTRUE(all.equal(unname(deff_h), rep(1, length(deff_h))))) {
+      sprintf("input deff = %s", paste(signif(deff_h, 4), collapse = ", "))
+    }
+  )
   list(
     value = value,
-    note = sprintf("%d strata, n = %.4g (direct variance ratio)",
-                   nrow(detail), sum(n))
+    note = sprintf(
+      "%d strata, n = %.4g%s (direct variance ratio)",
+      nrow(detail), sum(n),
+      if (length(qualifications) > 0L) {
+        paste0(", ", paste(qualifications, collapse = ", "))
+      } else {
+        ""
+      }
+    )
   )
 }
 
@@ -581,12 +597,19 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
     value <- var_ratio[1L] * icc[1L] * n_per_psu * n_per_ssu +
       var_ratio[2L] * (1 + icc[2L] * (n_per_ssu - 1))
     note <- sprintf(
-      "icc = (%.4g, %.4g), n_per_psu = %.4g, n_per_ssu = %.4g",
-      icc[1L], icc[2L], n_per_psu, n_per_ssu
+      paste0(
+        "icc = (%.4g, %.4g), n_per_psu = %.4g, n_per_ssu = %.4g, ",
+        "var_ratio = (%.4g, %.4g)"
+      ),
+      icc[1L], icc[2L], n_per_psu, n_per_ssu,
+      var_ratio[1L], var_ratio[2L]
     )
   } else {
     value <- var_ratio * (1 + icc * (n_per_psu - 1))
-    note <- sprintf("icc = %.4g, n_per_psu = %.4g", icc, n_per_psu)
+    note <- sprintf(
+      "icc = %.4g, n_per_psu = %.4g, var_ratio = %.4g",
+      icc, n_per_psu, var_ratio
+    )
   }
   list(value = as.numeric(value), note = note)
 }
@@ -598,7 +621,11 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
   check_weights(w, "weights")
   n <- length(w)
   value <- n * sum(w^2) / sum(w)^2
-  list(value = value, note = sprintf("cv(w) = %.4g", sqrt(max(value - 1, 0))))
+  list(
+    value = value,
+    note = sprintf("%d planned weights, cv(w) = %.4g", n,
+                   sqrt(max(value - 1, 0)))
+  )
 }
 
 #' Weighting component implied by a stratified allocation

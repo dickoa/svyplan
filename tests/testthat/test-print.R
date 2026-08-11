@@ -113,6 +113,22 @@ test_that("cluster print and format handle pathological stage sizes", {
   expect_no_error(format(x))
 })
 
+test_that("count printing does not coerce large finite sizes to integers", {
+  objects <- list(
+    n_prop(p = 0.5, moe = 0.05, resp_rate = 1e-9),
+    prec_prop(p = 0.5, n = 3e9),
+    prec_mean(var = 100, n = 3e9),
+    power_prop(p1 = 0.3, p2 = 0.3001, resp_rate = 1e-4),
+    power_mean(var = 100, effect = 0.001, resp_rate = 1e-4),
+    n_change(p = c(0.3, 0.31), moe = 0.001, resp_rate = 1e-5),
+    n_pooled(p = 0.3, occasions = 2, moe = 0.001, resp_rate = 1e-5),
+    n_multi(data.frame(p = 0.5, moe = 0.05), resp_rate = 1e-9)
+  )
+  for (object in objects) {
+    expect_no_error(capture.output(print(object)))
+  }
+})
+
 test_that("print.svyplan_power shows vector n", {
   res <- power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
   out <- capture.output(print(res))

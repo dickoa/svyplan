@@ -2,6 +2,8 @@
 % Please edit documentation in R/print.R
 \name{print.svyplan_df}
 \alias{print.svyplan_df}
+\alias{summary.svyplan_df}
+\alias{print.summary.svyplan_df}
 \alias{format.svyplan_df}
 \alias{as.double.svyplan_df}
 \alias{as.list.svyplan_df}
@@ -15,6 +17,10 @@
 \title{Print and coerce design degrees of freedom}
 \usage{
 \method{print}{svyplan_df}(x, ...)
+
+\method{summary}{svyplan_df}(object, ...)
+
+\method{print}{summary.svyplan_df}(x, ...)
 
 \method{format}{svyplan_df}(x, ...)
 
@@ -44,11 +50,14 @@
 \method{[[}{svyplan_df}(x, i) <- value
 }
 \arguments{
-\item{x}{A \code{svyplan_df} object from \code{\link[=design_df]{design_df()}}.}
+\item{x}{A \code{svyplan_df} object from \code{\link[=design_df]{design_df()}}, or its summary for the
+summary print method.}
 
 \item{...}{For mathematical transformations, additional arguments passed
 to the underlying operation. The other methods do not support
 additional arguments.}
+
+\item{object}{A \code{svyplan_df} object to summarize.}
 
 \item{name, i}{A field name, one of those listed under Details. \code{[[} also
 accepts a numeric index, which reads the underlying numeric vector.}
@@ -67,8 +76,11 @@ R 4.7.0 and later. Svyplan results already have valid row names.}
 derived from the strata and domains it carries.}
 }
 \value{
-\code{print()} returns \code{x} invisibly, \code{format()} returns a character
-scalar, and \code{as.double()} returns the degrees of freedom.
+\code{print()} returns \code{x} invisibly. \code{summary()} returns a
+\code{summary.svyplan_df} object containing the overall count, its inputs,
+the per-stratum decomposition when available, the per-domain counts,
+and the counting basis. \code{format()} returns a character scalar, and
+\code{as.double()} returns the degrees of freedom.
 \code{as.data.frame()} returns a one-row table of the scalar fields;
 \code{as.list()} returns every field, including the per-stratum and
 per-domain tables, and \code{$} and \code{[[} return one of them. Arithmetic and
@@ -76,9 +88,10 @@ mathematical transformations return ordinary numeric results.
 }
 \description{
 Display and coercion methods for the count that \code{\link[=design_df]{design_df()}} returns.
-\code{print()} shows the count and the numbers it was formed from; the
-coercion and arithmetic methods let the object stand in for that count
-wherever a plain number is expected.
+\code{print()} shows the headline count and the numbers it was formed from,
+while \code{summary()} gives the additive per-stratum decomposition and the
+separate per-domain counts. The coercion and arithmetic methods let the
+object stand in for the headline count wherever a plain number is expected.
 }
 \details{
 A \code{svyplan_df} behaves as the numeric degrees of freedom wherever one is
@@ -91,6 +104,13 @@ counts and \code{stage} for what those units are (\code{"psu"} or \code{"element
 \code{domains} tables, which are \code{NULL} for an unstratified or domain-free
 plan. Naming a field the object does not have is an error listing the
 ones it does.
+
+The summary's stratum table is an additive decomposition: a contributing
+stratum uses one constraint and contributes its sampled units minus one.
+A census stratum has no units counted and no constraint, while a singleton
+uses its one constraint and contributes zero. The domain table is printed
+separately because domain degrees of freedom are alternative subpopulation
+counts, not additional contributions to the overall design.
 }
 \examples{
 d <- design_df(n_psu = 300, n_strata = 20)
@@ -98,6 +118,7 @@ d
 d$df
 as.double(d) + 1
 as.data.frame(d)
+summary(d)
 
 }
 \seealso{
