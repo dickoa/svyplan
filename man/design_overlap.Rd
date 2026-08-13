@@ -84,8 +84,11 @@ themselves do not: \code{shared(m)} sums over stages, and entry dates do not
 enter it. A design that recruits one cohort an occasion reaches the steady
 state at the occasion that spans the life, the overlaps before it being
 those of a design no cohort has yet aged out of. A design whose first
-occasion is split into cohorts covering every stage is at the steady state
-from the first occasion, and these figures hold throughout.
+occasion contains launch components for every possible remaining life
+length is at the steady state from the first occasion, and these figures
+hold throughout. For an unbroken equal-take life, those are equal panels
+planned for lives from the full life down to one occasion, all at their
+first interview.
 
 Covering every stage is the exact requirement, and for a life with a gap
 it is more than one cohort per remaining length. Under \code{"1-1-0-0-1-1"} the

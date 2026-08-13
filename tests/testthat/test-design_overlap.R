@@ -417,9 +417,8 @@ test_that("spell notation is untouched by the pattern reading", {
     start,
     # one cohort, the design fills up over its life
     gradual = list(list(entry = 1L, w = w)),
-    # one cohort at every stage of the life, which is the steady state; for a
-    # gapped life the cohorts starting at an out-of-sample stage are selected
-    # and not interviewed until they reach their first in-sample stage
+    # one launch component for every remaining life length; for a gapped life,
+    # some components are selected before their first in-sample interview
     immediate = lapply(seq_len(life), function(k) list(entry = 1L, w = w[k:life])),
     # the naive reading of an immediate start: split by remaining length
     truncated = lapply(seq_len(life), function(k) list(entry = 1L, w = w[seq_len(k)]))
@@ -446,7 +445,7 @@ test_that("an immediate start reproduces the steady-state overlap from occasion 
 test_that("a gradual start reaches the steady-state overlap at the life", {
   x <- design_overlap("6")
   grad <- .launch(x$schedule, "gradual")
-  # nothing has aged out yet, so early overlaps are higher than the design's
+  # nothing has rotated out yet, so early overlaps are higher than the design's
   expect_equal(vapply(1:5, function(m) .cohort_overlap(grad, 1L, m), numeric(1L)),
                rep(1, 5L), tolerance = 1e-12)
   expect_gt(.cohort_overlap(grad, 3L, 1L), x[1])
@@ -482,8 +481,8 @@ test_that("splitting the first occasion by remaining length is not an immediate 
 })
 
 test_that("design_overlap takes no launch argument, and does not need one", {
-  # If this ever changes, read dev/PLAN-PANEL-LAUNCH-20260810.md first: the
-  # overlaps are identical under both launches, so a start argument here would
-  # be a second name for one answer.
+  # Launch changes the route to the mature life-stage mix, not the overlap that
+  # mix produces. Both launch policies therefore reach the same lag profile,
+  # so a start argument here would be a second name for one answer.
   expect_error(design_overlap("6", start = "immediate"), "unused argument")
 })

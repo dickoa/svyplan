@@ -1,3 +1,11 @@
+# svyplan 0.12.0
+
+## Repeated surveys
+
+* `design_schedule()` turns a rotating panel plan into a versioned operational
+  schedule with explicit startup, intake, horizon, overlap, and tail
+  commitments. This is the first release that exports the constructor.
+
 # svyplan 0.11.0
 
 Initial CRAN release.
@@ -416,20 +424,22 @@ Initial CRAN release.
 * `start` reports what a rotating design delivers while it is being brought
   up to its steady state, in `$launch` by occasion and `$launch_waves` by
   occasion and wave. `"gradual"` recruits one cohort an occasion, so the
-  sample climbs over a full life; `"immediate"` splits the first occasion
-  into one cohort per stage of the life and holds the whole sample at once.
-  The membership overlap `design_overlap()` reports is the same either way,
-  being a sum over life stages that entry dates do not enter, so this is a
-  question about response and precision rather than about who is interviewed
-  with whom. That is the reason it is worth reporting. An immediate launch is
-  in membership equilibrium at its first occasion and **not** in response
+  sample climbs over a full life. `"immediate"` splits the first occasion
+  into equal panels planned for life lengths from the full life down to one
+  occasion. Every panel begins at wave 1, and together they hold the whole
+  sample at once.
+  `design_overlap()` gives the same mature membership-overlap profile either
+  way. A gradual launch has higher realized overlap until every life stage is
+  represented because no full set of cohorts has yet rotated through. An
+  immediate launch is in membership equilibrium at its first occasion and
+  **not** in response
   equilibrium, every unit there being at wave 1, so the occasion holds at
   least as many respondents as the design ever holds again, and strictly more
   as soon as any wave retains less than all of the one before, which makes it
   temporarily more precise. The two coincide exactly when every retention is
   1, whatever the response rate is. On the LFS rates its first
   occasion holds 1172 respondents against the design's 1001, `moe` 0.0287
-  against 0.0310, converging down as the age mix matures; a gradual launch
+  against 0.0310 as the interview mix matures. A gradual launch
   approaches the same figure from below, at 234. Either way the early
   occasions rest on a different response composition from the rest of the
   series, which is what `launch_waves` exposes and what nonresponse weighting
@@ -437,10 +447,25 @@ Initial CRAN release.
   exactly as it was, and a fixed panel refuses the argument, recruiting one
   cohort that is its whole design from wave 1. The tables are continuous, as
   the wave table is, so the last occasion lands on `n_target` rather than on
-  a rounded count; whole units are printed. Described for a life without a
+  a rounded count. Whole units are printed. Described for a life without a
   break in it: a schedule that leaves the sample and returns needs launch
   cohorts selected before they are first interviewed, which is a longer
   definition than this argument carries.
+* `design_schedule()` translates a rotating `n_panel()` or `prec_panel()`
+  launch into a versioned, package-neutral operational manifest. It retains
+  continuous and panel-level rounded issue separately and names startup and
+  intake components. It also returns a dense component-panel activity grid,
+  marks pre-steady-state occasions, and records post-horizon commitments.
+  The reporting window must declare whether lives continue, are truncated, or
+  intake closes early. Entrant-register and whole-vintage refreshment remain
+  explicit frame roles, with no frame inspection, sampling, or combined-weight
+  inference. A cross-field schema validator reconciles metadata, components,
+  activity, tail commitments, issue, overlap, response, steady state, and panel
+  parameters before the object is returned. Direct field and table replacement
+  is refused. Generated activity is also checked
+  against the panel launch table and the mature issued-overlap profile.
+  Whole-unit operational counts remain numeric rather than being coerced into
+  R's 32-bit integer storage, so very large finite plans remain representable.
 
 ## Precision analysis
 

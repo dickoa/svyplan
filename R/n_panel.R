@@ -43,11 +43,12 @@
 #'
 #' @param start How a rotating design's cohorts are brought in, or `NULL`
 #'   (default). `"gradual"` recruits one cohort an occasion, so the design
-#'   fills up over a life; `"immediate"` splits the first occasion into one
-#'   cohort per stage of the life, so it is full at once. Supplying either
-#'   reports what the design delivers at each occasion until it settles. The
-#'   default plans no launch, which is what the recruitment above describes
-#'   either way. Not available for a fixed panel, which recruits one cohort.
+#'   fills up over a life; `"immediate"` splits the first occasion into equal
+#'   panels planned for life lengths from the full life down to one occasion,
+#'   all beginning at wave 1, so it is full at once. Supplying either reports
+#'   what the design delivers at each occasion until it settles. The default
+#'   plans no launch, which is what the recruitment above describes either
+#'   way. Not available for a fixed panel, which recruits one cohort.
 #'
 #' @return A `svyplan_panel` object. [prec_panel()] returns the same class,
 #'   `$solved` naming the direction it was computed in. Fields:
@@ -132,11 +133,14 @@
 #'
 #' A **gradual** launch recruits one cohort an occasion, so the sample climbs
 #' over a full life before it is the design's own. An **immediate** launch
-#' splits the first occasion into one cohort per stage, and holds the whole
-#' sample from the first occasion. The membership overlap
-#' ([design_overlap()]) is unchanged either way, being a sum over stages that
-#' entry dates do not enter, so this is a question about response and
-#' precision rather than about who is interviewed with whom.
+#' splits the first occasion into equal panels with planned life lengths from
+#' the full life down to one occasion. Every panel begins at wave 1, and
+#' together they hold the whole sample from the first occasion.
+#' [design_overlap()] gives the same mature membership-overlap profile under
+#' either launch. During a gradual launch, realized overlap is higher until
+#' every life stage is represented because no full set of cohorts has yet
+#' rotated through. The launch tables therefore describe both the early
+#' membership mix and its response and precision path.
 #'
 #' The point of reporting it is that an immediate launch is **not** in
 #' response equilibrium at its first occasion even though it is in membership
@@ -151,7 +155,7 @@
 #' since it cancels from both sides. Where they differ the early precision is
 #' temporarily better. On the example below the first occasion holds 1172
 #' respondents against the design's 1001, `moe` 0.0287 against 0.0310,
-#' converging down as the age mix matures. A gradual launch approaches the
+#' converging down as the interview mix matures. A gradual launch approaches the
 #' same figure from below. Either way the early occasions rest on a different
 #' response composition from the rest of the series, which `launch_waves` is
 #' there to expose and which is what nonresponse weighting has to carry.
@@ -691,9 +695,10 @@ n_panel <- function(
 #'
 #' A gradual launch recruits one cohort an occasion, so occasion \eqn{t}
 #' holds waves 1 to \eqn{t}. An immediate launch splits its first occasion
-#' into one cohort per stage of the life, so occasion \eqn{t} holds the
-#' \eqn{k - t + 1} launch cohorts that are still alive, all of them at wave
-#' \eqn{t} together, plus one cohort at each earlier wave. Both hold one
+#' into equal panels planned for life lengths from the full life down to one
+#' occasion, all beginning at wave 1. Occasion \eqn{t} therefore holds the
+#' \eqn{k - t + 1} launch panels still alive, all at wave \eqn{t}, plus one
+#' intake cohort at each earlier wave. Both hold one
 #' cohort per wave from occasion \eqn{k}, which is the steady state and is
 #' where the two agree.
 #' @keywords internal

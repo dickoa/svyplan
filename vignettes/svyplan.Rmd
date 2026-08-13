@@ -22,7 +22,7 @@ library(svyplan)
 
 ## Function ecosystem
 
-The package exports 28 functions organized into six families. The diagram below shows how they relate to each other.
+The package exports 31 functions organized into six families. The diagram below shows how they relate to each other.
 
 ```{r ecosystem-diagram, echo = FALSE, fig.height = 6.5, fig.width = 7}
 op <- par(mar = c(0, 0, 0, 0), family = "sans")
@@ -56,9 +56,10 @@ draw_box(7.5, 6.5, 3.8, 1.9, "Precision",
                 "prec_multi \u00b7 prec_multi_cluster\n",
                 "prec_alloc \u00b7 prec_twophase\n",
                 "prec_change \u00b7 prec_panel"))
-draw_box(2.5, 3.5, 3.8, 1.4, "Design Components",
+draw_box(2.5, 3.5, 3.8, 1.7, "Design Components",
          paste0("varcomp \u00b7 design_effect\n",
-                "effective_n \u00b7 design_df \u00b7 design_overlap"))
+                "effective_n \u00b7 design_df\n",
+                "design_overlap \u00b7 design_schedule"))
 draw_box(7.5, 3.5, 3.8, 1.4, "Power Analysis",
          "power_prop \u00b7 power_mean \u00b7 power_did")
 draw_box(5, 1, 3.8, 1.2, "Stratification",
@@ -87,7 +88,7 @@ par(op)
 | Sample size | `n_prop`, `n_mean`, `n_cluster`, `n_multi`, `n_multi_cluster`, `n_alloc`, `n_twophase`, `n_change`, `n_panel`, `n_pooled` | "How many units do I need?"        |
 | Precision   | `prec_prop`, `prec_mean`, `prec_cluster`, `prec_multi`, `prec_multi_cluster`, `prec_alloc`, `prec_twophase`, `prec_change`, `prec_panel`, `prec_pooled` | "What precision does *n* achieve?" |
 | Power       | `power_prop`, `power_mean`, `power_did`                          | "Can I detect a difference?"            |
-| Design      | `varcomp`, `design_effect`, `effective_n`, `design_df`, `design_overlap` | Variance components, design effects, degrees of freedom, rotation overlap |
+| Design      | `varcomp`, `design_effect`, `effective_n`, `design_df`, `design_overlap`, `design_schedule` | Variance components, design effects, degrees of freedom, and rotation schedules |
 | Strata      | `strata_bound`                                                   | Optimal stratification boundaries      |
 
 The same table read by question rather than by family, since several questions cut across the rows:
@@ -102,6 +103,7 @@ The same table read by question rather than by family, since several questions c
 | Can I detect a difference, and how large a one? | `power_prop`, `power_mean`, `power_did` |
 | Can I detect a change over two occasions? | `power_prop` and `power_mean` with `overlap` set, which is the same variance `n_change` inverts |
 | What overlap does my rotation schedule produce? | `design_overlap` |
+| What should each startup or intake cohort issue, and when is it active? | `design_schedule` |
 | What design effect, effective size or degrees of freedom will the design have? | `design_effect`, `effective_n`, `design_df`, `varcomp` |
 
 Most planning functions return structured S3 objects. Available methods depend on the result class; see the relevant help page for details.
@@ -1159,7 +1161,7 @@ c(consecutive = n_change(p = c(0.30, 0.36), moe = 0.02,
                     overlap = cps[12], overlap_cor = 0.5)$n)
 ```
 
-Two notations for a schedule are in print, and both are accepted. `"4-8-4"` counts occasions per spell, which is how the CPS pattern is written; `"1-1-0-0-1-1"` carries one flag per occasion, which is how Lynn (2012) writes the same kind of design. They are told apart by the `0`, which no spell can be. A string of all 1s is a valid sentence in both and a different design in each, so it is refused rather than resolved by precedence. `"1-1-1"` is three consecutive occasions as a pattern and one in, one out, one in as spells, whose consecutive overlaps are 2/3 and 0. Write `"3"` or `"1-0-1"`.
+Two notations for a schedule are in print, and both are accepted. `"4-8-4"` counts occasions per spell, which is how the CPS pattern is written. `"1-1-0-0-1-1"` carries one flag per occasion, which is how Lynn (2012) writes the same kind of design. They are told apart by the `0`, which no spell can be. A string of all 1s is a valid sentence in both and a different design in each, so it is refused rather than resolved by precedence. `"1-1-1"` is three consecutive occasions as a pattern and one in, one out, one in as spells. Their consecutive overlaps are 2/3 and 0. Write `"3"` or `"1-0-1"`.
 
 `plot()` draws the schedule as the chart these designs are published as, one row per cohort and one column per time period:
 
@@ -1215,7 +1217,7 @@ For a fixed panel that inverts one binomial tail. For a rotating one the respond
 
 ### Bringing a rotating design up
 
-The recruitment above describes the design at a steady state, which it reaches once every stage of the life is represented at one occasion. How it gets there is a design decision. `start = "gradual"` recruits one cohort an occasion, so the sample climbs over a full life; `start = "immediate"` splits the first occasion into one cohort per stage and holds the whole sample at once.
+The recruitment above describes the design at a steady state, which it reaches once every stage of the life is represented at one occasion. How it gets there is a design decision. `start = "gradual"` recruits one cohort an occasion, so the sample climbs over a full life. `start = "immediate"` splits the first occasion into equal panels planned for life lengths from the full life down to one occasion. Every panel begins at its first interview, and together they hold the whole sample at once.
 
 ```{r panel-launch}
 n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
@@ -1223,9 +1225,34 @@ n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
         start = "immediate")$launch[, c("period", "n_in_sample", "n_resp", "moe")]
 ```
 
-The membership overlap is the same under either launch, `design_overlap()` summing over life stages that entry dates do not enter, so this is a question about response rather than about who is interviewed with whom. That is what makes it worth reporting. An immediate launch is in membership equilibrium at its first occasion and **not** in response equilibrium. Every unit there is at wave 1, so the occasion holds at least as many respondents as the design ever holds again, and strictly more as soon as any wave retains less than all of the one before. Here that is 1172 against the design's 1001, temporarily more precise, converging down as the age mix matures. The two coincide only where nothing is lost after recruitment. A gradual launch approaches the same figure from below, at 234. `$launch_waves` decomposes each occasion into the waves in sample at it, which is where that shows.
+`design_overlap()` gives the same mature membership-overlap profile under either launch. A gradual launch has higher realized overlap while it fills because no full set of cohorts has yet rotated through. An immediate launch is in membership equilibrium at its first occasion and **not** in response equilibrium. Every unit there is at wave 1, so the occasion holds at least as many respondents as the design ever holds again, and strictly more as soon as any wave retains less than all of the one before. Here that is 1172 against the design's 1001, temporarily more precise, converging down as the interview mix matures. The two coincide only where nothing is lost after recruitment. A gradual launch approaches the same respondent figure from below, at 234. `$launch_waves` decomposes each occasion into the interviews represented in the sample, which is where both launch paths show.
 
 Either way the early occasions rest on a different response composition from the rest of the series, and that, rather than the sample size, is what makes them hard to compare with it.
+
+`design_schedule()` turns that launch into an operational manifest without drawing a sample. The horizon policy is explicit: `"continuing"` records interviews owed after the reporting window, `"truncate_lives"` ends those lives at the window, and `"close_intake"` stops recruiting early enough for every cohort to finish. Rounding is explicit too and is applied to each panel before startup panels are summed.
+
+```{r design-schedule}
+rot_launch <- n_panel(
+  target,
+  retention = c(0.878, 0.963, 0.936, 0.956),
+  resp_rate = 0.728,
+  design = "rotating",
+  start = "immediate"
+)
+field_plan <- design_schedule(
+  rot_launch,
+  life = design_overlap("5"),
+  horizon = 8,
+  horizon_policy = "continuing",
+  refreshment = "entrant_register",
+  rounding = "ceiling"
+)
+field_plan
+field_plan$components[, c("cohort", "entry_wave", "operational_issue",
+                          "panels", "frame_role")]
+```
+
+The dense `$schedule` table marks every component-panel combination active or inactive at each in-horizon occasion. `$tail_commitments` contains only the promised interviews after the horizon. An entrant register means the later frames contain new eligible units. If later cohorts instead use whole frame vintages, declare `refreshment = "whole_vintage"` and construct their combined analysis weights outside this planning object.
 
 ```{r panel-launch-chart, fig.width=7, fig.height=5}
 plot(design_overlap("5"), start = "immediate")
@@ -1240,7 +1267,7 @@ prec_pooled(var = 100, n = 500, occasions = 4)
 prec_pooled(var = 100, n = 500, occasions = 4, overlap = 0.75, cor_decay = 0.8)
 ```
 
-The second design shares three quarters of each round with the next and is markedly less precise on the annual figure. Overlap induces a positive covariance between occasions, and a covariance that is subtracted when you difference two occasions is added when you average them. The covariance is positive whenever the overlap exceeds the sampling fraction `n / N`, which here has no finite population correction at all and so always holds; `?prec_pooled` works the boundary below it, where occasions share fewer units than chance and the two directions reverse. The correlation is stated per lag here rather than once, since a panel's correlation falls away with distance; `cor_decay = 0.8` is the AR(1) shape, correlation `0.8^m` at lag `m`.
+The second design shares three quarters of each round with the next and is markedly less precise on the annual figure. Overlap induces a positive covariance between occasions. That covariance is subtracted when you difference two occasions and added when you average them. It is positive whenever the overlap exceeds the sampling fraction `n / N`, which always holds here because there is no finite population correction. `?prec_pooled` explains the boundary below it, where occasions share fewer units than chance and the two directions reverse. The correlation is stated per lag because a panel's correlation falls away with distance. Here `cor_decay = 0.8` gives the AR(1) shape, with correlation `0.8^m` at lag `m`.
 
 Three estimands and one design lever, priced together. The overlaps come from the schedule rather than being asserted:
 
@@ -1479,7 +1506,7 @@ Sample-size, cluster, power, and strata-boundary results support `as.integer()` 
 
 **More than three stages.** Two- and three-stage designs are supported. Surveys rarely go deeper, and the cost and variance models for a fourth stage would carry more assumptions than they would earn.
 
-**Attrition, and choosing a rotation.** `n_panel()` is arithmetic on declared rates. It says what a recruitment yields under a response rate and a retention curve, not where those rates come from: attrition modelling, attrition weighting and any adjustment for informative dropout are analysis-stage work and outside the boundary. Two consequences are worth stating. A unit lost at one wave is treated as lost for good, so a panel whose nonrespondents return later does better than planned here, and planning this way over-issues. And `design_overlap()` reads a schedule that has already been chosen; the inverse problem, searching for the schedule that delivers a target overlap under a ceiling on how many occasions a unit may be asked, is not built.
+**Attrition, and choosing a rotation.** `n_panel()` is arithmetic on declared rates. It says what recruitment yields under a response rate and a retention curve, not where those rates come from. Attrition modelling, attrition weighting, and any adjustment for informative dropout are analysis-stage work and outside the boundary. Two consequences are worth stating. A unit lost at one wave is treated as lost for good, so a panel whose nonrespondents return later does better than planned here, and planning this way over-issues. Also, `design_overlap()` reads a schedule that has already been chosen. It does not solve the inverse problem of finding a schedule that delivers a target overlap while limiting how many times a unit may be interviewed.
 
 **Targeting nonresponse follow-up.** Deciding *how much* follow-up to do is answered by `n_twophase()`. Deciding *which* cases to pursue is not, and is out of scope: prioritizing by response propensity, or adapting effort as fieldwork proceeds, needs paradata from the field that no planning stage has.
 

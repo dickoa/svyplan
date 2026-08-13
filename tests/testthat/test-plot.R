@@ -219,8 +219,8 @@ test_that("the chart draws an immediate launch, full from the first period", {
   expect_identical(plot(x, start = "immediate"), x)
   expect_error(plot(x, start = "later"), "should be one of")
 
-  # Lynn Figure 5: the launch cohorts hold one stage of the life each, so the
-  # sample is the design's own from period 1 and never climbs
+  # Lynn Figure 5: launch cohorts remain for one through six interviews, so
+  # the sample is full from period 1 and never climbs
   co <- .chart_cohorts(x$schedule, "immediate", 10L)
   expect_length(co, x$life + 10L - 1L)
   # Lynn orders the six launch samples by remaining life: Sample 1 appears

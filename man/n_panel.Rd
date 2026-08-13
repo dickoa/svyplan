@@ -58,11 +58,12 @@ at least that probability. See Details.}
 
 \item{start}{How a rotating design's cohorts are brought in, or \code{NULL}
 (default). \code{"gradual"} recruits one cohort an occasion, so the design
-fills up over a life; \code{"immediate"} splits the first occasion into one
-cohort per stage of the life, so it is full at once. Supplying either
-reports what the design delivers at each occasion until it settles. The
-default plans no launch, which is what the recruitment above describes
-either way. Not available for a fixed panel, which recruits one cohort.}
+fills up over a life; \code{"immediate"} splits the first occasion into equal
+panels planned for life lengths from the full life down to one occasion,
+all beginning at wave 1, so it is full at once. Supplying either reports
+what the design delivers at each occasion until it settles. The default
+plans no launch, which is what the recruitment above describes either
+way. Not available for a fixed panel, which recruits one cohort.}
 }
 \value{
 A \code{svyplan_panel} object. \code{\link[=prec_panel]{prec_panel()}} returns the same class,
@@ -156,11 +157,14 @@ delivers on the way.
 
 A \strong{gradual} launch recruits one cohort an occasion, so the sample climbs
 over a full life before it is the design's own. An \strong{immediate} launch
-splits the first occasion into one cohort per stage, and holds the whole
-sample from the first occasion. The membership overlap
-(\code{\link[=design_overlap]{design_overlap()}}) is unchanged either way, being a sum over stages that
-entry dates do not enter, so this is a question about response and
-precision rather than about who is interviewed with whom.
+splits the first occasion into equal panels with planned life lengths from
+the full life down to one occasion. Every panel begins at wave 1, and
+together they hold the whole sample from the first occasion.
+\code{\link[=design_overlap]{design_overlap()}} gives the same mature membership-overlap profile under
+either launch. During a gradual launch, realized overlap is higher until
+every life stage is represented because no full set of cohorts has yet
+rotated through. The launch tables therefore describe both the early
+membership mix and its response and precision path.
 
 The point of reporting it is that an immediate launch is \strong{not} in
 response equilibrium at its first occasion even though it is in membership
@@ -175,7 +179,7 @@ coincide exactly when every \code{retention} is 1, whatever \code{resp_rate} is,
 since it cancels from both sides. Where they differ the early precision is
 temporarily better. On the example below the first occasion holds 1172
 respondents against the design's 1001, \code{moe} 0.0287 against 0.0310,
-converging down as the age mix matures. A gradual launch approaches the
+converging down as the interview mix matures. A gradual launch approaches the
 same figure from below. Either way the early occasions rest on a different
 response composition from the rest of the series, which \code{launch_waves} is
 there to expose and which is what nonresponse weighting has to carry.

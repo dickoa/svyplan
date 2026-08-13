@@ -1,5 +1,5 @@
 
-# svyplan <img src="man/figures/svyplan_hex.png" align="right" width="140" />
+# svyplan <img src="man/figures/svyplan_hex.png" alt="svyplan logo" align="right" width="140" />
 
 <!-- badges: start -->
 
@@ -500,15 +500,65 @@ n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
 #> 6      6    1606.836  999.3389 0.03100000
 ```
 
-Splitting the first occasion into one cohort per stage of the life fills
-the sample at once, and `design_overlap()` reports the same overlaps
-either way, so the launch is a question about response rather than about
-who is interviewed with whom. That is why it is worth reporting. Every
-unit at the first occasion is at wave 1, so it holds at least as many
-respondents as the design ever holds again, and strictly more as soon as
-any wave retains less than all of the one before. Here that is 1172
-against the design’s 1001, temporarily more precise. A gradual launch,
-one cohort an occasion, approaches the same figure from below at 234.
+Splitting the first occasion into equal panels planned for life lengths
+from the full life down to one occasion fills the sample at once. Every
+panel begins at wave 1. `design_overlap()` gives the same mature overlap
+profile under either launch, while a gradual launch has higher realized
+overlap until it fills. Every unit at the first occasion is at wave 1,
+so it holds at least as many respondents as the design ever holds again,
+and strictly more as soon as any wave retains less than all of the one
+before. Here that is 1172 against the design’s 1001, temporarily more
+precise. A gradual launch, one cohort an occasion, approaches the same
+figure from below at 234.
+
+`design_schedule()` converts a rotating launch into explicit startup and
+intake operations without drawing a sample. It keeps the continuous
+requirement beside panel-level rounded counts, returns a dense activity
+table, and records any interviews promised beyond the planning horizon
+separately.
+
+``` r
+rot <- n_panel(target,
+               retention = c(0.878, 0.963, 0.936, 0.956),
+               resp_rate = 0.728, design = "rotating", start = "immediate")
+field_plan <- design_schedule(
+  rot, design_overlap("5"), horizon = 8,
+  horizon_policy = "continuing",
+  refreshment = "entrant_register",
+  rounding = "ceiling"
+)
+field_plan
+#> Longitudinal design schedule (immediate launch, continuing)
+#> 5-stage life over 8 occasions; steady response composition from occasion 5
+#> rounding: ceiling at panel and cohort level
+#> --- issue profile
+#>  wave cohort   planned_issue operational_issue steady_state
+#>  1    startup  1606.8361     1610              FALSE       
+#>  2    intake_2  321.3672      322              FALSE       
+#>  3    intake_3  321.3672      322              FALSE       
+#>  4    intake_4  321.3672      322              FALSE       
+#>  5    intake_5  321.3672      322               TRUE       
+#>  6    intake_6  321.3672      322               TRUE       
+#>  7    intake_7  321.3672      322               TRUE       
+#>  8    intake_8  321.3672      322               TRUE       
+#> tail commitments: 10 panel-interviews after occasion 8
+field_plan$components[, c("cohort", "entry_wave", "operational_issue",
+                          "panels", "frame_role")]
+#>     cohort entry_wave operational_issue panels       frame_role
+#> 1  startup          1              1610      5          startup
+#> 2 intake_2          2               322      1 entrant_register
+#> 3 intake_3          3               322      1 entrant_register
+#> 4 intake_4          4               322      1 entrant_register
+#> 5 intake_5          5               322      1 entrant_register
+#> 6 intake_6          6               322      1 entrant_register
+#> 7 intake_7          7               322      1 entrant_register
+#> 8 intake_8          8               322      1 entrant_register
+```
+
+The horizon policy must say whether the program continues, truncates
+cohort lives at the window, or closes intake early. A whole-vintage
+refreshment can be declared instead, but this planning object
+deliberately does not infer cross-cohort weights.
 
 A repeated survey rarely publishes only occasions and changes. An annual
 average built from quarterly rounds is an estimate in its own right, and

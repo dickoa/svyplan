@@ -65,11 +65,12 @@ reference:
   - predict.svyplan_strata
 
 - title: Design effects and degrees of freedom
-  desc: Plan design effects, effective sample sizes, and design df.
+  desc: Plan design effects, effective sample sizes, design df, and schedules.
   contents:
   - design_effect
   - design_df
   - design_overlap
+  - design_schedule
   - effective_n
 
 - title: Confidence intervals
@@ -85,6 +86,7 @@ reference:
   - print.svyplan_df
   - print.svyplan_overlap
   - print.svyplan_panel
+  - print.svyplan_schedule
   - summary.svyplan_alloc
 
 - title: Predict methods

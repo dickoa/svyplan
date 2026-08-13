@@ -22,11 +22,13 @@ as a table.}
 
 \item{start}{The launch to draw. \code{"gradual"} recruits one cohort per
 period, so the design fills up over a life. \code{"immediate"} adds, at the
-first period, one cohort per stage of the life, so it is full at once.
-The overlaps are the same under both, which is the point of being able to
-see them side by side. Defaults to the launch \code{panel} was planned with,
-or to \code{"gradual"} when there is none. Available for a life without a
-break in it, for the reason \code{\link[=n_panel]{n_panel()}}'s own \code{start} gives.}
+first period, one launch panel for every possible remaining life length.
+All panels begin at their first interview, so the design is full at once.
+\code{\link[=design_overlap]{design_overlap()}} gives the same mature overlap profile under either
+launch, although realized overlap is higher early in a gradual launch.
+Defaults to the launch \code{panel} was planned with, or to \code{"gradual"} when
+there is none. Available for a life without a break in it, for the reason
+\code{\link[=n_panel]{n_panel()}}'s own \code{start} gives.}
 
 \item{n_period}{Time periods to draw, with a cohort entering at each one.
 Defaults to the life plus four, which reaches the steady state and shows
@@ -65,14 +67,14 @@ happens at the period marked on the axis, and the overlaps
 \code{\link[=design_overlap]{design_overlap()}} reports describe the design from that period on.
 
 That gradual start is a design decision rather than the only one, and
-\code{start} draws either. \code{"immediate"} adds, at the first period, one cohort
-per stage of the life, so the design holds its whole sample at once and
-the marked period is the first. The overlaps are unchanged by that choice,
-being a sum over stages that entry dates do not enter, which is the point
-of being able to put the two charts side by side. What a launch does
-change is the mix of ages the sample holds, so it is a question about
-response and precision rather than about membership, and \code{\link[=n_panel]{n_panel()}} is
-where that is answered.
+\code{start} draws either. \code{"immediate"} splits the first period into panels
+planned for remaining life lengths from the full life down to one period.
+Every panel begins at its first interview, so the design holds its whole
+sample at once and the marked period is the first. \code{\link[=design_overlap]{design_overlap()}} gives
+the mature overlap profile under either launch. Before a gradual launch
+reaches the marked period, its realized overlap is higher because no full
+set of cohorts has yet rotated through. \code{\link[=n_panel]{n_panel()}} reports the response
+and precision path while either launch settles.
 
 An immediate launch is drawn for a life without a break in it, for the
 reason \code{\link[=n_panel]{n_panel()}}'s own \code{start} gives. When \code{panel} is supplied and
@@ -98,8 +100,7 @@ plot(design_overlap("1-1-0-0-1-1"), type = "overlap")
 # CPS 4-8-4, one row per monthly cohort
 plot(design_overlap("4-8-4"))
 
-# The same design brought up at once instead: full from period 1, and the
-# overlaps are unchanged by that
+# The same mature design brought up at once instead, full from period 1
 plot(design_overlap("6"), start = "immediate")
 
 # Lynn Figure 5: six 300-unit launch samples, then 300 new units per period

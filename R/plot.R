@@ -226,11 +226,13 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #'   as a table.
 #' @param start The launch to draw. `"gradual"` recruits one cohort per
 #'   period, so the design fills up over a life. `"immediate"` adds, at the
-#'   first period, one cohort per stage of the life, so it is full at once.
-#'   The overlaps are the same under both, which is the point of being able to
-#'   see them side by side. Defaults to the launch `panel` was planned with,
-#'   or to `"gradual"` when there is none. Available for a life without a
-#'   break in it, for the reason [n_panel()]'s own `start` gives.
+#'   first period, one launch panel for every possible remaining life length.
+#'   All panels begin at their first interview, so the design is full at once.
+#'   [design_overlap()] gives the same mature overlap profile under either
+#'   launch, although realized overlap is higher early in a gradual launch.
+#'   Defaults to the launch `panel` was planned with, or to `"gradual"` when
+#'   there is none. Available for a life without a break in it, for the reason
+#'   [n_panel()]'s own `start` gives.
 #' @param n_period Time periods to draw, with a cohort entering at each one.
 #'   Defaults to the life plus four, which reaches the steady state and shows
 #'   several periods of it.
@@ -259,14 +261,14 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #' [design_overlap()] reports describe the design from that period on.
 #'
 #' That gradual start is a design decision rather than the only one, and
-#' `start` draws either. `"immediate"` adds, at the first period, one cohort
-#' per stage of the life, so the design holds its whole sample at once and
-#' the marked period is the first. The overlaps are unchanged by that choice,
-#' being a sum over stages that entry dates do not enter, which is the point
-#' of being able to put the two charts side by side. What a launch does
-#' change is the mix of ages the sample holds, so it is a question about
-#' response and precision rather than about membership, and [n_panel()] is
-#' where that is answered.
+#' `start` draws either. `"immediate"` splits the first period into panels
+#' planned for remaining life lengths from the full life down to one period.
+#' Every panel begins at its first interview, so the design holds its whole
+#' sample at once and the marked period is the first. [design_overlap()] gives
+#' the mature overlap profile under either launch. Before a gradual launch
+#' reaches the marked period, its realized overlap is higher because no full
+#' set of cohorts has yet rotated through. [n_panel()] reports the response
+#' and precision path while either launch settles.
 #'
 #' An immediate launch is drawn for a life without a break in it, for the
 #' reason [n_panel()]'s own `start` gives. When `panel` is supplied and
@@ -300,8 +302,7 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #' # CPS 4-8-4, one row per monthly cohort
 #' plot(design_overlap("4-8-4"))
 #'
-#' # The same design brought up at once instead: full from period 1, and the
-#' # overlaps are unchanged by that
+#' # The same mature design brought up at once instead, full from period 1
 #' plot(design_overlap("6"), start = "immediate")
 #'
 #' # Lynn Figure 5: six 300-unit launch samples, then 300 new units per period
@@ -467,9 +468,10 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
 #' The cohorts a launch puts on the chart, in drawing order
 #'
 #' A gradual launch is one cohort an occasion and nothing else. An immediate
-#' launch adds, at the first occasion, one cohort per stage of the life, so
-#' the design holds its whole sample at once. They are ordered like Lynn's
-#' Figure 5: the one-occasion tail first, up through the full-life cohort.
+#' launch adds, at the first occasion, one component for every possible
+#' remaining life length, each at its first displayed stage, so the design
+#' holds its whole sample at once. They are ordered like Lynn's Figure 5: the
+#' one-occasion tail first, up through the full-life cohort.
 #' @keywords internal
 #' @noRd
 .chart_cohorts <- function(w, start, n_period) {

@@ -6,13 +6,14 @@ output: github_document
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
+  fig.width = 10,
   fig.path = "man/figures/README-"
 )
 # pinned so a re-knit does not reflow printed tables with the session width
 options(width = 80)
 ```
 
-# svyplan <img src="man/figures/svyplan_hex.png" align="right" width="140" />
+# svyplan <img src="man/figures/svyplan_hex.png" alt="svyplan logo" align="right" width="140" />
 
 <!-- badges: start -->
 [![CRAN status](https://www.r-pkg.org/badges/version/svyplan)](https://CRAN.R-project.org/package=svyplan)
@@ -357,15 +358,41 @@ n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
         start = "immediate")$launch[, c("period", "n_in_sample", "n_resp", "moe")]
 ```
 
-Splitting the first occasion into one cohort per stage of the life fills the
-sample at once, and `design_overlap()` reports the same overlaps either way,
-so the launch is a question about response rather than about who is
-interviewed with whom. That is why it is worth reporting. Every unit at the
+Splitting the first occasion into equal panels planned for life lengths from
+the full life down to one occasion fills the sample at once. Every panel begins
+at wave 1. `design_overlap()` gives the same mature overlap profile under
+either launch, while a gradual launch has higher realized overlap until it
+fills. Every unit at the
 first occasion is at wave 1, so it holds at least as many respondents as the
 design ever holds again, and strictly more as soon as any wave retains less
 than all of the one before. Here that is 1172 against the design's 1001,
-temporarily more precise. A gradual launch, one cohort an occasion,
-approaches the same figure from below at 234.
+temporarily more precise. A gradual launch, one cohort an occasion, approaches
+the same figure from below at 234.
+
+`design_schedule()` converts a rotating launch into explicit startup and
+intake operations without drawing a sample. It keeps the continuous
+requirement beside panel-level rounded counts, returns a dense activity table,
+and records any interviews promised beyond the planning horizon separately.
+
+```{r design-schedule}
+rot <- n_panel(target,
+               retention = c(0.878, 0.963, 0.936, 0.956),
+               resp_rate = 0.728, design = "rotating", start = "immediate")
+field_plan <- design_schedule(
+  rot, design_overlap("5"), horizon = 8,
+  horizon_policy = "continuing",
+  refreshment = "entrant_register",
+  rounding = "ceiling"
+)
+field_plan
+field_plan$components[, c("cohort", "entry_wave", "operational_issue",
+                          "panels", "frame_role")]
+```
+
+The horizon policy must say whether the program continues, truncates cohort
+lives at the window, or closes intake early. A whole-vintage refreshment can
+be declared instead, but this planning object deliberately does not infer
+cross-cohort weights.
 
 A repeated survey rarely publishes only occasions and changes. An annual
 average built from quarterly rounds is an estimate in its own right, and it
