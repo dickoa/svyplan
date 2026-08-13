@@ -36,6 +36,7 @@ schedule_realized_overlap <- function(origin, x, lag) {
 
 test_that("an immediate schedule has stable components and a dense grid", {
   plan <- schedule_panel_plan()
+
   x <- design_schedule(
     plan,
     design_overlap("4"),
@@ -51,8 +52,7 @@ test_that("an immediate schedule has stable components and a dense grid", {
   expect_identical(x$launch_policy, "immediate")
   expect_identical(x$horizon_policy, "continuing")
   expect_identical(x$steady_state_from, 4L)
-  expect_identical(x$components$cohort,
-                   c("startup", paste0("intake_", 2:6)))
+  expect_identical(x$components$cohort, c("startup", paste0("intake_", 2:6)))
   expect_identical(x$components$panels, c(4L, rep(1L, 5L)))
   expect_true(all(x$components$status == "planned"))
   expect_identical(x$components$frame_vintage[1:2], c("2026Q1", "2026Q2"))
@@ -76,8 +76,7 @@ test_that("an immediate schedule has stable components and a dense grid", {
   expect_identical(startup_1$life_stage, rep(1L, 4L))
   expect_identical(startup_1$life_length, 4:1)
   startup_panel_1 <- x$schedule[
-    x$schedule$cohort == "startup" & x$schedule$panel == 1L &
-      x$schedule$active,
+    x$schedule$cohort == "startup" & x$schedule$panel == 1L & x$schedule$active,
   ]
   expect_identical(startup_panel_1$life_stage, 1:4)
   intake_2 <- x$schedule[
@@ -99,32 +98,45 @@ test_that("generated schedules reconcile with the launch table where applicable"
     plan <- schedule_panel_plan(start)
     for (policy in c("continuing", "truncate_lives")) {
       x <- design_schedule(
-        plan, design_overlap("4"), 6, policy,
-        refreshment = "entrant_register", rounding = "ceiling"
+        plan,
+        design_overlap("4"),
+        6,
+        policy,
+        refreshment = "entrant_register",
+        rounding = "ceiling"
       )
       got <- schedule_active_counts(x)
       got <- got[got$period <= 5L, ]
       want <- plan$launch_waves[plan$launch_waves$period <= 5L, ]
       rownames(got) <- NULL
       rownames(want) <- NULL
-      expect_equal(got, want, tolerance = 1e-12,
-                   info = paste(start, policy))
+      expect_equal(got, want, tolerance = 1e-12, info = paste(start, policy))
 
       later <- schedule_active_counts(x)
       later <- later[later$period == 6L, -1L, drop = FALSE]
       settled <- plan$launch_waves[
-        plan$launch_waves$period == 5L, -1L, drop = FALSE
+        plan$launch_waves$period == 5L,
+        -1L,
+        drop = FALSE
       ]
       rownames(later) <- rownames(settled) <- NULL
-      expect_equal(later, settled, tolerance = 1e-12,
-                   info = paste(start, policy, "post-launch"))
+      expect_equal(
+        later,
+        settled,
+        tolerance = 1e-12,
+        info = paste(start, policy, "post-launch")
+      )
     }
   }
 
   plan <- schedule_panel_plan("immediate")
   closed <- design_schedule(
-    plan, design_overlap("4"), 6, "close_intake",
-    refreshment = "entrant_register", rounding = "ceiling"
+    plan,
+    design_overlap("4"),
+    6,
+    "close_intake",
+    refreshment = "entrant_register",
+    rounding = "ceiling"
   )
   got <- schedule_active_counts(closed)
   got <- got[got$period <= 3L, ]
@@ -137,26 +149,44 @@ test_that("overlap matches the life only from mature membership origins", {
   expected <- as.double(design_overlap("4"))
 
   immediate <- design_schedule(
-    schedule_panel_plan("immediate"), design_overlap("4"), 8, "continuing",
-    refreshment = "entrant_register", rounding = "ceiling"
+    schedule_panel_plan("immediate"),
+    design_overlap("4"),
+    8,
+    "continuing",
+    refreshment = "entrant_register",
+    rounding = "ceiling"
   )
   for (lag in seq_along(expected)) {
     origins <- seq_len(immediate$horizon - lag)
-    got <- vapply(origins, schedule_realized_overlap, numeric(1L),
-                  x = immediate, lag = lag)
+    got <- vapply(
+      origins,
+      schedule_realized_overlap,
+      numeric(1L),
+      x = immediate,
+      lag = lag
+    )
     expect_equal(got, rep(expected[[lag]], length(got)), tolerance = 1e-12)
   }
 
   gradual <- design_schedule(
-    schedule_panel_plan("gradual"), design_overlap("4"), 8, "continuing",
-    refreshment = "entrant_register", rounding = "ceiling"
+    schedule_panel_plan("gradual"),
+    design_overlap("4"),
+    8,
+    "continuing",
+    refreshment = "entrant_register",
+    rounding = "ceiling"
   )
   expect_equal(schedule_realized_overlap(1L, gradual, 1L), 1)
   for (lag in seq_along(expected)) {
     origins <- 4:(gradual$horizon - lag)
     if (length(origins) > 0L && all(origins <= gradual$horizon - lag)) {
-      got <- vapply(origins, schedule_realized_overlap, numeric(1L),
-                    x = gradual, lag = lag)
+      got <- vapply(
+        origins,
+        schedule_realized_overlap,
+        numeric(1L),
+        x = gradual,
+        lag = lag
+      )
       expect_equal(got, rep(expected[[lag]], length(got)), tolerance = 1e-12)
     }
   }
@@ -164,18 +194,28 @@ test_that("overlap matches the life only from mature membership origins", {
 
 test_that("horizon policies separate issue, commitments and tail composition", {
   plan <- schedule_panel_plan()
-  make <- function(policy) design_schedule(
-    plan, design_overlap("4"), 6, policy,
-    refreshment = "entrant_register", rounding = "ceiling"
-  )
+  make <- function(policy) {
+    design_schedule(
+      plan,
+      design_overlap("4"),
+      6,
+      policy,
+      refreshment = "entrant_register",
+      rounding = "ceiling"
+    )
+  }
   continuing <- make("continuing")
   truncated <- make("truncate_lives")
   closed <- make("close_intake")
 
-  expect_equal(sum(continuing$issue$operational_issue),
-               sum(truncated$issue$operational_issue))
-  expect_gt(sum(continuing$issue$operational_issue),
-            sum(closed$issue$operational_issue))
+  expect_equal(
+    sum(continuing$issue$operational_issue),
+    sum(truncated$issue$operational_issue)
+  )
+  expect_gt(
+    sum(continuing$issue$operational_issue),
+    sum(closed$issue$operational_issue)
+  )
   expect_gt(nrow(continuing$tail_commitments), 0L)
   expect_identical(nrow(truncated$tail_commitments), 0L)
   expect_identical(nrow(closed$tail_commitments), 0L)
@@ -197,8 +237,12 @@ test_that("horizon policies separate issue, commitments and tail composition", {
 
 test_that("a gradual launch has one startup panel and reaches composition at L", {
   x <- design_schedule(
-    schedule_panel_plan("gradual"), design_overlap("4"), 6, "continuing",
-    refreshment = "whole_vintage", rounding = "ceiling"
+    schedule_panel_plan("gradual"),
+    design_overlap("4"),
+    6,
+    "continuing",
+    refreshment = "whole_vintage",
+    rounding = "ceiling"
   )
 
   expect_identical(x$components$panels[[1L]], 1L)
@@ -210,69 +254,137 @@ test_that("a gradual launch has one startup panel and reaches composition at L",
 test_that("inputs that do not define the first schema are refused", {
   rotating <- schedule_panel_plan()
   fixed <- n_panel(
-    n_prop(p = 0.5, moe = 0.03), retention = rep(0.9, 3),
+    n_prop(p = 0.5, moe = 0.03),
+    retention = rep(0.9, 3),
     resp_rate = 0.75
   )
   launchless <- n_panel(
-    n_prop(p = 0.5, moe = 0.03), retention = rep(0.9, 3),
-    resp_rate = 0.75, design = "rotating"
+    n_prop(p = 0.5, moe = 0.03),
+    retention = rep(0.9, 3),
+    resp_rate = 0.75,
+    design = "rotating"
   )
 
   expect_error(
-    design_schedule(fixed, design_overlap("4"), 6, "continuing",
-                    refreshment = "entrant_register", rounding = "ceiling"),
+    design_schedule(
+      fixed,
+      design_overlap("4"),
+      6,
+      "continuing",
+      refreshment = "entrant_register",
+      rounding = "ceiling"
+    ),
     "rotating"
   )
   expect_error(
-    design_schedule(launchless, design_overlap("4"), 6, "continuing",
-                    refreshment = "entrant_register", rounding = "ceiling"),
+    design_schedule(
+      launchless,
+      design_overlap("4"),
+      6,
+      "continuing",
+      refreshment = "entrant_register",
+      rounding = "ceiling"
+    ),
     "launch"
   )
   expect_error(
-    design_schedule(rotating, design_overlap("3"), 6, "continuing",
-                    refreshment = "entrant_register", rounding = "ceiling"),
+    design_schedule(
+      rotating,
+      design_overlap("3"),
+      6,
+      "continuing",
+      refreshment = "entrant_register",
+      rounding = "ceiling"
+    ),
     "life length"
   )
   expect_error(
-    design_schedule(rotating, design_overlap("1-0-1"), 6, "continuing",
-                    refreshment = "entrant_register", rounding = "ceiling"),
+    design_schedule(
+      rotating,
+      design_overlap("1-0-1"),
+      6,
+      "continuing",
+      refreshment = "entrant_register",
+      rounding = "ceiling"
+    ),
     "unbroken"
   )
   expect_error(
-    design_schedule(rotating, design_overlap(c(1, 0.5, 0.5, 0.5)), 6,
-                    "continuing", refreshment = "entrant_register",
-                    rounding = "ceiling"),
+    design_schedule(
+      rotating,
+      design_overlap(c(1, 0.5, 0.5, 0.5)),
+      6,
+      "continuing",
+      refreshment = "entrant_register",
+      rounding = "ceiling"
+    ),
     "equal-take"
   )
   expect_error(
-    design_schedule(rotating, design_overlap("4"), 0, "continuing",
-                    refreshment = "entrant_register", rounding = "ceiling"),
+    design_schedule(
+      rotating,
+      design_overlap("4"),
+      0,
+      "continuing",
+      refreshment = "entrant_register",
+      rounding = "ceiling"
+    ),
     "horizon"
   )
   expect_error(
-    design_schedule(rotating, design_overlap("4"), 3, "close_intake",
-                    refreshment = "entrant_register", rounding = "ceiling"),
+    design_schedule(
+      rotating,
+      design_overlap("4"),
+      3,
+      "close_intake",
+      refreshment = "entrant_register",
+      rounding = "ceiling"
+    ),
     "shorter"
   )
   expect_error(
-    design_schedule(rotating, design_overlap("4"), 6, "continuing",
-                    refreshment = "entrant_register", rounding = "nearest"),
+    design_schedule(
+      rotating,
+      design_overlap("4"),
+      6,
+      "continuing",
+      refreshment = "entrant_register",
+      rounding = "nearest"
+    ),
     "rounding"
   )
   expect_error(
-    design_schedule(rotating, design_overlap("4"), 6, "later",
-                    refreshment = "entrant_register", rounding = "ceiling"),
+    design_schedule(
+      rotating,
+      design_overlap("4"),
+      6,
+      "later",
+      refreshment = "entrant_register",
+      rounding = "ceiling"
+    ),
     "horizon_policy"
   )
   expect_error(
-    design_schedule(rotating, design_overlap("4"), 6, "continuing",
-                    refreshment = "other", rounding = "ceiling"),
+    design_schedule(
+      rotating,
+      design_overlap("4"),
+      6,
+      "continuing",
+      refreshment = "other",
+      rounding = "ceiling"
+    ),
     "refreshment"
   )
   expect_error(
-    design_schedule(rotating, design_overlap("4"), 6, "continuing",
-                    refreshment = "entrant_register", rounding = "ceiling",
-                    frame_vintage = c(nope = "x")),
+    design_schedule(
+      rotating,
+      design_overlap("4"),
+      6,
+      "continuing",
+      refreshment = "entrant_register",
+      rounding = "ceiling",
+      frame_vintage = c(nope = "x")
+    ),
     "frame_vintage"
   )
 })
@@ -280,32 +392,55 @@ test_that("inputs that do not define the first schema are refused", {
 test_that("horizon policy and rounding are explicit", {
   plan <- schedule_panel_plan()
   expect_error(
-    design_schedule(plan, design_overlap("4"),
-                    horizon_policy = "continuing",
-                    refreshment = "entrant_register", rounding = "ceiling"),
+    design_schedule(
+      plan,
+      design_overlap("4"),
+      horizon_policy = "continuing",
+      refreshment = "entrant_register",
+      rounding = "ceiling"
+    ),
     "horizon"
   )
   expect_error(
-    design_schedule(plan, design_overlap("4"), 6,
-                    refreshment = "entrant_register", rounding = "ceiling"),
+    design_schedule(
+      plan,
+      design_overlap("4"),
+      6,
+      refreshment = "entrant_register",
+      rounding = "ceiling"
+    ),
     "horizon_policy"
   )
   expect_error(
-    design_schedule(plan, design_overlap("4"), 6, "continuing",
-                    refreshment = "entrant_register"),
+    design_schedule(
+      plan,
+      design_overlap("4"),
+      6,
+      "continuing",
+      refreshment = "entrant_register"
+    ),
     "rounding"
   )
   expect_error(
-    design_schedule(plan, design_overlap("4"), 6, "continuing",
-                    rounding = "ceiling"),
+    design_schedule(
+      plan,
+      design_overlap("4"),
+      6,
+      "continuing",
+      rounding = "ceiling"
+    ),
     "refreshment"
   )
 })
 
 test_that("the versioned schedule schema is validated at construction", {
   x <- design_schedule(
-    schedule_panel_plan(), design_overlap("4"), 6, "continuing",
-    refreshment = "entrant_register", rounding = "ceiling"
+    schedule_panel_plan(),
+    design_overlap("4"),
+    6,
+    "continuing",
+    refreshment = "entrant_register",
+    rounding = "ceiling"
   )
 
   expect_invisible(svyplan:::.validate_schedule_schema(unclass(x)))
@@ -395,37 +530,68 @@ test_that("operational counts remain whole-valued above the integer range", {
 
   expect_warning(
     x <- design_schedule(
-      plan, design_overlap("4"), 6, "continuing",
-      refreshment = "entrant_register", rounding = "ceiling"
+      plan,
+      design_overlap("4"),
+      6,
+      "continuing",
+      refreshment = "entrant_register",
+      rounding = "ceiling"
     ),
     NA
   )
   expect_type(x$components$panel_issue, "double")
   expect_equal(x$components$panel_issue[[1L]], large)
   expect_equal(x$components$operational_issue[[1L]], 4 * large)
-  expect_true(all(x$components$operational_issue ==
-                    floor(x$components$operational_issue)))
+  expect_true(all(
+    x$components$operational_issue == floor(x$components$operational_issue)
+  ))
   expect_invisible(svyplan:::.validate_schedule_schema(unclass(x)))
 })
 
 test_that("schedule replacement cannot create cross-field contradictions", {
   x <- design_schedule(
-    schedule_panel_plan(), design_overlap("4"), 6, "continuing",
-    refreshment = "entrant_register", rounding = "ceiling"
+    schedule_panel_plan(),
+    design_overlap("4"),
+    6,
+    "continuing",
+    refreshment = "entrant_register",
+    rounding = "ceiling"
   )
 
-  expect_error({x$rounding <- list(rule = "floor")},
-               "cannot be modified in place")
-  expect_error({x[["n_in_sample"]] <- 1}, "cannot be modified in place")
-  expect_error({x["schedule"] <- list(NULL)}, "cannot be modified in place")
-  expect_error({x$schedule$panel[[1L]] <- 99L},
-               "cannot be modified in place")
+  expect_error(
+    {
+      x$rounding <- list(rule = "floor")
+    },
+    "cannot be modified in place"
+  )
+  expect_error(
+    {
+      x[["n_in_sample"]] <- 1
+    },
+    "cannot be modified in place"
+  )
+  expect_error(
+    {
+      x["schedule"] <- list(NULL)
+    },
+    "cannot be modified in place"
+  )
+  expect_error(
+    {
+      x$schedule$panel[[1L]] <- 99L
+    },
+    "cannot be modified in place"
+  )
 })
 
 test_that("schedule methods lead with the issue profile", {
   x <- design_schedule(
-    schedule_panel_plan(), design_overlap("4"), 6, "continuing",
-    refreshment = "entrant_register", rounding = "ceiling"
+    schedule_panel_plan(),
+    design_overlap("4"),
+    6,
+    "continuing",
+    refreshment = "entrant_register",
+    rounding = "ceiling"
   )
 
   expect_identical(as.data.frame(x), x$issue)
@@ -438,8 +604,12 @@ test_that("schedule methods lead with the issue profile", {
 
 test_that("a schedule survives an RDS round trip", {
   x <- design_schedule(
-    schedule_panel_plan(), design_overlap("4"), 6, "continuing",
-    refreshment = "entrant_register", rounding = "ceiling"
+    schedule_panel_plan(),
+    design_overlap("4"),
+    6,
+    "continuing",
+    refreshment = "entrant_register",
+    rounding = "ceiling"
   )
   path <- tempfile(fileext = ".rds")
   on.exit(unlink(path))
@@ -453,4 +623,75 @@ test_that("a schedule survives an RDS round trip", {
   expect_invisible(svyplan:::.validate_schedule_schema(unclass(restored)))
   expect_identical(as.data.frame(restored), restored$issue)
   expect_match(format(restored), "svyplan_schedule.*immediate.*continuing")
+})
+
+## S13. The printed block does not grow with the reporting horizon
+
+test_that("print states the issue profile as runs, not one row per occasion", {
+  mk <- function(h, policy = "continuing") {
+    design_schedule(schedule_panel_plan(), design_overlap("4"), h, policy,
+                    refreshment = "entrant_register", rounding = "ceiling")
+  }
+  # A schedule's length is set by the reporting window, not by the design, so
+  # the block must be the same size at every horizon.
+  for (h in c(6L, 12L, 24L, 52L)) {
+    out <- capture.output(print(mk(h)))
+    expect_length(out, 6L)
+    expect_lt(max(nchar(out)), 80L)
+    expect_true(any(grepl(sprintf("occasions 2-%d\\)", h), out)))
+  }
+  # The occasions are gone from print and whole in summary.
+  out <- capture.output(print(mk(24L)))
+  expect_false(any(grepl("intake_7", out, fixed = TRUE)))
+  expect_identical(nrow(summary(mk(24L))$issue), 24L)
+})
+
+test_that("each horizon policy states its own profile", {
+  mk <- function(h, policy) {
+    design_schedule(schedule_panel_plan(), design_overlap("4"), h, policy,
+                    refreshment = "entrant_register", rounding = "ceiling")
+  }
+  # Intake stopping is a fact about the schedule, not a gap in the report.
+  closed <- capture.output(print(mk(10L, "close_intake")))
+  expect_true(any(grepl("intake closed from 8", closed, fixed = TRUE)))
+  expect_true(any(grepl("occasions 2-7", closed, fixed = TRUE)))
+  expect_length(closed, 6L)
+  for (policy in c("continuing", "truncate_lives")) {
+    out <- capture.output(print(mk(12L, policy)))
+    expect_false(any(grepl("intake closed", out, fixed = TRUE)))
+    expect_length(out, 6L)
+  }
+})
+
+test_that("the life line keeps the branch where no steady state is reached", {
+  short <- design_schedule(schedule_panel_plan(), design_overlap("4"), 2L,
+                           "continuing", refreshment = "entrant_register",
+                           rounding = "ceiling")
+  expect_true(is.na(short$steady_state_from))
+  out <- capture.output(print(short))
+  expect_match(out[2L], "^life: 4 stages over 2 occasions, ")
+  expect_match(out[2L], "steady state not reached in the window$")
+})
+
+test_that("summary carries every table print no longer shows", {
+  x <- design_schedule(schedule_panel_plan(), design_overlap("4"), 6L,
+                       "continuing", refreshment = "entrant_register",
+                       rounding = "ceiling")
+  sm <- summary(x)
+  expect_s3_class(sm, "summary.svyplan_schedule")
+  expect_identical(sm$issue, x$issue)
+  expect_identical(sm$components, x$components)
+  expect_identical(sm$activity, x$schedule)
+  expect_identical(sm$tail_commitments, x$tail_commitments)
+  out <- capture.output(print(sm))
+  expect_true(any(grepl("Issue profile", out, fixed = TRUE)))
+  expect_true(any(grepl("Overlap the rotation produces", out, fixed = TRUE)))
+  # Whole units, and the same ones the issue profile shows: the standing
+  # sample is the cohorts times the take each was rounded to.
+  expect_true(any(grepl(
+    sprintf("in sample across %d cohorts", x$n_cohorts), out, fixed = TRUE
+  )))
+  shown <- ceiling(x$n_entrants) * x$n_cohorts
+  expect_true(any(grepl(sprintf("%d in sample", shown), out)))
+  expect_identical(shown, x$issue$operational_issue[[1L]])
 })

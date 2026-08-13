@@ -12,7 +12,10 @@
 #'   [prec_prop()]. It supplies two things: the responding sample the panel
 #'   must deliver, and the estimand whose precision is reported at every
 #'   wave. Its own `resp_rate` is removed first, so the requirement is a
-#'   count of respondents and no response is counted twice. Clustered,
+#'   count of respondents and no response is counted twice: the panel's
+#'   `resp_rate` is the only recruitment response that reaches the answer.
+#'   Where the two differ the target's is reported as unused, at the call
+#'   and again in `summary()`. Clustered,
 #'   allocation, multi-indicator, multi-domain, change and two-phase results
 #'   are refused, their stage-specific and occasion-specific sizes not being
 #'   one responding count.
@@ -368,6 +371,46 @@ n_panel <- function(
   )
 }
 
+#' A recruitment response the panel names twice
+#'
+#' A target sized with its own `resp_rate` carries a gross issued count, and
+#' the panel reads it back to the responding requirement. Where the two
+#' rates agree that is invisible and unsurprising, the panel re-applying at
+#' wave 1 exactly what it removed. Where they disagree the user has named
+#' two recruitment responses and only one of them is used, which is the
+#' whole of the confusion and the whole of what is worth reporting.
+#'
+#' The condition lives here rather than at each of its two call sites so
+#' that the warning and the line `summary()` prints cannot drift apart.
+#' @keywords internal
+#' @noRd
+.panel_rate_conflict <- function(target_rr, resp_rate) {
+  if (is.null(target_rr) || isTRUE(all.equal(target_rr, 1))) {
+    return(NULL)
+  }
+  if (isTRUE(all.equal(target_rr, resp_rate))) {
+    return(NULL)
+  }
+  target_rr
+}
+
+#' @keywords internal
+#' @noRd
+.warn_panel_target_rate <- function(tgt, resp_rate) {
+  rr <- .panel_rate_conflict(tgt$params$resp_rate, resp_rate)
+  if (is.null(rr)) {
+    return(invisible(NULL))
+  }
+  warning(
+    sprintf(
+      "the target's own response rate %.3g is not used: a panel applies its own 'resp_rate' (%.3g) at wave 1, and the target is read as %s responding",
+      rr, resp_rate, .fmt_count_n(round(tgt$n_target))
+    ),
+    call. = FALSE
+  )
+  invisible(NULL)
+}
+
 #' Cumulative probability of still responding, by wave
 #' @keywords internal
 #' @noRd
@@ -602,6 +645,7 @@ n_panel <- function(
   }
   in_sample <- if (identical(design, "fixed")) n_recruit else k * n_recruit
   .check_panel_frame(in_sample, tgt$N, design, k)
+  .warn_panel_target_rate(tgt, resp_rate)
   .warn_panel_whole_units(n_recruit, tgt$N, design, k)
 
   n_wave <- n_recruit * q

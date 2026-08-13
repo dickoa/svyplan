@@ -277,15 +277,12 @@ x <- rlnorm(5000, meanlog = 6, sdlog = 1.2)
 
 strata_bound(x, n_strata = 4, n = 300, method = "cumrootf")
 #> Strata boundaries (Dalenius-Hodges, 4 strata)
-#> Boundaries: 400.0, 1300.0, 3200.0
-#> n = 300, cv = 0.0205
-#> Allocation: neyman
-#> ---
-#>  stratum lower       upper    N    share sd     mean      n  
-#>  1          8.380438   400.00 2492 0.498 104.2   186.9325  46
-#>  2        400.000000  1300.00 1647 0.329 246.5   724.3771  71
-#>  3       1300.000000  3200.00  639 0.128 500.9  1946.0399  56
-#>  4       3200.000000 28909.53  222 0.044 3264.3 5471.5402 127
+#> n = 300, cv = 0.0205, allocation: neyman
+#>  stratum  lower upper    N share     sd   mean   n
+#>        1 8.3804   400 2492 0.498  104.2  186.9  46
+#>        2    400  1300 1647 0.329  246.5  724.4  71
+#>        3   1300  3200  639 0.128  500.9 1946.0  56
+#>        4   3200 28910  222 0.044 3264.3 5471.5 127
 ```
 
 Four methods are available: Dalenius-Hodges (`"cumrootf"`), geometric
@@ -313,18 +310,15 @@ frame <- data.frame(
 
 n_twophase(frame, phase1_cost = 1, budget = 50000)
 #> Two-phase allocation (4 phase-2 strata)
-#> issued: n_phase1 = 16925 | n_phase2 = 8092
+#> field design: n_phase1 = 16924 | n_phase2 = 8094
 #> cv = 0.0050, cost = 50000
-#> ---
-#>  stratum share    sd unit_cost     nu n_issued n_int
-#>        A 0.350 12.00      2.00 0.4154     2461  2462
-#>        B 0.250 25.00      5.00 0.5474     2316  2316
-#>        C 0.250  8.00      1.00 0.3917     1657  1659
-#>        D 0.150 40.00      9.00 0.6528     1657  1657
-#> field design: n_phase1 = 16924 | n_phase2 = 8094 (cost 50000, cv 0.0050)
-#> 
-#> Single-phase is better here: n = 14085, cv = 0.0046, cost = 50000
-#> Skip phase 1 and measure directly.
+#>  stratum share    sd unit_cost     nu n_int
+#>        A 0.350 12.00      2.00 0.4154  2462
+#>        B 0.250 25.00      5.00 0.5474  2316
+#>        C 0.250  8.00      1.00 0.3917  1659
+#>        D 0.150 40.00      9.00 0.6528  1657
+#> single-phase is better here: n = 14085 at cv 0.0046, so skip phase 1
+#> # summary() for the continuous optimum and the comparator
 ```
 
 Nonresponse follow-up is the same problem with two strata: respondents
@@ -345,16 +339,13 @@ nrfu <- data.frame(
 n_twophase(nrfu, phase1_cost = 50, budget = 100000,
            mu = 1, single_cost = 50 / theta)
 #> Two-phase allocation (2 phase-2 strata)
-#> issued: n_phase1 = 828 | n_phase2 = 707
+#> field design: n_phase1 = 828 | n_phase2 = 707
 #> cv = 0.0382, cost = 1e+05
-#> ---
-#>         stratum share   sd unit_cost     nu n_issued n_int take_all
-#>     respondents 0.500 1.00      0.00 1.0000      414   414        *
-#>  nonrespondents 0.500 1.00    200.00 0.7071      293   293         
-#> field design: n_phase1 = 828 | n_phase2 = 707 (cost 1e+05, cv 0.0382)
-#> 
-#> Single-phase is better here: n = 1000, cv = 0.0316, cost = 1e+05
-#> Skip phase 1 and measure directly.
+#>         stratum share   sd unit_cost     nu n_int take_all
+#>     respondents 0.500 1.00      0.00 1.0000   414        *
+#>  nonrespondents 0.500 1.00    200.00 0.7071   293         
+#> single-phase is better here: n = 1000 at cv 0.0316, so skip phase 1
+#> # summary() for the continuous optimum and the comparator
 ```
 
 Neither phase has to be a simple random sample, and both can lose sample
@@ -458,16 +449,15 @@ target <- n_prop(p = 0.5, moe = 0.031)
 
 n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956), resp_rate = 0.728)
 #> Panel recruitment (fixed, 5-wave life)
-#> issue 1815 to hold 1000 responding at wave 5
-#> recruitment response 0.728, retention 0.878 to 0.963 (61% of the life's loss at wave 1)
+#> issued: 1815 -> 1000 responding at wave 5
 #> proportion (wald): se = 0.01582, moe = 0.031, cv = 0.0316
-#> ---
-#>  wave retention q      n_resp se      moe     cv    
-#>  1              0.728  1321   0.01376 0.02696 0.0275
-#>  2    0.878     0.6392 1160   0.01468 0.02878 0.0294
-#>  3    0.963     0.6155 1117   0.01496 0.02932 0.0299
-#>  4    0.936     0.5761 1046   0.01546 0.03031 0.0309
-#>  5    0.956     0.5508 1000   0.01582 0.031   0.0316
+#>  wave retention n_resp se      moe    
+#>  1              1321   0.01376 0.02696
+#>  2    0.878     1160   0.01468 0.02878
+#>  3    0.963     1117   0.01496 0.02932
+#>  4    0.936     1046   0.01546 0.03031
+#>  5    0.956     1000   0.01582 0.031  
+#> # summary() for the launch, the loss and per-wave cv
 ```
 
 `resp_rate` and `retention` are separate arguments because a panel’s
@@ -529,19 +519,11 @@ field_plan <- design_schedule(
 )
 field_plan
 #> Longitudinal design schedule (immediate launch, continuing)
-#> 5-stage life over 8 occasions; steady response composition from occasion 5
+#> life: 5 stages over 8 occasions, steady from occasion 5
 #> rounding: ceiling at panel and cohort level
-#> --- issue profile
-#>  wave cohort   planned_issue operational_issue steady_state
-#>  1    startup  1606.8361     1610              FALSE       
-#>  2    intake_2  321.3672      322              FALSE       
-#>  3    intake_3  321.3672      322              FALSE       
-#>  4    intake_4  321.3672      322              FALSE       
-#>  5    intake_5  321.3672      322               TRUE       
-#>  6    intake_6  321.3672      322               TRUE       
-#>  7    intake_7  321.3672      322               TRUE       
-#>  8    intake_8  321.3672      322               TRUE       
+#> issue: 1610 at startup, 322 per occasion (occasions 2-8)
 #> tail commitments: 10 panel-interviews after occasion 8
+#> # summary() for the occasion-by-occasion profile and the overlap
 field_plan$components[, c("cohort", "entry_wave", "operational_issue",
                           "panels", "frame_role")]
 #>     cohort entry_wave operational_issue panels       frame_role

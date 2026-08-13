@@ -800,3 +800,88 @@ test_that("a two-phase assurance level prints as itself", {
   expect_true(any(grepl("assured (0.999)", out, fixed = TRUE)))
   expect_false(any(grepl("assured (1.00)", out, fixed = TRUE)))
 })
+
+## TP-print. The printed block is the design as it would be fielded
+
+.tp_frame <- function() {
+  data.frame(
+    stratum   = c("A", "B", "C", "D"),
+    N         = c(3500, 2500, 2500, 1500),
+    sd        = c(12, 25, 8, 40),
+    mean      = c(40, 70, 35, 90),
+    unit_cost = c(2, 5, 1, 9)
+  )
+}
+
+test_that("print carries one reading of the design, not two", {
+  plan <- n_twophase(.tp_frame(), phase1_cost = 1, budget = 50000)
+  out <- capture.output(print(plan))
+  expect_length(out, 10L)
+  expect_lt(max(nchar(out)), 80L)
+  # The continuous optimum and the fielded design differ by a unit or two and
+  # report the same cv, so only the fielded one is printed.
+  expect_false(any(grepl("^issued:", out)))
+  expect_false(any(grepl("n_issued", out, fixed = TRUE)))
+  expect_false(any(grepl("^---$", out)))
+  expect_match(out[2L], "^field design: n_phase1 = [0-9]+ \\| n_phase2 = [0-9]+$")
+  # The comparator is a verdict, so it is one line.
+  expect_length(grep("single-phase", out), 1L)
+  expect_identical(out[length(out)],
+                   "# summary() for the continuous optimum and the comparator")
+})
+
+test_that("every printed count is on the fielded path", {
+  frame <- transform(.tp_frame(), resp_rate = c(0.8, 0.75, 0.9, 0.7))
+  plan <- n_twophase(frame, phase1_cost = 1, budget = 50000)
+  shown <- svyplan:::.twophase_shown(plan)
+  expect_identical(shown$n, plan$operational$n)
+  expect_identical(shown$n_int, plan$operational$n_int)
+  # The header sizes, the stratum takes and the responding counts must all
+  # reconcile: a responding figure read off the continuous design is a number
+  # nothing else in the block adds up to.
+  expect_identical(sum(shown$n_int), unname(shown$n[["n_phase2"]]))
+  brief <- svyplan:::.fmt_twophase_detail(plan, brief = TRUE)
+  expect_identical(brief$n_int, format(shown$n_int))
+  expect_identical(brief$n_resp,
+                   format(round(shown$n_int * plan$detail$resp_rate)))
+  resp_line <- svyplan:::.fmt_twophase_responding(plan)
+  expect_match(resp_line, sprintf(
+    "n_phase2 = %s", format(round(sum(shown$n_int * plan$detail$resp_rate)))
+  ), fixed = TRUE)
+  # The stored fields stay continuous, which is what keeps the round trip
+  # exact.
+  expect_false(isTRUE(all.equal(plan$detail$n_issued, plan$operational$n_int)))
+})
+
+test_that("the conditional blocks all survive the cut", {
+  frame <- transform(.tp_frame(), resp_rate = c(0.8, 0.75, 0.9, 0.7),
+                     deff = c(1.2, 1.1, 1.3, 1.5))
+  out <- capture.output(print(
+    n_twophase(frame, phase1_cost = 1, budget = 50000, assurance = 0.9,
+               fixed_cost = 5000)
+  ))
+  expect_true(any(grepl("^expected responding:", out)))
+  expect_true(any(grepl("(fixed: 5000)", out, fixed = TRUE)))
+  expect_true(any(grepl("^assured \\(0.90\\):", out)))
+  expect_match(out[grep("^ stratum", out)], "deff")
+  expect_match(out[grep("^ stratum", out)], "resp")
+  expect_match(out[grep("^ stratum", out)], "n_resp")
+  expect_lt(max(nchar(out)), 80L)
+})
+
+test_that("summary carries the continuous optimum and the comparator", {
+  plan <- n_twophase(.tp_frame(), phase1_cost = 1, budget = 50000)
+  sm <- summary(plan)
+  expect_s3_class(sm, "summary.svyplan_twophase")
+  expect_identical(sm$plan, plan)
+  expect_identical(sm$n, plan$n)
+  expect_identical(sm$single_phase, plan$single_phase)
+  # The full table is the brief one plus the continuous issue.
+  brief <- svyplan:::.fmt_twophase_detail(plan, brief = TRUE)
+  expect_identical(sm$detail[names(brief)], brief)
+  expect_identical(sm$detail$n_issued, format(round(plan$detail$n_issued)))
+  out <- capture.output(print(sm))
+  expect_true(any(grepl("^continuous optimum: ", out)))
+  expect_true(any(grepl("^Single-phase comparator: ", out)))
+  expect_true(any(grepl("reaches the target", out, fixed = TRUE)))
+})

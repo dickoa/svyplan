@@ -170,9 +170,10 @@ test_that("the chart's entrant count is the one print reports", {
   take <- .chart_take(rot, rep(1, 5))
   expect_equal(take, ceiling(rot$n_entrants))
   out <- capture.output(print(rot))
-  expect_true(any(grepl(sprintf("^%d entrants per occasion", take), out)))
-  # and the steady-state total the chart draws is the one print names
-  expect_true(any(grepl(sprintf("^%d in sample", take * rot$n_cohorts), out)))
+  expect_true(any(grepl(sprintf("^entrants: %d per occasion", take), out)))
+  # and the steady-state total the chart draws is the one summary() names
+  expect_true(any(grepl(sprintf("^in sample: %d ", take * rot$n_cohorts),
+                        capture.output(print(summary(rot))))))
 })
 
 test_that("a panel that does not describe the schedule is refused", {

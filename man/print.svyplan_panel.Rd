@@ -2,13 +2,19 @@
 % Please edit documentation in R/print.R
 \name{print.svyplan_panel}
 \alias{print.svyplan_panel}
+\alias{summary.svyplan_panel}
+\alias{print.summary.svyplan_panel}
 \alias{format.svyplan_panel}
 \alias{as.double.svyplan_panel}
 \alias{as.integer.svyplan_panel}
 \alias{as.data.frame.svyplan_panel}
-\title{Print, format and coerce a panel recruitment}
+\title{Print, summarise, format and coerce a panel recruitment}
 \usage{
 \method{print}{svyplan_panel}(x, ...)
+
+\method{summary}{svyplan_panel}(object, ...)
+
+\method{print}{summary.svyplan_panel}(x, ...)
 
 \method{format}{svyplan_panel}(x, ...)
 
@@ -26,24 +32,58 @@
 )
 }
 \arguments{
-\item{x}{A \code{svyplan_panel} object.}
+\item{x}{A \code{svyplan_panel} object, or the \code{summary.svyplan_panel} object
+\code{summary()} returns.}
 
 \item{...}{Additional arguments are not supported and produce an error.}
+
+\item{object}{A \code{svyplan_panel} object.}
 
 \item{row.names, optional, stringsAsFactors, validRN}{Standard
 \code{as.data.frame()} arguments.}
 }
 \value{
-\code{print()} returns \code{x} invisibly; \code{format()} a string;
+\code{print()} returns its argument invisibly; \code{summary()} an object of
+class \code{summary.svyplan_panel} carrying the plan, the full wave table,
+the launch path and the cohort composition; \code{format()} a string;
 \code{as.double()} the recruitment count and \code{as.integer()} the whole units
 that count rounds up to; \code{as.data.frame()} the wave table.
 }
 \description{
 Display and coercion methods for the object \code{\link[=n_panel]{n_panel()}} and
-\code{\link[=prec_panel]{prec_panel()}} return. \code{print()} leads with the number to recruit and the
-responding sample it is expected to leave, then the wave-by-wave table.
+\code{\link[=prec_panel]{prec_panel()}} return. \code{print()} gives the number to recruit, the
+responding sample it is expected to leave, the precision at the target
+and the wave-by-wave table. \code{summary()} adds what the design implies
+around that answer: the standing sample a rotating design holds, the
+response and retention it assumes, where the life's loss falls, and the
+launch a design reaching its steady state passes through.
 The coercions return the recruitment count, which is a number of units to
 release and not the analysis sample: those differ by the whole of the
 panel's attrition, and it is why \code{svyplan_panel} is a sibling of
 \code{svyplan_n} rather than a subtype.
+}
+\examples{
+plan <- n_panel(
+  n_prop(p = 0.5, moe = 0.031),
+  retention = c(0.878, 0.963, 0.936, 0.956),
+  resp_rate = 0.728
+)
+plan
+summary(plan)
+
+# A rotating design reaching its steady state: the launch table is the
+# occasions before it gets there
+rot <- n_panel(
+  n_prop(p = 0.5, moe = 0.031),
+  retention = c(0.878, 0.963, 0.936, 0.956),
+  resp_rate = 0.728,
+  design = "rotating",
+  start = "immediate"
+)
+summary(rot)$launch
+summary(rot)$composition
+
+as.integer(plan)
+as.data.frame(plan)
+
 }

@@ -1080,7 +1080,7 @@ The between-stratum term is the part already paid for by the phase-1 size. It is
 
 ### Whole units and assurance
 
-`$operational` carries the field design in whole units. Budget mode floors and then buys back units in order of variance reduction per unit cost, staying inside the budget; CV mode rounds up, overshooting precision rather than missing it.
+`$operational` carries the field design in whole units, and it is what the printed block reports: every count there is a whole unit off the same solution, so the phase sizes, the stratum takes and the responding figures reconcile. Budget mode floors and then buys back units in order of variance reduction per unit cost, staying inside the budget; CV mode rounds up, overshooting precision rather than missing it. `summary()` sets the continuous optimum beside the fielded design and gives the single-phase comparator in full.
 
 Planning at the *expected* respondent count leaves roughly half of all designs short. `assurance` reports the issue for which the required respondents arrive with at least that probability, from the binomial distribution of respondents:
 
@@ -1186,6 +1186,8 @@ lfs <- n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
 lfs
 ```
 
+The printed block is the answer: what to issue, what it leaves, and the precision at each wave. `summary()` gives what the answer rests on, including the rates assumed, where the life's loss falls, the cv and expected cases at each wave, and for a rotating design the standing sample and the launch.
+
 `resp_rate` and `retention` are separate arguments because a panel's loss is concentrated at recruitment. Here 61 percent of the whole five-wave loss happens at wave 1, and an average rate spread over the waves would under-issue.
 
 ```{r panel-waves}
@@ -1252,7 +1254,7 @@ field_plan$components[, c("cohort", "entry_wave", "operational_issue",
                           "panels", "frame_role")]
 ```
 
-The dense `$schedule` table marks every component-panel combination active or inactive at each in-horizon occasion. `$tail_commitments` contains only the promised interviews after the horizon. An entrant register means the later frames contain new eligible units. If later cohorts instead use whole frame vintages, declare `refreshment = "whole_vintage"` and construct their combined analysis weights outside this planning object.
+A schedule's length is set by the reporting horizon rather than by the design, so `print()` states the issue profile as the runs it is made of and stays the same size whether the window is six occasions or fifty-two. `summary()` gives the occasion-by-occasion tables. The dense `$schedule` table marks every component-panel combination active or inactive at each in-horizon occasion. `$tail_commitments` contains only the promised interviews after the horizon. An entrant register means the later frames contain new eligible units. If later cohorts instead use whole frame vintages, declare `refreshment = "whole_vintage"` and construct their combined analysis weights outside this planning object.
 
 ```{r panel-launch-chart, fig.width=7, fig.height=5}
 plot(design_overlap("5"), start = "immediate")

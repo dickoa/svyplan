@@ -798,21 +798,29 @@ design_schedule <- function(
   invisible(TRUE)
 }
 
-#' Print and coerce a longitudinal design schedule
+#' Print, summarise and coerce a longitudinal design schedule
 #'
-#' `print()` and [as.data.frame()] lead with the issue profile by occasion.
-#' Component activity and post-horizon commitments remain available as
-#' `$schedule` and `$tail_commitments`.
+#' `print()` states the issue profile as a run of takes rather than as one
+#' row per occasion, because a schedule's occasions are mostly identical and
+#' its length is set by the reporting horizon rather than by the design.
+#' `summary()` gives the occasion-by-occasion tables: the issue profile in
+#' full, the component activity, the overlap the rotation produces, and the
+#' interviews owed after the horizon. [as.data.frame()] returns the issue
+#' profile, and every table stays reachable as a field.
 #'
-#' @param x An `svyplan_schedule`.
+#' @param x An `svyplan_schedule`, or the `summary.svyplan_schedule` object
+#'   `summary()` returns.
+#' @param object An `svyplan_schedule`.
 #' @param row.names,optional,stringsAsFactors,validRN Standard
 #'   [as.data.frame()] arguments.
 #' @param name,i,value Standard replacement arguments for `$<-`, `[[<-`, and
 #'   `[<-`. These operations are refused because they would break
 #'   reconciliation within the schedule object.
 #' @param ... Additional arguments are not supported and produce an error.
-#' @return `print()` returns `x` invisibly, `format()` returns one descriptive
-#'   string, and `as.data.frame()` returns the issue profile.
+#' @return `print()` returns its argument invisibly, `summary()` an object of
+#'   class `summary.svyplan_schedule` carrying the schedule and its four
+#'   tables, `format()` one descriptive string, and `as.data.frame()` the
+#'   issue profile.
 #'
 #' Direct field and table replacement with `$<-`, `[[<-`, or `[<-` is refused
 #' because the metadata and tables describe one reconciled design. Recompute
@@ -829,29 +837,149 @@ print.svyplan_schedule <- function(x, ...) {
     "Longitudinal design schedule (%s launch, %s)\n",
     x$launch_policy, x$horizon_policy
   ))
-  cat(sprintf(
-    "%d-stage life over %d occasions; steady response composition %s\n",
-    x$life_length, x$horizon,
-    if (is.na(x$steady_state_from)) {
-      "not reached in the window"
-    } else {
-      sprintf("from occasion %d", x$steady_state_from)
-    }
-  ))
+  cat(.fmt_schedule_life(x))
   cat(sprintf(
     "rounding: %s at %s level\n",
     x$rounding$rule, gsub("_", " ", x$rounding$level, fixed = TRUE)
   ))
-  cat("--- issue profile\n")
-  print(x$issue, row.names = FALSE, right = FALSE)
-  if (nrow(x$tail_commitments) > 0L) {
-    cat(sprintf(
-      "tail commitments: %d panel-interviews after occasion %d\n",
-      nrow(x$tail_commitments), x$horizon
-    ))
-  } else {
-    cat("tail commitments: none\n")
+  cat(sprintf("issue: %s\n", .fmt_schedule_issue(x)))
+  cat(.fmt_schedule_tail(x))
+  cat("# summary() for the occasion-by-occasion profile and the overlap\n")
+  invisible(x)
+}
+
+#' The life, and where the response composition settles
+#' @keywords internal
+#' @noRd
+.fmt_schedule_life <- function(x) {
+  sprintf(
+    "life: %d stages over %d occasions, %s\n",
+    x$life_length, x$horizon,
+    if (is.na(x$steady_state_from)) {
+      "steady state not reached in the window"
+    } else {
+      sprintf("steady from occasion %d", x$steady_state_from)
+    }
+  )
+}
+
+#' The issue profile as the runs it is made of
+#'
+#' A schedule's length is set by the reporting horizon, not by the design, so
+#' a row per occasion grows without bound while saying the same thing: a
+#' startup take, then one intake repeated. Naming the runs states the profile
+#' at a size that does not move when the horizon does. A run of zeros is
+#' intake having closed, which `horizon_policy = "close_intake"` produces and
+#' which is a fact about the schedule rather than a gap in it.
+#' @keywords internal
+#' @noRd
+.fmt_schedule_issue <- function(x) {
+  v <- x$issue$operational_issue
+  parts <- sprintf("%s at startup", format(v[[1L]]))
+  if (length(v) > 1L) {
+    runs <- rle(v[-1L])
+    at <- 2L
+    for (j in seq_along(runs$lengths)) {
+      lo <- at
+      hi <- at + runs$lengths[[j]] - 1L
+      at <- hi + 1L
+      parts <- c(parts, if (runs$values[[j]] == 0) {
+        sprintf("intake closed from %d", lo)
+      } else {
+        sprintf(
+          "%s per occasion (%s)", format(runs$values[[j]]),
+          if (lo == hi) sprintf("occasion %d", lo) else {
+            sprintf("occasions %d-%d", lo, hi)
+          }
+        )
+      })
+    }
   }
+  paste(parts, collapse = ", ")
+}
+
+#' @keywords internal
+#' @noRd
+.fmt_schedule_tail <- function(x) {
+  if (nrow(x$tail_commitments) == 0L) {
+    return("tail commitments: none\n")
+  }
+  sprintf(
+    "tail commitments: %d panel-interviews after occasion %d\n",
+    nrow(x$tail_commitments), x$horizon
+  )
+}
+
+#' Drop the component columns that carry no distinction
+#'
+#' `frame_vintage` is absent unless one was declared and `status` is one
+#' value for a plan that has not been executed against, so on an ordinary
+#' schedule both are a column of the same entry repeated.
+#' @keywords internal
+#' @noRd
+.fmt_schedule_components <- function(d) {
+  if (all(is.na(d$frame_vintage))) {
+    d$frame_vintage <- NULL
+  }
+  if (length(unique(d$status)) == 1L) {
+    d$status <- NULL
+  }
+  d
+}
+
+#' @rdname print.svyplan_schedule
+#' @export
+summary.svyplan_schedule <- function(object, ...) {
+  .check_unused_dots(...)
+  structure(
+    list(
+      schedule = object,
+      issue = object$issue,
+      components = object$components,
+      overlap = object$overlap,
+      tail_commitments = object$tail_commitments,
+      activity = object$schedule
+    ),
+    class = "summary.svyplan_schedule"
+  )
+}
+
+#' @rdname print.svyplan_schedule
+#' @export
+print.summary.svyplan_schedule <- function(x, ...) {
+  .check_unused_dots(...)
+  s <- x$schedule
+  cat(sprintf(
+    "Analysis of a longitudinal design schedule (%s launch, %s)\n\n",
+    s$launch_policy, s$horizon_policy
+  ))
+  cat(.fmt_schedule_life(s))
+  cat(sprintf(
+    "rounding: %s at %s level\n",
+    s$rounding$rule, gsub("_", " ", s$rounding$level, fixed = TRUE)
+  ))
+  # Whole units, and the same ones the issue profile shows: the standing
+  # sample is the cohorts times the take each one was rounded to, not the
+  # continuous total rounded once.
+  entrants <- ceiling(s$n_entrants)
+  cat(sprintf(
+    "entrants: %s per occasion, %s in sample across %d cohorts\n",
+    format(entrants), format(entrants * s$n_cohorts), s$n_cohorts
+  ))
+  cat(sprintf("refreshment: %s\n", s$refreshment))
+
+  cat("\nIssue profile\n")
+  print(x$issue, row.names = FALSE, right = TRUE)
+
+  cat("\nComponents\n")
+  print(.fmt_schedule_components(x$components), row.names = FALSE,
+        right = TRUE)
+
+  cat("\nOverlap the rotation produces\n")
+  print(as.data.frame(x$overlap), row.names = FALSE, right = TRUE)
+
+  cat(.fmt_schedule_tail(s))
+  cat("# $activity for the panel-level schedule, $tail_commitments for the tail\n")
   invisible(x)
 }
 

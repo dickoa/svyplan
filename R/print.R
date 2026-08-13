@@ -1801,30 +1801,60 @@ print.svyplan_strata <- function(x, ...) {
     kozak = "Kozak-inspired local search",
     x$method
   )
-  cat(sprintf("Strata boundaries (%s, %d strata)\n", method_label, x$n_strata))
-  cat(sprintf(
-    "Boundaries: %s\n",
-    paste(sprintf("%.1f", x$boundaries), collapse = ", ")
-  ))
-  cat(sprintf("n = %d, cv = %.4f\n", ceiling(x$n), x$cv))
-  if (!is.null(x$alloc) && is.character(x$alloc)) {
-    if (x$alloc == "power") {
-      cat(sprintf("Allocation: power (alloc_q = %.2f)\n", x$params$alloc_q))
-    } else {
-      cat(sprintf("Allocation: %s\n", x$alloc))
-    }
-  }
-  if (isTRUE(x$converged)) {
-    cat("Converged: yes\n")
+  # Convergence belongs to the method that searched, so it reads as part of
+  # the method's name rather than as a line of its own. A non-iterative
+  # method records NA, which must stay silent rather than read as a failure
+  # to converge.
+  converged <- if (isTRUE(x$converged)) {
+    ", converged"
   } else if (isFALSE(x$converged)) {
-    cat("Converged: no\n")
+    ", not converged"
+  } else {
+    ""
   }
-  cat("---\n")
+  cat(sprintf(
+    "Strata boundaries (%s, %d strata%s)\n",
+    method_label, x$n_strata, converged
+  ))
+  # No `Boundaries:` line: the cut points are the lower and upper columns of
+  # the table below, and naming them twice at two precisions invites the
+  # reader to look for a difference.
+  alloc <- if (!is.null(x$alloc) && is.character(x$alloc)) {
+    if (x$alloc == "power") {
+      sprintf(", allocation: power (alloc_q = %.2f)", x$params$alloc_q)
+    } else {
+      sprintf(", allocation: %s", x$alloc)
+    }
+  } else {
+    ""
+  }
+  cat(sprintf("n = %d, cv = %.4f%s\n", ceiling(x$n), x$cv, alloc))
   df <- x$strata
+  df$lower <- .fmt_boundary(df$lower)
+  df$upper <- .fmt_boundary(df$upper)
   df$share <- sprintf("%.3f", df$share)
   df$sd <- sprintf("%.1f", df$sd)
+  df$mean <- sprintf("%.1f", df$mean)
   df$take_all <- NULL
-  print(df, row.names = FALSE, right = FALSE)
+  # Every column here is a number, so they line up on the right.
+  print(df, row.names = FALSE, right = TRUE)
+}
+
+#' A cut point at reading precision
+#'
+#' Five significant figures, and never in scientific notation: a boundary is
+#' a value on the frame's own scale, and `3.018e+04` is not a number anyone
+#' will compare against their data.
+#' @keywords internal
+#' @noRd
+.fmt_boundary <- function(v) {
+  # Element by element: formatting the vector at once pads every cut point to
+  # the widest one's decimals, which puts a 428.4100 next to a 30185.00.
+  vapply(
+    v,
+    function(z) format(signif(z, 5), scientific = FALSE, trim = TRUE),
+    character(1L), USE.NAMES = FALSE
+  )
 }
 
 #' @keywords internal
@@ -3437,32 +3467,105 @@ predict.svyplan_strata <- function(object, newdata, labels = NULL, ...) {
 #' @rdname print.svyplan
 #' @export
 print.svyplan_twophase <- function(x, ...) {
-  p <- x$params
   cat("Two-phase allocation (", nrow(x$detail), " phase-2 strata)\n", sep = "")
-  cat(sprintf(
-    "issued: n_phase1 = %s | n_phase2 = %s\n",
-    format(round(x$n[["n_phase1"]])), format(round(x$n[["n_phase2"]]))
-  ))
-  if (!isTRUE(all.equal(unname(x$responding), unname(x$n)))) {
-    cat(sprintf(
-      "expected responding: n_phase1 = %s | n_phase2 = %s\n",
-      format(round(x$responding[["n_phase1"]])),
-      format(round(x$responding[["n_phase2"]]))
+  cat(.fmt_twophase_sizes(x))
+  cat(.fmt_twophase_responding(x))
+  cat(.fmt_twophase_cost(x))
+  cat(.fmt_twophase_deff(x))
+  print(.fmt_twophase_detail(x, brief = TRUE), row.names = FALSE)
+  cat(.fmt_twophase_assured(x))
+  cat(.fmt_twophase_single(x))
+  cat("# summary() for the continuous optimum and the comparator\n")
+  invisible(x)
+}
+
+#' The design as it would be fielded
+#'
+#' Every count printed here is a whole unit off `$operational`, because the
+#' continuous solution and the fielded one differ by a unit or two and one
+#' printed block must not carry both readings of the same design. The
+#' continuous values stay in the object, which is what keeps the round trip
+#' exact, and `summary()` is where they are read.
+#' @keywords internal
+#' @noRd
+.twophase_shown <- function(x) {
+  o <- x$operational
+  if (is.null(o)) {
+    return(list(
+      n = round(x$n), n_int = round(x$detail$n_issued),
+      cost = x$cost, cv = x$cv
     ))
   }
-  cat(sprintf(
-    "cv = %s, cost = %s%s\n",
-    if (is.na(x$cv)) "NA" else formatC(x$cv, format = "f", digits = 4),
-    format(round(x$cost)),
-    if (isTRUE(p$fixed_cost > 0)) sprintf(" (fixed: %s)", format(p$fixed_cost)) else ""
-  ))
-  if (!isTRUE(all.equal(p$phase1_deff, 1)) ||
-      !isTRUE(all.equal(p$single_deff, 1))) {
-    cat(sprintf("phase-1 deff = %s, single-phase deff = %s\n",
-                formatC(p$phase1_deff, format = "f", digits = 2),
-                formatC(p$single_deff, format = "f", digits = 2)))
+  list(n = o$n, n_int = o$n_int, cost = o$cost, cv = o$cv)
+}
+
+#' @keywords internal
+#' @noRd
+.fmt_twophase_sizes <- function(x) {
+  shown <- .twophase_shown(x)
+  sprintf(
+    "field design: n_phase1 = %s | n_phase2 = %s\n",
+    format(shown$n[["n_phase1"]]), format(shown$n[["n_phase2"]])
+  )
+}
+
+#' What the two phases are expected to leave
+#'
+#' On the fielded sizes, not the continuous ones: a responding count read off
+#' a design a planner is not releasing is a number nothing in the block
+#' reconciles with.
+#' @keywords internal
+#' @noRd
+.fmt_twophase_responding <- function(x) {
+  if (isTRUE(all.equal(unname(x$responding), unname(x$n)))) {
+    return("")
   }
+  shown <- .twophase_shown(x)
+  sprintf(
+    "expected responding: n_phase1 = %s | n_phase2 = %s\n",
+    format(round(shown$n[["n_phase1"]] * (x$params$resp_rate %||% 1))),
+    format(round(sum(shown$n_int * x$detail$resp_rate)))
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.fmt_twophase_cost <- function(x) {
+  shown <- .twophase_shown(x)
+  fixed <- x$params$fixed_cost
+  sprintf(
+    "cv = %s, cost = %s%s\n",
+    if (is.na(shown$cv)) "NA" else formatC(shown$cv, format = "f", digits = 4),
+    format(round(shown$cost)),
+    if (isTRUE(fixed > 0)) sprintf(" (fixed: %s)", format(fixed)) else ""
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.fmt_twophase_deff <- function(x) {
+  p <- x$params
+  if (isTRUE(all.equal(p$phase1_deff, 1)) &&
+      isTRUE(all.equal(p$single_deff, 1))) {
+    return("")
+  }
+  sprintf(
+    "phase-1 deff = %s, single-phase deff = %s\n",
+    formatC(p$phase1_deff, format = "f", digits = 2),
+    formatC(p$single_deff, format = "f", digits = 2)
+  )
+}
+
+#' The stratum table at two widths
+#'
+#' `brief` is what `print()` shows. The continuous `n_issued` is dropped
+#' there: it and `n_int` differ by less than a unit, so side by side they
+#' read as two answers to one question.
+#' @keywords internal
+#' @noRd
+.fmt_twophase_detail <- function(x, brief = FALSE) {
   d <- x$detail
+  shown <- .twophase_shown(x)
   out <- data.frame(
     stratum = d$stratum,
     share = formatC(d$share, format = "f", digits = 3),
@@ -3478,48 +3581,154 @@ print.svyplan_twophase <- function(x, ...) {
     out$resp <- formatC(d$resp_rate, format = "f", digits = 2)
   }
   out$nu <- formatC(d$nu, format = "f", digits = 4)
-  out$n_issued <- format(round(d$n_issued))
-  out$n_int <- format(d$n_int)
+  if (!brief) {
+    out$n_issued <- format(round(d$n_issued))
+  }
+  out$n_int <- format(shown$n_int)
   if (show_resp) {
-    out$n_resp <- format(round(d$n_resp))
+    out$n_resp <- format(round(shown$n_int * d$resp_rate))
   }
   if (any(d$take_all)) {
     out$take_all <- ifelse(d$take_all, "*", "")
   }
-  cat("---\n")
-  print(out, row.names = FALSE)
+  out
+}
+
+#' @keywords internal
+#' @noRd
+.fmt_twophase_assured <- function(x) {
   o <- x$operational
-  if (!is.null(o)) {
-    cat(sprintf("field design: n_phase1 = %s | n_phase2 = %s (cost %s, cv %s)\n",
-                format(o$n[["n_phase1"]]), format(o$n[["n_phase2"]]),
-                format(round(o$cost)),
-                if (is.na(o$cv)) "NA" else formatC(o$cv, format = "f", digits = 4)))
-    if (!is.null(o$assured)) {
-      cat(sprintf(
-        "assured (%s): issue n_phase1 = %s | n_phase2 = %s (cost %s)\n",
-        .fmt_prob(x$params$assurance),
-        format(o$assured_phase1), format(sum(o$assured)),
-        format(round(o$assured_cost))))
-    }
+  if (is.null(o) || is.null(o$assured)) {
+    return("")
   }
+  sprintf(
+    "assured (%s): issue n_phase1 = %s | n_phase2 = %s (cost %s)\n",
+    .fmt_prob(x$params$assurance),
+    format(o$assured_phase1), format(sum(o$assured)),
+    format(round(o$assured_cost))
+  )
+}
+
+#' Analyse a two-phase allocation
+#'
+#' `print()` on a [n_twophase()] result gives the design as it would be
+#' fielded: the two phase sizes in whole units, the precision and cost they
+#' buy, the per-stratum subsampling fractions, and which of the two designs
+#' to run. `summary()` gives what that answer was chosen against: the
+#' continuous optimum beside the fielded one, the full stratum table
+#' including the continuous issue, the single-phase comparator with its cost
+#' and whether it reaches the target, and the planning assumptions.
+#'
+#' @param object A `svyplan_twophase` object.
+#' @param x A `summary.svyplan_twophase` object.
+#' @param ... Additional arguments are not supported and produce an error.
+#' @return `summary()` returns an object of class
+#'   `summary.svyplan_twophase`; its `print()` method returns it invisibly.
+#' @seealso [n_twophase()] for the planner, and [print.svyplan] for the
+#'   printed block this expands on.
+#'
+#' @examples
+#' frame <- data.frame(
+#'   stratum   = c("A", "B", "C", "D"),
+#'   N         = c(3500, 2500, 2500, 1500),
+#'   sd        = c(12, 25, 8, 40),
+#'   mean      = c(40, 70, 35, 90),
+#'   unit_cost = c(2, 5, 1, 9)
+#' )
+#' plan <- n_twophase(frame, phase1_cost = 1, budget = 50000)
+#' plan
+#' summary(plan)
+#' summary(plan)$detail
+#'
+#' @name summary.svyplan_twophase
+NULL
+
+#' @rdname summary.svyplan_twophase
+#' @export
+summary.svyplan_twophase <- function(object, ...) {
+  .check_unused_dots(...)
+  structure(
+    list(
+      plan = object,
+      n = object$n,
+      operational = .twophase_shown(object),
+      detail = .fmt_twophase_detail(object, brief = FALSE),
+      single_phase = object$single_phase,
+      params = object$params
+    ),
+    class = "summary.svyplan_twophase"
+  )
+}
+
+#' @rdname summary.svyplan_twophase
+#' @export
+print.summary.svyplan_twophase <- function(x, ...) {
+  .check_unused_dots(...)
+  plan <- x$plan
+  cat(sprintf(
+    "Analysis of a two-phase allocation (%d phase-2 strata)\n\n",
+    nrow(plan$detail)
+  ))
+  cat(.fmt_twophase_sizes(plan))
+  cat(.fmt_twophase_responding(plan))
+  cat(.fmt_twophase_cost(plan))
+  cat(sprintf(
+    "continuous optimum: n_phase1 = %s | n_phase2 = %s (cv %s, cost %s)\n",
+    format(round(x$n[["n_phase1"]])), format(round(x$n[["n_phase2"]])),
+    if (is.na(plan$cv)) "NA" else formatC(plan$cv, format = "f", digits = 4),
+    format(round(plan$cost))
+  ))
+  cat(.fmt_twophase_deff(plan))
+  cat(.fmt_twophase_assured(plan))
+
+  cat("\nStrata\n")
+  print(x$detail, row.names = FALSE)
+
   s <- x$single_phase
-  if (isTRUE(s$better)) {
+  if (!is.null(s) && is.finite(s$n)) {
     cat(sprintf(
-      "\nSingle-phase is better here: n = %s, cv = %s, cost = %s\n",
+      "\nSingle-phase comparator: n = %s, cv = %s, cost = %s\n",
       format(round(s$n)),
       if (is.na(s$cv)) "NA" else formatC(s$cv, format = "f", digits = 4),
       format(round(s$cost))
     ))
-    cat("Skip phase 1 and measure directly.\n")
-  } else if (is.finite(s$n)) {
     cat(sprintf(
-      "\nSingle-phase alternative: n = %s, cv = %s, cost = %s (two-phase wins)\n",
-      format(round(s$n)),
-      if (is.na(s$cv)) "NA" else formatC(s$cv, format = "f", digits = 4),
-      format(round(s$cost))
+      "%s, and it %s the target\n",
+      if (isTRUE(s$better)) {
+        "It is the better design here"
+      } else {
+        "Two-phase is the better design here"
+      },
+      if (isTRUE(s$reaches_target)) "reaches" else "does not reach"
     ))
   }
   invisible(x)
+}
+
+#' The single-phase comparator, as a verdict
+#'
+#' Which design to field is the whole content, so the line states it and the
+#' numbers that decide it. `summary()` carries the comparator's cost and the
+#' target it does or does not reach.
+#' @keywords internal
+#' @noRd
+.fmt_twophase_single <- function(x) {
+  s <- x$single_phase
+  if (is.null(s) || !is.finite(s$n)) {
+    return("")
+  }
+  cv <- if (is.na(s$cv)) "NA" else formatC(s$cv, format = "f", digits = 4)
+  if (isTRUE(s$better)) {
+    sprintf(
+      "single-phase is better here: n = %s at cv %s, so skip phase 1\n",
+      format(round(s$n)), cv
+    )
+  } else {
+    sprintf(
+      "single-phase alternative: n = %s at cv %s, two-phase wins\n",
+      format(round(s$n)), cv
+    )
+  }
 }
 
 #' Print and coerce design degrees of freedom
@@ -4030,23 +4239,56 @@ as.data.frame.svyplan_overlap <- function(
   )
 }
 
-#' Print, format and coerce a panel recruitment
+#' Print, summarise, format and coerce a panel recruitment
 #'
 #' Display and coercion methods for the object [n_panel()] and
-#' [prec_panel()] return. `print()` leads with the number to recruit and the
-#' responding sample it is expected to leave, then the wave-by-wave table.
+#' [prec_panel()] return. `print()` gives the number to recruit, the
+#' responding sample it is expected to leave, the precision at the target
+#' and the wave-by-wave table. `summary()` adds what the design implies
+#' around that answer: the standing sample a rotating design holds, the
+#' response and retention it assumes, where the life's loss falls, and the
+#' launch a design reaching its steady state passes through.
 #' The coercions return the recruitment count, which is a number of units to
 #' release and not the analysis sample: those differ by the whole of the
 #' panel's attrition, and it is why `svyplan_panel` is a sibling of
 #' `svyplan_n` rather than a subtype.
 #'
-#' @param x A `svyplan_panel` object.
+#' @param x A `svyplan_panel` object, or the `summary.svyplan_panel` object
+#'   `summary()` returns.
+#' @param object A `svyplan_panel` object.
 #' @param row.names,optional,stringsAsFactors,validRN Standard
 #'   `as.data.frame()` arguments.
 #' @param ... Additional arguments are not supported and produce an error.
-#' @return `print()` returns `x` invisibly; `format()` a string;
+#' @return `print()` returns its argument invisibly; `summary()` an object of
+#'   class `summary.svyplan_panel` carrying the plan, the full wave table,
+#'   the launch path and the cohort composition; `format()` a string;
 #'   `as.double()` the recruitment count and `as.integer()` the whole units
 #'   that count rounds up to; `as.data.frame()` the wave table.
+#'
+#' @examples
+#' plan <- n_panel(
+#'   n_prop(p = 0.5, moe = 0.031),
+#'   retention = c(0.878, 0.963, 0.936, 0.956),
+#'   resp_rate = 0.728
+#' )
+#' plan
+#' summary(plan)
+#'
+#' # A rotating design reaching its steady state: the launch table is the
+#' # occasions before it gets there
+#' rot <- n_panel(
+#'   n_prop(p = 0.5, moe = 0.031),
+#'   retention = c(0.878, 0.963, 0.936, 0.956),
+#'   resp_rate = 0.728,
+#'   design = "rotating",
+#'   start = "immediate"
+#' )
+#' summary(rot)$launch
+#' summary(rot)$composition
+#'
+#' as.integer(plan)
+#' as.data.frame(plan)
+#'
 #' @name print.svyplan_panel
 NULL
 
@@ -4057,29 +4299,60 @@ print.svyplan_panel <- function(x, ...) {
   k <- nrow(x$waves)
   cat(sprintf("Panel recruitment (%s, %d-wave life)\n", x$design, k))
   cat(.fmt_panel_headline(x))
-  cat(.fmt_panel_launch(x))
-  cat(.fmt_panel_rates(x))
   cat(.fmt_panel_precision(x))
-  if (!is.null(x$n_assured)) {
-    cat(sprintf(
-      "assured (%s): %s %s%s\n",
-      .fmt_prob(x$params$assurance), .fmt_count_n(ceiling(x$n_assured)),
-      if (identical(x$design, "fixed")) "issued" else "entrants per occasion",
-      # A level a finite frame cannot supply is named on the line that
-      # reports it, the number being a requirement rather than a design.
-      if (isFALSE(x$assured_feasible)) {
-        sprintf(", beyond the population of %s", .fmt_count_n(x$target$params$N))
-      } else {
-        ""
-      }
-    ))
-  }
-  cat(if (identical(x$design, "fixed")) {
-    "---\n"
+  cat(.fmt_panel_assured(x))
+  print(.fmt_panel_waves(x, brief = TRUE), row.names = FALSE, right = FALSE)
+  cat("# summary() for the launch, the loss and per-wave cv\n")
+  invisible(x)
+}
+
+#' @rdname print.svyplan_panel
+#' @export
+summary.svyplan_panel <- function(object, ...) {
+  .check_unused_dots(...)
+  shown <- .panel_shown(object)
+  structure(
+    list(
+      plan = object,
+      recruit = shown$recruit,
+      n_resp = round(shown$head),
+      n_in_sample = shown$in_sample,
+      waves = .fmt_panel_waves(object, brief = FALSE),
+      launch = .fmt_panel_launch_table(object),
+      composition = object$launch_waves
+    ),
+    class = "summary.svyplan_panel"
+  )
+}
+
+#' @rdname print.svyplan_panel
+#' @export
+print.summary.svyplan_panel <- function(x, ...) {
+  .check_unused_dots(...)
+  plan <- x$plan
+  cat(sprintf(
+    "Analysis of a panel recruitment (%s, %d-wave life)\n\n",
+    plan$design, nrow(plan$waves)
+  ))
+  cat(.fmt_panel_headline(plan))
+  cat(.fmt_panel_in_sample(plan))
+  cat(.fmt_panel_rates(plan))
+  cat(.fmt_panel_target_rate(plan))
+  cat(.fmt_panel_precision(plan))
+  cat(.fmt_panel_assured(plan))
+
+  cat(sprintf("\n%s\n", if (identical(plan$design, "fixed")) {
+    "Waves of the life"
   } else {
-    "--- (the cohorts alive at one occasion)\n"
-  })
-  print(.fmt_panel_waves(x), row.names = FALSE, right = FALSE)
+    "Waves alive at one occasion"
+  }))
+  print(x$waves, row.names = FALSE, right = FALSE)
+
+  if (!is.null(x$launch)) {
+    cat(sprintf("\nLaunch (%s)\n", plan$start))
+    print(x$launch, row.names = FALSE, right = FALSE)
+    cat("# $composition for the cohort mix at each launch occasion\n")
+  }
   invisible(x)
 }
 
@@ -4136,37 +4409,69 @@ print.svyplan_panel <- function(x, ...) {
 #' The two designs answer with different quantities, so the line names the
 #' quantity rather than printing a number a reader has to attribute. In the
 #' reverse direction the recruitment was supplied and may not reach the
-#' target, which the line says outright.
+#' target, which the line says outright: a plan that misses is a fact about
+#' the plan and not a detail, so it stays on the printed line.
 #' @keywords internal
 #' @noRd
 .fmt_panel_headline <- function(x) {
   shown <- .panel_shown(x)
   where <- if (identical(x$design, "fixed")) {
-    sprintf("at wave %d", x$target_wave)
+    sprintf(" at wave %d", x$target_wave)
   } else {
-    sprintf("per occasion, pooled over %d cohorts", x$n_cohorts)
+    sprintf(", pooled over %d cohorts", x$n_cohorts)
   }
   lead <- if (identical(x$design, "fixed")) {
-    sprintf("issue %s to hold", .fmt_count_n(shown$recruit))
+    sprintf("issued: %s", .fmt_count_n(shown$recruit))
   } else {
-    sprintf("%s entrants per occasion to hold", .fmt_count_n(shown$recruit))
+    sprintf("entrants: %s per occasion", .fmt_count_n(shown$recruit))
   }
   need <- ceiling(x$n_target)
-  out <- sprintf(
-    "%s %s responding %s%s\n", lead, .fmt_count_n(round(shown$head)), where,
+  sprintf(
+    "%s -> %s responding%s%s\n", lead, .fmt_count_n(round(shown$head)), where,
     if (round(shown$head) < need) {
       sprintf(", short of the %s the target needs", .fmt_count_n(need))
     } else {
       ""
     }
   )
-  if (identical(x$design, "rotating")) {
-    out <- paste0(out, sprintf(
-      "%s in sample across %d live cohorts\n",
-      .fmt_count_n(shown$in_sample), x$n_cohorts
-    ))
+}
+
+#' Name the standing sample a rotating design carries
+#'
+#' The entrants are the release and the live cohorts are what stands behind
+#' them; only a rotating design has the second quantity.
+#' @keywords internal
+#' @noRd
+.fmt_panel_in_sample <- function(x) {
+  if (!identical(x$design, "rotating")) {
+    return("")
   }
-  out
+  sprintf(
+    "in sample: %s across %d live cohorts\n",
+    .fmt_count_n(.panel_shown(x)$in_sample), x$n_cohorts
+  )
+}
+
+#' Report an assurance only where one was asked for
+#'
+#' A level a finite frame cannot supply is named on the line that reports
+#' it, the number being a requirement rather than a design.
+#' @keywords internal
+#' @noRd
+.fmt_panel_assured <- function(x) {
+  if (is.null(x$n_assured)) {
+    return("")
+  }
+  sprintf(
+    "assured (%s): %s %s%s\n",
+    .fmt_prob(x$params$assurance), .fmt_count_n(ceiling(x$n_assured)),
+    if (identical(x$design, "fixed")) "issued" else "entrants per occasion",
+    if (isFALSE(x$assured_feasible)) {
+      sprintf(", beyond the population of %s", .fmt_count_n(x$target$params$N))
+    } else {
+      ""
+    }
+  )
 }
 
 #' @keywords internal
@@ -4183,11 +4488,28 @@ print.svyplan_panel <- function(x, ...) {
   loss_txt <- if (is.na(share)) {
     "no loss over the life"
   } else {
-    sprintf("%.0f%% of the life's loss at wave 1", 100 * share)
+    sprintf("%.0f%% of the loss at wave 1", 100 * share)
   }
   sprintf(
-    "recruitment response %.3g, retention %s (%s)\n",
+    "rates: response %.3g, retention %s (%s)\n",
     x$params$resp_rate, ret_txt, loss_txt
+  )
+}
+
+#' Name the response rate the plan did not use
+#'
+#' The warning at the call is gone by the time anyone reads the object, so
+#' the disclosure travels with it. Same condition, from the same helper.
+#' @keywords internal
+#' @noRd
+.fmt_panel_target_rate <- function(x) {
+  rr <- .panel_rate_conflict(x$target$params$resp_rate, x$params$resp_rate)
+  if (is.null(rr)) {
+    return("")
+  }
+  sprintf(
+    "target: response %.3g removed, requirement %s responding\n",
+    rr, .fmt_count_n(round(x$n_target))
   )
 }
 
@@ -4201,22 +4523,69 @@ print.svyplan_panel <- function(x, ...) {
   )
 }
 
+#' The wave table at two widths
+#'
+#' `brief` is what `print()` shows: the retention that produced each wave,
+#' the units left and the precision they buy. The cumulative `q`, the cv and
+#' the expected cases are all derivable from those, so they belong to
+#' `summary()`.
 #' @keywords internal
 #' @noRd
-.fmt_panel_waves <- function(x) {
+.fmt_panel_waves <- function(x, brief = FALSE) {
   w <- x$waves
   out <- data.frame(
     wave = w$wave,
     retention = ifelse(is.na(w$retention), "", sprintf("%.3g", w$retention)),
-    q = sprintf("%.4g", w$q),
     n_resp = format(round(.panel_shown(x)$wave)),
     se = sprintf("%.4g", w$se),
     moe = sprintf("%.4g", w$moe),
     stringsAsFactors = FALSE
   )
+  if (brief) {
+    return(out)
+  }
+  out <- cbind(
+    out[c("wave", "retention")],
+    q = sprintf("%.4g", w$q),
+    loss = ifelse(is.na(w$loss_share), "", sprintf("%.3g", w$loss_share)),
+    out[c("n_resp", "se", "moe")],
+    stringsAsFactors = FALSE
+  )
   if (!all(is.na(w$cv))) {
     out$cv <- sprintf("%.3g", w$cv)
   }
+  if (!is.null(w$expected_cases)) {
+    scale <- .panel_shown(x)$recruit / .panel_recruit(x)
+    out$cases <- format(round(w$expected_cases * scale))
+  }
+  out
+}
+
+#' The launch path as a table, on the display path
+#'
+#' Every count is scaled by the same whole-unit factor the wave table uses,
+#' so the occasion that settles reports the sample the headline promises.
+#' @keywords internal
+#' @noRd
+.fmt_panel_launch_table <- function(x) {
+  if (is.null(x$launch)) {
+    return(NULL)
+  }
+  scale <- .panel_shown(x)$recruit / .panel_recruit(x)
+  l <- x$launch
+  out <- data.frame(
+    occasion = l$period,
+    entrants = format(round(l$n_entrants * scale)),
+    in_sample = format(round(l$n_in_sample * scale)),
+    n_resp = format(round(l$n_resp * scale)),
+    se = sprintf("%.4g", l$se),
+    moe = sprintf("%.4g", l$moe),
+    stringsAsFactors = FALSE
+  )
+  if (!all(is.na(l$cv))) {
+    out$cv <- sprintf("%.3g", l$cv)
+  }
+  out$steady <- l$steady_state
   out
 }
 

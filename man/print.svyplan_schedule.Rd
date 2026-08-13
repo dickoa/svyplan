@@ -2,14 +2,20 @@
 % Please edit documentation in R/design_schedule.R
 \name{print.svyplan_schedule}
 \alias{print.svyplan_schedule}
+\alias{summary.svyplan_schedule}
+\alias{print.summary.svyplan_schedule}
 \alias{format.svyplan_schedule}
 \alias{as.data.frame.svyplan_schedule}
 \alias{$<-.svyplan_schedule}
 \alias{[<-.svyplan_schedule}
 \alias{[[<-.svyplan_schedule}
-\title{Print and coerce a longitudinal design schedule}
+\title{Print, summarise and coerce a longitudinal design schedule}
 \usage{
 \method{print}{svyplan_schedule}(x, ...)
+
+\method{summary}{svyplan_schedule}(object, ...)
+
+\method{print}{summary.svyplan_schedule}(x, ...)
 
 \method{format}{svyplan_schedule}(x, ...)
 
@@ -29,9 +35,12 @@
 \method{[[}{svyplan_schedule}(x, i) <- value
 }
 \arguments{
-\item{x}{An \code{svyplan_schedule}.}
+\item{x}{An \code{svyplan_schedule}, or the \code{summary.svyplan_schedule} object
+\code{summary()} returns.}
 
 \item{...}{Additional arguments are not supported and produce an error.}
+
+\item{object}{An \code{svyplan_schedule}.}
 
 \item{row.names, optional, stringsAsFactors, validRN}{Standard
 \code{\link[=as.data.frame]{as.data.frame()}} arguments.}
@@ -41,8 +50,10 @@
 reconciliation within the schedule object.}
 }
 \value{
-\code{print()} returns \code{x} invisibly, \code{format()} returns one descriptive
-string, and \code{as.data.frame()} returns the issue profile.
+\code{print()} returns its argument invisibly, \code{summary()} an object of
+class \code{summary.svyplan_schedule} carrying the schedule and its four
+tables, \code{format()} one descriptive string, and \code{as.data.frame()} the
+issue profile.
 
 Direct field and table replacement with \verb{$<-}, \verb{[[<-}, or \verb{[<-} is refused
 because the metadata and tables describe one reconciled design. Recompute
@@ -50,7 +61,11 @@ with \code{\link[=design_schedule]{design_schedule()}} to change the plan, or ex
 modify a plain data frame.
 }
 \description{
-\code{print()} and \code{\link[=as.data.frame]{as.data.frame()}} lead with the issue profile by occasion.
-Component activity and post-horizon commitments remain available as
-\verb{$schedule} and \verb{$tail_commitments}.
+\code{print()} states the issue profile as a run of takes rather than as one
+row per occasion, because a schedule's occasions are mostly identical and
+its length is set by the reporting horizon rather than by the design.
+\code{summary()} gives the occasion-by-occasion tables: the issue profile in
+full, the component activity, the overlap the rotation produces, and the
+interviews owed after the horizon. \code{\link[=as.data.frame]{as.data.frame()}} returns the issue
+profile, and every table stays reachable as a field.
 }

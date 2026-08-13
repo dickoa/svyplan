@@ -436,12 +436,49 @@ test_that("print shows allocation label", {
   res_ney <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf",
                            alloc = "neyman")
   out_ney <- capture.output(print(res_ney))
-  expect_true(any(grepl("Allocation: neyman", out_ney)))
+  expect_true(any(grepl("allocation: neyman", out_ney)))
 
   res_pow <- strata_bound(x_lnorm, n_strata = 3, n = 200, method = "cumrootf",
                            alloc = "power", alloc_q =0.3)
   out_pow <- capture.output(print(res_pow))
   expect_true(any(grepl("power \\(alloc_q = 0\\.30\\)", out_pow)))
+})
+
+test_that("print is the header the table does not already carry", {
+  res <- strata_bound(x_lnorm, n_strata = 4, n = 100)
+  out <- capture.output(print(res))
+  # Two header lines and one row per stratum, plus the column names.
+  expect_length(out, 2L + 1L + 4L)
+  expect_lt(max(nchar(out)), 80L)
+  # The cut points are the lower/upper columns; naming them again above the
+  # table invites a reader to look for a difference that is not there.
+  expect_false(any(grepl("^Boundaries:", out)))
+  expect_false(any(grepl("^---$", out)))
+  # Convergence reads as part of the method that searched for the boundaries.
+  expect_match(out[1L], "coordinate search, 4 strata, converged\\)$")
+  expect_false(any(grepl("^Converged:", out)))
+})
+
+test_that("a non-iterative method claims no convergence either way", {
+  # `converged` is NA for cumrootf, and an unmeasured fact must not print as
+  # "not converged": isFALSE(NA) is FALSE, which is what keeps it silent.
+  res <- strata_bound(x_lnorm, n_strata = 4, method = "cumrootf", n = 100)
+  expect_true(is.na(res$converged))
+  out <- capture.output(print(res))
+  expect_match(out[1L], "\\(Dalenius-Hodges, 4 strata\\)$")
+  expect_false(any(grepl("converged", out, ignore.case = TRUE)))
+})
+
+test_that("boundaries print at reading precision, never in exponent form", {
+  # The frame reaches 3e4 here, which is where a %g format would switch.
+  res <- strata_bound(x_lnorm, n_strata = 4, n = 100)
+  out <- capture.output(print(res))
+  expect_false(any(grepl("e\\+", out)))
+  expect_identical(.fmt_boundary(c(8.634646, 428.413168, 30184.6939)),
+                   c("8.6346", "428.41", "30185"))
+  # Formatted one at a time: a shared format pads every cut point to the
+  # widest one's decimals.
+  expect_identical(.fmt_boundary(c(1.5, 1000)), c("1.5", "1000"))
 })
 
 test_that("alloc field stores method name for all methods", {

@@ -119,11 +119,77 @@ test_that("a target's resp_rate is removed exactly, not approximately", {
   )
   for (nm in names(cases)) {
     full <- n_panel(cases[[nm]][[1L]], retention = ret, resp_rate = 0.8)
-    netted <- n_panel(cases[[nm]][[2L]], retention = ret, resp_rate = 0.8)
+    # 0.7 against the panel's 0.8 is the disagreement that gets reported.
+    expect_warning(
+      netted <- n_panel(cases[[nm]][[2L]], retention = ret, resp_rate = 0.8),
+      "response rate 0.7 is not used"
+    )
     expect_equal(netted$n_issued, full$n_issued, tolerance = 1e-12,
                  info = nm)
     expect_equal(netted$moe, full$moe, tolerance = 1e-12, info = nm)
   }
+})
+
+test_that("a response rate the panel does not use is reported, once named", {
+  ret <- c(0.9, 0.85)
+  # Two different recruitment responses named, only one used.
+  expect_warning(
+    plan <- n_panel(n_prop(p = 0.3, moe = 0.03, resp_rate = 0.5),
+                    retention = ret, resp_rate = 0.8),
+    "the target's own response rate 0.5 is not used"
+  )
+  # The panel's own rate is named too, so the message says which one won.
+  expect_warning(
+    n_panel(n_prop(p = 0.3, moe = 0.03, resp_rate = 0.5),
+            retention = ret, resp_rate = 0.8),
+    "'resp_rate' \\(0.8\\) at wave 1"
+  )
+  # A default resp_rate of 1 is still a rate the target's does not survive.
+  expect_warning(
+    n_panel(n_prop(p = 0.3, moe = 0.03, resp_rate = 0.7), retention = ret),
+    "is not used"
+  )
+  # The other direction shares the assembly, so it shares the report.
+  expect_warning(
+    prec_panel(1000, n_prop(p = 0.3, moe = 0.03, resp_rate = 0.5),
+               retention = ret, resp_rate = 0.8),
+    "is not used"
+  )
+  # The warning is gone by the time the object is read, so summary() carries
+  # it. print() does not: the plan itself is correct.
+  sm <- capture.output(print(summary(plan)))
+  expect_true(any(grepl("^target: response 0.5 removed, requirement [0-9]+ responding$",
+                        sm)))
+  expect_false(any(grepl("^target:", capture.output(print(plan)))))
+})
+
+test_that("a response rate the panel agrees with is not reported", {
+  ret <- c(0.9, 0.85)
+  # The panel removes 0.8 and re-applies 0.8 at wave 1: nothing to say.
+  expect_silent(
+    plan <- n_panel(n_prop(p = 0.3, moe = 0.03, resp_rate = 0.8),
+                    retention = ret, resp_rate = 0.8)
+  )
+  expect_false(any(grepl("^target:", capture.output(print(summary(plan))))))
+  # A target with no rate of its own, and one that states the null rate.
+  expect_silent(
+    n_panel(n_prop(p = 0.3, moe = 0.03), retention = ret, resp_rate = 0.8)
+  )
+  expect_silent(
+    n_panel(n_prop(p = 0.3, moe = 0.03, resp_rate = 1), retention = ret,
+            resp_rate = 0.8)
+  )
+})
+
+test_that("the warning and the disclosure cannot drift apart", {
+  # One helper decides both, so every pair of rates agrees on whether it is
+  # a conflict, including the floating-point near-misses.
+  expect_null(.panel_rate_conflict(NULL, 0.8))
+  expect_null(.panel_rate_conflict(1, 0.8))
+  expect_null(.panel_rate_conflict(0.8, 0.8))
+  expect_null(.panel_rate_conflict(0.1 + 0.7, 0.8))
+  expect_equal(.panel_rate_conflict(0.5, 0.8), 0.5)
+  expect_equal(.panel_rate_conflict(0.7, 1), 0.7)
 })
 
 test_that("a min_cases target keeps its floor at the target wave", {
@@ -596,19 +662,80 @@ test_that("print leads with the recruitment and what it holds", {
                   assurance = 0.95)
   out <- capture.output(print(plan))
   expect_match(out[1L], "fixed, 5-wave life")
-  expect_match(out[2L], "^issue 1816 to hold 1000 responding at wave 5$")
-  expect_true(any(grepl("61% of the life's loss at wave 1", out, fixed = TRUE)))
+  expect_match(out[2L], "^issued: 1816 -> 1000 responding at wave 5$")
   expect_true(any(grepl("assured \\(0.95\\)", out)))
   expect_length(grep("^ *[1-5] ", out), 5L)
 })
 
-test_that("print names the entrants and the launch separately", {
+test_that("print carries the answer and nothing that is derived from it", {
+  # The rates, the standing sample and the launch are all implied by the
+  # recruitment and the table, so they belong to summary() and the printed
+  # block stays the size of the answer.
+  plan <- n_panel(lfs_target, retention = lfs_ret, resp_rate = lfs_rr,
+                  design = "rotating", start = "immediate")
+  out <- capture.output(print(plan))
+  expect_length(out, 10L)
+  expect_false(any(grepl("loss at wave 1", out, fixed = TRUE)))
+  expect_false(any(grepl("in sample:", out, fixed = TRUE)))
+  expect_false(any(grepl("launch (immediate)", out, fixed = TRUE)))
+  # The brief table drops the cumulative rate and the cv it implies.
+  expect_match(out[4L], "^ wave retention n_resp se +moe *$")
+  expect_identical(out[length(out)],
+                   "# summary() for the launch, the loss and per-wave cv")
+})
+
+test_that("print names the entrants and summary the standing sample", {
   rot <- n_panel(lfs_target, retention = lfs_ret, resp_rate = lfs_rr,
                  design = "rotating")
   out <- capture.output(print(rot))
-  expect_match(out[2L], "^322 entrants per occasion")
-  expect_match(out[3L], "^1610 in sample across 5 live cohorts$")
-  expect_true(any(grepl("cohorts alive at one occasion", out)))
+  expect_match(out[2L],
+               "^entrants: 322 per occasion -> .* pooled over 5 cohorts$")
+  sm <- capture.output(print(summary(rot)))
+  expect_true(any(grepl("^in sample: 1610 across 5 live cohorts$", sm)))
+  expect_true(any(grepl("Waves alive at one occasion", sm, fixed = TRUE)))
+  expect_true(any(grepl("61% of the loss at wave 1", sm, fixed = TRUE)))
+})
+
+test_that("summary carries the launch and the cohort composition", {
+  rot <- n_panel(lfs_target, retention = lfs_ret, resp_rate = lfs_rr,
+                 design = "rotating", start = "immediate")
+  sm <- summary(rot)
+  expect_s3_class(sm, "summary.svyplan_panel")
+  expect_identical(sm$plan, rot)
+  expect_identical(nrow(sm$launch), nrow(rot$launch))
+  expect_identical(sm$composition, rot$launch_waves)
+  expect_true(any(grepl("Launch \\(immediate\\)",
+                        capture.output(print(sm)))))
+  # A fixed design has no steady state to reach, so it has no launch table.
+  fixed <- summary(n_panel(lfs_target, retention = lfs_ret,
+                           resp_rate = lfs_rr))
+  expect_null(fixed$launch)
+  expect_null(fixed$composition)
+  expect_false(any(grepl("Launch", capture.output(print(fixed)))))
+})
+
+test_that("summary counts agree with the counts print shows", {
+  # Both blocks are on the whole-unit display path, so a reader cannot see
+  # two different recruitments for one plan.
+  for (design in c("fixed", "rotating")) {
+    plan <- n_panel(lfs_target, retention = lfs_ret, resp_rate = lfs_rr,
+                    design = design)
+    sm <- summary(plan)
+    expect_identical(sm$recruit, ceiling(as.double(plan)))
+    brief <- svyplan:::.fmt_panel_waves(plan, brief = TRUE)
+    expect_identical(sm$waves[names(brief)], brief)
+  }
+  # The expected cases sit on that same path, not on the continuous one, and
+  # only a proportion has them at all.
+  prop <- n_panel(n_prop(p = 0.5, moe = 0.031), retention = lfs_ret,
+                  resp_rate = lfs_rr)
+  sm <- summary(prop)
+  expect_identical(sm$waves$cases,
+                   format(round(prop$waves$expected_cases *
+                                  sm$recruit / as.double(prop))))
+  expect_null(summary(
+    n_panel(lfs_target, retention = lfs_ret, resp_rate = lfs_rr)
+  )$waves$cases)
 })
 
 test_that("a recruitment short of the target says so", {
@@ -687,8 +814,12 @@ test_that("start = NULL is inert", {
   expect_equal(a$n_resp, b$n_resp, tolerance = 1e-12)
   expect_equal(a$moe, b$moe, tolerance = 1e-12)
   expect_equal(a$waves, b$waves)
-  expect_false(any(grepl("launch", capture.output(print(a)))))
-  expect_true(any(grepl("launch \\(immediate\\)", capture.output(print(b)))))
+  # The launch reads in summary(), so that is where its absence shows too.
+  expect_false(any(grepl("Launch", capture.output(print(summary(a))))))
+  expect_true(any(grepl("Launch \\(immediate\\)",
+                        capture.output(print(summary(b))))))
+  # Neither prints a launch line: print() carries the plan, not its approach.
+  expect_identical(capture.output(print(a)), capture.output(print(b)))
 })
 
 test_that("the immediate launch follows the closed form", {

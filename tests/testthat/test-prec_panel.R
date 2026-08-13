@@ -191,7 +191,12 @@ test_that("the panel applies no response rate of its own on top of attrition", {
   # The losses are already in the wave counts, so a second inflation would
   # count response twice.
   target <- n_mean(var = 100, moe = 2, resp_rate = 0.5)
-  plan <- n_panel(target, retention = 0.9, resp_rate = 0.8)
+  # Naming 0.5 here and 0.8 on the panel is exactly the pair that is
+  # reported: only the panel's reaches the answer.
+  expect_warning(
+    plan <- n_panel(target, retention = 0.9, resp_rate = 0.8),
+    "response rate 0.5 is not used"
+  )
   expect_equal(
     plan$se,
     prec_mean(var = 100, n = plan$n_resp)$se,

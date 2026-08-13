@@ -21,7 +21,10 @@ proportion, from \code{\link[=n_mean]{n_mean()}}, \code{\link[=n_prop]{n_prop()}
 \code{\link[=prec_prop]{prec_prop()}}. It supplies two things: the responding sample the panel
 must deliver, and the estimand whose precision is reported at every
 wave. Its own \code{resp_rate} is removed first, so the requirement is a
-count of respondents and no response is counted twice. Clustered,
+count of respondents and no response is counted twice: the panel's
+\code{resp_rate} is the only recruitment response that reaches the answer.
+Where the two differ the target's is reported as unused, at the call
+and again in \code{summary()}. Clustered,
 allocation, multi-indicator, multi-domain, change and two-phase results
 are refused, their stage-specific and occasion-specific sizes not being
 one responding count.}

@@ -5,6 +5,36 @@
 * `design_schedule()` turns a rotating panel plan into a versioned operational
   schedule with explicit startup, intake, horizon, overlap, and tail
   commitments. This is the first release that exports the constructor.
+* Panel recruitments print as the answer alone: the recruitment, the responding
+  sample it leaves, the precision at the target, and the retention and
+  precision of each wave. A recruitment that falls short of its target, and an
+  assurance level that a finite frame cannot supply, stay on the printed block
+  because both are facts about the plan. Their new `summary()` method carries
+  what the answer rests on: the response and retention assumed, the share of
+  the life's loss at each wave, the cumulative survival, the cv and expected
+  cases per wave, the standing sample a rotating design holds across its live
+  cohorts, and the launch path and cohort composition of a design reaching its
+  steady state.
+* A longitudinal design schedule prints its issue profile as the runs it is
+  made of, so the block is the same size whatever reporting horizon it covers.
+  Its new `summary()` method gives the occasion-by-occasion tables: the issue
+  profile in full, component activity, the overlap the rotation produces, and
+  the interviews owed after the horizon.
+* Two-phase allocations print the design as it would be fielded, every count
+  being a whole unit off the operational solution: the two phase sizes, the
+  precision and cost they buy, the per-stratum subsampling fractions, and
+  which of the two designs to run. Their new `summary()` method sets the
+  continuous optimum beside the fielded one and gives the single-phase
+  comparator with its cost and whether it reaches the target.
+* Strata boundaries print at reading precision, with the search method and its
+  convergence named together and the allocation on the line that reports the
+  size the boundaries were built for.
+* A panel target carrying its own response rate has that rate removed, so the
+  requirement it states is a count of respondents and the panel's `resp_rate`
+  is the only recruitment response reaching the answer. Where the two rates
+  differ, the target's is reported as unused at the call and again in
+  `summary()`, naming the rate that was applied and the responding
+  requirement that was read. Where they agree, nothing is reported.
 
 # svyplan 0.11.0
 

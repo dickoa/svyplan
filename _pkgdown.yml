@@ -88,6 +88,7 @@ reference:
   - print.svyplan_panel
   - print.svyplan_schedule
   - summary.svyplan_alloc
+  - summary.svyplan_twophase
 
 - title: Predict methods
   desc: Grid exploration for svyplan objects.
