@@ -36,7 +36,7 @@
 #' size. Boundary cutpoints remain available in `$boundaries`.
 #'
 #' `as.data.frame()` returns the tabular form of a result, intended as
-#' the stable handoff to downstream packages (e.g. samplyr). For
+#' the stable handoff to downstream packages (e.g. `samplyr`). For
 #' `svyplan_n`: the stratum allocation table (`$detail`) for
 #' `n_alloc()` results, the per-domain table (`$domains`, falling back
 #' to `$detail`) for `n_multi()` results, and a one-row summary
@@ -78,22 +78,28 @@ NULL
 #' @keywords internal
 #' @noRd
 .print_stage_rates <- function(p) {
-  rates <- c(resp_rate_psu = p$resp_rate_psu %||% 1,
-             resp_rate_ssu = p$resp_rate_ssu %||% 1,
-             resp_rate = p$resp_rate %||% 1)
+  rates <- c(
+    resp_rate_psu = p$resp_rate_psu %||% 1,
+    resp_rate_ssu = p$resp_rate_ssu %||% 1,
+    resp_rate = p$resp_rate %||% 1
+  )
   set <- rates[rates < 1]
   if (length(set) == 0L) {
     return(invisible(NULL))
   }
-  cat(sprintf("(%s)\n", paste(sprintf("%s = %.2f", names(set), set),
-                              collapse = ", ")))
+  cat(sprintf(
+    "(%s)\n",
+    paste(sprintf("%s = %.2f", names(set), set), collapse = ", ")
+  ))
   invisible(NULL)
 }
 
 #' @keywords internal
 #' @noRd
 .fmt_deff <- function(deff) {
-  if (is.null(deff)) return(NULL)
+  if (is.null(deff)) {
+    return(NULL)
+  }
   if (isTRUE(all.equal(unname(deff), rep(1, length(deff))))) {
     "deff = 1"
   } else {
@@ -128,7 +134,9 @@ NULL
 #' @noRd
 .fmt_by_stratum <- function(x, fmt) {
   u <- unique(x)
-  if (length(u) == 1L) return(sprintf(fmt, u))
+  if (length(u) == 1L) {
+    return(sprintf(fmt, u))
+  }
   sprintf(paste0(fmt, " to ", fmt, " by stratum"), min(x), max(x))
 }
 
@@ -169,7 +177,9 @@ print.svyplan_n <- function(x, ...) {
   cat(sprintf(" (%s)\n", paste(parts, collapse = ", ")))
   cat(.fmt_lag_overlap(p))
   cat(sprintf("se = %.4g, moe = %.4g", x$se, x$moe))
-  if (!is.na(x$cv)) cat(sprintf(", cv = %.4g", x$cv))
+  if (!is.na(x$cv)) {
+    cat(sprintf(", cv = %.4g", x$cv))
+  }
   if (!is.null(x$rmoe) && !is.na(x$rmoe)) {
     cat(sprintf(", rmoe = %.4g", x$rmoe))
   }
@@ -211,7 +221,9 @@ print.svyplan_n <- function(x, ...) {
   reach <- max(which(ov > 0))
   sprintf(
     "overlap = %.3g, overlap_cor = %.3g at lag 1, shared out to lag %d\n",
-    ov[1L], rho[1L], reach
+    ov[1L],
+    rho[1L],
+    reach
   )
 }
 
@@ -254,18 +266,22 @@ print.svyplan_n <- function(x, ...) {
     out <- sprintf("n = %s per occasion", .fmt_count_n(ceiling(n)))
     if (net) {
       out <- sprintf(
-        "%s (net: %s)", out, .fmt_count_n(ceiling(n * resp_rate))
+        "%s (net: %s)",
+        out,
+        .fmt_count_n(ceiling(n * resp_rate))
       )
     }
     return(out)
   }
   out <- sprintf(
     "n = %s then %s",
-    .fmt_count_n(ceiling(n[1L])), .fmt_count_n(ceiling(n[2L]))
+    .fmt_count_n(ceiling(n[1L])),
+    .fmt_count_n(ceiling(n[2L]))
   )
   if (net) {
     out <- sprintf(
-      "%s (net: %s then %s)", out,
+      "%s (net: %s then %s)",
+      out,
       .fmt_count_n(ceiling(n[1L] * resp_rate)),
       .fmt_count_n(ceiling(n[2L] * resp_rate))
     )
@@ -302,7 +318,9 @@ print.svyplan_n <- function(x, ...) {
   }
   sprintf(
     "overlap = %.3g, overlap_cor = %.3g (%.1f%% of the independent variance)\n",
-    overlap, overlap_cor, 100 * .change_var_share(p)
+    overlap,
+    overlap_cor,
+    100 * .change_var_share(p)
   )
 }
 
@@ -319,7 +337,9 @@ print.svyplan_n <- function(x, ...) {
     (if (length(p$n) == 2L) p$n[1L] / p$n[2L] else 1)
   base <- v[1L] / ratio + v[2L]
   cross <- 2 * p$overlap * p$overlap_cor * sqrt(v[1L] * v[2L])
-  if (base <= 0) return(NA_real_)
+  if (base <= 0) {
+    return(NA_real_)
+  }
   max(0, base - cross) / base
 }
 
@@ -335,7 +355,8 @@ print.svyplan_n <- function(x, ...) {
     net_n <- ceiling(x$n * resp_rate)
     cat(sprintf(
       "n = %s gross (net: %s)",
-      .fmt_count_n(ceiling(x$n)), .fmt_count_n(net_n)
+      .fmt_count_n(ceiling(x$n)),
+      .fmt_count_n(net_n)
     ))
   } else {
     cat(sprintf("n = %s", .fmt_count_n(ceiling(x$n))))
@@ -454,19 +475,22 @@ print.svyplan_n <- function(x, ...) {
     if (!is.null(x$n_domain_max)) {
       cat(sprintf(
         "Largest single domain = %s (binding: %s)\n",
-        .fmt_count_n(ceiling(x$n_domain_max)), x$binding
+        .fmt_count_n(ceiling(x$n_domain_max)),
+        x$binding
       ))
     }
-    cat("---\n")
+    cat("\n")
     dom <- x$domains
     dom$.n <- ceiling(dom$.n)
     print(dom, row.names = FALSE, right = FALSE)
   } else {
     cat(sprintf("Multi-indicator sample size\n"))
     cat(sprintf(
-      "n = %s (binding: %s)\n", .fmt_count_n(ceiling(x$n)), x$binding
+      "n = %s (binding: %s)\n",
+      .fmt_count_n(ceiling(x$n)),
+      x$binding
     ))
-    cat("---\n")
+    cat("\n")
     d <- x$detail
     d$.n <- ceiling(d$.n)
     d$.binding <- ifelse(d$.binding, "*", "")
@@ -509,12 +533,14 @@ print.svyplan_cluster <- function(x, ...) {
   # Every stage's loss removes observations from the same total, so the net
   # figure reads their product.
   resp_rate <- (x$params$resp_rate_psu %||% 1) *
-    (x$params$resp_rate_ssu %||% 1) * (x$params$resp_rate %||% 1)
+    (x$params$resp_rate_ssu %||% 1) *
+    (x$params$resp_rate %||% 1)
   if (resp_rate < 1) {
     net_total <- ceiling(total_display * resp_rate)
     cat(sprintf(
       " -> total n = %s (net: %s)\n",
-      .fmt_count_n(total_display), .fmt_count_n(net_total)
+      .fmt_count_n(total_display),
+      .fmt_count_n(net_total)
     ))
   } else {
     cat(sprintf(" -> total n = %s\n", .fmt_count_n(total_display)))
@@ -524,8 +550,7 @@ print.svyplan_cluster <- function(x, ...) {
   op_cv <- if (!is.null(op)) op$cv else x$cv
   op_cost <- if (!is.null(op)) op$cost else x$cost
   if (!is.null(fc) && fc > 0) {
-    cat(sprintf("cv = %.4f, cost = %.0f (fixed: %.0f)\n",
-                op_cv, op_cost, fc))
+    cat(sprintf("cv = %.4f, cost = %.0f (fixed: %.0f)\n", op_cv, op_cost, fc))
   } else {
     cat(sprintf("cv = %.4f, cost = %.0f\n", op_cv, op_cost))
   }
@@ -538,7 +563,9 @@ print.svyplan_cluster <- function(x, ...) {
   )
   cat(sprintf(
     "continuous optimum: %s (cv = %.4f, cost = %.0f)\n",
-    paste(cont_parts, collapse = " | "), x$cv, x$cost
+    paste(cont_parts, collapse = " | "),
+    x$cv,
+    x$cost
   ))
   .print_design_df(x)
 
@@ -564,7 +591,6 @@ print.svyplan_cluster <- function(x, ...) {
       joint_label,
       min_n_label
     ))
-    cat("---\n")
     dom <- x$domains
     stage_cols <- names(x$n)
     for (col in stage_cols) {
@@ -588,11 +614,13 @@ print.svyplan_cluster <- function(x, ...) {
     } else {
       cat(sprintf(
         "Total n = %s (unrounded: %s)\n",
-        .fmt_count_n(sum(dom$.total_n)), unrounded
+        .fmt_count_n(sum(dom$.total_n)),
+        unrounded
       ))
     }
     dom$.cv <- sprintf("%.4f", dom$.cv)
     dom$.cost <- sprintf("%.0f", dom$.cost)
+    cat("\n")
     print(dom, row.names = FALSE, right = FALSE)
   } else {
     cat(sprintf("Multi-indicator optimal allocation (%d-stage)\n", x$stages))
@@ -619,12 +647,17 @@ print.svyplan_cluster <- function(x, ...) {
     if (!is.null(fc) && fc > 0) {
       cat(sprintf(
         "worst cv = %.4f, cost = %.0f (fixed: %.0f, binding: %s)\n",
-        op_cv, op_cost, fc, x$binding
+        op_cv,
+        op_cost,
+        fc,
+        x$binding
       ))
     } else {
       cat(sprintf(
         "worst cv = %.4f, cost = %.0f (binding: %s)\n",
-        op_cv, op_cost, x$binding
+        op_cv,
+        op_cost,
+        x$binding
       ))
     }
     cont_parts <- vapply(
@@ -636,9 +669,11 @@ print.svyplan_cluster <- function(x, ...) {
     )
     cat(sprintf(
       "continuous optimum: %s (cv = %.4f, cost = %.0f)\n",
-      paste(cont_parts, collapse = " | "), x$cv, x$cost
+      paste(cont_parts, collapse = " | "),
+      x$cv,
+      x$cost
     ))
-    cat("---\n")
+    cat("\n")
     d <- x$detail
     d$.cv_achieved <- sprintf("%.4f", d$.cv_achieved)
     d$.binding <- ifelse(d$.binding, "*", "")
@@ -669,7 +704,8 @@ print.svyplan_prec <- function(x, ...) {
 .print_pooled_prec <- function(x) {
   p <- x$params
   cat(sprintf(
-    "Sampling precision for pooled estimate (%s)\n", .pooled_scale_label(p)
+    "Sampling precision for pooled estimate (%s)\n",
+    .pooled_scale_label(p)
   ))
   cat(sprintf("n = %s per occasion", .fmt_count_n(ceiling(p$n))))
   if (!is.null(p$resp_rate) && p$resp_rate < 1) {
@@ -680,7 +716,9 @@ print.svyplan_prec <- function(x, ...) {
   cat(sprintf(" (%s)\n", paste(parts, collapse = ", ")))
   cat(.fmt_lag_overlap(p))
   cat(sprintf("se = %.4g, moe = %.4g", x$se, x$moe))
-  if (!is.na(x$cv)) cat(sprintf(", cv = %.4g", x$cv))
+  if (!is.na(x$cv)) {
+    cat(sprintf(", cv = %.4g", x$cv))
+  }
   if (!is.null(x$rmoe) && !is.na(x$rmoe)) {
     cat(sprintf(", rmoe = %.4g", x$rmoe))
   }
@@ -697,7 +735,9 @@ print.svyplan_prec <- function(x, ...) {
   cat(sprintf(" (%s)\n", paste(parts, collapse = ", ")))
   cat(.fmt_overlap(p))
   cat(sprintf("se = %.4g, moe = %.4g", x$se, x$moe))
-  if (!is.na(x$cv)) cat(sprintf(", cv = %.4g", x$cv))
+  if (!is.na(x$cv)) {
+    cat(sprintf(", cv = %.4g", x$cv))
+  }
   if (!is.null(x$rmoe) && !is.na(x$rmoe)) {
     cat(sprintf(", rmoe = %.4g", x$rmoe))
   }
@@ -736,7 +776,10 @@ print.svyplan_prec <- function(x, ...) {
     cat(sprintf(" -> total n = %s", .fmt_count_n(total_display)))
     resp_rate <- p$resp_rate_psu
     if (!is.null(resp_rate) && resp_rate < 1) {
-      cat(sprintf(" (net: %s)", .fmt_count_n(ceiling(total_display * resp_rate))))
+      cat(sprintf(
+        " (net: %s)",
+        .fmt_count_n(ceiling(total_display * resp_rate))
+      ))
     }
     cat("\n")
   } else {
@@ -750,27 +793,36 @@ print.svyplan_prec <- function(x, ...) {
     # An allocation carries one supplied n per stratum. It may be fractional,
     # so report that allocation exactly rather than ceiling each row into a
     # different design.
-    n_display <- if (identical(x$type, "alloc")) sum(p$n) else
-      sum(ceiling(p$n))
-    cat(sprintf("n = %s", if (identical(x$type, "alloc")) {
-      .fmt_continuous_n(n_display)
+    n_display <- if (identical(x$type, "alloc")) {
+      sum(p$n)
     } else {
-      .fmt_count_n(n_display)
-    }))
-    if (length(p$n) > 1L) cat(sprintf(" (%d strata)", length(p$n)))
+      sum(ceiling(p$n))
+    }
+    cat(sprintf(
+      "n = %s",
+      if (identical(x$type, "alloc")) {
+        .fmt_continuous_n(n_display)
+      } else {
+        .fmt_count_n(n_display)
+      }
+    ))
+    if (length(p$n) > 1L) {
+      cat(sprintf(" (%d strata)", length(p$n)))
+    }
     if (identical(x$type, "alloc")) {
       resp_rate <- .alloc_summary_response_rates(x)$combined
       if (any(resp_rate < 1)) {
-        cat(sprintf(", expected respondents = %.1f",
-                    sum(p$n * resp_rate)))
+        cat(sprintf(", expected respondents = %.1f", sum(p$n * resp_rate)))
       }
     } else {
       resp_rate <- p$resp_rate
     }
-    if (!identical(x$type, "alloc") && !is.null(resp_rate) &&
-        all(resp_rate < 1)) {
+    if (
+      !identical(x$type, "alloc") && !is.null(resp_rate) && all(resp_rate < 1)
+    ) {
       cat(sprintf(
-        " (net: %s)", .fmt_count_n(ceiling(sum(p$n * resp_rate)))
+        " (net: %s)",
+        .fmt_count_n(ceiling(sum(p$n * resp_rate)))
       ))
     }
     cat("\n")
@@ -803,6 +855,7 @@ print.svyplan_prec <- function(x, ...) {
 .print_multi_prec <- function(x) {
   cat("Multi-indicator sampling precision\n")
   if (!is.null(x$detail)) {
+    cat("\n")
     print(x$detail, row.names = FALSE, right = FALSE)
   }
 }
@@ -814,11 +867,13 @@ print.svyplan_varcomp <- function(x, ...) {
   if (!is.null(x$strata)) {
     cat(sprintf(
       "Variance components (%d-stage, %d strata)\n",
-      x$stages, nrow(x$strata)
+      x$stages,
+      nrow(x$strata)
     ))
     tab <- x$strata
     num <- vapply(tab, is.numeric, logical(1L))
     tab[num] <- lapply(tab[num], function(v) sprintf("%.4f", v))
+    cat("\n")
     print(tab, row.names = FALSE, right = FALSE)
     return(invisible(x))
   }
@@ -838,7 +893,10 @@ print.svyplan_varcomp <- function(x, ...) {
   }
   cat("\n")
   cat(sprintf("icc = %s\n", paste(sprintf("%.4f", x$icc), collapse = ", ")))
-  cat(sprintf("var_ratio = %s\n", paste(sprintf("%.4f", x$var_ratio), collapse = ", ")))
+  cat(sprintf(
+    "var_ratio = %s\n",
+    paste(sprintf("%.4f", x$var_ratio), collapse = ", ")
+  ))
   cat(sprintf("Unit relvariance = %.4f\n", x$unit_relvar))
 
   invisible(x)
@@ -863,7 +921,7 @@ print.svyplan_varcomp <- function(x, ...) {
     x$var_ratio * (1 + x$icc * (take - 1)),
     take,
     if (isTRUE(abs(take - nominal) > 1e-8)) {
-      sprintf(" (size-weighted; nominal %.4g)", nominal)
+      sprintf(" (nominal %.4g, size-weighted)", nominal)
     } else {
       ""
     }
@@ -908,41 +966,65 @@ print.svyplan_power <- function(x, ...) {
     if (!is.null(resp_rate) && resp_rate < 1) {
       cat(sprintf(
         "%s = %s, %s = %s (total = %s, net: %s), power = %.3f, effect = %.4f\n",
-        lab1, .fmt_count_n(n1), lab2, .fmt_count_n(n2),
+        lab1,
+        .fmt_count_n(n1),
+        lab2,
+        .fmt_count_n(n2),
         .fmt_count_n(n1 + n2),
         .fmt_count_n(ceiling((n1 + n2) * resp_rate)),
-        x$power, x$effect
+        x$power,
+        x$effect
       ))
     } else {
       cat(sprintf(
         "%s = %s, %s = %s (total = %s), power = %.3f, effect = %.4f\n",
-        lab1, .fmt_count_n(n1), lab2, .fmt_count_n(n2),
-        .fmt_count_n(n1 + n2), x$power, x$effect
+        lab1,
+        .fmt_count_n(n1),
+        lab2,
+        .fmt_count_n(n2),
+        .fmt_count_n(n1 + n2),
+        x$power,
+        x$effect
       ))
     }
   } else if (!is.null(resp_rate) && resp_rate < 1) {
     net_n <- ceiling(x$n * resp_rate)
     cat(sprintf(
       "n = %s (net: %s, per group), power = %.3f, effect = %.4f\n",
-      .fmt_count_n(ceiling(x$n)), .fmt_count_n(net_n), x$power, x$effect
+      .fmt_count_n(ceiling(x$n)),
+      .fmt_count_n(net_n),
+      x$power,
+      x$effect
     ))
   } else {
     cat(sprintf(
       "n = %s (per group), power = %.3f, effect = %.4f\n",
-      .fmt_count_n(ceiling(x$n)), x$power, x$effect
+      .fmt_count_n(ceiling(x$n)),
+      x$power,
+      x$effect
     ))
   }
 
   parts <- character(0L)
   if (!is.null(p$treat)) {
-    parts <- c(parts, sprintf(
-      "treat = (%.3f, %.3f)", p$treat[1], p$treat[2]
-    ))
+    parts <- c(
+      parts,
+      sprintf(
+        "treat = (%.3f, %.3f)",
+        p$treat[1],
+        p$treat[2]
+      )
+    )
   }
   if (!is.null(p$control)) {
-    parts <- c(parts, sprintf(
-      "control = (%.3f, %.3f)", p$control[1], p$control[2]
-    ))
+    parts <- c(
+      parts,
+      sprintf(
+        "control = (%.3f, %.3f)",
+        p$control[1],
+        p$control[2]
+      )
+    )
   }
   if (!is.null(p$p1)) {
     parts <- c(parts, sprintf("p1 = %.3f", p$p1))
@@ -956,9 +1038,16 @@ print.svyplan_power <- function(x, ...) {
     parts <- c(parts, sprintf("resp_rate = %s", .fmt_prob(resp_rate)))
   }
   if (!is.null(p$var) && length(p$var) == 4L) {
-    parts <- c(parts, sprintf(
-      "var = (%.2f, %.2f, %.2f, %.2f)", p$var[1], p$var[2], p$var[3], p$var[4]
-    ))
+    parts <- c(
+      parts,
+      sprintf(
+        "var = (%.2f, %.2f, %.2f, %.2f)",
+        p$var[1],
+        p$var[2],
+        p$var[3],
+        p$var[4]
+      )
+    )
   }
   if (!is.null(p$overlap) && p$overlap > 0) {
     parts <- c(parts, sprintf("overlap = %s", .fmt_prob(p$overlap)))
@@ -1017,8 +1106,11 @@ format.svyplan_prec <- function(x, ...) {
 format.svyplan_varcomp <- function(x, ...) {
   .check_unused_dots(...)
   paste0(
-    "svyplan_varcomp [", x$stages, "-stage",
-    if (identical(x$source, "deff")) ", from deff" else "", "]"
+    "svyplan_varcomp [",
+    x$stages,
+    "-stage",
+    if (identical(x$source, "deff")) ", from deff" else "",
+    "]"
   )
 }
 
@@ -1163,8 +1255,13 @@ NULL
 #' @export
 confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
   .check_unused_dots(...)
-  if (!is.numeric(level) || length(level) != 1L || is.na(level) ||
-    level <= 0 || level >= 1) {
+  if (
+    !is.numeric(level) ||
+      length(level) != 1L ||
+      is.na(level) ||
+      level <= 0 ||
+      level >= 1
+  ) {
     stop("'level' must be a number in (0, 1)", call. = FALSE)
   }
   if (object$type == "multi" || is.na(object$se)) {
@@ -1251,8 +1348,13 @@ confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
 #' @export
 confint.svyplan_prec <- function(object, parm, level = 0.95, ...) {
   .check_unused_dots(...)
-  if (!is.numeric(level) || length(level) != 1L || is.na(level) ||
-    level <= 0 || level >= 1) {
+  if (
+    !is.numeric(level) ||
+      length(level) != 1L ||
+      is.na(level) ||
+      level <= 0 ||
+      level >= 1
+  ) {
     stop("'level' must be a number in (0, 1)", call. = FALSE)
   }
   p <- object$params
@@ -1740,7 +1842,8 @@ as.list.svyplan_deff <- function(x, ...) {
     stop(
       sprintf(
         "no field '%s' in a design effect; available: %s",
-        paste(name, collapse = ", "), paste(names(fields), collapse = ", ")
+        paste(name, collapse = ", "),
+        paste(names(fields), collapse = ", ")
       ),
       call. = FALSE
     )
@@ -1760,7 +1863,9 @@ as.data.frame.svyplan_deff <- function(
 ) {
   .check_unused_dots(...)
   as.data.frame(
-    as.list(x), row.names = row.names, optional = optional,
+    as.list(x),
+    row.names = row.names,
+    optional = optional,
     stringsAsFactors = stringsAsFactors
   )
 }
@@ -1814,7 +1919,9 @@ print.svyplan_strata <- function(x, ...) {
   }
   cat(sprintf(
     "Strata boundaries (%s, %d strata%s)\n",
-    method_label, x$n_strata, converged
+    method_label,
+    x$n_strata,
+    converged
   ))
   # No `Boundaries:` line: the cut points are the lower and upper columns of
   # the table below, and naming them twice at two precisions invites the
@@ -1836,6 +1943,7 @@ print.svyplan_strata <- function(x, ...) {
   df$sd <- sprintf("%.1f", df$sd)
   df$mean <- sprintf("%.1f", df$mean)
   df$take_all <- NULL
+  cat("\n")
   # Every column here is a number, so they line up on the right.
   print(df, row.names = FALSE, right = TRUE)
 }
@@ -1853,7 +1961,8 @@ print.svyplan_strata <- function(x, ...) {
   vapply(
     v,
     function(z) format(signif(z, 5), scientific = FALSE, trim = TRUE),
-    character(1L), USE.NAMES = FALSE
+    character(1L),
+    USE.NAMES = FALSE
   )
 }
 
@@ -1869,45 +1978,70 @@ print.svyplan_strata <- function(x, ...) {
   cluster <- !is.null(detail) && "n_psu" %in% names(detail)
   H <- if (!is.null(detail)) nrow(detail) else NA
   cat(sprintf("Stratum allocation (%s", alloc))
-  if (cluster) cat(", two-stage")
-  if (!is.na(H)) cat(sprintf(", %d strata", H))
+  if (cluster) {
+    cat(", two-stage")
+  }
+  if (!is.na(H)) {
+    cat(sprintf(", %d strata", H))
+  }
   cat(")\n")
   op <- x$operational
   if (!is.null(op)) {
     cat(sprintf("field design: n = %d", op$n))
-    if (cluster) cat(sprintf(", n_psu = %d", sum(detail$n_psu_int)))
-    rates <- .alloc_summary_response_rates(x)$combined
-    if (any(rates < 1)) {
-      cat(sprintf(", expected respondents = %.1f",
-                  sum(detail$n_int * rates)))
+    if (cluster) {
+      cat(sprintf(", n_psu = %d", sum(detail$n_psu_int)))
     }
-    if (!is.na(op$cv)) cat(sprintf(", cv = %.4f", op$cv))
-    if (!is.na(op$cost)) cat(sprintf(", cost = %.0f", op$cost))
-    cat("\n")
-    cat(sprintf("continuous optimum: n = %s", .fmt_continuous_n(x$n)))
-    if (!is.na(x$cv)) cat(sprintf(", cv = %.4f", x$cv))
-    if (!is.na(x$se)) cat(sprintf(", se = %.4f", x$se))
-    cat("\n")
-  } else {
-    cat(sprintf("n = %d", ceiling(x$n)))
-    if (cluster) cat(sprintf(", n_psu = %d", sum(detail$n_psu_int)))
     rates <- .alloc_summary_response_rates(x)$combined
     if (any(rates < 1)) {
       cat(sprintf(", expected respondents = %.1f", sum(detail$n_int * rates)))
     }
-    if (!is.na(x$cv)) cat(sprintf(", cv = %.4f", x$cv))
-    if (!is.na(x$se)) cat(sprintf(", se = %.4f", x$se))
+    if (!is.na(op$cv)) {
+      cat(sprintf(", cv = %.4f", op$cv))
+    }
+    if (!is.na(op$cost)) {
+      cat(sprintf(", cost = %.0f", op$cost))
+    }
+    cat("\n")
+    cat(sprintf("continuous optimum: n = %s", .fmt_continuous_n(x$n)))
+    if (!is.na(x$cv)) {
+      cat(sprintf(", cv = %.4f", x$cv))
+    }
+    if (!is.na(x$se)) {
+      cat(sprintf(", se = %.4f", x$se))
+    }
+    cat("\n")
+  } else {
+    cat(sprintf("n = %d", ceiling(x$n)))
+    if (cluster) {
+      cat(sprintf(", n_psu = %d", sum(detail$n_psu_int)))
+    }
+    rates <- .alloc_summary_response_rates(x)$combined
+    if (any(rates < 1)) {
+      cat(sprintf(", expected respondents = %.1f", sum(detail$n_int * rates)))
+    }
+    if (!is.na(x$cv)) {
+      cat(sprintf(", cv = %.4f", x$cv))
+    }
+    if (!is.na(x$se)) {
+      cat(sprintf(", se = %.4f", x$se))
+    }
     cat("\n")
   }
   parts <- character(0L)
-  if (!is.null(p$min_n_stratum) && p$min_n_stratum > 0)
+  if (!is.null(p$min_n_stratum) && p$min_n_stratum > 0) {
     parts <- c(parts, sprintf("min_n_stratum = %g", p$min_n_stratum))
+  }
   resp_rate <- p$resp_rate
-  if (!is.null(resp_rate) && any(resp_rate < 1))
-    parts <- c(parts, sprintf("resp_rate = %s", .fmt_by_stratum(resp_rate, "%.2f")))
+  if (!is.null(resp_rate) && any(resp_rate < 1)) {
+    parts <- c(
+      parts,
+      sprintf("resp_rate = %s", .fmt_by_stratum(resp_rate, "%.2f"))
+    )
+  }
   parts <- c(parts, .fmt_deff(p$deff))
-  if (length(parts) > 0L)
+  if (length(parts) > 0L) {
     cat(sprintf("(%s)\n", paste(parts, collapse = ", ")))
+  }
   .print_psu_fraction_note(detail)
   .print_design_df(x)
   .print_domains_block(x$domains)
@@ -1933,12 +2067,25 @@ print.svyplan_strata <- function(x, ...) {
   }
   bound <- !is.na(detail$.bound_source) & detail$.bound_source == "N_psu"
   cat(sprintf(
-    "note: samples %s of the available PSUs in %s%s; precision uses a with-replacement first stage and may be conservative\n",
-    paste0(format(round(100 * detail$.psu_frac[hit]), trim = TRUE), "%",
-           collapse = ", "),
+    paste0(
+      "note: samples %s of the available PSUs in %s%s\n",
+      "      precision uses a with-replacement first stage and may be ",
+      "conservative\n"
+    ),
+    paste0(
+      format(round(100 * detail$.psu_frac[hit]), trim = TRUE),
+      "%",
+      collapse = ", "
+    ),
     paste(detail$stratum[hit], collapse = ", "),
-    if (any(bound)) sprintf(" (bound active in %s)",
-                            paste(detail$stratum[bound], collapse = ", ")) else ""
+    if (any(bound)) {
+      sprintf(
+        " (bound active in %s)",
+        paste(detail$stratum[bound], collapse = ", ")
+      )
+    } else {
+      ""
+    }
   ))
   invisible(NULL)
 }
@@ -1947,11 +2094,17 @@ print.svyplan_strata <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .print_domains_block <- function(dom) {
-  if (is.null(dom)) return(invisible(NULL))
+  if (is.null(dom)) {
+    return(invisible(NULL))
+  }
   cat(sprintf("Domains: %d\n", nrow(dom)))
-  cat("---\n")
-  if (".cv" %in% names(dom)) dom$.cv <- sprintf("%.4f", dom$.cv)
-  if (".cost" %in% names(dom)) dom$.cost <- sprintf("%.0f", dom$.cost)
+  cat("\n")
+  if (".cv" %in% names(dom)) {
+    dom$.cv <- sprintf("%.4f", dom$.cv)
+  }
+  if (".cost" %in% names(dom)) {
+    dom$.cost <- sprintf("%.0f", dom$.cost)
+  }
   print(dom, row.names = FALSE, right = FALSE)
   invisible(NULL)
 }
@@ -1965,7 +2118,9 @@ print.svyplan_strata <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .print_constraint_rows <- function(sel, total, label, hint) {
-  if (nrow(sel) == 0L) return(invisible(NULL))
+  if (nrow(sel) == 0L) {
+    return(invisible(NULL))
+  }
   shown <- utils::head(
     sel[c("constraint", ".metric", ".target", ".achieved", ".pass")],
     6L
@@ -1973,8 +2128,12 @@ print.svyplan_strata <- function(x, ...) {
   if (nrow(sel) < total) {
     cat(sprintf("showing %d %s of %d\n", nrow(shown), label, total))
   }
+  cat("\n")
   print(shown, row.names = FALSE, right = FALSE)
-  if (nrow(shown) < total) cat(hint, "\n", sep = "")
+  cat("\n")
+  if (nrow(shown) < total) {
+    cat(hint, "\n", sep = "")
+  }
   invisible(NULL)
 }
 
@@ -1994,22 +2153,30 @@ print.svyplan_strata <- function(x, ...) {
   }
   # The two modes return the same class and the same numbers mean different
   # things in each, so the question stays even though it never varies.
-  cat(if (budget_mode) {
-    sprintf("question: best design affordable within a budget of %.6g\n",
-            x$params$budget)
-  } else {
-    "question: cheapest design meeting every precision target\n"
-  })
+  cat(
+    if (budget_mode) {
+      sprintf(
+        "question: best design affordable within a budget of %.6g\n",
+        x$params$budget
+      )
+    } else {
+      "question: cheapest design meeting every precision target\n"
+    }
+  )
   n_targets <- nrow(op$constraints)
   cat(sprintf(
     "field design: n = %d, cost = %.0f%s\n",
-    op$n, op$cost,
+    op$n,
+    op$cost,
     if (n_targets == 0L) {
       ""
     } else {
-      sprintf(" (%d target%s, %s)", n_targets,
-              if (n_targets == 1L) "" else "s",
-              if (isTRUE(op$all_pass)) "all pass" else "violations")
+      sprintf(
+        " (%d target%s, %s)",
+        n_targets,
+        if (n_targets == 1L) "" else "s",
+        if (isTRUE(op$all_pass)) "all pass" else "violations"
+      )
     }
   ))
   continuous_cost <- x$params$achieved$cost
@@ -2020,7 +2187,8 @@ print.svyplan_strata <- function(x, ...) {
   }
   cat(sprintf(
     "continuous optimum: n = %s, cost = %.0f%s\n",
-    .fmt_continuous_n(x$n), continuous_cost,
+    .fmt_continuous_n(x$n),
+    continuous_cost,
     if (!is.na(increase) && abs(increase) >= 0.005) {
       sprintf(" (integerizing costs %+.2f%%)", increase)
     } else {
@@ -2030,20 +2198,28 @@ print.svyplan_strata <- function(x, ...) {
   if (budget_mode) {
     cat(sprintf(
       "objective: weighted relative variance %.6g continuous, %.6g operational\n",
-      x$objective_value, op$objective_value
+      x$objective_value,
+      op$objective_value
     ))
     if (!isTRUE(opt$budget_binding)) {
-      cat("the budget is not binding: the allocation sits at its upper bounds\n")
+      cat(
+        "the budget is not binding: the allocation sits at its upper bounds\n"
+      )
     } else if (is.finite(opt$budget_sensitivity %||% NA_real_)) {
-      cat(sprintf("one more unit of budget changes the objective by %.4g\n",
-                  opt$budget_sensitivity))
+      cat(sprintf(
+        "one more unit of budget changes the objective by %.4g\n",
+        opt$budget_sensitivity
+      ))
     }
     obj <- x$objective
     if (!is.null(obj) && nrow(obj) > 0L) {
       shown <- utils::head(
-        obj[c("component", "priority", ".cv", ".share")], 6L
+        obj[c("component", "priority", ".cv", ".share")],
+        6L
       )
+      cat("\n")
       print(shown, row.names = FALSE, right = FALSE)
+      cat("\n")
       if (nrow(obj) > 6L) cat("... see $objective for all components\n")
     }
   }
@@ -2064,7 +2240,9 @@ print.svyplan_strata <- function(x, ...) {
   } else if (nrow(sel) == 1L) {
     cat(sprintf(
       "binding: %s (target %.4g, achieved %.4g)\n",
-      sel$constraint[1L], sel$.target[1L], sel$.achieved[1L]
+      sel$constraint[1L],
+      sel$.target[1L],
+      sel$.achieved[1L]
     ))
   }
   n_lower <- length(opt$active_lower %||% integer(0))
@@ -2083,12 +2261,18 @@ print.svyplan_strata <- function(x, ...) {
   cat(sprintf("Joint allocation precision (%d constraints)\n", nrow(d)))
   cat(sprintf(
     "targets: %s\n",
-    if (all(d$.pass)) "all pass" else
+    if (all(d$.pass)) {
+      "all pass"
+    } else {
       sprintf("%d violated", sum(!d$.pass))
+    }
   ))
   violated <- any(!d$.pass)
-  sel <- if (violated) d[!d$.pass, , drop = FALSE] else
+  sel <- if (violated) {
+    d[!d$.pass, , drop = FALSE]
+  } else {
     d[d$.binding, , drop = FALSE]
+  }
   .print_constraint_rows(
     sel,
     total = nrow(d),
@@ -2096,11 +2280,16 @@ print.svyplan_strata <- function(x, ...) {
     hint = "... see $detail for all rows"
   )
   if (!is.null(x$objective_value)) {
-    cat(sprintf("objective: weighted relative variance %.6g\n",
-                x$objective_value))
+    cat(sprintf(
+      "objective: weighted relative variance %.6g\n",
+      x$objective_value
+    ))
     if (!is.null(x$params[["budget"]])) {
-      cat(sprintf("budget: %.6g, residual %.6g\n",
-                  x$params[["budget"]], x$params[["budget_residual"]]))
+      cat(sprintf(
+        "budget: %.6g, residual %.6g\n",
+        x$params[["budget"]],
+        x$params[["budget_residual"]]
+      ))
     }
   }
   if (!is.null(x$bounds) && any(!x$bounds$.pass)) {
@@ -2213,8 +2402,10 @@ summary.svyplan_prec <- function(object, ...) {
   budget <- p[["budget"]]
   budget_residual <- p[["budget_residual"]]
   if (is.null(problem) || is.null(problem$stratum_ids)) {
-    stop("generalized allocation result is missing its planning problem",
-         call. = FALSE)
+    stop(
+      "generalized allocation result is missing its planning problem",
+      call. = FALSE
+    )
   }
   design <- identical(kind, "design")
   constraints <- if (design) object$constraints else object$detail
@@ -2245,11 +2436,17 @@ summary.svyplan_prec <- function(object, ...) {
     constraints = primary_constraints,
     bounds = bounds,
     objective = primary_objective,
-    objective_value = if (design) object$operational$objective_value else
-      object$objective_value,
+    objective_value = if (design) {
+      object$operational$objective_value
+    } else {
+      object$objective_value
+    },
     budget = budget,
-    budget_residual = if (design) object$operational$budget_residual else
+    budget_residual = if (design) {
+      object$operational$budget_residual
+    } else {
       budget_residual
+    }
   )
   continuous <- if (design) {
     .bethel_summary_overall(
@@ -2296,12 +2493,20 @@ summary.svyplan_prec <- function(object, ...) {
 #' @keywords internal
 #' @noRd
 .bethel_summary_overall <- function(
-  n, cost, constraints, bounds, objective, objective_value,
-  budget = NULL, budget_residual = NULL
+  n,
+  cost,
+  constraints,
+  bounds,
+  objective,
+  objective_value,
+  budget = NULL,
+  budget_residual = NULL
 ) {
   n_constraints <- if (is.null(constraints)) 0L else nrow(constraints)
   n_pass <- if (n_constraints == 0L) 0L else sum(constraints$.pass)
-  n_bounds_bad <- if (is.null(bounds)) 0L else {
+  n_bounds_bad <- if (is.null(bounds)) {
+    0L
+  } else {
     status <- if ("field_status" %in% names(bounds)) {
       bounds$field_status
     } else {
@@ -2330,16 +2535,22 @@ summary.svyplan_prec <- function(object, ...) {
 .bethel_summary_question <- function(mode, kind, budget) {
   if (identical(kind, "assessment")) {
     if (identical(mode, "budget_objective")) {
-      return("assess a supplied joint allocation against its targets, objective, and budget")
+      return(
+        "assess a supplied joint allocation against its targets, objective, and budget"
+      )
     }
     if (identical(mode, "objective")) {
-      return("assess a supplied joint allocation's precision and weighted objective")
+      return(
+        "assess a supplied joint allocation's precision and weighted objective"
+      )
     }
     return("assess a supplied joint allocation against every precision target")
   }
   if (identical(mode, "budget_objective")) {
-    return(sprintf("find the best joint allocation affordable within budget = %.6g",
-                   budget))
+    return(sprintf(
+      "find the best joint allocation affordable within budget = %.6g",
+      budget
+    ))
   }
   "find the cheapest joint allocation meeting every precision target"
 }
@@ -2365,14 +2576,20 @@ summary.svyplan_prec <- function(object, ...) {
     population = problem$population_N,
     stringsAsFactors = FALSE
   )
-  if (design) out$n_continuous <- n_continuous
+  if (design) {
+    out$n_continuous <- n_continuous
+  }
   out[[if (design) "n_field" else "n_supplied"]] <- n_primary
   out$weight <- problem$population_N / n_primary
   out$cost <- problem$cost * decision
   if (problem$stages > 1L) {
     out$population_psu <- problem$stage$N_psu
-    if (problem$stages == 3L) out$population_ssu <- problem$stage$N_ssu
-    if (design) out$psu_continuous <- n_continuous / take
+    if (problem$stages == 3L) {
+      out$population_ssu <- problem$stage$N_ssu
+    }
+    if (design) {
+      out$psu_continuous <- n_continuous / take
+    }
     out[[if (design) "psu_field" else "psu_supplied"]] <- decision
     out$take_per_psu <- problem$stage$n_per_psu
     if (problem$stages == 3L) {
@@ -2414,7 +2631,7 @@ summary.svyplan_prec <- function(object, ...) {
       upper_violation = supplied > upper + p$feasibility_tolerance,
       status = .bethel_bound_status(supplied, lower, upper),
       pass = !(supplied < lower - p$feasibility_tolerance |
-                 supplied > upper + p$feasibility_tolerance),
+        supplied > upper + p$feasibility_tolerance),
       stringsAsFactors = FALSE
     )
   }
@@ -2443,16 +2660,22 @@ summary.svyplan_prec <- function(object, ...) {
   ids <- object$params$problem$constraint_ids
   solver_ids <- c(
     ids,
-    if (length(opt$constraint_scale %||% numeric(0)) > length(ids))
+    if (length(opt$constraint_scale %||% numeric(0)) > length(ids)) {
       "objective"
+    }
   )
   active <- opt$active_precision %||% integer(0)
   active_precision <- ifelse(
-    active <= length(ids), ids[active], "objective"
+    active <= length(ids),
+    ids[active],
+    "objective"
   )
   diagnostic_names <- c(
-    "primal_residual", "projected_dual_residual", "stationarity_residual",
-    "complementarity_residual", "relative_duality_gap"
+    "primal_residual",
+    "projected_dual_residual",
+    "stationarity_residual",
+    "complementarity_residual",
+    "relative_duality_gap"
   )
   present <- diagnostic_names[diagnostic_names %in% names(opt)]
   diagnostics <- data.frame(
@@ -2462,14 +2685,30 @@ summary.svyplan_prec <- function(object, ...) {
     stringsAsFactors = FALSE
   )
   diagnostics$pass <- diagnostics$value <= diagnostics$tolerance
-  multiplier_ids <- c(ids, if (length(opt$multiplier_identifiable %||%
-                                        logical(0)) > length(ids)) "objective")
+  multiplier_ids <- c(
+    ids,
+    if (
+      length(
+        opt$multiplier_identifiable %||%
+          logical(0)
+      ) >
+        length(ids)
+    ) {
+      "objective"
+    }
+  )
   identifiable <- opt$multiplier_identifiable %||% logical(0)
-  if (length(identifiable) > 0L) names(identifiable) <- multiplier_ids
+  if (length(identifiable) > 0L) {
+    names(identifiable) <- multiplier_ids
+  }
   constraint_scale <- opt$constraint_scale %||% numeric(0)
   constraint_residual <- opt$constraint_residual %||% numeric(0)
-  if (length(constraint_scale) > 0L) names(constraint_scale) <- solver_ids
-  if (length(constraint_residual) > 0L) names(constraint_residual) <- solver_ids
+  if (length(constraint_scale) > 0L) {
+    names(constraint_scale) <- solver_ids
+  }
+  if (length(constraint_residual) > 0L) {
+    names(constraint_residual) <- solver_ids
+  }
   list(
     classification = opt$classification,
     converged = opt$converged,
@@ -2513,11 +2752,11 @@ summary.svyplan_prec <- function(object, ...) {
   model <- NULL
   if (K > 0L) {
     grid <- expand.grid(
-      stratum_index = seq_len(H), constraint_index = seq_len(K),
+      stratum_index = seq_len(H),
+      constraint_index = seq_len(K),
       KEEP.OUT.ATTRS = FALSE
     )
-    keep <- problem$membership[cbind(grid$stratum_index,
-                                    grid$constraint_index)]
+    keep <- problem$membership[cbind(grid$stratum_index, grid$constraint_index)]
     grid <- grid[keep, , drop = FALSE]
     at <- cbind(grid$stratum_index, grid$constraint_index)
     model <- data.frame(
@@ -2541,8 +2780,11 @@ summary.svyplan_prec <- function(object, ...) {
       data.frame(
         stratum = problem$stratum_ids,
         n_per_psu = problem$stage$n_per_psu,
-        n_per_ssu = if (problem$stages == 3L) problem$stage$n_per_ssu else
-          NA_real_,
+        n_per_ssu = if (problem$stages == 3L) {
+          problem$stage$n_per_ssu
+        } else {
+          NA_real_
+        },
         stringsAsFactors = FALSE
       )
     } else {
@@ -2558,8 +2800,10 @@ summary.svyplan_prec <- function(object, ...) {
 .summary_classic_alloc <- function(object, kind) {
   detail <- object$detail
   if (is.null(detail) || !all(c("stratum", "N", "n") %in% names(detail))) {
-    stop("classic allocation result is missing its per-stratum detail",
-         call. = FALSE)
+    stop(
+      "classic allocation result is missing its per-stratum detail",
+      call. = FALSE
+    )
   }
 
   design <- identical(kind, "design")
@@ -2579,8 +2823,11 @@ summary.svyplan_prec <- function(object, ...) {
     continuous <- list(
       n = object$n,
       expected_respondents = sum(detail$n * state$response_rate),
-      cost = if (all(is.na(state$cost_h))) NA_real_ else
-        object$params$achieved$cost,
+      cost = if (all(is.na(state$cost_h))) {
+        NA_real_
+      } else {
+        object$params$achieved$cost
+      },
       se = object$se,
       moe = object$moe,
       rmoe = object$rmoe,
@@ -2607,7 +2854,10 @@ summary.svyplan_prec <- function(object, ...) {
       overall = overall,
       continuous = continuous,
       allocation = .alloc_summary_allocation(
-        object, state, n_used, kind = kind
+        object,
+        state,
+        n_used,
+        kind = kind
       ),
       precision = .alloc_summary_precision(state, n_used),
       bounds = if (design) .alloc_summary_bounds(detail, n_used) else NULL,
@@ -2651,9 +2901,10 @@ summary.svyplan_prec <- function(object, ...) {
       d$n_per_psu
     }
     var_ratio <- frame[["var_ratio_psu"]] %||% rep(1, H)
-    S_h <- d$sd * sqrt(
-      var_ratio * (1 + frame$icc_psu * (take * unit_response - 1))
-    )
+    S_h <- d$sd *
+      sqrt(
+        var_ratio * (1 + frame$icc_psu * (take * unit_response - 1))
+      )
     if (all(c("cost_psu", "cost_ssu") %in% names(frame))) {
       cost_h <- frame$cost_psu / take + frame$cost_ssu
     } else {
@@ -2696,7 +2947,11 @@ summary.svyplan_prec <- function(object, ...) {
   frame <- p$frame
   H <- nrow(object$detail)
   unit <- .alloc_resolve_h(
-    p$resp_rate, frame, "resp_rate", H, .check_resp_rate_h
+    p$resp_rate,
+    frame,
+    "resp_rate",
+    H,
+    .check_resp_rate_h
   )
   psu <- if (.alloc_is_cluster(frame)) {
     .alloc_resolve_h(1, frame, "resp_rate_psu", H, .check_resp_rate_h)
@@ -2730,16 +2985,27 @@ summary.svyplan_prec <- function(object, ...) {
     return("assess a supplied stratified allocation")
   }
   p <- object$params
-  method <- paste0(toupper(substr(object$method, 1L, 1L)),
-                   substring(object$method, 2L))
+  method <- paste0(
+    toupper(substr(object$method, 1L, 1L)),
+    substring(object$method, 2L)
+  )
   switch(
     p$mode,
-    n = sprintf("distribute a fixed sample of %g using %s allocation",
-                p$n, method),
-    cv = sprintf("find the smallest %s allocation attaining cv = %.4g",
-                 method, p$cv),
-    budget = sprintf("find the best %s allocation within budget = %.6g",
-                     method, p$budget),
+    n = sprintf(
+      "distribute a fixed sample of %g using %s allocation",
+      p$n,
+      method
+    ),
+    cv = sprintf(
+      "find the smallest %s allocation attaining cv = %.4g",
+      method,
+      p$cv
+    ),
+    budget = sprintf(
+      "find the best %s allocation within budget = %.6g",
+      method,
+      p$budget
+    ),
     sprintf("construct a %s allocation", method)
   )
 }
@@ -2776,8 +3042,12 @@ summary.svyplan_prec <- function(object, ...) {
   out$expected_respondents <- n_h * state$response_rate
   out$weight <- d$N / n_h
   out$cost <- n_h * state$cost_h
-  if (all(is.na(out$unit_cost))) out$unit_cost <- NULL
-  if (all(is.na(out$cost))) out$cost <- NULL
+  if (all(is.na(out$unit_cost))) {
+    out$unit_cost <- NULL
+  }
+  if (all(is.na(out$cost))) {
+    out$cost <- NULL
+  }
   out
 }
 
@@ -2819,7 +3089,9 @@ summary.svyplan_prec <- function(object, ...) {
 .alloc_summary_domains <- function(object, state, n_h) {
   p <- object$params
   idx_list <- p$domain_idx
-  if (is.null(idx_list) || length(idx_list) == 0L) return(NULL)
+  if (is.null(idx_list) || length(idx_list) == 0L) {
+    return(NULL)
+  }
   frame <- p$frame
   ids <- p$domain_cols %||% character(0)
   rows <- lapply(seq_along(idx_list), function(i) {
@@ -2853,7 +3125,9 @@ summary.svyplan_prec <- function(object, ...) {
   })
   out <- do.call(rbind, rows)
   rownames(out) <- NULL
-  if (all(is.na(out$cost))) out$cost <- NULL
+  if (all(is.na(out$cost))) {
+    out$cost <- NULL
+  }
   out
 }
 
@@ -2862,11 +3136,13 @@ summary.svyplan_prec <- function(object, ...) {
 print.summary.svyplan_bethel <- function(x, ...) {
   .check_unused_dots(...)
   design <- identical(x$kind, "design")
-  cat(if (design) {
-    "Generalized Bethel allocation summary\n\n"
-  } else {
-    "Generalized Bethel precision summary\n\n"
-  })
+  cat(
+    if (design) {
+      "Generalized Bethel allocation summary\n\n"
+    } else {
+      "Generalized Bethel precision summary\n\n"
+    }
+  )
   cat(sprintf("Question: %s\n", x$question))
   cat(sprintf("Status: %s\n", x$status))
   cat(sprintf("Stages: %d\n\n", x$stages))
@@ -2882,14 +3158,29 @@ print.summary.svyplan_bethel <- function(x, ...) {
 
   cat("\nAllocation by stratum\n\n")
   main <- intersect(
-    c("stratum", "population", "n_continuous", "n_field", "n_supplied",
-      "weight", "cost"),
+    c(
+      "stratum",
+      "population",
+      "n_continuous",
+      "n_field",
+      "n_supplied",
+      "weight",
+      "cost"
+    ),
     names(x$allocation)
   )
   .print_bethel_table(x$allocation[main])
   stages <- intersect(
-    c("stratum", "population_psu", "population_ssu", "psu_continuous",
-      "psu_field", "psu_supplied", "take_per_psu", "take_per_ssu"),
+    c(
+      "stratum",
+      "population_psu",
+      "population_ssu",
+      "psu_continuous",
+      "psu_field",
+      "psu_supplied",
+      "take_per_psu",
+      "take_per_ssu"
+    ),
     names(x$allocation)
   )
   if (length(stages) > 1L) {
@@ -2899,23 +3190,31 @@ print.summary.svyplan_bethel <- function(x, ...) {
 
   .print_bethel_constraints(
     x$constraints,
-    if (design) "Continuous precision constraints" else
+    if (design) {
+      "Continuous precision constraints"
+    } else {
       "Assessed precision constraints"
+    }
   )
   if (design) {
     .print_bethel_constraints(
-      x$operational_constraints, "Operational precision constraints"
+      x$operational_constraints,
+      "Operational precision constraints"
     )
   }
 
   .print_bethel_objective(
     x$objective,
-    if (design) "Continuous objective components" else
+    if (design) {
+      "Continuous objective components"
+    } else {
       "Assessed objective components"
+    }
   )
   if (design) {
     .print_bethel_objective(
-      x$operational_objective, "Operational objective components"
+      x$operational_objective,
+      "Operational objective components"
     )
   }
 
@@ -2932,17 +3231,25 @@ print.summary.svyplan_bethel <- function(x, ...) {
   cat("\nAssumptions\n")
   cat(sprintf("  variance model: %s\n", x$assumptions$variance_model))
   cat(sprintf("  alpha: %s\n", .fmt_prob(x$assumptions$alpha)))
-  cat(sprintf("  feasibility tolerance: %.3g\n",
-              x$assumptions$feasibility_tolerance))
+  cat(sprintf(
+    "  feasibility tolerance: %.3g\n",
+    x$assumptions$feasibility_tolerance
+  ))
   if (!is.null(x$assumptions$df) && any(is.finite(x$assumptions$df))) {
-    cat(sprintf("  interval df: %s\n",
-                paste(unique(x$assumptions$df[is.finite(x$assumptions$df)]),
-                      collapse = ", ")))
+    cat(sprintf(
+      "  interval df: %s\n",
+      paste(
+        unique(x$assumptions$df[is.finite(x$assumptions$df)]),
+        collapse = ", "
+      )
+    ))
   }
   if (!is.null(x$assumptions$fixed_takes)) {
     cat("\nFixed later-stage takes\n\n")
     takes <- x$assumptions$fixed_takes
-    if (all(is.na(takes$n_per_ssu))) takes$n_per_ssu <- NULL
+    if (all(is.na(takes$n_per_ssu))) {
+      takes$n_per_ssu <- NULL
+    }
     .print_bethel_table(takes)
   }
   if (!is.null(x$assumptions$model) && nrow(x$assumptions$model) > 0L) {
@@ -2956,30 +3263,44 @@ print.summary.svyplan_bethel <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .print_bethel_overall <- function(values, title) {
-  if (!is.null(title)) cat(title, "\n", sep = "")
-  cat(sprintf("  Sample: %s\n", .fmt_continuous_n(values$n)))
-  cat(sprintf("  Cost: %.2f\n", values$cost))
-  if (values$n_constraints == 0L) {
-    cat("  Hard targets: none\n")
+  if (!is.null(title)) {
+    cat(title, "\n", sep = "")
+  }
+  rows <- list(
+    Sample = .fmt_continuous_n(values$n),
+    Cost = sprintf("%.2f", values$cost)
+  )
+  rows[["Hard targets"]] <- if (values$n_constraints == 0L) {
+    "none"
   } else {
-    cat(sprintf(
-      "  Hard targets: %d of %d pass%s\n",
-      values$n_pass, values$n_constraints,
-      if (values$n_violated == 0L) "" else
-        sprintf("; %d violated", values$n_violated)
-    ))
+    sprintf(
+      "%d of %d pass%s",
+      values$n_pass,
+      values$n_constraints,
+      if (values$n_violated == 0L) {
+        ""
+      } else {
+        sprintf(", %d violated", values$n_violated)
+      }
+    )
   }
   if (!is.null(values$objective_value)) {
-    cat(sprintf("  Weighted relative variance: %.6g (%d component%s)\n",
-                values$objective_value, values$objective_components,
-                if (values$objective_components == 1L) "" else "s"))
+    rows[["Weighted rel. variance"]] <- sprintf(
+      "%.6g (%d component%s)",
+      values$objective_value,
+      values$objective_components,
+      if (values$objective_components == 1L) "" else "s"
+    )
   }
   if (!is.null(values$budget)) {
-    cat(sprintf("  Budget: %.6g", values$budget))
+    rows[["Budget"]] <- sprintf("%.6g", values$budget)
     if (!is.null(values$budget_residual)) {
-      cat(sprintf("; residual: %.6g", values$budget_residual))
+      rows[["Residual"]] <- sprintf("%.6g", values$budget_residual)
     }
-    cat("\n")
+  }
+  width <- max(nchar(names(rows)))
+  for (name in names(rows)) {
+    cat(sprintf("  %-*s  %s\n", width, name, rows[[name]]))
   }
   invisible(NULL)
 }
@@ -2994,14 +3315,20 @@ print.summary.svyplan_bethel <- function(x, ...) {
     return(invisible(NULL))
   }
   result <- intersect(
-    c("constraint", ".metric", ".target", ".achieved", ".ratio", ".pass",
-      ".binding"),
+    c(
+      "constraint",
+      ".metric",
+      ".target",
+      ".achieved",
+      ".ratio",
+      ".pass",
+      ".binding"
+    ),
     names(tab)
   )
   .print_bethel_table(tab[result])
   diagnostics <- intersect(
-    c("constraint", ".residual", ".tolerance", ".multiplier",
-      ".sensitivity"),
+    c("constraint", ".residual", ".tolerance", ".multiplier", ".sensitivity"),
     names(tab)
   )
   if (length(diagnostics) > 1L) {
@@ -3015,7 +3342,9 @@ print.summary.svyplan_bethel <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .print_bethel_objective <- function(tab, title) {
-  if (is.null(tab) || nrow(tab) == 0L) return(invisible(NULL))
+  if (is.null(tab) || nrow(tab) == 0L) {
+    return(invisible(NULL))
+  }
   cat("\n", title, " (contributions are additive)\n\n", sep = "")
   cols <- intersect(
     c("component", "priority", ".relvar", ".cv", ".contribution", ".share"),
@@ -3036,14 +3365,21 @@ print.summary.svyplan_bethel <- function(x, ...) {
     cat(sprintf("  solver iterations: %d\n", opt$iterations))
   }
   if (length(opt$active_precision) > 0L) {
-    cat(sprintf("  active precision: %s\n",
-                paste(opt$active_precision, collapse = ", ")))
+    cat(sprintf(
+      "  active precision: %s\n",
+      paste(opt$active_precision, collapse = ", ")
+    ))
   }
-  cat(sprintf("  active bounds: %d lower, %d upper\n",
-              length(opt$active_lower), length(opt$active_upper)))
+  cat(sprintf(
+    "  active bounds: %d lower, %d upper\n",
+    length(opt$active_lower),
+    length(opt$active_upper)
+  ))
   if (!is.null(opt$budget_binding)) {
-    cat(sprintf("  budget binding: %s\n",
-                if (isTRUE(opt$budget_binding)) "yes" else "no"))
+    cat(sprintf(
+      "  budget binding: %s\n",
+      if (isTRUE(opt$budget_binding)) "yes" else "no"
+    ))
   }
   if (!is.null(opt$budget_sensitivity) && is.finite(opt$budget_sensitivity)) {
     cat(sprintf("  budget sensitivity: %.6g\n", opt$budget_sensitivity))
@@ -3061,11 +3397,18 @@ print.summary.svyplan_bethel <- function(x, ...) {
 .print_bethel_table <- function(tab, max_rows = 20L) {
   total <- nrow(tab)
   shown <- utils::head(tab, max_rows)
-  print(.fmt_bethel_summary_table(shown), row.names = FALSE, quote = FALSE,
-        right = TRUE)
+  print(
+    .fmt_bethel_summary_table(shown),
+    row.names = FALSE,
+    quote = FALSE,
+    right = TRUE
+  )
   if (total > nrow(shown)) {
-    cat(sprintf("... %d of %d rows shown; the summary object retains all rows\n",
-                nrow(shown), total))
+    cat(sprintf(
+      "... %d of %d rows shown (all rows retained in the object)\n",
+      nrow(shown),
+      total
+    ))
   }
   invisible(NULL)
 }
@@ -3087,16 +3430,48 @@ print.summary.svyplan_bethel <- function(x, ...) {
     out[[name]] <- vapply(out[[name]], .fmt_count_n, character(1L))
   }
   two_cols <- intersect(
-    c("n_continuous", "n_supplied", "continuous", "supplied", "lower",
-      "upper", "psu_continuous", "psu_supplied", "cost"), names(out)
+    c(
+      "n_continuous",
+      "n_supplied",
+      "continuous",
+      "supplied",
+      "lower",
+      "upper",
+      "psu_continuous",
+      "psu_supplied",
+      "cost"
+    ),
+    names(out)
   )
-  for (name in two_cols) out[[name]] <- sprintf("%.2f", out[[name]])
-  if ("weight" %in% names(out)) out$weight <- sprintf("%.3f", out$weight)
+  for (name in two_cols) {
+    out[[name]] <- sprintf("%.2f", out[[name]])
+  }
+  if ("weight" %in% names(out)) {
+    out$weight <- sprintf("%.3f", out$weight)
+  }
   number_cols <- intersect(
-    c("mean", "variance", "deff", "response_rate", "priority", ".metric",
-      ".target", ".achieved", ".ratio", ".residual", ".tolerance",
-      ".multiplier", ".sensitivity", ".relvar", ".cv", ".contribution",
-      ".share", "value", "tolerance"), names(out)
+    c(
+      "mean",
+      "variance",
+      "deff",
+      "response_rate",
+      "priority",
+      ".metric",
+      ".target",
+      ".achieved",
+      ".ratio",
+      ".residual",
+      ".tolerance",
+      ".multiplier",
+      ".sensitivity",
+      ".relvar",
+      ".cv",
+      ".contribution",
+      ".share",
+      "value",
+      "tolerance"
+    ),
+    names(out)
   )
   number_cols <- setdiff(number_cols, ".metric")
   for (name in number_cols) {
@@ -3104,31 +3479,64 @@ print.summary.svyplan_bethel <- function(x, ...) {
   }
   logical_cols <- names(out)[vapply(out, is.logical, logical(1L))]
   for (name in logical_cols) {
-    out[[name]] <- ifelse(is.na(out[[name]]), "",
-                          ifelse(out[[name]], "yes", "no"))
+    out[[name]] <- ifelse(
+      is.na(out[[name]]),
+      "",
+      ifelse(out[[name]], "yes", "no")
+    )
   }
   labels <- c(
-    stratum = "Stratum", population = "Pop.", n_continuous = "Cont.",
-    n_field = "Field", n_supplied = "Supplied", weight = "Weight",
-    cost = "Cost", population_psu = "PSUs pop.",
-    population_ssu = "SSUs pop.", psu_continuous = "PSUs cont.",
-    psu_field = "PSUs field", psu_supplied = "PSUs supplied",
-    take_per_psu = "Take/PSU", take_per_ssu = "Take/SSU",
-    constraint = "Constraint", component = "Component",
-    .metric = "Metric", .target = "Target", .achieved = "Ach.",
-    .ratio = "Ratio", .pass = "Pass", .binding = "Bind",
-    .residual = "Residual", .tolerance = "Tol.",
-    .multiplier = "Mult.", .sensitivity = "Sens.",
-    priority = "Priority", .relvar = "Rel. var.", .cv = "CV",
-    .contribution = "Contribution", .share = "Share",
-    lower = "Lower", continuous = "Cont.", field = "Field",
-    supplied = "Supplied", upper = "Upper",
-    continuous_status = "Cont. status", field_status = "Field status",
-    lower_violation = "Lower bad", upper_violation = "Upper bad",
-    status = "Status", pass = "Pass", mean = "Mean",
-    variance = "Variance", deff = "Deff", response_rate = "Resp.",
-    n_per_psu = "Take/PSU", n_per_ssu = "Take/SSU",
-    diagnostic = "Diagnostic", value = "Value", tolerance = "Tolerance"
+    stratum = "Stratum",
+    population = "Pop.",
+    n_continuous = "Cont.",
+    n_field = "Field",
+    n_supplied = "Supplied",
+    weight = "Weight",
+    cost = "Cost",
+    population_psu = "PSUs pop.",
+    population_ssu = "SSUs pop.",
+    psu_continuous = "PSUs cont.",
+    psu_field = "PSUs field",
+    psu_supplied = "PSUs supplied",
+    take_per_psu = "Take/PSU",
+    take_per_ssu = "Take/SSU",
+    constraint = "Constraint",
+    component = "Component",
+    .metric = "Metric",
+    .target = "Target",
+    .achieved = "Ach.",
+    .ratio = "Ratio",
+    .pass = "Pass",
+    .binding = "Bind",
+    .residual = "Residual",
+    .tolerance = "Tol.",
+    .multiplier = "Mult.",
+    .sensitivity = "Sens.",
+    priority = "Priority",
+    .relvar = "Rel. var.",
+    .cv = "CV",
+    .contribution = "Contribution",
+    .share = "Share",
+    lower = "Lower",
+    continuous = "Cont.",
+    field = "Field",
+    supplied = "Supplied",
+    upper = "Upper",
+    continuous_status = "Cont. status",
+    field_status = "Field status",
+    lower_violation = "Lower bad",
+    upper_violation = "Upper bad",
+    status = "Status",
+    pass = "Pass",
+    mean = "Mean",
+    variance = "Variance",
+    deff = "Deff",
+    response_rate = "Resp.",
+    n_per_psu = "Take/PSU",
+    n_per_ssu = "Take/SSU",
+    diagnostic = "Diagnostic",
+    value = "Value",
+    tolerance = "Tolerance"
   )
   hit <- names(out) %in% names(labels)
   names(out)[hit] <- unname(labels[names(out)[hit]])
@@ -3140,7 +3548,9 @@ print.summary.svyplan_bethel <- function(x, ...) {
 #' @noRd
 .abbrev_bethel_id <- function(x, width = 20L) {
   x <- as.character(x)
-  if (is.na(x) || nchar(x) <= width) return(x)
+  if (is.na(x) || nchar(x) <= width) {
+    return(x)
+  }
   paste0(substr(x, 1L, width - 3L), "...")
 }
 
@@ -3149,19 +3559,30 @@ print.summary.svyplan_bethel <- function(x, ...) {
 print.summary.svyplan_alloc <- function(x, ...) {
   .check_unused_dots(...)
   cluster <- any(grepl("^n_psu", names(x$allocation)))
-  cat(if (identical(x$kind, "design")) {
-    if (cluster) "Stratified cluster allocation summary\n\n" else
-      "Stratified allocation summary\n\n"
-  } else {
-    if (cluster) "Cluster allocation precision summary\n\n" else
-      "Allocation precision summary\n\n"
-  })
+  cat(
+    if (identical(x$kind, "design")) {
+      if (cluster) {
+        "Stratified cluster allocation summary\n\n"
+      } else {
+        "Stratified allocation summary\n\n"
+      }
+    } else {
+      if (cluster) {
+        "Cluster allocation precision summary\n\n"
+      } else {
+        "Allocation precision summary\n\n"
+      }
+    }
+  )
   cat(sprintf("Question: %s\n\n", x$question))
 
   .print_alloc_summary_overall(
     x$overall,
-    if (identical(x$kind, "design")) "Overall field design" else
-      "Overall precision",
+    if (identical(x$kind, "design")) {
+      "Overall field design"
+    } else {
+      "Overall precision"
+    },
     show_response = any(x$assumptions$response_rate < 1)
   )
   if (!is.null(x$continuous)) {
@@ -3175,54 +3596,102 @@ print.summary.svyplan_alloc <- function(x, ...) {
 
   cat("\nAllocation by stratum\n\n")
   alloc_main <- intersect(
-    c("stratum", "population", "response_rate", "n_continuous", "n_field",
-      "n_supplied", "expected_respondents"),
+    c(
+      "stratum",
+      "population",
+      "response_rate",
+      "n_continuous",
+      "n_field",
+      "n_supplied",
+      "expected_respondents"
+    ),
     names(x$allocation)
   )
-  print(.fmt_alloc_summary_table(x$allocation[alloc_main]), row.names = FALSE,
-        quote = FALSE, right = TRUE)
+  print(
+    .fmt_alloc_summary_table(x$allocation[alloc_main]),
+    row.names = FALSE,
+    quote = FALSE,
+    right = TRUE
+  )
 
   stage_cols <- intersect(
-    c("stratum", "n_psu_continuous", "n_psu_field",
-      "n_per_psu_continuous", "n_per_psu_field", "n_psu", "n_per_psu"),
+    c(
+      "stratum",
+      "n_psu_continuous",
+      "n_psu_field",
+      "n_per_psu_continuous",
+      "n_per_psu_field",
+      "n_psu",
+      "n_per_psu"
+    ),
     names(x$allocation)
   )
   if (length(stage_cols) > 1L) {
     cat("\nCluster stages by stratum\n\n")
-    print(.fmt_alloc_summary_table(x$allocation[stage_cols]),
-          row.names = FALSE, quote = FALSE, right = TRUE)
+    print(
+      .fmt_alloc_summary_table(x$allocation[stage_cols]),
+      row.names = FALSE,
+      quote = FALSE,
+      right = TRUE
+    )
   }
 
   fieldwork_cols <- intersect(
-    c("stratum", "unit_cost", "weight", "cost"), names(x$allocation)
+    c("stratum", "unit_cost", "weight", "cost"),
+    names(x$allocation)
   )
   if (length(fieldwork_cols) > 1L) {
     cat("\nCost and weights by stratum\n\n")
-    print(.fmt_alloc_summary_table(x$allocation[fieldwork_cols]),
-          row.names = FALSE, quote = FALSE, right = TRUE)
+    print(
+      .fmt_alloc_summary_table(x$allocation[fieldwork_cols]),
+      row.names = FALSE,
+      quote = FALSE,
+      right = TRUE
+    )
   }
 
   cat("\nAchieved precision by stratum\n\n")
-  print(.fmt_alloc_summary_table(x$precision), row.names = FALSE,
-        quote = FALSE, right = TRUE)
+  print(
+    .fmt_alloc_summary_table(x$precision),
+    row.names = FALSE,
+    quote = FALSE,
+    right = TRUE
+  )
 
   if (!is.null(x$bounds)) {
     cat("\nAllocation bounds\n\n")
-    print(.fmt_alloc_summary_table(x$bounds), row.names = FALSE,
-          quote = FALSE, right = TRUE)
+    print(
+      .fmt_alloc_summary_table(x$bounds),
+      row.names = FALSE,
+      quote = FALSE,
+      right = TRUE
+    )
     active <- sum(x$bounds$binding, na.rm = TRUE)
-    cat(sprintf("\n%s\n", if (active == 0L) {
-      "No allocation bounds are active."
-    } else {
-      sprintf("%d allocation bound%s active.", active,
-              if (active == 1L) " is" else "s are")
-    }))
+    cat(sprintf(
+      "\n%s\n",
+      if (active == 0L) {
+        "No allocation bounds are active."
+      } else {
+        sprintf(
+          "%d allocation bound%s active.",
+          active,
+          if (active == 1L) " is" else "s are"
+        )
+      }
+    ))
   }
 
   if (!is.null(x$domains)) {
     measures <- c(
-      ".domain", "population", "n", "expected_respondents", "se", "moe",
-      "rmoe", "cv", "cost"
+      ".domain",
+      "population",
+      "n",
+      "expected_respondents",
+      "se",
+      "moe",
+      "rmoe",
+      "cv",
+      "cost"
     )
     ids <- setdiff(names(x$domains), measures)
     key <- if (length(ids) > 0L) ids else ".domain"
@@ -3231,22 +3700,35 @@ print.summary.svyplan_alloc <- function(x, ...) {
       names(x$domains)
     )
     precision_cols <- intersect(
-      c(key, "se", "moe", "rmoe", "cv"), names(x$domains)
+      c(key, "se", "moe", "rmoe", "cv"),
+      names(x$domains)
     )
     cat("\nDomain allocation (not additive to the overall row)\n\n")
-    print(.fmt_alloc_summary_table(x$domains[allocation_cols]),
-          row.names = FALSE, quote = FALSE, right = TRUE)
+    print(
+      .fmt_alloc_summary_table(x$domains[allocation_cols]),
+      row.names = FALSE,
+      quote = FALSE,
+      right = TRUE
+    )
     cat("\nDomain precision\n\n")
-    print(.fmt_alloc_summary_table(x$domains[precision_cols]),
-          row.names = FALSE, quote = FALSE, right = TRUE)
+    print(
+      .fmt_alloc_summary_table(x$domains[precision_cols]),
+      row.names = FALSE,
+      quote = FALSE,
+      right = TRUE
+    )
   }
 
   cat("\nAssumptions\n")
   cat(sprintf("  alpha: %s\n", .fmt_prob(x$assumptions$alpha)))
-  cat(sprintf("  design effect: %s\n",
-              .fmt_by_stratum(x$assumptions$deff, "%.2f")))
-  cat(sprintf("  response rate: %s\n",
-              .fmt_by_stratum(x$assumptions$response_rate, "%.2f")))
+  cat(sprintf(
+    "  design effect: %s\n",
+    .fmt_by_stratum(x$assumptions$deff, "%.2f")
+  ))
+  cat(sprintf(
+    "  response rate: %s\n",
+    .fmt_by_stratum(x$assumptions$response_rate, "%.2f")
+  ))
   if (!is.null(x$assumptions$df)) {
     cat(sprintf("  interval df: %g\n", x$assumptions$df))
   }
@@ -3277,10 +3759,16 @@ print.summary.svyplan_alloc <- function(x, ...) {
   )
   keep <- names(values)
   keep <- keep[keep %in% names(labels)]
-  if (!show_response) keep <- setdiff(keep, "expected_respondents")
-  keep <- keep[vapply(values[keep], function(v) {
-    length(v) == 1L && !is.null(v) && !is.na(v)
-  }, logical(1L))]
+  if (!show_response) {
+    keep <- setdiff(keep, "expected_respondents")
+  }
+  keep <- keep[vapply(
+    values[keep],
+    function(v) {
+      length(v) == 1L && !is.null(v) && !is.na(v)
+    },
+    logical(1L)
+  )]
   width <- max(nchar(labels[keep]))
   for (name in keep) {
     value <- values[[name]]
@@ -3303,29 +3791,41 @@ print.summary.svyplan_alloc <- function(x, ...) {
 .fmt_alloc_summary_table <- function(tab) {
   out <- tab
   count_cols <- intersect(
-    c("population", "n_field", "n_psu_field", "field"), names(out)
+    c("population", "n_field", "n_psu_field", "field"),
+    names(out)
   )
   for (name in count_cols) {
     out[[name]] <- vapply(out[[name]], .fmt_count_n, character(1L))
   }
   two_cols <- intersect(
-    c("unit_cost", "n_continuous", "n_supplied", "n_psu_continuous",
-      "n_per_psu_continuous", "n_per_psu", "expected_respondents",
-      "weight", "cost", "n"),
+    c(
+      "unit_cost",
+      "n_continuous",
+      "n_supplied",
+      "n_psu_continuous",
+      "n_per_psu_continuous",
+      "n_per_psu",
+      "expected_respondents",
+      "weight",
+      "cost",
+      "n"
+    ),
     names(out)
   )
   for (name in two_cols) {
-    out[[name]] <- ifelse(is.na(out[[name]]), "",
-                          sprintf("%.2f", out[[name]]))
+    out[[name]] <- ifelse(is.na(out[[name]]), "", sprintf("%.2f", out[[name]]))
   }
   if ("n_per_psu_field" %in% names(out)) {
     out$n_per_psu_field <- vapply(
-      out$n_per_psu_field, .fmt_count_n, character(1L)
+      out$n_per_psu_field,
+      .fmt_count_n,
+      character(1L)
     )
   }
   for (name in intersect(c("lower", "upper"), names(out))) {
     out[[name]] <- ifelse(
-      is.na(out[[name]]), "",
+      is.na(out[[name]]),
+      "",
       vapply(out[[name]], .fmt_continuous_n, character(1L))
     )
   }
@@ -3333,34 +3833,56 @@ print.summary.svyplan_alloc <- function(x, ...) {
     out$response_rate <- sprintf("%.3g", out$response_rate)
   }
   four_cols <- intersect(
-    c("effective_n", "se", "moe", "rmoe", "cv"), names(out)
+    c("effective_n", "se", "moe", "rmoe", "cv"),
+    names(out)
   )
   for (name in four_cols) {
-    out[[name]] <- ifelse(is.na(out[[name]]), "",
-                          sprintf("%.4f", out[[name]]))
+    out[[name]] <- ifelse(is.na(out[[name]]), "", sprintf("%.4f", out[[name]]))
   }
   if ("variance_share" %in% names(out)) {
-    out$variance_share <- ifelse(is.na(out$variance_share), "",
-                                 sprintf("%.3f", out$variance_share))
+    out$variance_share <- ifelse(
+      is.na(out$variance_share),
+      "",
+      sprintf("%.3f", out$variance_share)
+    )
   }
   if ("binding" %in% names(out)) {
     out$binding <- ifelse(is.na(out$binding), "", ifelse(out$binding, "*", ""))
   }
-  if ("source" %in% names(out)) out$source[is.na(out$source)] <- ""
+  if ("source" %in% names(out)) {
+    out$source[is.na(out$source)] <- ""
+  }
 
   labels <- c(
-    stratum = "Stratum", population = "Pop.",
-    response_rate = "Resp.", unit_cost = "Cost/unit",
-    n_continuous = "Cont.", n_field = "Field",
-    n_supplied = "Supplied", n_psu_continuous = "PSUs cont.",
-    n_psu_field = "PSUs field", n_per_psu_continuous = "Take cont.",
-    n_per_psu_field = "Take field", n_psu = "PSUs",
-    n_per_psu = "Take", expected_respondents = "Exp. resp.",
-    weight = "Weight", cost = "Cost", effective_n = "Eff. n",
-    se = "SE", moe = "MOE", rmoe = "Rel. MOE", cv = "CV",
-    variance_share = "Var. share", lower = "Lower", field = "Field",
-    upper = "Upper", binding = "Binding", source = "Source",
-    .domain = "Domain", n = "Sample"
+    stratum = "Stratum",
+    population = "Pop.",
+    response_rate = "Resp.",
+    unit_cost = "Cost/unit",
+    n_continuous = "Cont.",
+    n_field = "Field",
+    n_supplied = "Supplied",
+    n_psu_continuous = "PSUs cont.",
+    n_psu_field = "PSUs field",
+    n_per_psu_continuous = "Take cont.",
+    n_per_psu_field = "Take field",
+    n_psu = "PSUs",
+    n_per_psu = "Take",
+    expected_respondents = "Exp. resp.",
+    weight = "Weight",
+    cost = "Cost",
+    effective_n = "Eff. n",
+    se = "SE",
+    moe = "MOE",
+    rmoe = "Rel. MOE",
+    cv = "CV",
+    variance_share = "Var. share",
+    lower = "Lower",
+    field = "Field",
+    upper = "Upper",
+    binding = "Binding",
+    source = "Source",
+    .domain = "Domain",
+    n = "Sample"
   )
   hit <- names(out) %in% names(labels)
   names(out)[hit] <- unname(labels[names(out)[hit]])
@@ -3472,7 +3994,9 @@ print.svyplan_twophase <- function(x, ...) {
   cat(.fmt_twophase_responding(x))
   cat(.fmt_twophase_cost(x))
   cat(.fmt_twophase_deff(x))
+  cat("\n")
   print(.fmt_twophase_detail(x, brief = TRUE), row.names = FALSE)
+  cat("\n")
   cat(.fmt_twophase_assured(x))
   cat(.fmt_twophase_single(x))
   cat("# summary() for the continuous optimum and the comparator\n")
@@ -3492,8 +4016,10 @@ print.svyplan_twophase <- function(x, ...) {
   o <- x$operational
   if (is.null(o)) {
     return(list(
-      n = round(x$n), n_int = round(x$detail$n_issued),
-      cost = x$cost, cv = x$cv
+      n = round(x$n),
+      n_int = round(x$detail$n_issued),
+      cost = x$cost,
+      cv = x$cv
     ))
   }
   list(n = o$n, n_int = o$n_int, cost = o$cost, cv = o$cv)
@@ -3505,7 +4031,8 @@ print.svyplan_twophase <- function(x, ...) {
   shown <- .twophase_shown(x)
   sprintf(
     "field design: n_phase1 = %s | n_phase2 = %s\n",
-    format(shown$n[["n_phase1"]]), format(shown$n[["n_phase2"]])
+    format(shown$n[["n_phase1"]]),
+    format(shown$n[["n_phase2"]])
   )
 }
 
@@ -3545,8 +4072,10 @@ print.svyplan_twophase <- function(x, ...) {
 #' @noRd
 .fmt_twophase_deff <- function(x) {
   p <- x$params
-  if (isTRUE(all.equal(p$phase1_deff, 1)) &&
-      isTRUE(all.equal(p$single_deff, 1))) {
+  if (
+    isTRUE(all.equal(p$phase1_deff, 1)) &&
+      isTRUE(all.equal(p$single_deff, 1))
+  ) {
     return("")
   }
   sprintf(
@@ -3604,7 +4133,8 @@ print.svyplan_twophase <- function(x, ...) {
   sprintf(
     "assured (%s): issue n_phase1 = %s | n_phase2 = %s (cost %s)\n",
     .fmt_prob(x$params$assurance),
-    format(o$assured_phase1), format(sum(o$assured)),
+    format(o$assured_phase1),
+    format(sum(o$assured)),
     format(round(o$assured_cost))
   )
 }
@@ -3674,7 +4204,8 @@ print.summary.svyplan_twophase <- function(x, ...) {
   cat(.fmt_twophase_cost(plan))
   cat(sprintf(
     "continuous optimum: n_phase1 = %s | n_phase2 = %s (cv %s, cost %s)\n",
-    format(round(x$n[["n_phase1"]])), format(round(x$n[["n_phase2"]])),
+    format(round(x$n[["n_phase1"]])),
+    format(round(x$n[["n_phase2"]])),
     if (is.na(plan$cv)) "NA" else formatC(plan$cv, format = "f", digits = 4),
     format(round(plan$cost))
   ))
@@ -3721,12 +4252,14 @@ print.summary.svyplan_twophase <- function(x, ...) {
   if (isTRUE(s$better)) {
     sprintf(
       "single-phase is better here: n = %s at cv %s, so skip phase 1\n",
-      format(round(s$n)), cv
+      format(round(s$n)),
+      cv
     )
   } else {
     sprintf(
       "single-phase alternative: n = %s at cv %s, two-phase wins\n",
-      format(round(s$n)), cv
+      format(round(s$n)),
+      cv
     )
   }
 }
@@ -3811,23 +4344,36 @@ print.svyplan_df <- function(x, ...) {
   n_units <- attr(x, "n_units", exact = TRUE)
   n_strata <- attr(x, "n_strata", exact = TRUE)
   cat("Design degrees of freedom (planning)\n\n")
-  cat(sprintf("  df = %g   (%g %s - %d strat%s)\n",
-              as.double(x), n_units, unit_label, n_strata,
-              if (n_strata == 1L) "um" else "a"))
+  cat(sprintf(
+    "  df = %g   (%g %s - %d strat%s)\n",
+    as.double(x),
+    n_units,
+    unit_label,
+    n_strata,
+    if (n_strata == 1L) "um" else "a"
+  ))
   strata <- attr(x, "strata", exact = TRUE)
   if (!is.null(strata)) {
     flagged <- strata$.status != "ok"
     if (any(flagged)) {
-      cat(sprintf("  no df from %s: %s\n",
-                  if (sum(flagged) > 1L) "these strata" else "this stratum",
-                  paste(sprintf("%s (%s)", strata$stratum[flagged],
-                                strata$.status[flagged]), collapse = ", ")))
+      cat(sprintf(
+        "  no df from %s: %s\n",
+        if (sum(flagged) > 1L) "these strata" else "this stratum",
+        paste(
+          sprintf("%s (%s)", strata$stratum[flagged], strata$.status[flagged]),
+          collapse = ", "
+        )
+      ))
     }
   }
   domains <- attr(x, "domains", exact = TRUE)
   if (!is.null(domains)) {
-    cat(sprintf("  %d domains, df from %g to %g\n", nrow(domains),
-                min(domains$.df), max(domains$.df)))
+    cat(sprintf(
+      "  %d domains, df from %g to %g\n",
+      nrow(domains),
+      min(domains$.df),
+      max(domains$.df)
+    ))
   }
   invisible(x)
 }
@@ -3907,19 +4453,25 @@ print.summary.svyplan_df <- function(x, ...) {
     print(rbind(tab, overall), row.names = FALSE, quote = FALSE, right = TRUE)
   }
 
-  cat(sprintf("\nCounted stage: %s\n", if (identical(x$stage, "psu")) {
-    "PSU"
-  } else {
-    "element"
-  }))
+  cat(sprintf(
+    "\nCounted stage: %s\n",
+    if (identical(x$stage, "psu")) {
+      "PSU"
+    } else {
+      "element"
+    }
+  ))
   cat(sprintf("Basis: %s\n", x$basis))
 
   if (!is.null(x$domains)) {
     domains <- x$domains
     id_cols <- setdiff(
-      names(domains), c(".domain", ".n_units", ".df", ".status")
+      names(domains),
+      c(".domain", ".n_units", ".df", ".status")
     )
-    if (length(id_cols) > 0L) domains$.domain <- NULL
+    if (length(id_cols) > 0L) {
+      domains$.domain <- NULL
+    }
     names(domains)[names(domains) == ".domain"] <- "Domain"
     names(domains)[names(domains) == ".n_units"] <- "Units"
     names(domains)[names(domains) == ".df"] <- "Design df"
@@ -3982,7 +4534,8 @@ as.list.svyplan_df <- function(x, ...) {
     stop(
       sprintf(
         "no field '%s' in a design df; available: %s",
-        paste(name, collapse = ", "), paste(names(fields), collapse = ", ")
+        paste(name, collapse = ", "),
+        paste(names(fields), collapse = ", ")
       ),
       call. = FALSE
     )
@@ -4127,7 +4680,8 @@ format.svyplan_overlap <- function(x, ...) {
   .check_unused_dots(...)
   sprintf(
     "svyplan_overlap [life %g, lag 1 = %.4g]",
-    attr(x, "life", exact = TRUE), unclass(x)[[1L]]
+    attr(x, "life", exact = TRUE),
+    unclass(x)[[1L]]
   )
 }
 
@@ -4210,7 +4764,8 @@ Math.svyplan_overlap <- function(x, ...) {
     stop(
       sprintf(
         "no field '%s' in a rotation overlap; available: %s",
-        paste(name, collapse = ", "), paste(names(fields), collapse = ", ")
+        paste(name, collapse = ", "),
+        paste(names(fields), collapse = ", ")
       ),
       call. = FALSE
     )
@@ -4301,7 +4856,9 @@ print.svyplan_panel <- function(x, ...) {
   cat(.fmt_panel_headline(x))
   cat(.fmt_panel_precision(x))
   cat(.fmt_panel_assured(x))
+  cat("\n")
   print(.fmt_panel_waves(x, brief = TRUE), row.names = FALSE, right = FALSE)
+  cat("\n")
   cat("# summary() for the launch, the loss and per-wave cv\n")
   invisible(x)
 }
@@ -4332,7 +4889,8 @@ print.summary.svyplan_panel <- function(x, ...) {
   plan <- x$plan
   cat(sprintf(
     "Analysis of a panel recruitment (%s, %d-wave life)\n\n",
-    plan$design, nrow(plan$waves)
+    plan$design,
+    nrow(plan$waves)
   ))
   cat(.fmt_panel_headline(plan))
   cat(.fmt_panel_in_sample(plan))
@@ -4341,11 +4899,14 @@ print.summary.svyplan_panel <- function(x, ...) {
   cat(.fmt_panel_precision(plan))
   cat(.fmt_panel_assured(plan))
 
-  cat(sprintf("\n%s\n", if (identical(plan$design, "fixed")) {
-    "Waves of the life"
-  } else {
-    "Waves alive at one occasion"
-  }))
+  cat(sprintf(
+    "\n%s\n",
+    if (identical(plan$design, "fixed")) {
+      "Waves of the life"
+    } else {
+      "Waves alive at one occasion"
+    }
+  ))
   print(x$waves, row.names = FALSE, right = FALSE)
 
   if (!is.null(x$launch)) {
@@ -4427,7 +4988,10 @@ print.summary.svyplan_panel <- function(x, ...) {
   }
   need <- ceiling(x$n_target)
   sprintf(
-    "%s -> %s responding%s%s\n", lead, .fmt_count_n(round(shown$head)), where,
+    "%s -> %s responding%s%s\n",
+    lead,
+    .fmt_count_n(round(shown$head)),
+    where,
     if (round(shown$head) < need) {
       sprintf(", short of the %s the target needs", .fmt_count_n(need))
     } else {
@@ -4448,7 +5012,8 @@ print.summary.svyplan_panel <- function(x, ...) {
   }
   sprintf(
     "in sample: %s across %d live cohorts\n",
-    .fmt_count_n(.panel_shown(x)$in_sample), x$n_cohorts
+    .fmt_count_n(.panel_shown(x)$in_sample),
+    x$n_cohorts
   )
 }
 
@@ -4464,7 +5029,8 @@ print.summary.svyplan_panel <- function(x, ...) {
   }
   sprintf(
     "assured (%s): %s %s%s\n",
-    .fmt_prob(x$params$assurance), .fmt_count_n(ceiling(x$n_assured)),
+    .fmt_prob(x$params$assurance),
+    .fmt_count_n(ceiling(x$n_assured)),
     if (identical(x$design, "fixed")) "issued" else "entrants per occasion",
     if (isFALSE(x$assured_feasible)) {
       sprintf(", beyond the population of %s", .fmt_count_n(x$target$params$N))
@@ -4492,7 +5058,9 @@ print.summary.svyplan_panel <- function(x, ...) {
   }
   sprintf(
     "rates: response %.3g, retention %s (%s)\n",
-    x$params$resp_rate, ret_txt, loss_txt
+    x$params$resp_rate,
+    ret_txt,
+    loss_txt
   )
 }
 
@@ -4509,16 +5077,24 @@ print.summary.svyplan_panel <- function(x, ...) {
   }
   sprintf(
     "target: response %.3g removed, requirement %s responding\n",
-    rr, .fmt_count_n(round(x$n_target))
+    rr,
+    .fmt_count_n(round(x$n_target))
   )
 }
 
 #' @keywords internal
 #' @noRd
 .fmt_panel_precision <- function(x) {
-  label <- if (is.null(x$method)) x$type else sprintf("%s (%s)", x$type, x$method)
+  label <- if (is.null(x$method)) {
+    x$type
+  } else {
+    sprintf("%s (%s)", x$type, x$method)
+  }
   sprintf(
-    "%s: se = %.4g, moe = %.4g%s\n", label, x$se, x$moe,
+    "%s: se = %.4g, moe = %.4g%s\n",
+    label,
+    x$se,
+    x$moe,
     if (is.na(x$cv)) "" else sprintf(", cv = %.3g", x$cv)
   )
 }
@@ -4595,7 +5171,9 @@ format.svyplan_panel <- function(x, ...) {
   .check_unused_dots(...)
   sprintf(
     "svyplan_panel [%s, %d waves, recruit %g]",
-    x$design, nrow(x$waves), .panel_recruit(x)
+    x$design,
+    nrow(x$waves),
+    .panel_recruit(x)
   )
 }
 
@@ -4648,7 +5226,8 @@ as.data.frame.svyplan_panel <- function(
   stop(
     sprintf(
       "a %s cannot be modified in place: its values and the quantities behind them describe one design, and a replacement would leave them contradicting each other; recompute with %s, or take as.double(x) to work with the numbers",
-      what, from
+      what,
+      from
     ),
     call. = FALSE
   )

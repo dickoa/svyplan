@@ -816,7 +816,8 @@ test_that("a two-phase assurance level prints as itself", {
 test_that("print carries one reading of the design, not two", {
   plan <- n_twophase(.tp_frame(), phase1_cost = 1, budget = 50000)
   out <- capture.output(print(plan))
-  expect_length(out, 10L)
+  # Two blank lines set the strata table off from the header and the verdict.
+  expect_length(out, 12L)
   expect_lt(max(nchar(out)), 80L)
   # The continuous optimum and the fielded design differ by a unit or two and
   # report the same cv, so only the fielded one is printed.

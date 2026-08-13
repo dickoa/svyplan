@@ -12,7 +12,7 @@
 #'   variable such as region, age group, or urbanicity. The values in this
 #'   frame typically come from a census, a population register, or a
 #'   previous survey. Any stratum table with the columns below works,
-#'   for example the pool summary of an executed samplyr sample
+#'   for example the pool summary of an executed `samplyr` sample
 #'   (`samplyr::frame_summary()`), once the measure columns are added.
 #'
 #'   When a design stratifies by several variables at once (e.g. region
@@ -719,7 +719,9 @@ n_alloc.default <- function(
   plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, n_alloc.default, match.call(), environment())
-  if (!is.null(.plan)) return(do.call(n_alloc.default, c(.plan, list(...))))
+  if (!is.null(.plan)) {
+    return(do.call(n_alloc.default, c(.plan, list(...))))
+  }
   .check_unused_dots(...)
   alloc_default <- c("neyman", "optimal", "proportional", "power")
   alloc_explicit <- !missing(alloc) && !identical(alloc, alloc_default)
@@ -730,13 +732,17 @@ n_alloc.default <- function(
       stop("joint constrained allocation requires 'measures'", call. = FALSE)
     }
     if (!is.null(n) || !is.null(cv)) {
-      stop("joint constrained allocation cannot be combined with 'n' or 'cv'",
-           call. = FALSE)
+      stop(
+        "joint constrained allocation cannot be combined with 'n' or 'cv'",
+        call. = FALSE
+      )
     }
     if (is.null(objective)) {
       if (is.null(targets)) {
-        stop("'measures' and 'targets' must be supplied together",
-             call. = FALSE)
+        stop(
+          "'measures' and 'targets' must be supplied together",
+          call. = FALSE
+        )
       }
       if (!is.null(budget)) {
         # 'budget' means "ceiling on the cheapest feasible design" in classic
@@ -757,16 +763,22 @@ n_alloc.default <- function(
       check_scalar(budget, "budget")
     }
     if (!is.null(domains)) {
-      stop("use 'targets$domain' for joint constrained allocation, not 'domains'",
-           call. = FALSE)
+      stop(
+        "use 'targets$domain' for joint constrained allocation, not 'domains'",
+        call. = FALSE
+      )
     }
     if (alloc_explicit) {
-      stop("'alloc' is not used for joint constrained allocation; allocation is determined by 'targets'",
-           call. = FALSE)
+      stop(
+        "'alloc' is not used for joint constrained allocation; allocation is determined by 'targets'",
+        call. = FALSE
+      )
     }
     if (alloc_q_explicit) {
-      stop("'alloc_q' is not used for joint constrained allocation",
-           call. = FALSE)
+      stop(
+        "'alloc_q' is not used for joint constrained allocation",
+        call. = FALSE
+      )
     }
     return(.n_alloc_bethel(
       frame = frame,
@@ -785,10 +797,17 @@ n_alloc.default <- function(
   alloc <- match.arg(alloc)
   check_alpha(alpha)
 
-  if (!is.null(min_n_stratum)) check_scalar(min_n_stratum, "min_n_stratum")
+  if (!is.null(min_n_stratum)) {
+    check_scalar(min_n_stratum, "min_n_stratum")
+  }
   if (alloc == "power") {
-    if (!is.numeric(alloc_q) || length(alloc_q) != 1L || is.na(alloc_q) ||
-        alloc_q < 0 || alloc_q > 1) {
+    if (
+      !is.numeric(alloc_q) ||
+        length(alloc_q) != 1L ||
+        is.na(alloc_q) ||
+        alloc_q < 0 ||
+        alloc_q > 1
+    ) {
       stop("'alloc_q' must be a numeric scalar in [0, 1]", call. = FALSE)
     }
   }
@@ -798,8 +817,13 @@ n_alloc.default <- function(
     stop("specify exactly one of 'n', 'cv', or 'budget'", call. = FALSE)
   }
 
-  prep <- .alloc_prepare_frame(frame, domains = domains, unit_cost = unit_cost,
-                               deff = deff, resp_rate = resp_rate)
+  prep <- .alloc_prepare_frame(
+    frame,
+    domains = domains,
+    unit_cost = unit_cost,
+    deff = deff,
+    resp_rate = resp_rate
+  )
   N_h <- prep$N_h
   S_h <- prep$S_h
   mean_h <- prep$mean_h
@@ -827,8 +851,10 @@ n_alloc.default <- function(
   if (any(lo_i > hi_i)) {
     bad <- prep$stratum[lo_i > hi_i]
     stop(
-      sprintf("no integer sample size satisfies the bounds for stratum: %s",
-              paste(bad, collapse = ", ")),
+      sprintf(
+        "no integer sample size satisfies the bounds for stratum: %s",
+        paste(bad, collapse = ", ")
+      ),
       call. = FALSE
     )
   }
@@ -838,11 +864,20 @@ n_alloc.default <- function(
   tol <- 1e-8
 
   a_h <- .alloc_weights(alloc, alloc_q, N_h, S_h, cost_h, deff, resp_rate)
-  if (!is.finite(sum(a_h)) || sum(a_h) <= 0) a_h <- N_h
+  if (!is.finite(sum(a_h)) || sum(a_h) <= 0) {
+    a_h <- N_h
+  }
 
-  mode <- if (!is.null(n)) "n" else if (!is.null(cv)) "cv" else "budget"
-  if (mode == "budget" && isTRUE(prep$cluster) &&
-      !isTRUE(prep$has_stage_costs)) {
+  mode <- if (!is.null(n)) {
+    "n"
+  } else if (!is.null(cv)) {
+    "cv"
+  } else {
+    "budget"
+  }
+  if (
+    mode == "budget" && isTRUE(prep$cluster) && !isTRUE(prep$has_stage_costs)
+  ) {
     stop(
       "'budget' mode with 'icc_psu' requires 'cost_psu' and 'cost_ssu' columns",
       call. = FALSE
@@ -853,18 +888,27 @@ n_alloc.default <- function(
   if (mode == "n") {
     check_scalar(n, "n")
     if (n < lo - tol) {
-      stop("'n' is below the minimum feasible total under constraints",
-           call. = FALSE)
+      stop(
+        "'n' is below the minimum feasible total under constraints",
+        call. = FALSE
+      )
     }
     if (n > hi + tol) {
-      stop(sprintf("'n' exceeds the maximum feasible total (census bound)%s",
-                   .alloc_psu_bound_note(prep)), call. = FALSE)
+      stop(
+        sprintf(
+          "'n' exceeds the maximum feasible total (census bound)%s",
+          .alloc_psu_bound_note(prep)
+        ),
+        call. = FALSE
+      )
     }
     if (round(n) < sum(lo_i) || round(n) > sum(hi_i)) {
       stop(
         sprintf(
           "no integer allocation reaches total %d within the integer bounds (feasible totals: %d to %d)",
-          as.integer(round(n)), sum(lo_i), sum(hi_i)
+          as.integer(round(n)),
+          sum(lo_i),
+          sum(hi_i)
         ),
         call. = FALSE
       )
@@ -873,39 +917,57 @@ n_alloc.default <- function(
   } else if (mode == "cv") {
     check_scalar(cv, "cv")
     if (anyNA(mean_h)) {
-      stop("'mean' (or 'p') is required in frame when solving for 'cv'",
-           call. = FALSE)
+      stop(
+        "'mean' (or 'p') is required in frame when solving for 'cv'",
+        call. = FALSE
+      )
     }
 
     cv_for_total <- function(n_total) {
       n_h <- .rna_alloc(a_h, n_total, m_h, M_h)
       if (length(prep$domain_idx) == 0L) {
         .alloc_metrics(
-          N_h = N_h, S_h = S_h, mean_h = mean_h, n_h = n_h,
-          alpha = alpha, deff = deff, resp_rate = resp_rate,
+          N_h = N_h,
+          S_h = S_h,
+          mean_h = mean_h,
+          n_h = n_h,
+          alpha = alpha,
+          deff = deff,
+          resp_rate = resp_rate,
           cost_h = cost_h
         )$cv
       } else {
         .alloc_domain_cv_max(
-          prep = prep, n_h = n_h,
-          alpha = alpha, deff = deff, resp_rate = resp_rate
+          prep = prep,
+          n_h = n_h,
+          alpha = alpha,
+          deff = deff,
+          resp_rate = resp_rate
         )
       }
     }
 
     cv_lo <- cv_for_total(lo)
-    if (cv <= 0) stop("'cv' must be positive", call. = FALSE)
+    if (cv <= 0) {
+      stop("'cv' must be positive", call. = FALSE)
+    }
     if (cv_lo <= cv + tol) {
       target_total <- lo
     } else {
       cv_hi <- cv_for_total(hi)
       if (!is.finite(cv_hi) || cv_hi > cv + tol) {
-        stop(sprintf("target 'cv' is unattainable under current constraints%s",
-                     .alloc_psu_bound_note(prep)), call. = FALSE)
+        stop(
+          sprintf(
+            "target 'cv' is unattainable under current constraints%s",
+            .alloc_psu_bound_note(prep)
+          ),
+          call. = FALSE
+        )
       }
       target_total <- uniroot(
         function(x) cv_for_total(x) - cv,
-        interval = c(lo, hi), tol = 1e-8
+        interval = c(lo, hi),
+        tol = 1e-8
       )$root
     }
   } else {
@@ -923,13 +985,19 @@ n_alloc.default <- function(
     }
 
     if (budget < cost_lo - tol) {
-      stop("'budget' is below the minimum feasible cost under constraints",
-           call. = FALSE)
+      stop(
+        "'budget' is below the minimum feasible cost under constraints",
+        call. = FALSE
+      )
     }
     if (budget > cost_hi + tol) {
-      stop(sprintf("'budget' exceeds the maximum feasible cost (census bound)%s",
-                   .alloc_psu_bound_note(prep)),
-           call. = FALSE)
+      stop(
+        sprintf(
+          "'budget' exceeds the maximum feasible cost (census bound)%s",
+          .alloc_psu_bound_note(prep)
+        ),
+        call. = FALSE
+      )
     }
 
     if (abs(budget - cost_lo) <= tol) {
@@ -941,27 +1009,45 @@ n_alloc.default <- function(
       }
       target_total <- uniroot(
         function(x) cost_for_total(x) - budget,
-        interval = c(lo, hi), tol = 1e-8
+        interval = c(lo, hi),
+        tol = 1e-8
       )$root
     }
   }
 
   n_h <- .rna_alloc(a_h, target_total, m_h, M_h)
   metrics <- .alloc_metrics(
-    N_h = N_h, S_h = S_h, mean_h = mean_h, n_h = n_h,
-    alpha = alpha, deff = deff, resp_rate = resp_rate, cost_h = cost_h,
+    N_h = N_h,
+    S_h = S_h,
+    mean_h = mean_h,
+    n_h = n_h,
+    alpha = alpha,
+    deff = deff,
+    resp_rate = resp_rate,
+    cost_h = cost_h,
     df = df
   )
 
   detail <- .alloc_detail(
-    prep = prep, n_h = n_h, m_h = m_h, M_h = M_h,
-    resp_rate = resp_rate, deff = deff,
-    mode = mode, budget = budget, lo_i = lo_i, hi_i = hi_i,
+    prep = prep,
+    n_h = n_h,
+    m_h = m_h,
+    M_h = M_h,
+    resp_rate = resp_rate,
+    deff = deff,
+    mode = mode,
+    budget = budget,
+    lo_i = lo_i,
+    hi_i = hi_i,
     metrics = metrics
   )
   domain_summary <- .alloc_domain_summary(
-    prep = prep, n_h = n_h,
-    alpha = alpha, deff = deff, resp_rate = resp_rate, df = df
+    prep = prep,
+    n_h = n_h,
+    alpha = alpha,
+    deff = deff,
+    resp_rate = resp_rate,
+    df = df
   )
 
   params <- list(
@@ -984,15 +1070,26 @@ n_alloc.default <- function(
 
   if (isTRUE(prep$cluster)) {
     opc <- .alloc_operational_cluster(
-      prep, detail, n_h, mode, budget,
-      alpha = alpha, deff = deff, resp_rate = resp_rate,
-      target_cv = if (mode == "cv") cv else NULL, df = df
+      prep,
+      detail,
+      n_h,
+      mode,
+      budget,
+      alpha = alpha,
+      deff = deff,
+      resp_rate = resp_rate,
+      target_cv = if (mode == "cv") cv else NULL,
+      df = df
     )
     detail <- opc$detail
     operational <- opc$operational
   } else {
     operational <- .alloc_operational_element(
-      prep, detail, alpha = alpha, deff = deff, resp_rate = resp_rate,
+      prep,
+      detail,
+      alpha = alpha,
+      deff = deff,
+      resp_rate = resp_rate,
       df = df
     )
   }
@@ -1031,8 +1128,10 @@ n_alloc.svyplan_prec <- function(
 
   if (identical(x$method, "bethel")) {
     if (!is.null(n) || !is.null(cv) || !is.null(budget)) {
-      stop("generalized precision results cannot be combined with scalar 'n', 'cv', or 'budget'",
-           call. = FALSE)
+      stop(
+        "generalized precision results cannot be combined with scalar 'n', 'cv', or 'budget'",
+        call. = FALSE
+      )
     }
     targets <- p$targets
     if (is.null(p$objective)) {
@@ -1042,13 +1141,17 @@ n_alloc.svyplan_prec <- function(
       # given as 'rmoe' comes back as 'rmoe' rather than as its cv or moe
       # equivalent.
       for (column in c("cv", "moe", "rmoe")) {
-        if (!column %in% names(targets)) targets[[column]] <- NA_real_
+        if (!column %in% names(targets)) {
+          targets[[column]] <- NA_real_
+        }
         targets[[column]][] <- NA_real_
       }
       matched <- match(targets$constraint, x$detail$constraint)
       if (anyNA(matched)) {
-        stop("precision result is missing stored constraint identifiers",
-             call. = FALSE)
+        stop(
+          "precision result is missing stored constraint identifiers",
+          call. = FALSE
+        )
       }
       for (column in c("cv", "moe", "rmoe")) {
         rows <- x$detail$.metric[matched] == column
@@ -1089,7 +1192,9 @@ n_alloc.svyplan_prec <- function(
   args <- list(
     frame = p$frame,
     domains = p$domain_cols,
-    n = n, cv = cv, budget = budget,
+    n = n,
+    cv = cv,
+    budget = budget,
     alloc = p$alloc %||% "neyman",
     alpha = p$alpha,
     deff = p$deff,
@@ -1245,8 +1350,15 @@ prec_alloc.default <- function(
   min_n_stratum = NULL,
   plan = NULL
 ) {
-  .plan <- .merge_plan_args(plan, prec_alloc.default, match.call(), environment())
-  if (!is.null(.plan)) return(do.call(prec_alloc.default, c(.plan, list(...))))
+  .plan <- .merge_plan_args(
+    plan,
+    prec_alloc.default,
+    match.call(),
+    environment()
+  )
+  if (!is.null(.plan)) {
+    return(do.call(prec_alloc.default, c(.plan, list(...))))
+  }
   .check_unused_dots(...)
   joint_any <- !is.null(measures) || !is.null(targets) || !is.null(objective)
   if (joint_any) {
@@ -1257,14 +1369,22 @@ prec_alloc.default <- function(
       stop("'measures' and 'targets' must be supplied together", call. = FALSE)
     }
     if (!is.null(budget) && is.null(objective)) {
-      stop("'budget' requires 'objective' for joint precision assessment",
-           call. = FALSE)
+      stop(
+        "'budget' requires 'objective' for joint precision assessment",
+        call. = FALSE
+      )
     }
-    if (!is.null(budget)) check_scalar(budget, "budget")
-    if (!is.null(min_n_stratum)) check_scalar(min_n_stratum, "min_n_stratum")
+    if (!is.null(budget)) {
+      check_scalar(budget, "budget")
+    }
+    if (!is.null(min_n_stratum)) {
+      check_scalar(min_n_stratum, "min_n_stratum")
+    }
     if (!is.null(domains)) {
-      stop("use 'targets$domain' for joint constrained allocation, not 'domains'",
-           call. = FALSE)
+      stop(
+        "use 'targets$domain' for joint constrained allocation, not 'domains'",
+        call. = FALSE
+      )
     }
     return(.prec_alloc_bethel(
       frame = frame,
@@ -1292,8 +1412,13 @@ prec_alloc.default <- function(
   }
   check_alpha(alpha)
 
-  prep <- .alloc_prepare_frame(frame, domains = domains, unit_cost = unit_cost,
-                               deff = deff, resp_rate = resp_rate)
+  prep <- .alloc_prepare_frame(
+    frame,
+    domains = domains,
+    unit_cost = unit_cost,
+    deff = deff,
+    resp_rate = resp_rate
+  )
   deff_arg <- deff
   resp_rate_arg <- resp_rate
   deff <- prep$deff_h
@@ -1301,28 +1426,43 @@ prec_alloc.default <- function(
   H <- length(prep$N_h)
 
   if (!is.numeric(n) || anyNA(n) || any(!is.finite(n)) || length(n) != H) {
-    stop("'n' must be a finite numeric vector with length nrow(frame)",
-         call. = FALSE)
+    stop(
+      "'n' must be a finite numeric vector with length nrow(frame)",
+      call. = FALSE
+    )
   }
   if (any(n <= 0)) {
     stop("all 'n' elements must be positive", call. = FALSE)
   }
 
   metrics <- .alloc_metrics(
-    N_h = prep$N_h, S_h = prep$S_h, mean_h = prep$mean_h, n_h = n,
-    alpha = alpha, deff = deff, resp_rate = resp_rate,
-    cost_h = prep$cost_h, df = df
+    N_h = prep$N_h,
+    S_h = prep$S_h,
+    mean_h = prep$mean_h,
+    n_h = n,
+    alpha = alpha,
+    deff = deff,
+    resp_rate = resp_rate,
+    cost_h = prep$cost_h,
+    df = df
   )
 
   detail <- .alloc_detail(
-    prep = prep, n_h = n,
-    m_h = rep(NA_real_, H), M_h = prep$N_h,
-    resp_rate = resp_rate, deff = deff,
+    prep = prep,
+    n_h = n,
+    m_h = rep(NA_real_, H),
+    M_h = prep$N_h,
+    resp_rate = resp_rate,
+    deff = deff,
     metrics = metrics
   )
   domain_summary <- .alloc_domain_summary(
-    prep = prep, n_h = n,
-    alpha = alpha, deff = deff, resp_rate = resp_rate, df = df
+    prep = prep,
+    n_h = n,
+    alpha = alpha,
+    deff = deff,
+    resp_rate = resp_rate,
+    df = df
   )
 
   .new_svyplan_prec(
@@ -1331,8 +1471,13 @@ prec_alloc.default <- function(
     cv = metrics$cv,
     type = "alloc",
     params = list(
-      frame = frame, n = n, alpha = alpha, deff = deff_arg,
-      resp_rate = resp_rate_arg, df = df, cost_h = prep$cost_h,
+      frame = frame,
+      n = n,
+      alpha = alpha,
+      deff = deff_arg,
+      resp_rate = resp_rate_arg,
+      df = df,
+      cost_h = prep$cost_h,
       domain_cols = prep$domain_cols,
       domain_idx = prep$domain_idx,
       achieved = list(n = sum(n), cv = metrics$cv, cost = metrics$cost)
@@ -1380,8 +1525,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     n_h <- obj$detail$n
   }
   if (is.null(n_h)) {
-    stop("allocation detail does not contain stratum sample sizes",
-         call. = FALSE)
+    stop(
+      "allocation detail does not contain stratum sample sizes",
+      call. = FALSE
+    )
   }
 
   args <- list(
@@ -1396,13 +1543,21 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   if (!.alloc_is_cluster(p$frame)) {
     args$unit_cost <- p$cost_h
   }
-  do.call(prec_alloc.default, .roundtrip_args(args, list(...), prec_alloc.default))
+  do.call(
+    prec_alloc.default,
+    .roundtrip_args(args, list(...), prec_alloc.default)
+  )
 }
 
 #' @keywords internal
 #' @noRd
-.alloc_prepare_frame <- function(frame, domains = NULL, unit_cost = NULL,
-                                 deff = 1, resp_rate = 1) {
+.alloc_prepare_frame <- function(
+  frame,
+  domains = NULL,
+  unit_cost = NULL,
+  deff = 1,
+  resp_rate = 1
+) {
   if (!is.data.frame(frame) || nrow(frame) == 0L) {
     stop("'frame' must be a non-empty data frame", call. = FALSE)
   }
@@ -1424,7 +1579,9 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 
   if ("sd" %in% names(frame)) {
     S_h <- frame$sd
-    if (!is.numeric(S_h) || anyNA(S_h) || any(!is.finite(S_h)) || any(S_h < 0)) {
+    if (
+      !is.numeric(S_h) || anyNA(S_h) || any(!is.finite(S_h)) || any(S_h < 0)
+    ) {
       stop("'sd' must contain non-negative finite values", call. = FALSE)
     }
   } else if ("var" %in% names(frame)) {
@@ -1437,8 +1594,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     stop("'frame' must contain either 'sd' or 'var'", call. = FALSE)
   }
   if (all(S_h == 0)) {
-    warning("all 'sd' values are zero; allocation has no variability to distribute",
-            call. = FALSE)
+    warning(
+      "all 'sd' values are zero; allocation has no variability to distribute",
+      call. = FALSE
+    )
   }
 
   mean_h <- rep(NA_real_, nrow(frame))
@@ -1458,8 +1617,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     stop("'mean' (or 'p') must contain finite values", call. = FALSE)
   }
   if (!all(is.na(mean_h)) && all(mean_h == 0, na.rm = TRUE)) {
-    warning("all 'mean' (or 'p') values are zero; CV will be Inf",
-            call. = FALSE)
+    warning(
+      "all 'mean' (or 'p') values are zero; CV will be Inf",
+      call. = FALSE
+    )
   }
 
   if ("cost" %in% names(frame)) {
@@ -1470,7 +1631,12 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   }
 
   if (!is.null(unit_cost)) {
-    if (!is.numeric(unit_cost) || anyNA(unit_cost) || any(!is.finite(unit_cost)) || any(unit_cost <= 0)) {
+    if (
+      !is.numeric(unit_cost) ||
+        anyNA(unit_cost) ||
+        any(!is.finite(unit_cost)) ||
+        any(unit_cost <= 0)
+    ) {
       stop("'unit_cost' must contain positive finite values", call. = FALSE)
     }
     if (length(unit_cost) == 1L) {
@@ -1482,8 +1648,12 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     }
   } else if ("unit_cost" %in% names(frame)) {
     cost_h <- frame$unit_cost
-    if (!is.numeric(cost_h) || anyNA(cost_h) || any(!is.finite(cost_h)) ||
-        any(cost_h <= 0)) {
+    if (
+      !is.numeric(cost_h) ||
+        anyNA(cost_h) ||
+        any(!is.finite(cost_h)) ||
+        any(cost_h <= 0)
+    ) {
       stop("'unit_cost' must contain positive finite values", call. = FALSE)
     }
   } else {
@@ -1491,16 +1661,20 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   }
 
   deff_h <- .alloc_resolve_h(deff, frame, "deff", nrow(frame), .check_deff_h)
-  resp_rate_h <- .alloc_resolve_h(resp_rate, frame, "resp_rate", nrow(frame),
-                                  .check_resp_rate_h)
+  resp_rate_h <- .alloc_resolve_h(
+    resp_rate,
+    frame,
+    "resp_rate",
+    nrow(frame),
+    .check_resp_rate_h
+  )
 
   max_weight <- rep(NA_real_, nrow(frame))
   if ("max_weight" %in% names(frame)) {
     max_weight <- frame$max_weight
     bad <- !is.na(max_weight) & (!is.finite(max_weight) | max_weight < 1)
     if (any(bad)) {
-      stop("'max_weight' must be >= 1 and finite when provided",
-           call. = FALSE)
+      stop("'max_weight' must be >= 1 and finite when provided", call. = FALSE)
     }
   }
 
@@ -1540,11 +1714,16 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     for (i in seq_along(domain_idx)) {
       s_d <- stratum[domain_idx[[i]]]
       if (anyDuplicated(s_d)) {
-        lab <- paste(unlist(lapply(domain_values[i, , drop = FALSE],
-                                   as.character)), collapse = ":")
+        lab <- paste(
+          unlist(lapply(domain_values[i, , drop = FALSE], as.character)),
+          collapse = ":"
+        )
         stop(
-          sprintf("duplicate stratum labels in domain '%s': %s", lab,
-                  paste(s_d[duplicated(s_d)], collapse = ", ")),
+          sprintf(
+            "duplicate stratum labels in domain '%s': %s",
+            lab,
+            paste(s_d[duplicated(s_d)], collapse = ", ")
+          ),
           call. = FALSE
         )
       }
@@ -1553,7 +1732,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     if (anyDuplicated(stratum)) {
       dups <- stratum[duplicated(stratum)]
       stop(
-        sprintf("duplicate stratum labels: %s", paste(unique(dups), collapse = ", ")),
+        sprintf(
+          "duplicate stratum labels: %s",
+          paste(unique(dups), collapse = ", ")
+        ),
         call. = FALSE
       )
     }
@@ -1588,13 +1770,23 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #' @noRd
 .alloc_cluster_prep <- function(prep, frame, unit_cost) {
   if (!.alloc_is_cluster(frame)) {
-    orphan <- intersect(c("var_ratio_psu", "n_per_psu", "cost_psu", "cost_ssu",
-                          "N_psu", "resp_rate_psu"),
-                        names(frame))
+    orphan <- intersect(
+      c(
+        "var_ratio_psu",
+        "n_per_psu",
+        "cost_psu",
+        "cost_ssu",
+        "N_psu",
+        "resp_rate_psu"
+      ),
+      names(frame)
+    )
     if (length(orphan) > 0L) {
       stop(
-        sprintf("cluster column(s) %s require a 'icc_psu' column",
-                paste(sQuote(orphan), collapse = ", ")),
+        sprintf(
+          "cluster column(s) %s require a 'icc_psu' column",
+          paste(sQuote(orphan), collapse = ", ")
+        ),
         call. = FALSE
       )
     }
@@ -1616,23 +1808,32 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   }
   .check_cluster_icc_open(icc, context = "n_alloc()")
 
-  var_ratio <- if ("var_ratio_psu" %in% names(frame)) frame[["var_ratio_psu"]] else rep(1, H)
-  if (!is.numeric(var_ratio) || anyNA(var_ratio) || any(!is.finite(var_ratio)) || any(var_ratio <= 0)) {
+  var_ratio <- if ("var_ratio_psu" %in% names(frame)) {
+    frame[["var_ratio_psu"]]
+  } else {
+    rep(1, H)
+  }
+  if (
+    !is.numeric(var_ratio) ||
+      anyNA(var_ratio) ||
+      any(!is.finite(var_ratio)) ||
+      any(var_ratio <= 0)
+  ) {
     stop("'var_ratio_psu' must contain positive finite values", call. = FALSE)
   }
 
   has_costs <- any(c("cost_psu", "cost_ssu") %in% names(frame))
   if (has_costs) {
     if (!all(c("cost_psu", "cost_ssu") %in% names(frame))) {
-      stop("'cost_psu' and 'cost_ssu' must be supplied together",
-           call. = FALSE)
+      stop("'cost_psu' and 'cost_ssu' must be supplied together", call. = FALSE)
     }
     for (col in c("cost_psu", "cost_ssu")) {
       cc <- frame[[col]]
-      if (!is.numeric(cc) || anyNA(cc) || any(!is.finite(cc)) ||
-          any(cc <= 0)) {
-        stop(sprintf("'%s' must contain positive finite values", col),
-             call. = FALSE)
+      if (!is.numeric(cc) || anyNA(cc) || any(!is.finite(cc)) || any(cc <= 0)) {
+        stop(
+          sprintf("'%s' must contain positive finite values", col),
+          call. = FALSE
+        )
       }
     }
   }
@@ -1641,8 +1842,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   if ("n_per_psu" %in% names(frame)) {
     ps <- frame$n_per_psu
     if (!is.numeric(ps) || any(!is.na(ps) & (!is.finite(ps) | ps < 1))) {
-      stop("'n_per_psu' must contain values >= 1 (NA for cost-optimal)",
-           call. = FALSE)
+      stop(
+        "'n_per_psu' must contain values >= 1 (NA for cost-optimal)",
+        call. = FALSE
+      )
     }
     n_per_psu_h <- as.numeric(ps)
   }
@@ -1661,7 +1864,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     # being a pure 1/n_psu factor that scales cost without moving this
     # trade-off.
     n_per_psu_h[need_opt] <- sqrt(
-      frame$cost_psu[need_opt] / frame$cost_ssu[need_opt] *
+      frame$cost_psu[need_opt] /
+        frame$cost_ssu[need_opt] *
         (1 - icc[need_opt]) /
         (icc[need_opt] * prep$resp_rate_h[need_opt])
     )
@@ -1670,8 +1874,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   too_big <- n_per_psu_h > prep$N_h
   if (any(too_big & !need_opt)) {
     stop(
-      sprintf("'n_per_psu' exceeds the stratum population for: %s",
-              paste(prep$stratum[too_big & !need_opt], collapse = ", ")),
+      sprintf(
+        "'n_per_psu' exceeds the stratum population for: %s",
+        paste(prep$stratum[too_big & !need_opt], collapse = ", ")
+      ),
       call. = FALSE
     )
   }
@@ -1696,21 +1902,35 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   # A PSU universe is a feasibility constraint only. It bounds the allocation
   # and its integerization; it does not introduce a first-stage FPC, and the
   # variance model stays the with-replacement one documented for this path.
-  resp_rate_psu_h <- .alloc_resolve_h(1, frame, "resp_rate_psu", H,
-                                      .check_resp_rate_h)
+  resp_rate_psu_h <- .alloc_resolve_h(
+    1,
+    frame,
+    "resp_rate_psu",
+    H,
+    .check_resp_rate_h
+  )
 
   N_psu_h <- NULL
   if ("N_psu" %in% names(frame)) {
     N_psu <- frame$N_psu
-    if (!is.numeric(N_psu) || anyNA(N_psu) || any(!is.finite(N_psu)) ||
-        any(N_psu < 1) || any(abs(N_psu - round(N_psu)) > 1e-8)) {
-      stop("'N_psu' must contain positive whole numbers, one per stratum",
-           call. = FALSE)
+    if (
+      !is.numeric(N_psu) ||
+        anyNA(N_psu) ||
+        any(!is.finite(N_psu)) ||
+        any(N_psu < 1) ||
+        any(abs(N_psu - round(N_psu)) > 1e-8)
+    ) {
+      stop(
+        "'N_psu' must contain positive whole numbers, one per stratum",
+        call. = FALSE
+      )
     }
     N_psu_h <- as.numeric(round(N_psu))
     if (any(N_psu_h > prep$N_h + 1e-8)) {
-      stop("'N_psu' must not exceed the ultimate-unit population 'N'",
-           call. = FALSE)
+      stop(
+        "'N_psu' must not exceed the ultimate-unit population 'N'",
+        call. = FALSE
+      )
     }
   }
   prep$N_psu_h <- N_psu_h
@@ -1769,8 +1989,13 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   )
 }
 
-.alloc_bounds <- function(N_h, max_weight, take_all, min_n_stratum = NULL,
-                          psu_cap = NULL) {
+.alloc_bounds <- function(
+  N_h,
+  max_weight,
+  take_all,
+  min_n_stratum = NULL,
+  psu_cap = NULL
+) {
   H <- length(N_h)
   m_h <- pmin(rep(1, H), N_h)
   M_h <- as.numeric(N_h)
@@ -1813,8 +2038,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
         call. = FALSE
       )
     }
-    stop("constraints are infeasible: lower bounds exceed stratum population",
-         call. = FALSE)
+    stop(
+      "constraints are infeasible: lower bounds exceed stratum population",
+      call. = FALSE
+    )
   }
 
   list(m_h = m_h, M_h = M_h, m_src = m_src, M_src = M_src)
@@ -1822,8 +2049,17 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 
 #' @keywords internal
 #' @noRd
-.alloc_metrics <- function(N_h, S_h, mean_h, n_h, alpha, deff,
-                           resp_rate, cost_h, df = NULL) {
+.alloc_metrics <- function(
+  N_h,
+  S_h,
+  mean_h,
+  n_h,
+  alpha,
+  deff,
+  resp_rate,
+  cost_h,
+  df = NULL
+) {
   n_net <- n_h * resp_rate
   n_eff <- n_net / deff
   W_h <- N_h / sum(N_h)
@@ -1849,8 +2085,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   cv <- NA_real_
   if (!all(is.na(mean_h))) {
     if (anyNA(mean_h)) {
-      stop("'mean' (or 'p') must be complete to compute aggregate CV",
-           call. = FALSE)
+      stop(
+        "'mean' (or 'p') must be complete to compute aggregate CV",
+        call. = FALSE
+      )
     }
     ybar <- .aggregate_mean(W_h, mean_h)
     cv <- if (ybar == 0) Inf else se / abs(ybar)
@@ -1867,9 +2105,18 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 
   moe_h <- .q_alpha(alpha, df) * se_h
   list(
-    se = se, moe = moe, cv = cv, cost = sum(n_h * cost_h),
-    rmoe = .rmoe_from_moe(moe, if (all(is.na(mean_h))) NULL else
-      .aggregate_mean(W_h, mean_h)),
+    se = se,
+    moe = moe,
+    cv = cv,
+    cost = sum(n_h * cost_h),
+    rmoe = .rmoe_from_moe(
+      moe,
+      if (all(is.na(mean_h))) {
+        NULL
+      } else {
+        .aggregate_mean(W_h, mean_h)
+      }
+    ),
     term = term,
     se_h = se_h,
     moe_h = moe_h,
@@ -1881,9 +2128,19 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 
 #' @keywords internal
 #' @noRd
-.alloc_detail <- function(prep, n_h, m_h, M_h, resp_rate, deff,
-                          mode = "n", budget = NULL,
-                          lo_i = NULL, hi_i = NULL, metrics = NULL) {
+.alloc_detail <- function(
+  prep,
+  n_h,
+  m_h,
+  M_h,
+  resp_rate,
+  deff,
+  mode = "n",
+  budget = NULL,
+  lo_i = NULL,
+  hi_i = NULL,
+  metrics = NULL
+) {
   if (is.null(lo_i)) {
     lo_i <- as.integer(ceiling(pmax(ifelse(is.na(m_h), 0, m_h), 0) - 1e-9))
   }
@@ -1893,8 +2150,15 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   n_int <- switch(
     mode,
     cv = pmin(pmax(as.integer(ceiling(n_h - 1e-9)), lo_i), hi_i),
-    budget = .round_within_budget(n_h, prep$cost_h, budget, lo_i, hi_i,
-                                  prep$N_h, prep$S_h),
+    budget = .round_within_budget(
+      n_h,
+      prep$cost_h,
+      budget,
+      lo_i,
+      hi_i,
+      prep$N_h,
+      prep$S_h
+    ),
     .round_oric_bounded(n_h, lo_i, hi_i)
   )
   out <- data.frame(
@@ -1912,9 +2176,13 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   )
   on_lower <- abs(n_h - m_h) < 1e-6
   out$.bound_source <- ifelse(
-    !out$.binding, NA_character_,
-    ifelse(on_lower, prep$m_src %||% NA_character_,
-           prep$M_src %||% NA_character_)
+    !out$.binding,
+    NA_character_,
+    ifelse(
+      on_lower,
+      prep$m_src %||% NA_character_,
+      prep$M_src %||% NA_character_
+    )
   )
   if (!is.null(metrics)) {
     out$.se <- metrics$se_h
@@ -1936,8 +2204,12 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     }
     out$n_psu_int <- as.integer(n_psu_int)
   }
-  if (any(prep$take_all)) out$take_all <- prep$take_all
-  if (!all(is.na(prep$mean_h))) out$mean <- prep$mean_h
+  if (any(prep$take_all)) {
+    out$take_all <- prep$take_all
+  }
+  if (!all(is.na(prep$mean_h))) {
+    out$mean <- prep$mean_h
+  }
   out
 }
 
@@ -1948,8 +2220,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #' is largest while the budget allows.
 #' @keywords internal
 #' @noRd
-.round_within_budget <- function(n_h, cost_h, budget, lower, upper,
-                                 N_h, S_h) {
+.round_within_budget <- function(n_h, cost_h, budget, lower, upper, N_h, S_h) {
   n_int <- pmin(pmax(as.integer(floor(n_h + 1e-9)), lower), upper)
   W2S2 <- (N_h / sum(N_h))^2 * S_h^2
   repeat {
@@ -1972,18 +2243,32 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #' continuous optimum.
 #' @keywords internal
 #' @noRd
-.alloc_operational_element <- function(prep, detail, alpha, deff, resp_rate,
-                                      df = NULL) {
+.alloc_operational_element <- function(
+  prep,
+  detail,
+  alpha,
+  deff,
+  resp_rate,
+  df = NULL
+) {
   n_int <- detail$n_int
   m <- .alloc_metrics(
-    N_h = prep$N_h, S_h = prep$S_h, mean_h = prep$mean_h, n_h = n_int,
-    alpha = alpha, deff = deff, resp_rate = resp_rate, cost_h = prep$cost_h,
+    N_h = prep$N_h,
+    S_h = prep$S_h,
+    mean_h = prep$mean_h,
+    n_h = n_int,
+    alpha = alpha,
+    deff = deff,
+    resp_rate = resp_rate,
+    cost_h = prep$cost_h,
     df = df
   )
   list(
     n = sum(n_int),
     cost = sum(n_int * prep$cost_h),
-    se = m$se, moe = m$moe, cv = m$cv
+    se = m$se,
+    moe = m$moe,
+    cv = m$cv
   )
 }
 
@@ -1999,9 +2284,18 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #' metrics and updates the detail integers.
 #' @keywords internal
 #' @noRd
-.alloc_operational_cluster <- function(prep, detail, n_h, mode, budget,
-                                       alpha, deff, resp_rate,
-                                       target_cv = NULL, df = NULL) {
+.alloc_operational_cluster <- function(
+  prep,
+  detail,
+  n_h,
+  mode,
+  budget,
+  alpha,
+  deff,
+  resp_rate,
+  target_cv = NULL,
+  df = NULL
+) {
   H <- length(n_h)
   ps <- prep$n_per_psu_h
   # The continuous reduction inflates the stratum SD on the take that
@@ -2022,45 +2316,58 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   W <- prep$N_h / sum(prep$N_h)
   lo_i <- as.integer(ceiling(detail$.lower - 1e-9))
   hi_i <- as.integer(floor(detail$.upper + 1e-9))
-  b_h <- vapply(seq_len(H), function(h) {
-    center <- max(1L, as.integer(round(ps[h])))
-    cand <- unique(c(
-      max(1L, as.integer(floor(ps[h]))),
-      max(1L, as.integer(ceiling(ps[h]))),
-      seq.int(max(1L, center - 50L), min(hi_i[h], center + 50L)),
-      1L
-    ))
-    # A take-all or other exact bound must be representable as a product
-    # of whole PSUs and a whole, common take.  Including the exact bound
-    # guarantees a feasible divisor when it is an integer.
-    if (lo_i[h] == hi_i[h]) {
-      cand <- unique(c(cand, hi_i[h]))
-    }
-    cand <- cand[cand >= 1L & cand <= hi_i[h]]
-    feasible <- vapply(cand, function(b) {
-      ceiling(lo_i[h] / b) <= floor(hi_i[h] / b)
-    }, logical(1L))
-    cand <- cand[feasible]
-    if (length(cand) == 0L) {
-      stop(sprintf("no whole-cluster design satisfies the bounds for stratum '%s'",
-                   prep$stratum[h]), call. = FALSE)
-    }
+  b_h <- vapply(
+    seq_len(H),
+    function(h) {
+      center <- max(1L, as.integer(round(ps[h])))
+      cand <- unique(c(
+        max(1L, as.integer(floor(ps[h]))),
+        max(1L, as.integer(ceiling(ps[h]))),
+        seq.int(max(1L, center - 50L), min(hi_i[h], center + 50L)),
+        1L
+      ))
+      # A take-all or other exact bound must be representable as a product
+      # of whole PSUs and a whole, common take.  Including the exact bound
+      # guarantees a feasible divisor when it is an integer.
+      if (lo_i[h] == hi_i[h]) {
+        cand <- unique(c(cand, hi_i[h]))
+      }
+      cand <- cand[cand >= 1L & cand <= hi_i[h]]
+      feasible <- vapply(
+        cand,
+        function(b) {
+          ceiling(lo_i[h] / b) <= floor(hi_i[h] / b)
+        },
+        logical(1L)
+      )
+      cand <- cand[feasible]
+      if (length(cand) == 0L) {
+        stop(
+          sprintf(
+            "no whole-cluster design satisfies the bounds for stratum '%s'",
+            prep$stratum[h]
+          ),
+          call. = FALSE
+        )
+      }
 
-    # Fixed cluster sizes are rounded to the nearest whole size whenever
-    # that is compatible with the hard element bounds.  Only exact bounds
-    # (notably take-all) may require a divisor farther away.
-    if (isTRUE(prep$n_per_psu_fixed_h[h])) {
-      near <- cand[cand %in% unique(c(floor(ps[h]), ceiling(ps[h])))]
-      if (length(near) > 0L) cand <- near
-    }
-    if (isTRUE(prep$has_stage_costs)) {
-      score <- (var_ratio[h] * (1 + icc[h] * (cand * resp_h[h] - 1))) *
-        (prep$cost_psu_h[h] / cand + prep$cost_ssu_h[h])
-      cand[which.min(score)]
-    } else {
-      cand[which.min(abs(cand - ps[h]))]
-    }
-  }, integer(1L))
+      # Fixed cluster sizes are rounded to the nearest whole size whenever
+      # that is compatible with the hard element bounds.  Only exact bounds
+      # (notably take-all) may require a divisor farther away.
+      if (isTRUE(prep$n_per_psu_fixed_h[h])) {
+        near <- cand[cand %in% unique(c(floor(ps[h]), ceiling(ps[h])))]
+        if (length(near) > 0L) cand <- near
+      }
+      if (isTRUE(prep$has_stage_costs)) {
+        score <- (var_ratio[h] * (1 + icc[h] * (cand * resp_h[h] - 1))) *
+          (prep$cost_psu_h[h] / cand + prep$cost_ssu_h[h])
+        cand[which.min(score)]
+      } else {
+        cand[which.min(abs(cand - ps[h]))]
+      }
+    },
+    integer(1L)
+  )
 
   e_target <- NULL
   if (mode == "n") {
@@ -2075,21 +2382,25 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     # total, which is 1 whenever that total is prime.
     b_free <- b_h
     e_target <- .round_oric_bounded(n_h, lo_i, hi_i)
-    b_h <- vapply(seq_len(H), function(h) {
-      if (isTRUE(prep$n_per_psu_fixed_h[h])) {
-        return(b_free[h])
-      }
-      e <- e_target[h]
-      root <- seq_len(max(1L, as.integer(floor(sqrt(e)))))
-      small <- root[e %% root == 0L]
-      divisors <- sort(unique(c(small, e %/% small)))
-      if (isTRUE(prep$has_stage_costs)) {
-        score <- (var_ratio[h] * (1 + icc[h] * (divisors * resp_h[h] - 1))) *
-          (prep$cost_psu_h[h] / divisors + prep$cost_ssu_h[h])
-        return(divisors[which.min(score)])
-      }
-      divisors[which.min(abs(divisors - ps[h]))]
-    }, integer(1L))
+    b_h <- vapply(
+      seq_len(H),
+      function(h) {
+        if (isTRUE(prep$n_per_psu_fixed_h[h])) {
+          return(b_free[h])
+        }
+        e <- e_target[h]
+        root <- seq_len(max(1L, as.integer(floor(sqrt(e)))))
+        small <- root[e %% root == 0L]
+        divisors <- sort(unique(c(small, e %/% small)))
+        if (isTRUE(prep$has_stage_costs)) {
+          score <- (var_ratio[h] * (1 + icc[h] * (divisors * resp_h[h] - 1))) *
+            (prep$cost_psu_h[h] / divisors + prep$cost_ssu_h[h])
+          return(divisors[which.min(score)])
+        }
+        divisors[which.min(abs(divisors - ps[h]))]
+      },
+      integer(1L)
+    )
   }
 
   a_min <- as.integer(ceiling(lo_i / b_h))
@@ -2100,8 +2411,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     a_max <- pmin(a_max, as.integer(prep$N_psu_h))
   }
   if (any(a_min > a_max)) {
-    stop("no whole-cluster design satisfies the integer allocation bounds",
-         call. = FALSE)
+    stop(
+      "no whole-cluster design satisfies the integer allocation bounds",
+      call. = FALSE
+    )
   }
 
   psu_cost <- if (isTRUE(prep$has_stage_costs)) {
@@ -2114,8 +2427,11 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 
   if (mode == "cv") {
     a_h <- as.integer(ceiling(
-      n_h * (1 + icc * (b_h * resp_h - 1)) / (1 + icc * (ps * resp_h - 1)) /
-        b_h - 1e-9
+      n_h *
+        (1 + icc * (b_h * resp_h - 1)) /
+        (1 + icc * (ps * resp_h - 1)) /
+        b_h -
+        1e-9
     ))
     a_h <- pmin(pmax(a_h, a_min), a_max)
   } else if (mode == "budget") {
@@ -2136,11 +2452,12 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       }
       cand <- which(a_h > a_min)
       if (length(cand) == 0L) {
-        stop("no whole-cluster design satisfies both the budget and lower bounds",
-             call. = FALSE)
+        stop(
+          "no whole-cluster design satisfies both the budget and lower bounds",
+          call. = FALSE
+        )
       }
-      loss <- Cj[cand] * (1 / (a_h[cand] - 1L) - 1 / a_h[cand]) /
-        psu_cost[cand]
+      loss <- Cj[cand] * (1 / (a_h[cand] - 1L) - 1 / a_h[cand]) / psu_cost[cand]
       j <- cand[which.min(loss)]
       a_h[j] <- a_h[j] - 1L
     }
@@ -2150,8 +2467,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       if (length(cand) == 0L) {
         break
       }
-      gain <- Cj[cand] * (1 / a_h[cand] - 1 / (a_h[cand] + 1L)) /
-        psu_cost[cand]
+      gain <- Cj[cand] * (1 / a_h[cand] - 1 / (a_h[cand] + 1L)) / psu_cost[cand]
       j <- cand[which.max(gain)]
       a_h[j] <- a_h[j] + 1L
     }
@@ -2164,8 +2480,14 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 
   e_h <- a_h * b_h
   m <- .alloc_metrics(
-    N_h = prep$N_h, S_h = S_op, mean_h = prep$mean_h, n_h = e_h,
-    alpha = alpha, deff = deff, resp_rate = resp_rate, cost_h = prep$cost_h,
+    N_h = prep$N_h,
+    S_h = S_op,
+    mean_h = prep$mean_h,
+    n_h = e_h,
+    alpha = alpha,
+    deff = deff,
+    resp_rate = resp_rate,
+    cost_h = prep$cost_h,
     df = df
   )
   detail$n_int <- as.integer(e_h)
@@ -2178,8 +2500,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   .warn_singleton_strata(prep$stratum[a_h == 1L], "psu")
 
   if (any(e_h < lo_i | e_h > hi_i)) {
-    stop("internal error: operational cluster allocation violates its bounds",
-         call. = FALSE)
+    stop(
+      "internal error: operational cluster allocation violates its bounds",
+      call. = FALSE
+    )
   }
   if (!is.null(target_cv)) {
     op_cv <- if (length(prep$domain_idx) == 0L) {
@@ -2191,8 +2515,11 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     }
     if (!is.finite(op_cv) || op_cv > target_cv + 1e-8) {
       stop(
-        sprintf("no whole-cluster design found that attains target CV %.4g under the integer bounds%s",
-                target_cv, .alloc_psu_bound_note(prep)),
+        sprintf(
+          "no whole-cluster design found that attains target CV %.4g under the integer bounds%s",
+          target_cv,
+          .alloc_psu_bound_note(prep)
+        ),
         call. = FALSE
       )
     }
@@ -2202,9 +2529,14 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   list(
     operational = list(
       n = sum(e_h),
-      cost = if (isTRUE(prep$has_stage_costs)) sum(a_h * psu_cost)
-             else NA_real_,
-      se = m$se, moe = m$moe, cv = op_cv
+      cost = if (isTRUE(prep$has_stage_costs)) {
+        sum(a_h * psu_cost)
+      } else {
+        NA_real_
+      },
+      se = m$se,
+      moe = m$moe,
+      cv = op_cv
     ),
     detail = detail
   )
@@ -2215,8 +2547,12 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 .alloc_binding_label <- function(n_h, m_h, M_h) {
   on_lower <- abs(n_h - m_h) < 1e-6
   on_upper <- abs(n_h - M_h) < 1e-6
-  if (any(on_lower)) return("lower_bound")
-  if (any(on_upper)) return("upper_bound")
+  if (any(on_lower)) {
+    return("lower_bound")
+  }
+  if (any(on_upper)) {
+    return("upper_bound")
+  }
   "none"
 }
 
@@ -2227,9 +2563,12 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     prep$domain_idx,
     function(idx) {
       .alloc_metrics(
-        N_h = prep$N_h[idx], S_h = prep$S_h[idx],
-        mean_h = prep$mean_h[idx], n_h = n_h[idx],
-        alpha = alpha, deff = .subset_h(deff, idx),
+        N_h = prep$N_h[idx],
+        S_h = prep$S_h[idx],
+        mean_h = prep$mean_h[idx],
+        n_h = n_h[idx],
+        alpha = alpha,
+        deff = .subset_h(deff, idx),
         resp_rate = .subset_h(resp_rate, idx),
         cost_h = prep$cost_h[idx]
       )$cv
@@ -2241,20 +2580,32 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 
 #' @keywords internal
 #' @noRd
-.alloc_domain_summary <- function(prep, n_h, alpha, deff, resp_rate,
-                                  df = NULL) {
-  if (length(prep$domain_idx) == 0L) return(NULL)
+.alloc_domain_summary <- function(
+  prep,
+  n_h,
+  alpha,
+  deff,
+  resp_rate,
+  df = NULL
+) {
+  if (length(prep$domain_idx) == 0L) {
+    return(NULL)
+  }
 
   out <- vector("list", length(prep$domain_idx))
   dom_names <- names(prep$domain_idx)
   for (i in seq_along(prep$domain_idx)) {
     idx <- prep$domain_idx[[i]]
     met <- .alloc_metrics(
-      N_h = prep$N_h[idx], S_h = prep$S_h[idx],
-      mean_h = prep$mean_h[idx], n_h = n_h[idx],
-      alpha = alpha, deff = .subset_h(deff, idx),
+      N_h = prep$N_h[idx],
+      S_h = prep$S_h[idx],
+      mean_h = prep$mean_h[idx],
+      n_h = n_h[idx],
+      alpha = alpha,
+      deff = .subset_h(deff, idx),
       resp_rate = .subset_h(resp_rate, idx),
-      cost_h = prep$cost_h[idx], df = df
+      cost_h = prep$cost_h[idx],
+      df = df
     )
     row <- if (!is.null(prep$domain_values)) {
       prep$domain_values[i, , drop = FALSE]

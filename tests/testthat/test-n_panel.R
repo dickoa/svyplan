@@ -674,12 +674,13 @@ test_that("print carries the answer and nothing that is derived from it", {
   plan <- n_panel(lfs_target, retention = lfs_ret, resp_rate = lfs_rr,
                   design = "rotating", start = "immediate")
   out <- capture.output(print(plan))
-  expect_length(out, 10L)
+  # Two blank lines set the wave table off from the header and the pointer.
+  expect_length(out, 12L)
   expect_false(any(grepl("loss at wave 1", out, fixed = TRUE)))
   expect_false(any(grepl("in sample:", out, fixed = TRUE)))
   expect_false(any(grepl("launch (immediate)", out, fixed = TRUE)))
   # The brief table drops the cumulative rate and the cv it implies.
-  expect_match(out[4L], "^ wave retention n_resp se +moe *$")
+  expect_match(out[5L], "^ wave retention n_resp se +moe *$")
   expect_identical(out[length(out)],
                    "# summary() for the launch, the loss and per-wave cv")
 })

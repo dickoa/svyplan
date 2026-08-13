@@ -1,27 +1,29 @@
+---
+output: github_document
+---
+
+
 
 # svyplan <img src="man/figures/svyplan_hex.png" alt="svyplan logo" align="right" width="140" />
 
 <!-- badges: start -->
-
-[![CRAN
-status](https://www.r-pkg.org/badges/version/svyplan)](https://CRAN.R-project.org/package=svyplan)
+[![CRAN status](https://www.r-pkg.org/badges/version/svyplan)](https://CRAN.R-project.org/package=svyplan)
 [![R-CMD-check](https://gitlab.com/dickoa/svyplan/badges/main/pipeline.svg)](https://gitlab.com/dickoa/svyplan/-/pipelines)
-[![Codecov test
-coverage](https://codecov.io/gl/dickoa/svyplan/branch/main/graph/badge.svg)](https://app.codecov.io/gl/dickoa/svyplan?branch=main)
+[![Codecov test coverage](https://codecov.io/gl/dickoa/svyplan/branch/main/graph/badge.svg)](https://app.codecov.io/gl/dickoa/svyplan?branch=main)
 <!-- badges: end -->
 
 Survey sample size determination, precision analysis, optimal and joint
-multivariate/multidomain allocation, stratification, and power analysis
-for R.
+multivariate/multidomain allocation, stratification, and power analysis for R.
 
 ## Installation
 
-``` r
+```r
 # From GitLab
 pak::pkg_install("gitlab::dickoa/svyplan")
 ```
 
 ## Sample sizes
+
 
 ``` r
 library(svyplan)
@@ -44,6 +46,7 @@ Most sizing and precision functions accept `resp_rate`. In sample-size
 mode, the required sample is inflated by `1 / resp_rate` to account for
 expected non-response:
 
+
 ``` r
 n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 #> Sample size for proportion (wald)
@@ -53,8 +56,9 @@ n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
 
 ### Survey plan profiles
 
-When the same design parameters apply across many calls, bundle them
-into a `svyplan()` profile:
+When the same design parameters apply across many calls, bundle them into
+a `svyplan()` profile:
+
 
 ``` r
 plan <- svyplan(deff = 1.5, resp_rate = 0.85, N = 50000)
@@ -85,6 +89,7 @@ n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2.0)
 Given a sample size, how precise will your estimates be? The `prec_*()`
 functions are the inverse of `n_*()`:
 
+
 ``` r
 prec_prop(p = 0.3, n = 400)
 #> Sampling precision for proportion (wald)
@@ -101,8 +106,9 @@ prec_mean(var = 100, n = 400, mu = 50)
 ### Round-trip between size and precision
 
 All `n_*()` and `prec_*()` functions are S3 generics. Pass a precision
-result to `n_*()` to recover the sample size, or pass a sample size
-result to `prec_*()` to compute the achieved precision:
+result to `n_*()` to recover the sample size, or pass a sample size result
+to `prec_*()` to compute the achieved precision:
+
 
 ``` r
 # Start with a precision target
@@ -128,6 +134,7 @@ n_prop(p)
 Household surveys track many indicators at once. `n_multi()` finds the
 sample size that satisfies all precision targets simultaneously.
 
+
 ``` r
 targets <- data.frame(
   name = c("stunting", "vaccination", "anemia"),
@@ -139,7 +146,7 @@ targets <- data.frame(
 n_multi(targets)
 #> Multi-indicator sample size
 #> n = 1127 (binding: anemia)
-#> ---
+#> 
 #>  name        .n   .cv_target .cv_achieved .binding
 #>  stunting     577 0.10204269 0.07297042           
 #>  vaccination  485 0.03644382 0.02388518           
@@ -155,6 +162,7 @@ Programs like UNICEF MICS and DHS express precision as a **relative
 margin of error**, the margin of error as a fraction of the indicator.
 State it directly with `rmoe`.
 
+
 ``` r
 targets_rmoe <- data.frame(
   name = c("stunting", "vaccination", "anemia"),
@@ -166,7 +174,7 @@ targets_rmoe <- data.frame(
 n_multi(targets_rmoe)
 #> Multi-indicator sample size
 #> n = 4891 (binding: anemia)
-#> ---
+#> 
 #>  name        .n   .cv_target .cv_achieved .binding
 #>  stunting    1601 0.06122561 0.03502580           
 #>  vaccination  172 0.06122561 0.01146488           
@@ -180,6 +188,7 @@ divide by the expected number of eligible individuals per household:
 target population and `hh_size` is the average household size.
 
 ## Multistage cluster designs
+
 
 ``` r
 # Optimal 2-stage allocation within a budget
@@ -197,8 +206,9 @@ prec_cluster(n = c(50, 12), icc = 0.05)
 #> cv = 0.0508
 ```
 
-Variance components can be estimated from frame data and passed directly
-to `n_cluster()`:
+Variance components can be estimated from frame data and passed
+directly to `n_cluster()`:
+
 
 ``` r
 set.seed(104)
@@ -226,15 +236,16 @@ n_cluster(stage_cost = c(500, 50), icc = vc, cv = 0.05)
 #> design df = 12
 ```
 
-`icc` is the survey-planning measure of homogeneity used by `varcomp()`,
-`n_cluster()`, and `design_effect()`. It is not the same as a generic
-mixed-model ICC, and values near 0 or 1 correspond to degenerate
-boundary cases for the closed-form cluster optimizer.
+`icc` is the survey-planning measure of homogeneity used by
+`varcomp()`, `n_cluster()`, and `design_effect()`. It is not the same as
+a generic mixed-model ICC, and values near 0 or 1 correspond to
+degenerate boundary cases for the closed-form cluster optimizer.
 
 ## Sensitivity analysis
 
 `predict()` evaluates a result at new parameter combinations, returning
 a data frame suitable for plotting:
+
 
 ``` r
 x <- n_prop(p = 0.3, moe = 0.05, deff = 1.5)
@@ -262,14 +273,14 @@ predict(x, expand.grid(
 ```
 
 Sensitivity analysis is available for single-indicator sample-size and
-precision results, cluster designs, power analyses, and strata
-boundaries. Multi-indicator results are not currently supported by
-`predict()`.
+precision results, cluster designs, power analyses, and strata boundaries.
+Multi-indicator results are not currently supported by `predict()`.
 
 ## Strata boundaries
 
 `strata_bound()` constructs candidate boundaries for a continuous
 stratification variable.
+
 
 ``` r
 set.seed(905)
@@ -278,6 +289,7 @@ x <- rlnorm(5000, meanlog = 6, sdlog = 1.2)
 strata_bound(x, n_strata = 4, n = 300, method = "cumrootf")
 #> Strata boundaries (Dalenius-Hodges, 4 strata)
 #> n = 300, cv = 0.0205, allocation: neyman
+#> 
 #>  stratum  lower upper    N share     sd   mean   n
 #>        1 8.3804   400 2492 0.498  104.2  186.9  46
 #>        2    400  1300 1647 0.329  246.5  724.4  71
@@ -287,17 +299,17 @@ strata_bound(x, n_strata = 4, n = 300, method = "cumrootf")
 
 Four methods are available: Dalenius-Hodges (`"cumrootf"`), geometric
 (`"geo"`), LH-inspired coordinate optimization (`"lh"`), and
-Kozak-inspired random-restart local search (`"kozak"`). The latter two
-are heuristics and do not claim global optimality or exact
-implementation of the published algorithms.
+Kozak-inspired random-restart local search (`"kozak"`). The latter two are
+heuristics and do not claim global optimality or exact implementation of the
+published algorithms.
 
 ## Two-phase designs
 
 A large cheap phase 1, then a subsample measured on the expensive
-variable. `n_twophase()` allocates both at once. The frame is one row
-per phase-2 stratum, in the `n_alloc()` column vocabulary but on a
-narrower contract: `sd` is required where `n_alloc()` also accepts
-`var`.
+variable. `n_twophase()` allocates both at once. The frame is one row per
+phase-2 stratum, in the `n_alloc()` column vocabulary but on a narrower
+contract: `sd` is required where `n_alloc()` also accepts `var`.
+
 
 ``` r
 frame <- data.frame(
@@ -312,11 +324,13 @@ n_twophase(frame, phase1_cost = 1, budget = 50000)
 #> Two-phase allocation (4 phase-2 strata)
 #> field design: n_phase1 = 16924 | n_phase2 = 8094
 #> cv = 0.0050, cost = 50000
+#> 
 #>  stratum share    sd unit_cost     nu n_int
 #>        A 0.350 12.00      2.00 0.4154  2462
 #>        B 0.250 25.00      5.00 0.5474  2316
 #>        C 0.250  8.00      1.00 0.3917  1659
 #>        D 0.150 40.00      9.00 0.6528  1657
+#> 
 #> single-phase is better here: n = 14085 at cv 0.0046, so skip phase 1
 #> # summary() for the continuous optimum and the comparator
 ```
@@ -324,6 +338,7 @@ n_twophase(frame, phase1_cost = 1, budget = 50000)
 Nonresponse follow-up is the same problem with two strata: respondents
 are already measured, so they cost nothing more and are all kept, and
 only the nonrespondents are subsampled.
+
 
 ``` r
 theta <- 0.5
@@ -341,16 +356,18 @@ n_twophase(nrfu, phase1_cost = 50, budget = 100000,
 #> Two-phase allocation (2 phase-2 strata)
 #> field design: n_phase1 = 828 | n_phase2 = 707
 #> cv = 0.0382, cost = 1e+05
+#> 
 #>         stratum share   sd unit_cost     nu n_int take_all
 #>     respondents 0.500 1.00      0.00 1.0000   414        *
 #>  nonrespondents 0.500 1.00    200.00 0.7071   293         
+#> 
 #> single-phase is better here: n = 1000 at cv 0.0316, so skip phase 1
 #> # summary() for the continuous optimum and the comparator
 ```
 
 Neither phase has to be a simple random sample, and both can lose sample
 to nonresponse. `phase1_deff` and `resp_rate` act on the between-stratum
-component; `deff` and `resp_rate` frame columns act on each stratum’s
+component; `deff` and `resp_rate` frame columns act on each stratum's
 residual; `single_deff` and `single_resp_rate` describe the comparator.
 Each divides its own component, so a single factor on the combined
 variance would be the wrong model. Issued and expected-responding counts
@@ -361,18 +378,18 @@ sampling is not always an improvement.
 
 ## Change and panel designs
 
-The families above size one occasion. A survey that runs more than once
-is sized against the change between two occasions, and, if the same
-units are followed, against how many to recruit so that enough of them
-are still responding later.
+The families above size one occasion. A survey that runs more than once is
+sized against the change between two occasions, and, if the same units are
+followed, against how many to recruit so that enough of them are still
+responding later.
 
-`n_change()` and `prec_change()` are the `n_*`/`prec_*` pair for a
-change in a mean or a proportion. Two independent rounds cost twice a
-single occasion. Measuring the same units twice is cheaper, because the
-change is a difference and the unit-level correlation cancels part of
-it: `overlap` is the share of the first occasion’s responding sample
-measured again, `overlap_cor` the correlation among those shared units,
-and only their product buys anything.
+`n_change()` and `prec_change()` are the `n_*`/`prec_*` pair for a change in
+a mean or a proportion. Two independent rounds cost twice a single occasion.
+Measuring the same units twice is cheaper, because the change is a difference
+and the unit-level correlation cancels part of it: `overlap` is the share of
+the first occasion's responding sample measured again, `overlap_cor` the
+correlation among those shared units, and only their product buys anything.
+
 
 ``` r
 n_change(p = c(0.30, 0.36), moe = 0.02)
@@ -386,12 +403,12 @@ n_change(p = c(0.30, 0.36), moe = 0.02, overlap = 0.75, overlap_cor = 0.5)
 #> overlap = 0.75, overlap_cor = 0.5 (62.5% of the independent variance)
 ```
 
-The overlap is a property of the design, fixed once the rotation is
-declared; the correlation is a property of the variable and has to come
-from a previous round of the same survey. `design_overlap()` supplies
-the design half. Give it the occasions a unit spends in and out of
-sample over its whole life and it returns the overlap at every lag the
-schedule reaches:
+The overlap is a property of the design, fixed once the rotation is declared;
+the correlation is a property of the variable and has to come from a previous
+round of the same survey. `design_overlap()` supplies the design half. Give it
+the occasions a unit spends in and out of sample over its whole life and it
+returns the overlap at every lag the schedule reaches:
+
 
 ``` r
 cps <- design_overlap("4-8-4")
@@ -400,49 +417,51 @@ cps[c(1, 12)]
 ```
 
 Those are the two published CPS figures, 75 percent of the sample shared
-between consecutive months and 50 percent between the same month a year
-apart. A schedule is a finite life, not a repeating pattern, and reading
-`"4-8-4"` as “four in, eight out, repeat” gives 87.5 percent instead.
-Each lag is a different design question, so name the one the change
-spans rather than passing the profile whole.
+between consecutive months and 50 percent between the same month a year apart.
+A schedule is a finite life, not a repeating pattern, and reading `"4-8-4"` as
+"four in, eight out, repeat" gives 87.5 percent instead. Each lag is a
+different design question, so name the one the change spans rather than
+passing the profile whole.
 
-Two notations for a schedule are in print and both are accepted, told
-apart by the `0`, which no spell can be. `"4-8-4"` counts occasions per
-spell; `"1-1-0-0-1-1"` carries one flag per occasion, and is the same
-life as `"2-2-2"`. A string of all 1s is a valid sentence in both and a
-different design in each, so it is refused rather than resolved by
-precedence: `"1-1-1"` is three consecutive occasions as a pattern and
-in-out-in as spells, whose consecutive overlaps are 2/3 and 0. Write
-`"3"` or `"1-0-1"`.
+Two notations for a schedule are in print and both are accepted, told apart by
+the `0`, which no spell can be. `"4-8-4"` counts occasions per spell;
+`"1-1-0-0-1-1"` carries one flag per occasion, and is the same life as
+`"2-2-2"`. A string of all 1s is a valid sentence in both and a different
+design in each, so it is refused rather than resolved by precedence:
+`"1-1-1"` is three consecutive occasions as a pattern and in-out-in as
+spells, whose consecutive overlaps are 2/3 and 0. Write `"3"` or `"1-0-1"`.
 
-`plot()` draws the schedule as the chart rotation designs are published
-as, one row per cohort and one column per time period:
+`plot()` draws the schedule as the chart rotation designs are published as,
+one row per cohort and one column per time period:
+
 
 ``` r
 plot(design_overlap("1-1-0-0-1-1"))
 ```
 
+<div class="figure">
 <img src="man/figures/README-overlap-chart-1.png" alt="A rotation chart. Ten rows, one per cohort, and ten time periods. Each cohort is in sample for two consecutive periods, out for two, then in for two more, and a new cohort enters at every period. The total row climbs from one to four and holds at four from period six, which is marked as the steady state."  />
+<p class="caption">plot of chunk overlap-chart</p>
+</div>
 
-A cohort enters at every period drawn, so the total row climbs through
-the launch and settles at the sample the overlaps divide by, which is
-marked. Everything left of that mark is the gradual start a rotating
-design has unless the first period’s sample is split into cohorts of
-unequal life.
+A cohort enters at every period drawn, so the total row climbs through the
+launch and settles at the sample the overlaps divide by, which is marked.
+Everything left of that mark is the gradual start a rotating design has unless
+the first period's sample is split into cohorts of unequal life.
 
-One conversion is the planner’s to make: `design_overlap()` counts the
-units the design *issues* at both occasions, while `overlap` in the
-sizing and power functions is the share of the first occasion’s
-*respondents* measured again, and the two are the same number only at
-full response.
+One conversion is the planner's to make:
+`design_overlap()` counts the units the design *issues* at both occasions,
+while `overlap` in the sizing and power functions is the share of the first
+occasion's *respondents* measured again, and the two are the same number only
+at full response.
 
-A panel loses units at every wave, so the sample that carries the
-analysis is smaller than the one recruited. `n_panel()` sizes the
-recruitment. It does not restate the arguments of `n_prop()` or
-`n_mean()`: it takes one of their results and reads it as both the
-responding sample to reach and the estimand to report precision for. The
-rates below are the UK LFS, 73 percent response at recruitment and then
-quarterly retention of a surviving cohort.
+A panel loses units at every wave, so the sample that carries the analysis is
+smaller than the one recruited. `n_panel()` sizes the recruitment. It does not
+restate the arguments of `n_prop()` or `n_mean()`: it takes one of their
+results and reads it as both the responding sample to reach and the estimand
+to report precision for. The rates below are the UK LFS, 73 percent response
+at recruitment and then quarterly retention of a surviving cohort.
+
 
 ``` r
 target <- n_prop(p = 0.5, moe = 0.031)
@@ -451,31 +470,33 @@ n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956), resp_rate = 0.728)
 #> Panel recruitment (fixed, 5-wave life)
 #> issued: 1815 -> 1000 responding at wave 5
 #> proportion (wald): se = 0.01582, moe = 0.031, cv = 0.0316
+#> 
 #>  wave retention n_resp se      moe    
 #>  1              1321   0.01376 0.02696
 #>  2    0.878     1160   0.01468 0.02878
 #>  3    0.963     1117   0.01496 0.02932
 #>  4    0.936     1046   0.01546 0.03031
 #>  5    0.956     1000   0.01582 0.031  
+#> 
 #> # summary() for the launch, the loss and per-wave cv
 ```
 
-`resp_rate` and `retention` are separate arguments because a panel’s
-loss is concentrated at recruitment, and an average rate spread over the
-waves would under-issue. `design = "rotating"` runs the same rates as a
-rotating panel, where an equal cohort enters every occasion and the
-estimate pools every cohort alive. That returns a different quantity
-under a different name: `n_entrants` is what the design takes each
-occasion, `n_in_sample` what its live cohorts hold between them, and on
-these rates they differ by a factor of five. `assurance` reports the
-recruitment that clears the target with a stated probability rather than
-in expectation, exactly in both designs. `prec_panel()` runs the pair in
-the other direction, reporting the responding sample and the precision
-left at each wave for a recruitment already budgeted.
+`resp_rate` and `retention` are separate arguments because a panel's loss is
+concentrated at recruitment, and an average rate spread over the waves would
+under-issue. `design = "rotating"` runs the same rates as a rotating panel,
+where an equal cohort enters every occasion and the estimate pools every
+cohort alive. That returns a different quantity under a different name:
+`n_entrants` is what the design takes each occasion, `n_in_sample` what its
+live cohorts hold between them, and on these rates they differ by a factor of
+five. `assurance` reports the recruitment that clears the target with a stated
+probability rather than in expectation, exactly in both designs. `prec_panel()`
+runs the pair in the other direction, reporting the responding sample and the
+precision left at each wave for a recruitment already budgeted.
 
-`start` reports what a rotating design delivers while it is being
-brought up to that steady state, by occasion in `$launch` and by
-occasion and wave in `$launch_waves`.
+`start` reports what a rotating design delivers while it is being brought up
+to that steady state, by occasion in `$launch` and by occasion and wave in
+`$launch_waves`.
+
 
 ``` r
 n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
@@ -490,22 +511,22 @@ n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
 #> 6      6    1606.836  999.3389 0.03100000
 ```
 
-Splitting the first occasion into equal panels planned for life lengths
-from the full life down to one occasion fills the sample at once. Every
-panel begins at wave 1. `design_overlap()` gives the same mature overlap
-profile under either launch, while a gradual launch has higher realized
-overlap until it fills. Every unit at the first occasion is at wave 1,
-so it holds at least as many respondents as the design ever holds again,
-and strictly more as soon as any wave retains less than all of the one
-before. Here that is 1172 against the design’s 1001, temporarily more
-precise. A gradual launch, one cohort an occasion, approaches the same
-figure from below at 234.
+Splitting the first occasion into equal panels planned for life lengths from
+the full life down to one occasion fills the sample at once. Every panel begins
+at wave 1. `design_overlap()` gives the same mature overlap profile under
+either launch, while a gradual launch has higher realized overlap until it
+fills. Every unit at the
+first occasion is at wave 1, so it holds at least as many respondents as the
+design ever holds again, and strictly more as soon as any wave retains less
+than all of the one before. Here that is 1172 against the design's 1001,
+temporarily more precise. A gradual launch, one cohort an occasion, approaches
+the same figure from below at 234.
 
 `design_schedule()` converts a rotating launch into explicit startup and
 intake operations without drawing a sample. It keeps the continuous
-requirement beside panel-level rounded counts, returns a dense activity
-table, and records any interviews promised beyond the planning horizon
-separately.
+requirement beside panel-level rounded counts, returns a dense activity table,
+and records any interviews promised beyond the planning horizon separately.
+
 
 ``` r
 rot <- n_panel(target,
@@ -537,20 +558,20 @@ field_plan$components[, c("cohort", "entry_wave", "operational_issue",
 #> 8 intake_8          8               322      1 entrant_register
 ```
 
-The horizon policy must say whether the program continues, truncates
-cohort lives at the window, or closes intake early. A whole-vintage
-refreshment can be declared instead, but this planning object
-deliberately does not infer cross-cohort weights.
+The horizon policy must say whether the program continues, truncates cohort
+lives at the window, or closes intake early. A whole-vintage refreshment can
+be declared instead, but this planning object deliberately does not infer
+cross-cohort weights.
 
 A repeated survey rarely publishes only occasions and changes. An annual
-average built from quarterly rounds is an estimate in its own right, and
-it is the one place overlap costs rather than pays: the covariance a
-rotation induces is subtracted when two occasions are differenced and
-added when they are averaged. That is the ordinary case, holding
-whenever the overlap exceeds the sampling fraction; `?prec_pooled` works
-the boundary below it. `n_pooled()` and `prec_pooled()` size that
-estimate, the equal-weight mean of the occasion estimates, with the
-correlation stated per lag because a panel’s falls away with distance.
+average built from quarterly rounds is an estimate in its own right, and it
+is the one place overlap costs rather than pays: the covariance a rotation
+induces is subtracted when two occasions are differenced and added when they
+are averaged. That is the ordinary case, holding whenever the overlap
+exceeds the sampling fraction; `?prec_pooled` works the boundary below it. `n_pooled()` and `prec_pooled()` size that estimate, the
+equal-weight mean of the occasion estimates, with the correlation stated per
+lag because a panel's falls away with distance.
+
 
 ``` r
 prec_pooled(var = 100, n = 500, occasions = 4)
@@ -565,11 +586,11 @@ prec_pooled(var = 100, n = 500, occasions = 4, overlap = 0.75, cor_decay = 0.8)
 #> se = 0.3586, moe = 0.7029
 ```
 
-So the change and the average pull in opposite directions against one
-design lever, while the level at a single occasion is unaffected by
-either, being a function of that occasion’s size alone. It is a
-reference line rather than a third position, and a design serving both
-arms is sized by taking the larger of `n_change()` and `n_pooled()`.
+So the change and the average pull in opposite directions against one design
+lever, while the level at a single occasion is unaffected by either, being a
+function of that occasion's size alone. It is a reference line rather than a
+third position, and a design serving both arms is sized by taking the larger
+of `n_change()` and `n_pooled()`.
 
 ## Power analysis
 
@@ -577,6 +598,7 @@ Solve for sample size, power, or minimum detectable effect. Supports
 design effects, finite population correction, response rate adjustment,
 panel overlap, unequal groups, and allocation ratios. Arcsine and
 log-odds methods available for rare proportions.
+
 
 ``` r
 # Sample size to detect a 5pp change from 70% with deff = 2
@@ -612,20 +634,25 @@ power_did(treat = c(0.50, 0.55), control = c(0.50, 0.48),
 #> (treat = (0.500, 0.550), control = (0.500, 0.480), alpha = 0.05, deff = 1)
 ```
 
-`plot()` draws the power-vs-sample-size curve with reference lines at
-the solved point:
+`plot()` draws the power-vs-sample-size curve with reference lines at the solved point:
+
 
 ``` r
 pw <- power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
 plot(pw)
 ```
 
+<div class="figure">
 <img src="man/figures/README-power-plot-1.png" alt="Power increases with total sample size. Dashed reference lines mark 80 percent power at the required sample size for detecting a change from 70 to 75 percent with a design effect of 2."  />
+<p class="caption">plot of chunk power-plot</p>
+</div>
+
 
 ## Stratified allocation
 
 Given a sampling frame with stratum sizes and variabilities, `n_alloc()`
 distributes the total sample across strata:
+
 
 ``` r
 frame <- data.frame(
@@ -643,6 +670,7 @@ n_alloc(frame, n = 600, alloc = "neyman")
 ```
 
 Constraints and alternative solve modes are also supported:
+
 
 ``` r
 frame_constraints <- transform(
@@ -663,6 +691,7 @@ n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n_stratum = 40)
 
 Domain-level CV targets can be enforced via the `domains` parameter:
 
+
 ``` r
 frame_domains <- data.frame(
   province = c("North", "North", "South", "South"),
@@ -681,7 +710,7 @@ n_alloc(frame_domains, domains = "province",
 #> (deff = 1)
 #> design df = 108
 #> Domains: 2
-#> ---
+#> 
 #>  province .domain .n       .se      .moe     .rmoe      .cv    .cost
 #>  North    5_North 59.23404 2.032000 3.982647 0.07839856 0.0400 59   
 #>  South    5_South 51.50815 1.948447 3.818886 0.07221797 0.0368 52
@@ -690,6 +719,7 @@ n_alloc(frame_domains, domains = "province",
 For several indicators and overlapping domains, pass long `measures` and
 `targets` tables. The allocation rule is then determined jointly by the
 precision requirements:
+
 
 ``` r
 joint_frame <- data.frame(
@@ -726,13 +756,13 @@ joint_fit
 ```
 
 The fitted object distinguishes the certified continuous optimum from a
-feasible integer operational recommendation. Use `prec_alloc(joint_fit)`
-or `prec_alloc(joint_fit, n = joint_fit$detail$n_int)` to inspect either
-design.
+feasible integer operational recommendation. Use `prec_alloc(joint_fit)` or
+`prec_alloc(joint_fit, n = joint_fit$detail$n_int)` to inspect either design.
 
-The same API handles fixed-take multistage designs. Stage populations,
-fixed takes, and costs belong in `frame`; indicator-specific homogeneity
-parameters belong in `measures`. Here only the PSU counts are optimized:
+The same API handles fixed-take multistage designs. Stage populations, fixed
+takes, and costs belong in `frame`; indicator-specific homogeneity parameters
+belong in `measures`. Here only the PSU counts are optimized:
+
 
 ``` r
 cluster_frame <- within(joint_frame, {
@@ -758,9 +788,9 @@ cluster_fit$detail[, c("stratum", "n_psu_int", "n_per_psu", "n_int")]
 #> 4 South rural        19         8   152
 ```
 
-Public `n` remains the ultimate-unit sample size. Thus the field design
-obeys `n_int = n_psu_int * n_per_psu`; three-stage designs additionally
-multiply by the fixed `n_per_ssu`.
+Public `n` remains the ultimate-unit sample size. Thus the field design obeys
+`n_int = n_psu_int * n_per_psu`; three-stage designs additionally multiply by
+the fixed `n_per_ssu`.
 
 `prec_alloc()` computes the precision for a given allocation (inverse of
 `n_alloc()`).
@@ -772,9 +802,10 @@ See `?n_alloc` and the vignette for the full workflow.
 
 ## Design effects
 
-`design_effect()` anticipates the design effect of a plan by combining
-the design features you are choosing. Components multiply, and each is
-selected by the arguments you supply.
+`design_effect()` anticipates the design effect of a plan by combining the
+design features you are choosing. Components multiply, and each is selected
+by the arguments you supply.
+
 
 ``` r
 # Clustering alone: 20 households per cluster
@@ -802,9 +833,9 @@ design_effect(n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05))
 #> Planning design effect: 1.6392
 ```
 
-This is a planning tool. To measure the design effect a *collected*
-sample actually achieved, use `survey::svymean(..., deff = TRUE)`, which
-computes it from the realized weights, strata, and clusters.
+This is a planning tool. To measure the design effect a *collected* sample
+actually achieved, use `survey::svymean(..., deff = TRUE)`, which computes
+it from the realized weights, strata, and clusters.
 
 ## References
 
@@ -812,5 +843,6 @@ Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
 
 Kish, L. (1965). *Survey Sampling*. Wiley.
 
-Valliant, R., Dever, J. A., and Kreuter, F. (2018). *Practical Tools for
-Designing and Weighting Survey Samples* (2nd ed.). Springer.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018).
+*Practical Tools for Designing and Weighting Survey Samples*
+(2nd ed.). Springer.

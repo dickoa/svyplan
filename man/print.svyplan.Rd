@@ -170,7 +170,7 @@ same shape. For \code{svyplan_strata}, both coercions return the total sample
 size. Boundary cutpoints remain available in \verb{$boundaries}.
 
 \code{as.data.frame()} returns the tabular form of a result, intended as
-the stable handoff to downstream packages (e.g. samplyr). For
+the stable handoff to downstream packages (e.g. \code{samplyr}). For
 \code{svyplan_n}: the stratum allocation table (\verb{$detail}) for
 \code{n_alloc()} results, the per-domain table (\verb{$domains}, falling back
 to \verb{$detail}) for \code{n_multi()} results, and a one-row summary

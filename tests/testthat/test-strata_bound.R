@@ -447,8 +447,9 @@ test_that("print shows allocation label", {
 test_that("print is the header the table does not already carry", {
   res <- strata_bound(x_lnorm, n_strata = 4, n = 100)
   out <- capture.output(print(res))
-  # Two header lines and one row per stratum, plus the column names.
-  expect_length(out, 2L + 1L + 4L)
+  # Two header lines, the blank that sets the table off, and one row per
+  # stratum, plus the column names.
+  expect_length(out, 2L + 1L + 1L + 4L)
   expect_lt(max(nchar(out)), 80L)
   # The cut points are the lower/upper columns; naming them again above the
   # table invites a reader to look for a difference that is not there.
