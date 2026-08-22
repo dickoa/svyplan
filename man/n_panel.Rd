@@ -316,7 +316,8 @@ Surveys}, 21-33. Wiley.
 \seealso{
 \code{\link[=prec_panel]{prec_panel()}} for the same design from a recruitment you
 already have, \code{\link[=design_overlap]{design_overlap()}} for the overlap a rotation produces,
-\code{\link[=n_change]{n_change()}} for sizing the change between two occasions.
+\code{\link[=design_schedule]{design_schedule()}} for turning a rotating plan into an operational
+schedule, \code{\link[=n_change]{n_change()}} for sizing the change between two occasions.
 
 Other sample size functions:
 \code{\link[=n_alloc]{n_alloc()}},

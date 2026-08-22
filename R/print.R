@@ -2145,7 +2145,11 @@ print.svyplan_strata <- function(x, ...) {
   op <- x$operational
   budget_mode <- identical(x$params$mode, "budget_objective")
   status <- opt$classification %||% "unknown"
-  cat("Joint constrained allocation (Bethel)\n")
+  certainty <- opt$certainty
+  cat(sprintf(
+    "Joint constrained allocation (Bethel%s)\n",
+    if (is.null(certainty)) "" else ", PSU register"
+  ))
   # Report exceptions, not confirmations: a line that only ever says
   # "nothing went wrong" buries the lines that do carry news.
   if (!identical(status, "optimal")) {
@@ -2179,6 +2183,23 @@ print.svyplan_strata <- function(x, ...) {
       )
     }
   ))
+  if (!is.null(certainty)) {
+    # The certainty split is the design decision, not something derived from
+    # the size above it, so it belongs on the printed answer. Counts are PSUs
+    # available in each part; how many of the remainder get drawn is a
+    # selection decision this plan does not make.
+    n_certain <- sum(x$psu$certainty)
+    cat(sprintf(
+      "PSUs: %d certainty, %d to draw from %d in the remainder\n",
+      n_certain, op$n_psu_draw, nrow(x$psu) - n_certain
+    ))
+    # A register with no self-consistent classification is a fact about the
+    # plan rather than detail, so it stays on the block, as a panel short of
+    # its target does.
+    if (!isTRUE(certainty$fixed_point)) {
+      cat("no self-consistent classification: the plan meets every target\n")
+    }
+  }
   continuous_cost <- x$params$achieved$cost
   increase <- if (continuous_cost > 0) {
     100 * (op$cost / continuous_cost - 1)
@@ -2249,6 +2270,9 @@ print.svyplan_strata <- function(x, ...) {
   n_upper <- length(opt$active_upper %||% integer(0))
   if (n_lower > 0L || n_upper > 0L) {
     cat(sprintf("active bounds: %d lower, %d upper\n", n_lower, n_upper))
+  }
+  if (!is.null(certainty)) {
+    cat("# summary() for the certainty split by stratum\n")
   }
   invisible(x)
 }
@@ -2364,6 +2388,10 @@ print.svyplan_strata <- function(x, ...) {
 #' summary(allocation)
 #' summary(prec_alloc(allocation, n = allocation$detail$n_int))
 #'
+#' @seealso [n_alloc()] and [prec_alloc()], which build these objects,
+#'   [strata_bound()] for constructing the strata to allocate over, and
+#'   [design_df()] for the degrees of freedom the allocation leaves.
+#'
 #' @name summary.svyplan_alloc
 NULL
 
@@ -2463,8 +2491,9 @@ summary.svyplan_prec <- function(object, ...) {
     NULL
   }
 
-  structure(
-    list(
+  # `certainty` is attached only when there is one, so a plan with no register
+  # keeps the schema it has always had.
+  out <- list(
       kind = kind,
       question = .bethel_summary_question(mode, kind, budget),
       mode = mode,
@@ -2484,9 +2513,35 @@ summary.svyplan_prec <- function(object, ...) {
         NULL
       },
       assumptions = .bethel_summary_assumptions(object)
-    ),
-    class = c("summary.svyplan_bethel", "list")
   )
+  cert <- .bethel_summary_certainty(object)
+  if (!is.null(cert)) out$certainty <- cert
+  structure(out, class = c("summary.svyplan_bethel", "list"))
+}
+
+#' The certainty split by stratum, which the printed line points at
+#'
+#' Counts are PSUs available in each part. The threshold and the design effect
+#' are read from the plan as returned, so the table describes the answer rather
+#' than any iterate on the way to it.
+#' @keywords internal
+#' @noRd
+.bethel_summary_certainty <- function(object) {
+  if (is.null(object$optimization$certainty) || is.null(object$psu)) {
+    return(NULL)
+  }
+  detail <- object$detail
+  out <- data.frame(
+    stratum = detail$stratum,
+    certainty = detail$n_psu_certain,
+    remainder = detail$n_psu_rest,
+    threshold = detail$threshold,
+    stringsAsFactors = FALSE
+  )
+  # The design effects the split produced already have a home, one row per
+  # stratum and constraint in the resolved planning inputs below, so they are
+  # not repeated here.
+  out
 }
 
 #' Headline values for one numerical version of a generalized allocation
@@ -2712,6 +2767,7 @@ summary.svyplan_prec <- function(object, ...) {
   list(
     classification = opt$classification,
     converged = opt$converged,
+    certainty = opt$certainty,
     message = opt$message,
     iterations = opt$iterations,
     convergence_code = opt$convergence_code,
@@ -2773,7 +2829,14 @@ summary.svyplan_prec <- function(object, ...) {
     alpha = p$alpha,
     df = problem$df,
     stages = problem$stages,
-    variance_model = problem$variance_model,
+    # The solver saw a one-stage problem because the certainty loop hands it
+    # the clustering as a design effect, so the model it recorded describes
+    # the solve rather than the plan.
+    variance_model = if (is.null(object$optimization$certainty)) {
+      problem$variance_model
+    } else {
+      "two_part_certainty_wald"
+    },
     feasibility_tolerance = p$feasibility_tolerance,
     min_n_stratum = p$min_n_stratum,
     fixed_takes = if (problem$stages > 1L) {
@@ -3252,6 +3315,12 @@ print.summary.svyplan_bethel <- function(x, ...) {
     }
     .print_bethel_table(takes)
   }
+  if (!is.null(x$certainty)) {
+    cat("\nCertainty split by stratum\n\n")
+    tab <- x$certainty
+    tab$threshold <- round(tab$threshold)
+    .print_bethel_table(tab)
+  }
   if (!is.null(x$assumptions$model) && nrow(x$assumptions$model) > 0L) {
     cat("\nResolved target-stratum planning inputs\n\n")
     .print_bethel_table(x$assumptions$model)
@@ -3375,6 +3444,28 @@ print.summary.svyplan_bethel <- function(x, ...) {
     length(opt$active_lower),
     length(opt$active_upper)
   ))
+  if (!is.null(opt$certainty)) {
+    cc <- opt$certainty
+    cat(sprintf("  certainty verdict: %s\n", cc$verdict))
+    cat(sprintf(
+      "  classification orbit: %d, reached in %d iteration%s\n",
+      cc$orbit, cc$iterations, if (cc$iterations == 1L) "" else "s"
+    ))
+    cat(sprintf(
+      "  allocation settled in %d iteration%s%s\n",
+      cc$settle_iterations, if (cc$settle_iterations == 1L) "" else "s",
+      if (cc$absorbed > 0L) {
+        sprintf(", absorbing %d PSU(s) the settle put above a threshold",
+                cc$absorbed)
+      } else {
+        ""
+      }
+    ))
+    cat(sprintf(
+      "  returned plan is a fixed point: %s\n",
+      if (isTRUE(cc$fixed_point)) "yes" else "no"
+    ))
+  }
   if (!is.null(opt$budget_binding)) {
     cat(sprintf(
       "  budget binding: %s\n",
@@ -4617,6 +4708,28 @@ Math.svyplan_df <- function(x, ...) {
 #' something still labelled an overlap whose counts no longer follow from its
 #' values. They assign through `[<-`, so they are refused here too. Convert
 #' with `as.double(x)` and they work as usual.
+#'
+#' @seealso [design_overlap()], which builds these objects,
+#'   [plot.svyplan_overlap()] for the rotation chart, and
+#'   [print.svyplan_schedule()] for the operational schedule a rotation
+#'   becomes.
+#'
+#' @examples
+#' cps <- design_overlap("4-8-4")
+#' cps
+#'
+#' # one lag, as a bare number, which is what the overlap arguments take
+#' cps[1]
+#' cps[["12"]]
+#'
+#' # the fields behind the values
+#' cps$shared
+#' cps$n_occasion
+#' as.data.frame(cps)
+#'
+#' # arithmetic drops the class rather than carrying stale counts
+#' as.double(cps)[1:3]
+#'
 #' @name print.svyplan_overlap
 NULL
 
@@ -4843,6 +4956,10 @@ as.data.frame.svyplan_overlap <- function(
 #'
 #' as.integer(plan)
 #' as.data.frame(plan)
+#'
+#' @seealso [n_panel()] and [prec_panel()], which build these objects, and
+#'   [print.svyplan_schedule()] for the operational schedule a rotating plan
+#'   becomes.
 #'
 #' @name print.svyplan_panel
 NULL

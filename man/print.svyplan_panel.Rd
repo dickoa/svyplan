@@ -87,3 +87,8 @@ as.integer(plan)
 as.data.frame(plan)
 
 }
+\seealso{
+\code{\link[=n_panel]{n_panel()}} and \code{\link[=prec_panel]{prec_panel()}}, which build these objects, and
+\code{\link[=print.svyplan_schedule]{print.svyplan_schedule()}} for the operational schedule a rotating plan
+becomes.
+}

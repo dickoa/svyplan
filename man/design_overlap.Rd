@@ -216,4 +216,8 @@ profile the examples reproduce.
 \code{\link[=n_change]{n_change()}} and \code{\link[=prec_change]{prec_change()}}, which take the result as their
 \code{overlap}; \code{\link[=design_effect]{design_effect()}} and \code{\link[=design_df]{design_df()}} for the other quantities
 a planned design determines.
+
+Other repeated survey planning:
+\code{\link[=design_schedule]{design_schedule()}}
 }
+\concept{repeated survey planning}

@@ -1,5 +1,33 @@
 # svyplan 0.12.0
 
+## Allocation
+
+* The `psu =` argument to `n_alloc()` now supports a PSU register for two-stage joint
+  allocations. The register has one row per PSU with `stratum` and `N`, whose
+  totals must match `frame$N`. It replaces `N_psu`. PSUs selected with
+  certainty under the implied PPS threshold are separated from the
+  noncertainty part, and `psu$certainty` can add units to that part. The
+  returned plan reports the split in `$detail` and `$psu`, including the
+  classification source and threshold.
+* The operational design uses whole PSU takes. Its count, cost, and precision
+  diagnostics all describe the same fielded design. The `psu =` argument to `prec_alloc()`
+  evaluates a supplied allocation under its implied split, while
+  `prec_alloc(fit)` preserves the classification held by a fitted plan.
+  `predict()` can sweep `n_per_psu` for these fits.
+* `predict()` sweeps the fixed takes of a joint constrained allocation. A
+  two-stage fit varies `n_per_psu`, a three-stage fit either `n_per_psu` or
+  `n_per_ssu`, and each grid row re-solves the stored problem and reports the
+  PSU count, the ultimate sample, and the cost the take buys, in both
+  continuous and whole-unit form. The cost curve over the take is U-shaped and
+  its minimum is not evident in advance, which is the reason to look. A scalar
+  take applies to every stratum and asymmetric sweeps stay a matter of editing
+  `frame` and calling `n_alloc()` per point. A budget-objective fit crosses
+  takes with `budget`. A take that exceeds the stage populations gives an
+  all-`NA` row with `.feasible = FALSE` and a warning, leaving the rest of the
+  grid intact, while a take that is not a positive whole number is a malformed
+  grid and stops. Precision targets stay out of reach of the grid, so a
+  one-stage minimum-cost fit has nothing to vary.
+
 ## Repeated surveys
 
 * `design_schedule()` turns a rotating panel plan into a versioned operational
@@ -45,12 +73,12 @@ Initial CRAN release.
 * Planning design effects now print as a compact overall figure. Their new
   `summary()` method gives an ANOVA-style component table, followed by the
   multiplicative basis and the assumptions behind each component. Cluster
-  summaries disclose stage takes, ICCs, and variance ratios; allocation
+  summaries disclose stage takes, ICCs, and variance ratios. Allocation
   summaries distinguish a direct variance ratio from an additional Kish
   weighting adjustment.
 * Classic `n_alloc()` and `prec_alloc()` results now have structured
   `summary()` methods. The fitted-design summary evaluates the operational
-  whole-unit allocation and keeps the mathematical optimum separate; the
+  whole-unit allocation and keeps the mathematical optimum separate. The
   precision summary evaluates the supplied allocation exactly, including
   fractional values. Both disaggregate allocation, response-adjusted counts,
   costs and weights, achieved stratum precision, variance shares, domains,
@@ -60,9 +88,9 @@ Initial CRAN release.
 * Generalized Bethel `n_alloc()` and `prec_alloc()` results now have a
   dedicated `summary.svyplan_bethel` diagnostic summary. It separates the
   continuous optimum, operational integer recommendation, and supplied
-  assessment; retains every precision constraint and objective component;
+  assessment. It retains every precision constraint and objective component and
   disaggregates stratum and multistage decisions, bounds, and resolved
-  target-stratum planning inputs; and reports solver certification, active
+  target-stratum planning inputs, and reports solver certification, active
   constraints, multiplier identifiability, and budget sensitivity. Constraint
   rows are explicitly non-additive, while objective contributions are labelled
   as the additive decomposition they are.

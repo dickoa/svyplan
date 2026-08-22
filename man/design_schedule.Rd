@@ -91,4 +91,12 @@ schedule
 schedule$components
 
 }
+\seealso{
+\code{\link[=n_panel]{n_panel()}} and \code{\link[=prec_panel]{prec_panel()}} for the rotating plan this
+schedules, \code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for the rotation chart, and
+\code{\link[=print.svyplan_schedule]{print.svyplan_schedule()}} for the printed form and its \code{summary()}.
+
+Other repeated survey planning:
+\code{\link[=design_overlap]{design_overlap()}}
+}
 \concept{repeated survey planning}

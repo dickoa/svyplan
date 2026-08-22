@@ -14,6 +14,7 @@ prec_alloc(frame, ...)
   ...,
   measures = NULL,
   targets = NULL,
+  psu = NULL,
   objective = NULL,
   budget = NULL,
   domains = NULL,
@@ -53,6 +54,13 @@ the default method and is recovered automatically from a fitted result.}
 assessment. See the \code{targets} argument to \code{\link[=n_alloc]{n_alloc()}}. It must be supplied
 with \code{measures} in the default method and is recovered automatically from
 a fitted result.}
+
+\item{psu}{Optional PSU register for certainty-aware assessment. See the
+\code{psu} argument to \code{\link[=n_alloc]{n_alloc()}}. No loop is needed here: the allocation is
+supplied, so the threshold it implies is supplied with it and the
+classification is read off the design being assessed. A fitted result
+carries its own register and its held classification, so
+\code{prec_alloc(fit)} reproduces the plan's precision exactly.}
 
 \item{objective}{Optional objective components to report alongside the
 targets. See the \code{objective} argument to \code{\link[=n_alloc]{n_alloc()}}. Recovered

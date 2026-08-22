@@ -19,7 +19,8 @@
 #'
 #'   - `svyplan_n`: `n`, `se`, `moe`, `cv`, `rmoe`, except for a
 #'     `type = "change"` result, which reports one size per occasion as
-#'     `n1` and `n2` in place of `n`
+#'     `n1` and `n2` in place of `n`, and a joint constrained allocation,
+#'     which reports the design and cost columns described under Details
 #'   - `svyplan_cluster`: `n_psu`, `n_per_psu`, (opt. `n_per_ssu`), `total_n`, `cv`, `cost`
 #'   - `svyplan_power`: `n`, `power`, `effect`
 #'   - `svyplan_prec`: `se`, `moe`, `cv`, `rmoe`
@@ -70,14 +71,38 @@
 #' not supported. Use the underlying single-indicator functions instead.
 #'
 #' A joint constrained allocation ([n_alloc()] with `measures` and `targets`)
-#' is supported only in fixed-budget objective mode, where `newdata` varies
-#' `budget` alone and the result is the cost-versus-objective frontier: `n`,
-#' continuous `cost`, `objective_value` and its equivalent `cv`, the
-#' operational `n_int` and `cost_int`, whether the budget binds, and
-#' `.feasible`. Budgets that cannot fund the hard targets give an all-`NA` row
-#' with `.feasible = FALSE` and a warning, so one infeasible point does not
-#' discard the rest of the frontier. In minimum-cost mode there is no scalar to
-#' vary; modify `targets` and call [n_alloc()] again.
+#' varies two controls, and each grid row re-solves the stored problem.
+#'
+#' A fixed-budget objective fit varies `budget`, tracing the
+#' cost-versus-objective frontier. A fixed-take multistage fit varies the
+#' takes, `n_per_psu` for a two-stage design and either `n_per_psu` or
+#' `n_per_ssu` for a three-stage one, tracing what the fieldwork decision
+#' costs. A scalar take applies to every stratum, so the per-stratum takes the
+#' fit was built from are replaced rather than scaled; sweep them
+#' asymmetrically by editing `frame` and calling [n_alloc()] per point. Both
+#' controls may appear together on a budget-objective fit, one row per
+#' combination.
+#'
+#' The result reports the continuous `n` and `cost`, the operational `n_int`
+#' and `cost_int`, and `.feasible`. A multistage fit adds the PSU counts
+#' `n_psu` and `n_psu_int`, and budget mode adds `objective_value`, its
+#' equivalent `cv`, and whether the budget binds. A row the solver cannot
+#' satisfy, a budget too small to fund the hard targets or a take that exceeds
+#' the stage populations, gives an all-`NA` row with `.feasible = FALSE` and a
+#' warning, so one infeasible point does not discard the rest of the grid. A
+#' take that is not a positive whole number is a malformed grid rather than an
+#' infeasible design point, and stops.
+#'
+#' A certainty-aware fit ([n_alloc()] with `psu`) varies `n_per_psu` too, even
+#' though the solver saw a one-stage problem, and reports `n_psu_certain` and
+#' `n_psu_draw` in place of the PSU counts. This is how the take is priced: it
+#' also sets the certainty threshold, so a larger take leaves fewer certainty
+#' PSUs and costs more sample, and the resulting cost curve has a minimum
+#' worth finding rather than assuming.
+#'
+#' Precision targets stay out of reach of the grid. A one-stage minimum-cost
+#' fit therefore has nothing to vary; modify `targets` and call [n_alloc()]
+#' again.
 #'
 #' If evaluation fails for a particular row (e.g. invalid parameter
 #' combinations), that row's result columns are `NA` and a warning is
@@ -108,6 +133,31 @@
 #' alloc <- n_alloc(frame, n = 600)
 #' predict(alloc, data.frame(n = seq(200, 1000, 200)))
 #'
+#' # Two-stage joint allocation: what does the per-PSU take cost?
+#' cluster_frame <- data.frame(
+#'   stratum  = c("Urban", "Rural"),
+#'   N        = c(60000, 40000),
+#'   N_psu    = c(600, 500),
+#'   n_per_psu = c(10, 10),
+#'   cost_psu = c(400, 550),
+#'   cost_ssu = c(20, 25)
+#' )
+#' cluster_measures <- data.frame(
+#'   stratum = rep(cluster_frame$stratum, 2),
+#'   name    = rep(c("literacy", "income"), each = 2),
+#'   p       = c(0.62, 0.48, NA, NA),
+#'   mean    = c(NA, NA, 520, 380),
+#'   sd      = c(NA, NA, 210, 160),
+#'   icc_psu = rep(c(0.04, 0.07), 2)
+#' )
+#' cluster_targets <- data.frame(
+#'   name = c("literacy", "income"),
+#'   cv   = c(0.03, 0.04)
+#' )
+#' joint <- n_alloc(cluster_frame, measures = cluster_measures,
+#'                  targets = cluster_targets)
+#' predict(joint, data.frame(n_per_psu = c(6, 10, 14, 20)))
+#'
 #' @seealso [plot.svyplan] to draw a one-parameter grid, and
 #'   [confint.svyplan] for the interval implied by a single result.
 #'
@@ -119,13 +169,7 @@ NULL
 predict.svyplan_n <- function(object, newdata, ...) {
   .check_unused_dots(...)
   if (identical(object$method, "bethel")) {
-    if (!identical(object$params$mode, "budget_objective")) {
-      stop(
-        "predict() is not supported for joint constrained allocations; modify 'targets' and rerun n_alloc()",
-        call. = FALSE
-      )
-    }
-    return(.predict_bethel_budget(object, newdata))
+    return(.predict_bethel(object, newdata))
   }
   if (!is.null(object$indicators)) {
     stop(
@@ -700,32 +744,77 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   out
 }
 
-#' Budget frontier for a joint budget-objective allocation
+#' Grid exploration for a joint constrained allocation
 #'
-#' Re-solves the stored problem at each requested budget. The root search
-#' already sweeps the minimum-cost problem across objective bounds, so the
-#' cost-versus-objective frontier costs little beyond the solves themselves.
-#' Budgets that cannot fund the hard targets yield an all-`NA` row with
-#' `.feasible = FALSE` rather than aborting the grid.
+#' Re-solves the stored problem once per grid row. Two controls can be varied.
+#' A budget-objective fit varies `budget`, tracing the cost-versus-objective
+#' frontier; the root search already sweeps the minimum-cost problem across
+#' objective bounds, so the frontier costs little beyond the solves. A
+#' multistage fit varies the fixed takes, tracing how the PSU count, the
+#' ultimate sample and the cost respond; the cost curve over the take is
+#' U-shaped and its minimum is not evident in advance.
+#'
+#' A row the solver cannot satisfy yields an all-`NA` row with
+#' `.feasible = FALSE` rather than aborting the grid. A take that is not a
+#' positive whole number is a malformed grid rather than an infeasible design
+#' point, so it aborts.
 #' @keywords internal
 #' @noRd
-.predict_bethel_budget <- function(object, newdata) {
-  .validate_newdata(newdata, "budget")
-  if (!"budget" %in% names(newdata)) {
-    stop("newdata must vary 'budget' for a joint budget-objective allocation",
-         call. = FALSE)
-  }
+.predict_bethel <- function(object, newdata) {
   p <- object$params
+  budget_mode <- identical(p$mode, "budget_objective")
+  stages <- p$stages %||% 1L
+  # A certainty fit presents a one-stage problem to the solver, the clustering
+  # travelling in the design effect, so `stages` cannot find its take. The
+  # take is a frame column all the same, and sweeping it is what prices the
+  # fieldwork decision rather than hiding it in a default.
+  certainty <- !is.null(object$optimization$certainty)
+  take_cols <- if (certainty) {
+    "n_per_psu"
+  } else {
+    c(if (stages >= 2L) "n_per_psu", if (stages == 3L) "n_per_ssu")
+  }
+  allowed <- c(if (budget_mode) "budget", take_cols)
+  if (length(allowed) == 0L) {
+    stop(
+      "predict() is not supported for joint constrained allocations; modify 'targets' and rerun n_alloc()",
+      call. = FALSE
+    )
+  }
+  .validate_newdata(newdata, allowed)
+
+  varied_takes <- intersect(take_cols, names(newdata))
+  for (nm in varied_takes) {
+    value <- newdata[[nm]]
+    if (anyNA(value) || any(!is.finite(value)) || any(value < 1) ||
+          any(abs(value - round(value)) > 1e-8)) {
+      stop(sprintf("newdata '%s' must contain positive whole numbers", nm),
+           call. = FALSE)
+    }
+  }
+
   targets <- if (is.null(p$targets) || nrow(p$targets) == 0L) NULL else
     p$targets
-  rows <- lapply(newdata$budget, function(b) {
+  cols <- .bethel_predict_cols(budget_mode, stages, certainty)
+
+  rows <- lapply(seq_len(nrow(newdata)), function(i) {
+    frame <- p$frame
+    for (nm in varied_takes) frame[[nm]] <- round(newdata[[nm]][i])
+    budget <- if (!budget_mode) {
+      NULL
+    } else if ("budget" %in% names(newdata)) {
+      newdata$budget[i]
+    } else {
+      p$budget
+    }
     fit <- tryCatch(
       n_alloc.default(
-        frame = p$frame,
+        frame = frame,
         measures = p$measures,
         targets = targets,
+        psu = p$psu,
         objective = p$objective,
-        budget = b,
+        budget = budget,
         unit_cost = p$unit_cost,
         alpha = p$alpha,
         deff = p$deff,
@@ -735,26 +824,84 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       error = function(e) e
     )
     if (inherits(fit, "error")) {
-      warning(sprintf("budget %s is infeasible: %s", format(b),
-                      conditionMessage(fit)), call. = FALSE)
-      return(data.frame(
-        n = NA_real_, cost = NA_real_, objective_value = NA_real_,
-        cv = NA_real_, n_int = NA_real_, cost_int = NA_real_,
-        .binding = NA, .feasible = FALSE
-      ))
+      warning(
+        sprintf(
+          "%s is infeasible: %s",
+          .predict_row_label(newdata[i, , drop = FALSE]),
+          conditionMessage(fit)
+        ),
+        call. = FALSE
+      )
+      return(.bethel_predict_row(NULL, cols))
     }
-    data.frame(
+    .bethel_predict_row(fit, cols)
+  })
+  out <- cbind(newdata, do.call(rbind, rows))
+  rownames(out) <- NULL
+  out
+}
+
+#' Result columns of a joint-allocation grid, in report order
+#' @keywords internal
+#' @noRd
+.bethel_predict_cols <- function(budget_mode, stages, certainty = FALSE) {
+  if (certainty) {
+    return(c(
+      "n_psu_certain", "n_psu_draw", "n", "cost",
+      if (budget_mode) c("objective_value", "cv"),
+      "n_int", "cost_int", if (budget_mode) ".binding", ".feasible"
+    ))
+  }
+  c(
+    if (stages > 1L) "n_psu",
+    "n", "cost",
+    if (budget_mode) c("objective_value", "cv"),
+    if (stages > 1L) "n_psu_int",
+    "n_int", "cost_int",
+    if (budget_mode) ".binding",
+    ".feasible"
+  )
+}
+
+#' One grid row, or its all-NA counterpart when the solve failed
+#' @keywords internal
+#' @noRd
+.bethel_predict_row <- function(fit, cols) {
+  if (is.null(fit)) {
+    values <- as.list(rep(NA_real_, length(cols)))
+    names(values) <- cols
+    if (".binding" %in% cols) values$.binding <- NA
+    values$.feasible <- FALSE
+    return(as.data.frame(values, stringsAsFactors = FALSE))
+  }
+  value_of <- function(name) {
+    switch(
+      name,
+      n_psu = sum(fit$detail$n_psu),
+      n_psu_certain = sum(fit$detail$n_psu_certain),
+      n_psu_draw = sum(fit$detail$n_psu_draw),
       n = fit$n,
       cost = fit$params$achieved$cost,
       objective_value = fit$objective_value,
       cv = sqrt(fit$objective_value),
+      n_psu_int = sum(fit$detail$n_psu_int),
       n_int = as.numeric(fit$operational$n),
       cost_int = fit$operational$cost,
       .binding = isTRUE(fit$optimization$budget_binding),
       .feasible = TRUE
     )
-  })
-  out <- cbind(newdata, do.call(rbind, rows))
-  rownames(out) <- NULL
-  out
+  }
+  values <- lapply(cols, value_of)
+  names(values) <- cols
+  as.data.frame(values, stringsAsFactors = FALSE)
+}
+
+#' Name the grid row a warning is about
+#' @keywords internal
+#' @noRd
+.predict_row_label <- function(row) {
+  paste(
+    sprintf("%s = %s", names(row), vapply(row, format, character(1))),
+    collapse = ", "
+  )
 }

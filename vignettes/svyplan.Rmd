@@ -106,7 +106,7 @@ The same table read by question rather than by family, since several questions c
 | What should each startup or intake cohort issue, and when is it active? | `design_schedule` |
 | What design effect, effective size or degrees of freedom will the design have? | `design_effect`, `effective_n`, `design_df`, `varcomp` |
 
-Most planning functions return structured S3 objects. Available methods depend on the result class; see the relevant help page for details.
+Most planning functions return structured S3 objects. Available methods depend on the result class. See the relevant help page for details.
 
 ## The n_\*/prec_\* duality
 
@@ -208,7 +208,7 @@ n_prop(p = 0.05, moe = 0.02, method = "logodds")
 n_prop(p = 0.05, moe = 0.02, method = "beta", df = 25)
 ```
 
-The four differ materially only when the expected count is small. For sizing that difference is rarely worth acting on; for assessing an achieved design it often is. `?n_prop` has the full comparison.
+The four differ materially only when the expected count is small. For sizing that difference is rarely worth acting on but for assessing an achieved design it often is. `?n_prop` has the full comparison.
 
 Target a coefficient of variation instead of a margin of error:
 
@@ -449,7 +449,7 @@ Programs like UNICEF MICS and DHS express precision as a **relative margin of er
 | Sampling | `se`     | `cv`     |
 | Interval | `moe`    | `rmoe`   |
 
-The sampling row is free of `alpha` and of the interval method; the interval row depends on both. A rare outcome shows the split at its widest:
+The sampling row is free of `alpha` and of the interval method and the interval row depends on both. A rare outcome shows the split at its widest:
 
 ```{r rmoe-two-axes}
 sapply(c("wald", "wilson", "logodds", "beta"), function(m) {
@@ -458,7 +458,7 @@ sapply(c("wald", "wilson", "logodds", "beta"), function(m) {
 })
 ```
 
-`se` and `cv` do not move across the four columns; `moe` and `rmoe` do. So `rmoe = q * cv`, where `q` is the interval quantile the design uses (`qnorm(1 - alpha / 2)`, or the `t` quantile on `df` degrees of freedom when `df` is supplied, as here), holds under Wald alone. Under the other three, reading a relative margin of error off the CV that way overstates the precision by 5 to 10 percent in this design, which is why a relative margin of error is a target in its own right rather than a rescaled `cv`.
+`se` and `cv` do not move across the four columns but `moe` and `rmoe` do. So `rmoe = q * cv`, where `q` is the interval quantile the design uses (`qnorm(1 - alpha / 2)`, or the `t` quantile on `df` degrees of freedom when `df` is supplied, as here), holds under Wald alone. Under the other three, reading a relative margin of error off the CV that way overstates the precision by 5 to 10 percent in this design, which is why a relative margin of error is a target in its own right rather than a rescaled `cv`.
 
 ```{r n-multi-rme}
 # MICS-style: 12% relative MOE per domain, domain-specific deff and prevalence
@@ -555,7 +555,7 @@ n_cluster(
 
 A cluster design can lose units at more than one stage, and the two losses are not interchangeable, so they are named for the stage they act on. `resp_rate_psu` is the share of selected clusters that can be worked at all: whole PSUs lost to insecurity, flooding, or an inaccessible road. Losing a PSU removes its entire contribution, so it deflates every variance term alike and the first-stage sample is inflated by `1 / resp_rate_psu` to cover it.
 
-In budget mode, applying a response rate does not change the allocation because the budget constrains the design; the achieved CV worsens instead. In CV mode:
+In budget mode, applying a response rate does not change the allocation because the budget constrains the design with the achieved CV getting worse instead. In CV mode:
 
 ```{r n-cluster-resp}
 n_cluster(stage_cost = c(500, 50), icc = vc, cv = 0.05, resp_rate_psu = 0.90)
@@ -563,7 +563,7 @@ n_cluster(stage_cost = c(500, 50), icc = vc, cv = 0.05, resp_rate_psu = 0.90)
 
 Household or individual nonresponse is a different quantity acting at a different stage, and each has its own argument: `resp_rate_ssu` for second-stage units in a three-stage design, and `resp_rate` for the ultimate units. Naming a stage the design does not have is an error rather than a silently ignored argument, because a dropped response rate plans a design with none.
 
-The three are not interchangeable. Losing whole PSUs deflates every variance term alike; losing ultimate units shrinks the realized cluster and so changes the clustering penalty too. That is why the later-stage rates move the cost-optimal take while the PSU rate does not:
+The three are not interchangeable. Losing whole PSUs deflates every variance term alike whereas losing ultimate units shrinks the realized cluster and so changes the clustering penalty too. That is why the later-stage rates move the cost-optimal take while the PSU rate does not:
 
 ```{r n-cluster-resp-stages}
 # a DHS-shaped design: EAs, households within EAs, one person per household
@@ -662,7 +662,7 @@ they minimize is that of the total or mean of `x`. Nothing models the study
 variable's conditional mean or variance given `x`, so for any `y` other than
 `x` the result is a proxy, good in proportion to how closely `y` tracks `x`.
 The reported CV is likewise the CV for `x`. Stratifying an expenditure frame
-to measure a poverty rate is the case this serves well; stratifying on a
+to measure a poverty rate is the case this serves well. However, stratifying on a
 variable unrelated to the indicator is not.
 
 ```{r strata-bound}
@@ -896,11 +896,19 @@ prec_alloc(joint_fit, n = joint_fit$detail$n_int)
 A modified named allocation can be assessed in any order because names are
 matched exactly to `frame$stratum`.
 
+The precision a joint allocation plans for can be checked against the
+precision it delivers, by executing the design repeatedly against a known
+population and comparing empirical CVs with `$constraints$.achieved`. The
+recipe needs a sampling engine, so it lives with one:
+`vignette("survey-planning", package = "samplyr")` works it through on a
+two-indicator allocation, including the acceptance band to fix before reading
+the result.
+
 #### Fixed-take multistage joint allocation
 
 The same public interface supports two- and three-stage designs when every
-later-stage take is fixed. The frame owns stage populations, takes, and costs;
-the measures table owns indicator-specific stage homogeneity parameters. Only
+later-stage take is fixed. The frame owns stage populations, takes, and costs.
+The measures table owns indicator-specific stage homogeneity parameters. Only
 `n_psu` is optimized. Public `n`, planning bounds, and precision assessments
 remain in ultimate-unit units.
 
@@ -940,10 +948,45 @@ prec_alloc(joint_fit_3stage, n = joint_fit_3stage$detail$n_int)
 ```
 
 The exact operational identity is
-`n_int = n_psu_int * n_per_psu * n_per_ssu`. `N_psu` is required for both
-multistage forms, while three-stage frames also require the stratum's total
-`N_ssu`. Fixed takes must be whole numbers. `take_all` is unavailable because
-taking every PSU alone does not establish a census of ultimate units.
+`n_int = n_psu_int * n_per_psu * n_per_ssu`. The standard multistage forms
+use `N_psu`, while three-stage frames also require the stratum's total `N_ssu`.
+Fixed takes must be whole numbers. `take_all` is unavailable because taking
+every PSU alone does not establish a census of ultimate units.
+
+#### Certainty PSUs from a register
+
+For a two-stage joint allocation, a PSU register can replace `N_psu`. It has
+one row per PSU with `stratum` and `N`, and its totals must match `frame$N`.
+The allocation identifies PSUs whose implied PPS inclusion probability reaches
+one. A `certainty` column can add PSUs to that part of the design.
+
+```{r n-alloc-joint-certainty}
+certainty_frame <- joint_frame_3stage[, setdiff(names(joint_frame_3stage),
+                                                  c("N_ssu", "n_per_ssu", "cost_tsu"))]
+certainty_frame$N_psu <- NULL
+
+psu_register <- do.call(rbind, lapply(seq_len(nrow(certainty_frame)), function(i) {
+  N <- certainty_frame$N[i]
+  size <- rep(10, 20)
+  size[1] <- floor(N / 3)
+  size[2] <- N - sum(size[-2])
+  data.frame(stratum = certainty_frame$stratum[i], N = size)
+}))
+
+certainty_fit <- n_alloc(
+  certainty_frame,
+  measures = joint_measures_3stage[, setdiff(names(joint_measures_3stage),
+                                              c("icc_ssu", "var_ratio_ssu"))],
+  targets = joint_targets,
+  psu = psu_register,
+  min_n_stratum = 20
+)
+certainty_fit$detail[, c("stratum", "n_psu_certain", "n_psu_draw", "n_int")]
+```
+
+`$psu` carries the classification, threshold, and source for every PSU. The
+operational allocation uses whole takes in certainty PSUs and whole PSUs in
+the remainder. `prec_alloc(certainty_fit)` reproduces its precision exactly.
 
 ### Stratified two-stage designs
 
@@ -1512,9 +1555,7 @@ Sample-size, cluster, power, and strata-boundary results support `as.integer()` 
 
 **Targeting nonresponse follow-up.** Deciding *how much* follow-up to do is answered by `n_twophase()`. Deciding *which* cases to pursue is not, and is out of scope: prioritizing by response propensity, or adapting effort as fieldwork proceeds, needs paradata from the field that no planning stage has.
 
-**PPS selection inside joint allocation.** `varcomp()` estimates variance components under PPS first-stage selection, but the joint allocator (`n_alloc()` with `measures` and `targets`) optimizes a variance written for equal-probability PSU selection. Feeding it components estimated under PPS is therefore an approximation, and the more unequal the sizes, the rougher it is.
-
-Certainty units are better supported than that might suggest. `strata_bound(take_all_above = )` cuts a census stratum at a size threshold, and a `take_all` frame column makes `n_alloc()` enumerate that stratum, in joint mode as much as in any other. What is genuinely unavailable is `take_all` in a **fixed-take multistage** joint design, where it is refused rather than approximated: taking every PSU still leaves a sample of units within each one, so it does not establish the ultimate-unit census that `take_all` asserts. A certainty *PSU* stratum in a multistage design is thus the case you construct yourself, by splitting the frame on the measure of size and planning that stratum separately.
+**PPS selection inside joint allocation.** `varcomp()` estimates variance components under PPS first-stage selection, but the joint allocator (`n_alloc()` with `measures` and `targets`) uses an anticipated variance model. Feeding it components estimated under PPS is therefore an approximation, and the more unequal the sizes, the rougher it is. A two-stage joint allocation can identify certainty PSUs from a register. It does not support `take_all` in a fixed-take multistage frame because a census of PSUs still leaves within-PSU sampling.
 
 **Domains not identifiable on the frame.** Targets can be set per domain when domain membership is known before fielding, as it is for region or urban/rural. For domains realized only after contact, such as age or sex subgroups, the realized subsample is random and has to be inflated by hand from the expected domain share. The same line runs through `design_df()`: a domain that is a union of whole strata gets an exact degrees-of-freedom count in `$domains`, while one cutting across strata does not, because counting the PSUs that contain its members needs frame information a plan does not carry.
 

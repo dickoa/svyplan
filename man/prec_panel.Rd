@@ -105,8 +105,9 @@ prec_panel(plan, retention = c(0.80, 0.90, 0.90, 0.92))$waves
 }
 \seealso{
 \code{\link[=n_panel]{n_panel()}} for the inverse (solve the recruitment from a
-target), \code{\link[=prec_mean]{prec_mean()}} and \code{\link[=prec_prop]{prec_prop()}} for the single-occasion
-precision the waves are evaluated with.
+target), \code{\link[=design_schedule]{design_schedule()}} for turning a rotating plan into an
+operational schedule, \code{\link[=prec_mean]{prec_mean()}} and \code{\link[=prec_prop]{prec_prop()}} for the
+single-occasion precision the waves are evaluated with.
 
 Other precision functions:
 \code{\link[=prec_alloc]{prec_alloc()}},

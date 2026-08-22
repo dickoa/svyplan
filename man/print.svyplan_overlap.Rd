@@ -89,3 +89,26 @@ something still labelled an overlap whose counts no longer follow from its
 values. They assign through \verb{[<-}, so they are refused here too. Convert
 with \code{as.double(x)} and they work as usual.
 }
+\examples{
+cps <- design_overlap("4-8-4")
+cps
+
+# one lag, as a bare number, which is what the overlap arguments take
+cps[1]
+cps[["12"]]
+
+# the fields behind the values
+cps$shared
+cps$n_occasion
+as.data.frame(cps)
+
+# arithmetic drops the class rather than carrying stale counts
+as.double(cps)[1:3]
+
+}
+\seealso{
+\code{\link[=design_overlap]{design_overlap()}}, which builds these objects,
+\code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for the rotation chart, and
+\code{\link[=print.svyplan_schedule]{print.svyplan_schedule()}} for the operational schedule a rotation
+becomes.
+}

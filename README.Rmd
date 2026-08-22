@@ -190,7 +190,10 @@ predict(x, expand.grid(
 
 Sensitivity analysis is available for single-indicator sample-size and
 precision results, cluster designs, power analyses, and strata boundaries.
-Multi-indicator results are not currently supported by `predict()`.
+A joint constrained allocation sweeps the controls a plan can still move: the
+fixed per-PSU take of a multistage design, and the budget of a fixed-budget
+objective fit. Multi-indicator results are not currently supported by
+`predict()`.
 
 ## Strata boundaries
 
@@ -250,8 +253,8 @@ n_twophase(nrfu, phase1_cost = 50, budget = 100000,
 
 Neither phase has to be a simple random sample, and both can lose sample
 to nonresponse. `phase1_deff` and `resp_rate` act on the between-stratum
-component; `deff` and `resp_rate` frame columns act on each stratum's
-residual; `single_deff` and `single_resp_rate` describe the comparator.
+component. `deff` and `resp_rate` frame columns act on each stratum's
+residual. `single_deff` and `single_resp_rate` describe the comparator.
 Each divides its own component, so a single factor on the combined
 variance would be the wrong model. Issued and expected-responding counts
 are reported separately.
@@ -279,8 +282,8 @@ n_change(p = c(0.30, 0.36), moe = 0.02)
 n_change(p = c(0.30, 0.36), moe = 0.02, overlap = 0.75, overlap_cor = 0.5)
 ```
 
-The overlap is a property of the design, fixed once the rotation is declared;
-the correlation is a property of the variable and has to come from a previous
+The overlap is a property of the design, fixed once the rotation is declared.
+The correlation is a property of the variable and has to come from a previous
 round of the same survey. `design_overlap()` supplies the design half. Give it
 the occasions a unit spends in and out of sample over its whole life and it
 returns the overlap at every lag the schedule reaches:
@@ -298,7 +301,7 @@ different design question, so name the one the change spans rather than
 passing the profile whole.
 
 Two notations for a schedule are in print and both are accepted, told apart by
-the `0`, which no spell can be. `"4-8-4"` counts occasions per spell;
+the `0`, which no spell can be. `"4-8-4"` counts occasions per spell and
 `"1-1-0-0-1-1"` carries one flag per occasion, and is the same life as
 `"2-2-2"`. A string of all 1s is a valid sentence in both and a different
 design in each, so it is refused rather than resolved by precedence:
@@ -399,7 +402,8 @@ average built from quarterly rounds is an estimate in its own right, and it
 is the one place overlap costs rather than pays: the covariance a rotation
 induces is subtracted when two occasions are differenced and added when they
 are averaged. That is the ordinary case, holding whenever the overlap
-exceeds the sampling fraction; `?prec_pooled` works the boundary below it. `n_pooled()` and `prec_pooled()` size that estimate, the
+exceeds the sampling fraction and `?prec_pooled` works the boundary below it.
+`n_pooled()` and `prec_pooled()` size that estimate, the
 equal-weight mean of the occasion estimates, with the correlation stated per
 lag because a panel's falls away with distance.
 
@@ -531,7 +535,7 @@ feasible integer operational recommendation. Use `prec_alloc(joint_fit)` or
 `prec_alloc(joint_fit, n = joint_fit$detail$n_int)` to inspect either design.
 
 The same API handles fixed-take multistage designs. Stage populations, fixed
-takes, and costs belong in `frame`; indicator-specific homogeneity parameters
+takes, and costs belong in `frame` and indicator-specific homogeneity parameters
 belong in `measures`. Here only the PSU counts are optimized:
 
 ```{r joint-allocation-two-stage}
@@ -554,8 +558,40 @@ cluster_fit$detail[, c("stratum", "n_psu_int", "n_per_psu", "n_int")]
 ```
 
 Public `n` remains the ultimate-unit sample size. Thus the field design obeys
-`n_int = n_psu_int * n_per_psu`; three-stage designs additionally multiply by
+`n_int = n_psu_int * n_per_psu`. three-stage designs additionally multiply by
 the fixed `n_per_ssu`.
+
+### Certainty PSUs in a joint allocation
+
+When PSU sizes are available, supply a register instead of `N_psu`. The
+register has one row per PSU, with `stratum` and `N`, and its totals must equal
+the matching values in the frame. `n_alloc()` identifies PSUs whose implied
+PPS inclusion probability reaches one. A `certainty` column can also force a
+PSU into that part of the design.
+
+```{r joint-allocation-certainty}
+certainty_frame <- cluster_frame
+certainty_frame$N_psu <- NULL
+
+psu_register <- do.call(rbind, lapply(seq_len(nrow(certainty_frame)), function(i) {
+  N <- certainty_frame$N[i]
+  size <- rep(10, 20)
+  size[1] <- floor(N / 3)
+  size[2] <- N - sum(size[-2])
+  data.frame(stratum = certainty_frame$stratum[i], N = size)
+}))
+
+certainty_fit <- n_alloc(
+  certainty_frame, measures = cluster_measures, targets = joint_targets,
+  psu = psu_register
+)
+certainty_fit$detail[, c("stratum", "n_psu_certain", "n_psu_draw", "n_int")]
+```
+
+`$psu` records the classification and threshold for every PSU. The fielded
+allocation uses whole takes in certainty PSUs and whole PSUs in the remainder.
+Use `prec_alloc(certainty_fit)` to assess the fitted design exactly, or pass a
+new length-`nrow(frame)` allocation to assess another design.
 
 `prec_alloc()` computes the precision for a given allocation (inverse of
 `n_alloc()`).

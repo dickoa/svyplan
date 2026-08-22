@@ -35,7 +35,8 @@ columns. The result columns depend on the object type:
 \itemize{
 \item \code{svyplan_n}: \code{n}, \code{se}, \code{moe}, \code{cv}, \code{rmoe}, except for a
 \code{type = "change"} result, which reports one size per occasion as
-\code{n1} and \code{n2} in place of \code{n}
+\code{n1} and \code{n2} in place of \code{n}, and a joint constrained allocation,
+which reports the design and cost columns described under Details
 \item \code{svyplan_cluster}: \code{n_psu}, \code{n_per_psu}, (opt. \code{n_per_ssu}), \code{total_n}, \code{cv}, \code{cost}
 \item \code{svyplan_power}: \code{n}, \code{power}, \code{effect}
 \item \code{svyplan_prec}: \code{se}, \code{moe}, \code{cv}, \code{rmoe}
@@ -93,14 +94,38 @@ Multi-indicator (\code{n_multi}) and multi-indicator cluster results are
 not supported. Use the underlying single-indicator functions instead.
 
 A joint constrained allocation (\code{\link[=n_alloc]{n_alloc()}} with \code{measures} and \code{targets})
-is supported only in fixed-budget objective mode, where \code{newdata} varies
-\code{budget} alone and the result is the cost-versus-objective frontier: \code{n},
-continuous \code{cost}, \code{objective_value} and its equivalent \code{cv}, the
-operational \code{n_int} and \code{cost_int}, whether the budget binds, and
-\code{.feasible}. Budgets that cannot fund the hard targets give an all-\code{NA} row
-with \code{.feasible = FALSE} and a warning, so one infeasible point does not
-discard the rest of the frontier. In minimum-cost mode there is no scalar to
-vary; modify \code{targets} and call \code{\link[=n_alloc]{n_alloc()}} again.
+varies two controls, and each grid row re-solves the stored problem.
+
+A fixed-budget objective fit varies \code{budget}, tracing the
+cost-versus-objective frontier. A fixed-take multistage fit varies the
+takes, \code{n_per_psu} for a two-stage design and either \code{n_per_psu} or
+\code{n_per_ssu} for a three-stage one, tracing what the fieldwork decision
+costs. A scalar take applies to every stratum, so the per-stratum takes the
+fit was built from are replaced rather than scaled; sweep them
+asymmetrically by editing \code{frame} and calling \code{\link[=n_alloc]{n_alloc()}} per point. Both
+controls may appear together on a budget-objective fit, one row per
+combination.
+
+The result reports the continuous \code{n} and \code{cost}, the operational \code{n_int}
+and \code{cost_int}, and \code{.feasible}. A multistage fit adds the PSU counts
+\code{n_psu} and \code{n_psu_int}, and budget mode adds \code{objective_value}, its
+equivalent \code{cv}, and whether the budget binds. A row the solver cannot
+satisfy, a budget too small to fund the hard targets or a take that exceeds
+the stage populations, gives an all-\code{NA} row with \code{.feasible = FALSE} and a
+warning, so one infeasible point does not discard the rest of the grid. A
+take that is not a positive whole number is a malformed grid rather than an
+infeasible design point, and stops.
+
+A certainty-aware fit (\code{\link[=n_alloc]{n_alloc()}} with \code{psu}) varies \code{n_per_psu} too, even
+though the solver saw a one-stage problem, and reports \code{n_psu_certain} and
+\code{n_psu_draw} in place of the PSU counts. This is how the take is priced: it
+also sets the certainty threshold, so a larger take leaves fewer certainty
+PSUs and costs more sample, and the resulting cost curve has a minimum
+worth finding rather than assuming.
+
+Precision targets stay out of reach of the grid. A one-stage minimum-cost
+fit therefore has nothing to vary; modify \code{targets} and call \code{\link[=n_alloc]{n_alloc()}}
+again.
 
 If evaluation fails for a particular row (e.g. invalid parameter
 combinations), that row's result columns are \code{NA} and a warning is
@@ -130,6 +155,31 @@ frame <- data.frame(
 )
 alloc <- n_alloc(frame, n = 600)
 predict(alloc, data.frame(n = seq(200, 1000, 200)))
+
+# Two-stage joint allocation: what does the per-PSU take cost?
+cluster_frame <- data.frame(
+  stratum  = c("Urban", "Rural"),
+  N        = c(60000, 40000),
+  N_psu    = c(600, 500),
+  n_per_psu = c(10, 10),
+  cost_psu = c(400, 550),
+  cost_ssu = c(20, 25)
+)
+cluster_measures <- data.frame(
+  stratum = rep(cluster_frame$stratum, 2),
+  name    = rep(c("literacy", "income"), each = 2),
+  p       = c(0.62, 0.48, NA, NA),
+  mean    = c(NA, NA, 520, 380),
+  sd      = c(NA, NA, 210, 160),
+  icc_psu = rep(c(0.04, 0.07), 2)
+)
+cluster_targets <- data.frame(
+  name = c("literacy", "income"),
+  cv   = c(0.03, 0.04)
+)
+joint <- n_alloc(cluster_frame, measures = cluster_measures,
+                 targets = cluster_targets)
+predict(joint, data.frame(n_per_psu = c(6, 10, 14, 20)))
 
 }
 \seealso{

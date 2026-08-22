@@ -126,6 +126,15 @@
 #'   Must be supplied with `measures`. Optional when `objective` and `budget`
 #'   are given, which requests the best design a budget can buy with no hard
 #'   precision requirement.
+#' @param psu Optional PSU register for certainty-aware allocation, one row
+#'   per PSU, with `stratum` and `N`, the count of ultimate units in that PSU.
+#'   The PSU sizes must sum to `frame$N` within each stratum.
+#'   Optional `psu_id` is carried through and optional `certainty` forces a
+#'   PSU into the certainty part whatever its size. It is an alternative to
+#'   the frame column `N_psu`, which says only how many PSUs a stratum has,
+#'   and requires the frame column `n_per_psu` and `measures$icc_psu`. Joint
+#'   constrained allocation only, and two stages only. See the certainty
+#'   section under Details.
 #' @param objective Optional estimates whose priority-weighted relative
 #'   variance is minimized among the allocations that meet `targets` and the
 #'   budget. Either a character vector of indicator names (overall domain,
@@ -506,6 +515,35 @@
 #' precision are reported in `$operational` and, in `budget` mode,
 #' never exceed the budget.
 #'
+#' ## Certainty PSUs from a register
+#'
+#' `N_psu` gives only the number of PSUs in a stratum. Supply `psu` to give
+#' their sizes instead. It has one row per PSU with `stratum` and `N`, and the
+#' sizes must sum to `frame$N` in every stratum. This two-stage joint-allocation
+#' mode requires `n_per_psu` in `frame` and `icc_psu` in `measures`.
+#'
+#' With take \eqn{b_h} and sampling fraction \eqn{f_h = n_h / N_h}, a PSU is
+#' certain when its size reaches
+#'
+#' \deqn{N_{hi} \ge b_h / f_h.}{N_hi >= b_h / f_h.}
+#'
+#' The certainty part has no first-stage sampling variance. The remainder has
+#' the usual clustering component, and the two are combined into the
+#' anticipated design effect. `psu$certainty` can add a PSU to the certainty
+#' part. It cannot remove a PSU above the threshold.
+#'
+#' The threshold and allocation determine each other, so the solver iterates.
+#' `$optimization$certainty` records whether it converged, cycled, or reached
+#' its iteration limit. `$detail` gives the split and threshold by stratum,
+#' while `$psu` gives each PSU's classification and its source.
+#'
+#' The operational design is fieldable: certainty PSUs use their whole take
+#' at the stratum rate and the remainder uses whole PSUs at `n_per_psu`. Thus
+#' `n_int = n_certain_int + n_psu_draw * n_per_psu` in every stratum.
+#' `$operational` reports the count, cost, and precision of that same design.
+#' Use `cost_psu` and `cost_ssu` together to price PSU visits and interviews.
+#' [predict.svyplan] can compare fixed values of `n_per_psu`.
+#'
 #' ## Domains vs. strata
 #'
 #' Domains are specified via the `domains` parameter. Domain columns
@@ -707,6 +745,7 @@ n_alloc.default <- function(
   budget = NULL,
   measures = NULL,
   targets = NULL,
+  psu = NULL,
   objective = NULL,
   alloc = c("neyman", "optimal", "proportional", "power"),
   unit_cost = NULL,
@@ -780,6 +819,22 @@ n_alloc.default <- function(
         call. = FALSE
       )
     }
+    if (!is.null(psu)) {
+      return(.psu_result(.n_alloc_psu(
+        frame = frame,
+        psu = psu,
+        measures = measures,
+        targets = targets,
+        unit_cost = unit_cost,
+        alpha = alpha,
+        deff = deff,
+        resp_rate = resp_rate,
+        min_n_stratum = min_n_stratum,
+        objective = objective,
+        budget = budget,
+        df = df
+      )))
+    }
     return(.n_alloc_bethel(
       frame = frame,
       measures = measures,
@@ -793,6 +848,12 @@ n_alloc.default <- function(
       budget = budget,
       df = df
     ))
+  }
+  if (!is.null(psu)) {
+    stop(
+      "'psu' requires a joint constrained allocation: supply 'measures' and 'targets'",
+      call. = FALSE
+    )
   }
   alloc <- match.arg(alloc)
   check_alpha(alpha)
@@ -1235,6 +1296,12 @@ n_alloc.svyplan_prec <- function(
 #'   assessment. See the `targets` argument to [n_alloc()]. It must be supplied
 #'   with `measures` in the default method and is recovered automatically from
 #'   a fitted result.
+#' @param psu Optional PSU register for certainty-aware assessment. See the
+#'   `psu` argument to [n_alloc()]. No loop is needed here: the allocation is
+#'   supplied, so the threshold it implies is supplied with it and the
+#'   classification is read off the design being assessed. A fitted result
+#'   carries its own register and its held classification, so
+#'   `prec_alloc(fit)` reproduces the plan's precision exactly.
 #' @param objective Optional objective components to report alongside the
 #'   targets. See the `objective` argument to [n_alloc()]. Recovered
 #'   automatically from a fitted budget-objective result.
@@ -1339,6 +1406,7 @@ prec_alloc.default <- function(
   ...,
   measures = NULL,
   targets = NULL,
+  psu = NULL,
   objective = NULL,
   budget = NULL,
   domains = NULL,
@@ -1386,6 +1454,23 @@ prec_alloc.default <- function(
         call. = FALSE
       )
     }
+    if (!is.null(psu)) {
+      return(.prec_alloc_psu(
+        frame = frame,
+        psu = psu,
+        n = n,
+        measures = measures,
+        targets = targets,
+        objective = objective,
+        budget = budget,
+        unit_cost = unit_cost,
+        alpha = alpha,
+        deff = deff,
+        resp_rate = resp_rate,
+        min_n_stratum = min_n_stratum,
+        df = df
+      ))
+    }
     return(.prec_alloc_bethel(
       frame = frame,
       n = n,
@@ -1400,6 +1485,12 @@ prec_alloc.default <- function(
       min_n_stratum = min_n_stratum,
       df = df
     ))
+  }
+  if (!is.null(psu)) {
+    stop(
+      "'psu' requires a joint constrained allocation: supply 'measures' and 'targets'",
+      call. = FALSE
+    )
   }
   if (!is.null(min_n_stratum)) {
     # Aggregate precision does not depend on a floor that the supplied
@@ -1500,6 +1591,34 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     dot_names <- names(dots)
     n_explicit <- length(dots) > 0L &&
       (is.null(dot_names) || any(!nzchar(dot_names)) || "n" %in% dot_names)
+    if (!is.null(p$psu)) {
+      # The fitted plan's classification travels rather than being derived
+      # again. It contains every PSU above its own threshold, so forcing it
+      # and re-deriving the rest reproduces the same split, but it may also
+      # hold PSUs the loop absorbed, which a fresh derivation would drop.
+      held <- p$psu
+      held$certainty <- obj$psu$certainty
+      args <- list(
+        frame = p$frame,
+        psu = held,
+        n = obj$detail$n,
+        measures = p$measures,
+        targets = p$targets,
+        objective = p$objective,
+        budget = p$budget,
+        alpha = p$alpha,
+        deff = p$deff,
+        resp_rate = p$resp_rate,
+        df = p$df,
+        unit_cost = p$unit_cost,
+        min_n_stratum = p$min_n_stratum,
+        .allow_fractional_stages = !n_explicit
+      )
+      return(do.call(
+        .prec_alloc_psu,
+        .roundtrip_args(args, dots, .prec_alloc_psu)
+      ))
+    }
     args <- list(
       frame = p$frame,
       n = obj$detail$n,

@@ -17,6 +17,7 @@ n_alloc(frame, ...)
   budget = NULL,
   measures = NULL,
   targets = NULL,
+  psu = NULL,
   objective = NULL,
   alloc = c("neyman", "optimal", "proportional", "power"),
   unit_cost = NULL,
@@ -159,6 +160,16 @@ value for MOE, and \code{constraint} supplies a stable unique identifier.
 Must be supplied with \code{measures}. Optional when \code{objective} and \code{budget}
 are given, which requests the best design a budget can buy with no hard
 precision requirement.}
+
+\item{psu}{Optional PSU register for certainty-aware allocation, one row
+per PSU, with \code{stratum} and \code{N}, the count of ultimate units in that PSU.
+The PSU sizes must sum to \code{frame$N} within each stratum.
+Optional \code{psu_id} is carried through and optional \code{certainty} forces a
+PSU into the certainty part whatever its size. It is an alternative to
+the frame column \code{N_psu}, which says only how many PSUs a stratum has,
+and requires the frame column \code{n_per_psu} and \code{measures$icc_psu}. Joint
+constrained allocation only, and two stages only. See the certainty
+section under Details.}
 
 \item{objective}{Optional estimates whose priority-weighted relative
 variance is minimized among the allocations that meet \code{targets} and the
@@ -559,6 +570,36 @@ use the whole-unit design in \code{n_psu_int} and \code{n_per_psu_int}
 (\code{n_int = n_psu_int * n_per_psu_int}). Its actual field cost and
 precision are reported in \verb{$operational} and, in \code{budget} mode,
 never exceed the budget.
+}
+
+\subsection{Certainty PSUs from a register}{
+
+\code{N_psu} gives only the number of PSUs in a stratum. Supply \code{psu} to give
+their sizes instead. It has one row per PSU with \code{stratum} and \code{N}, and the
+sizes must sum to \code{frame$N} in every stratum. This two-stage joint-allocation
+mode requires \code{n_per_psu} in \code{frame} and \code{icc_psu} in \code{measures}.
+
+With take \eqn{b_h} and sampling fraction \eqn{f_h = n_h / N_h}, a PSU is
+certain when its size reaches
+
+\deqn{N_{hi} \ge b_h / f_h.}{N_hi >= b_h / f_h.}
+
+The certainty part has no first-stage sampling variance. The remainder has
+the usual clustering component, and the two are combined into the
+anticipated design effect. \code{psu$certainty} can add a PSU to the certainty
+part. It cannot remove a PSU above the threshold.
+
+The threshold and allocation determine each other, so the solver iterates.
+\verb{$optimization$certainty} records whether it converged, cycled, or reached
+its iteration limit. \verb{$detail} gives the split and threshold by stratum,
+while \verb{$psu} gives each PSU's classification and its source.
+
+The operational design is fieldable: certainty PSUs use their whole take
+at the stratum rate and the remainder uses whole PSUs at \code{n_per_psu}. Thus
+\code{n_int = n_certain_int + n_psu_draw * n_per_psu} in every stratum.
+\verb{$operational} reports the count, cost, and precision of that same design.
+Use \code{cost_psu} and \code{cost_ssu} together to price PSU visits and interviews.
+\link{predict.svyplan} can compare fixed values of \code{n_per_psu}.
 }
 
 \subsection{Domains vs. strata}{

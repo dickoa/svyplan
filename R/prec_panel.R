@@ -55,8 +55,9 @@
 #'
 #' @family precision functions
 #' @seealso [n_panel()] for the inverse (solve the recruitment from a
-#'   target), [prec_mean()] and [prec_prop()] for the single-occasion
-#'   precision the waves are evaluated with.
+#'   target), [design_schedule()] for turning a rotating plan into an
+#'   operational schedule, [prec_mean()] and [prec_prop()] for the
+#'   single-occasion precision the waves are evaluated with.
 #'
 #' @examples
 #' target <- n_prop(p = 0.5, moe = 0.031)

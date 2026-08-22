@@ -83,3 +83,8 @@ summary(allocation)
 summary(prec_alloc(allocation, n = allocation$detail$n_int))
 
 }
+\seealso{
+\code{\link[=n_alloc]{n_alloc()}} and \code{\link[=prec_alloc]{prec_alloc()}}, which build these objects,
+\code{\link[=strata_bound]{strata_bound()}} for constructing the strata to allocate over, and
+\code{\link[=design_df]{design_df()}} for the degrees of freedom the allocation leaves.
+}

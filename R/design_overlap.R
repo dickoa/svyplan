@@ -166,6 +166,8 @@
 #'   `overlap`; [design_effect()] and [design_df()] for the other quantities
 #'   a planned design determines.
 #'
+#' @family repeated survey planning
+#'
 #' @examples
 #' # CPS 4-8-4: 75 percent month to month, 50 percent a year apart
 #' cps <- design_overlap("4-8-4")

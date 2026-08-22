@@ -67,6 +67,10 @@
 #' schedule
 #' schedule$components
 #'
+#' @seealso [n_panel()] and [prec_panel()] for the rotating plan this
+#'   schedules, [plot.svyplan_overlap()] for the rotation chart, and
+#'   [print.svyplan_schedule()] for the printed form and its `summary()`.
+#'
 #' @family repeated survey planning
 #' @export
 design_schedule <- function(
@@ -826,6 +830,40 @@ design_schedule <- function(
 #' because the metadata and tables describe one reconciled design. Recompute
 #' with [design_schedule()] to change the plan, or extract a table first to
 #' modify a plain data frame.
+#'
+#' @seealso [design_schedule()], which builds these objects, [n_panel()] for
+#'   the rotating plan they schedule, and [print.svyplan_overlap()] for the
+#'   rotation the life describes.
+#'
+#' @examples
+#' panel <- n_panel(
+#'   n_prop(p = 0.5, moe = 0.03),
+#'   retention = c(0.9, 0.9, 0.9),
+#'   resp_rate = 0.75,
+#'   design = "rotating",
+#'   start = "immediate"
+#' )
+#' schedule <- design_schedule(
+#'   panel,
+#'   design_overlap("4"),
+#'   horizon = 6,
+#'   horizon_policy = "continuing",
+#'   refreshment = "entrant_register",
+#'   rounding = "ceiling"
+#' )
+#' schedule
+#'
+#' # the occasion-by-occasion tables the print block summarises
+#' s <- summary(schedule)
+#' s
+#'
+#' # every table stays reachable as a field
+#' schedule$components
+#' schedule$tail_commitments
+#'
+#' # as.data.frame() returns the issue profile
+#' as.data.frame(schedule)
+#'
 #' @name print.svyplan_schedule
 NULL
 

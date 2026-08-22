@@ -238,7 +238,8 @@
 #' @family sample size functions
 #' @seealso [prec_panel()] for the same design from a recruitment you
 #'   already have, [design_overlap()] for the overlap a rotation produces,
-#'   [n_change()] for sizing the change between two occasions.
+#'   [design_schedule()] for turning a rotating plan into an operational
+#'   schedule, [n_change()] for sizing the change between two occasions.
 #'
 #' @examples
 #' # UK LFS: five quarterly waves, 73 percent at recruitment then high
