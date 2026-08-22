@@ -740,7 +740,7 @@ or `prec_alloc(joint_fit, n = joint_fit$detail$n_int)` to inspect either
 design.
 
 The same API handles fixed-take multistage designs. Stage populations,
-fixed takes, and costs belong in `frame` and indicator-specific
+fixed takes, and costs belong in `frame`, and indicator-specific
 homogeneity parameters belong in `measures`. Here only the PSU counts
 are optimized:
 
@@ -769,7 +769,7 @@ cluster_fit$detail[, c("stratum", "n_psu_int", "n_per_psu", "n_int")]
 ```
 
 Public `n` remains the ultimate-unit sample size. Thus the field design
-obeys `n_int = n_psu_int * n_per_psu`. three-stage designs additionally
+obeys `n_int = n_psu_int * n_per_psu`. Three-stage designs additionally
 multiply by the fixed `n_per_ssu`.
 
 ### Certainty PSUs in a joint allocation

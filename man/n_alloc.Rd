@@ -592,7 +592,15 @@ part. It cannot remove a PSU above the threshold.
 The threshold and allocation determine each other, so the solver iterates.
 \verb{$optimization$certainty} records whether it converged, cycled, or reached
 its iteration limit. \verb{$detail} gives the split and threshold by stratum,
-while \verb{$psu} gives each PSU's classification and its source.
+while \verb{$psu} gives each PSU's classification, its source, and \code{n_take},
+the take the operational design fields in it: a certainty PSU carries its
+own whole take at the stratum rate, capped at its size, and a remainder
+PSU carries \code{n_per_psu}. The takes are the operational design's own
+numbers, so \code{sum(n_take[certainty]) = n_certain_int} in every stratum.
+
+A fit solved with a register keeps it in \verb{$params$psu}; its presence is
+the stable test for a certainty-aware fit, and consumers such as samplyr
+key on it rather than on \verb{$detail} column names.
 
 The operational design is fieldable: certainty PSUs use their whole take
 at the stratum rate and the remainder uses whole PSUs at \code{n_per_psu}. Thus

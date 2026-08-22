@@ -208,7 +208,7 @@ n_prop(p = 0.05, moe = 0.02, method = "logodds")
 n_prop(p = 0.05, moe = 0.02, method = "beta", df = 25)
 ```
 
-The four differ materially only when the expected count is small. For sizing that difference is rarely worth acting on but for assessing an achieved design it often is. `?n_prop` has the full comparison.
+The four differ materially only when the expected count is small. For sizing that difference is rarely worth acting on, but for assessing an achieved design it often is. `?n_prop` has the full comparison.
 
 Target a coefficient of variation instead of a margin of error:
 
@@ -449,7 +449,7 @@ Programs like UNICEF MICS and DHS express precision as a **relative margin of er
 | Sampling | `se`     | `cv`     |
 | Interval | `moe`    | `rmoe`   |
 
-The sampling row is free of `alpha` and of the interval method and the interval row depends on both. A rare outcome shows the split at its widest:
+The sampling row is free of `alpha` and of the interval method, whereas the interval row depends on both. A rare outcome shows the split at its widest:
 
 ```{r rmoe-two-axes}
 sapply(c("wald", "wilson", "logodds", "beta"), function(m) {
@@ -458,7 +458,7 @@ sapply(c("wald", "wilson", "logodds", "beta"), function(m) {
 })
 ```
 
-`se` and `cv` do not move across the four columns but `moe` and `rmoe` do. So `rmoe = q * cv`, where `q` is the interval quantile the design uses (`qnorm(1 - alpha / 2)`, or the `t` quantile on `df` degrees of freedom when `df` is supplied, as here), holds under Wald alone. Under the other three, reading a relative margin of error off the CV that way overstates the precision by 5 to 10 percent in this design, which is why a relative margin of error is a target in its own right rather than a rescaled `cv`.
+`se` and `cv` do not move across the four columns, but `moe` and `rmoe` do. So `rmoe = q * cv`, where `q` is the interval quantile the design uses (`qnorm(1 - alpha / 2)`, or the `t` quantile on `df` degrees of freedom when `df` is supplied, as here), holds under Wald alone. Under the other three, reading a relative margin of error off the CV that way overstates the precision by 5 to 10 percent in this design, which is why a relative margin of error is a target in its own right rather than a rescaled `cv`.
 
 ```{r n-multi-rme}
 # MICS-style: 12% relative MOE per domain, domain-specific deff and prevalence
@@ -555,7 +555,7 @@ n_cluster(
 
 A cluster design can lose units at more than one stage, and the two losses are not interchangeable, so they are named for the stage they act on. `resp_rate_psu` is the share of selected clusters that can be worked at all: whole PSUs lost to insecurity, flooding, or an inaccessible road. Losing a PSU removes its entire contribution, so it deflates every variance term alike and the first-stage sample is inflated by `1 / resp_rate_psu` to cover it.
 
-In budget mode, applying a response rate does not change the allocation because the budget constrains the design with the achieved CV getting worse instead. In CV mode:
+In budget mode, applying a response rate does not change the allocation because the budget constrains the design. The achieved CV worsens instead. In CV mode:
 
 ```{r n-cluster-resp}
 n_cluster(stage_cost = c(500, 50), icc = vc, cv = 0.05, resp_rate_psu = 0.90)
@@ -563,7 +563,7 @@ n_cluster(stage_cost = c(500, 50), icc = vc, cv = 0.05, resp_rate_psu = 0.90)
 
 Household or individual nonresponse is a different quantity acting at a different stage, and each has its own argument: `resp_rate_ssu` for second-stage units in a three-stage design, and `resp_rate` for the ultimate units. Naming a stage the design does not have is an error rather than a silently ignored argument, because a dropped response rate plans a design with none.
 
-The three are not interchangeable. Losing whole PSUs deflates every variance term alike whereas losing ultimate units shrinks the realized cluster and so changes the clustering penalty too. That is why the later-stage rates move the cost-optimal take while the PSU rate does not:
+The three are not interchangeable. Losing whole PSUs deflates every variance term alike, whereas losing ultimate units shrinks the realized cluster and so changes the clustering penalty too. That is why the later-stage rates move the cost-optimal take while the PSU rate does not:
 
 ```{r n-cluster-resp-stages}
 # a DHS-shaped design: EAs, households within EAs, one person per household
@@ -662,8 +662,8 @@ they minimize is that of the total or mean of `x`. Nothing models the study
 variable's conditional mean or variance given `x`, so for any `y` other than
 `x` the result is a proxy, good in proportion to how closely `y` tracks `x`.
 The reported CV is likewise the CV for `x`. Stratifying an expenditure frame
-to measure a poverty rate is the case this serves well. However, stratifying on a
-variable unrelated to the indicator is not.
+to measure a poverty rate is the case this serves well, whereas stratifying
+on a variable unrelated to the indicator is not.
 
 ```{r strata-bound}
 set.seed(12345)
@@ -1091,7 +1091,7 @@ Every result carries the single-phase comparison, because two-phase sampling is 
 
 ### Response rates
 
-Both phases can lose sample to nonresponse, and the two enter separately. `resp_rate` is the phase-1 response or successful-classification rate; a `resp_rate` column is the phase-2 completion rate in each stratum. Response divides its own component, exactly as the design effects do, so a stratum that responds poorly is subsampled differently rather than the whole design being inflated by one factor.
+Both phases can lose sample to nonresponse, and the two enter separately. `resp_rate` is the phase-1 response or successful-classification rate, and a `resp_rate` column is the phase-2 completion rate in each stratum. Response divides its own component, exactly as the design effects do, so a stratum that responds poorly is subsampled differently rather than the whole design being inflated by one factor.
 
 ```{r twophase-resp}
 screened <- transform(frame, resp_rate = c(0.9, 0.7, 0.85, 0.6))
@@ -1123,7 +1123,7 @@ The between-stratum term is the part already paid for by the phase-1 size. It is
 
 ### Whole units and assurance
 
-`$operational` carries the field design in whole units, and it is what the printed block reports: every count there is a whole unit off the same solution, so the phase sizes, the stratum takes and the responding figures reconcile. Budget mode floors and then buys back units in order of variance reduction per unit cost, staying inside the budget; CV mode rounds up, overshooting precision rather than missing it. `summary()` sets the continuous optimum beside the fielded design and gives the single-phase comparator in full.
+`$operational` carries the field design in whole units, and it is what the printed block reports: every count there is a whole unit off the same solution, so the phase sizes, the stratum takes and the responding figures reconcile. Budget mode floors and then buys back units in order of variance reduction per unit cost, staying inside the budget. CV mode rounds up, overshooting precision rather than missing it. `summary()` sets the continuous optimum beside the fielded design and gives the single-phase comparator in full.
 
 Planning at the *expected* respondent count leaves roughly half of all designs short. `assurance` reports the issue for which the required respondents arrive with at least that probability, from the binomial distribution of respondents:
 

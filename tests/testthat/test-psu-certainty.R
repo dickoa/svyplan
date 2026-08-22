@@ -15,6 +15,23 @@ test_that("a PSU register refines the allocation without changing its class", {
                tolerance = 1e-6)
 })
 
+test_that("the register in params is the stable mark of a certainty fit", {
+  z <- .psu_fixture()
+  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                 psu = z$psu)
+
+  # Consumers key on the register's presence, never on detail column names.
+  expect_false(is.null(fit$params$psu))
+  expect_setequal(fit$params$psu$psu_id, z$psu$psu_id)
+
+  plain <- n_alloc(
+    z$frame[, c("stratum", "N")],
+    measures = z$measures[, setdiff(names(z$measures), "icc_psu")],
+    targets = z$targets
+  )
+  expect_null(plain$params$psu)
+})
+
 test_that("the classification is reported per stratum and per PSU", {
   z <- .psu_fixture()
   fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
@@ -61,6 +78,36 @@ test_that("every PSU above the threshold is certainty", {
   above <- fit$psu$N >= fit$psu$.threshold
   expect_true(all(fit$psu$certainty[above]))
   expect_true(all(fit$psu$.certainty_source[above] == "threshold"))
+})
+
+test_that("n_take is the take the operational design fields in each PSU", {
+  z <- .psu_fixture()
+  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                 psu = z$psu)
+
+  expect_true("n_take" %in% names(fit$psu))
+  cert <- fit$psu$certainty
+  take_of <- z$frame$n_per_psu[match(fit$psu$stratum, z$frame$stratum)]
+
+  # The remainder is fielded at the stated per-PSU take.
+  expect_equal(fit$psu$n_take[!cert], take_of[!cert], ignore_attr = TRUE)
+
+  # Every certainty PSU here reached the threshold on its own, so its whole
+  # take at the stratum rate is at least the stated take, and never more
+  # than the PSU holds.
+  expect_true(all(fit$psu$.certainty_source[cert] == "threshold"))
+  expect_true(all(fit$psu$n_take[cert] >= take_of[cert]))
+  expect_true(all(fit$psu$n_take[cert] <= fit$psu$N[cert]))
+
+  # The takes are the operational design's own numbers, not a re-derivation:
+  # they sum to n_certain_int exactly, and the whole-unit identity holds.
+  agg <- tapply(fit$psu$n_take * cert, fit$psu$stratum, sum)
+  expect_equal(as.numeric(agg[fit$detail$stratum]), fit$detail$n_certain_int,
+               ignore_attr = TRUE)
+  expect_equal(
+    fit$detail$n_int,
+    fit$detail$n_certain_int + fit$detail$n_psu_draw * z$frame$n_per_psu
+  )
 })
 
 test_that("the convergence verdict is reported and never silent", {
@@ -249,6 +296,38 @@ test_that("the round trip from n_alloc closes exactly", {
   # The held classification travels rather than being derived again, so a
   # PSU the loop absorbed is not silently dropped on the way back.
   expect_identical(ev$psu$certainty, fit$psu$certainty)
+})
+
+test_that("the assessed allocation reports its own takes", {
+  z <- .psu_fixture()
+  n_h <- c(300, 200, 130, 80)
+  ev <- prec_alloc(z$frame, n = n_h, measures = z$measures,
+                   targets = z$targets, psu = z$psu)
+
+  expect_true("n_take" %in% names(ev$psu))
+  cert <- ev$psu$certainty
+  take_of <- z$frame$n_per_psu[match(ev$psu$stratum, z$frame$stratum)]
+  f_of <- (n_h / z$frame$N)[match(ev$psu$stratum, z$frame$stratum)]
+
+  expect_equal(ev$psu$n_take[!cert], take_of[!cert], ignore_attr = TRUE)
+  # The certainty take is read off the supplied allocation, whole and capped
+  # at the PSU's size.
+  expect_equal(
+    ev$psu$n_take[cert],
+    pmin(ceiling(f_of[cert] * ev$psu$N[cert]), ev$psu$N[cert]),
+    ignore_attr = TRUE
+  )
+})
+
+test_that("the round trip reproduces the plan's takes exactly", {
+  z <- .psu_fixture()
+  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                 psu = z$psu)
+  ev <- prec_alloc(fit)
+
+  # prec_alloc(fit) assesses the settled continuous allocation under the held
+  # classification, which is the pair the operational takes were built from.
+  expect_equal(ev$psu$n_take, fit$psu$n_take)
 })
 
 test_that("a larger allocation lowers the threshold and buys certainty", {

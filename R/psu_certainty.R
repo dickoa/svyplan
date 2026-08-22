@@ -489,8 +489,11 @@
 
 #' Fold a certainty solve into the allocation object it refines
 #'
-#' The class does not change, so `predict()`, `summary()`, `design_df()` and
-#' the samplyr handoff keep working. `$detail` gains the per-stratum counts and
+#' The class does not change, so `predict()`, `summary()` and `design_df()`
+#' keep working. samplyr refuses these fits as stage sizes, because no
+#' per-stratum total carries a design of whole certainty takes plus a PPS
+#' remainder; it fields the plan from `$psu` instead, which is why that table
+#' carries the exact per-PSU takes. `$detail` gains the per-stratum counts and
 #' the threshold, `$psu` is the per-PSU classification, and the convergence
 #' verdict joins `$optimization`, which already reports how the solve went.
 #' @keywords internal
@@ -546,11 +549,22 @@
     )
   }
 
+  # The take each PSU is fielded at, exposed from the operational design
+  # rather than recomputed, so sum(n_take[certainty]) equals n_certain_int
+  # exactly in every stratum and a consumer never re-derives the rate.
+  n_take <- numeric(nrow(x$psu))
+  for (h in seq_along(x$idx_of)) {
+    i <- x$idx_of[[h]]
+    n_take[i] <- x$take[h]
+    n_take[i[x$certainty[i]]] <- x$operational$per_psu[[h]]
+  }
+
   stratum_of <- x$psu$stratum
   fit$psu <- data.frame(
     stratum = stratum_of,
     N = x$psu$N,
     certainty = x$certainty,
+    n_take = n_take,
     .certainty_source = x$source,
     .threshold = x$threshold[match(stratum_of, x$stratum)],
     stringsAsFactors = FALSE
@@ -722,10 +736,21 @@
   n_certain <- vapply(seq_len(H), function(h) sum(certain[idx_of[[h]]]),
                       numeric(1))
   n_all <- vapply(idx_of, length, numeric(1))
+  # The take the assessed design fields in each PSU, by the same rule the
+  # solver's operational design uses: a certainty PSU carries its own whole
+  # take at the stratum rate, the remainder carries the stated n_per_psu.
+  f_of <- (n_h / N_h)[match(psu$stratum, stratum)]
+  n_take <- ifelse(
+    certain,
+    pmin(ceiling(f_of * psu$N), psu$N),
+    take[match(psu$stratum, stratum)]
+  )
+
   out$psu <- data.frame(
     stratum = psu$stratum,
     N = psu$N,
     certainty = certain,
+    n_take = n_take,
     .certainty_source = source,
     .threshold = threshold[match(psu$stratum, stratum)],
     stringsAsFactors = FALSE

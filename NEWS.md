@@ -1,104 +1,38 @@
 # svyplan 0.12.0
 
-## Allocation
-
-* The `psu =` argument to `n_alloc()` now supports a PSU register for two-stage joint
-  allocations. The register has one row per PSU with `stratum` and `N`, whose
-  totals must match `frame$N`. It replaces `N_psu`. PSUs selected with
-  certainty under the implied PPS threshold are separated from the
-  noncertainty part, and `psu$certainty` can add units to that part. The
-  returned plan reports the split in `$detail` and `$psu`, including the
-  classification source and threshold.
-* The operational design uses whole PSU takes. Its count, cost, and precision
-  diagnostics all describe the same fielded design. The `psu =` argument to `prec_alloc()`
-  evaluates a supplied allocation under its implied split, while
-  `prec_alloc(fit)` preserves the classification held by a fitted plan.
-  `predict()` can sweep `n_per_psu` for these fits.
-* `predict()` sweeps the fixed takes of a joint constrained allocation. A
-  two-stage fit varies `n_per_psu`, a three-stage fit either `n_per_psu` or
-  `n_per_ssu`, and each grid row re-solves the stored problem and reports the
-  PSU count, the ultimate sample, and the cost the take buys, in both
-  continuous and whole-unit form. The cost curve over the take is U-shaped and
-  its minimum is not evident in advance, which is the reason to look. A scalar
-  take applies to every stratum and asymmetric sweeps stay a matter of editing
-  `frame` and calling `n_alloc()` per point. A budget-objective fit crosses
-  takes with `budget`. A take that exceeds the stage populations gives an
-  all-`NA` row with `.feasible = FALSE` and a warning, leaving the rest of the
-  grid intact, while a take that is not a positive whole number is a malformed
-  grid and stops. Precision targets stay out of reach of the grid, so a
-  one-stage minimum-cost fit has nothing to vary.
-
-## Repeated surveys
-
-* `design_schedule()` turns a rotating panel plan into a versioned operational
-  schedule with explicit startup, intake, horizon, overlap, and tail
-  commitments. This is the first release that exports the constructor.
-* Panel recruitments print as the answer alone: the recruitment, the responding
-  sample it leaves, the precision at the target, and the retention and
-  precision of each wave. A recruitment that falls short of its target, and an
-  assurance level that a finite frame cannot supply, stay on the printed block
-  because both are facts about the plan. Their new `summary()` method carries
-  what the answer rests on: the response and retention assumed, the share of
-  the life's loss at each wave, the cumulative survival, the cv and expected
-  cases per wave, the standing sample a rotating design holds across its live
-  cohorts, and the launch path and cohort composition of a design reaching its
-  steady state.
-* A longitudinal design schedule prints its issue profile as the runs it is
-  made of, so the block is the same size whatever reporting horizon it covers.
-  Its new `summary()` method gives the occasion-by-occasion tables: the issue
-  profile in full, component activity, the overlap the rotation produces, and
-  the interviews owed after the horizon.
-* Two-phase allocations print the design as it would be fielded, every count
-  being a whole unit off the operational solution: the two phase sizes, the
-  precision and cost they buy, the per-stratum subsampling fractions, and
-  which of the two designs to run. Their new `summary()` method sets the
-  continuous optimum beside the fielded one and gives the single-phase
-  comparator with its cost and whether it reaches the target.
-* Strata boundaries print at reading precision, with the search method and its
-  convergence named together and the allocation on the line that reports the
-  size the boundaries were built for.
-* A panel target carrying its own response rate has that rate removed, so the
-  requirement it states is a count of respondents and the panel's `resp_rate`
-  is the only recruitment response reaching the answer. Where the two rates
-  differ, the target's is reported as unused at the call and again in
-  `summary()`, naming the rate that was applied and the responding
-  requirement that was read. Where they agree, nothing is reported.
-
-# svyplan 0.11.0
-
 Initial CRAN release.
 
 ## Sample size determination
 
-* Planning design effects now print as a compact overall figure. Their new
-  `summary()` method gives an ANOVA-style component table, followed by the
+* Planning design effects print as a compact overall figure. `summary()`
+  gives an ANOVA-style component table, followed by the
   multiplicative basis and the assumptions behind each component. Cluster
-  summaries disclose stage takes, ICCs, and variance ratios. Allocation
+  summaries disclose stage takes, ICCs, and variance ratios, while allocation
   summaries distinguish a direct variance ratio from an additional Kish
   weighting adjustment.
-* Classic `n_alloc()` and `prec_alloc()` results now have structured
+* Classic `n_alloc()` and `prec_alloc()` results have structured
   `summary()` methods. The fitted-design summary evaluates the operational
-  whole-unit allocation and keeps the mathematical optimum separate. The
+  whole-unit allocation and keeps the mathematical optimum separate, while the
   precision summary evaluates the supplied allocation exactly, including
   fractional values. Both disaggregate allocation, response-adjusted counts,
   costs and weights, achieved stratum precision, variance shares, domains,
   and assumptions. Fitted designs additionally report bounds and design
   degrees of freedom. Cluster summaries use the operational PSU counts and
   takes when recomputing field cost and precision.
-* Generalized Bethel `n_alloc()` and `prec_alloc()` results now have a
+* Generalized Bethel `n_alloc()` and `prec_alloc()` results have a
   dedicated `summary.svyplan_bethel` diagnostic summary. It separates the
   continuous optimum, operational integer recommendation, and supplied
-  assessment. It retains every precision constraint and objective component and
+  assessment, retains every precision constraint and objective component,
   disaggregates stratum and multistage decisions, bounds, and resolved
   target-stratum planning inputs, and reports solver certification, active
   constraints, multiplier identifiability, and budget sensitivity. Constraint
   rows are explicitly non-additive, while objective contributions are labelled
   as the additive decomposition they are.
-* The multi-indicator family now accepts response-rate defaults as ordinary
+* The multi-indicator family accepts response-rate defaults as ordinary
   arguments as well as per-indicator columns. `n_multi()` and `prec_multi()`
-  take `resp_rate`; their cluster counterparts take `resp_rate_psu`,
-  `resp_rate_ssu`, and `resp_rate`. Non-missing row values still override the
-  scalar default, and the same defaults now flow from `svyplan()` profiles and
+  take `resp_rate`, and their cluster counterparts take `resp_rate_psu`,
+  `resp_rate_ssu`, and `resp_rate`. Non-missing row values override the
+  scalar default, and the same defaults flow from `svyplan()` profiles and
   through inverse round trips. Stage-specific response-rate columns are
   validated before optimization, so zero or out-of-range rates produce a
   direct argument error instead of an optimizer failure or infinite
@@ -127,7 +61,7 @@ Initial CRAN release.
   the same effective size. A `df` argument supplies the degrees of freedom
   of the planned variance estimator (typically sampled PSUs minus strata)
   and widens the interval for a variance estimated from few clusters, which
-  is equation (2.2) of the paper; omitting it applies no adjustment. The
+  is equation (2.2) of the paper. Omitting it applies no adjustment. The
   interval is asymmetric and stays inside `[0, 1]` by construction rather
   than by clamping, so `confint()` is the way to read it: `$moe` is half the
   interval's length and `p` plus or minus it is not the pair of limits.
@@ -170,11 +104,11 @@ Initial CRAN release.
   result is a `svyplan_df`, a numeric scalar usable as any `df` argument
   and carrying `$strata` and `$domains` detail tables. The per-stratum
   contributions sum to the overall count.
-  Its compact `print()` reports the headline count; `summary()` now gives an
+  Its compact `print()` reports the headline count, and `summary()` gives an
   additive per-stratum analysis with an overall row and reports per-domain
   degrees of freedom separately as non-additive subpopulation counts.
   Per-domain df is exact rather than approximate, the allocation API
-  expressing a domain as a union of whole strata; an analytic domain
+  expressing a domain as a union of whole strata. An analytic domain
   cutting across strata is not derivable from a plan and is documented as
   such. A stratum holding a single PSU supports no within-stratum variance
   estimate and warns, naming the stratum, both here and at construction in
@@ -189,12 +123,12 @@ Initial CRAN release.
   need a fixed point. `design_df()` is where the number comes from, and
   `svyplan(df = )` carries it as a design default. The Korn-Graubard
   `"beta"` interval reaches the same widening by scaling the effective
-  sample size rather than the quantile; the two agree in direction and
+  sample size rather than the quantile, and the two agree in direction and
   magnitude, and both hold `moe = q * se`. The coefficient of variation is
   not uniformly invariant to `df`: only `"wald"` and the mean engine build
   `se` without a quantile in it. A joint allocation reads a scalar `df` or
   a per-target `df` column, with one quantile shared by a constraint's
-  variance ceiling and the sensitivity reported for it; a `cv`-metric
+  variance ceiling and the sensitivity reported for it. A `cv`-metric
   constraint carries no quantile, so an all-`cv` problem is unchanged by
   `df` in everything but its reported `moe`. The power functions do not
   accept `df` and say why: their quantile is a normal deviate for an
@@ -202,7 +136,7 @@ Initial CRAN release.
 * `n_twophase()` and `prec_twophase()`: allocation and precision for a
   two-phase (double) sample. One allocator covers two designs that are
   usually treated separately. Double sampling for stratification
-  subsamples every phase-2 stratum; nonresponse follow-up carries the
+  subsamples every phase-2 stratum, while nonresponse follow-up carries the
   phase-1 respondents through untouched and subsamples only the
   nonrespondents. They differ only in which strata are marked
   `take_all`, and the follow-up case reduces to the standard
@@ -228,7 +162,7 @@ Initial CRAN release.
   assumes ignorable response within the supplied strata, not a
   nonresponse-bias adjustment. `n_phase1` fixes the phase-1 size when the
   screener has already run or phase 1 is an existing survey, leaving only
-  the subsampling depth to choose; the relative allocation is unchanged
+  the subsampling depth to choose. The relative allocation is unchanged
   and only its scale moves. Fixing it brings its own two infeasibilities,
   both refused with the binding quantity named: a budget that the
   screening and the take-all strata exhaust before phase 2 begins, and a
@@ -255,7 +189,7 @@ Initial CRAN release.
   probability from the binomial distribution rather than planning at the
   expectation, where about half of designs fall short. That level is
   marginal, holding stratum by stratum, so the chance every stratum clears
-  at once is the product over strata and is lower; it is also conditional
+  at once is the product over strata and is lower. It is also conditional
   on the phase-1 pool, and a stratum whose assured issue exceeds what
   phase 1 supplies is named in a warning. `prec_twophase()` carries the
   design decisions a stratum table cannot express, so
@@ -270,13 +204,13 @@ Initial CRAN release.
   which is how MICS and DHS state one. It is an argument on `n_prop()`,
   `n_mean()` and `prec_prop()`, an indicator column on `n_multi()` and
   `n_multi_cluster()`, and a target column on the generalized `n_alloc()`.
-  Supplying it replaces the arithmetic a plan used to carry: `rmoe = 0.12`
-  says what `moe = 0.12 * p` said. It also completes the package's four
+  It states the target directly, `rmoe = 0.12` saying what `moe = 0.12 * p`
+  says by arithmetic. It also completes the package's four
   precision quantities on two axes: `se` and `cv` describe the sampling
   variance and are the same under every interval method, while `moe` and
   `rmoe` describe the interval the chosen `prop_method` builds and are
   specific to it. `rmoe = q * cv`, with `q` the interval quantile the design
-  uses, holds under `"wald"` alone; the other three miss it by 4 to 10
+  uses, holds under `"wald"` alone. The other three miss it by 4 to 10
   percent at `p = 0.02`, `n = 900`, `deff = 2`, which is why a relative
   margin of error is a target in its own right rather than a rescaled `cv`. Every result reports `rmoe` wherever it reports
   `moe`, including the `.rmoe` stratum, domain, indicator, and constraint
@@ -300,9 +234,10 @@ Initial CRAN release.
   `resp_rate_ssu` for second-stage units in a three-stage design, and bare
   `resp_rate` for the ultimate units. Losing a PSU removes its whole
   contribution and so deflates every variance term alike, which leaves the
-  cost-optimal take untouched; losing ultimate units shrinks the realized
-  cluster and so changes the clustering penalty too, which moves it. The
-  optimal take is `sqrt(cost_psu * (1 - icc) / (cost_ssu * icc * resp_rate))`,
+  cost-optimal take untouched, whereas losing ultimate units shrinks the
+  realized cluster and so changes the clustering penalty too, which moves it.
+  The optimal take is
+  `sqrt(cost_psu * (1 - icc) / (cost_ssu * icc * resp_rate))`,
   and lumping the later rates into `resp_rate_psu` is conservative but wrong,
   by a margin that grows with the between-PSU homogeneity. Sizes and costs
   stay gross throughout: `$n` counts the units to issue and `$cost` pays for
@@ -316,15 +251,10 @@ Initial CRAN release.
   whole-cluster operational search in the classic stratified allocator. The
   invariant that pins them together is that one indicator is one design:
   `n_multi_cluster()` returns what `n_cluster()` returns for the same
-  problem, at every response rate and in every mode. Before, a low ultimate
-  response rate left the optimal take at its full-response value, a
-  budget-mode design reported a CV its own precision function did not
-  reproduce, a joint-domain budget allocation ignored the rate entirely, and
-  the operational search could reject whole-cluster designs that do reach the
-  target.
+  problem, at every response rate and in every mode.
 * A fixed stage size changes what the remaining stages should be, and every
-  planner now solves the restricted problem rather than reusing the
-  unrestricted answer. With `n_per_psu` fixed, `n_cluster()`'s cost-optimal
+  planner solves that restricted problem rather than the
+  unrestricted one. With `n_per_psu` fixed, `n_cluster()`'s cost-optimal
   final take is `sqrt(g (cost_psu + cost_ssu n2) / (a cost_tsu n2))` with
   `a = var_ratio_psu icc_psu + var_ratio_ssu icc_ssu / n2` and
   `g = var_ratio_ssu (1 - icc_ssu) / n2`, not the unrestricted
@@ -356,12 +286,12 @@ Initial CRAN release.
   columns, for designs whose fieldwork is not uniform. The three
   variance-based methods weight by `sqrt(deff_h / resp_rate_h)`, which is
   the optimum when the constraint is on the units drawn rather than the
-  units that respond; proportional allocation weights by `1 / resp_rate_h`
+  units that respond, while proportional allocation weights by `1 / resp_rate_h`
   and takes no design effect, being a count rule whose purpose is a
   self-weighting responding sample. A value shared by every stratum is a
   constant factor that cancels out of a proportional weighting, so scalar
-  arguments give exactly the classical rules. `max_weight` continues to
-  bound the gross weight, which is no longer the response-adjusted one.
+  arguments give exactly the classical rules. `max_weight` bounds the gross
+  weight rather than the response-adjusted one.
   Supplying long `measures` and `targets` tables requests joint constrained
   allocation across multiple indicators and overlapping domains, with CV and
   MOE requirements, costs, response/design effects, and stratum bounds. This
@@ -369,8 +299,8 @@ Initial CRAN release.
   which only PSU counts are optimized. Multistage output retains ultimate-unit
   `n` while exposing continuous and whole `n_psu` plus fixed later-stage takes.
   The result separates a KKT-certified continuous minimum-cost optimum from a
-  deterministic feasible, locally cleaned integer operational recommendation;
-  no claim of global integer optimality is made.
+  deterministic feasible, locally cleaned integer operational recommendation.
+  No claim of global integer optimality is made.
   Joint allocation answers either of the two questions planners ask. Without
   `objective` it returns the cheapest design meeting every requirement in
   `targets`. With `objective` and `budget` it returns the best design that
@@ -388,6 +318,36 @@ Initial CRAN release.
   targets unattainable at the stratum upper bounds, targets attainable but
   unaffordable (with the cheapest feasible cost and the shortfall), or no
   whole-unit allocation meeting every target inside the budget.
+* `psu` gives `n_alloc()` a PSU register for a two-stage joint allocation, one
+  row per PSU with `stratum` and `N`, whose totals must match `frame$N`. PSUs
+  selected with certainty under the implied PPS threshold are separated from
+  the noncertainty part, and `psu$certainty` adds units to that part. The
+  returned plan reports the split in `$detail` and `$psu`, including the
+  classification source and threshold. The operational design uses whole PSU
+  takes, and its count, cost, and precision diagnostics all describe that one
+  fielded design. `prec_alloc(psu = )` evaluates a supplied allocation under
+  its implied split, while `prec_alloc(fit)` reads the classification a fitted
+  plan holds.
+* `$psu` carries `n_take`, the take the operational design fields in each PSU:
+  a certainty PSU's own whole take at the stratum rate, capped at its size,
+  and `n_per_psu` in the remainder. The values are the operational design's
+  own, so `sum(n_take[certainty])` equals `n_certain_int` exactly per stratum.
+  `prec_alloc()` reports the same column for the allocation it assesses. A fit
+  solved with a register keeps it in `$params$psu`, the stable mark of a
+  certainty-aware fit for downstream consumers such as samplyr.
+* `predict()` sweeps the fixed takes of a joint constrained allocation. A
+  two-stage fit varies `n_per_psu`, a three-stage fit either `n_per_psu` or
+  `n_per_ssu`, and each grid row re-solves the stored problem and reports the
+  PSU count, the ultimate sample, and the cost the take buys, in both
+  continuous and whole-unit form. The cost curve over the take is U-shaped and
+  its minimum is not evident in advance, which is the reason to look. A scalar
+  take applies to every stratum, and asymmetric sweeps are a matter of editing
+  `frame` and calling `n_alloc()` per point. A budget-objective fit crosses
+  takes with `budget`. A take that exceeds the stage populations gives an
+  all-`NA` row with `.feasible = FALSE` and a warning, leaving the rest of the
+  grid intact, while a take that is not a positive whole number is a malformed
+  grid and stops. Precision targets stay out of reach of the grid, so a
+  one-stage minimum-cost fit has nothing to vary.
 
 * `n_pooled()`: size per occasion for an estimate pooled across occasions,
   the equal-weight mean of the occasion estimates, which is what an annual
@@ -396,7 +356,7 @@ Initial CRAN release.
   the pooling of the rotating cohorts that make up one occasion, which
   `n_panel()` describes. `overlap` and `overlap_cor` are stated per lag
   rather than once, since a panel's correlation falls away with distance and
-  a single number is rarely right over a long horizon; `cor_decay` gives the
+  a single number is rarely right over a long horizon. `cor_decay` gives the
   AR(1) shape `rho^m` in one argument. Targets are `moe`, `cv`, or `rmoe`,
   and the inversion is closed form, the finite population terms collecting
   into a constant no size can move. That constant is never positive under
@@ -407,14 +367,14 @@ Initial CRAN release.
 * `n_change()`: size per occasion for a change in a mean or a proportion
   between two occasions of one population, given how far the two samples
   overlap. `overlap` is the share of the first occasion carried into the
-  second and `overlap_cor` the correlation among those shared units; only
+  second and `overlap_cor` the correlation among those shared units. Only
   their product buys precision, so a full panel of uncorrelated measurements
   saves nothing. Supply `var`/`sd` for the mean scale or `p = c(p1, p2)` for
   the proportion scale, where the occasion variances and the change are both
   determined. The proportion scale carries the same `N / (N - 1)` adjustment
   `n_prop()` applies, because the variance the change formula wants is the
   population variance on `N - 1` degrees of freedom while a Bernoulli
-  population's is `N p (1 - p) / (N - 1)`; without it one occasion of a
+  population's is `N p (1 - p) / (N - 1)`. Without it one occasion of a
   change would disagree with `n_prop()` on the same finite population.
   Targets are `moe`, `cv`, or `rmoe`, and `ratio` sizes a large
   baseline against a smaller follow-up, which is where `overlap` becomes
@@ -438,7 +398,7 @@ Initial CRAN release.
   existing `n_mean()`, `n_prop()`, `prec_mean()` or `prec_prop()` result
   rather than restating its arguments, reading it as both the responding
   count to reach and the estimand whose precision is reported at every
-  wave; the target's own `resp_rate` is removed first, exactly, since the
+  wave. The target's own `resp_rate` is removed first, exactly, since the
   `n_*` functions apply it last. `resp_rate` is response at recruitment and
   `retention[j]` is conditional retention from wave `j` to `j + 1`, kept
   separate because a panel's loss concentrates at the first wave, 61
@@ -465,7 +425,7 @@ Initial CRAN release.
   and it overshoots at a high response rate, `need = 2` at `r = 0.99`
   clearing 0.8 assurance with 2 issued where the expected count rounds to 3.
   The fixed search is the one `n_twophase()` uses, so its assured issue is
-  now minimal in those two regimes as well. Where the assured recruitment
+  minimal in those two regimes as well. Where the assured recruitment
   exceeds a finite `N` the level is unattainable, not merely large: the
   recruitment it would take is still reported, `assured_feasible` records the
   state, and the expected design is untouched. Feasibility is reported
@@ -479,6 +439,12 @@ Initial CRAN release.
   otherwise reading like any other wave's. A proportion target adds
   `expected_cases` to the wave table, which is where a `min_cases` floor can
   be watched stopping short after the target wave.
+* A panel target carrying its own response rate has that rate removed, so the
+  requirement it states is a count of respondents and the panel's `resp_rate`
+  is the only recruitment response reaching the answer. Where the two rates
+  differ, the target's is reported as unused at the call and again in
+  `summary()`, naming the rate that was applied and the responding
+  requirement that was read. Where they agree, nothing is reported.
 * `start` reports what a rotating design delivers while it is being brought
   up to its steady state, in `$launch` by occasion and `$launch_waves` by
   occasion and wave. `"gradual"` recruits one cohort an occasion, so the
@@ -501,8 +467,8 @@ Initial CRAN release.
   approaches the same figure from below, at 234. Either way the early
   occasions rest on a different response composition from the rest of the
   series, which is what `launch_waves` exposes and what nonresponse weighting
-  has to carry. The default plans no launch, leaving every other result
-  exactly as it was, and a fixed panel refuses the argument, recruiting one
+  has to carry. The default plans no launch, so a design that does not ask for
+  one reports none, and a fixed panel refuses the argument, recruiting one
   cohort that is its whole design from wave 1. The tables are continuous, as
   the wave table is, so the last occasion lands on `n_target` rather than on
   a rounded count. Whole units are printed. Described for a life without a
@@ -579,9 +545,10 @@ Initial CRAN release.
   and a direct assessment of it report against identical bounds.
   When the fitted design carries an objective, the assessment also reports its
   components and weighted value. Minimum-cost designs invert through
-  precision, pinning the achieved values as the requirement; budget-objective
-  designs invert through cost, because pinning achieved precision as hard
-  targets would over-constrain a design that already spends its whole budget.
+  precision, pinning the achieved values as the requirement, while
+  budget-objective designs invert through cost, because pinning achieved
+  precision as hard targets would over-constrain a design that already spends
+  its whole budget.
 
 * `prec_pooled()`: precision of an estimate pooled across occasions given
   the size of each, the counterpart to `n_pooled()`. It reads the same
@@ -589,14 +556,14 @@ Initial CRAN release.
   object rather than two models: a change is a difference of two occasion
   means and a pooled estimate is their average. Two boundaries fix it. A
   fresh sample each occasion pools to a single occasion's variance divided
-  by the number of them, independent averaging; a full panel measured with
+  by the number of them, independent averaging. A full panel measured with
   correlation 1 pools to a single occasion's variance unchanged, the same
   units every time and averaging buying nothing. A lag whose overlap is zero
   contributes exactly zero covariance, population term included, which is
   `prec_change()`'s rule at `overlap = 0` read lag by lag and the only
   reading under which the first boundary is exact. A covariance is added in
   a sum and subtracted in a difference, so whichever sign it carries it
-  moves a pooled estimate and a change in opposite directions; when it is
+  moves a pooled estimate and a change in opposite directions. When it is
   positive, the ordinary case, overlap works against the pooled estimate and
   for the change. It is positive exactly when the overlap exceeds the
   sampling fraction `n / N`, which every positive overlap does when there is
@@ -611,7 +578,7 @@ Initial CRAN release.
   covariance is checked for validity on the matrix rather than on the
   variance read off it, because a lag's covariance changes sign once its
   overlap falls below the sampling fraction and a kernel that fails the
-  check can still return a positive pooled variance; the verdict is
+  check can still return a positive pooled variance. The verdict is
   invariant to the units the outcome is measured in, and the refusal names
   the fraction, the lag, and whether the rotation would also exhaust its own
   population, counting interviews per cohort rather than calendar span so
@@ -627,11 +594,11 @@ Initial CRAN release.
   either occasion's: a clustered design revisiting the same clusters has a
   smaller one than a design that reclusters. The covariance is a model form,
   assuming a correlation among the shared units and simple random sampling
-  otherwise; it is not the design-based covariance of two waves of a complex
+  otherwise. It is not the design-based covariance of two waves of a complex
   design, and `overlap` is asserted rather than derived from a rotation
   pattern. The sizes enter the covariance after `resp_rate` has netted them
   down, so `overlap` is the overlap between the two responding samples
-  rather than between the issued ones; the two coincide at `resp_rate = 1`,
+  rather than between the issued ones. The two coincide at `resp_rate = 1`,
   and converting between them otherwise needs an assumption about how
   response at the second occasion depends on response at the first, which
   the function does not make. The variance is piecewise in `overlap`: at
@@ -650,7 +617,7 @@ Initial CRAN release.
   target's own precision at wave `w`. Both directions return
   `svyplan_panel`, unlike the rest of the package, because a panel's
   recruitment and its precision move together across the waves and are only
-  readable side by side; `$solved` records which direction produced the
+  readable side by side. `$solved` records which direction produced the
   object. The `svyplan_panel` method re-reads a stored plan under named
   overrides, so retention that turned out worse than planned needs no
   second call to `n_panel()`. `design` is the one stored argument it will
@@ -709,7 +676,7 @@ signatures where applicable.
   with equal sizes and variances the population terms cancel and the
   difference variance is `2 * var * (1 - overlap) / n`, free of `N`. A
   positive `overlap` describes a coordinated design, so it requires both
-  occasions to sample one population; the default 0 is the ordinary
+  occasions to sample one population. The default 0 is the ordinary
   two-group comparison, where the groups are independent and may be
   different populations of different sizes. In `power_did()` the overlap
   is within each arm, so each arm's covariance uses that arm's own `N`.
@@ -719,7 +686,7 @@ signatures where applicable.
   mean outcomes, cell-specific variances, panel overlap, and all common
   design parameters. Those two paths already determine the contrast, so
   `effect` is optional and defaults to the difference-in-differences they
-  imply; supplying a value that disagrees with them warns rather than
+  imply. Supplying a value that disagrees with them warns rather than
   silently planning for an effect the displayed inputs do not produce.
   Leaving both `n` and `power` supplied while `effect` is `NULL` still
   solves for the minimum detectable effect.
@@ -739,15 +706,15 @@ signatures where applicable.
   as every other function, so `cv = 0.05` means one thing across the package
   and `n` is always a fielded sample. Both default to 1, the identity. A
   scalar `deff` does not move the boundaries, since it scales the variance of
-  every candidate set equally; it changes the `n` a `cv` target requires and
+  every candidate set equally. It changes the `n` a `cv` target requires and
   the `cv` a given `n` achieves.
   `$strata` carries a `mean` column, so the table has the `N`, `sd`, and
   `mean` columns [`n_alloc()`] expects and can be handed straight to it. With
   matching `cv`, `deff`, and `resp_rate` the two functions agree on the
   continuous total.
   `strata_bound()` accepts `plan` like every other function. A profile can
-  supply `alloc`, `alloc_q`, `deff`, `resp_rate`, and a scalar `unit_cost`;
-  a profile carrying a vector `unit_cost` is rejected, because
+  supply `alloc`, `alloc_q`, `deff`, `resp_rate`, and a scalar `unit_cost`.
+  A profile carrying a vector `unit_cost` is rejected, because
   `strata_bound()` orders costs from the lowest to the highest stratum while
   `n_alloc()` orders them by frame row, so a vector written for one would be
   silently misapplied by the other.
@@ -756,7 +723,7 @@ signatures where applicable.
 * Strata results retain full-precision `share` and `sd` values, validate
   count inputs as whole numbers, and reject nonfinite stratification values,
   thresholds, and costs. `as.double()` returns the total sample size,
-  consistently with `as.integer()`. Cutpoints remain in `$boundaries`.
+  consistently with `as.integer()`. Cutpoints are in `$boundaries`.
 
 Cluster stage tables returned by `as.data.frame()` take `n_int` from the
 constraint-preserving operational design rather than rounding each
@@ -778,7 +745,7 @@ continuous stage size upward independently.
   compact spec in either notation the literature uses, told apart by whether
   it contains a `0`. Without one it names the spells in order from in
   sample, `"4-8-4"` for the CPS pattern or `"5"` for an unbroken five-wave
-  panel; with one it is a flag per occasion, `"1-1-0-0-1-1"` for the
+  panel. With one it is a flag per occasion, `"1-1-0-0-1-1"` for the
   two-in-two-out-two-in design, which is the same life as `"2-2-2"`. It may
   also be given as one entry per occasion of a unit's life, where unequal
   positive entries describe a design that subsamples later waves. A string
@@ -827,34 +794,31 @@ continuous stage size upward independently.
   of cohort shares, issuing whole units as `print()` does so that one object
   reports one recruitment. `type = "overlap"` draws the lag profile instead,
   which is the table `print()` reports. For an immediate start, the launch
-  rows now follow Lynn Figure 5's order: one remaining wave, then two, through
+  rows follow Lynn Figure 5's order: one remaining wave, then two, through
   the full six-wave life. The chart also draws the later entrants that the
   printed report leaves implicit but its constant total requires.
-* Three-stage designs derive `var_ratio_ssu` instead of defaulting it to 1. In the
+* Three-stage designs derive `var_ratio_ssu` rather than taking it as 1. In the
   multiplier
   `D = var_ratio_psu icc_psu m q + var_ratio_ssu (1 + icc_ssu (q - 1))`, `var_ratio_psu`
   rescales the components' unit variance to the analysis variable and
   `var_ratio_ssu` does the same for the within-PSU part, which is `1 - icc_psu`
   of it, so the two are linked by `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)`. That
   identity is what makes `D` collapse to `var_ratio_psu` at `m = q = 1`, where one
-  unit is taken per SSU and one SSU per PSU and no clustering remains.
-  Defaulting `var_ratio_ssu` to 1 asserted instead that the within-PSU variance was
-  the whole variance, contradicting any positive `icc_psu` in the same
-  expression and inflating the design effect by
-  `var_ratio_psu icc_psu (1 + icc_ssu (q - 1))`. This is a breaking change:
-  three-stage sample sizes fall, by about 1.4 to 4.4 percent for
-  `icc_psu` between 0.02 and 0.10, and by more when the takes are small.
-  It affects `design_effect()`, `n_cluster()`, `prec_cluster()`,
+  unit is taken per SSU and one SSU per PSU and no clustering remains. Holding
+  `var_ratio_ssu` at 1 would assert that the within-PSU variance is the whole
+  variance, contradicting any positive `icc_psu` in the same expression. The
+  derivation is shared by `design_effect()`, `n_cluster()`, `prec_cluster()`,
   `n_multi_cluster()`, `prec_multi_cluster()`, and the fixed-take
-  three-stage mode of `n_alloc()` and `prec_alloc()`. A scalar `var_ratio` now names
-  `var_ratio_psu` and derives `var_ratio_ssu`; supplying both explicitly still overrides the
-  identity. Two-stage designs are unaffected, since `var_ratio_psu` there is already
-  1 by the same argument. `varcomp()` estimates the two `var_ratio` values from
-  their own stage decompositions rather than imposing the identity, so its
-  pair can differ by several percent on small clusters; passing a
+  three-stage mode of `n_alloc()` and `prec_alloc()`. A scalar `var_ratio` names
+  `var_ratio_psu` and derives `var_ratio_ssu`, and supplying both explicitly
+  overrides the identity. Two-stage designs do not need it, since
+  `var_ratio_psu` there is 1 by the same argument. `varcomp()` estimates the
+  two `var_ratio` values from their own stage decompositions rather than
+  imposing the identity, so its
+  pair can differ by several percent on small clusters. Passing a
   `svyplan_varcomp` uses the estimated values as given.
   Written on components referenced to the total unit variance the same
-  quantity is the familiar `1 + icc_1 (m q - 1) + icc_2 (q - 1)`; the
+  quantity is the familiar `1 + icc_1 (m q - 1) + icc_2 (q - 1)`. The
   package's `icc_ssu` is referenced to the within-PSU variance instead,
   so `icc_ssu = icc_2 / (1 - icc_1)`.
 
@@ -886,7 +850,7 @@ continuous stage size upward independently.
   `se` with `p` or `var` and `n` starts from a published standard error
   instead. A scalar design effect fixes one product, so `varb`, `varw` and
   `unit_relvar` come back `NA_real_` and `$source` records where the `icc`
-  came from; `n_cluster()` and `prec_cluster()` ask for `unit_relvar`
+  came from. `n_cluster()` and `prec_cluster()` ask for `unit_relvar`
   directly rather than pricing a CV off the default. The take that
   identifies the `icc` is the size-weighted average
   `sum(b_i^2) / sum(b_i) = b_bar (1 + cv_b^2)`, which a planned constant
@@ -938,7 +902,7 @@ continuous stage size upward independently.
   `n * resp_rate / deff`. It accepts the same components, a ready-made
   `deff`, or a plan, and derives `n` from `weights`, `strata$n`, or the
   plan when it can. Sizes count units issued, so nonresponse comes off
-  before the design effect is applied; this is the identity the allocation
+  before the design effect is applied. This is the identity the allocation
   and precision functions plan on and the one reported in the `n_eff`
   column of an `n_alloc()` table, so `effective_n(plan)` and that column
   agree. A plan supplies its own `resp_rate`, and `resp_rate` can be given
@@ -982,7 +946,7 @@ continuous stage size upward independently.
   same information. The two spellings name two different shapes, and the
   fitted objects carry them in separate fields.
 * Wherever a mean is planned, dispersion may be given as either `var` or
-  `sd`; supply exactly one. Stratum frames and published survey reports
+  `sd`. Supply exactly one. Stratum frames and published survey reports
   usually quote standard deviations.
 * `n_multi_cluster(allocation = c("separate", "joint"))` names the two
   strategies in the signature rather than hiding them behind a flag.
@@ -991,13 +955,13 @@ continuous stage size upward independently.
 * Stratified allocation functions use `unit_cost` for per-stratum unit costs
   (`n_alloc()`, `prec_alloc()`, `strata_bound()`).
   The optional frame column and the per-stratum detail column carry that
-  same name; a `cost` frame column is rejected with a message naming the
+  same name. A `cost` frame column is rejected with a message naming the
   replacement, while `$operational$cost` is the total field cost.
 * The first argument of `prec_alloc()` is `frame`, matching `n_alloc()`.
 * `strata_bound()` uses `n_class` and `max_iter` for its public controls.
 * Take-all strata are named for what they hold. `strata_bound(take_all_above =)`
   is the numeric threshold, so the name says the argument is a cutoff and not
-  a flag; the logical output column and the `n_alloc()` frame column stay
+  a flag. The logical output column and the `n_alloc()` frame column stay
   `take_all`. Every path that reads a `take_all` column validates it the
   same way: logical, or numeric restricted to 0 and 1. Any other number is
   a mistake rather than a truthy value, so it is rejected instead of
@@ -1041,7 +1005,7 @@ continuous stage size upward independently.
   reached by name under one set of names shared by every access route,
   `deff` for the overall value and `deff_<component>` for each part, so
   `d$deff_cluster`, `d[["deff_cluster"]]`, `as.list(d)$deff_cluster`, and
-  `as.data.frame(d)$deff_cluster` are the same number; `as.list()` and
+  `as.data.frame(d)$deff_cluster` are the same number. `as.list()` and
   `as.data.frame()` return the whole decomposition as a named list and a
   one-row table. Naming a component the design effect does not have is an
   error listing the ones it does. The object is directly usable as the
@@ -1066,8 +1030,8 @@ continuous stage size upward independently.
   design defaults.
 * `predict()` methods for sensitivity analysis: evaluate any result at new
   parameter combinations. For a fixed-budget joint allocation this returns the
-  cost-versus-objective frontier, answering what other budgets would buy;
-  budgets that cannot fund the hard targets give an `NA` row flagged
+  cost-versus-objective frontier, answering what other budgets would buy.
+  Budgets that cannot fund the hard targets give an `NA` row flagged
   `.feasible = FALSE` rather than discarding the rest of the frontier.
 * `plot()` methods for strata boundaries (per-stratum sampling fractions),
   power results (the power curve), and fixed-budget joint allocations (the
@@ -1095,7 +1059,7 @@ continuous stage size upward independently.
   counts and the schedule they came from. Subsetting a lag returns a bare
   number, so the lag never travels on as a name into the result of whatever
   it was passed to, and arithmetic, comparison and the `Math` group return
-  bare numerics: a transformed overlap is no longer the profile the counts
+  bare numerics: a transformed overlap is not the profile the counts
   and the schedule describe, and keeping the class would leave the two
   contradicting each other. Replacement is refused for the same reason,
   which also settles `pmax()` and `pmin()`: they copy their first argument's
@@ -1125,7 +1089,7 @@ All classes have print and format methods.
   different method (`n_class` is `"cumrootf"` only, `max_iter` is `"lh"` and
   `"kozak"`, `n_restart` is `"kozak"` only), and `power_did()` errors on
   `var` or `sd` under `outcome = "prop"`, where the cell variances follow
-  from `treat` and `control`. `max_iter` now defaults to `NULL` and resolves
+  from `treat` and `control`. `max_iter` defaults to `NULL` and resolves
   to 200 for the methods that use it, so that supplying it is detectable.
 * `prec_cluster()` validates that `unit_relvar` and `var_ratio` are positive and finite.
 * `varcomp()` rejects NA and empty outcome vectors, and data with a
@@ -1208,11 +1172,34 @@ All classes have print and format methods.
 
 ## Display
 
+* Panel recruitments print as the answer alone: the recruitment, the responding
+  sample it leaves, the precision at the target, and the retention and
+  precision of each wave. A recruitment that falls short of its target, and an
+  assurance level that a finite frame cannot supply, stay on the printed block
+  because both are facts about the plan. `summary()` carries what the answer
+  rests on: the response and retention assumed, the share of the life's loss at
+  each wave, the cumulative survival, the cv and expected cases per wave, the
+  standing sample a rotating design holds across its live cohorts, and the
+  launch path and cohort composition of a design reaching its steady state.
+* A longitudinal design schedule prints its issue profile as the runs it is
+  made of, so the block is the same size whatever reporting horizon it covers.
+  `summary()` gives the occasion-by-occasion tables: the issue profile in full,
+  component activity, the overlap the rotation produces, and the interviews
+  owed after the horizon.
+* Two-phase allocations print the design as it would be fielded, every count
+  being a whole unit off the operational solution: the two phase sizes, the
+  precision and cost they buy, the per-stratum subsampling fractions, and
+  which of the two designs to run. `summary()` sets the continuous optimum
+  beside the fielded one and gives the single-phase comparator with its cost
+  and whether it reaches the target.
+* Strata boundaries print at reading precision, with the search method and its
+  convergence named together and the allocation on the line that reports the
+  size the boundaries were built for.
 * `print()` for a joint constrained allocation reports exceptions rather than
   confirmations. `status:` appears only when the solve is not optimal,
   `active bounds:` only when some are active, and a single binding constraint
-  prints on one line rather than as a one-row table with a see-also pointer;
-  the constraint total sits on the `field design:` line. A violated or
+  prints on one line rather than as a one-row table with a see-also pointer.
+  The constraint total sits on the `field design:` line. A violated or
   multiply-binding solve still prints the full table. The common case drops
   from nine lines to five, and cost is formatted like every other print
   method rather than in scientific notation.
@@ -1226,10 +1213,10 @@ All classes have print and format methods.
 * `print()` and `format()` for `svyplan_cluster` show the unrounded
   continuous optimum alongside the operational total
   (e.g. `total n = 1190 (unrounded: 1159)`).
-* New `as.double.svyplan_cluster()` method returns the continuous total
+* `as.double.svyplan_cluster()` returns the continuous total
   (`x$total_n`). Use `as.integer()` for the operational total (fieldwork)
   and `as.double()` for the continuous optimum (mathematical solution).
-* New `as.data.frame()` methods for `svyplan_n` and `svyplan_cluster`
+* `as.data.frame()` methods for `svyplan_n` and `svyplan_cluster`
   return the tabular form of a result (allocation detail, per-domain
   table, or stage table), the supported handoff to sampling packages
   such as `samplyr`.

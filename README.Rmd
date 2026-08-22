@@ -403,9 +403,9 @@ is the one place overlap costs rather than pays: the covariance a rotation
 induces is subtracted when two occasions are differenced and added when they
 are averaged. That is the ordinary case, holding whenever the overlap
 exceeds the sampling fraction and `?prec_pooled` works the boundary below it.
-`n_pooled()` and `prec_pooled()` size that estimate, the
-equal-weight mean of the occasion estimates, with the correlation stated per
-lag because a panel's falls away with distance.
+`n_pooled()` and `prec_pooled()` size that estimate, the equal-weight mean of
+the occasion estimates, with the correlation stated per lag because a panel's
+falls away with distance.
 
 ```{r pooled}
 prec_pooled(var = 100, n = 500, occasions = 4)
@@ -535,8 +535,8 @@ feasible integer operational recommendation. Use `prec_alloc(joint_fit)` or
 `prec_alloc(joint_fit, n = joint_fit$detail$n_int)` to inspect either design.
 
 The same API handles fixed-take multistage designs. Stage populations, fixed
-takes, and costs belong in `frame` and indicator-specific homogeneity parameters
-belong in `measures`. Here only the PSU counts are optimized:
+takes, and costs belong in `frame`, and indicator-specific homogeneity
+parameters belong in `measures`. Here only the PSU counts are optimized:
 
 ```{r joint-allocation-two-stage}
 cluster_frame <- within(joint_frame, {
@@ -558,7 +558,7 @@ cluster_fit$detail[, c("stratum", "n_psu_int", "n_per_psu", "n_int")]
 ```
 
 Public `n` remains the ultimate-unit sample size. Thus the field design obeys
-`n_int = n_psu_int * n_per_psu`. three-stage designs additionally multiply by
+`n_int = n_psu_int * n_per_psu`. Three-stage designs additionally multiply by
 the fixed `n_per_ssu`.
 
 ### Certainty PSUs in a joint allocation

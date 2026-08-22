@@ -535,7 +535,15 @@
 #' The threshold and allocation determine each other, so the solver iterates.
 #' `$optimization$certainty` records whether it converged, cycled, or reached
 #' its iteration limit. `$detail` gives the split and threshold by stratum,
-#' while `$psu` gives each PSU's classification and its source.
+#' while `$psu` gives each PSU's classification, its source, and `n_take`,
+#' the take the operational design fields in it: a certainty PSU carries its
+#' own whole take at the stratum rate, capped at its size, and a remainder
+#' PSU carries `n_per_psu`. The takes are the operational design's own
+#' numbers, so `sum(n_take[certainty]) = n_certain_int` in every stratum.
+#'
+#' A fit solved with a register keeps it in `$params$psu`; its presence is
+#' the stable test for a certainty-aware fit, and consumers such as samplyr
+#' key on it rather than on `$detail` column names.
 #'
 #' The operational design is fieldable: certainty PSUs use their whole take
 #' at the stratum rate and the remainder uses whole PSUs at `n_per_psu`. Thus
@@ -1299,7 +1307,9 @@ n_alloc.svyplan_prec <- function(
 #' @param psu Optional PSU register for certainty-aware assessment. See the
 #'   `psu` argument to [n_alloc()]. No loop is needed here: the allocation is
 #'   supplied, so the threshold it implies is supplied with it and the
-#'   classification is read off the design being assessed. A fitted result
+#'   classification is read off the design being assessed. The `$psu` table
+#'   carries the same columns as a fitted plan's, with `n_take` read off the
+#'   supplied allocation. A fitted result
 #'   carries its own register and its held classification, so
 #'   `prec_alloc(fit)` reproduces the plan's precision exactly.
 #' @param objective Optional objective components to report alongside the

@@ -58,7 +58,9 @@ a fitted result.}
 \item{psu}{Optional PSU register for certainty-aware assessment. See the
 \code{psu} argument to \code{\link[=n_alloc]{n_alloc()}}. No loop is needed here: the allocation is
 supplied, so the threshold it implies is supplied with it and the
-classification is read off the design being assessed. A fitted result
+classification is read off the design being assessed. The \verb{$psu} table
+carries the same columns as a fitted plan's, with \code{n_take} read off the
+supplied allocation. A fitted result
 carries its own register and its held classification, so
 \code{prec_alloc(fit)} reproduces the plan's precision exactly.}
 
