@@ -7,8 +7,12 @@ test_that("two-stage fixed-take coefficients match the cluster convention", {
   rows <- seq_len(nrow(z$frame))
   mi <- rows
   variance <- z$measures$p[mi] * (1 - z$measures$p[mi])
+  # The clustering penalty is paid on the take that responds, so the bracket
+  # reads 'n_per_psu * resp_rate'. Reading the gross take here would inflate
+  # the between-PSU component by 1/resp_rate, which is whole-PSU loss and a
+  # mechanism 'resp_rate_psu' carries separately.
   inflation <- z$measures$var_ratio_psu[mi] *
-    (1 + z$measures$icc_psu[mi] * (z$frame$n_per_psu - 1))
+    (1 + z$measures$icc_psu[mi] * (z$frame$n_per_psu * 0.8 - 1))
 
   expect_identical(p$stages, 2L)
   expect_equal(
@@ -40,19 +44,27 @@ test_that("two-stage fixed-take coefficients match the cluster convention", {
 
 test_that("three-stage coefficients reproduce the established stage formula", {
   z <- .bethel_multistage_fixture(3L)
+  z$measures$resp_rate <- 0.7
+  z$measures$resp_rate_ssu <- 0.9
+  z$measures$resp_rate_psu <- 0.8
   p <- .build_bethel_problem(z$frame, z$measures, z$targets)
   k <- match("vaccination@.overall:cv", p$constraint_ids)
   rows <- seq_len(nrow(z$frame))
   variance <- z$measures$p[rows] * (1 - z$measures$p[rows])
   m <- z$frame$n_per_psu
   q <- z$frame$n_per_ssu
+  # Each stage's realized take, as in n_cluster(): the SSU rate shrinks the
+  # PSU's realized SSU count and the ultimate rate shrinks the final take.
+  mr <- m * 0.9
+  qr <- q * 0.7
   bracket <- z$measures$var_ratio_psu[rows] *
-    z$measures$icc_psu[rows] * m * q +
+    z$measures$icc_psu[rows] * mr * qr +
     z$measures$var_ratio_ssu[rows] *
-      (1 + z$measures$icc_ssu[rows] * (q - 1))
+      (1 + z$measures$icc_ssu[rows] * (qr - 1))
+  resp <- 0.8 * 0.9 * 0.7
 
   expect_identical(p$stages, 3L)
-  expect_equal(p$A[, k], z$frame$N^2 * variance * bracket / (m * q))
+  expect_equal(p$A[, k], z$frame$N^2 * variance * bracket / (resp * m * q))
   expect_equal(p$B[k], -sum(z$frame$N * variance * bracket))
   expect_equal(
     p$cost,
@@ -65,7 +77,7 @@ test_that("three-stage coefficients reproduce the established stage formula", {
   n_psu <- c(8, 12, 10, 7)
   no_fpc_var <- p$A[, k] / n_psu
   expected <- z$frame$N^2 * variance /
-    (n_psu * m * q) * bracket
+    (resp * n_psu * m * q) * bracket
   expect_equal(no_fpc_var, expected)
 
   got <- .precision_from_allocation(p, n_psu)
@@ -76,7 +88,7 @@ test_that("three-stage coefficients reproduce the established stage formula", {
     n_psu * m * q,
     alpha = 0.05,
     deff = 1,
-    resp_rate = 1,
+    resp_rate = resp,
     cost_h = rep(1, 4)
   )
   expect_equal(got$cv[k], legacy$cv)

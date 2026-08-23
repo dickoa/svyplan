@@ -2892,6 +2892,7 @@ n_multi.svyplan_prec <- function(indicators, ...) {
     indicators = tgt,
     domains = x$params$domain_cols,
     min_n_domain = x$params$min_n_domain,
+    domain_sampling = x$params$domain_sampling %||% "separate",
     prop_method = x$params$prop_method %||% "wald"
   )
   do.call(n_multi.default, .roundtrip_args(args, dots, n_multi.default))
@@ -2939,6 +2940,7 @@ n_multi_cluster.svyplan_prec <- function(indicators, ...) {
     n_per_ssu = x$params$n_per_ssu,
     allocation = if (isTRUE(x$params$joint)) "joint" else "separate",
     min_n_domain = x$params$min_n_domain,
+    domain_sampling = x$params$domain_sampling %||% "separate",
     fixed_cost = x$params$fixed_cost %||% 0
   )
   do.call(

@@ -173,6 +173,14 @@
 #' is applied. This is standard for multistage planning when cluster
 #' populations are large relative to the sample.
 #'
+#' [n_alloc()] differs here. Its cluster mode carries the ultimate-unit
+#' correction `1 - n / N`, so the two agree only where the ultimate-unit
+#' sampling fraction is negligible. They are the same variance model
+#' otherwise, and the clustering bracket, the stage response rates and the
+#' cost-optimal take are shared exactly. Size a design through both at an
+#' appreciable sampling fraction and `n_alloc()` returns the smaller answer,
+#' by that correction and nothing else.
+#'
 #' @references
 #' Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 #' *Practical Tools for Designing and Weighting Survey Samples*

@@ -742,7 +742,10 @@ prec_multi.svyplan_n <- function(indicators, ...) {
   res <- do.call(prec_multi.default, c(
     list(indicators = tgt, domains = dom_cols), dots
   ))
-  for (p in c("mode", "prop_method", "min_n_domain")) {
+  # domain_sampling belongs here for the same reason as the rest: n_multi()
+  # cannot rebuild the design it describes without it, and reverts to
+  # "separate" rather than failing.
+  for (p in c("mode", "prop_method", "min_n_domain", "domain_sampling")) {
     if (!is.null(x$params[[p]])) res$params[[p]] <- x$params[[p]]
   }
   res

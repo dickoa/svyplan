@@ -50,12 +50,12 @@ draw_box(5, 8.5, 3.8, 1.0, "Plan Profile",
 draw_box(2.5, 6.5, 3.8, 1.9, "Sample Size",
          paste0("n_prop \u00b7 n_mean \u00b7 n_cluster\n",
                 "n_multi \u00b7 n_multi_cluster\nn_alloc \u00b7 n_twophase\n",
-                "n_change \u00b7 n_panel"))
+                "n_change \u00b7 n_panel \u00b7 n_pooled"))
 draw_box(7.5, 6.5, 3.8, 1.9, "Precision",
          paste0("prec_prop \u00b7 prec_mean \u00b7 prec_cluster\n",
                 "prec_multi \u00b7 prec_multi_cluster\n",
                 "prec_alloc \u00b7 prec_twophase\n",
-                "prec_change \u00b7 prec_panel"))
+                "prec_change \u00b7 prec_panel\nprec_pooled"))
 draw_box(2.5, 3.5, 3.8, 1.7, "Design Components",
          paste0("varcomp \u00b7 design_effect\n",
                 "effective_n \u00b7 design_df\n",
@@ -131,17 +131,17 @@ rrect(1.5, 3.2, 3.0, 0.7, '"How many units?"')
 rrect(5.0, 3.2, 3.0, 0.7, '"What precision at n?"')
 rrect(8.5, 3.2, 3.0, 0.7, '"Can I detect a difference?"', cex = 0.72)
 
-rrect(1.5, 1.3, 3.0, 1.5, paste0(
+rrect(1.5, 1.2, 3.0, 1.7, paste0(
         "n_prop \u00b7 n_mean\nn_cluster \u00b7 n_multi\n",
         "n_multi_cluster\nn_alloc \u00b7 n_twophase\n",
-        "n_change \u00b7 n_panel"),
+        "n_change \u00b7 n_panel\nn_pooled"),
       col = "white", border = "black", cex = 0.62)
-rrect(5.0, 1.3, 3.0, 1.5, paste0(
+rrect(5.0, 1.2, 3.0, 1.7, paste0(
         "prec_prop \u00b7 prec_mean\nprec_cluster \u00b7 prec_multi\n",
         "prec_multi_cluster\nprec_alloc \u00b7 prec_twophase\n",
-        "prec_change \u00b7 prec_panel"),
+        "prec_change \u00b7 prec_panel\nprec_pooled"),
       col = "white", border = "black", cex = 0.62)
-rrect(8.5, 1.3, 3.0, 1.5, paste0(
+rrect(8.5, 1.2, 3.0, 1.7, paste0(
         "power_prop \u00b7 power_mean\npower_did\n\n",
         "with overlap, the same\ntwo-occasion change"),
       col = "white", border = "black", cex = 0.62)
@@ -898,11 +898,14 @@ matched exactly to `frame$stratum`.
 
 The precision a joint allocation plans for can be checked against the
 precision it delivers, by executing the design repeatedly against a known
-population and comparing empirical CVs with `$constraints$.achieved`. The
-recipe needs a sampling engine, so it lives with one:
-`vignette("survey-planning", package = "samplyr")` works it through on a
-two-indicator allocation, including the acceptance band to fix before reading
-the result.
+population and comparing empirical CVs with `$constraints$.achieved`. Two
+things are worth fixing before reading such a check. Compare against
+`$constraints$.achieved` rather than against the target, since integerization
+leaves the realized design a little better than what was asked for, and set
+the acceptance band in advance from the number of replicates, since an
+empirical CV from a few hundred draws carries its own error. The recipe needs
+a sampling engine to execute the design, so it belongs with one rather than
+here.
 
 #### Fixed-take multistage joint allocation
 

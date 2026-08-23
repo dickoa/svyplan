@@ -330,6 +330,8 @@ predict.svyplan_n <- function(object, newdata, ...) {
       )
       if (!.alloc_is_cluster(base$frame)) {
         alloc_args$unit_cost <- base$cost_h
+      } else {
+        alloc_args$fpc <- base$fpc %||% "unit"
       }
       res <- do.call(n_alloc.default, alloc_args)
       data.frame(
@@ -819,7 +821,8 @@ predict.svyplan_prec <- function(object, newdata, ...) {
         alpha = p$alpha,
         deff = p$deff,
         resp_rate = p$resp_rate,
-        min_n_stratum = p$min_n_stratum
+        min_n_stratum = p$min_n_stratum,
+        fpc = p$fpc %||% "unit"
       ),
       error = function(e) e
     )

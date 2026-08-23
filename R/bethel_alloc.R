@@ -572,11 +572,46 @@
   if (positive) bad <- bad | (!is.na(value) & value <= 0)
   if (any(bad)) {
     rule <- if (!is.null(interval)) {
-      sprintf("values in [%s, %s]", interval[1L], interval[2L])
+      sprintf("values in %s%s, %s]", if (positive) "(" else "[",
+              interval[1L], interval[2L])
     } else if (positive) "positive finite values" else "finite values"
     stop(sprintf("'%s' must contain %s", name, rule), call. = FALSE)
   }
   value
+}
+
+#' Refuse a stage response rate the design has no stage for
+#'
+#' Each rate names the stage it acts on, so one naming a stage the design
+#' does not have is a statement about a different design rather than a
+#' harmless extra. Silently ignoring it would plan the wrong loss.
+#' @keywords internal
+#' @noRd
+.bethel_reject_stage_rate <- function(rates, measures, frame, stages) {
+  if (length(rates) == 0L) return(invisible(NULL))
+  supplied <- vapply(
+    rates,
+    function(nm) {
+      any(vapply(
+        list(measures, frame),
+        function(d) {
+          is.data.frame(d) && nm %in% names(d) && any(!is.na(d[[nm]]))
+        },
+        logical(1L)
+      ))
+    },
+    logical(1L)
+  )
+  if (any(supplied)) {
+    stop(
+      sprintf(
+        "%s names a stage this %d-stage design does not have. Drop it, or add the stage columns that create the stage",
+        paste(sQuote(rates[supplied]), collapse = " and "), stages
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
 }
 
 #' Resolve frame rows for each indicator-domain requirement
@@ -885,7 +920,8 @@
   alpha = 0.05,
   df = NULL,
   min_n_stratum = NULL,
-  objective = NULL
+  objective = NULL,
+  fpc = "unit"
 ) {
   check_deff(deff)
   check_resp_rate(resp_rate)
@@ -1069,6 +1105,18 @@
   }
   deff_norm <- ifelse(is.na(row_deff), deff, row_deff)
   resp_norm <- ifelse(is.na(row_resp), resp_rate, row_resp)
+  resp_psu_norm <- rep(1, length(resp_norm))
+  resp_ssu_norm <- rep(1, length(resp_norm))
+  .bethel_reject_stage_rate(
+    c("resp_rate_psu", "resp_rate_ssu")[c(stage$stages < 2L, stage$stages < 3L)],
+    measures, frame, stage$stages
+  )
+  if (!identical(fpc, "unit") && stage$stages < 2L) {
+    stop(
+      "'fpc' applies to cluster allocation only, where the correction has stages to choose between. An element allocation always carries 1 - n/N. Add the stage columns, or drop 'fpc'",
+      call. = FALSE
+    )
+  }
   if (stage$stages >= 2L) {
     icc_psu_norm <- .bethel_stage_measure(
       "icc_psu", measures, frame, m_stratum, stratum,
@@ -1078,8 +1126,16 @@
       "var_ratio_psu", measures, frame, m_stratum, stratum,
       default = 1, positive = TRUE
     )
+    resp_psu_norm <- .bethel_stage_measure(
+      "resp_rate_psu", measures, frame, m_stratum, stratum,
+      default = 1, interval = c(0, 1), positive = TRUE
+    )
   }
   if (stage$stages == 3L) {
+    resp_ssu_norm <- .bethel_stage_measure(
+      "resp_rate_ssu", measures, frame, m_stratum, stratum,
+      default = 1, interval = c(0, 1), positive = TRUE
+    )
     icc_ssu_norm <- .bethel_stage_measure(
       "icc_ssu", measures, frame, m_stratum, stratum,
       required = TRUE, interval = c(0, 1)
@@ -1128,23 +1184,63 @@
     resp_all[idx, k] <- resp_norm[mi]
     variance_factor <- rep(1, length(idx))
     decision_take <- rep(1, length(idx))
+    stage_resp <- resp_norm[mi]
+    # The factor the finite population term reads. It equals the variance
+    # factor under the ultimate-unit correction, is zero without one, and is
+    # the between-PSU component alone when each stage corrects its own.
+    fpc_factor <- variance_factor
+    staged <- identical(fpc, "stage")
     if (stage$stages == 2L) {
       m <- stage$n_per_psu[idx]
+      mr <- m * resp_norm[mi]
+      within_frac <- if (staged) {
+        pmin(1, mr / (N[idx] / frame$N_psu[idx]))
+      } else {
+        rep(0, length(idx))
+      }
       variance_factor <- var_ratio_psu_norm[mi] *
-        (1 + icc_psu_norm[mi] * (m - 1))
+        (icc_psu_norm[mi] * mr + (1 - within_frac) * (1 - icc_psu_norm[mi]))
       decision_take <- m
+      stage_resp <- resp_psu_norm[mi] * resp_norm[mi]
+      fpc_factor <- if (staged) {
+        var_ratio_psu_norm[mi] * icc_psu_norm[mi] * N[idx] / frame$N_psu[idx]
+      } else {
+        variance_factor
+      }
     } else if (stage$stages == 3L) {
       m <- stage$n_per_psu[idx]
       q <- stage$n_per_ssu[idx]
+      mr <- m * resp_ssu_norm[mi]
+      qr <- q * resp_norm[mi]
+      ssu_frac <- if (staged) {
+        pmin(1, mr / (frame$N_ssu[idx] / frame$N_psu[idx]))
+      } else {
+        rep(0, length(idx))
+      }
+      unit_frac <- if (staged) {
+        pmin(1, qr / (N[idx] / frame$N_ssu[idx]))
+      } else {
+        rep(0, length(idx))
+      }
       variance_factor <-
-        var_ratio_psu_norm[mi] * icc_psu_norm[mi] * m * q +
-        var_ratio_ssu_norm[mi] * (1 + icc_ssu_norm[mi] * (q - 1))
+        var_ratio_psu_norm[mi] * icc_psu_norm[mi] * mr * qr +
+        (1 - ssu_frac) * var_ratio_ssu_norm[mi] * icc_ssu_norm[mi] * qr +
+        (1 - unit_frac) * var_ratio_ssu_norm[mi] * (1 - icc_ssu_norm[mi])
       decision_take <- m * q
+      stage_resp <- resp_psu_norm[mi] * resp_ssu_norm[mi] * resp_norm[mi]
+      fpc_factor <- if (staged) {
+        var_ratio_psu_norm[mi] * icc_psu_norm[mi] * N[idx] / frame$N_psu[idx]
+      } else {
+        variance_factor
+      }
+    }
+    if (identical(fpc, "none")) {
+      fpc_factor <- rep(0, length(idx))
     }
     variance_inflated <- var_norm[mi] * variance_factor
     A_all[idx, k] <- N[idx]^2 * variance_inflated * deff_norm[mi] /
-      (resp_norm[mi] * decision_take)
-    B_all[k] <- -sum(N[idx] * variance_inflated * deff_norm[mi])
+      (stage_resp * decision_take)
+    B_all[k] <- -sum(N[idx] * var_norm[mi] * fpc_factor * deff_norm[mi])
     total_all[k] <- sum(N[idx] * mean_norm[mi])
     domain_N_all[k] <- sum(N[idx])
   }
@@ -1970,7 +2066,8 @@
   min_n_stratum,
   objective = NULL,
   budget = NULL,
-  df = NULL
+  df = NULL,
+  fpc = "unit"
 ) {
   control <- .bethel_control()
   problem <- .build_bethel_problem(
@@ -1983,7 +2080,8 @@
     alpha = alpha,
     df = df,
     min_n_stratum = min_n_stratum,
-    objective = objective
+    objective = objective,
+    fpc = fpc
   )
   mode <- if (is.null(objective)) "targets" else "budget_objective"
   if (mode == "targets") {
@@ -2116,6 +2214,7 @@
   }
   params <- list(
     frame = frame,
+    fpc = fpc,
     measures = problem$measures,
     targets = problem$targets,
     alpha = alpha,
@@ -2173,6 +2272,7 @@
   objective = NULL,
   budget = NULL,
   df = NULL,
+  fpc = "unit",
   .allow_fractional_stages = FALSE
 ) {
   if (is.null(n)) stop("'n' is required", call. = FALSE)
@@ -2186,7 +2286,8 @@
     alpha = alpha,
     df = df,
     min_n_stratum = min_n_stratum,
-    objective = objective
+    objective = objective,
+    fpc = fpc
   )
   decision <- .bethel_to_decision(
     problem,
@@ -2208,6 +2309,7 @@
   assessed <- .bethel_objective_value(problem, evaluated$allocation)
   params <- list(
     frame = frame,
+    fpc = fpc,
     measures = problem$measures,
     targets = problem$targets,
     n = ultimate,

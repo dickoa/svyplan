@@ -609,7 +609,8 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
       n_alloc.default(
         frame = p$frame, measures = p$measures, targets = targets,
         unit_cost = p$unit_cost, alpha = p$alpha, deff = p$deff,
-        resp_rate = p$resp_rate, min_n_stratum = p$min_n_stratum
+        resp_rate = p$resp_rate, min_n_stratum = p$min_n_stratum,
+        fpc = p$fpc %||% "unit"
       ),
       error = function(e) NULL
     )

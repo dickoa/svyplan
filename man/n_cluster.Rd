@@ -226,6 +226,14 @@ These functions assume sampling fractions are negligible at each stage
 (equivalent to sampling with replacement). No finite population correction
 is applied. This is standard for multistage planning when cluster
 populations are large relative to the sample.
+
+\code{\link[=n_alloc]{n_alloc()}} differs here. Its cluster mode carries the ultimate-unit
+correction \code{1 - n / N}, so the two agree only where the ultimate-unit
+sampling fraction is negligible. They are the same variance model
+otherwise, and the clustering bracket, the stage response rates and the
+cost-optimal take are shared exactly. Size a design through both at an
+appreciable sampling fraction and \code{n_alloc()} returns the smaller answer,
+by that correction and nothing else.
 }
 }
 \examples{

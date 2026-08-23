@@ -1,5 +1,14 @@
 #' @keywords internal
 #'
+#' @section Where svyplan stops:
+#' svyplan stops at the plan. It decides how many units, allocated where, to
+#' what precision, and it never draws a sample: no selection probabilities,
+#' no weights, no drawn units come out of any function here. What you get is
+#' the design a sampler is then asked to realize.
+#'
+#' When the plan is settled, \pkg{sondage} draws it. Analysis of the realized
+#' sample belongs to \pkg{survey} or \pkg{srvyr}.
+#'
 #' @section Notation:
 #' Argument names spell out what a quantity is rather than reproducing the
 #' symbol used in any one textbook. Readers coming from the standard

@@ -36,7 +36,7 @@
 #' size. Boundary cutpoints remain available in `$boundaries`.
 #'
 #' `as.data.frame()` returns the tabular form of a result, intended as
-#' the stable handoff to downstream packages (e.g. `samplyr`). For
+#' the stable handoff to downstream packages. For
 #' `svyplan_n`: the stratum allocation table (`$detail`) for
 #' `n_alloc()` results, the per-domain table (`$domains`, falling back
 #' to `$detail`) for `n_multi()` results, and a one-row summary
@@ -2050,11 +2050,13 @@ print.svyplan_strata <- function(x, ...) {
 #' Disclose an appreciable first-stage sampling fraction
 #'
 #' `N_psu` bounds the allocation but activates no first-stage correction, so a
-#' design taking a large share of the available PSUs is planned conservatively:
-#' the between-PSU term keeps its full with-replacement size. That is a
-#' property of the result worth seeing, but not an event to act on, so it is
-#' disclosed here rather than warned about. `predict()` re-runs the allocation
-#' once per grid row, and a warning would repeat with it.
+#' design taking a large share of the available PSUs is planned conservatively.
+#' The ultimate-unit `1 - n / N` does attenuate the between-PSU component, but
+#' it is smaller than the first-stage fraction this note reports, so the
+#' between-PSU term is still overstated. That is a property of the result worth
+#' seeing, but not an event to act on, so it is disclosed here rather than
+#' warned about. `predict()` re-runs the allocation once per grid row, and a
+#' warning would repeat with it.
 #' @keywords internal
 #' @noRd
 .print_psu_fraction_note <- function(detail, threshold = 0.1) {
@@ -2191,7 +2193,9 @@ print.svyplan_strata <- function(x, ...) {
     n_certain <- sum(x$psu$certainty)
     cat(sprintf(
       "PSUs: %d certainty, %d to draw from %d in the remainder\n",
-      n_certain, op$n_psu_draw, nrow(x$psu) - n_certain
+      n_certain,
+      op$n_psu_draw,
+      nrow(x$psu) - n_certain
     ))
     # A register with no self-consistent classification is a fact about the
     # plan rather than detail, so it stays on the block, as a panel short of
@@ -2494,28 +2498,30 @@ summary.svyplan_prec <- function(object, ...) {
   # `certainty` is attached only when there is one, so a plan with no register
   # keeps the schema it has always had.
   out <- list(
-      kind = kind,
-      question = .bethel_summary_question(mode, kind, budget),
-      mode = mode,
-      stages = problem$stages,
-      status = if (design) object$optimization$classification else "assessed",
-      overall = overall,
-      continuous = continuous,
-      allocation = allocation,
-      constraints = constraints,
-      operational_constraints = operational_constraints,
-      objective = objective,
-      operational_objective = operational_objective,
-      bounds = bounds,
-      optimization = if (design) {
-        .bethel_summary_optimization(object)
-      } else {
-        NULL
-      },
-      assumptions = .bethel_summary_assumptions(object)
+    kind = kind,
+    question = .bethel_summary_question(mode, kind, budget),
+    mode = mode,
+    stages = problem$stages,
+    status = if (design) object$optimization$classification else "assessed",
+    overall = overall,
+    continuous = continuous,
+    allocation = allocation,
+    constraints = constraints,
+    operational_constraints = operational_constraints,
+    objective = objective,
+    operational_objective = operational_objective,
+    bounds = bounds,
+    optimization = if (design) {
+      .bethel_summary_optimization(object)
+    } else {
+      NULL
+    },
+    assumptions = .bethel_summary_assumptions(object)
   )
   cert <- .bethel_summary_certainty(object)
-  if (!is.null(cert)) out$certainty <- cert
+  if (!is.null(cert)) {
+    out$certainty <- cert
+  }
   structure(out, class = c("summary.svyplan_bethel", "list"))
 }
 
@@ -2956,6 +2962,7 @@ summary.svyplan_prec <- function(object, ...) {
   response <- rates$combined
   S_h <- d$sd
   cost_h <- d$unit_cost
+  N_fpc <- d$N
 
   if (cluster) {
     take <- if (operational && "n_per_psu_int" %in% names(d)) {
@@ -2964,10 +2971,25 @@ summary.svyplan_prec <- function(object, ...) {
       d$n_per_psu
     }
     var_ratio <- frame[["var_ratio_psu"]] %||% rep(1, H)
-    S_h <- d$sd *
-      sqrt(
-        var_ratio * (1 + frame$icc_psu * (take * unit_response - 1))
-      )
+    icc <- frame$icc_psu
+    fpc_mode <- p$fpc %||% "unit"
+    responding_take <- take * unit_response
+    # Rebuilt on the take being displayed, so the operational block reads the
+    # correction the operational design gets. See .alloc_cluster_prep().
+    within_frac <- if (identical(fpc_mode, "stage")) {
+      pmin(1, responding_take / (d$N / frame$N_psu))
+    } else {
+      rep(0, H)
+    }
+    inflation <- var_ratio *
+      (icc * responding_take + (1 - within_frac) * (1 - icc))
+    S_h <- d$sd * sqrt(inflation)
+    N_fpc <- switch(
+      fpc_mode,
+      unit = d$N,
+      none = rep(Inf, H),
+      stage = ifelse(icc > 0, frame$N_psu * inflation / (var_ratio * icc), Inf)
+    )
     if (all(c("cost_psu", "cost_ssu") %in% names(frame))) {
       cost_h <- frame$cost_psu / take + frame$cost_ssu
     } else {
@@ -2985,12 +3007,14 @@ summary.svyplan_prec <- function(object, ...) {
     deff = deff,
     resp_rate = response,
     cost_h = cost_h,
-    df = p$df
+    df = p$df,
+    N_fpc = N_fpc
   )
   list(
     metrics = metrics,
     stratum = d$stratum,
     population = d$N,
+    N_fpc = N_fpc,
     sd = S_h,
     mean = mean_h,
     deff = deff,
@@ -3168,7 +3192,8 @@ summary.svyplan_prec <- function(object, ...) {
       deff = state$deff[idx],
       resp_rate = state$response_rate[idx],
       cost_h = state$cost_h[idx],
-      df = p$df
+      df = p$df,
+      N_fpc = state$N_fpc[idx]
     )
     id <- if (length(ids) > 0L) {
       frame[idx[1L], ids, drop = FALSE]
@@ -3449,14 +3474,19 @@ print.summary.svyplan_bethel <- function(x, ...) {
     cat(sprintf("  certainty verdict: %s\n", cc$verdict))
     cat(sprintf(
       "  classification orbit: %d, reached in %d iteration%s\n",
-      cc$orbit, cc$iterations, if (cc$iterations == 1L) "" else "s"
+      cc$orbit,
+      cc$iterations,
+      if (cc$iterations == 1L) "" else "s"
     ))
     cat(sprintf(
       "  allocation settled in %d iteration%s%s\n",
-      cc$settle_iterations, if (cc$settle_iterations == 1L) "" else "s",
+      cc$settle_iterations,
+      if (cc$settle_iterations == 1L) "" else "s",
       if (cc$absorbed > 0L) {
-        sprintf(", absorbing %d PSU(s) the settle put above a threshold",
-                cc$absorbed)
+        sprintf(
+          ", absorbing %d PSU(s) the settle put above a threshold",
+          cc$absorbed
+        )
       } else {
         ""
       }

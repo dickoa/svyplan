@@ -182,8 +182,8 @@ that reason.
 Given an \code{\link[=n_alloc]{n_alloc()}} result there is no need to approximate at all.
 Every quantity the ratio needs is already there, so
 \code{design_effect(alloc)} returns the allocation's own variance ratio,
-\deqn{D = n \sum_h W_h^2S_h^2d_hk_h(1+\delta_h(m_h-1))/n_h \Big/
-       \left(\sum_h W_hS_h^2+\sum_h W_h(\bar y_h-\bar y)^2\right),}{D = n sum_h W_h^2S_h^2d_hk_h(1+delta_h(m_h-1))/n_h / (sum_h W_hS_h^2+sum_h W_h(ybar_h-ybar)^2 ),}
+\deqn{D = n \sum_h W_h^2S_h^2d_hk_h(1+\delta_h(m_hr_h-1))/n_h \Big/
+       \left(\sum_h W_hS_h^2+\sum_h W_h(\bar y_h-\bar y)^2\right),}{D = n sum_h W_h^2S_h^2d_hk_h(1+delta_h(m_h r_h-1))/n_h / (sum_h W_hS_h^2+sum_h W_h(ybar_h-ybar)^2 ),}
 with the per-stratum cluster factors entering stratum by stratum rather
 than averaged, and the \code{deff} the allocation was built under counted
 once. A per-stratum \code{deff} weights its own stratum's contribution and a
@@ -191,6 +191,13 @@ scalar factors straight back out. A generalized allocation optimizing
 several measures has
 no single such ratio and is refused. Take the measure-specific numbers
 from \code{\link[=prec_alloc]{prec_alloc()}}.
+
+The clustering bracket reads \eqn{m_hr_h}, the take that responds, because
+that is the take \code{\link[=n_alloc]{n_alloc()}} sized the design on. So the ratio reported
+here falls as the ultimate-unit response rate falls, and describes the
+variance model the allocation actually used rather than the one its gross
+take would suggest. PSU-level response is absent from the bracket: it
+removes whole clusters instead of shrinking the ones that are worked.
 
 This ratio is computed without finite population corrections, on the
 same planning scale as the component arguments. \code{\link[=prec_alloc]{prec_alloc()}} applies

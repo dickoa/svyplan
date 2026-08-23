@@ -24,6 +24,7 @@ prec_alloc(frame, ...)
   df = NULL,
   unit_cost = NULL,
   min_n_stratum = NULL,
+  fpc = c("unit", "stage", "none"),
   plan = NULL
 )
 
@@ -100,6 +101,15 @@ lower bound the assessment reports against in \verb{$bounds}. It is the same
 argument \code{\link[=n_alloc]{n_alloc()}} takes, so a design and its assessment can be held
 to one floor. Joint assessment only: supplying it without \code{measures} and
 \code{targets} is an error.}
+
+\item{fpc}{Which finite population correction the variance carries in
+cluster allocation: \code{"unit"} (default) for the ultimate-unit
+\code{1 - n / N} on the whole inflated variance, \code{"stage"} for the
+stage-by-stage correction, exact under the equal-size, equal-take
+variance-component model this path assumes, or \code{"none"} for
+\code{\link[=n_cluster]{n_cluster()}}'s with-replacement model. \code{"stage"} requires \code{N_psu}, and
+\code{N_ssu} as well at three stages. Refused outside cluster allocation and
+with a \code{psu} register. See the correction section in Details.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }

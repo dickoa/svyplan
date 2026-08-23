@@ -12,8 +12,8 @@
 #'   variable such as region, age group, or urbanicity. The values in this
 #'   frame typically come from a census, a population register, or a
 #'   previous survey. Any stratum table with the columns below works,
-#'   for example the pool summary of an executed `samplyr` sample
-#'   (`samplyr::frame_summary()`), once the measure columns are added.
+#'   including a pool summary carried back from an executed sample once the
+#'   measure columns are added.
 #'
 #'   When a design stratifies by several variables at once (e.g. region
 #'   \eqn{\times}{*} urbanicity), cross them into a single variable before
@@ -165,6 +165,14 @@
 #'   Numeric scalar in \eqn{[0, 1]}. At `alloc_q = 1` the allocation equals
 #'   Neyman. At `alloc_q = 0` it yields near-equal subnational CVs.
 #'   Default 0.5.
+#' @param fpc Which finite population correction the variance carries in
+#'   cluster allocation: `"unit"` (default) for the ultimate-unit
+#'   `1 - n / N` on the whole inflated variance, `"stage"` for the
+#'   stage-by-stage correction, exact under the equal-size, equal-take
+#'   variance-component model this path assumes, or `"none"` for
+#'   [n_cluster()]'s with-replacement model. `"stage"` requires `N_psu`, and
+#'   `N_ssu` as well at three stages. Refused outside cluster allocation and
+#'   with a `psu` register. See the correction section in Details.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_n` object with `type = "alloc"` and a stratum-level
@@ -303,10 +311,15 @@
 #'
 #' For indicator \eqn{k} and stratum \eqn{h}, write \eqn{m_h} for
 #' `n_per_psu`, \eqn{q_h} for `n_per_ssu`, and \eqn{S^2_{hk}}{S^2_hk} for `var` (or
-#' `sd^2`, or `p * (1 - p)`). The fixed variance multiplier is
-#' \eqn{D_{hk}=k_{1,hk}(1+\delta_{1,hk}(m_h-1))}{D_hk=k_(1,hk)(1+delta_(1,hk)(m_h-1))} at two stages and
-#' \eqn{D_{hk}=k_{1,hk}\delta_{1,hk}m_hq_h+
-#' k_{2,hk}(1+\delta_{2,hk}(q_h-1))}{D_hk=k_(1,hk) delta_(1,hk)m_hq_h+ k_(2,hk)(1+delta_(2,hk)(q_h-1))} at three stages. At three stages
+#' `sd^2`, or `p * (1 - p)`). Each stage's *realized* take is what inflates the
+#' variance, so with ultimate-unit response \eqn{r_{hk}}{r_hk} and SSU response
+#' \eqn{r^{ssu}_{hk}}{r^ssu_hk} write
+#' \eqn{\tilde m_h=m_hr^{ssu}_{hk}}{m~_h=m_h r^ssu_hk} and
+#' \eqn{\tilde q_h=q_hr_{hk}}{q~_h=q_h r_hk}. At two stages the ultimate-unit
+#' rate acts on \eqn{m_h} directly. The fixed variance multiplier is
+#' \eqn{D_{hk}=k_{1,hk}(1+\delta_{1,hk}(m_hr_{hk}-1))}{D_hk=k_(1,hk)(1+delta_(1,hk)(m_h r_hk-1))} at two stages and
+#' \eqn{D_{hk}=k_{1,hk}\delta_{1,hk}\tilde m_h\tilde q_h+
+#' k_{2,hk}(1+\delta_{2,hk}(\tilde q_h-1))}{D_hk=k_(1,hk) delta_(1,hk)m~_hq~_h+ k_(2,hk)(1+delta_(2,hk)(q~_h-1))} at three stages. At three stages
 #' `var_ratio_ssu` is not a free parameter: `var_ratio_psu` rescales the components' unit
 #' variance to the analysis variable and `var_ratio_ssu` does the same for the
 #' within-PSU part, so
@@ -314,13 +327,36 @@
 #' \eqn{D_{hk}}{D_hk} collapse to \eqn{k_{1}}{k_1} at \eqn{m_h=q_h=1}, where no
 #' clustering is left to inflate anything. Leaving `var_ratio_ssu` out of `measures`
 #' applies it. Supplying a value overrides it, which is only meaningful when
-#' the two stages' ratios come from different decompositions. With ultimate-unit take
-#' \eqn{t_h=m_h} or \eqn{m_hq_h}, first-stage decision \eqn{a_h}, response
-#' rate \eqn{r_{hk}}{r_hk}, and extra design effect \eqn{d_{hk}}{d_hk}, the implemented
+#' the two stages' ratios come from different decompositions. With **gross**
+#' ultimate-unit take \eqn{t_h=m_h} or \eqn{m_hq_h}, first-stage decision
+#' \eqn{a_h}, combined response
+#' \eqn{R_{hk}=r^{psu}_{hk}r^{ssu}_{hk}r_{hk}}{R_hk=r^psu_hk r^ssu_hk r_hk},
+#' and extra design effect \eqn{d_{hk}}{d_hk}, the implemented
 #' total-variance contribution is
-#' \deqn{N_h^2 S_{hk}^2 D_{hk}d_{hk}/(r_{hk}a_ht_h)
-#'       - N_h S_{hk}^2 D_{hk}d_{hk}.}{N_h^2 S_hk^2 D_hkd_hk/(r_hka_ht_h) - N_h S_hk^2 D_hkd_hk.}
-#' Thus response inflation is applied once. Leave `deff = 1` unless it
+#' \deqn{N_h^2 S_{hk}^2 D_{hk}d_{hk}/(R_{hk}a_ht_h)
+#'       - N_h S_{hk}^2 D_{hk}d_{hk}.}{N_h^2 S_hk^2 D_hkd_hk/(R_hka_ht_h) - N_h S_hk^2 D_hkd_hk.}
+#' Thus response inflation is applied once. Takes and costs stay gross, since
+#' a unit is issued and paid for either way, while the variance reads what
+#' the design realizes.
+#'
+#' ## Response acts at whichever stage it happens
+#'
+#' The three rates are not interchangeable and none is recoverable from the
+#' others, so each names the stage it acts on. `resp_rate_psu` divides the
+#' whole requirement, because losing a PSU is a pure sample-size loss.
+#' `resp_rate_ssu` divides it and shrinks the realized SSU count per PSU.
+#' `resp_rate` divides it and enters the \eqn{\delta}{delta} bracket, because
+#' it shrinks the realized final-stage take and so changes the clustering
+#' penalty itself. Reading a gross take in that bracket would charge the
+#' between-PSU component a penalty only whole-cluster loss produces.
+#'
+#' All three go in `measures`, or in `frame` as a stratum default. A rate
+#' naming a stage the design does not have is an error rather than a
+#' silently ignored column. This is the same decomposition [n_cluster()] and
+#' cluster-mode `n_alloc()` use, so a design described identically to any of
+#' them sizes identically in all of them.
+#'
+#' Leave `deff = 1` unless it
 #' represents a source not already captured by the stage deltas and var_ratio factors.
 #' Deltas may include 0 and 1. The var_ratio values must be positive finite.
 #' All stage
@@ -482,28 +518,72 @@
 #' already applies. Leaving it out preserves the unbounded behaviour, in
 #' which the allocation may ask for more PSUs than a stratum contains.
 #'
-#' It does **not** activate a first-stage finite population correction.
-#' Precision here uses a with-replacement first stage, so the between-PSU
-#' term keeps its full size however large a share of the PSU universe the
-#' design takes. Under the equal-take ICC planning model this is
-#' conservative: omitting the first-stage correction generally overstates
-#' the between-PSU sampling variance once the PSU sampling fraction is
-#' appreciable, and `print()` says so when it is. The claim is tied to that
-#' model and is not general to arbitrary PPS or informative cluster designs.
+#' On its own it does **not** activate a first-stage finite population
+#' correction. Under the default `fpc = "unit"` no factor keyed to the PSU
+#' sampling fraction enters the variance, however large a share of the PSU
+#' universe the design takes, and `print()` says so once that share is
+#' appreciable. Supplying `N_psu` bounds the design. Asking for the
+#' correction as well is what `fpc = "stage"` does.
 #'
-#' At `n_psu == N_psu` the model still carries between-PSU variance even
+#' So at `n_psu == N_psu` the default still carries between-PSU variance even
 #' though every PSU has been selected. That is deliberately conservative
 #' and is no longer a literal variance representation. For the same
 #' reason, a target this path reports as unreachable at the PSU bound may
-#' be reachable under a finite-population first stage; the error says so
-#' rather than claiming the precision is impossible.
+#' be reachable under a finite-population first stage, and the error says so
+#' rather than claiming the precision is impossible. Under `fpc = "stage"`
+#' the between-PSU component does reach zero there, and the whole variance
+#' reaches zero only when every stage is enumerated.
 #'
 #' Because taking every PSU leaves the within-PSU take in force, it does not
 #' enumerate a stratum, and `take_all` is refused in cluster mode for the
 #' same reason the fixed-take path refuses it.
 #'
-#' The correction that *is* applied is the ultimate-unit one,
-#' `1 - n / N`, consistent with [n_cluster()]'s variance model.
+#' ## Which correction the variance carries
+#'
+#' `fpc` chooses, and the three choices are nested rather than arbitrary.
+#' Write \eqn{f_1} for the PSU sampling fraction and \eqn{f_2} for the
+#' within-PSU one, both measured on what responds. Under the equal-size,
+#' equal-take variance-component model this path assumes, the two-stage
+#' without-replacement variance corrects each component by its own stage:
+#'
+#' \deqn{V = (1-f_1)\frac{S_1^2}{a} + (1-f_2)\frac{S_2^2}{am}.}{V = (1-f_1) S_1^2/a + (1-f_2) S_2^2/(am).}
+#'
+#' - `"unit"` (default) applies the ultimate-unit `1 - n / N` to the whole
+#'   clustering-inflated variance, so the between-PSU component is attenuated
+#'   by it too. Since \eqn{n/N = f_1f_2}, that factor is at least as large as
+#'   either exact one, so this **overstates both components** rather than
+#'   either being understated. It is conservative against the exact
+#'   without-replacement variance at every sampling fraction.
+#' - `"stage"` applies the expression above, and its three-stage analogue.
+#'   It needs `N_psu`, and `N_ssu` as well at three stages. It is exact for
+#'   that model and not beyond it: unequal PSU sizes, a size-proportional
+#'   first stage, and stochastic rather than expected nonresponse each need
+#'   a more general variance expression, so it is refused with a `psu`
+#'   register.
+#' - `"none"` applies no correction at any stage, which is [n_cluster()]'s
+#'   model exactly. Use it to compare the two interfaces at a sampling
+#'   fraction where the correction would otherwise separate them.
+#'
+#' So `none` \eqn{\ge} `unit` \eqn{\ge} `stage` at every sampling fraction,
+#' and the three coincide as the fractions vanish.
+#'
+#' The default stays `"unit"` deliberately. `"stage"` is exact under that
+#' model, but it buys the exactness by depending on the mean PSU size
+#' \eqn{M = N/N_{psu}}{M = N/N_psu}, which the with-replacement form does not
+#' use at all. Under unequal PSU sizes that mean is a stand-in, and planners
+#' usually know it less well than they know `icc_psu` and the take. Choose
+#' `"stage"` when the PSU sizes really are close to equal and the fractions
+#' are large enough to matter.
+#'
+#' Note that the two fractions are controlled by different quantities.
+#' \eqn{f_1} falls as the design takes a smaller share of the PSU universe,
+#' but \eqn{f_2} is the realized take over \eqn{M} and does not move with `N`
+#' at all. A large population reached through a few large PSUs leaves
+#' \eqn{f_2} wherever it was, so `"stage"` is not in general a small
+#' correction to `"none"`.
+#'
+#' `fpc` is refused outside cluster allocation, where there are no stages to
+#' choose between and the correction is always `1 - n / N`.
 #'
 #' Because `icc_psu` already accounts for the clustering, leave
 #' `deff` at 1 unless it captures a *different* source of design
@@ -541,9 +621,9 @@
 #' PSU carries `n_per_psu`. The takes are the operational design's own
 #' numbers, so `sum(n_take[certainty]) = n_certain_int` in every stratum.
 #'
-#' A fit solved with a register keeps it in `$params$psu`; its presence is
-#' the stable test for a certainty-aware fit, and consumers such as samplyr
-#' key on it rather than on `$detail` column names.
+#' A fit solved with a register keeps it in `$params$psu`. Its presence is
+#' the stable test for a certainty-aware fit, and it's possible to key on it
+#' rather than on `$detail` column names.
 #'
 #' The operational design is fieldable: certainty PSUs use their whole take
 #' at the stratum rate and the remainder uses whole PSUs at `n_per_psu`. Thus
@@ -763,6 +843,7 @@ n_alloc.default <- function(
   df = NULL,
   min_n_stratum = NULL,
   alloc_q = 0.5,
+  fpc = c("unit", "stage", "none"),
   plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, n_alloc.default, match.call(), environment())
@@ -773,6 +854,7 @@ n_alloc.default <- function(
   alloc_default <- c("neyman", "optimal", "proportional", "power")
   alloc_explicit <- !missing(alloc) && !identical(alloc, alloc_default)
   alloc_q_explicit <- !missing(alloc_q) && !identical(alloc_q, 0.5)
+  fpc <- match.arg(fpc)
   joint_any <- !is.null(measures) || !is.null(targets) || !is.null(objective)
   if (joint_any) {
     if (is.null(measures)) {
@@ -828,6 +910,17 @@ n_alloc.default <- function(
       )
     }
     if (!is.null(psu)) {
+      # A register splits the stratum into a certainty part with no
+      # first-stage sampling and a remainder drawn with probability
+      # proportional to size. Neither piece is the equal-size, equal-take
+      # design the stage correction is derived for, so it is refused rather
+      # than applied to a design it does not describe.
+      if (!identical(fpc, "unit")) {
+        stop(
+          "'fpc' is not available with a PSU register: the certainty split and its size-proportional remainder need their own variance decomposition, which is not derived here. Drop 'fpc', or drop 'psu' and give 'N_psu' instead",
+          call. = FALSE
+        )
+      }
       return(.psu_result(.n_alloc_psu(
         frame = frame,
         psu = psu,
@@ -854,7 +947,8 @@ n_alloc.default <- function(
       min_n_stratum = min_n_stratum,
       objective = objective,
       budget = budget,
-      df = df
+      df = df,
+      fpc = fpc
     ))
   }
   if (!is.null(psu)) {
@@ -891,7 +985,8 @@ n_alloc.default <- function(
     domains = domains,
     unit_cost = unit_cost,
     deff = deff,
-    resp_rate = resp_rate
+    resp_rate = resp_rate,
+    fpc = fpc
   )
   N_h <- prep$N_h
   S_h <- prep$S_h
@@ -1003,7 +1098,8 @@ n_alloc.default <- function(
           alpha = alpha,
           deff = deff,
           resp_rate = resp_rate,
-          cost_h = cost_h
+          cost_h = cost_h,
+          N_fpc = prep$N_fpc_h
         )$cv
       } else {
         .alloc_domain_cv_max(
@@ -1094,7 +1190,8 @@ n_alloc.default <- function(
     deff = deff,
     resp_rate = resp_rate,
     cost_h = cost_h,
-    df = df
+    df = df,
+    N_fpc = prep$N_fpc_h
   )
 
   detail <- .alloc_detail(
@@ -1123,6 +1220,7 @@ n_alloc.default <- function(
     frame = frame,
     alloc = alloc,
     alpha = alpha,
+    fpc = fpc,
     deff = deff_arg,
     resp_rate = resp_rate_arg,
     cost_h = cost_h,
@@ -1246,7 +1344,8 @@ n_alloc.svyplan_prec <- function(
       deff = p$deff,
       resp_rate = p$resp_rate,
       df = p$df,
-      min_n_stratum = p$min_n_stratum
+      min_n_stratum = p$min_n_stratum,
+      fpc = p$fpc %||% "unit"
     )
     return(do.call(
       n_alloc.default,
@@ -1274,6 +1373,8 @@ n_alloc.svyplan_prec <- function(
   )
   if (!.alloc_is_cluster(p$frame)) {
     args$unit_cost <- p$cost_h
+  } else {
+    args$fpc <- p$fpc %||% "unit"
   }
   do.call(n_alloc.default, .roundtrip_args(args, list(...), n_alloc.default))
 }
@@ -1335,6 +1436,14 @@ n_alloc.svyplan_prec <- function(
 #'   per-stratum unit costs, overriding `frame$unit_cost`. Fixed-take
 #'   multistage joint assessment instead uses the stage costs stored in
 #'   `frame`.
+#' @param fpc Which finite population correction the variance carries in
+#'   cluster allocation: `"unit"` (default) for the ultimate-unit
+#'   `1 - n / N` on the whole inflated variance, `"stage"` for the
+#'   stage-by-stage correction, exact under the equal-size, equal-take
+#'   variance-component model this path assumes, or `"none"` for
+#'   [n_cluster()]'s with-replacement model. `"stage"` requires `N_psu`, and
+#'   `N_ssu` as well at three stages. Refused outside cluster allocation and
+#'   with a `psu` register. See the correction section in Details.
 #' @param min_n_stratum Optional minimum sample size per stratum, applied as the
 #'   lower bound the assessment reports against in `$bounds`. It is the same
 #'   argument [n_alloc()] takes, so a design and its assessment can be held
@@ -1426,6 +1535,7 @@ prec_alloc.default <- function(
   df = NULL,
   unit_cost = NULL,
   min_n_stratum = NULL,
+  fpc = c("unit", "stage", "none"),
   plan = NULL
 ) {
   .plan <- .merge_plan_args(
@@ -1438,6 +1548,7 @@ prec_alloc.default <- function(
     return(do.call(prec_alloc.default, c(.plan, list(...))))
   }
   .check_unused_dots(...)
+  fpc <- match.arg(fpc)
   joint_any <- !is.null(measures) || !is.null(targets) || !is.null(objective)
   if (joint_any) {
     if (is.null(measures)) {
@@ -1465,6 +1576,13 @@ prec_alloc.default <- function(
       )
     }
     if (!is.null(psu)) {
+      # Refused for the same reason n_alloc() refuses it. See there.
+      if (!identical(fpc, "unit")) {
+        stop(
+          "'fpc' is not available with a PSU register: the certainty split and its size-proportional remainder need their own variance decomposition, which is not derived here. Drop 'fpc', or drop 'psu' and give 'N_psu' instead",
+          call. = FALSE
+        )
+      }
       return(.prec_alloc_psu(
         frame = frame,
         psu = psu,
@@ -1493,7 +1611,8 @@ prec_alloc.default <- function(
       deff = deff,
       resp_rate = resp_rate,
       min_n_stratum = min_n_stratum,
-      df = df
+      df = df,
+      fpc = fpc
     ))
   }
   if (!is.null(psu)) {
@@ -1518,7 +1637,8 @@ prec_alloc.default <- function(
     domains = domains,
     unit_cost = unit_cost,
     deff = deff,
-    resp_rate = resp_rate
+    resp_rate = resp_rate,
+    fpc = fpc
   )
   deff_arg <- deff
   resp_rate_arg <- resp_rate
@@ -1545,7 +1665,8 @@ prec_alloc.default <- function(
     deff = deff,
     resp_rate = resp_rate,
     cost_h = prep$cost_h,
-    df = df
+    df = df,
+    N_fpc = prep$N_fpc_h
   )
 
   detail <- .alloc_detail(
@@ -1575,6 +1696,7 @@ prec_alloc.default <- function(
       frame = frame,
       n = n,
       alpha = alpha,
+      fpc = fpc,
       deff = deff_arg,
       resp_rate = resp_rate_arg,
       df = df,
@@ -1642,6 +1764,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       df = p$df,
       unit_cost = p$unit_cost,
       min_n_stratum = p$min_n_stratum,
+      fpc = p$fpc %||% "unit",
       .allow_fractional_stages = !n_explicit
     )
     return(do.call(
@@ -1671,6 +1794,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   )
   if (!.alloc_is_cluster(p$frame)) {
     args$unit_cost <- p$cost_h
+  } else {
+    args$fpc <- p$fpc %||% "unit"
   }
   do.call(
     prec_alloc.default,
@@ -1685,7 +1810,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   domains = NULL,
   unit_cost = NULL,
   deff = 1,
-  resp_rate = 1
+  resp_rate = 1,
+  fpc = "unit"
 ) {
   if (!is.data.frame(frame) || nrow(frame) == 0L) {
     stop("'frame' must be a non-empty data frame", call. = FALSE)
@@ -1885,7 +2011,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     domain_idx = domain_idx,
     domain_values = domain_values
   )
-  .alloc_cluster_prep(prep, frame, unit_cost)
+  .alloc_cluster_prep(prep, frame, unit_cost, fpc)
 }
 
 #' Two-stage-within-strata transformation
@@ -1897,8 +2023,14 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #' allocation, constraints, and metrics then apply unchanged.
 #' @keywords internal
 #' @noRd
-.alloc_cluster_prep <- function(prep, frame, unit_cost) {
+.alloc_cluster_prep <- function(prep, frame, unit_cost, fpc = "unit") {
   if (!.alloc_is_cluster(frame)) {
+    if (!identical(fpc, "unit")) {
+      stop(
+        "'fpc' applies to cluster allocation only, where the correction has stages to choose between. An element allocation always carries 1 - n/N. Add 'icc_psu', or drop 'fpc'",
+        call. = FALSE
+      )
+    }
     orphan <- intersect(
       c(
         "var_ratio_psu",
@@ -2068,7 +2200,39 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   # that is issued, so the inflation reads 'n_per_psu * resp_rate'.
   responding_take <- n_per_psu_h * prep$resp_rate_h
   prep$S_raw_h <- prep$S_h
-  prep$S_h <- prep$S_h * sqrt(var_ratio * (1 + icc * (responding_take - 1)))
+  if (identical(fpc, "stage") && is.null(N_psu_h)) {
+    stop(
+      "fpc = \"stage\" needs the PSU population: add an 'N_psu' column, or use the default fpc = \"unit\"",
+      call. = FALSE
+    )
+  }
+  # Written on the two variance components rather than one bracket, because
+  # each stage's correction multiplies its own component. The within-PSU
+  # fraction is the realized take over the mean PSU size. At within_frac = 0
+  # this is exactly var_ratio * (1 + icc * (responding_take - 1)).
+  within_frac <- if (identical(fpc, "stage")) {
+    pmin(1, responding_take / (prep$N_h / N_psu_h))
+  } else {
+    rep(0, length(responding_take))
+  }
+  inflation <- var_ratio *
+    (icc * responding_take + (1 - within_frac) * (1 - icc))
+  prep$S_h <- prep$S_h * sqrt(inflation)
+  # The first-stage correction is a constant in n_h, so it reaches the solver
+  # as an effective population in the existing 1 - n_net/N term rather than as
+  # a separate stage. Infinite where there is no between-PSU variance to
+  # correct, which is also how "none" is expressed.
+  prep$N_fpc_h <- switch(
+    fpc,
+    unit = prep$N_h,
+    none = rep(Inf, length(prep$N_h)),
+    stage = ifelse(
+      icc > 0,
+      N_psu_h * inflation / (var_ratio * icc),
+      Inf
+    )
+  )
+  prep$fpc <- fpc
   # The clustering bracket and the effective-size denominator want different
   # rates and must not be handed the same one. Only ultimate-unit loss
   # shrinks the realized cluster, so only it belongs inside the bracket; a
@@ -2187,7 +2351,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   deff,
   resp_rate,
   cost_h,
-  df = NULL
+  df = NULL,
+  N_fpc = NULL
 ) {
   n_net <- n_h * resp_rate
   n_eff <- n_net / deff
@@ -2195,7 +2360,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 
   term <- numeric(length(n_h))
   good <- n_eff > 0
-  fpc <- pmax(0, 1 - n_net / N_h)
+  # N_fpc is the population the correction divides by, which is the stratum
+  # population unless a cluster allocation has folded a first-stage
+  # correction into it. Weights and bounds always read the real N_h.
+  fpc <- pmax(0, 1 - n_net / (N_fpc %||% N_h))
   term[good] <- W_h[good]^2 * S_h[good]^2 * fpc[good] / n_eff[good]
 
   zero_ok <- !good & S_h == 0
@@ -2390,7 +2558,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     deff = deff,
     resp_rate = resp_rate,
     cost_h = prep$cost_h,
-    df = df
+    df = df,
+    N_fpc = prep$N_fpc_h
   )
   list(
     n = sum(n_int),
@@ -2551,7 +2720,28 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   } else {
     rep(NA_real_, H)
   }
-  S_op <- S_raw * sqrt(var_ratio * (1 + icc * (b_h * resp_h - 1)))
+  # The whole-unit design fields its own take, so both halves of the
+  # correction have to be rebuilt on 'b_h'. Reading the continuous take here
+  # would score the operational design under a correction it does not get.
+  op_take <- b_h * resp_h
+  op_within_frac <- if (identical(prep$fpc %||% "unit", "stage")) {
+    pmin(1, op_take / (prep$N_h / prep$N_psu_h))
+  } else {
+    rep(0, H)
+  }
+  op_inflation <- var_ratio *
+    (icc * op_take + (1 - op_within_frac) * (1 - icc))
+  S_op <- S_raw * sqrt(op_inflation)
+  N_fpc_op <- switch(
+    prep$fpc %||% "unit",
+    unit = prep$N_h,
+    none = rep(Inf, H),
+    stage = ifelse(
+      icc > 0,
+      prep$N_psu_h * op_inflation / (var_ratio * icc),
+      Inf
+    )
+  )
   Cj <- W^2 * S_op^2 * deff / (b_h * resp_rate)
 
   if (mode == "cv") {
@@ -2617,7 +2807,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     deff = deff,
     resp_rate = resp_rate,
     cost_h = prep$cost_h,
-    df = df
+    df = df,
+    N_fpc = N_fpc_op
   )
   detail$n_int <- as.integer(e_h)
   detail$n_psu_int <- a_h
@@ -2640,6 +2831,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     } else {
       prep_op <- prep
       prep_op$S_h <- S_op
+      prep_op$N_fpc_h <- N_fpc_op
       .alloc_domain_cv_max(prep_op, e_h, alpha, deff, resp_rate)
     }
     if (!is.finite(op_cv) || op_cv > target_cv + 1e-8) {
@@ -2699,7 +2891,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
         alpha = alpha,
         deff = .subset_h(deff, idx),
         resp_rate = .subset_h(resp_rate, idx),
-        cost_h = prep$cost_h[idx]
+        cost_h = prep$cost_h[idx],
+        N_fpc = prep$N_fpc_h[idx]
       )$cv
     },
     numeric(1)
@@ -2734,7 +2927,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       deff = .subset_h(deff, idx),
       resp_rate = .subset_h(resp_rate, idx),
       cost_h = prep$cost_h[idx],
-      df = df
+      df = df,
+      N_fpc = prep$N_fpc_h[idx]
     )
     row <- if (!is.null(prep$domain_values)) {
       prep$domain_values[i, , drop = FALSE]

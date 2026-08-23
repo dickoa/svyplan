@@ -27,6 +27,7 @@ n_alloc(frame, ...)
   df = NULL,
   min_n_stratum = NULL,
   alloc_q = 0.5,
+  fpc = c("unit", "stage", "none"),
   plan = NULL
 )
 
@@ -39,8 +40,8 @@ stratum, a subgroup of the population defined by a stratification
 variable such as region, age group, or urbanicity. The values in this
 frame typically come from a census, a population register, or a
 previous survey. Any stratum table with the columns below works,
-for example the pool summary of an executed \code{samplyr} sample
-(\code{samplyr::frame_summary()}), once the measure columns are added.
+including a pool summary carried back from an executed sample once the
+measure columns are added.
 
 When a design stratifies by several variables at once (e.g. region
 \eqn{\times}{*} urbanicity), cross them into a single variable before
@@ -210,6 +211,15 @@ Numeric scalar in \eqn{[0, 1]}. At \code{alloc_q = 1} the allocation equals
 Neyman. At \code{alloc_q = 0} it yields near-equal subnational CVs.
 Default 0.5.}
 
+\item{fpc}{Which finite population correction the variance carries in
+cluster allocation: \code{"unit"} (default) for the ultimate-unit
+\code{1 - n / N} on the whole inflated variance, \code{"stage"} for the
+stage-by-stage correction, exact under the equal-size, equal-take
+variance-component model this path assumes, or \code{"none"} for
+\code{\link[=n_cluster]{n_cluster()}}'s with-replacement model. \code{"stage"} requires \code{N_psu}, and
+\code{N_ssu} as well at three stages. Refused outside cluster allocation and
+with a \code{psu} register. See the correction section in Details.}
+
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
@@ -354,10 +364,15 @@ and \code{cost_tsu} is per sampled ultimate unit. The corresponding cost is
 
 For indicator \eqn{k} and stratum \eqn{h}, write \eqn{m_h} for
 \code{n_per_psu}, \eqn{q_h} for \code{n_per_ssu}, and \eqn{S^2_{hk}}{S^2_hk} for \code{var} (or
-\code{sd^2}, or \code{p * (1 - p)}). The fixed variance multiplier is
-\eqn{D_{hk}=k_{1,hk}(1+\delta_{1,hk}(m_h-1))}{D_hk=k_(1,hk)(1+delta_(1,hk)(m_h-1))} at two stages and
-\eqn{D_{hk}=k_{1,hk}\delta_{1,hk}m_hq_h+
-k_{2,hk}(1+\delta_{2,hk}(q_h-1))}{D_hk=k_(1,hk) delta_(1,hk)m_hq_h+ k_(2,hk)(1+delta_(2,hk)(q_h-1))} at three stages. At three stages
+\code{sd^2}, or \code{p * (1 - p)}). Each stage's \emph{realized} take is what inflates the
+variance, so with ultimate-unit response \eqn{r_{hk}}{r_hk} and SSU response
+\eqn{r^{ssu}_{hk}}{r^ssu_hk} write
+\eqn{\tilde m_h=m_hr^{ssu}_{hk}}{m~_h=m_h r^ssu_hk} and
+\eqn{\tilde q_h=q_hr_{hk}}{q~_h=q_h r_hk}. At two stages the ultimate-unit
+rate acts on \eqn{m_h} directly. The fixed variance multiplier is
+\eqn{D_{hk}=k_{1,hk}(1+\delta_{1,hk}(m_hr_{hk}-1))}{D_hk=k_(1,hk)(1+delta_(1,hk)(m_h r_hk-1))} at two stages and
+\eqn{D_{hk}=k_{1,hk}\delta_{1,hk}\tilde m_h\tilde q_h+
+k_{2,hk}(1+\delta_{2,hk}(\tilde q_h-1))}{D_hk=k_(1,hk) delta_(1,hk)m~_hq~_h+ k_(2,hk)(1+delta_(2,hk)(q~_h-1))} at three stages. At three stages
 \code{var_ratio_ssu} is not a free parameter: \code{var_ratio_psu} rescales the components' unit
 variance to the analysis variable and \code{var_ratio_ssu} does the same for the
 within-PSU part, so
@@ -365,13 +380,37 @@ within-PSU part, so
 \eqn{D_{hk}}{D_hk} collapse to \eqn{k_{1}}{k_1} at \eqn{m_h=q_h=1}, where no
 clustering is left to inflate anything. Leaving \code{var_ratio_ssu} out of \code{measures}
 applies it. Supplying a value overrides it, which is only meaningful when
-the two stages' ratios come from different decompositions. With ultimate-unit take
-\eqn{t_h=m_h} or \eqn{m_hq_h}, first-stage decision \eqn{a_h}, response
-rate \eqn{r_{hk}}{r_hk}, and extra design effect \eqn{d_{hk}}{d_hk}, the implemented
+the two stages' ratios come from different decompositions. With \strong{gross}
+ultimate-unit take \eqn{t_h=m_h} or \eqn{m_hq_h}, first-stage decision
+\eqn{a_h}, combined response
+\eqn{R_{hk}=r^{psu}_{hk}r^{ssu}_{hk}r_{hk}}{R_hk=r^psu_hk r^ssu_hk r_hk},
+and extra design effect \eqn{d_{hk}}{d_hk}, the implemented
 total-variance contribution is
-\deqn{N_h^2 S_{hk}^2 D_{hk}d_{hk}/(r_{hk}a_ht_h)
-      - N_h S_{hk}^2 D_{hk}d_{hk}.}{N_h^2 S_hk^2 D_hkd_hk/(r_hka_ht_h) - N_h S_hk^2 D_hkd_hk.}
-Thus response inflation is applied once. Leave \code{deff = 1} unless it
+\deqn{N_h^2 S_{hk}^2 D_{hk}d_{hk}/(R_{hk}a_ht_h)
+      - N_h S_{hk}^2 D_{hk}d_{hk}.}{N_h^2 S_hk^2 D_hkd_hk/(R_hka_ht_h) - N_h S_hk^2 D_hkd_hk.}
+Thus response inflation is applied once. Takes and costs stay gross, since
+a unit is issued and paid for either way, while the variance reads what
+the design realizes.
+}
+
+\subsection{Response acts at whichever stage it happens}{
+
+The three rates are not interchangeable and none is recoverable from the
+others, so each names the stage it acts on. \code{resp_rate_psu} divides the
+whole requirement, because losing a PSU is a pure sample-size loss.
+\code{resp_rate_ssu} divides it and shrinks the realized SSU count per PSU.
+\code{resp_rate} divides it and enters the \eqn{\delta}{delta} bracket, because
+it shrinks the realized final-stage take and so changes the clustering
+penalty itself. Reading a gross take in that bracket would charge the
+between-PSU component a penalty only whole-cluster loss produces.
+
+All three go in \code{measures}, or in \code{frame} as a stratum default. A rate
+naming a stage the design does not have is an error rather than a
+silently ignored column. This is the same decomposition \code{\link[=n_cluster]{n_cluster()}} and
+cluster-mode \code{n_alloc()} use, so a design described identically to any of
+them sizes identically in all of them.
+
+Leave \code{deff = 1} unless it
 represents a source not already captured by the stage deltas and var_ratio factors.
 Deltas may include 0 and 1. The var_ratio values must be positive finite.
 All stage
@@ -538,28 +577,74 @@ design at \code{N_psu} clusters, matching the bound the fixed-take path
 already applies. Leaving it out preserves the unbounded behaviour, in
 which the allocation may ask for more PSUs than a stratum contains.
 
-It does \strong{not} activate a first-stage finite population correction.
-Precision here uses a with-replacement first stage, so the between-PSU
-term keeps its full size however large a share of the PSU universe the
-design takes. Under the equal-take ICC planning model this is
-conservative: omitting the first-stage correction generally overstates
-the between-PSU sampling variance once the PSU sampling fraction is
-appreciable, and \code{print()} says so when it is. The claim is tied to that
-model and is not general to arbitrary PPS or informative cluster designs.
+On its own it does \strong{not} activate a first-stage finite population
+correction. Under the default \code{fpc = "unit"} no factor keyed to the PSU
+sampling fraction enters the variance, however large a share of the PSU
+universe the design takes, and \code{print()} says so once that share is
+appreciable. Supplying \code{N_psu} bounds the design. Asking for the
+correction as well is what \code{fpc = "stage"} does.
 
-At \code{n_psu == N_psu} the model still carries between-PSU variance even
+So at \code{n_psu == N_psu} the default still carries between-PSU variance even
 though every PSU has been selected. That is deliberately conservative
 and is no longer a literal variance representation. For the same
 reason, a target this path reports as unreachable at the PSU bound may
-be reachable under a finite-population first stage; the error says so
-rather than claiming the precision is impossible.
+be reachable under a finite-population first stage, and the error says so
+rather than claiming the precision is impossible. Under \code{fpc = "stage"}
+the between-PSU component does reach zero there, and the whole variance
+reaches zero only when every stage is enumerated.
 
 Because taking every PSU leaves the within-PSU take in force, it does not
 enumerate a stratum, and \code{take_all} is refused in cluster mode for the
 same reason the fixed-take path refuses it.
+}
 
-The correction that \emph{is} applied is the ultimate-unit one,
-\code{1 - n / N}, consistent with \code{\link[=n_cluster]{n_cluster()}}'s variance model.
+\subsection{Which correction the variance carries}{
+
+\code{fpc} chooses, and the three choices are nested rather than arbitrary.
+Write \eqn{f_1} for the PSU sampling fraction and \eqn{f_2} for the
+within-PSU one, both measured on what responds. Under the equal-size,
+equal-take variance-component model this path assumes, the two-stage
+without-replacement variance corrects each component by its own stage:
+
+\deqn{V = (1-f_1)\frac{S_1^2}{a} + (1-f_2)\frac{S_2^2}{am}.}{V = (1-f_1) S_1^2/a + (1-f_2) S_2^2/(am).}
+\itemize{
+\item \code{"unit"} (default) applies the ultimate-unit \code{1 - n / N} to the whole
+clustering-inflated variance, so the between-PSU component is attenuated
+by it too. Since \eqn{n/N = f_1f_2}, that factor is at least as large as
+either exact one, so this \strong{overstates both components} rather than
+either being understated. It is conservative against the exact
+without-replacement variance at every sampling fraction.
+\item \code{"stage"} applies the expression above, and its three-stage analogue.
+It needs \code{N_psu}, and \code{N_ssu} as well at three stages. It is exact for
+that model and not beyond it: unequal PSU sizes, a size-proportional
+first stage, and stochastic rather than expected nonresponse each need
+a more general variance expression, so it is refused with a \code{psu}
+register.
+\item \code{"none"} applies no correction at any stage, which is \code{\link[=n_cluster]{n_cluster()}}'s
+model exactly. Use it to compare the two interfaces at a sampling
+fraction where the correction would otherwise separate them.
+}
+
+So \code{none} \eqn{\ge} \code{unit} \eqn{\ge} \code{stage} at every sampling fraction,
+and the three coincide as the fractions vanish.
+
+The default stays \code{"unit"} deliberately. \code{"stage"} is exact under that
+model, but it buys the exactness by depending on the mean PSU size
+\eqn{M = N/N_{psu}}{M = N/N_psu}, which the with-replacement form does not
+use at all. Under unequal PSU sizes that mean is a stand-in, and planners
+usually know it less well than they know \code{icc_psu} and the take. Choose
+\code{"stage"} when the PSU sizes really are close to equal and the fractions
+are large enough to matter.
+
+Note that the two fractions are controlled by different quantities.
+\eqn{f_1} falls as the design takes a smaller share of the PSU universe,
+but \eqn{f_2} is the realized take over \eqn{M} and does not move with \code{N}
+at all. A large population reached through a few large PSUs leaves
+\eqn{f_2} wherever it was, so \code{"stage"} is not in general a small
+correction to \code{"none"}.
+
+\code{fpc} is refused outside cluster allocation, where there are no stages to
+choose between and the correction is always \code{1 - n / N}.
 
 Because \code{icc_psu} already accounts for the clustering, leave
 \code{deff} at 1 unless it captures a \emph{different} source of design
@@ -598,9 +683,9 @@ own whole take at the stratum rate, capped at its size, and a remainder
 PSU carries \code{n_per_psu}. The takes are the operational design's own
 numbers, so \code{sum(n_take[certainty]) = n_certain_int} in every stratum.
 
-A fit solved with a register keeps it in \verb{$params$psu}; its presence is
-the stable test for a certainty-aware fit, and consumers such as samplyr
-key on it rather than on \verb{$detail} column names.
+A fit solved with a register keeps it in \verb{$params$psu}. Its presence is
+the stable test for a certainty-aware fit, and it's possible to key on it
+rather than on \verb{$detail} column names.
 
 The operational design is fieldable: certainty PSUs use their whole take
 at the stratum rate and the remainder uses whole PSUs at \code{n_per_psu}. Thus

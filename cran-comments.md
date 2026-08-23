@@ -6,9 +6,14 @@
   New submission
 
   The same NOTE reports the `BugReports` URL as possibly invalid and
-  suggests appending `/issues`. The package is hosted on GitLab, whose
-  issue tracker is served at `/-/work_items`; `/-/issues` is the GitHub
-  convention and is not the path GitLab uses. The URL is correct as given.
+  suggests
+
+      https://gitlab.com/dickoa/svyplan/-/work_items/issues
+
+  The check heuristic appends `/issues` to the `BugReports` value. This
+  package is hosted on GitLab, where the value given already is the issue
+  tracker, so the suggestion is that tracker plus a further path segment the
+  project does not serve. The URL is correct as given.
 
 ## Test environments
 

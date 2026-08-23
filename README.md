@@ -14,6 +14,12 @@ Survey sample size determination, precision analysis, optimal and joint
 multivariate/multidomain allocation, stratification, and power analysis
 for R.
 
+svyplan stops at the plan. It decides how many units, allocated where,
+to what precision, and it never draws a sample: no selection
+probabilities, no weights, no drawn units come out of any function here.
+When the plan is settled,
+[sondage](https://cran.r-project.org/package=sondage) draws it.
+
 ## Installation
 
 ``` r

@@ -108,8 +108,8 @@
 #' Given an [n_alloc()] result there is no need to approximate at all.
 #' Every quantity the ratio needs is already there, so
 #' `design_effect(alloc)` returns the allocation's own variance ratio,
-#' \deqn{D = n \sum_h W_h^2S_h^2d_hk_h(1+\delta_h(m_h-1))/n_h \Big/
-#'        \left(\sum_h W_hS_h^2+\sum_h W_h(\bar y_h-\bar y)^2\right),}{D = n sum_h W_h^2S_h^2d_hk_h(1+delta_h(m_h-1))/n_h / (sum_h W_hS_h^2+sum_h W_h(ybar_h-ybar)^2 ),}
+#' \deqn{D = n \sum_h W_h^2S_h^2d_hk_h(1+\delta_h(m_hr_h-1))/n_h \Big/
+#'        \left(\sum_h W_hS_h^2+\sum_h W_h(\bar y_h-\bar y)^2\right),}{D = n sum_h W_h^2S_h^2d_hk_h(1+delta_h(m_h r_h-1))/n_h / (sum_h W_hS_h^2+sum_h W_h(ybar_h-ybar)^2 ),}
 #' with the per-stratum cluster factors entering stratum by stratum rather
 #' than averaged, and the `deff` the allocation was built under counted
 #' once. A per-stratum `deff` weights its own stratum's contribution and a
@@ -117,6 +117,13 @@
 #' several measures has
 #' no single such ratio and is refused. Take the measure-specific numbers
 #' from [prec_alloc()].
+#'
+#' The clustering bracket reads \eqn{m_hr_h}, the take that responds, because
+#' that is the take [n_alloc()] sized the design on. So the ratio reported
+#' here falls as the ultimate-unit response rate falls, and describes the
+#' variance model the allocation actually used rather than the one its gross
+#' take would suggest. PSU-level response is absent from the bracket: it
+#' removes whole clusters instead of shrinking the ones that are worked.
 #'
 #' This ratio is computed without finite population corrections, on the
 #' same planning scale as the component arguments. [prec_alloc()] applies
@@ -394,7 +401,9 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
   }
   W <- detail$N / sum(detail$N)
   n <- detail$n
-  factor_h <- .deff_alloc_factor(x$params$frame, detail)
+  factor_h <- .deff_alloc_factor(
+    x$params$frame, detail, .alloc_summary_response_rates(x)$unit
+  )
   parts <- .deff_variance_parts(W, detail$sd, detail$mean)
   if (parts$within <= 0) {
     stop(paste("the allocation has no within-stratum variability to summarize:",
@@ -432,50 +441,29 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
   )
 }
 
-#' Clustering component of a stratified two-stage n_alloc() plan
-#'
-#' Averages the per-stratum clustering factors rather than averaging icc
-#' and n_per_psu separately, which would not reproduce any stratum's
-#' inflation. The weights are each stratum's share of the design variance,
-#' \eqn{W_h^2S_h^2/n_h}, because that is what the factors multiply in
-#' \eqn{\sum_h W_h^2S_h^2k_h(1 + \delta_h(m_h-1))/n_h}. Weighting by the
-#' allocation instead would answer a different question and does not
-#' reproduce the variance ratio even when every stratum is alike in `sd`.
-#' @keywords internal
-#' @noRd
-.deff_alloc_cluster <- function(frame, detail) {
-  if (!is.data.frame(frame) || is.null(frame[["icc_psu"]]) ||
-      is.null(detail[["n_per_psu"]]) || nrow(frame) != nrow(detail)) {
-    return(NULL)
-  }
-  icc <- as.numeric(frame$icc_psu)
-  var_ratio <- if (is.null(frame[["var_ratio_psu"]])) rep(1, nrow(frame)) else
-    as.numeric(frame$var_ratio_psu)
-  factor_h <- var_ratio * (1 + icc * (detail$n_per_psu - 1))
-  share <- .deff_variance_share(detail)
-  list(
-    value = sum(share * factor_h),
-    note = sprintf(
-      "%d strata, icc in [%.4g, %.4g]", length(icc),
-      min(icc), max(icc)
-    )
-  )
-}
-
 #' Per-stratum clustering factor of an allocation, or one where there is none
 #'
 #' The factors enter the variance ratio stratum by stratum, so unlike the
 #' component API there is nothing to average here.
+#'
+#' `unit_resp_rate` is the ultimate-unit response rate, and the bracket reads
+#' the take that responds, `n_per_psu * unit_resp_rate`. This is the same
+#' quantity the allocation itself was built on, so the ratio reported here
+#' describes the variance model the design actually used. Reading the gross
+#' take instead would report a clustering penalty the design never pays. PSU
+#' response is deliberately absent: it removes whole clusters rather than
+#' shrinking the ones that are worked, so it does not enter the bracket.
 #' @keywords internal
 #' @noRd
-.deff_alloc_factor <- function(frame, detail) {
+.deff_alloc_factor <- function(frame, detail, unit_resp_rate = 1) {
   if (!is.data.frame(frame) || is.null(frame[["icc_psu"]]) ||
       is.null(detail[["n_per_psu"]]) || nrow(frame) != nrow(detail)) {
     return(rep(1, nrow(detail)))
   }
   var_ratio <- if (is.null(frame[["var_ratio_psu"]])) rep(1, nrow(frame)) else
     as.numeric(frame$var_ratio_psu)
-  var_ratio * (1 + as.numeric(frame$icc_psu) * (detail$n_per_psu - 1))
+  responding_take <- detail$n_per_psu * rep_len(unit_resp_rate, nrow(detail))
+  var_ratio * (1 + as.numeric(frame$icc_psu) * (responding_take - 1))
 }
 
 #' Each stratum's share of the design variance of the overall mean

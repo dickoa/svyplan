@@ -283,7 +283,30 @@ Initial CRAN release.
   elements per stratum) with cost-optimal or fixed per-stratum takes.
   All solve modes, methods, and constraints apply unchanged.
   `deff` and `resp_rate` take one value per stratum, as vectors or as frame
-  columns, for designs whose fieldwork is not uniform. The three
+  columns, for designs whose fieldwork is not uniform. `fpc` picks which
+  finite population correction a cluster allocation carries, and the three
+  choices are nested. `"unit"`, the default, applies the ultimate-unit
+  `1 - n / N` to the whole clustering-inflated variance, so the between-PSU
+  component is attenuated by it too. Since `n / N` is the product of the two
+  stage fractions, that factor exceeds either exact one and the model
+  overstates both components rather than either being understated. `"stage"`
+  applies the exact stage-by-stage correction, `(1 - f1)` on the between-PSU
+  component and `(1 - f2)` on the within-PSU one, and its three-stage
+  analogue; it needs `N_psu`, and `N_ssu` as well at three stages, and it
+  alone reaches zero variance exactly when every stage is enumerated.
+  `"none"` applies no correction at any stage, which is `n_cluster()`'s model
+  exactly and is how the two interfaces are compared where the correction
+  would otherwise separate them. So `none >= unit >= stage` at every sampling
+  fraction, and the three coincide as the fractions vanish. The default is
+  `"unit"` because `"stage"` buys its exactness by depending on the mean PSU
+  size `N / N_psu`, which the with-replacement form does not use at all and
+  which planners usually know less well than the homogeneity and the take.
+  The two fractions are also controlled by different quantities: the PSU
+  fraction falls as the design takes a smaller share of the PSU universe,
+  while the within-PSU fraction is the realized take over the mean PSU size
+  and does not move with `N` at all, so `"stage"` is not in general a small
+  correction to `"none"`. Outside cluster allocation the correction is always
+  `1 - n / N` and `fpc` is refused. The three
   variance-based methods weight by `sqrt(deff_h / resp_rate_h)`, which is
   the optimum when the constraint is on the units drawn rather than the
   units that respond, while proportional allocation weights by `1 / resp_rate_h`
