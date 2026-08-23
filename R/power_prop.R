@@ -116,7 +116,7 @@
 #'               = \frac{r p_1 + p_2}{r + 1},}{pbar = (n_1 p_1 + n_2 p_2)/(n_1 + n_2) = (r p_1 + p_2)/(r + 1),}
 #'
 #' with \eqn{r} the allocation `ratio`. At `ratio = 1` this is
-#' \eqn{(p_1 + p_2) / 2}; away from it the weighted and unweighted nulls give
+#' \eqn{(p_1 + p_2) / 2}. Away from it the weighted and unweighted nulls give
 #' materially different sizes, so the weighting is not a refinement. Sizing
 #' `p1 = 0.1` against `p2 = 0.2` at `ratio = 4` needs 523 and 131, against
 #' 457 and 115 for an unweighted null: 14 percent more fieldwork, because the
@@ -137,7 +137,7 @@
 #' The `df` argument that [n_prop()], [n_mean()] and [n_alloc()] accept has
 #' no counterpart here, and its absence is a decision rather than an
 #' omission. There the quantile is the half-width of a confidence interval
-#' and a t quantile substitutes for a normal one directly; here it is a
+#' and a t quantile substitutes for a normal one directly. Here it is a
 #' normal deviate for an alternative, and a t-based power calculation is a
 #' different procedure. Passing `df` is an error that says so.
 #'
@@ -485,10 +485,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   z_b <- qnorm(power)
   q1 <- 1 - p1; q2 <- 1 - p2
   diff_phi <- log(p1 / q1) - log(p2 / q2)
-  # The null variance is evaluated at the pooled proportion, which is the
-  # sample-size-weighted mean of the two. Group 1 receives 'ratio' times what
-  # group 2 does, so the weights are ratio and 1; 'resp_rate' is common to
-  # both groups and cancels.
+  # Allocation-weighted pooled null. resp_rate is common and cancels.
   p_bar <- (ratio * p1 + p2) / (ratio + 1)
   q_bar <- 1 - p_bar
 

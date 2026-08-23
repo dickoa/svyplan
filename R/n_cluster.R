@@ -25,7 +25,7 @@
 #' @param var_ratio Ratio of the stage components' unit variance to the analysis
 #'   variable's, default 1. A scalar names `var_ratio_psu` and, for a three-stage
 #'   design, derives `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)`, the identity the
-#'   variance decomposition imposes; supply a length-2 vector only to
+#'   variance decomposition imposes. Supply a length-2 vector only to
 #'   override it, which is meaningful when the two stages' ratios come from
 #'   different decompositions. See [design_effect()] for the identity and
 #'   why the design effect would not reduce to `var_ratio_psu` without it. The
@@ -49,10 +49,10 @@
 #'   be worked at all, and the stage-1 sample size is inflated by
 #'   `1 / resp_rate_psu` to cover the loss. Nonresponse among the ultimate
 #'   units inside a cluster is a different quantity that acts at a different
-#'   stage; the plain `resp_rate` carries that meaning elsewhere in the
+#'   stage, and the plain `resp_rate` carries that meaning elsewhere in the
 #'   package.
 #' @param resp_rate_ssu Expected **SSU-level** response rate, in (0, 1\].
-#'   Three-stage designs only; default 1. It is the share of selected
+#'   Three-stage designs only, default 1. It is the share of selected
 #'   second-stage units, typically households, that can be interviewed at
 #'   all. A 2-stage design has no such stage, since the units inside a PSU
 #'   are the ultimate ones, and supplying it there is an error.
@@ -157,7 +157,7 @@
 #' It follows that the later-stage rates move the cost-optimal design while
 #' the PSU rate does not. For two stages the optimal take becomes
 #' \deqn{b^* = \sqrt{\frac{C_1 (1 - \mathrm{icc})}{C_2\,\mathrm{icc}\,r}},}{b^* = sqrt((C_1 (1 - icc))/(C_2 icc r)),}
-#' with `r` the ultimate-unit rate; `resp_rate_psu` is absent because it
+#' with `r` the ultimate-unit rate. `resp_rate_psu` is absent because it
 #' scales cost without moving that trade-off. Sizes and costs stay **gross**:
 #' `$n` counts units to issue and `$cost` pays for them, while the variance
 #' reads what they realize.
@@ -708,11 +708,8 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   fixed_cost = 0
 ) {
   C1 <- stage_cost[1L]
-  # Everything below is solved in *realized* units per PSU. The problem in
-  # (a, m * resp_rate) with a stage-2 cost of C2 / resp_rate is the same
-  # problem as the one without nonresponse, and the total cost is identical
-  # because C2 / r * (m * r) = C2 * m. Only the take is converted back at the
-  # end, so the closed forms below need no separate derivation.
+  # Solved in realized units per PSU, so the closed forms need no separate
+  # derivation. Only the take is converted back at the end.
   C2 <- stage_cost[2L] / resp_rate
   n_per_psu_gross <- n_per_psu
   if (!is.null(n_per_psu)) n_per_psu <- n_per_psu * resp_rate
@@ -882,11 +879,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   fixed_cost = 0
 ) {
   C1 <- stage_cost[1L]
-  # As in the two-stage case, solved in realized units. The stage takes below
-  # count responding SSUs and responding ultimate units, and the stage costs
-  # are divided by the rates that produce them, so
-  # C2 / r2 * (n2 * r2) = C2 * n2 and likewise at stage 3. Total cost is
-  # therefore unchanged and the closed forms need no separate derivation.
+  # As two-stage, solved in realized units. Total cost is unchanged.
   C2 <- stage_cost[2L] / resp_rate_ssu
   C3 <- stage_cost[3L] / (resp_rate_ssu * resp_rate)
   n_per_psu_gross <- n_per_psu
@@ -918,14 +911,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     n_per_ssu
   } else if (solve_for != "n3") {
     n3_free <- if (!is.null(n_per_psu)) {
-      # Conditional on a fixed middle take the final-stage optimum is not the
-      # unrestricted one: holding n2 fixed, the first-stage requirement is
-      # a + g / n3 in
-      #   a = k1 delta1 + k2 delta2 / n2,  g = k2 (1 - delta2) / n2,
-      # and the design pays C1 + C2 n2 per PSU plus C3 n2 n3 per PSU. Setting
-      # the derivative of their product to zero gives the expression below.
-      # The target CV cancels out of the ratio, so the same take minimizes
-      # cost at a fixed CV and CV at a fixed budget.
+      # Restricted optimum: a fixed n2 changes the final-stage take.
       a_fixed <- k1 * delta1 + k2 * delta2 / n_per_psu
       g_fixed <- k2 * (1 - delta2) / n_per_psu
       sqrt(g_fixed * (C1 + C2 * n_per_psu) /

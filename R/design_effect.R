@@ -57,7 +57,7 @@
 #' clustering remains. A scalar `var_ratio` supplies \eqn{k_1} and derives
 #' \eqn{k_2} from it. Supplying both explicitly overrides the identity,
 #' which is meaningful only when the two ratios come from different
-#' decompositions; note that `varcomp()` estimates \eqn{k_2} from its own
+#' decompositions. Note that `varcomp()` estimates \eqn{k_2} from its own
 #' SSU-level decomposition rather than imposing the identity, so its value
 #' can differ by several percent on small clusters.
 #'

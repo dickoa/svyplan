@@ -55,7 +55,7 @@ It may be negative. Required only for the relative measures: \code{cv} and
 \item{alpha}{Significance level, default 0.05.}
 
 \item{N}{Population size. \code{Inf} (default) means no finite population
-correction. One value covers both occasions; two are accepted only at
+correction. One value covers both occasions, and two are accepted only at
 \code{overlap = 0}, where the occasions are independent and may legitimately
 be different populations. A positive \code{overlap} requires a single \code{N},
 since units can only be shared by samples drawn from one population.}
@@ -104,7 +104,7 @@ is symmetric about the change, so the limits are \code{change - moe} and
 change near zero makes it large by construction, which is a statement
 about the estimand and not about the design.}
 \item{\code{params}}{The validated inputs. Dispersion is always stored as
-\code{var}, a pair, including when you supplied \code{sd} or \code{p}; \code{p} is kept as
+\code{var}, a pair, including when you supplied \code{sd} or \code{p}. \code{p} is kept as
 well when the proportion scale was used, and it is what the
 \code{\link[=n_change]{n_change()}} round trip reads the scale back from.}
 }
@@ -137,7 +137,8 @@ covariance enters:
       - \frac{v_1 + v_2 - 2\rho\sqrt{v_1v_2}}{N},}{V = v_1/n_1 + v_2/n_2 - (2 rho overlap sqrt(v_1v_2))/n_2 - (v_1 + v_2 - 2 rho sqrt(v_1v_2))/N,}
 
 a per-unit part less a population part. The marginal terms carry their
-own finite population correction; the overlap covariance does not, since
+own finite population correction, whereas the overlap covariance does
+not, since
 \eqn{Cov(\bar y_1, \bar y_2) = \rho S_1 S_2 \{k/(n_1n_2) - 1/N\}}{Cov(ybar_1, ybar_2) = rho S_1 S_2 \{k/(n_1n_2) - 1/N\}} enters
 the population once as \eqn{1/N}. The two expressions agree at
 \eqn{\rho = 0} and differ otherwise, because the second keeps the

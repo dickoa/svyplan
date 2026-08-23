@@ -88,7 +88,7 @@ stratum and overrides a \code{resp_rate} column in \code{frame}.}
 \item{df}{Degrees of freedom of the variance estimator the allocation
 will have, typically sampled PSUs minus strata, and available from
 \code{\link[=design_df]{design_df()}}. It switches the quantile used to translate a \code{moe}
-target in and to report \code{moe} out; a \code{cv} target carries no quantile
+target in and to report \code{moe} out. A \code{cv} target carries no quantile
 and is unaffected. \code{NULL} (default) applies no adjustment.}
 
 \item{unit_cost}{Optional scalar or length-\code{nrow(frame)} vector of

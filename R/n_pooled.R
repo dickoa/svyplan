@@ -41,7 +41,7 @@
 #' @param overlap Fraction of one occasion's **responding** sample carried
 #'   into a later one, in \[0, 1\]. One number, meaning the same overlap at
 #'   every lag, or one per lag. A [design_overlap()] result is accepted
-#'   directly at `resp_rate = 1`; see [prec_pooled()] on why not below it.
+#'   directly at `resp_rate = 1`. See [prec_pooled()] on why not below it.
 #'   `0` (default) makes the occasions independent.
 #' @param overlap_cor Correlation between two occasions among the units they
 #'   share, in \[0, 1\]. One number for every lag, or one per lag. Default 0,
@@ -56,7 +56,7 @@
 #'   profile was resolved from a [design_overlap()] object (`"issued"`) or
 #'   supplied as respondent overlap (`"respondent"`), so that a round trip
 #'   or a grid meets the same refusal the first call would have. Set from
-#'   the result being re-read; there is no reason to pass it by hand.
+#'   the result being re-read, and there is no reason to pass it by hand.
 #'
 #' @return A `svyplan_n` object with `type = "pooled"`:
 #' \describe{
@@ -64,12 +64,13 @@
 #'     carries `deff` and the `1 / resp_rate` inflation, so it counts the
 #'     units to release on each occasion, not the completed interviews. `$n`
 #'     and `as.double()` keep the unrounded value, which is what makes the
-#'     round trip through [prec_pooled()] exact; `print()` rounds up. This
+#'     round trip through [prec_pooled()] exact, whereas `print()` rounds
+#'     up. This
 #'     is not a count of distinct frame units: `overlap` is measured among
 #'     respondents, so it says how often a respondent is measured again and
 #'     leaves the issued sample's own overlap unstated. At full response the
 #'     two coincide and the series consumes fewer than `occasions * n`
-#'     distinct units; below it, how many is a question this function has
+#'     distinct units. Below it, how many is a question this function has
 #'     not been told enough to answer.}
 #'   \item{`se`, `moe`, `cv`, `rmoe`}{Precision the design achieves at that
 #'     size, the same values [prec_pooled()] reports for the same inputs.
@@ -97,8 +98,8 @@
 #' \eqn{B \le 0} always under the nonnegative correlation contract, since its
 #' bracket is at least \eqn{T}, so the divisor cannot vanish and no target is
 #' out of reach for want of precision however much the occasions overlap.
-#' Overlap raises the size a target needs; it does not put a floor under the
-#' precision. The size can still exceed \eqn{N}, which is the ordinary
+#' Overlap raises the size a target needs, but it does not put a floor under
+#' the precision. The size can still exceed \eqn{N}, which is the ordinary
 #' boundary and is reported as unattainable there as everywhere else.
 #'
 #' ## Sizing for a pooled estimate or for a change
@@ -109,7 +110,7 @@
 #' ordinary case and the only one without a finite population correction,
 #' overlap improves a change and raises the size a pooled target needs.
 #' Below it the occasions share fewer units than chance would give them and
-#' the directions reverse; [prec_pooled()] works the boundary. The level at
+#' the directions reverse. [prec_pooled()] works the boundary. The level at
 #' a single occasion is unaffected either way. A design serving a pooled
 #' target and a change target is sized by taking the larger of `n_pooled()`
 #' and [n_change()], since neither dominates.

@@ -160,7 +160,7 @@
 #' models \eqn{E(y \mid x)}{E(y | x)} or \eqn{\mathrm{Var}(y \mid x)}{Var(y | x)}, so for any `y`
 #' other than `x` these boundaries are a proxy, good in proportion to how
 #' closely `y` tracks `x`. A frame with household expenditure stratified for
-#' a poverty rate is the usual case, and it is a reasonable one; a frame
+#' a poverty rate is the usual case, and it is a reasonable one. A frame
 #' stratified on establishment size for a variable unrelated to size is not.
 #'
 #' Two consequences worth planning around. The reported `$cv` is the CV for

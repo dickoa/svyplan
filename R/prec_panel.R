@@ -113,11 +113,8 @@ prec_panel.svyplan_panel <- function(n_recruit, ...) {
   x <- n_recruit
   dots <- list(...)
   p <- x$params
-  # `design` is the one stored argument an override may not replace. The
-  # stored count is issued to one cohort under "fixed" and taken on at every
-  # occasion under "rotating", so reading it under the other design changes
-  # the unit rather than the assumption, and 1815 issued would silently
-  # become 1815 an occasion.
+  # The stored count means different units under each design, so overriding
+  # 'design' would reinterpret it rather than re-assume it.
   if ("design" %in% names(dots)) {
     stop(
       sprintf(

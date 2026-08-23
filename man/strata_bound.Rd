@@ -181,7 +181,7 @@ frame, and the study variable \code{y} is what will be collected. Nothing here
 models \eqn{E(y \mid x)}{E(y | x)} or \eqn{\mathrm{Var}(y \mid x)}{Var(y | x)}, so for any \code{y}
 other than \code{x} these boundaries are a proxy, good in proportion to how
 closely \code{y} tracks \code{x}. A frame with household expenditure stratified for
-a poverty rate is the usual case, and it is a reasonable one; a frame
+a poverty rate is the usual case, and it is a reasonable one. A frame
 stratified on establishment size for a variable unrelated to size is not.
 
 Two consequences worth planning around. The reported \verb{$cv} is the CV for

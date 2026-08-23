@@ -29,8 +29,8 @@
 #'   An optional `prop_method` column in `indicators` overrides this default
 #'   on a per-row basis.
 #' @param resp_rate Default expected response rate at the ultimate unit, in
-#'   (0, 1\]. Used for rows whose `resp_rate` column is absent or `NA`; a
-#'   non-missing row value overrides it.
+#'   (0, 1\]. Used for rows whose `resp_rate` column is absent or `NA`, and
+#'   a non-missing row value overrides it.
 #' @param plan A [svyplan()] profile providing default design parameters.
 #'
 #' @return A `svyplan_prec` object with a `$detail` data frame containing
@@ -75,7 +75,7 @@
 #'   \item{`df`}{Degrees of freedom of the variance estimator, typically
 #'     sampled PSUs minus strata, and available from [design_df()]. It
 #'     switches that row's interval quantile from normal to t, under every
-#'     proportion method and on mean rows alike; `NA` (the default) applies
+#'     proportion method and on mean rows alike. `NA` (the default) applies
 #'     no adjustment.}
 #'   \item{`resp_rate`}{Expected response rate at the ultimate unit
 #'     (default 1). [prec_multi_cluster()] spends its rate at stage 1 and

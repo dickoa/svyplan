@@ -18,8 +18,8 @@
 #'   those interviews at the horizon. `"close_intake"` stops recruitment soon
 #'   enough for every recruited cohort to finish by the horizon.
 #' @param refreshment Whether later cohorts are drawn from an
-#'   `"entrant_register"` or a `"whole_vintage"`. This records a frame role;
-#'   it does not establish disjointness or combine weights.
+#'   `"entrant_register"` or a `"whole_vintage"`. This records a frame role
+#'   and does not establish disjointness or combine weights.
 #' @param frame_vintage `NULL`, or a named character vector supplying frame
 #'   identifiers for any subset of the generated cohort names. Unnamed or
 #'   unknown entries are refused rather than matched by position.

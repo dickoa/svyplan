@@ -86,12 +86,8 @@
   psu_total <- vapply(stratum, function(h) sum(psu$N[psu_stratum == h]),
                       numeric(1))
   frame_total <- as.numeric(frame$N)
-  # The register total is derived by summation and the frame total is
-  # supplied, so they agree to the scale of the terms rather than exactly:
-  # macOS arm64 accumulates sum() without the 80-bit extended precision
-  # x86-64 Linux uses, and a frame whose N is not a whole count would refuse
-  # on one platform and pass on the other. The tolerance is purely relative,
-  # never floored at unit scale.
+  # Relative, never floored: a derived sum and a supplied total agree only to
+  # the scale of the terms, and that scale is platform-dependent.
   off <- abs(psu_total - frame_total) > 1e-8 * abs(frame_total)
   if (any(off)) {
     bad <- stratum[off]
@@ -196,17 +192,7 @@
   idx_of <- split(seq_len(nrow(psu)), factor(psu$stratum, levels = stratum))
   forced <- if ("certainty" %in% names(psu)) psu$certainty else NULL
 
-  # The solver reads the clustering out of the design effect this loop
-  # computes, so the stage columns that would select the fixed-take multistage
-  # model are withheld from it.
-  # Stage costs price the design the solver cannot see. The marginal cost of
-  # an ultimate unit is the remainder's, since a unit added there brings a
-  # share of a PSU visit with it; the certainty PSUs are visited whatever the
-  # allocation, so their visit cost is fixed and belongs in the reported
-  # total rather than in the trade-off being optimized.
-  # What the caller supplied, kept so the object records their inputs rather
-  # than the per-element cost derived below. A round trip or a predict() grid
-  # re-passes what it finds here.
+  # Kept as supplied, so the object records the caller's input.
   unit_cost_in <- unit_cost
   stage_cost <- c("cost_psu", "cost_ssu") %in% names(frame)
   if (all(stage_cost) && !is.null(unit_cost)) {
@@ -298,11 +284,8 @@
   for (it in seq_len(max_iter)) {
     key <- paste(which(state$certain), collapse = ",")
     if (key %in% seen) {
-      # seen[k] is the classification that produced orbit[[k]], so a repeat of
-      # seen[first] makes orbit[[first]] onward the recurrent states. Slicing
-      # from first + 1 would count down when the orbit has length one, seq()
-      # running backwards rather than returning nothing, and put a NULL in the
-      # list.
+      # Sliced from 'first', not first + 1: seq() counts down on a length-one
+      # orbit rather than returning nothing.
       first <- match(key, seen)
       orbit <- orbit[seq.int(first, length(orbit))]
       verdict <- if (length(orbit) == 1L) "converged" else "cycle"
@@ -315,10 +298,8 @@
   }
   if (identical(verdict, "limit_reached")) orbit <- list(state)
 
-  # Feasible: the allocation still meets every target once the design effect
-  # is recomputed from the classification that allocation implies. A cycle
-  # always holds one, the most certain member having been sized under the
-  # largest design effect in the orbit.
+  # A cycle always holds a feasible member, the most certain having been
+  # sized under the largest design effect in the orbit.
   pick <- .psu_pick_feasible(
     orbit, base_frame, base_measures, targets, user_deff, row_h, idx_of,
     psu, N_h, icc_row, take, unit_cost, alpha, deff, resp_rate,
@@ -326,16 +307,7 @@
   )
   chosen <- orbit[[pick$index]]
 
-  # With the classification held the remaining map is continuous, so it
-  # settles. Without this the plan can miss its target even where the
-  # classification converged.
-  #
-  # Settling moves the allocation, which moves the threshold, so the settled
-  # allocation can put a PSU above a threshold the held classification left
-  # out. That PSU has inclusion probability at least one and cannot be
-  # sampled less often, so the plan would not be executable. Absorbing it and
-  # settling again terminates: the held set only ever grows and the register
-  # is finite.
+  # Absorbing and settling again terminates: the held set only grows.
   settled <- chosen
   settle_used <- 0L
   absorbed <- 0L
@@ -492,7 +464,7 @@
 #' The class does not change, so `predict()`, `summary()` and `design_df()`
 #' keep working. samplyr refuses these fits as stage sizes, because no
 #' per-stratum total carries a design of whole certainty takes plus a PPS
-#' remainder; it fields the plan from `$psu` instead, which is why that table
+#' remainder. It fields the plan from `$psu` instead, which is why that table
 #' carries the exact per-PSU takes. `$detail` gains the per-stratum counts and
 #' the threshold, `$psu` is the per-PSU classification, and the convergence
 #' verdict joins `$optimization`, which already reports how the solve went.
@@ -509,10 +481,8 @@
   fit$detail$n_psu_rest <- n_all - n_certain
   fit$detail$threshold <- x$threshold
 
-  # The fielded design, two-stage rather than element-level: whole takes in
-  # the certainty PSUs, whole PSUs in the remainder. The element-level
-  # integerizer the solver ran cannot see the take, so its total is not a
-  # design that can be drawn.
+  # Two-stage, not element-level: the solver's integerizer cannot see the
+  # take, so its total is not a drawable design.
   op <- x$operational
   fit$detail$n_int <- op$n_int
   fit$detail$n_certain_int <- op$n_certain_int
@@ -575,9 +545,7 @@
     )
   }
   fit$psu$.distance <- fit$psu$N / fit$psu$.threshold - 1
-  # A PSU the settled allocation puts above the threshold but the held
-  # classification did not is unexecutable, so the direction is asserted
-  # rather than assumed. The other direction is a design a caller could have
+  # One direction is unexecutable, the other a design a caller could have
   # written by hand with 'certainty'.
   if (any(x$implied & !x$certainty)) {
     stop(
@@ -595,10 +563,8 @@
     feasible_member = x$feasible_member,
     fixed_point = identical(as.logical(x$implied), as.logical(x$certainty))
   )
-  # The solver was handed a frame and measures with the stage columns
-  # withheld, so the object records what the caller supplied instead. Round
-  # trips and predict() read these, and a stripped copy would lose the take
-  # and the ICC the certainty model needs.
+  # The caller's frame and measures, not the solver's stripped copies, which
+  # would lose the take and the ICC.
   fit$params$frame <- x$frame
   fit$params$measures <- x$measures
   fit$params$unit_cost <- x$unit_cost
@@ -661,14 +627,7 @@
   if (!is.numeric(icc_row) || anyNA(icc_row) || any(icc_row < 0 | icc_row > 1)) {
     stop("'measures$icc_psu' must contain values in [0, 1]", call. = FALSE)
   }
-  # Stage costs price the design the solver cannot see. The marginal cost of
-  # an ultimate unit is the remainder's, since a unit added there brings a
-  # share of a PSU visit with it; the certainty PSUs are visited whatever the
-  # allocation, so their visit cost is fixed and belongs in the reported
-  # total rather than in the trade-off being optimized.
-  # What the caller supplied, kept so the object records their inputs rather
-  # than the per-element cost derived below. A round trip or a predict() grid
-  # re-passes what it finds here.
+  # Kept as supplied, so the object records the caller's input.
   unit_cost_in <- unit_cost
   stage_cost <- c("cost_psu", "cost_ssu") %in% names(frame)
   if (all(stage_cost) && !is.null(unit_cost)) {

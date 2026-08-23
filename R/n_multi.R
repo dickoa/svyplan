@@ -52,8 +52,8 @@
 #'   on a per-row basis. `"wilson"`, `"logodds"` and `"beta"` size from an
 #'   interval half-width, so those rows need `moe` rather than `cv`.
 #' @param resp_rate Default expected response rate at the ultimate unit, in
-#'   (0, 1\]. Used for rows whose `resp_rate` column is absent or `NA`; a
-#'   non-missing row value overrides it.
+#'   (0, 1\]. Used for rows whose `resp_rate` column is absent or `NA`, and
+#'   a non-missing row value overrides it.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_n` object. The output class is the same with or without
@@ -124,8 +124,8 @@
 #'   \item{`var`}{Population variance of a continuous indicator. Use
 #'     this for means (e.g. income, expenditure, weight). One of `p`
 #'     or `var` per row.}
-#'   \item{`mu`}{Population mean (finite and non-zero; it may be
-#'     negative). It is required when `var` is used with `cv` because
+#'   \item{`mu`}{Population mean, finite and non-zero. It may be
+#'     negative. It is required when `var` is used with `cv` because
 #'     CV = SE / abs(mean).}
 #'   \item{`moe`}{Margin of error, the half-width of the confidence
 #'     interval you want. For proportions, this is on the probability
@@ -156,7 +156,7 @@
 #'   \item{`df`}{Degrees of freedom of the planned variance estimator,
 #'     typically sampled PSUs minus strata, and available from
 #'     [design_df()]. It switches that row's interval quantile from normal
-#'     to t, under every method; `NA` (the default) applies no adjustment.
+#'     to t, under every method. `NA` (the default) applies no adjustment.
 #'     A df is a property of the design rather than of an indicator, so
 #'     every row of a single-domain table shares one value. The column
 #'     earns its place when the rows are *domains*, each covering its own
@@ -164,7 +164,7 @@
 #'     domain to match in.}
 #'   \item{`min_cases`}{Minimum expected number of positive cases the row
 #'     must yield, a floor on that row's own size, as in
-#'     [n_prop()]`(min_cases = )`. Proportion rows only; `NA` (the
+#'     [n_prop()]`(min_cases = )`. Proportion rows only, and `NA` (the
 #'     default) sizes the row on precision alone. The row that ends up
 #'     largest is still the binding one, whichever constraint raised it.
 #'     Single-stage `n_multi()` only: a multistage design sizes stages
@@ -206,7 +206,7 @@
 #' The dispersion of a continuous indicator may be given as `var` or as
 #' `sd`, whichever the source reports, exactly as in [n_mean()]. They are
 #' different quantities rather than two names for one, so supplying both
-#' in the same table is an error rather than a preference; `sd` is squared
+#' in the same table is an error rather than a preference. `sd` is squared
 #' on the way in and everything downstream reads `var`.
 #'
 #' `n_multi()` computes sample size per indicator by delegating proportion
@@ -1493,11 +1493,8 @@ n_multi_cluster.default <- function(
       binding_idx <- which.max(n1_vals)
     } else if (!is.null(n_psu)) {
       # A fixed PSU count leaves the take as the only free stage, so it is
-      # solved rather than cost-optimized: inverting n1_required() for the
-      # gross take gives m = A (1 - icc) / (r (n_psu - A icc)) with
-      # A = unit_relvar * var_ratio / (cv^2 * resp_rate_psu). The design is
-      # feasible only above the between-PSU floor A * icc, which no take can
-      # get under however large it grows.
+      # solved rather than cost-optimized. Feasible only above the
+      # between-PSU floor A * icc.
       A <- unit_relvar * var_ratio / (cv_t^2 * rr)
       floor_psu <- A * icc
       if (any(n_psu <= floor_psu + 1e-12)) {
@@ -1522,11 +1519,8 @@ n_multi_cluster.default <- function(
         n1 * (C1 + C2 * n_per_psu)
       }
 
-      # The cost-optimal take is sqrt(C1 (1 - icc) / (C2 icc r)) in the
-      # ultimate response rate r, so it grows as r falls. A bracket drawn at
-      # the r = 1 scale sits below the optimum and optimize() returns its own
-      # upper bound. Doubled so the optimum stays interior with several
-      # indicators, whose optima need not coincide.
+      # The take grows as r falls, so the bracket is drawn at r and doubled to
+      # keep the optimum interior across indicators.
       upper <- max(10, 2 * max(sqrt(C1 / C2 * (1 - icc) / (icc * ru))))
       opt <- optimize(cost_fn, interval = c(1, upper),
                       tol = .Machine$double.eps^0.5)
@@ -1678,22 +1672,15 @@ n_multi_cluster.default <- function(
     )
   }
 
-  # The same requirement written in the gross takes, as
-  # alpha + beta / n_per_psu + gamma / (n_per_psu * n_per_ssu), which is
-  # n1_required() rearranged so the whole-unit search can invert it for the
-  # stage-3 take. Both modes divide by the target, since budget mode ranks
-  # designs by the largest cv-to-target ratio.
+  # n1_required() in the gross takes, so the whole-unit search can invert it.
   search_coef <- list(
     alpha = unit_relvar * var_ratio_psu * icc_psu / (rr * cv_t^2),
     beta = unit_relvar * var_ratio_ssu * icc_ssu / (rr * rs * cv_t^2),
     gamma = unit_relvar * var_ratio_ssu * (1 - icc_ssu) / (rr * rs * ru * cv_t^2)
   )
 
-  # n1_required() is alpha + beta / ps + gamma / (ps ss) in the gross takes,
-  # and search_coef already carries every stage's response rate. Inverting it
-  # for whichever stage is free keeps the fixed-stage branches on that one
-  # representation rather than re-deriving the algebra per branch, which is
-  # how they came to omit resp_rate_ssu and resp_rate.
+  # One representation for every fixed-stage branch, rather than re-deriving
+  # the algebra per branch and dropping a stage rate.
   ps_required <- function(ss, n1) {
     room <- n1 - search_coef$alpha
     per <- (search_coef$beta + search_coef$gamma / ss) / room
@@ -2286,10 +2273,7 @@ n_multi_cluster.default <- function(
   total_cost <- sum(domains$.cost)
   worst_cv_idx <- which.max(domains$.cv)
 
-  # Domains are sized independently, so there is no single stage vector to
-  # report: a componentwise maximum across domains is not a design anyone
-  # fields, and its product does not equal the total above. The per-domain
-  # stage sizes in $domains are the fieldable object, and $total_n their sum.
+  # No single stage vector: $domains holds the fieldable per-domain sizes.
   n_vec <- rep(NA_real_, stages)
   names(n_vec) <- stage_names
 
@@ -2593,10 +2577,7 @@ n_multi_cluster.default <- function(
 ) {
   nr <- length(cv_t)
 
-  # Same convention as n1_required() and cv_achieved_fn() in the CV-mode
-  # solver: the stage take is gross and each row reads the take it realizes.
-  # Ranking budget designs on the gross take would both pick the wrong design
-  # and report a CV the precision functions do not reproduce.
+  # Gross take in, realized take read, as in the CV-mode solver.
   cv_fn <- function(n1, take) {
     vapply(
       seq_len(nr),

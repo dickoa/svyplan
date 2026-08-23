@@ -31,8 +31,8 @@ those interviews at the horizon. \code{"close_intake"} stops recruitment soon
 enough for every recruited cohort to finish by the horizon.}
 
 \item{refreshment}{Whether later cohorts are drawn from an
-\code{"entrant_register"} or a \code{"whole_vintage"}. This records a frame role;
-it does not establish disjointness or combine weights.}
+\code{"entrant_register"} or a \code{"whole_vintage"}. This records a frame role
+and does not establish disjointness or combine weights.}
 
 \item{frame_vintage}{\code{NULL}, or a named character vector supplying frame
 identifiers for any subset of the generated cohort names. Unnamed or

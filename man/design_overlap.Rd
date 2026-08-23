@@ -123,7 +123,7 @@ is rejected for that reason.
 \subsection{Two notations, and the one string that means both}{
 
 Rotation designs are named two ways in print. \code{"4-8-4"} counts occasions
-per spell; \code{"1-1-0-0-1-1"} carries one flag per occasion. Both are
+per spell, and \code{"1-1-0-0-1-1"} carries one flag per occasion. Both are
 accepted, told apart by the \code{0}, which no spell can be. The exception is a
 string of all 1s, which is a valid sentence in both notations and a
 different design in each: \code{"1-1-1"} is three occasions in sample as a
@@ -158,7 +158,8 @@ produced it.
 \subsection{What it does not give you}{
 
 The correlation between occasions. \code{overlap} is a property of the
-schedule and is fixed once the design is declared; \code{overlap_cor} is a
+schedule and is fixed once the design is declared, whereas \code{overlap_cor}
+is a
 property of the variable being measured and has to come from a previous
 round of the same survey. Both enter the variance of a change, and only
 their product buys precision, so a schedule alone does not say what a
@@ -212,9 +213,9 @@ one-flag-per-occasion notation, and the 1-1-0-0-1-1 design whose lag
 profile the examples reproduce.
 }
 \seealso{
-\code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for the rotation chart of a schedule;
+\code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for the rotation chart of a schedule,
 \code{\link[=n_change]{n_change()}} and \code{\link[=prec_change]{prec_change()}}, which take the result as their
-\code{overlap}; \code{\link[=design_effect]{design_effect()}} and \code{\link[=design_df]{design_df()}} for the other quantities
+\code{overlap}, and \code{\link[=design_effect]{design_effect()}} and \code{\link[=design_df]{design_df()}} for the other quantities
 a planned design determines.
 
 Other repeated survey planning:

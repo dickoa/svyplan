@@ -20,7 +20,7 @@
 #'   asks for a 95 percent interval whose half-width is 12 percent of the
 #'   proportion. This is how MICS and DHS state a precision requirement.
 #'   It is `moe / p`, and therefore fixes the same interval `moe` does
-#'   while scaling with the estimate the way `cv` does; see the precision
+#'   while scaling with the estimate the way `cv` does. See the precision
 #'   quantities section of [prec_prop()]. Specify exactly one of `moe`,
 #'   `cv`, or `rmoe`.
 #' @param alpha Significance level, default 0.05.
@@ -59,7 +59,7 @@
 #'     carries `deff` and the `1 / resp_rate` inflation, so it counts the
 #'     units to release, not the completed interviews. `$n` and
 #'     `as.double()` keep the unrounded value, which is what makes the
-#'     round trip through [prec_prop()] exact; `print()` and
+#'     round trip through [prec_prop()] exact, whereas `print()` and
 #'     `as.integer()` round it up to the whole units you would field.
 #'     Take the field figure from `as.integer()` rather than from `$n`.}
 #'   \item{`se`, `moe`, `cv`, `rmoe`}{Precision the design achieves at that `n`,
@@ -67,7 +67,7 @@
 #'     the sampling standard error and `cv` is `se / p`, so both are the
 #'     same under all four methods. `moe` is half the length of the
 #'     interval the chosen `method` builds, which equals
-#'     `qnorm(1 - alpha / 2) * se` under `"wald"` alone; for the three
+#'     `qnorm(1 - alpha / 2) * se` under `"wald"` alone. For the three
 #'     asymmetric methods it is not an offset from either limit, so read
 #'     the limits with [confint()]. `rmoe` is `moe / p`, so a target
 #'     stated as a relative margin of error reads back in the units it
@@ -108,16 +108,16 @@
 #' the interval built around it, so they agree closely whenever the margin
 #' of error is small and diverge only where the normal approximation itself
 #' is doubtful. In practice the choice matters for a rare or near-universal
-#' outcome and is immaterial otherwise; see the section below.
+#' outcome and is immaterial otherwise. See the section below.
 #'
 #' The design effect and the finite population correction enter every method
 #' through the effective sample size
 #' \eqn{n_\mathrm{eff}=n_\mathrm{net}/(\mathrm{deff}\cdot\mathrm{fpc})}{n_eff=n_net/(deff * fpc)}, the
 #' size at which an infinite-population simple random sample would carry the
-#' same variance. For Wald this reproduces the usual closed form exactly; for
-#' the other three it is the approximation that keeps `deff` and `N` acting
-#' on the interval as they act on the variance. A census therefore yields a
-#' zero margin of error under all four.
+#' same variance. For Wald this reproduces the usual closed form exactly, and
+#' for the other three it is the approximation that keeps `deff` and `N`
+#' acting on the interval as they act on the variance. A census therefore
+#' yields a zero margin of error under all four.
 #'
 #' The Wilson, log-odds, and beta intervals are not symmetric about `p`, so
 #' the reported `moe` is half the interval's length rather than an offset

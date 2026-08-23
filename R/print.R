@@ -15,7 +15,7 @@
 #'
 #' @return `print()` returns `x` invisibly. `format()` returns a character
 #'   vector, `as.integer()` and `as.double()` return numeric vectors, and
-#'   `as.data.frame()` returns a data frame; the shapes are described under
+#'   `as.data.frame()` returns a data frame. The shapes are described under
 #'   Details.
 #'
 #' @details
@@ -1139,10 +1139,8 @@ format.svyplan_power <- function(x, ...) {
   method = "wald",
   df = NULL
 ) {
-  # Every method reads one variance through the effective size
-  # n_eff = n_net / (deff * fpc), exactly as .prec_engine_prop() does, so a
-  # confidence interval and the margin of error reported for the same design
-  # always agree.
+  # One variance through n_eff, as .prec_engine_prop() does, so the interval
+  # and the reported margin of error agree.
   n_net <- n * resp_rate
   n_eff <- .effective_from_n(n_net, N, deff)
   z <- .q_alpha(alpha, df)
@@ -1906,10 +1904,8 @@ print.svyplan_strata <- function(x, ...) {
     kozak = "Kozak-inspired local search",
     x$method
   )
-  # Convergence belongs to the method that searched, so it reads as part of
-  # the method's name rather than as a line of its own. A non-iterative
-  # method records NA, which must stay silent rather than read as a failure
-  # to converge.
+  # Part of the method's name, and NA stays silent rather than reading as a
+  # failure to converge.
   converged <- if (isTRUE(x$converged)) {
     ", converged"
   } else if (isFALSE(x$converged)) {
@@ -2186,10 +2182,8 @@ print.svyplan_strata <- function(x, ...) {
     }
   ))
   if (!is.null(certainty)) {
-    # The certainty split is the design decision, not something derived from
-    # the size above it, so it belongs on the printed answer. Counts are PSUs
-    # available in each part; how many of the remainder get drawn is a
-    # selection decision this plan does not make.
+    # Counts are PSUs available in each part. How many of the remainder are
+    # drawn is a selection decision this plan does not make.
     n_certain <- sum(x$psu$certainty)
     cat(sprintf(
       "PSUs: %d certainty, %d to draw from %d in the remainder\n",
@@ -4856,13 +4850,8 @@ as.list.svyplan_overlap <- function(x, ...) {
 #' @rdname print.svyplan_overlap
 #' @export
 `[.svyplan_overlap` <- function(x, i) {
-  # A lag is picked out to be passed as `overlap`, so it has to come back
-  # bare. The default would carry the lag along as a name, and a name on a
-  # numeric survives arithmetic: it would reappear on the `$effect` or
-  # `$moe` of whatever the number was handed to. The counts and the schedule
-  # go too, and for a stronger reason: a subset is no longer the overlap
-  # profile they describe, so an `x[]` still carrying them would report a
-  # schedule against values that no longer come from it.
+  # Names survive arithmetic, and a subset is no longer the profile the
+  # counts and schedule describe, so both are dropped.
   v <- unclass(x)
   attributes(v) <- list(names = names(x))
   if (missing(i)) {
@@ -4874,11 +4863,8 @@ as.list.svyplan_overlap <- function(x, ...) {
 #' @rdname print.svyplan_overlap
 #' @export
 Ops.svyplan_overlap <- function(e1, e2) {
-  # Arithmetic returns bare numerics, as it does for the other classed
-  # numerics in the package. Keeping the class would leave a vector whose
-  # values had moved while `shared`, `n_occasion` and `schedule` had not, so
-  # a doubled overlap would still claim to have come from the schedule that
-  # produced the original, and could sit above 1.
+  # Bare numerics: keeping the class would leave moved values still claiming
+  # the schedule that produced the originals.
   e1 <- if (inherits(e1, "svyplan_overlap")) as.double(e1) else e1
   if (missing(e2)) {
     return(do.call(.Generic, list(e1)))

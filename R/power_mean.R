@@ -35,7 +35,7 @@
 #'   design with that many units deliberately held in common, which with a
 #'   finite `N` requires both occasions to sample one population. The
 #'   default 0 is the ordinary two-group comparison, where the groups are
-#'   independent and may be different populations of different sizes; it is
+#'   independent and may be different populations of different sizes. It is
 #'   not the same model as a deliberately disjoint pair, which is why the
 #'   two need not agree in the limit when `N` is small.
 #' @param overlap_cor Correlation between occasions in \[0, 1\].
@@ -87,13 +87,13 @@
 #' convention for survey-scale samples, where the two agree closely, and
 #' it is what makes `deff` and a finite `N` insertable directly into the
 #' variance. At small `n` the sizes are correspondingly smaller than
-#' [stats::power.t.test()], which uses a noncentral t; use that function
+#' [stats::power.t.test()], which uses a noncentral t. Use that function
 #' instead when the sample is small enough for the difference to matter.
 #'
 #' The `df` argument that [n_prop()], [n_mean()] and [n_alloc()] accept has
 #' no counterpart here, and its absence is a decision rather than an
 #' omission. There the quantile is the half-width of a confidence interval
-#' and a t quantile substitutes for a normal one directly; here it is a
+#' and a t quantile substitutes for a normal one directly. Here it is a
 #' normal deviate for an alternative, and a t-based power calculation is a
 #' different procedure. Passing `df` is an error that says so.
 #'

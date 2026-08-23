@@ -70,7 +70,7 @@ response, not attrition across a panel.}
 into a later one, in [0, 1]. One number, meaning the same overlap at
 every lag, or one per lag, so \code{overlap[1]} is the consecutive-occasion
 figure. A \code{\link[=design_overlap]{design_overlap()}} result is accepted directly at
-\code{resp_rate = 1}; see Details on why not below it. \code{0} (default) makes
+\code{resp_rate = 1}. See Details on why not below it. \code{0} (default) makes
 the occasions independent, and the pooled variance is then a single
 occasion's divided by \code{occasions}.}
 
@@ -97,7 +97,7 @@ will have, typically sampled PSUs minus strata, and available from
 profile was resolved from a \code{\link[=design_overlap]{design_overlap()}} object (\code{"issued"}) or
 supplied as respondent overlap (\code{"respondent"}), so that a round trip
 or a grid meets the same refusal the first call would have. Set from
-the result being re-read; there is no reason to pass it by hand.}
+the result being re-read, and there is no reason to pass it by hand.}
 }
 \value{
 A \code{svyplan_prec} object with \code{type = "pooled"}:
@@ -202,7 +202,7 @@ variance, and a design refused here is one whose stated overlap,
 correlation and sampling fraction cannot hold together. High sampling
 fractions are where it bites, from about \code{n / N = 0.6} upwards over a
 long horizon, and much of that region is also a rotation that would
-exhaust its own population; the message says so when it does.
+exhaust its own population, and the message says so when it does.
 }
 
 \subsection{What the overlap covariance assumes}{

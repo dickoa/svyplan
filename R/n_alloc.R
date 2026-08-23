@@ -158,7 +158,7 @@
 #' @param df Degrees of freedom of the variance estimator the allocation
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the quantile used to translate a `moe`
-#'   target in and to report `moe` out; a `cv` target carries no quantile
+#'   target in and to report `moe` out. A `cv` target carries no quantile
 #'   and is unaffected. `NULL` (default) applies no adjustment.
 #' @param min_n_stratum Optional minimum sample size per stratum.
 #' @param alloc_q Bankier power parameter, used only when `alloc = "power"`.
@@ -261,7 +261,7 @@
 #' scale). MOE targets are absolute margins of error for domain means. An
 #' `rmoe` target is a margin of error for the domain mean stated as a
 #' fraction of it, which is `qnorm(1 - alpha / 2)` times the CV of the same
-#' estimate; the solver takes it through the CV branch and reports
+#' estimate. The solver takes it through the CV branch and reports
 #' `.achieved` and `.sensitivity` back in `rmoe` units. The
 #' variance model uses Wald/linearized variances, the package's gross-sample
 #' response-rate convention, design effects, and finite population correction.
@@ -486,8 +486,8 @@
 #' and, when stage costs are given, a per-element cost of
 #' `cost_psu / n_per_psu + cost_ssu`. The clustering penalty is paid on the
 #' take that responds, `n_per_psu * resp_rate`, since a unit that does not
-#' respond contributes no within-cluster observation; the cost is paid on the
-#' gross take, since it is issued either way. The two coincide at
+#' respond contributes no within-cluster observation. The cost is paid on
+#' the gross take, since it is issued either way. The two coincide at
 #' `resp_rate = 1`. The whole-cluster operational search reads the same
 #' responding take, so a design it accepts is one the continuous reduction
 #' also accepts. All solve modes, allocation
@@ -910,11 +910,8 @@ n_alloc.default <- function(
       )
     }
     if (!is.null(psu)) {
-      # A register splits the stratum into a certainty part with no
-      # first-stage sampling and a remainder drawn with probability
-      # proportional to size. Neither piece is the equal-size, equal-take
-      # design the stage correction is derived for, so it is refused rather
-      # than applied to a design it does not describe.
+      # A register is not the equal-size, equal-take design the stage
+      # correction is derived for.
       if (!identical(fpc, "unit")) {
         stop(
           "'fpc' is not available with a PSU register: the certainty split and its size-proportional remainder need their own variance decomposition, which is not derived here. Drop 'fpc', or drop 'psu' and give 'N_psu' instead",
@@ -1300,11 +1297,7 @@ n_alloc.svyplan_prec <- function(
     }
     targets <- p$targets
     if (is.null(p$objective)) {
-      # Minimum-cost mode inverts by pinning the achieved precision as the
-      # requirement.
-      # Each row is re-pinned in the units it was stated in, so a target
-      # given as 'rmoe' comes back as 'rmoe' rather than as its cv or moe
-      # equivalent.
+      # Each row is re-pinned in the units it was stated in.
       for (column in c("cv", "moe", "rmoe")) {
         if (!column %in% names(targets)) {
           targets[[column]] <- NA_real_
@@ -1324,10 +1317,8 @@ n_alloc.svyplan_prec <- function(
       }
       budget_arg <- NULL
     } else {
-      # Budget-objective mode inverts through cost, not precision: pinning
-      # achieved precision as hard targets would over-constrain a design that
-      # already spends its whole budget. The targets stay as specified and the
-      # assessed allocation's cost becomes the budget.
+      # Inverts through cost: pinning precision would over-constrain a design
+      # already spending its budget.
       budget_arg <- p$achieved$cost
       if (nrow(targets) == 0L) targets <- NULL
     }
@@ -1719,10 +1710,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     n_explicit <- length(dots) > 0L &&
       (is.null(dot_names) || any(!nzchar(dot_names)) || "n" %in% dot_names)
     if (!is.null(p$psu)) {
-      # The fitted plan's classification travels rather than being derived
-      # again. It contains every PSU above its own threshold, so forcing it
-      # and re-deriving the rest reproduces the same split, but it may also
-      # hold PSUs the loop absorbed, which a fresh derivation would drop.
+      # The fit's classification travels: a fresh derivation would drop the
+      # PSUs the absorb loop added.
       held <- p$psu
       held$certainty <- obj$psu$certainty
       args <- list(
@@ -2114,11 +2103,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
         call. = FALSE
       )
     }
-    # The take is gross, and only the units that respond carry information,
-    # so the ultimate-unit rate enters the cost-optimal size:
-    # b* = sqrt(C1 (1 - icc) / (C2 icc r)). 'resp_rate_psu' does not appear,
-    # being a pure 1/n_psu factor that scales cost without moving this
-    # trade-off.
+    # b* = sqrt(C1 (1 - icc) / (C2 icc r)). resp_rate_psu scales cost without
+    # moving the trade-off, so it is absent.
     n_per_psu_h[need_opt] <- sqrt(
       frame$cost_psu[need_opt] /
         frame$cost_ssu[need_opt] *
@@ -2195,10 +2181,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       call. = FALSE
     )
   }
-  # Written on the two variance components rather than one bracket, because
-  # each stage's correction multiplies its own component. The within-PSU
-  # fraction is the realized take over the mean PSU size. At within_frac = 0
-  # this is exactly var_ratio * (1 + icc * (responding_take - 1)).
+  # Two components, since each stage's correction multiplies its own.
   within_frac <- if (identical(fpc, "stage")) {
     pmin(1, responding_take / (prep$N_h / N_psu_h))
   } else {
@@ -2207,10 +2190,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   inflation <- var_ratio *
     (icc * responding_take + (1 - within_frac) * (1 - icc))
   prep$S_h <- prep$S_h * sqrt(inflation)
-  # The first-stage correction is a constant in n_h, so it reaches the solver
-  # as an effective population in the existing 1 - n_net/N term rather than as
-  # a separate stage. Infinite where there is no between-PSU variance to
-  # correct, which is also how "none" is expressed.
+  # A constant in n_h, so it travels as an effective population rather than
+  # as a separate stage.
   prep$N_fpc_h <- switch(
     fpc,
     unit = prep$N_h,
@@ -2578,17 +2559,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 ) {
   H <- length(n_h)
   ps <- prep$n_per_psu_h
-  # The continuous reduction inflates the stratum SD on the take that
-  # responds, so every clustering bracket formed here has to read the same
-  # quantity. Scoring a candidate take on its gross size would rank designs
-  # by a penalty the design never pays and, in cv mode, reject whole-cluster
-  # designs that do reach the target.
-  #
-  # This is the ultimate-unit rate, not the combined one 'resp_rate' carries:
-  # PSU loss removes whole clusters rather than shrinking the ones that are
-  # worked, so it must not enter the bracket. Feeding it the product makes the
-  # integer take move with the PSU response, which the continuous optimum
-  # correctly does not.
+  # Ultimate-unit rate, not the combined one: PSU loss stays out of the bracket.
   resp_h <- rep_len(prep$unit_resp_rate_h %||% resp_rate, H)
   icc <- prep$icc_psu_h
   var_ratio <- prep$var_ratio_psu_h
@@ -2651,15 +2622,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 
   e_target <- NULL
   if (mode == "n") {
-    # Round the requested element total first, then factor each stratum's
-    # integer element count into whole PSUs and a common whole take. Every
-    # positive integer has divisor 1, so this cannot violate bounds merely
-    # because a preferred cluster size does not divide the allocated elements.
-    #
-    # A fixed n_per_psu is exempt: it keeps the take chosen above and lets its
-    # element count move to the nearest whole multiple instead. Factoring would
-    # otherwise hand a fixed take of 10 the nearest divisor of the rounded
-    # total, which is 1 whenever that total is prime.
+    # A fixed n_per_psu keeps its take and moves its element count instead.
     b_free <- b_h
     e_target <- .round_oric_bounded(n_h, lo_i, hi_i)
     b_h <- vapply(

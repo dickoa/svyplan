@@ -133,7 +133,7 @@ first. Be careful not to reverse the order.
 \item \strong{Numeric vector}: \code{varcomp(y, stage_id = list(cluster_ids))}.
 \item \strong{survey.design}: \code{varcomp(design, ~y)}. Cluster structure,
 first-stage strata, and within-cluster weights are extracted from the
-design object; \code{strata} and \code{weights} override what is extracted.
+design object, and \code{strata} and \code{weights} override what is extracted.
 Requires the survey package. For a PPS first stage, also pass the PSU
 selection probabilities via \code{prob}. Which designs can supply their own
 weights is set out under Details.
@@ -276,7 +276,7 @@ For three stages, \code{varb} uses the PPS between-PSU expression above.
 \code{varw_psu} applies the same PPS scaling to the variance of SSU totals
 within each PSU, and \code{varw_ssu} aggregates the within-SSU ultimate-unit
 variances. The returned PSU homogeneity compares the between-PSU component
-with the element-level variance aggregated within PSUs; the SSU
+with the element-level variance aggregated within PSUs. The SSU
 homogeneity is \code{varw_psu / (varw_psu + varw_ssu)}. This distinction is why
 the first \code{icc} is not generally \code{varb / sum(c(varb, varw))} for a
 three-stage result.
@@ -285,7 +285,8 @@ The two \code{var_ratio} values are estimated from their own stage decomposition
 rather than by imposing the identity \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)}
 that the planning formula uses (see \code{\link[=design_effect]{design_effect()}}). On small clusters
 the two can differ by several percent. Passing a \code{svyplan_varcomp} to a
-planning function uses the estimated pair as given; omitting \code{var_ratio_ssu} there
+planning function uses the estimated pair as given, and omitting
+\code{var_ratio_ssu} there
 applies the identity instead.
 
 When weights are supplied, \eqn{N_i}, totals, means, and variances in these

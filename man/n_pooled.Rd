@@ -81,7 +81,7 @@ a single round's response, not attrition across a panel.}
 \item{overlap}{Fraction of one occasion's \strong{responding} sample carried
 into a later one, in [0, 1]. One number, meaning the same overlap at
 every lag, or one per lag. A \code{\link[=design_overlap]{design_overlap()}} result is accepted
-directly at \code{resp_rate = 1}; see \code{\link[=prec_pooled]{prec_pooled()}} on why not below it.
+directly at \code{resp_rate = 1}. See \code{\link[=prec_pooled]{prec_pooled()}} on why not below it.
 \code{0} (default) makes the occasions independent.}
 
 \item{overlap_cor}{Correlation between two occasions among the units they
@@ -101,7 +101,7 @@ quantile from normal to t. \code{NULL} (default) applies no adjustment.}
 profile was resolved from a \code{\link[=design_overlap]{design_overlap()}} object (\code{"issued"}) or
 supplied as respondent overlap (\code{"respondent"}), so that a round trip
 or a grid meets the same refusal the first call would have. Set from
-the result being re-read; there is no reason to pass it by hand.}
+the result being re-read, and there is no reason to pass it by hand.}
 }
 \value{
 A \code{svyplan_n} object with \code{type = "pooled"}:
@@ -110,12 +110,13 @@ A \code{svyplan_n} object with \code{type = "pooled"}:
 carries \code{deff} and the \code{1 / resp_rate} inflation, so it counts the
 units to release on each occasion, not the completed interviews. \verb{$n}
 and \code{as.double()} keep the unrounded value, which is what makes the
-round trip through \code{\link[=prec_pooled]{prec_pooled()}} exact; \code{print()} rounds up. This
+round trip through \code{\link[=prec_pooled]{prec_pooled()}} exact, whereas \code{print()} rounds
+up. This
 is not a count of distinct frame units: \code{overlap} is measured among
 respondents, so it says how often a respondent is measured again and
 leaves the issued sample's own overlap unstated. At full response the
 two coincide and the series consumes fewer than \code{occasions * n}
-distinct units; below it, how many is a question this function has
+distinct units. Below it, how many is a question this function has
 not been told enough to answer.}
 \item{\code{se}, \code{moe}, \code{cv}, \code{rmoe}}{Precision the design achieves at that
 size, the same values \code{\link[=prec_pooled]{prec_pooled()}} reports for the same inputs.
@@ -150,8 +151,8 @@ so the target inverts in closed form,
 \eqn{B \le 0} always under the nonnegative correlation contract, since its
 bracket is at least \eqn{T}, so the divisor cannot vanish and no target is
 out of reach for want of precision however much the occasions overlap.
-Overlap raises the size a target needs; it does not put a floor under the
-precision. The size can still exceed \eqn{N}, which is the ordinary
+Overlap raises the size a target needs, but it does not put a floor under
+the precision. The size can still exceed \eqn{N}, which is the ordinary
 boundary and is reported as unattainable there as everywhere else.
 \subsection{Sizing for a pooled estimate or for a change}{
 
@@ -161,7 +162,7 @@ induces. Above a sampling fraction of \eqn{o_m > n/N}{o_m > n/N}, the
 ordinary case and the only one without a finite population correction,
 overlap improves a change and raises the size a pooled target needs.
 Below it the occasions share fewer units than chance would give them and
-the directions reverse; \code{\link[=prec_pooled]{prec_pooled()}} works the boundary. The level at
+the directions reverse. \code{\link[=prec_pooled]{prec_pooled()}} works the boundary. The level at
 a single occasion is unaffected either way. A design serving a pooled
 target and a change target is sized by taking the larger of \code{n_pooled()}
 and \code{\link[=n_change]{n_change()}}, since neither dominates.

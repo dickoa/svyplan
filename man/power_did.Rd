@@ -39,7 +39,7 @@ power_did(treat, ...)
 
 \item{outcome}{Outcome scale: \code{"mean"} (default) or \code{"prop"}.}
 
-\item{var}{Outcome variance. Applies to \code{outcome = "mean"} only; under
+\item{var}{Outcome variance. Applies to \code{outcome = "mean"} only. Under
 \code{outcome = "prop"} the cell variances follow from \code{treat} and \code{control},
 so supplying it is an error rather than a silent no-op.
 Length 1: common variance for all four cells.
@@ -159,7 +159,7 @@ is optimistic here by more than the unit count suggests.
 The \code{df} argument that \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}} and \code{\link[=n_alloc]{n_alloc()}} accept has
 no counterpart here, and its absence is a decision rather than an
 omission. There the quantile is the half-width of a confidence interval
-and a t quantile substitutes for a normal one directly; here it is a
+and a t quantile substitutes for a normal one directly. Here it is a
 normal deviate for an alternative, and a t-based power calculation is a
 different procedure. Passing \code{df} is an error that says so.
 }

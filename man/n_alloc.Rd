@@ -201,7 +201,7 @@ stratum and overrides a \code{resp_rate} column in \code{frame}.}
 \item{df}{Degrees of freedom of the variance estimator the allocation
 will have, typically sampled PSUs minus strata, and available from
 \code{\link[=design_df]{design_df()}}. It switches the quantile used to translate a \code{moe}
-target in and to report \code{moe} out; a \code{cv} target carries no quantile
+target in and to report \code{moe} out. A \code{cv} target carries no quantile
 and is unaffected. \code{NULL} (default) applies no adjustment.}
 
 \item{min_n_stratum}{Optional minimum sample size per stratum.}
@@ -316,7 +316,7 @@ CV targets apply to domain means or totals (the CV is the same on either
 scale). MOE targets are absolute margins of error for domain means. An
 \code{rmoe} target is a margin of error for the domain mean stated as a
 fraction of it, which is \code{qnorm(1 - alpha / 2)} times the CV of the same
-estimate; the solver takes it through the CV branch and reports
+estimate. The solver takes it through the CV branch and reports
 \code{.achieved} and \code{.sensitivity} back in \code{rmoe} units. The
 variance model uses Wald/linearized variances, the package's gross-sample
 response-rate convention, design effects, and finite population correction.
@@ -542,8 +542,8 @@ SD inflated to
 and, when stage costs are given, a per-element cost of
 \code{cost_psu / n_per_psu + cost_ssu}. The clustering penalty is paid on the
 take that responds, \code{n_per_psu * resp_rate}, since a unit that does not
-respond contributes no within-cluster observation; the cost is paid on the
-gross take, since it is issued either way. The two coincide at
+respond contributes no within-cluster observation. The cost is paid on
+the gross take, since it is issued either way. The two coincide at
 \code{resp_rate = 1}. The whole-cluster operational search reads the same
 responding take, so a design it accepts is one the continuous reduction
 also accepts. All solve modes, allocation

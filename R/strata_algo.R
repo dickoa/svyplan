@@ -2,11 +2,8 @@
 #' @noRd
 .alloc_weights <- function(alloc, q, N_h, S_h, cost_h,
                            deff_h = 1, resp_rate_h = 1) {
-  # A variance-optimal rule minimizes sum(W^2 S^2 deff / (R n)) against a
-  # gross cost constraint, which pulls sqrt(deff / R) into the weight.
-  # Proportional is a count rule, not an optimum: its spec is that the
-  # responding sample be proportional to N, so it takes 1 / R and no deff.
-  # Both collapse to the current weights under scalar deff and resp_rate.
+  # Proportional is a count rule rather than an optimum, so it takes 1 / R
+  # and no deff. Both collapse to the plain weights under scalar inputs.
   var_adj <- sqrt(deff_h / resp_rate_h)
   switch(
     alloc,
@@ -95,7 +92,7 @@
 #' `n_net_h = n_h * resp_rate`, the same expression `.alloc_metrics()` uses,
 #' so that `strata_bound()` and `n_alloc()` report the same `cv` for the same
 #' design. A scalar `deff` scales every candidate boundary set equally and so
-#' leaves the optimal boundaries unchanged; what it changes is the `n` a `cv`
+#' leaves the optimal boundaries unchanged. What it changes is the `n` a `cv`
 #' target requires and the `cv` a given `n` achieves.
 #' @keywords internal
 #' @noRd

@@ -53,8 +53,8 @@ An optional \code{prop_method} column in \code{indicators} overrides this defaul
 on a per-row basis.}
 
 \item{resp_rate}{Default expected response rate at the ultimate unit, in
-(0, 1]. Used for rows whose \code{resp_rate} column is absent or \code{NA}; a
-non-missing row value overrides it.}
+(0, 1]. Used for rows whose \code{resp_rate} column is absent or \code{NA}, and
+a non-missing row value overrides it.}
 
 \item{plan}{A \code{\link[=svyplan]{svyplan()}} profile providing default design parameters.}
 }
@@ -105,7 +105,7 @@ indicator row.}
 \item{\code{df}}{Degrees of freedom of the variance estimator, typically
 sampled PSUs minus strata, and available from \code{\link[=design_df]{design_df()}}. It
 switches that row's interval quantile from normal to t, under every
-proportion method and on mean rows alike; \code{NA} (the default) applies
+proportion method and on mean rows alike. \code{NA} (the default) applies
 no adjustment.}
 \item{\code{resp_rate}}{Expected response rate at the ultimate unit
 (default 1). \code{\link[=prec_multi_cluster]{prec_multi_cluster()}} spends its rate at stage 1 and

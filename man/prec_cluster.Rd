@@ -36,10 +36,10 @@ or a \code{svyplan_varcomp} object.}
 
 \item{unit_relvar}{Unit relvariance (default 1).}
 
-\item{var_ratio}{Ratio of the stage components' unit variance to the analysis
-variable's, default 1. A scalar names \code{var_ratio_psu}; for three stages
-\code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)} follows from the decomposition. See
-\code{\link[=design_effect]{design_effect()}}.}
+\item{var_ratio}{Ratio of the stage components' unit variance to the
+analysis variable's, default 1. A scalar names \code{var_ratio_psu}, and for
+three stages \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)} follows from
+the decomposition. See \code{\link[=design_effect]{design_effect()}}.}
 
 \item{resp_rate_psu}{Expected \strong{PSU-level} response rate, in (0, 1].
 Default 1 (no adjustment). The effective stage-1 size is
@@ -47,7 +47,7 @@ Default 1 (no adjustment). The effective stage-1 size is
 nonresponse among the ultimate units inside a cluster.}
 
 \item{resp_rate_ssu}{Expected SSU-level response rate, in (0, 1].
-Three-stage designs only; default 1. The effective stage-2 size is
+Three-stage designs only, default 1. The effective stage-2 size is
 \code{n[2] * resp_rate_ssu}.}
 
 \item{resp_rate}{Expected ultimate-unit response rate, in (0, 1].

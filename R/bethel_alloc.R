@@ -1256,11 +1256,7 @@
                        collapse = ", ")),
          call. = FALSE)
   }
-  # Relative-variance requirements are undefined against a negligible total.
-  # Both CV constraints and objective components use this guard. Negligible
-  # is measured against the terms that formed the total and against nothing
-  # else: an absolute floor here would call a legitimate total of 1e-12
-  # zero, and a total of exactly zero still fails the test on its own.
+  # Measured against the terms that formed the total, never an absolute floor.
   negligible_total <- function(k) {
     scale_total <- sum(abs(N[membership[, k]] * mean_all[membership[, k], k]))
     abs(total_all[k]) <= sqrt(.Machine$double.eps) * scale_total
@@ -1284,11 +1280,8 @@
       Vmax[k] <- (domain_N[k] * target_value[k] / q_target[k])^2
       next
     }
-    # Both relative metrics measure against the total, so both need it to
-    # be non-negligible. An 'rmoe' target r is a margin of error
-    # r * |total| / domain_N, whose ceiling ((r / q) |total|)^2 is the CV
-    # ceiling at cv = r / q: the solver sees one relative branch, and only
-    # the reporting below distinguishes them.
+    # rmoe reaches the solver as a cv of r / q, so both relative metrics
+    # take one branch and only the reporting distinguishes them.
     if (negligible_total(k)) {
       stop(sprintf("%s is undefined for constraint '%s' with zero or negligible total",
                    if (metric[k] == "cv") "CV" else "relative margin of error",
@@ -1911,11 +1904,8 @@
   affordable <- function(x) {
     if (is.null(x) || cost_of(x) > budget + budget_tol) NULL else x
   }
-  # No single rounding of the continuous optimum is reliable. Rounding down can
-  # leave too little slack to repair a binding target; rounding up can be
-  # untrimmable back inside the budget. When both fail, re-solve at a budget
-  # reduced by the rounding excess so that the rounding does fit, which stays
-  # far closer to the optimum than falling back to the cheapest design.
+  # Neither rounding is reliable alone, so both are tried and a re-solve at a
+  # reduced budget backs them up.
   starts <- list()
   candidate_budget <- budget
   point <- continuous

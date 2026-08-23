@@ -46,7 +46,7 @@
 #'
 #' @param start How a rotating design's cohorts are brought in, or `NULL`
 #'   (default). `"gradual"` recruits one cohort an occasion, so the design
-#'   fills up over a life; `"immediate"` splits the first occasion into equal
+#'   fills up over a life. `"immediate"` splits the first occasion into equal
 #'   panels planned for life lengths from the full life down to one occasion,
 #'   all beginning at wave 1, so it is full at once. Supplying either reports
 #'   what the design delivers at each occasion until it settles. The default
@@ -689,11 +689,7 @@ n_panel <- function(
     } else {
       .panel_assure_rotating(tgt$n_target, q, assurance)
     }
-    # The assured recruitment can leave the frame the expected design fits
-    # inside, and above a level of a half it usually does. Checked in its own
-    # right, and recorded: unlike the rounding gap above, a level that needs
-    # more units than the population holds is unattainable rather than
-    # awkward, and a warning does not survive into the object a script reads.
+    # Recorded, not warned: a warning does not survive into the object.
     assured_feasible <- .warn_panel_assurance(assured, tgt$N, design, k)
     assured
   }
@@ -707,10 +703,7 @@ n_panel <- function(
     target_wave = target_wave,
     assurance = assurance
   )
-  # Assigned rather than listed. `list(start = NULL)` carries the name, so a
-  # result planned without a launch would gain a parameter it never had,
-  # while assigning NULL to a list element removes it: this one line is both
-  # branches, which is why no guard stands in front of it.
+  # Assigning NULL removes the element, so this one line is both branches.
   params$start <- start
 
   .new_svyplan_panel(

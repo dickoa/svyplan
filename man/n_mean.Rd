@@ -90,7 +90,7 @@ A \code{svyplan_n} object with \code{type = "mean"}:
 carries \code{deff} and the \code{1 / resp_rate} inflation, so it counts the
 units to release, not the completed interviews. \verb{$n} and
 \code{as.double()} keep the unrounded value, which is what makes the
-round trip through \code{\link[=prec_mean]{prec_mean()}} exact; \code{print()} and
+round trip through \code{\link[=prec_mean]{prec_mean()}} exact. \code{print()} and
 \code{as.integer()} round it up to the whole units you would field.
 Take the field figure from \code{as.integer()} rather than from \verb{$n}.}
 \item{\code{se}, \code{moe}, \code{cv}, \code{rmoe}}{Precision the design achieves at that

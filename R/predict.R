@@ -78,7 +78,7 @@
 #' takes, `n_per_psu` for a two-stage design and either `n_per_psu` or
 #' `n_per_ssu` for a three-stage one, tracing what the fieldwork decision
 #' costs. A scalar take applies to every stratum, so the per-stratum takes the
-#' fit was built from are replaced rather than scaled; sweep them
+#' fit was built from are replaced rather than scaled. Sweep them
 #' asymmetrically by editing `frame` and calling [n_alloc()] per point. Both
 #' controls may appear together on a budget-objective fit, one row per
 #' combination.
@@ -101,7 +101,7 @@
 #' worth finding rather than assuming.
 #'
 #' Precision targets stay out of reach of the grid. A one-stage minimum-cost
-#' fit therefore has nothing to vary; modify `targets` and call [n_alloc()]
+#' fit therefore has nothing to vary. Modify `targets` and call [n_alloc()]
 #' again.
 #'
 #' If evaluation fails for a particular row (e.g. invalid parameter
@@ -244,13 +244,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
 
   } else if (object$type == "pooled") {
     base <- object$params
-    # The lag profiles are stored one entry per lag, so a grid can only vary
-    # 'occasions' where they are flat and a shorter or longer profile is the
-    # same statement. Varying the profiles themselves would need a column
-    # holding a vector, which a data frame row cannot.
-    # An issued profile is only a respondent one at full response, so a
-    # grid cannot move the response rate under it any more than a direct
-    # call could.
+    # An issued profile is a respondent one only at full response.
     if (identical(base$overlap_basis, "issued") &&
           "resp_rate" %in% names(newdata)) {
       .check_overlap_basis("issued", min(newdata$resp_rate))
@@ -766,10 +760,8 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   p <- object$params
   budget_mode <- identical(p$mode, "budget_objective")
   stages <- p$stages %||% 1L
-  # A certainty fit presents a one-stage problem to the solver, the clustering
-  # travelling in the design effect, so `stages` cannot find its take. The
-  # take is a frame column all the same, and sweeping it is what prices the
-  # fieldwork decision rather than hiding it in a default.
+  # A certainty fit is one-stage to the solver, so `stages` cannot find the
+  # take, but it is still a frame column and still worth sweeping.
   certainty <- !is.null(object$optimization$certainty)
   take_cols <- if (certainty) {
     "n_per_psu"

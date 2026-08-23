@@ -101,7 +101,7 @@ cost-versus-objective frontier. A fixed-take multistage fit varies the
 takes, \code{n_per_psu} for a two-stage design and either \code{n_per_psu} or
 \code{n_per_ssu} for a three-stage one, tracing what the fieldwork decision
 costs. A scalar take applies to every stratum, so the per-stratum takes the
-fit was built from are replaced rather than scaled; sweep them
+fit was built from are replaced rather than scaled. Sweep them
 asymmetrically by editing \code{frame} and calling \code{\link[=n_alloc]{n_alloc()}} per point. Both
 controls may appear together on a budget-objective fit, one row per
 combination.
@@ -124,7 +124,7 @@ PSUs and costs more sample, and the resulting cost curve has a minimum
 worth finding rather than assuming.
 
 Precision targets stay out of reach of the grid. A one-stage minimum-cost
-fit therefore has nothing to vary; modify \code{targets} and call \code{\link[=n_alloc]{n_alloc()}}
+fit therefore has nothing to vary. Modify \code{targets} and call \code{\link[=n_alloc]{n_alloc()}}
 again.
 
 If evaluation fails for a particular row (e.g. invalid parameter

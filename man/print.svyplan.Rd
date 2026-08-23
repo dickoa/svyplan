@@ -143,7 +143,7 @@ R 4.7.0 and later. Svyplan results already have valid row names.}
 \value{
 \code{print()} returns \code{x} invisibly. \code{format()} returns a character
 vector, \code{as.integer()} and \code{as.double()} return numeric vectors, and
-\code{as.data.frame()} returns a data frame; the shapes are described under
+\code{as.data.frame()} returns a data frame. The shapes are described under
 Details.
 }
 \description{

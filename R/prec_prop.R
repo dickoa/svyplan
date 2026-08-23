@@ -41,10 +41,10 @@
 #'     `deff`, `N`, and `resp_rate`.}
 #'   \item{`moe`}{Half the length of the interval the chosen `method`
 #'     builds at that standard error. Only under `"wald"` is this
-#'     `qnorm(1 - alpha / 2) * se`; the other three close at a different
+#'     `qnorm(1 - alpha / 2) * se`. The other three close at a different
 #'     half-width, which is the whole of what distinguishes them. None of
 #'     the three is symmetric about `p`, so `p - moe` and `p + moe` are not
-#'     the endpoints; use [confint()] for those.}
+#'     the endpoints. Use [confint()] for those.}
 #'   \item{`cv`}{Relative standard error, `se / p`, and therefore also the
 #'     same under all four methods.}
 #'   \item{`rmoe`}{Margin of error relative to the proportion, `moe / p`.
@@ -84,13 +84,13 @@
 #' the simpler `1 - n_net / N` used for means. All four methods read the
 #' same variance through `n_eff`, so all four respond to `deff` and `N`
 #' and all four return zero at a census. They differ only in the interval
-#' built around that variance; see [n_prop()] for how to choose.
+#' built around that variance. See [n_prop()] for how to choose.
 #'
 #' That division of labour is worth stating plainly, because it decides what
 #' each returned quantity answers. `se` and `cv` describe the estimator and
-#' are identical under all four methods; changing `method` on the same design
-#' does not move them. `moe` and `rmoe` describe the interval and are the
-#' only place the methods differ. Reading `se` back out of a half-width as
+#' are identical under all four methods, and changing `method` on the same
+#' design does not move them. `moe` and `rmoe` describe the interval and are
+#' the only place the methods differ. Reading `se` back out of a half-width as
 #' `moe / q` would make the reported standard error of the estimate change
 #' when nothing but the interval construction had.
 #'
@@ -98,7 +98,7 @@
 #'
 #' The package reports the same precision four ways, along two axes. One
 #' axis is what is being described, the estimator's sampling variance or
-#' the interval drawn around it; the other is whether it is stated in the
+#' the interval drawn around it. The other is whether it is stated in the
 #' estimand's units or as a fraction of it.
 #'
 #' |            | Absolute | Relative |
@@ -111,7 +111,7 @@
 #' the construction, and `rmoe = moe / p` inherits each. `rmoe = q * cv`
 #' holds under `"wald"` alone, where `q` is the interval quantile the
 #' design uses, normal by default and `t` on `df` degrees of freedom when
-#' `df` is supplied; under the other three the interval does not close at
+#' `df` is supplied. Under the other three the interval does not close at
 #' `q * se`, and reading a relative margin of error off the CV that way
 #' overstates the precision by 4 to 10 percent at `p = 0.02`, `n = 900`,
 #' `deff = 2`.

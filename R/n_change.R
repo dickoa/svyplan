@@ -34,7 +34,7 @@
 #'   Specify exactly one of `moe`, `cv`, or `rmoe`.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size. `Inf` (default) means no finite population
-#'   correction. One value covers both occasions; two are accepted only at
+#'   correction. One value covers both occasions, and two are accepted only at
 #'   `overlap = 0`, where the occasions are independent and may legitimately
 #'   be different populations. A positive `overlap` requires a single `N`,
 #'   since units can only be shared by samples drawn from one population.
@@ -76,17 +76,17 @@
 #'     units to release on each occasion, not the completed interviews. A
 #'     single value when `ratio = 1`, otherwise one per occasion. `$n` and
 #'     `as.double()` keep the unrounded value, which is what makes the round
-#'     trip through [prec_change()] exact; `print()` rounds up to the whole
-#'     units you would field. A positive overlap means the occasions are not
-#'     disjoint, so the number of distinct units sampled is less than the
-#'     sum; the number of interviews is not, since a shared unit is
+#'     trip through [prec_change()] exact, whereas `print()` rounds up to the
+#'     whole units you would field. A positive overlap means the occasions
+#'     are not disjoint, so the number of distinct units sampled is less than
+#'     the sum. The number of interviews is not, since a shared unit is
 #'     interviewed on both occasions.}
 #'   \item{`se`, `moe`, `cv`, `rmoe`}{Precision the design achieves at that
 #'     size, the same values [prec_change()] reports for the same inputs.
 #'     `cv` and `rmoe` are `NA` unless the change is known.}
 #'   \item{`params`}{The validated inputs, including whichever of `moe`,
 #'     `cv`, or `rmoe` was the target. Dispersion is always stored as `var`,
-#'     a pair; `p` is kept as well when the proportion scale was used.}
+#'     a pair, and `p` is kept as well when the proportion scale was used.}
 #' }
 #'
 #' @details
@@ -99,7 +99,7 @@
 #' with \eqn{r} the `ratio` and \eqn{\rho} the `overlap_cor`. The finite
 #' population terms collect into \eqn{B}, a constant no sample size can
 #' move, so the target inverts in closed form rather than by search. Both
-#' coefficients are written above for a positive `overlap`; at
+#' coefficients are written above for a positive `overlap`. At
 #' `overlap = 0` the covariance is dropped entirely, so
 #' \eqn{A = v_1/r + v_2} and \eqn{B = -v_1/N_1 - v_2/N_2}, which is what
 #' lets the two occasions come from different populations. See
@@ -142,7 +142,7 @@
 #' estimate pooled across occasions, an annual average of quarterly rounds
 #' say, because the covariance it induces is subtracted in a difference and
 #' added in a sum. That holds while the covariance is positive, which needs
-#' the overlap to exceed the sampling fraction when `N` is finite; see
+#' the overlap to exceed the sampling fraction when `N` is finite. See
 #' [prec_pooled()] for the boundary. A design serving more than one of the
 #' three is sized by
 #' taking the largest of `n_change()`, [n_pooled()] and the corresponding

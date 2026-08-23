@@ -51,7 +51,8 @@ when \code{alloc = "power"}. It is unrelated to statistical power. \cr
 }
 
 Dispersion may be given as either \code{var} or \code{sd} wherever a mean is being
-planned; supply exactly one. The exception is \code{\link[=n_twophase]{n_twophase()}}, whose frame
+planned, and exactly one is required. The exception is \code{\link[=n_twophase]{n_twophase()}},
+whose frame
 takes \code{sd} only.
 }
 

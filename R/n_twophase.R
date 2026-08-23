@@ -412,10 +412,8 @@ n_twophase.default <- function(
     }
   }
 
-  # the census term the correction subtracts carries the design effects,
-  # because a design effect multiplies an SRSWOR variance here as it does
-  # everywhere else, but not the response divisors: measuring every unit
-  # removes all the variance, while failing to reach some of them does not
+  # Deff-inflated, response-unadjusted: a census removes all the variance,
+  # failing to reach some units does not.
   var_pop <- phase1_deff * spec$A + sum(spec$d2 * spec$W * spec$S^2)
   # at nu_max rather than 1, the floor no amount of subsampling can beat
   var_floor <- a_eff + sum(d2_eff * spec$W * spec$S^2 / resp_rate)

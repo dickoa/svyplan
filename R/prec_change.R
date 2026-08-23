@@ -25,7 +25,7 @@
 #'   `p` on the proportion scale.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size. `Inf` (default) means no finite population
-#'   correction. One value covers both occasions; two are accepted only at
+#'   correction. One value covers both occasions, and two are accepted only at
 #'   `overlap = 0`, where the occasions are independent and may legitimately
 #'   be different populations. A positive `overlap` requires a single `N`,
 #'   since units can only be shared by samples drawn from one population.
@@ -67,7 +67,7 @@
 #'     change near zero makes it large by construction, which is a statement
 #'     about the estimand and not about the design.}
 #'   \item{`params`}{The validated inputs. Dispersion is always stored as
-#'     `var`, a pair, including when you supplied `sd` or `p`; `p` is kept as
+#'     `var`, a pair, including when you supplied `sd` or `p`. `p` is kept as
 #'     well when the proportion scale was used, and it is what the
 #'     [n_change()] round trip reads the scale back from.}
 #' }
@@ -94,7 +94,8 @@
 #'       - \frac{v_1 + v_2 - 2\rho\sqrt{v_1v_2}}{N},}{V = v_1/n_1 + v_2/n_2 - (2 rho overlap sqrt(v_1v_2))/n_2 - (v_1 + v_2 - 2 rho sqrt(v_1v_2))/N,}
 #'
 #' a per-unit part less a population part. The marginal terms carry their
-#' own finite population correction; the overlap covariance does not, since
+#' own finite population correction, whereas the overlap covariance does
+#' not, since
 #' \eqn{Cov(\bar y_1, \bar y_2) = \rho S_1 S_2 \{k/(n_1n_2) - 1/N\}}{Cov(ybar_1, ybar_2) = rho S_1 S_2 \{k/(n_1n_2) - 1/N\}} enters
 #' the population once as \eqn{1/N}. The two expressions agree at
 #' \eqn{\rho = 0} and differ otherwise, because the second keeps the

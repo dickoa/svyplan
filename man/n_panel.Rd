@@ -61,7 +61,7 @@ at least that probability. See Details.}
 
 \item{start}{How a rotating design's cohorts are brought in, or \code{NULL}
 (default). \code{"gradual"} recruits one cohort an occasion, so the design
-fills up over a life; \code{"immediate"} splits the first occasion into equal
+fills up over a life. \code{"immediate"} splits the first occasion into equal
 panels planned for life lengths from the full life down to one occasion,
 all beginning at wave 1, so it is full at once. Supplying either reports
 what the design delivers at each occasion until it settles. The default

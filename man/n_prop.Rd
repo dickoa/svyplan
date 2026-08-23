@@ -48,7 +48,7 @@ surveys). Specify exactly one of \code{moe}, \code{cv}, or \code{rmoe}.}
 asks for a 95 percent interval whose half-width is 12 percent of the
 proportion. This is how MICS and DHS state a precision requirement.
 It is \code{moe / p}, and therefore fixes the same interval \code{moe} does
-while scaling with the estimate the way \code{cv} does; see the precision
+while scaling with the estimate the way \code{cv} does. See the precision
 quantities section of \code{\link[=prec_prop]{prec_prop()}}. Specify exactly one of \code{moe},
 \code{cv}, or \code{rmoe}.}
 
@@ -96,7 +96,7 @@ A \code{svyplan_n} object with \code{type = "proportion"}:
 carries \code{deff} and the \code{1 / resp_rate} inflation, so it counts the
 units to release, not the completed interviews. \verb{$n} and
 \code{as.double()} keep the unrounded value, which is what makes the
-round trip through \code{\link[=prec_prop]{prec_prop()}} exact; \code{print()} and
+round trip through \code{\link[=prec_prop]{prec_prop()}} exact, whereas \code{print()} and
 \code{as.integer()} round it up to the whole units you would field.
 Take the field figure from \code{as.integer()} rather than from \verb{$n}.}
 \item{\code{se}, \code{moe}, \code{cv}, \code{rmoe}}{Precision the design achieves at that \code{n},
@@ -104,7 +104,7 @@ the same values \code{\link[=prec_prop]{prec_prop()}} reports for the same input
 the sampling standard error and \code{cv} is \code{se / p}, so both are the
 same under all four methods. \code{moe} is half the length of the
 interval the chosen \code{method} builds, which equals
-\code{qnorm(1 - alpha / 2) * se} under \code{"wald"} alone; for the three
+\code{qnorm(1 - alpha / 2) * se} under \code{"wald"} alone. For the three
 asymmetric methods it is not an offset from either limit, so read
 the limits with \code{\link[=confint]{confint()}}. \code{rmoe} is \code{moe / p}, so a target
 stated as a relative margin of error reads back in the units it
@@ -150,16 +150,16 @@ All four read one variance,
 the interval built around it, so they agree closely whenever the margin
 of error is small and diverge only where the normal approximation itself
 is doubtful. In practice the choice matters for a rare or near-universal
-outcome and is immaterial otherwise; see the section below.
+outcome and is immaterial otherwise. See the section below.
 
 The design effect and the finite population correction enter every method
 through the effective sample size
 \eqn{n_\mathrm{eff}=n_\mathrm{net}/(\mathrm{deff}\cdot\mathrm{fpc})}{n_eff=n_net/(deff * fpc)}, the
 size at which an infinite-population simple random sample would carry the
-same variance. For Wald this reproduces the usual closed form exactly; for
-the other three it is the approximation that keeps \code{deff} and \code{N} acting
-on the interval as they act on the variance. A census therefore yields a
-zero margin of error under all four.
+same variance. For Wald this reproduces the usual closed form exactly, and
+for the other three it is the approximation that keeps \code{deff} and \code{N}
+acting on the interval as they act on the variance. A census therefore
+yields a zero margin of error under all four.
 
 The Wilson, log-odds, and beta intervals are not symmetric about \code{p}, so
 the reported \code{moe} is half the interval's length rather than an offset
@@ -178,7 +178,7 @@ How much the choice costs depends on the sample size, and the four
 methods converge on each other slowly. Over \code{p} from 0.1 to 0.9, the
 widest and narrowest margins of error differ by 8.2 percent at
 \code{n = 100}, 3.8 percent at 500, 2.7 percent at 1000, and 1.2 percent at
-5000. Below a few thousand the choice is worth a moment; at survey scale
+5000. Below a few thousand the choice is worth a moment but at survey scale
 it usually is not.
 
 The case that decides it is a rare or near-universal outcome. As \code{p}
@@ -231,7 +231,7 @@ both constraints hold. \code{binding} says which one decided, and
 
 \code{deff} does not enter this size, and that is deliberate rather than an
 omission. A design effect describes how precisely the proportion is
-estimated; the number of positive cases that turn up in a sample of
+estimated and the number of positive cases that turn up in a sample of
 \eqn{n} is a property of the sample size and the prevalence alone. The
 response rate does enter, because the cases are counted among
 respondents and the returned \code{n} is gross, on the same footing as every
@@ -288,7 +288,7 @@ accordingly.
 
 The coefficient of variation is \emph{not} uniformly invariant to \code{df}. Only
 \code{"wald"} and the mean engine build \code{se} without a quantile in it, so
-only their \code{cv} is unchanged; \code{"wilson"}, \code{"logodds"} and \code{"beta"} build
+only their \code{cv} is unchanged. \code{"wilson"}, \code{"logodds"} and \code{"beta"} build
 the half-width first and read \code{se} back out of it, so their \code{cv} moves
 with the quantile.
 

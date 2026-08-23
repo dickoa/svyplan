@@ -166,9 +166,9 @@ check_proportion <- function(x, name) {
 
 #' Expand a three-stage `var_ratio` to the (var_ratio_psu, var_ratio_ssu) pair
 #'
-#' A scalar `var_ratio` supplies `var_ratio_psu` only; `var_ratio_ssu` then follows from the
-#' decomposition. A length-2 `var_ratio` is taken as supplied and checked for
-#' consistency.
+#' A scalar `var_ratio` supplies `var_ratio_psu` only, and `var_ratio_ssu`
+#' then follows from the decomposition. A length-2 `var_ratio` is taken as
+#' supplied and checked for consistency.
 #' @keywords internal
 #' @noRd
 .stage_k_pair <- function(var_ratio, icc) {
@@ -531,7 +531,7 @@ check_icc <- function(icc, expected_length = NULL) {
   sqrt(unit_relvar * comp / (n_psu * rr))
 }
 
-#' Check target CV against the achievable floor; error with diagnostic
+#' Check target CV against the achievable floor and error with a diagnostic
 #'
 #' @keywords internal
 #' @noRd
@@ -845,11 +845,7 @@ check_icc <- function(icc, expected_length = NULL) {
 #' @keywords internal
 #' @noRd
 check_overlap <- function(overlap) {
-  # A lag profile is numeric and in [0, 1], so the generic message below would
-  # be true and useless. The settled design is that the lag is named where it
-  # is extracted: a schedule passed whole carries none, and defaulting to the
-  # consecutive figure would answer an annual-lag question with the monthly
-  # number. `[` returns a bare number for exactly this reason.
+  # The lag is named where it is extracted, never defaulted here.
   if (inherits(overlap, "svyplan_overlap")) {
     stop(
       "'overlap' is one lag, and a rotation overlap covers every lag its schedule reaches; name the one this change spans, as in design_overlap(\"4-8-4\")[1] between consecutive occasions or [12] a year apart on monthly ones",
@@ -1020,7 +1016,7 @@ check_df <- function(df, name = "df") {
 #'
 #' A power calculation's quantile is a normal deviate for an alternative,
 #' not the half-width of a confidence interval, so substituting a t
-#' quantile for it does not produce a t-based power calculation; that is a
+#' quantile for it does not produce a t-based power calculation. That is a
 #' different procedure. The argument is refused with the reason rather
 #' than reported as an unknown name.
 #' @keywords internal
@@ -1232,7 +1228,7 @@ check_df <- function(df, name = "df") {
 #' Shared precision engine for proportions
 #'
 #' One documented variance equation: n_net = n * resp_rate responding
-#' units drive both the leading term and the FPC's sampling fraction;
+#' units drive both the leading term and the FPC's sampling fraction, and
 #' deff multiplies the SRSWOR variance at n_net, so
 #' se^2 = deff * p * q * fpc(n_net) / n_net with fpc(n) = (N - n)/(N - 1).
 #' All four methods read that variance through one quantity, the effective
@@ -1456,7 +1452,7 @@ check_df <- function(df, name = "df") {
 
 #' Error when a supplied gross sample exceeds a finite frame
 #'
-#' Vectorized over groups/indicators; `label` names the offender.
+#' Vectorized over groups and indicators. `label` names the offender.
 #' @keywords internal
 #' @noRd
 .check_gross_n <- function(n, N, label = NULL) {
@@ -1668,8 +1664,8 @@ check_df <- function(df, name = "df") {
 
 #' Design variance of a difference between two overlapping occasion means
 #'
-#' The marginal terms carry their own finite population correction; the
-#' overlap covariance does not. For two SRSWOR samples drawn from one
+#' The marginal terms carry their own finite population correction, whereas
+#' the overlap covariance does not. For two SRSWOR samples drawn from one
 #' population of size \eqn{N} and sharing \eqn{k = overlap \cdot n_1}{k = overlap * n_1} units,
 #' \deqn{Cov(\bar y_1, \bar y_2) = \rho S_1S_2\{k/(n_1n_2) - 1/N\},}{Cov(ybar_1, ybar_2) = rho S_1S_2\{k/(n_1n_2) - 1/N\},}
 #' so the population term enters once as \eqn{1/N} rather than through
@@ -1772,7 +1768,7 @@ check_df <- function(df, name = "df") {
 #' Check a size supplied per occasion
 #'
 #' One size means both occasions are the same size, which is the ordinary
-#' repeated survey; two mean the second occasion was resized, which is what
+#' repeated survey. Two mean the second occasion was resized, which is what
 #' makes `overlap` directional.
 #' @keywords internal
 #' @noRd
@@ -1869,11 +1865,7 @@ check_df <- function(df, name = "df") {
   ) {
     stop("'occasions' must be a whole number of at least 2", call. = FALSE)
   }
-  # The covariance is assembled and decomposed densely, so the cost is
-  # quadratic in memory and cubic in time. The bound is far above any
-  # planning horizon (a thousand monthly occasions is eighty years) and
-  # exists so that a mistyped figure fails immediately rather than
-  # allocating for minutes.
+  # Dense assembly is cubic, so a mistyped figure fails rather than allocates.
   if (occasions > .MAX_OCCASIONS) {
     stop(
       sprintf(
@@ -2035,12 +2027,8 @@ check_df <- function(df, name = "df") {
 .check_lag_psd <- function(K, n_gross, n_net, N, ov, rho, occasions) {
   ev <- eigen(K, symmetric = TRUE, only.values = TRUE)$values
   diag_term <- K[1L, 1L]
-  # The tolerance is relative to the spectrum, not to an absolute floor.
-  # Positive semidefiniteness is a property of the correlation structure and
-  # cannot depend on the units the outcome is measured in: an absolute floor
-  # rejects a design at one scale and accepts the same design rescaled. The
-  # zero matrix, which a census at full overlap gives, has scale zero and
-  # passes on the equality.
+  # Relative to the spectrum: an absolute floor would tie the verdict to the
+  # outcome's units. The zero matrix has scale zero and passes on equality.
   scale <- max(abs(ev))
   if (min(ev) >= -sqrt(.Machine$double.eps) * scale) {
     return(invisible(NULL))
@@ -2060,13 +2048,8 @@ check_df <- function(df, name = "df") {
       )
     )
   }
-  # Interviews per cohort, not calendar span: a cohort interviewed k times
-  # contributes k(k-1)/2 shared pairs against k occasions of membership, so
-  # sum(overlap) is (k - 1)/2 whether or not the schedule has gaps in it.
-  # Reading the last positive lag instead would call "4-8-4" a life of
-  # sixteen where it is eight, and understate what the design consumes. The
-  # sum is only complete when the profile has run out of shared units inside
-  # the horizon, so the diagnostic is dropped when it has not.
+  # Interviews per cohort, not calendar span. Incomplete inside the horizon,
+  # where the diagnostic is dropped.
   complete <- length(ov) > 0L && ov[length(ov)] == 0
   interviews <- 1 + 2 * sum(ov)
   if (complete && !is.infinite(N) && interviews > 0 &&
@@ -2255,8 +2238,8 @@ check_df <- function(df, name = "df") {
 
 #' Merge round-trip overrides from ... into stored arguments
 #'
-#' Named dots override the stored values; a NULL value unsets the stored
-#' one (mode switching). Unknown names error instead of being dropped.
+#' Named dots override the stored values, and a NULL value unsets the
+#' stored one (mode switching). Unknown names error instead of being dropped.
 #' @keywords internal
 #' @noRd
 .roundtrip_args <- function(args, dots, fn) {
@@ -2575,7 +2558,7 @@ check_df <- function(df, name = "df") {
 
 #' Resolve the dispersion input of the mean-based functions
 #'
-#' `var` and `sd` are two spellings of the same input; exactly one is
+#' `var` and `sd` are two spellings of the same input, and exactly one is
 #' required. `sd` is accepted because stratum frames and published survey
 #' reports quote standard deviations rather than variances.
 #'

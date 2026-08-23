@@ -41,7 +41,8 @@
 #' }
 #'
 #' Dispersion may be given as either `var` or `sd` wherever a mean is being
-#' planned; supply exactly one. The exception is [n_twophase()], whose frame
+#' planned, and exactly one is required. The exception is [n_twophase()],
+#' whose frame
 #' takes `sd` only.
 #'
 #' @references

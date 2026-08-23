@@ -75,10 +75,10 @@ is the same under all four methods and moves only with \code{p}, \code{n},
 \code{deff}, \code{N}, and \code{resp_rate}.}
 \item{\code{moe}}{Half the length of the interval the chosen \code{method}
 builds at that standard error. Only under \code{"wald"} is this
-\code{qnorm(1 - alpha / 2) * se}; the other three close at a different
+\code{qnorm(1 - alpha / 2) * se}. The other three close at a different
 half-width, which is the whole of what distinguishes them. None of
 the three is symmetric about \code{p}, so \code{p - moe} and \code{p + moe} are not
-the endpoints; use \code{\link[=confint]{confint()}} for those.}
+the endpoints. Use \code{\link[=confint]{confint()}} for those.}
 \item{\code{cv}}{Relative standard error, \code{se / p}, and therefore also the
 same under all four methods.}
 \item{\code{rmoe}}{Margin of error relative to the proportion, \code{moe / p}.
@@ -123,20 +123,20 @@ correction for a Bernoulli proportion is \code{(N - n_net) / (N - 1)}, not
 the simpler \code{1 - n_net / N} used for means. All four methods read the
 same variance through \code{n_eff}, so all four respond to \code{deff} and \code{N}
 and all four return zero at a census. They differ only in the interval
-built around that variance; see \code{\link[=n_prop]{n_prop()}} for how to choose.
+built around that variance. See \code{\link[=n_prop]{n_prop()}} for how to choose.
 
 That division of labour is worth stating plainly, because it decides what
 each returned quantity answers. \code{se} and \code{cv} describe the estimator and
-are identical under all four methods; changing \code{method} on the same design
-does not move them. \code{moe} and \code{rmoe} describe the interval and are the
-only place the methods differ. Reading \code{se} back out of a half-width as
+are identical under all four methods, and changing \code{method} on the same
+design does not move them. \code{moe} and \code{rmoe} describe the interval and are
+the only place the methods differ. Reading \code{se} back out of a half-width as
 \code{moe / q} would make the reported standard error of the estimate change
 when nothing but the interval construction had.
 \subsection{The four precision quantities}{
 
 The package reports the same precision four ways, along two axes. One
 axis is what is being described, the estimator's sampling variance or
-the interval drawn around it; the other is whether it is stated in the
+the interval drawn around it. The other is whether it is stated in the
 estimand's units or as a fraction of it.\tabular{lll}{
     \tab Absolute \tab Relative \cr
    Sampling \tab \code{se} \tab \code{cv} \cr
@@ -149,7 +149,7 @@ depends on both: \code{alpha} fixes the confidence level and \code{method} fixes
 the construction, and \code{rmoe = moe / p} inherits each. \code{rmoe = q * cv}
 holds under \code{"wald"} alone, where \code{q} is the interval quantile the
 design uses, normal by default and \code{t} on \code{df} degrees of freedom when
-\code{df} is supplied; under the other three the interval does not close at
+\code{df} is supplied. Under the other three the interval does not close at
 \code{q * se}, and reading a relative margin of error off the CV that way
 overstates the precision by 4 to 10 percent at \code{p = 0.02}, \code{n = 900},
 \code{deff = 2}.

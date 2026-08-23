@@ -12,16 +12,16 @@
 #' @param icc Numeric vector of homogeneity measures (length = stages - 1),
 #'   or a `svyplan_varcomp` object.
 #' @param unit_relvar Unit relvariance (default 1).
-#' @param var_ratio Ratio of the stage components' unit variance to the analysis
-#'   variable's, default 1. A scalar names `var_ratio_psu`; for three stages
-#'   `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)` follows from the decomposition. See
-#'   [design_effect()].
+#' @param var_ratio Ratio of the stage components' unit variance to the
+#'   analysis variable's, default 1. A scalar names `var_ratio_psu`, and for
+#'   three stages `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)` follows from
+#'   the decomposition. See [design_effect()].
 #' @param resp_rate_psu Expected **PSU-level** response rate, in (0, 1\].
 #'   Default 1 (no adjustment). The effective stage-1 size is
 #'   `n * resp_rate_psu`. It describes clusters that cannot be worked, not
 #'   nonresponse among the ultimate units inside a cluster.
 #' @param resp_rate_ssu Expected SSU-level response rate, in (0, 1\].
-#'   Three-stage designs only; default 1. The effective stage-2 size is
+#'   Three-stage designs only, default 1. The effective stage-2 size is
 #'   `n[2] * resp_rate_ssu`.
 #' @param resp_rate Expected ultimate-unit response rate, in (0, 1\].
 #'   Default 1. It scales the final stage, so it also shrinks the realized

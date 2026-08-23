@@ -21,7 +21,7 @@
 #' @details
 #' The design effect is built exactly as in [design_effect()], from
 #' whichever of the clustering, weighting, and stratification components
-#' you supply. `n` is the gross planned sample size; it is taken from the
+#' you supply. `n` is the gross planned sample size. It is taken from the
 #' arguments when it can be (the length of `weights`, the total of
 #' `strata$n`, or the total of the plan you pass as `x`), and must be given
 #' explicitly otherwise.

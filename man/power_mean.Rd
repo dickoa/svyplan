@@ -70,7 +70,7 @@ Defined as the fraction of group 1 that also appears in group 2
 design with that many units deliberately held in common, which with a
 finite \code{N} requires both occasions to sample one population. The
 default 0 is the ordinary two-group comparison, where the groups are
-independent and may be different populations of different sizes; it is
+independent and may be different populations of different sizes. It is
 not the same model as a deliberately disjoint pair, which is why the
 two need not agree in the limit when \code{N} is small.}
 
@@ -128,13 +128,13 @@ freedom enter, and the variance is treated as known. This is the
 convention for survey-scale samples, where the two agree closely, and
 it is what makes \code{deff} and a finite \code{N} insertable directly into the
 variance. At small \code{n} the sizes are correspondingly smaller than
-\code{\link[stats:power.t.test]{stats::power.t.test()}}, which uses a noncentral t; use that function
+\code{\link[stats:power.t.test]{stats::power.t.test()}}, which uses a noncentral t. Use that function
 instead when the sample is small enough for the difference to matter.
 
 The \code{df} argument that \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}} and \code{\link[=n_alloc]{n_alloc()}} accept has
 no counterpart here, and its absence is a decision rather than an
 omission. There the quantile is the half-width of a confidence interval
-and a t quantile substitutes for a normal one directly; here it is a
+and a t quantile substitutes for a normal one directly. Here it is a
 normal deviate for an alternative, and a t-based power calculation is a
 different procedure. Passing \code{df} is an error that says so.
 }

@@ -76,7 +76,7 @@
 #'
 #' Reported wherever `moe` is, so a target stated as `rmoe` reads back in
 #' the units it was stated in. The scale is the estimand the interval
-#' bounds, `p` for a proportion and `mu` for a mean; a result whose
+#' bounds, `p` for a proportion and `mu` for a mean. A result whose
 #' estimand has no known scale reports `NA`, which is what `$cv` already
 #' does in an allocation over a frame carrying neither.
 #' @keywords internal

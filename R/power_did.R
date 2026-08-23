@@ -13,7 +13,7 @@
 #' @param control Numeric length-2 vector for control group outcomes:
 #'   `c(baseline, endline)`.
 #' @param outcome Outcome scale: `"mean"` (default) or `"prop"`.
-#' @param var Outcome variance. Applies to `outcome = "mean"` only; under
+#' @param var Outcome variance. Applies to `outcome = "mean"` only. Under
 #'   `outcome = "prop"` the cell variances follow from `treat` and `control`,
 #'   so supplying it is an error rather than a silent no-op.
 #'   Length 1: common variance for all four cells.
@@ -112,7 +112,7 @@
 #' The `df` argument that [n_prop()], [n_mean()] and [n_alloc()] accept has
 #' no counterpart here, and its absence is a decision rather than an
 #' omission. There the quantile is the half-width of a confidence interval
-#' and a t quantile substitutes for a normal one directly; here it is a
+#' and a t quantile substitutes for a normal one directly. Here it is a
 #' normal deviate for an alternative, and a t-based power calculation is a
 #' different procedure. Passing `df` is an error that says so.
 #'
@@ -209,10 +209,7 @@ power_did.default <- function(
   effect_implied <- (treat[2L] - treat[1L]) - (control[2L] - control[1L])
 
   null_count <- is.null(n) + is.null(power) + is.null(effect)
-  # 'treat' and 'control' already determine the contrast, so an omitted
-  # 'effect' is filled from them rather than being a second unknown. Only
-  # when it is the second unknown: with both 'n' and 'power' supplied, a
-  # NULL 'effect' still means "solve for the MDE".
+  # Filled from the contrast only when it is not the second unknown.
   if (null_count == 2L && is.null(effect)) {
     if (abs(effect_implied) <= 0) {
       stop(

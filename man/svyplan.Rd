@@ -65,7 +65,7 @@ the same number of stages. Length checks that depend on call-specific data,
 such as matching \code{unit_cost} to an allocation frame, occur when the plan is
 used. \code{unit_cost} is ordered by allocation-frame row, whereas
 \code{\link[=strata_bound]{strata_bound()}} orders costs from the lowest to the highest stratum, so
-only a scalar \code{unit_cost} reaches that function from a profile; a vector
+only a scalar \code{unit_cost} reaches that function from a profile. A vector
 one is rejected there rather than applied to the wrong strata.
 
 Estimand-specific values (\code{p}, \code{var}, \code{mu}, \code{moe}, \code{cv}, \code{n}, \code{power},

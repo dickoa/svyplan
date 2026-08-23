@@ -76,8 +76,8 @@ on a per-row basis. \code{"wilson"}, \code{"logodds"} and \code{"beta"} size fro
 interval half-width, so those rows need \code{moe} rather than \code{cv}.}
 
 \item{resp_rate}{Default expected response rate at the ultimate unit, in
-(0, 1]. Used for rows whose \code{resp_rate} column is absent or \code{NA}; a
-non-missing row value overrides it.}
+(0, 1]. Used for rows whose \code{resp_rate} column is absent or \code{NA}, and
+a non-missing row value overrides it.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -156,8 +156,8 @@ One of \code{p} or \code{var} per row.}
 \item{\code{var}}{Population variance of a continuous indicator. Use
 this for means (e.g. income, expenditure, weight). One of \code{p}
 or \code{var} per row.}
-\item{\code{mu}}{Population mean (finite and non-zero; it may be
-negative). It is required when \code{var} is used with \code{cv} because
+\item{\code{mu}}{Population mean, finite and non-zero. It may be
+negative. It is required when \code{var} is used with \code{cv} because
 CV = SE / abs(mean).}
 \item{\code{moe}}{Margin of error, the half-width of the confidence
 interval you want. For proportions, this is on the probability
@@ -188,7 +188,7 @@ inside \verb{[0, 1]} by construction. It is used only for rows with
 \item{\code{df}}{Degrees of freedom of the planned variance estimator,
 typically sampled PSUs minus strata, and available from
 \code{\link[=design_df]{design_df()}}. It switches that row's interval quantile from normal
-to t, under every method; \code{NA} (the default) applies no adjustment.
+to t, under every method. \code{NA} (the default) applies no adjustment.
 A df is a property of the design rather than of an indicator, so
 every row of a single-domain table shares one value. The column
 earns its place when the rows are \emph{domains}, each covering its own
@@ -196,7 +196,7 @@ set of strata: \code{design_df(alloc)$domains$.df} gives one value per
 domain to match in.}
 \item{\code{min_cases}}{Minimum expected number of positive cases the row
 must yield, a floor on that row's own size, as in
-\code{\link[=n_prop]{n_prop()}}\verb{(min_cases = )}. Proportion rows only; \code{NA} (the
+\code{\link[=n_prop]{n_prop()}}\verb{(min_cases = )}. Proportion rows only, and \code{NA} (the
 default) sizes the row on precision alone. The row that ends up
 largest is still the binding one, whichever constraint raised it.
 Single-stage \code{n_multi()} only: a multistage design sizes stages
@@ -238,7 +238,7 @@ through \code{domains} is exempt, so a domain may be called \code{label} or
 The dispersion of a continuous indicator may be given as \code{var} or as
 \code{sd}, whichever the source reports, exactly as in \code{\link[=n_mean]{n_mean()}}. They are
 different quantities rather than two names for one, so supplying both
-in the same table is an error rather than a preference; \code{sd} is squared
+in the same table is an error rather than a preference. \code{sd} is squared
 on the way in and everything downstream reads \code{var}.
 
 \code{n_multi()} computes sample size per indicator by delegating proportion

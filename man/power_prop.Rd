@@ -158,7 +158,7 @@ estimator of it is the pooled one, so \eqn{\bar{p}}{pbar} is the
               = \frac{r p_1 + p_2}{r + 1},}{pbar = (n_1 p_1 + n_2 p_2)/(n_1 + n_2) = (r p_1 + p_2)/(r + 1),}
 
 with \eqn{r} the allocation \code{ratio}. At \code{ratio = 1} this is
-\eqn{(p_1 + p_2) / 2}; away from it the weighted and unweighted nulls give
+\eqn{(p_1 + p_2) / 2}. Away from it the weighted and unweighted nulls give
 materially different sizes, so the weighting is not a refinement. Sizing
 \code{p1 = 0.1} against \code{p2 = 0.2} at \code{ratio = 4} needs 523 and 131, against
 457 and 115 for an unweighted null: 14 percent more fieldwork, because the
@@ -180,7 +180,7 @@ extreme proportion, but none of the three is exact at small \code{n}.
 The \code{df} argument that \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}} and \code{\link[=n_alloc]{n_alloc()}} accept has
 no counterpart here, and its absence is a decision rather than an
 omission. There the quantile is the half-width of a confidence interval
-and a t quantile substitutes for a normal one directly; here it is a
+and a t quantile substitutes for a normal one directly. Here it is a
 normal deviate for an alternative, and a t-based power calculation is a
 different procedure. Passing \code{df} is an error that says so.
 }

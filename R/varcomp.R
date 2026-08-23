@@ -47,7 +47,7 @@
 #' - **Numeric vector**: `varcomp(y, stage_id = list(cluster_ids))`.
 #' - **survey.design**: `varcomp(design, ~y)`. Cluster structure,
 #'   first-stage strata, and within-cluster weights are extracted from the
-#'   design object; `strata` and `weights` override what is extracted.
+#'   design object, and `strata` and `weights` override what is extracted.
 #'   Requires the survey package. For a PPS first stage, also pass the PSU
 #'   selection probabilities via `prob`. Which designs can supply their own
 #'   weights is set out under Details.
@@ -189,7 +189,7 @@
 #' `varw_psu` applies the same PPS scaling to the variance of SSU totals
 #' within each PSU, and `varw_ssu` aggregates the within-SSU ultimate-unit
 #' variances. The returned PSU homogeneity compares the between-PSU component
-#' with the element-level variance aggregated within PSUs; the SSU
+#' with the element-level variance aggregated within PSUs. The SSU
 #' homogeneity is `varw_psu / (varw_psu + varw_ssu)`. This distinction is why
 #' the first `icc` is not generally `varb / sum(c(varb, varw))` for a
 #' three-stage result.
@@ -198,7 +198,8 @@
 #' rather than by imposing the identity `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)`
 #' that the planning formula uses (see [design_effect()]). On small clusters
 #' the two can differ by several percent. Passing a `svyplan_varcomp` to a
-#' planning function uses the estimated pair as given; omitting `var_ratio_ssu` there
+#' planning function uses the estimated pair as given, and omitting
+#' `var_ratio_ssu` there
 #' applies the identity instead.
 #'
 #' When weights are supplied, \eqn{N_i}, totals, means, and variances in these
@@ -1188,10 +1189,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   total_w <- if (is.null(w)) length(y) else sum(w)
   eps <- .vc_eps()
   scale <- max(abs(y))
-  # Centering a constant outcome cancels exactly only when every observation
-  # carries the same weight, so a weighted variance bottoms out at rounding
-  # noise instead of at zero. Dispersion that far below the outcome's own
-  # magnitude is not variance to split.
+  # A weighted variance bottoms out at rounding noise rather than at zero.
   if (spread <= (eps * scale)^2) {
     spread <- 0
   }

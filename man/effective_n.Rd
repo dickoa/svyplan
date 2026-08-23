@@ -84,7 +84,7 @@ mirror of \code{\link[=design_effect]{design_effect()}} and takes the same argum
 \details{
 The design effect is built exactly as in \code{\link[=design_effect]{design_effect()}}, from
 whichever of the clustering, weighting, and stratification components
-you supply. \code{n} is the gross planned sample size; it is taken from the
+you supply. \code{n} is the gross planned sample size. It is taken from the
 arguments when it can be (the length of \code{weights}, the total of
 \code{strata$n}, or the total of the plan you pass as \code{x}), and must be given
 explicitly otherwise.
@@ -96,7 +96,7 @@ analyzes \code{n * resp_rate} of them carries the information of
 allocation and precision functions plan on, and the one reported in the
 \code{n_eff} column of an \code{\link[=n_alloc]{n_alloc()}} table. Passing a plan as \code{x} picks up
 the response rate it was built with, so \code{effective_n(plan)} and that
-column agree; supply \code{resp_rate} yourself when you pass a bare \code{n} that
+column agree. Supply \code{resp_rate} yourself when you pass a bare \code{n} that
 has not already been netted down.
 
 The design effect it divides by is a without-FPC planning quantity, so
