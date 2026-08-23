@@ -2331,13 +2331,85 @@ check_df <- function(df, name = "df") {
   indicators
 }
 
+#' The estimand each indicator row declares
+#'
+#' Three markers, one per estimand: a non-missing `p`, `var`, or `r`. Returned
+#' as a logical matrix so callers can both count them and name the offenders.
+#' @keywords internal
+#' @noRd
+.estimand_markers <- function(indicators) {
+  n <- nrow(indicators)
+  absent <- rep(FALSE, n)
+  cbind(
+    p = if ("p" %in% names(indicators)) !is.na(indicators$p) else absent,
+    var = if ("var" %in% names(indicators)) !is.na(indicators$var) else absent,
+    r = .is_ratio_row(indicators)
+  )
+}
+
+#' Require exactly one estimand per indicator row
+#'
+#' Shared by the sizing and precision paths so a table that `n_multi()`
+#' refuses cannot be evaluated by `prec_multi()`.
+#' @keywords internal
+#' @noRd
+.check_estimand_markers <- function(indicators) {
+  markers <- .estimand_markers(indicators)
+  n_markers <- rowSums(markers)
+  if (any(n_markers == 0L)) {
+    stop(
+      sprintf(
+        "row(s) %s must have a non-NA 'p', 'var', or 'r' value",
+        paste(which(n_markers == 0L), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  if (any(n_markers > 1L)) {
+    i <- which(n_markers > 1L)[1L]
+    stop(
+      sprintf(
+        "row %d sets %s; each row must have only one of 'p', 'var', or 'r'",
+        i, paste(sQuote(colnames(markers)[markers[i, ]]), collapse = " and ")
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+#' The value a row's relative quantities are relative to
+#'
+#' Chosen by the row's estimand marker, not by taking the first non-missing
+#' of `p`, `mu`, `r`. A ratio row carrying an incidental `mu`, which is
+#' legitimate in a mixed table where some other row is a mean, would otherwise
+#' have its `rmoe` scaled by that mean.
+#' @keywords internal
+#' @noRd
+.indicator_scale <- function(indicators) {
+  out <- rep(NA_real_, nrow(indicators))
+  # Precedence r, then p, then mu, each filling only what is still unset. The
+  # `is.na(out)` guard is what stops a mean's `mu`, legitimate in a mixed
+  # table, from rescaling a ratio row. Validation rejects a row carrying two
+  # markers before any scale is reported, so the precedence between them is
+  # not observable and no test can pin it.
+  for (col in c("r", "p", "mu")) {
+    if (!col %in% names(indicators)) {
+      next
+    }
+    take <- is.na(out) & !is.na(indicators[[col]])
+    out[take] <- as.numeric(indicators[[col]][take])
+  }
+  out
+}
+
 #' Take a relative margin of error target in a table and make it absolute
 #'
 #' Follows `.indicators_var_from_sd()`: accept the alternate spelling,
 #' refuse it alongside the one it competes with, convert once, and let
-#' every path downstream see only `moe`. A row's scale is its own `p` or
-#' `mu`, so an `rmoe` row without one is an error rather than a row that
-#' quietly drops out of the target set.
+#' every path downstream see only `moe`. A row's scale comes from its own
+#' estimand marker via `.indicator_scale()`, so an `rmoe` row without one is
+#' an error rather than a row that quietly drops out of the target set.
 #' @keywords internal
 #' @noRd
 .indicators_moe_from_rmoe <- function(indicators, domains = NULL) {
@@ -2361,14 +2433,10 @@ check_df <- function(df, name = "df") {
       )
     }
   }
-  scale <- rep(NA_real_, nrow(indicators))
-  if ("p" %in% nms) scale <- indicators$p
-  if ("mu" %in% nms) {
-    scale <- ifelse(is.na(scale), indicators$mu, scale)
-  }
+  scale <- .indicator_scale(indicators[, nms, drop = FALSE])
   if (any(set & (is.na(scale) | scale == 0))) {
     stop(
-      "'rmoe' rows need the estimand it is relative to: 'p' for a proportion or 'mu' for a mean, and not zero",
+      "'rmoe' rows need the estimand it is relative to: 'p' for a proportion, 'mu' for a mean, or 'r' for a ratio, and not zero",
       call. = FALSE
     )
   }
@@ -2443,8 +2511,9 @@ check_df <- function(df, name = "df") {
   if (length(bad) > 0L) {
     stop(
       sprintf(
-        "'min_cases' counts positive cases and applies to proportion rows only; row(s) %s carry a mean",
-        paste(bad, collapse = ", ")
+        "'min_cases' counts positive cases and applies to proportion rows only. Row(s) %s carry a %s",
+        paste(bad, collapse = ", "),
+        if (any(.is_ratio_row(indicators)[bad])) "ratio" else "mean"
       ),
       call. = FALSE
     )

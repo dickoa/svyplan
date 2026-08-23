@@ -23,6 +23,7 @@ reference:
   contents:
   - n_prop
   - n_mean
+  - n_ratio
   - n_change
   - n_panel
   - n_pooled
@@ -37,6 +38,7 @@ reference:
   contents:
   - prec_prop
   - prec_mean
+  - prec_ratio
   - prec_change
   - prec_panel
   - prec_pooled

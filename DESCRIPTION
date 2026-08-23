@@ -1,7 +1,7 @@
 Package: svyplan
 Type: Package
 Title: Survey Sample Size Determination and Precision Analysis
-Version: 0.12.0
+Version: 0.13.0
 Authors@R: person(given = "Ahmadou",
                   family = "Dicko",
                   email = "mail@ahmadoudicko.com",
@@ -11,7 +11,8 @@ Description: Tools for survey sample size determination, precision
     analysis, optimal allocation, joint multivariate and multidomain
     allocation, two-phase allocation, stratification, power analysis, and
     planning for surveys repeated over time. Computes sample sizes for
-    proportions and means, evaluates sampling precision for a given design,
+    proportions, means and ratios of two totals, evaluates sampling
+    precision for a given design,
     optimizes multistage cluster allocations, estimates variance components
     from frame data, computes design effects, constructs strata boundaries,
     allocates two-phase designs, sizes the change between two occasions,

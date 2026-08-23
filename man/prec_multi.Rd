@@ -31,7 +31,9 @@ indicator?"
 
 At minimum, each row needs:
 \itemize{
-\item \code{p} \strong{or} \code{var}: what you are measuring (see \code{\link[=n_multi]{n_multi()}}).
+\item \code{p}, \code{var}, \strong{or} the ratio quartet \code{r}, \code{cv_num}, \code{cv_den}
+and \code{component_cor}: what you are measuring (see \code{\link[=n_multi]{n_multi()}}).
+Exactly one estimand per row.
 \item \code{n}: the sample size to evaluate.
 }
 
@@ -61,8 +63,9 @@ a non-missing row value overrides it.}
 \value{
 A \code{svyplan_prec} object with a \verb{$detail} data frame containing
 per-indicator precision: \code{.se}, \code{.moe}, \code{.rmoe}, and \code{.cv}. \code{.rmoe}
-is \code{.moe} as a fraction of the row's \code{p} or \code{abs(mu)}, and \code{NA} for a
-row carrying neither.
+is \code{.moe} as a fraction of the row's own estimand, \code{p} for a
+proportion, \code{abs(mu)} for a mean and \code{abs(r)} for a ratio, and \code{NA} for
+a row carrying none of them.
 }
 \description{
 Compute the sampling error (SE, MOE, CV) for multiple survey indicators
@@ -92,9 +95,16 @@ See \code{\link[=n_multi]{n_multi()}} for a detailed guide on constructing indic
 \item{\code{name}}{Indicator label (optional).}
 \item{\code{p}}{Expected proportion, in (0, 1). One of \code{p} or \code{var}
 per row (see \code{\link[=n_multi]{n_multi()}}).}
-\item{\code{var}}{Population variance. One of \code{p} or \code{var} per row.}
+\item{\code{var}}{Population variance. One of \code{p}, \code{var} or \code{r} per row.}
 \item{\code{mu}}{Population mean. Required for CV output when \code{var}
 is specified, because CV = SE / mean.}
+\item{\code{r}}{Anticipated ratio of two totals, marking a ratio row. It
+requires \code{cv_num}, \code{cv_den} and \code{component_cor} alongside it, and no
+\code{unit_relvar}, which the moments derive. See \code{\link[=prec_ratio]{prec_ratio()}}.}
+\item{\code{cv_num}, \code{cv_den}}{Coefficients of variation of a ratio row's
+numerator and denominator, strictly positive.}
+\item{\code{component_cor}}{Correlation between a ratio row's numerator and
+denominator across units, in [-1, 1].}
 \item{\code{n}}{Sample size to evaluate (\strong{required}), with one value per
 indicator row.}
 \item{\code{alpha}}{Significance level (default 0.05).}
@@ -114,10 +124,10 @@ names the column \code{resp_rate_psu}.}
 
 Domain columns are specified via the \code{domains} parameter.
 
-\code{prec_multi()} delegates proportion rows to \code{\link[=prec_prop]{prec_prop()}}
-and mean rows to \code{\link[=prec_mean]{prec_mean()}}. Use \code{prop_method} or a
+\code{prec_multi()} delegates proportion rows to \code{\link[=prec_prop]{prec_prop()}}, mean rows to
+\code{\link[=prec_mean]{prec_mean()}} and ratio rows to \code{\link[=prec_ratio]{prec_ratio()}}. Use \code{prop_method} or a
 \code{indicators$prop_method} column to choose \code{"wald"}, \code{"wilson"},
-\code{"logodds"} or \code{"beta"} for proportion rows.
+\code{"logodds"} or \code{"beta"} for proportion rows. It is ignored elsewhere.
 }
 }
 \examples{
@@ -147,6 +157,7 @@ Other precision functions:
 \code{\link[=prec_panel]{prec_panel()}},
 \code{\link[=prec_pooled]{prec_pooled()}},
 \code{\link[=prec_prop]{prec_prop()}},
+\code{\link[=prec_ratio]{prec_ratio()}},
 \code{\link[=prec_twophase]{prec_twophase()}}
 }
 \concept{precision functions}

@@ -48,6 +48,25 @@ n_prop(p = 0.3, moe = 0.05)
 n_mean(var = 100, moe = 2, N = 5000, deff = 1.5)
 ```
 
+### Ratios of two totals
+
+Some headline indicators are a ratio of two totals estimated from the same
+sample, such as consumption per person or yield per hectare. `n_ratio()`
+sizes for the ratio itself, taking the anticipated ratio, each component's
+coefficient of variation, and their correlation across units:
+
+```{r}
+n_ratio(r = 420, cv_num = 1.20, cv_den = 0.45, component_cor = 0.65,
+        cv = 0.05)
+```
+
+The correlation is what makes a ratio cheap to estimate. A numerator that
+moves with its denominator gives a stable ratio even when both components
+are individually variable, and the printed `unit_relvar` is the coefficient
+the size turns on. For a clustered design the homogeneity that matters
+belongs to the linearized variable `y - r * x` rather than to either
+component, and `vignette("svyplan")` works that bridge through.
+
 ### Response rate adjustment
 
 Most sizing and precision functions accept `resp_rate`. In sample-size

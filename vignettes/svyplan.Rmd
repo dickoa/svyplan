@@ -18,7 +18,7 @@ knitr::opts_chunk$set(
 library(svyplan)
 ```
 
-`svyplan` provides a toolkit for survey sample size determination. It covers sample sizes for proportions and means, precision analysis, multistage cluster allocation, multi-indicator optimization, strata boundary optimization, and power analysis. The core sizing and precision functions use paired S3 interfaces for round-trip conversions. Sensitivity analysis via `predict()` is available for supported result classes.
+`svyplan` provides a toolkit for survey sample size determination. It covers sample sizes for proportions and means, precision analysis, multistage cluster allocation, multi-indicator optimization, strata boundary optimization, and power analysis. The core sizing and precision functions use paired `S3` interfaces for round-trip conversions. Sensitivity analysis via `predict()` is available for supported result classes.
 
 ## Function ecosystem
 
@@ -290,6 +290,76 @@ Explicit arguments always override plan defaults:
 # plan has deff = 1.5, but deff = 2.0 wins here
 n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2.0)
 ```
+
+## Ratios of two totals
+
+Some headline indicators are neither a mean nor a proportion but a ratio of two totals estimated from the same sample: consumption per person, yield per hectare, spending per pupil. `n_ratio()` sizes for the ratio itself.
+
+Give it the anticipated ratio, the coefficient of variation of each component, and the correlation between them across units:
+
+```{r n-ratio-basic}
+# Per-capita household consumption: total consumption over total members
+n_ratio(r = 420, cv_num = 1.20, cv_den = 0.45, component_cor = 0.65, cv = 0.05)
+```
+
+The printed `unit_relvar` is the coefficient the size is driven by. It is the relative variance of the linearized variable $e = y - Rx$, and the correlation is what makes it small: a numerator that moves with its denominator produces a stable ratio even when both components are individually variable. Moving `component_cor` from 0.30 to 0.90, with everything else held, nearly halves the required sample:
+
+```{r n-ratio-correlation}
+predict(
+  n_ratio(r = 420, cv_num = 1.20, cv_den = 0.45, component_cor = 0.65, cv = 0.05),
+  data.frame(component_cor = c(0.30, 0.65, 0.90))
+)
+```
+
+Targets work on the ratio's own scale. `moe = 20` asks for an interval of plus or minus 20 currency units per person, and `rmoe` states the same thing relative to `r`:
+
+```{r n-ratio-targets}
+n_ratio(r = 420, cv_num = 1.20, cv_den = 0.45, component_cor = 0.65,
+        moe = 20, deff = 1.3, resp_rate = 0.85)
+```
+
+`prec_ratio()` is the inverse, and the pair round-trips like every other:
+
+```{r n-ratio-roundtrip}
+size <- n_ratio(r = 420, cv_num = 1.20, cv_den = 0.45,
+                component_cor = 0.65, cv = 0.05)
+prec_ratio(size)
+```
+
+What this is, and is not: the estimand is $R = T_y / T_x$, with numerator and denominator observed on the same units. It is not the mean of the unit ratios $y_i / x_i$, which is an ordinary mean and belongs in `n_mean()`. A rate whose denominator is a subpopulation count, such as coverage among an eligible group, is usually easier to plan as a domain proportion with `n_prop()`. `n_ratio()` earns its place when the denominator is a continuous per-unit quantity, where there is no domain share to inflate by.
+
+One warning is worth knowing about. When the two coefficients of variation are close and the correlation is near its bound, the ratio is nearly constant and the size collapses toward zero. The result then rests entirely on a correlation almost nobody knows to three decimals, so the function says so:
+
+```{r n-ratio-warning}
+tryCatch(
+  n_ratio(r = 420, cv_num = 1.20, cv_den = 1.19, component_cor = 0.9999,
+          cv = 0.05),
+  warning = function(w) conditionMessage(w)
+)
+```
+
+### Clustered ratios
+
+For a multistage design, the quantity that matters is the homogeneity of the linearized variable, not of either component. They can differ by an order of magnitude in the same population, so substituting the numerator's `icc` is not a conservative approximation but a different design.
+
+Compute $e = y - Rx$ from pilot data and pass its components to `n_cluster()`:
+
+```{r n-ratio-cluster}
+set.seed(1)
+psu <- rep(1:30, each = 20)
+x <- rlnorm(600, 1, 0.4)
+y <- 3 * x + rnorm(600, 0, 0.8)
+
+R <- mean(y) / mean(x)
+e <- y - R * x
+
+vc <- suppressWarnings(varcomp(e, stage_id = list(psu)))
+n_cluster(stage_cost = c(500, 50), icc = vc$icc,
+          unit_relvar = var(e) / mean(y)^2,
+          var_ratio = vc$var_ratio, cv = 0.05)
+```
+
+`e` has mean zero by construction, so `varcomp()` warns that its relative variances are infinite. Its `icc` and `var_ratio` do not depend on the mean and stay valid, which is why they are taken from the object while `unit_relvar` is supplied separately. Passing the whole `vc` object would carry the infinite value in with it.
 
 ## Evaluating precision
 
@@ -1548,9 +1618,11 @@ Sample-size, cluster, power, and strata-boundary results support `as.integer()` 
 
 **Totals.** There is no `n_total()`. A total is a mean rescaled by *N*, so the CV target is identical and a margin of error on the total is `moe / N` on the mean. `?n_mean` has a worked section on sizing for a total.
 
-**Ratio and regression estimation.** Ratio estimators and regression estimators are analysis-stage techniques. Designs are not usually sized around the precision of a ratio, and sizing for a regression coefficient is a general statistical problem rather than a survey one, covered by packages such as `pwr`. The survey-specific part, the variance inflation from a complex design, is already the `deff` argument.
+**Ratio estimation as a variance-reduction technique.** Using an auxiliary variable to sharpen an estimate of a mean or total is analysis-stage work, and is not the same thing as planning for a ratio estimand, which `n_ratio()` covers. Its planning effect is a smaller residual variance, so supply it directly: fit the ratio model, take the residual variance, and pass it as `n_mean(var = )` with the mean of the analysis variable. A target stated as a CV then gives the same size as sizing for the ratio itself, because the two have the same relative variance.
 
-**Two-phase designs beyond stratification and follow-up.** `n_twophase()` allocates a two-phase sample: a large cheap phase 1, then a subsample measured on the expensive variable. Double sampling for stratification and nonresponse follow-up are the same problem in that function, differing only in which strata are marked `take_all`. What is *not* covered is the third member of the family, double sampling for a regression or ratio estimator, where the phase-1 variable is continuous rather than a stratifier. Its variance effect is expressible today as a design effect below 1, since a regression estimator multiplies the variance by $1 - \rho^2$, but the cost trade-off between the phases is not built in.
+**Regression coefficients.** Sizing for a regression slope is a general statistical problem rather than a survey one, covered by packages such as `pwr`. The survey-specific part, the variance inflation from a complex design, is already the `deff` argument. There is no `n_reg()`.
+
+**Two-phase designs beyond stratification and follow-up.** `n_twophase()` allocates a two-phase sample: a large cheap phase 1, then a subsample measured on the expensive variable. Double sampling for stratification and nonresponse follow-up are the same problem in that function, differing only in which strata are marked `take_all`. What is *not* covered is the third member of the family, double sampling for a regression or ratio estimator, where the phase-1 variable is continuous rather than a stratifier. That is a two-phase allocation question and is separate from `n_ratio()`, which sizes a single-phase design for a ratio estimand. Its variance effect is expressible today as a design effect below 1, since a regression estimator multiplies the variance by $1 - \rho^2$, but the cost trade-off between the phases is not built in.
 
 **More than three stages.** Two- and three-stage designs are supported. Surveys rarely go deeper, and the cost and variance models for a fourth stage would carry more assumptions than they would earn.
 

@@ -31,8 +31,11 @@ n_multi_cluster(indicators, ...)
 }
 \arguments{
 \item{indicators}{For the default method, a non-empty data frame with one row
-per indicator. Each row requires \code{p} or \code{var}, a \code{cv}, \code{moe}, or
-\code{rmoe} target, and \code{icc_psu}. Three-stage designs also require
+per indicator. Each row requires \code{p}, \code{var}, or the ratio quartet
+(\code{r}, \code{cv_num}, \code{cv_den}, \code{component_cor}), a \code{cv}, \code{moe}, or
+\code{rmoe} target, and \code{icc_psu}. On a ratio row \code{icc_psu}, \code{icc_ssu} and
+the stage variance ratios describe the linearized variable
+\code{e = y - r * x}, not either component. Three-stage designs also require
 \code{icc_ssu}. Optional
 \code{var_ratio_psu} defaults to 1; three-stage \code{var_ratio_ssu} is derived as
 \code{var_ratio_psu * (1 - icc_psu)} when absent, the value the variance
@@ -173,6 +176,7 @@ Other sample size functions:
 \code{\link[=n_panel]{n_panel()}},
 \code{\link[=n_pooled]{n_pooled()}},
 \code{\link[=n_prop]{n_prop()}},
+\code{\link[=n_ratio]{n_ratio()}},
 \code{\link[=n_twophase]{n_twophase()}}
 }
 \concept{sample size functions}

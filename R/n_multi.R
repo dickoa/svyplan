@@ -443,8 +443,11 @@ n_multi.default <- function(
 #' shared budget across domains are supported.
 #'
 #' @param indicators For the default method, a non-empty data frame with one row
-#'   per indicator. Each row requires `p` or `var`, a `cv`, `moe`, or
-#'   `rmoe` target, and `icc_psu`. Three-stage designs also require
+#'   per indicator. Each row requires `p`, `var`, or the ratio quartet
+#'   (`r`, `cv_num`, `cv_den`, `component_cor`), a `cv`, `moe`, or
+#'   `rmoe` target, and `icc_psu`. On a ratio row `icc_psu`, `icc_ssu` and
+#'   the stage variance ratios describe the linearized variable
+#'   `e = y - r * x`, not either component. Three-stage designs also require
 #'   `icc_ssu`. Optional
 #'   `var_ratio_psu` defaults to 1; three-stage `var_ratio_ssu` is derived as
 #'   `var_ratio_psu * (1 - icc_psu)` when absent, the value the variance
@@ -803,8 +806,11 @@ n_multi_cluster.default <- function(
 
   has_p <- "p" %in% names(indicators)
   has_var <- "var" %in% names(indicators)
-  if (!has_p && !has_var) {
-    stop("'indicators' must contain 'p' or 'var' column", call. = FALSE)
+  is_ratio <- .is_ratio_row(indicators)
+  .check_ratio_rows(indicators)
+  if (!has_p && !has_var && !any(is_ratio)) {
+    stop("'indicators' must contain a 'p', 'var', or 'r' column",
+         call. = FALSE)
   }
 
   has_moe <- "moe" %in% names(indicators)
@@ -828,30 +834,8 @@ n_multi_cluster.default <- function(
     }
   }
 
-  # Each row needs at least one of p or var (non-NA)
-  has_indicator <- rep(FALSE, nrow(indicators))
-  if (has_p) {
-    has_indicator <- has_indicator | !is.na(indicators$p)
-  }
-  if (has_var) {
-    has_indicator <- has_indicator | !is.na(indicators$var)
-  }
-  if (any(!has_indicator)) {
-    stop(
-      sprintf(
-        "row(s) %s must have a non-NA 'p' or 'var' value",
-        paste(which(!has_indicator), collapse = ", ")
-      ),
-      call. = FALSE
-    )
-  }
-
-  if (has_p && has_var) {
-    both_set <- !is.na(indicators$p) & !is.na(indicators$var)
-    if (any(both_set)) {
-      stop("each row must have only one of 'p' or 'var'", call. = FALSE)
-    }
-  }
+  # Each row is exactly one estimand: a proportion, a mean, or a ratio.
+  .check_estimand_markers(indicators)
 
   if (has_moe && has_cv) {
     both_na <- is.na(indicators$moe) & is.na(indicators$cv)
@@ -1088,9 +1072,15 @@ n_multi_cluster.default <- function(
   has_p <- "p" %in% names(indicators)
   has_var <- "var" %in% names(indicators)
   has_mu <- "mu" %in% names(indicators)
+  is_ratio <- .is_ratio_row(indicators)
 
   for (i in which(needs)) {
-    if (has_p && !is.na(indicators$p[i])) {
+    if (is_ratio[i]) {
+      rv[i] <- .ratio_unit_relvar(
+        indicators$r[i], indicators$cv_num[i], indicators$cv_den[i],
+        indicators$component_cor[i]
+      )
+    } else if (has_p && !is.na(indicators$p[i])) {
       rv[i] <- (1 - indicators$p[i]) / indicators$p[i]
     } else if (has_var && !is.na(indicators$var[i])) {
       if (has_mu && !is.na(indicators$mu[i])) {
@@ -1150,9 +1140,16 @@ n_multi_cluster.default <- function(
   has_var <- "var" %in% names(indicators)
   has_method <- "prop_method" %in% names(indicators)
 
+  is_ratio <- .is_ratio_row(indicators)
+
   for (i in which(moe_rows)) {
     df_i <- .row_df(indicators, i)
-    if (has_p && !is.na(indicators$p[i])) {
+    if (is_ratio[i]) {
+      # Exact under the first-order model, the same conversion the mean row
+      # gets, on the ratio's own scale.
+      z <- .q_alpha(indicators$alpha[i], df_i)
+      indicators$cv[i] <- indicators$moe[i] / (z * abs(indicators$r[i]))
+    } else if (has_p && !is.na(indicators$p[i])) {
       p_i <- indicators$p[i]
       method_i <- if (has_method) indicators$prop_method[i] else "wald"
       n_eff <- .n_prop_effective(p_i, indicators$moe[i], indicators$alpha[i],
@@ -1196,9 +1193,15 @@ n_multi_cluster.default <- function(
 
   has_p <- "p" %in% names(indicators)
   has_mu <- "mu" %in% names(indicators)
+  is_ratio <- .is_ratio_row(indicators)
   cv_achieved_vec <- vapply(seq_len(nrow(indicators)), function(i) {
     prec <- suppressWarnings(
-      if (has_p && !is.na(indicators$p[i])) {
+      if (is_ratio[i]) {
+        .prec_engine_ratio(indicators$r[i], indicators$unit_relvar[i], n_max,
+                           indicators$alpha[i], indicators$N[i],
+                           indicators$deff[i], indicators$resp_rate[i],
+                           .row_df(indicators, i))
+      } else if (has_p && !is.na(indicators$p[i])) {
         .prec_engine_prop(indicators$p[i], n_max, indicators$alpha[i],
                           indicators$N[i], indicators$deff[i],
                           indicators$resp_rate[i], indicators$prop_method[i],
@@ -1248,12 +1251,27 @@ n_multi_cluster.default <- function(
   has_p <- "p" %in% names(indicators)
   has_moe <- "moe" %in% names(indicators)
   has_mu <- "mu" %in% names(indicators)
+  is_ratio <- .is_ratio_row(indicators)
 
   for (i in seq_len(nr)) {
     is_prop <- has_p && !is.na(indicators$p[i])
     use_moe <- has_moe && !is.na(indicators$moe[i])
 
-    if (is_prop) {
+    if (is_ratio[i]) {
+      res_i <- n_ratio.default(
+        r = indicators$r[i],
+        cv_num = indicators$cv_num[i],
+        cv_den = indicators$cv_den[i],
+        component_cor = indicators$component_cor[i],
+        moe = if (use_moe) indicators$moe[i] else NULL,
+        cv = if (use_moe) NULL else indicators$cv[i],
+        alpha = indicators$alpha[i],
+        N = indicators$N[i],
+        deff = indicators$deff[i],
+        resp_rate = indicators$resp_rate[i],
+        df = .row_df(indicators, i)
+      )
+    } else if (is_prop) {
       res_i <- n_prop.default(
         p = indicators$p[i],
         moe = if (use_moe) indicators$moe[i] else NULL,

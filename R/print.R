@@ -369,6 +369,13 @@ print.svyplan_n <- function(x, ...) {
   if (!is.null(p$var)) {
     parts <- c(parts, sprintf("var = %.2f", p$var))
   }
+  # A ratio reports its derived coefficient rather than the three moments it
+  # was built from, which would not fit the line. Exact extraction and a type
+  # gate, because `p$r` partial-matches `resp_rate` on every other estimand.
+  if (identical(x$type, "ratio")) {
+    parts <- c(parts, sprintf("r = %.4g", p[["r"]]))
+    parts <- c(parts, sprintf("unit_relvar = %.3g", p[["unit_relvar"]]))
+  }
   if (!is.null(p$moe)) {
     parts <- c(parts, sprintf("moe = %.3f", p$moe))
   }
@@ -1196,8 +1203,9 @@ format.svyplan_power <- function(x, ...) {
 #' Compute a confidence interval for the parameter a sizing or precision
 #' result was built around, at the planned sample size.
 #'
-#' @param object A [n_prop()], [n_mean()], [prec_prop()], or [prec_mean()]
-#'   result.
+#' @param object A [n_prop()], [n_mean()], [n_ratio()], [prec_prop()],
+#'   [prec_mean()], or [prec_ratio()] result. [n_change()] and [n_pooled()]
+#'   results are also supported.
 #' @param parm Ignored (included for S3 consistency with [confint()]).
 #' @param level Confidence level (default 0.95). This is independent of the
 #'   `alpha` used to size the design, so a plan built at `alpha = 0.05` can
@@ -1217,8 +1225,15 @@ format.svyplan_power <- function(x, ...) {
 #' sits. All four apply `deff`, `resp_rate`, and the finite population
 #' correction through the same effective size the sizing functions use.
 #'
-#' For means, a symmetric z-interval is used, which requires `mu` in the
-#' original call.
+#' For means, ratios, changes and pooled estimates the interval is symmetric
+#' about the estimand, at the normal quantile or, when the result carries a
+#' `df`, the t quantile it was built with. A mean requires `mu` in the
+#' original call, since a size targeted on `moe` alone knows the spread but
+#' not the level. A ratio always has `r`, so it needs nothing extra.
+#'
+#' A ratio interval is the first-order symmetric one, `r` plus or minus
+#' `q * se`. It is not a Fieller interval and does not correct the ratio
+#' estimator's bias.
 #'
 #' Multi-indicator results (`n_multi()`, `prec_multi()`) and allocation
 #' results have no single parameter to bound, and error rather than
@@ -1291,6 +1306,9 @@ confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
         call. = FALSE
       )
     }
+  } else if (object$type == "ratio") {
+    # Always present: a ratio cannot be built without it, unlike a mean's 'mu'.
+    est <- p$r
   } else if (object$type == "change") {
     est <- .change_ci_estimand(p)
   } else if (object$type == "pooled") {
@@ -1377,6 +1395,9 @@ confint.svyplan_prec <- function(object, parm, level = 0.95, ...) {
         call. = FALSE
       )
     }
+  } else if (object$type == "ratio") {
+    # Always present: a ratio cannot be built without it, unlike a mean's 'mu'.
+    est <- p$r
   } else if (object$type == "change") {
     est <- .change_ci_estimand(p)
   } else if (object$type == "pooled") {

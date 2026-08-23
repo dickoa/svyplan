@@ -86,6 +86,7 @@
     type,
     proportion = params$p,
     mean = params$mu,
+    ratio = params$r,
     change = params$change,
     pooled = params$mu,
     multi = .indicator_estimand(params$indicators, length(moe)),
@@ -129,12 +130,7 @@
   if (!is.data.frame(indicators) || nrow(indicators) != n_rows) {
     return(NULL)
   }
-  out <- rep(NA_real_, n_rows)
-  if ("p" %in% names(indicators)) out <- as.numeric(indicators$p)
-  if ("mu" %in% names(indicators)) {
-    out <- ifelse(is.na(out), as.numeric(indicators$mu), out)
-  }
-  out
+  .indicator_scale(indicators)
 }
 
 #' Compute precision measures from n and params
@@ -155,6 +151,9 @@
   } else if (type == "mean") {
     .prec_engine_mean(params$var, params$mu, n, params$alpha, N, deff,
                       resp_rate, params$df)
+  } else if (type == "ratio") {
+    .prec_engine_ratio(params$r, params$unit_relvar, n, params$alpha, N, deff,
+                       resp_rate, params$df)
   } else {
     list(se = NA_real_, moe = NA_real_, cv = NA_real_)
   }

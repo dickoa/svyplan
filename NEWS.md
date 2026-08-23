@@ -1,4 +1,4 @@
-# svyplan 0.12.0
+# svyplan 0.13.0
 
 Initial CRAN release.
 
@@ -199,6 +199,39 @@ Initial CRAN release.
   round trip. A fully pinned frame can be priced by `prec_twophase()` and
   is refused by `n_twophase()`, which would have nothing left to choose.
 * `n_mean()`: sample size for a mean (`moe`, `rmoe`, and `cv` modes).
+* `n_ratio()` and `prec_ratio()`: planning for a ratio of two totals
+  observed on the same units, such as consumption per person or yield per
+  hectare. The inputs are the ones a pilot yields, the anticipated ratio
+  and each component's coefficient of variation and their correlation
+  across units, from which the unit relative variance follows as
+  `cv_num^2 + cv_den^2 - 2 * component_cor * cv_num * cv_den * sign(r)`,
+  equal to `var(y - r * x) / mean(y)^2`. The `sign(r)` factor matters only
+  when the two means differ in sign, and it leaves the coefficient
+  unchanged when either component is negated. Targets are stated on the
+  ratio's own scale in all three modes, the finite population correction,
+  response rate, design effect and design df follow the conventions every
+  other estimand uses, and ratio rows join proportions and means in
+  `n_multi()` and `prec_multi()`. The method is first order: it omits the
+  ratio estimator's bias and assumes a denominator far enough from zero
+  that its sampling distribution does not approach it, so a large
+  `cv_den`, a skewed denominator, or a small effective sample call for
+  simulation instead. A ratio whose components are near-proportional has
+  almost no sampling variance, and the size then rests on the last digits
+  of the correlation, which warns rather than returning in silence.
+* A ratio's `deff` belongs to the ratio estimator, or first-order
+  equivalently to the linearized variable `e = y - r * x`. It is not the
+  design effect of either component and cannot be derived from theirs. For
+  a multistage plan the same holds of the homogeneity: compute `e` from
+  pilot data, take `icc` and `var_ratio` from `varcomp(e)`, and supply the
+  ratio's own `unit_relvar` to `n_cluster()`. `?n_ratio` and the vignette
+  work the bridge through. The same holds inside `n_multi_cluster()` and
+  `prec_multi_cluster()`, which take ratio rows and read their `icc_psu`,
+  `icc_ssu` and stage variance ratios as belonging to the linearized
+  variable. A one-row ratio table reproduces the direct `n_cluster()` call
+  under the same stage inputs, and a component's homogeneity substituted for
+  the linearized one is a different design rather than a conservative one:
+  VDK Example 9.3 has the two differing by more than an order of magnitude
+  in one population.
 * `rmoe` states a precision target as a margin of error relative to the
   estimand, `moe / p` for a proportion and `moe / abs(mu)` for a mean,
   which is how MICS and DHS state one. It is an argument on `n_prop()`,

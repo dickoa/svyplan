@@ -11,8 +11,9 @@
 \method{confint}{svyplan_prec}(object, parm, level = 0.95, ...)
 }
 \arguments{
-\item{object}{A \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}}, \code{\link[=prec_prop]{prec_prop()}}, or \code{\link[=prec_mean]{prec_mean()}}
-result.}
+\item{object}{A \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}}, \code{\link[=n_ratio]{n_ratio()}}, \code{\link[=prec_prop]{prec_prop()}},
+\code{\link[=prec_mean]{prec_mean()}}, or \code{\link[=prec_ratio]{prec_ratio()}} result. \code{\link[=n_change]{n_change()}} and \code{\link[=n_pooled]{n_pooled()}}
+results are also supported.}
 
 \item{parm}{Ignored (included for S3 consistency with \code{\link[=confint]{confint()}}).}
 
@@ -40,8 +41,15 @@ width, and \code{confint()} is the way to read where the interval actually
 sits. All four apply \code{deff}, \code{resp_rate}, and the finite population
 correction through the same effective size the sizing functions use.
 
-For means, a symmetric z-interval is used, which requires \code{mu} in the
-original call.
+For means, ratios, changes and pooled estimates the interval is symmetric
+about the estimand, at the normal quantile or, when the result carries a
+\code{df}, the t quantile it was built with. A mean requires \code{mu} in the
+original call, since a size targeted on \code{moe} alone knows the spread but
+not the level. A ratio always has \code{r}, so it needs nothing extra.
+
+A ratio interval is the first-order symmetric one, \code{r} plus or minus
+\code{q * se}. It is not a Fieller interval and does not correct the ratio
+estimator's bias.
 
 Multi-indicator results (\code{n_multi()}, \code{prec_multi()}) and allocation
 results have no single parameter to bound, and error rather than

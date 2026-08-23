@@ -76,6 +76,7 @@ Other precision functions:
 \code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
 \code{\link[=prec_panel]{prec_panel()}},
 \code{\link[=prec_pooled]{prec_pooled()}},
-\code{\link[=prec_prop]{prec_prop()}}
+\code{\link[=prec_prop]{prec_prop()}},
+\code{\link[=prec_ratio]{prec_ratio()}}
 }
 \concept{precision functions}

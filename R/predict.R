@@ -201,7 +201,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
 
   } else if (object$type == "mean") {
     allowed <- c("var", "mu", "moe", "cv", "rmoe", "alpha", "N", "deff",
-                 "resp_rate")
+                 "resp_rate", "df")
     base <- object$params
 
     .validate_newdata(newdata, allowed)
@@ -211,7 +211,27 @@ predict.svyplan_n <- function(object, newdata, ...) {
       res <- n_mean.default(
         var = p$var, mu = p$mu, moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N,
-        deff = p$deff, resp_rate = p$resp_rate
+        deff = p$deff, resp_rate = p$resp_rate, df = p$df
+      )
+      data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv,
+                 rmoe = res$rmoe)
+    })
+
+  } else if (object$type == "ratio") {
+    allowed <- c("r", "cv_num", "cv_den", "component_cor", "moe", "cv",
+                 "rmoe", "alpha", "N", "deff", "resp_rate", "df")
+    base <- object$params
+
+    .validate_newdata(newdata, allowed)
+    base <- .resolve_exclusive(newdata, base, "moe", "cv", "rmoe")
+
+    .predict_grid(newdata, base, function(p) {
+      res <- n_ratio.default(
+        r = p$r, cv_num = p$cv_num, cv_den = p$cv_den,
+        component_cor = p$component_cor,
+        moe = p$moe, cv = p$cv, rmoe = p$rmoe,
+        alpha = p$alpha, N = p$N,
+        deff = p$deff, resp_rate = p$resp_rate, df = p$df
       )
       data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv,
                  rmoe = res$rmoe)
@@ -590,7 +610,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
     })
 
   } else if (object$type == "mean") {
-    allowed <- c("var", "n", "mu", "alpha", "N", "deff", "resp_rate")
+    allowed <- c("var", "n", "mu", "alpha", "N", "deff", "resp_rate", "df")
     base <- object$params
     if (identical(solved, "mu")) {
       allowed <- c(setdiff(allowed, "mu"), "cv")
@@ -603,7 +623,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
     .predict_grid(newdata, base, function(p) {
       res <- prec_mean.default(
         var = p$var, n = p$n, mu = p$mu, cv = p$cv, alpha = p$alpha,
-        N = p$N, deff = p$deff, resp_rate = p$resp_rate
+        N = p$N, deff = p$deff, resp_rate = p$resp_rate, df = p$df
       )
       out <- data.frame(se = res$se, moe = res$moe, cv = res$cv,
                         rmoe = res$rmoe)
@@ -611,6 +631,22 @@ predict.svyplan_prec <- function(object, newdata, ...) {
         out <- cbind(data.frame(mu = res$params$mu), out)
       }
       out
+    })
+
+  } else if (object$type == "ratio") {
+    allowed <- c("r", "n", "cv_num", "cv_den", "component_cor", "alpha", "N",
+                 "deff", "resp_rate", "df")
+    base <- object$params
+
+    .validate_newdata(newdata, allowed)
+
+    .predict_grid(newdata, base, function(p) {
+      res <- prec_ratio.default(
+        r = p$r, n = p$n, cv_num = p$cv_num, cv_den = p$cv_den,
+        component_cor = p$component_cor, alpha = p$alpha,
+        N = p$N, deff = p$deff, resp_rate = p$resp_rate, df = p$df
+      )
+      data.frame(se = res$se, moe = res$moe, cv = res$cv, rmoe = res$rmoe)
     })
 
   } else {

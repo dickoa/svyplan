@@ -393,6 +393,7 @@ Other sample size functions:
 \code{\link[=n_multi_cluster]{n_multi_cluster()}},
 \code{\link[=n_panel]{n_panel()}},
 \code{\link[=n_pooled]{n_pooled()}},
-\code{\link[=n_prop]{n_prop()}}
+\code{\link[=n_prop]{n_prop()}},
+\code{\link[=n_ratio]{n_ratio()}}
 }
 \concept{sample size functions}

@@ -11,7 +11,9 @@
 #'
 #'   At minimum, each row needs:
 #'   \itemize{
-#'     \item `p` **or** `var`: what you are measuring (see [n_multi()]).
+#'     \item `p`, `var`, **or** the ratio quartet `r`, `cv_num`, `cv_den`
+#'       and `component_cor`: what you are measuring (see [n_multi()]).
+#'       Exactly one estimand per row.
 #'     \item `n`: the sample size to evaluate.
 #'   }
 #'
@@ -35,8 +37,9 @@
 #'
 #' @return A `svyplan_prec` object with a `$detail` data frame containing
 #'   per-indicator precision: `.se`, `.moe`, `.rmoe`, and `.cv`. `.rmoe`
-#'   is `.moe` as a fraction of the row's `p` or `abs(mu)`, and `NA` for a
-#'   row carrying neither.
+#'   is `.moe` as a fraction of the row's own estimand, `p` for a
+#'   proportion, `abs(mu)` for a mean and `abs(r)` for a ratio, and `NA` for
+#'   a row carrying none of them.
 #'
 #' @details
 #' ## Building the indicators data frame
@@ -62,9 +65,16 @@
 #'   \item{`name`}{Indicator label (optional).}
 #'   \item{`p`}{Expected proportion, in (0, 1). One of `p` or `var`
 #'     per row (see [n_multi()]).}
-#'   \item{`var`}{Population variance. One of `p` or `var` per row.}
+#'   \item{`var`}{Population variance. One of `p`, `var` or `r` per row.}
 #'   \item{`mu`}{Population mean. Required for CV output when `var`
 #'     is specified, because CV = SE / mean.}
+#'   \item{`r`}{Anticipated ratio of two totals, marking a ratio row. It
+#'     requires `cv_num`, `cv_den` and `component_cor` alongside it, and no
+#'     `unit_relvar`, which the moments derive. See [prec_ratio()].}
+#'   \item{`cv_num`, `cv_den`}{Coefficients of variation of a ratio row's
+#'     numerator and denominator, strictly positive.}
+#'   \item{`component_cor`}{Correlation between a ratio row's numerator and
+#'     denominator across units, in \[-1, 1\].}
 #'   \item{`n`}{Sample size to evaluate (**required**), with one value per
 #'     indicator row.}
 #'   \item{`alpha`}{Significance level (default 0.05).}
@@ -84,10 +94,10 @@
 #'
 #' Domain columns are specified via the `domains` parameter.
 #'
-#' `prec_multi()` delegates proportion rows to [prec_prop()]
-#' and mean rows to [prec_mean()]. Use `prop_method` or a
+#' `prec_multi()` delegates proportion rows to [prec_prop()], mean rows to
+#' [prec_mean()] and ratio rows to [prec_ratio()]. Use `prop_method` or a
 #' `indicators$prop_method` column to choose `"wald"`, `"wilson"`,
-#' `"logodds"` or `"beta"` for proportion rows.
+#' `"logodds"` or `"beta"` for proportion rows. It is ignored elsewhere.
 #'
 #' @family precision functions
 #' @seealso [n_multi()] for the inverse, [prec_multi_cluster()] for
@@ -276,6 +286,8 @@ prec_multi_cluster.default <- function(
   }
   indicators <- .indicators_var_from_sd(indicators, domains)
   .check_indicator_columns(indicators, domains)
+  .check_ratio_rows(indicators)
+  .check_estimand_markers(indicators)
   .stop_min_cases_column(
     indicators,
     "prec_multi_cluster() reads the sizes you already have; a case floor is a sizing constraint, so it belongs to n_multi()"
@@ -375,25 +387,15 @@ prec_multi_cluster.default <- function(
 
   has_p <- "p" %in% names(indicators)
   has_var <- "var" %in% names(indicators)
-  if (!has_p && !has_var) {
-    stop("'indicators' must contain 'p' or 'var' column", call. = FALSE)
+  is_ratio <- .is_ratio_row(indicators)
+  .check_ratio_rows(indicators)
+  if (!has_p && !has_var && !any(is_ratio)) {
+    stop("'indicators' must contain a 'p', 'var', or 'r' column",
+         call. = FALSE)
   }
-  has_indicator <- rep(FALSE, nrow(indicators))
-  if (has_p) {
-    has_indicator <- has_indicator | !is.na(indicators$p)
-  }
-  if (has_var) {
-    has_indicator <- has_indicator | !is.na(indicators$var)
-  }
-  if (any(!has_indicator)) {
-    stop(
-      sprintf(
-        "row(s) %s must have a non-NA 'p' or 'var' value",
-        paste(which(!has_indicator), collapse = ", ")
-      ),
-      call. = FALSE
-    )
-  }
+  # Exactly one estimand per row, the same rule n_multi() applies, so a table
+  # the sizing path refuses cannot be evaluated by the precision path.
+  .check_estimand_markers(indicators)
 
   if (has_p) {
     p_vals <- indicators$p[!is.na(indicators$p)]
@@ -439,7 +441,20 @@ prec_multi_cluster.default <- function(
   for (i in seq_len(nr)) {
     is_prop <- has_p && !is.na(indicators$p[i])
 
-    if (is_prop) {
+    if (is_ratio[i]) {
+      res_i <- prec_ratio.default(
+        r = indicators$r[i],
+        n = indicators$n[i],
+        cv_num = indicators$cv_num[i],
+        cv_den = indicators$cv_den[i],
+        component_cor = indicators$component_cor[i],
+        alpha = indicators$alpha[i],
+        N = indicators$N[i],
+        deff = indicators$deff[i],
+        resp_rate = indicators$resp_rate[i],
+        df = .row_df(indicators, i)
+      )
+    } else if (is_prop) {
       res_i <- prec_prop.default(
         p = indicators$p[i],
         n = indicators$n[i],
@@ -669,9 +684,13 @@ prec_multi_cluster.default <- function(
     has_p <- "p" %in% names(indicators)
     has_mu <- "mu" %in% names(indicators)
     has_method <- "prop_method" %in% names(indicators)
+    is_ratio <- .is_ratio_row(indicators)
     for (i in seq_len(nr)) {
       df_i <- .row_df(indicators, i)
-      if (has_p && !is.na(indicators$p[i])) {
+      if (is_ratio[i]) {
+        se_vec[i] <- cv_vec[i] * abs(indicators$r[i])
+        moe_vec[i] <- .q_alpha(indicators$alpha[i], df_i) * se_vec[i]
+      } else if (has_p && !is.na(indicators$p[i])) {
         p_i <- indicators$p[i]
         se_vec[i] <- cv_vec[i] * p_i
         method_i <- if (has_method) indicators$prop_method[i] else "wald"

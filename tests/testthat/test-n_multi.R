@@ -61,8 +61,9 @@ test_that("3-stage operational designs preserve budget and precision constraints
   expect_true(all(precision$operational$cv_by_target <= targets$cv + 1e-10))
 })
 
-test_that("n_multi requires p or var column", {
-  expect_error(nm(data.frame(moe = 0.05)), "must contain 'p' or 'var'")
+test_that("n_multi requires an estimand column", {
+  expect_error(nm(data.frame(moe = 0.05)),
+               "must contain a 'p', 'var', or 'r' column")
 })
 
 test_that("n_multi requires moe or cv column", {

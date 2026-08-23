@@ -186,6 +186,7 @@ Other precision functions:
 \code{\link[=prec_panel]{prec_panel()}},
 \code{\link[=prec_pooled]{prec_pooled()}},
 \code{\link[=prec_prop]{prec_prop()}},
+\code{\link[=prec_ratio]{prec_ratio()}},
 \code{\link[=prec_twophase]{prec_twophase()}}
 }
 \concept{precision functions}
