@@ -899,7 +899,7 @@ n_alloc.default <- function(
     }
     if (alloc_explicit) {
       stop(
-        "'alloc' is not used for joint constrained allocation; allocation is determined by 'targets'",
+        "'alloc' is not used for joint constrained allocation, it is determined by 'targets'",
         call. = FALSE
       )
     }
@@ -992,8 +992,6 @@ n_alloc.default <- function(
   S_h <- prep$S_h
   mean_h <- prep$mean_h
   cost_h <- prep$cost_h
-  # Computation runs on the resolved per-stratum values; the arguments are
-  # kept as given so $params round trips exactly what the caller supplied.
   deff_arg <- deff
   resp_rate_arg <- resp_rate
   deff <- prep$deff_h
@@ -1430,7 +1428,7 @@ n_alloc.svyplan_prec <- function(
 #' @param df Degrees of freedom of the variance estimator the allocation
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the quantile used to translate a `moe`
-#'   target in and to report `moe` out; a `cv` target carries no quantile
+#'   target in and to report `moe` out. A `cv` target carries no quantile
 #'   and is unaffected. `NULL` (default) applies no adjustment.
 #' @param unit_cost Optional scalar or length-`nrow(frame)` vector of
 #'   per-stratum unit costs, overriding `frame$unit_cost`. Fixed-take
@@ -1622,11 +1620,8 @@ prec_alloc.default <- function(
     )
   }
   if (!is.null(min_n_stratum)) {
-    # Aggregate precision does not depend on a floor that the supplied
-    # allocation either already meets or does not; only the joint mode
-    # reports per-stratum bound diagnostics.
     stop(
-      "'min_n_stratum' applies to joint precision assessment; supply 'measures' and 'targets', or drop it",
+      "'min_n_stratum' applies to joint precision assessment. Supply 'measures' and 'targets', or drop it",
       call. = FALSE
     )
   }
@@ -1850,7 +1845,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   }
   if (all(S_h == 0)) {
     warning(
-      "all 'sd' values are zero; allocation has no variability to distribute",
+      "all 'sd' values are zero, allocation has no variability to distribute",
       call. = FALSE
     )
   }
@@ -1873,14 +1868,14 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   }
   if (!all(is.na(mean_h)) && all(mean_h == 0, na.rm = TRUE)) {
     warning(
-      "all 'mean' (or 'p') values are zero; CV will be Inf",
+      "all 'mean' (or 'p') values are zero, CV will be Inf",
       call. = FALSE
     )
   }
 
   if ("cost" %in% names(frame)) {
     stop(
-      "the per-stratum cost column is 'unit_cost'; 'cost' is the total field cost",
+      "the per-stratum cost column is 'unit_cost', 'cost' is the total field cost",
       call. = FALSE
     )
   }
@@ -2145,14 +2140,11 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   if (any(too_big & need_opt)) {
     n_per_psu_h[too_big & need_opt] <- prep$N_h[too_big & need_opt]
     warning(
-      "cost-optimal 'n_per_psu' exceeds the stratum population; clamped to 'N'",
+      "cost-optimal 'n_per_psu' exceeds the stratum population, clamped to 'N'",
       call. = FALSE
     )
   }
 
-  # Taking every PSU still leaves the within-PSU take in place, so it does not
-  # establish an ultimate-unit census. The generalized fixed-take path refuses
-  # 'take_all' for the same reason.
   if (any(prep$take_all)) {
     stop(
       "'take_all' is not supported for cluster allocation because taking every PSU does not imply an ultimate-unit census: the within-PSU take 'n_per_psu' still applies. Drop 'take_all', or drop 'icc_psu' to allocate at the element level",
@@ -2160,9 +2152,6 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     )
   }
 
-  # A PSU universe is a feasibility constraint only. It bounds the allocation
-  # and its integerization; it does not introduce a first-stage FPC, and the
-  # variance model stays the with-replacement one documented for this path.
   resp_rate_psu_h <- .alloc_resolve_h(
     1,
     frame,
@@ -2233,14 +2222,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     )
   )
   prep$fpc <- fpc
-  # The clustering bracket and the effective-size denominator want different
-  # rates and must not be handed the same one. Only ultimate-unit loss
-  # shrinks the realized cluster, so only it belongs inside the bracket; a
-  # lost PSU removes its whole contribution and enters through the total.
-  # Kept separately because the combined rate below overwrites resp_rate_h.
   prep$unit_resp_rate_h <- prep$resp_rate_h
-  # Downstream the allocation is an element-level one, and every stage's loss
-  # removes observations from the same total, so it sees the product.
   prep$resp_rate_h <- prep$resp_rate_h * resp_rate_psu_h
   prep$responding_take_h <- responding_take
   if (has_costs) {
@@ -2577,7 +2559,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #' PSU count a_h per stratum. In cv mode a_h matches or beats each
 #' stratum's continuous variance contribution; in budget mode PSUs are
 #' removed/added greedily so the field cost sum(a_h * (cost_psu +
-#' cost_ssu * b_h)) never exceeds the budget; in n mode a_h approximates
+#' cost_ssu * b_h)) never exceeds the budget. In n mode a_h approximates
 #' the continuous element total. Returns the design plus recomputed
 #' metrics and updates the detail integers.
 #' @keywords internal
@@ -2791,8 +2773,6 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       a_h[j] <- a_h[j] + 1L
     }
   } else {
-    # Exact where the take divides the target; the nearest whole number of
-    # PSUs where a fixed take does not, which is what moves the total.
     a_h <- as.integer(round(e_target / b_h))
     a_h <- pmin(pmax(a_h, a_min), a_max)
   }

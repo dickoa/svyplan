@@ -137,7 +137,7 @@
 #' methods converge on each other slowly. Over `p` from 0.1 to 0.9, the
 #' widest and narrowest margins of error differ by 8.2 percent at
 #' `n = 100`, 3.8 percent at 500, 2.7 percent at 1000, and 1.2 percent at
-#' 5000. Below a few thousand the choice is worth a moment; at survey scale
+#' 5000. Below a few thousand the choice is worth a moment but at survey scale
 #' it usually is not.
 #'
 #' The case that decides it is a rare or near-universal outcome. As `p`
@@ -189,7 +189,7 @@
 #'
 #' `deff` does not enter this size, and that is deliberate rather than an
 #' omission. A design effect describes how precisely the proportion is
-#' estimated; the number of positive cases that turn up in a sample of
+#' estimated and the number of positive cases that turn up in a sample of
 #' \eqn{n} is a property of the sample size and the prevalence alone. The
 #' response rate does enter, because the cases are counted among
 #' respondents and the returned `n` is gross, on the same footing as every
@@ -244,7 +244,7 @@
 #'
 #' The coefficient of variation is *not* uniformly invariant to `df`. Only
 #' `"wald"` and the mean engine build `se` without a quantile in it, so
-#' only their `cv` is unchanged; `"wilson"`, `"logodds"` and `"beta"` build
+#' only their `cv` is unchanged. `"wilson"`, `"logodds"` and `"beta"` build
 #' the half-width first and read `se` back out of it, so their `cv` moves
 #' with the quantile.
 #'
@@ -353,7 +353,9 @@ n_prop.default <- function(
   check_resp_rate(resp_rate)
   method <- match.arg(method)
 
-  if (!is.null(df)) check_df(df)
+  if (!is.null(df)) {
+    check_df(df)
+  }
 
   # Normalized once, here, so no solver or engine below ever sees 'rmoe'.
   moe_used <- if (is.null(rmoe)) moe else .moe_from_rmoe(rmoe, p, "p")
@@ -462,20 +464,27 @@ n_prop.default <- function(
   lower <- 1e-8
   if (gap(lower) <= 0) {
     stop(
-      sprintf("the %s margin of error is unattainable: it never exceeds %.4g",
-              what, moe),
+      sprintf(
+        "the %s margin of error is unattainable: it never exceeds %.4g",
+        what,
+        moe
+      ),
       call. = FALSE
     )
   }
   if (is.null(upper)) {
     upper <- 1
     for (i in seq_len(200L)) {
-      if (gap(upper) < 0) break
+      if (gap(upper) < 0) {
+        break
+      }
       upper <- upper * 4
     }
     if (gap(upper) >= 0) {
-      stop(sprintf("the %s sample size search did not converge", what),
-           call. = FALSE)
+      stop(
+        sprintf("the %s sample size search did not converge", what),
+        call. = FALSE
+      )
     }
   }
   uniroot(gap, c(lower, upper), tol = .Machine$double.eps^0.75)$root
@@ -497,7 +506,9 @@ n_prop.default <- function(
   # convert back through the shared variance so that 'deff' and 'N' enter
   # exactly as they do for the Wald and log-odds methods.
   n_eff <- .solve_n_from_moe(
-    function(n) .wilson_moe(p, n, z), moe, what = "Wilson"
+    function(n) .wilson_moe(p, n, z),
+    moe,
+    what = "Wilson"
   )
   .n_from_effective(n_eff, N, deff)
 }

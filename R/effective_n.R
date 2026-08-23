@@ -33,7 +33,7 @@
 #' allocation and precision functions plan on, and the one reported in the
 #' `n_eff` column of an [n_alloc()] table. Passing a plan as `x` picks up
 #' the response rate it was built with, so `effective_n(plan)` and that
-#' column agree; supply `resp_rate` yourself when you pass a bare `n` that
+#' column agree. Supply `resp_rate` yourself when you pass a bare `n` that
 #' has not already been netted down.
 #'
 #' The design effect it divides by is a without-FPC planning quantity, so
@@ -112,8 +112,13 @@ effective_n.default <- function(
     )
   }
   if (!is.null(deff)) {
-    if (!is.null(icc) || !is.null(n_per_psu) || !is.null(n_per_ssu) ||
-        !is.null(weights) || !is.null(strata)) {
+    if (
+      !is.null(icc) ||
+        !is.null(n_per_psu) ||
+        !is.null(n_per_ssu) ||
+        !is.null(weights) ||
+        !is.null(strata)
+    ) {
       stop(
         "supply either 'deff' or the design components it would be built from",
         call. = FALSE
@@ -123,8 +128,12 @@ effective_n.default <- function(
     value <- as.double(deff)
   } else {
     value <- as.double(design_effect(
-      icc = icc, n_per_psu = n_per_psu, n_per_ssu = n_per_ssu, var_ratio = var_ratio,
-      weights = weights, strata = strata
+      icc = icc,
+      n_per_psu = n_per_psu,
+      n_per_ssu = n_per_ssu,
+      var_ratio = var_ratio,
+      weights = weights,
+      strata = strata
     ))
   }
   .effective_n(.effective_n_size(n, weights, strata), value, resp_rate)
@@ -141,40 +150,70 @@ effective_n.svyplan_deff <- function(x, ..., n = NULL, resp_rate = 1) {
 #' @describeIn effective_n Use the total sample size and design features of
 #'   a [n_cluster()] or [prec_cluster()] allocation.
 #' @export
-effective_n.svyplan_cluster <- function(x, ..., n = NULL, resp_rate = NULL,
-                                        weights = NULL, strata = NULL) {
+effective_n.svyplan_cluster <- function(
+  x,
+  ...,
+  n = NULL,
+  resp_rate = NULL,
+  weights = NULL,
+  strata = NULL
+) {
   .check_unused_dots(...)
   deff <- design_effect(x, weights = weights, strata = strata)
-  .effective_n(n %||% x$total_n, as.double(deff),
-               .effective_n_resp(resp_rate, x))
+  .effective_n(
+    n %||% x$total_n,
+    as.double(deff),
+    .effective_n_resp(resp_rate, x)
+  )
 }
 
 #' @describeIn effective_n Use the total and design features of a
 #'   [prec_cluster()] result. Other `svyplan_prec` types carry the `deff`
 #'   you supplied rather than one to be derived, and are rejected.
 #' @export
-effective_n.svyplan_prec <- function(x, ..., n = NULL, resp_rate = NULL,
-                                     weights = NULL, strata = NULL) {
+effective_n.svyplan_prec <- function(
+  x,
+  ...,
+  n = NULL,
+  resp_rate = NULL,
+  weights = NULL,
+  strata = NULL
+) {
   .check_unused_dots(...)
   deff <- design_effect(x, weights = weights, strata = strata)
-  .effective_n(n %||% prod(x$params$n), as.double(deff),
-               .effective_n_resp(resp_rate, x))
+  .effective_n(
+    n %||% prod(x$params$n),
+    as.double(deff),
+    .effective_n_resp(resp_rate, x)
+  )
 }
 
 #' @describeIn effective_n Use the design features of a [varcomp()]
 #'   estimate. `n` and the stage takes are your design choice.
 #' @export
-effective_n.svyplan_varcomp <- function(x, ..., n = NULL, resp_rate = 1,
-                                        n_per_psu = NULL,
-                                        n_per_ssu = NULL, weights = NULL,
-                                        strata = NULL) {
+effective_n.svyplan_varcomp <- function(
+  x,
+  ...,
+  n = NULL,
+  resp_rate = 1,
+  n_per_psu = NULL,
+  n_per_ssu = NULL,
+  weights = NULL,
+  strata = NULL
+) {
   .check_unused_dots(...)
   deff <- design_effect(
-    x, n_per_psu = n_per_psu, n_per_ssu = n_per_ssu,
-    weights = weights, strata = strata
+    x,
+    n_per_psu = n_per_psu,
+    n_per_ssu = n_per_ssu,
+    weights = weights,
+    strata = strata
   )
-  .effective_n(.effective_n_size(n, weights, strata), as.double(deff),
-               resp_rate)
+  .effective_n(
+    .effective_n_size(n, weights, strata),
+    as.double(deff),
+    resp_rate
+  )
 }
 
 #' @describeIn effective_n Use the total and design features of an
@@ -183,8 +222,13 @@ effective_n.svyplan_varcomp <- function(x, ..., n = NULL, resp_rate = 1,
 #'   the stratum means the population variance that ratio divides by is
 #'   not identified.
 #' @export
-effective_n.svyplan_n <- function(x, ..., n = NULL, resp_rate = NULL,
-                                  weights = NULL) {
+effective_n.svyplan_n <- function(
+  x,
+  ...,
+  n = NULL,
+  resp_rate = NULL,
+  weights = NULL
+) {
   .check_unused_dots(...)
   deff <- design_effect(x, weights = weights)
   .effective_n(n %||% x$n, as.double(deff), .effective_n_resp(resp_rate, x))
@@ -220,8 +264,10 @@ effective_n.svyplan_n <- function(x, ..., n = NULL, resp_rate = NULL,
     # sample expected to respond: sum(n_h r_h) / sum(n_h).
     n_h <- x$detail[["n"]]
     if (is.null(n_h) || length(n_h) != length(rate)) {
-      stop("'resp_rate' length does not match the allocation's strata",
-           call. = FALSE)
+      stop(
+        "'resp_rate' length does not match the allocation's strata",
+        call. = FALSE
+      )
     }
     rate <- sum(n_h * rate) / sum(n_h)
   }

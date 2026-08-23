@@ -53,7 +53,7 @@
 #'     carries `deff` and the `1 / resp_rate` inflation, so it counts the
 #'     units to release, not the completed interviews. `$n` and
 #'     `as.double()` keep the unrounded value, which is what makes the
-#'     round trip through [prec_mean()] exact; `print()` and
+#'     round trip through [prec_mean()] exact. `print()` and
 #'     `as.integer()` round it up to the whole units you would field.
 #'     Take the field figure from `as.integer()` rather than from `$n`.}
 #'   \item{`se`, `moe`, `cv`, `rmoe`}{Precision the design achieves at that
@@ -185,7 +185,9 @@ n_mean.default <- function(
     check_mu(mu)
   }
 
-  if (!is.null(df)) check_df(df)
+  if (!is.null(df)) {
+    check_df(df)
+  }
   z <- .q_alpha(alpha, df)
 
   # Normalized once, here, so the formulas below see only 'moe'.
