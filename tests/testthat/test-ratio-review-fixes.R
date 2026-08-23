@@ -1,14 +1,12 @@
-## Regressions for six defects found in review after the ratio work landed.
-## Each is checked on the simple and the multistage path, because the row
-## classification is shared and five of the six reached both.
+## The row classification is shared, so each defect is checked on the simple
+## and the multistage path.
 
 ## L_R for r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7.
 RV <- 0.646
 
 test_that("an incidental mu does not rescale a ratio row's rmoe", {
-  # A mixed table legitimately carries 'mu' for its mean rows. Selecting the
-  # scale as the first non-missing of p, mu, r gave the ratio row the mean's
-  # scale and undersized it by a factor of 50.
+  # A mixed table carries 'mu' for its mean rows, and taking the first
+  # non-missing of p, mu, r gave the ratio row that scale.
   bare <- n_multi(data.frame(r = 2, cv_num = 1.1, cv_den = 0.6,
                              component_cor = 0.7, rmoe = 0.1))
   with_mu <- n_multi(data.frame(r = 2, mu = 100, cv_num = 1.1, cv_den = 0.6,
@@ -46,8 +44,8 @@ test_that("a proportion row still takes its scale from p", {
 })
 
 test_that("a unit_relvar contradicting the ratio moments is refused", {
-  # Sizing recomputed the coefficient from the moments while achieved
-  # precision read the supplied value, so one result reported two designs.
+  # Sizing recomputed it from the moments while achieved precision read the
+  # supplied value, so one result reported two designs.
   expect_error(
     n_multi(data.frame(r = 2, cv_num = 1.1, cv_den = 0.6,
                        component_cor = 0.7, cv = 0.05, unit_relvar = 100)),
@@ -63,8 +61,7 @@ test_that("a unit_relvar contradicting the ratio moments is refused", {
 })
 
 test_that("a unit_relvar agreeing with the moments is accepted", {
-  # This is what a result stores, so rejecting on presence rather than on
-  # value broke every S3 round trip through a ratio row.
+  # A result stores this, so rejecting on presence broke every round trip.
   expect_s3_class(
     n_multi(data.frame(r = 2, cv_num = 1.1, cv_den = 0.6,
                        component_cor = 0.7, cv = 0.05, unit_relvar = RV)),
@@ -126,15 +123,14 @@ test_that("prec_multi_cluster validates ratio moments", {
 })
 
 test_that("an extreme but finite ratio keeps its standard error", {
-  # se = abs(r) * sqrt(L_R / n). Forming r^2 first overflows at r = 1e200 and
-  # underflows at r = 1e-200, in both cases destroying a representable answer.
+  # Forming r^2 first overflows at 1e200 and underflows at 1e-200, both
+  # destroying a representable answer.
   for (r in c(1e200, 1e-200)) {
     res <- prec_ratio(r = r, n = 500, cv_num = 1.1, cv_den = 0.6,
                       component_cor = 0.7)
     expect_equal(res$se, abs(r) * sqrt(RV / 500), tolerance = 1e-10)
     expect_true(is.finite(res$se))
     expect_gt(res$se, 0)
-    # The relative measure is free of the scale entirely.
     expect_equal(res$cv, sqrt(RV / 500), tolerance = 1e-12)
   }
 })
@@ -148,8 +144,8 @@ test_that("an extreme ratio sizes as its relative precision demands", {
 })
 
 test_that("a coefficient of variation too large to square is refused", {
-  # The cancellation tolerance is built from the same squared terms, so an
-  # overflow there made it infinite and clamped every value to zero.
+  # The tolerance is built from the same squared terms, so an overflow made
+  # it infinite and clamped every value to zero.
   expect_error(
     prec_ratio(r = 2, n = 500, cv_num = 1e200, cv_den = 0.6,
                component_cor = 0.7),
@@ -168,7 +164,6 @@ test_that("the clamp still zeroes genuine cancellation", {
 })
 
 test_that("confint on a ratio uses the t quantile when df is set", {
-  # The shared help page said means use a z interval even when df selects t.
   res <- n_ratio(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
                  cv = 0.05, df = 7)
   ci <- confint(res)
@@ -179,8 +174,7 @@ test_that("confint on a ratio uses the t quantile when df is set", {
 })
 
 test_that("a negative ratio is precise at a strongly negative correlation", {
-  # The help said a high correlation makes a ratio precise, which holds only
-  # for a positive ratio. The quantity is component_cor * sign(r).
+  # The quantity is component_cor * sign(r), not component_cor.
   negative_cor <- .ratio_unit_relvar(-2, 1.1, 0.6, -0.9)
   positive_cor <- .ratio_unit_relvar(-2, 1.1, 0.6, 0.9)
 
@@ -188,10 +182,8 @@ test_that("a negative ratio is precise at a strongly negative correlation", {
   expect_equal(negative_cor, .ratio_unit_relvar(2, 1.1, 0.6, 0.9))
 })
 
-## The S3 round trips, exercised through object dispatch rather than a
-## hand-rebuilt indicator table. Rebuilding by hand is what let the stored
-## unit_relvar go unnoticed: a result stores the derived coefficient, and
-## handing that table straight back looked like a user supplying it.
+## Round trips through object dispatch, not a hand-rebuilt indicator table.
+## Rebuilding by hand is what let the stored unit_relvar go unnoticed.
 
 test_that("a ratio result round-trips through prec_multi() and back", {
   sized <- n_multi(data.frame(r = 2, cv_num = 1.1, cv_den = 0.6,
@@ -232,10 +224,8 @@ test_that("a mixed table round-trips with its ratio row intact", {
 })
 
 test_that("the derived coefficient is stored and survives the round trip", {
-  # It is derived from the moments on the way in and carried on the way back,
-  # rather than blanked, so a ratio row is not asymmetric with a mean row,
-  # which keeps its own. Blanking it was an abandoned fix for the round-trip
-  # regression; consistency-checking the value is what shipped.
+  # Carried on the way back rather than blanked, so a ratio row is not
+  # asymmetric with a mean row, which keeps its own.
   sized <- n_multi(data.frame(r = 2, cv_num = 1.1, cv_den = 0.6,
                               component_cor = 0.7, cv = 0.05))
   expect_equal(sized$indicators$unit_relvar, RV)
@@ -253,9 +243,8 @@ test_that("a contradictory unit_relvar is still refused after the fix", {
 })
 
 test_that("multistage cv mode reports .cv alone for every estimand", {
-  # Not a ratio limitation: se and moe are NA in cv mode for proportions and
-  # means too, which test-n_multi.R pins by name. Recorded here so the ratio
-  # row is not later "fixed" on its own.
+  # Not a ratio limitation: se and moe are NA in cv mode for every estimand.
+  # Recorded so the ratio row is not later "fixed" on its own.
   args <- list(n = 45, n_per_psu = 14, icc_psu = 0.05)
   rows <- list(
     prop = data.frame(p = 0.3),

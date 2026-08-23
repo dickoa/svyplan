@@ -437,7 +437,7 @@ test_that("the budget frontier floor is found under the fit's correction", {
   expect_gt(floors[["unit"]], floors[["stage"]])
 })
 
-## T11. domain_sampling, the same class found by dev/api-gate.R
+## T11. domain_sampling, the same defect class as fpc
 ##
 ## Not an fpc test. It lives here because it is the same defect: a mode stored
 ## on the fit and dropped by the round trip, so n_multi() silently re-solved

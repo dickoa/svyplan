@@ -1,24 +1,17 @@
-## Ratio rows in the multistage tables. The optimizer is unchanged: a ratio
-## row reaches it as a unit relative variance and a CV target, exactly as a
-## mean row does. Every test therefore benchmarks against the direct
-## n_cluster()/prec_cluster() call under the same stage inputs, which is the
-## Step 5 gate in dev/PLAN-RATIO-ESTIMANDS-20260823.md.
+## A ratio row reaches the optimizer as a unit relative variance and a CV
+## target, exactly as a mean row does, so these benchmark against the direct
+## n_cluster()/prec_cluster() call under the same stage inputs.
 
 ## L_R = 1.20^2 + 0.45^2 - 2 * 0.65 * 1.20 * 0.45 = 0.9405 exactly.
 CL_RELVAR <- 0.9405
 
-## The table route and the direct route run the same optimizer but reach it
-## through different starting values, so they agree to its convergence
-## tolerance rather than bit for bit. The observed gap is ~1.6e-9 and is not
-## ratio-specific: a mean row compared the same way shows 1.61e-9. Asserting
-## tighter than the optimizer converges would test the arithmetic of the
-## search, not the claim that both routes plan the same design.
+## The two routes agree to the optimizer's convergence, ~1.6e-9, not bit for
+## bit. Not ratio-specific: a mean row shows 1.61e-9. Asserting tighter would
+## test the search's arithmetic rather than the claim.
 OPT_TOL <- 1e-7
 
-## Budget mode converges more loosely than CV mode, at ~1.46e-6. That is also
-## not ratio-specific: the same comparison gives 1.456819e-06 for a ratio row,
-## 1.456818e-06 for a mean row and 1.456821e-06 for a proportion row, agreeing
-## to six figures, so it is the budget search's own tolerance.
+## Budget mode converges more loosely, ~1.46e-6, also across estimands:
+## ratio 1.456819e-06, mean 1.456818e-06, proportion 1.456821e-06.
 BUDGET_TOL <- 1e-5
 
 cluster_row <- function(...) {
@@ -102,9 +95,8 @@ test_that("prec_multi_cluster on a ratio row matches prec_cluster()", {
 })
 
 test_that("a moe-sized ratio row reports se and moe on the ratio scale", {
-  # The se/moe reconstruction runs only in moe mode, which prec_multi_cluster()
-  # reaches through the round trip from a moe-sized result rather than from a
-  # bare indicator table. In cv mode every estimand reports .cv alone.
+  # The reconstruction runs only in moe mode, reached through the round trip
+  # from a moe-sized result. In cv mode every estimand reports .cv alone.
   sized <- n_multi_cluster(
     cluster_row(moe = 20, icc_psu = 0.05, var_ratio_psu = 1),
     stage_cost = c(500, 50)
@@ -115,7 +107,6 @@ test_that("a moe-sized ratio row reports se and moe on the ratio scale", {
   expect_equal(res$detail$.moe, qnorm(0.975) * res$detail$.se,
                tolerance = 1e-10)
   expect_equal(res$detail$.rmoe, res$detail$.moe / 420, tolerance = 1e-10)
-  # The target it was sized for comes back.
   expect_equal(res$detail$.moe, 20, tolerance = 1e-5)
 })
 
@@ -148,7 +139,6 @@ test_that("a mixed cluster table sizes all three estimands", {
 
   expect_equal(nrow(res$detail), 3L)
   expect_true(all(is.finite(res$detail$.cv_target)))
-  # The binding row drives the allocation, and every row is evaluated at it.
   expect_equal(sum(res$detail$.binding), 1L)
 })
 

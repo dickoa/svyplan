@@ -1,8 +1,5 @@
-## Kernel for ratio-of-totals planning. Expected values are derived here from
-## the residual definition or by hand, never read back from the implementation.
-## dev/ratio-probe.R is the wider reference these fixtures were taken from.
-
-## A deterministic population, so the identities hold without an RNG.
+## Expected values come from the residual definition or by hand, never from
+## the implementation. The population is fixed so the identities need no RNG.
 ratio_pop <- function() {
   x <- c(2, 3, 5, 7, 11, 4, 6, 9, 8, 13, 1.5, 2.5)
   y <- c(7, 8, 16, 20, 34, 11, 19, 28, 23, 40, 5, 9)
@@ -92,9 +89,7 @@ test_that("proportional components give exactly zero, not a residue", {
 })
 
 test_that("a negative unit relative variance is an internal error", {
-  # Unreachable from valid moments, since L_R >= (cv_num - cv_den)^2. Only a
-  # correlation outside its own bound can produce it, which is what the
-  # validator exists to stop.
+  # Unreachable from valid moments: L_R >= (cv_num - cv_den)^2.
   expect_error(
     .ratio_unit_relvar(2, 1, 1, 1.5),
     "internal error"
@@ -102,7 +97,6 @@ test_that("a negative unit relative variance is an internal error", {
 })
 
 test_that("the cancellation clamp is tighter than any real difference", {
-  # Just outside the tolerance the value survives rather than being zeroed.
   value <- .ratio_unit_relvar(2, 1, 1, 1 - 1e-9)
   expect_gt(value, 0)
   expect_equal(value, 2e-9, tolerance = 1e-6)
@@ -116,7 +110,7 @@ test_that(".check_ratio_relvar refuses a ratio with no sampling variance", {
 })
 
 test_that(".check_ratio_relvar warns just below the threshold and not above", {
-  # cv_num = cv_den = 1 makes the threshold 1e-3 exactly.
+  # cv_num = cv_den = 1 puts the threshold at 1e-3.
   expect_warning(
     .check_ratio_relvar(.ratio_unit_relvar(2, 1, 1, 0.9996), 1, 1, 0.9996),
     "known to that precision"
@@ -231,8 +225,8 @@ test_that(".n_ratio_from_target puts deff inside the FPC, not after it", {
 
   expect_equal(got, deff * relvar / (0.05^2 + deff * relvar / N),
                tolerance = 1e-10)
-  # Applying deff to a size already corrected for the frame is the wrong order
-  # and gives a different answer, so the test can tell them apart.
+  # Applying deff after the FPC is the wrong order and differs, so this
+  # distinguishes them.
   wrong <- deff * (relvar / (0.05^2 + relvar / N))
   expect_false(isTRUE(all.equal(got, wrong)))
 })
@@ -276,9 +270,8 @@ test_that("an rmoe target needs the ratio it is relative to", {
 })
 
 test_that("the residual route and the moment route size identically", {
-  # VDK Example 3.15 sizes the mean of y under a ratio model from the residual
-  # variance. Section 12.2 of dev/PLAN-RATIO-ESTIMANDS-20260823.md claims that
-  # is the same arithmetic as sizing the ratio itself in CV mode.
+  # Sizing a mean under a ratio model from the residual variance is the same
+  # arithmetic as sizing the ratio itself in CV mode.
   pop <- ratio_pop()
   r <- mean(pop$y) / mean(pop$x)
   e <- pop$y - r * pop$x

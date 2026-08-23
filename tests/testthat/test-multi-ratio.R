@@ -1,6 +1,5 @@
-## Ratio rows in the multi-indicator grammar. The reference for every ratio
-## quantity is the scalar pair, which is itself checked against
-## dev/ratio-probe.R, so these assert agreement rather than re-deriving.
+## The scalar pair is the reference for every ratio quantity, so these assert
+## agreement with it rather than re-deriving.
 
 ratio_row <- function(...) {
   base <- data.frame(r = 420, cv_num = 1.20, cv_den = 0.45,
@@ -147,8 +146,8 @@ test_that("domain ratios are sized from their own moments", {
 })
 
 test_that("a CV target does not depend on the ratio's magnitude", {
-  # CV(R_hat) does not involve R, so two domains with the same component
-  # moments and different ratios need the same size. Documented, not a bug.
+  # CV(R_hat) does not involve R, so equal moments give equal sizes whatever
+  # the ratios. Intended, not a bug.
   tbl <- data.frame(
     region = c("north", "south"),
     r = c(420, 38),
@@ -197,8 +196,8 @@ test_that("ratio moments are validated row by row", {
 })
 
 test_that("unit_relvar alone does not make a row a ratio", {
-  # It is already a valid column for cluster planning of means and
-  # proportions, so it cannot mark an estimand scale.
+  # Already valid for cluster planning of means and proportions, so it cannot
+  # mark an estimand scale.
   expect_error(
     n_multi(data.frame(unit_relvar = 0.6, cv = 0.05)),
     "must contain a 'p', 'var', or 'r' column"
@@ -213,9 +212,7 @@ test_that("min_cases is refused on a ratio row and names it", {
 })
 
 test_that("the multistage paths take ratio rows", {
-  # They refused them until the Step 5 gate passed, which required a one-row
-  # ratio table to reproduce the direct n_cluster() call. See
-  # test-multi-cluster-ratio.R for that comparison and the stage semantics.
+  # test-multi-cluster-ratio.R covers the stage semantics.
   sized <- n_multi_cluster(ratio_row(cv = 0.05, icc_psu = 0.05),
                            stage_cost = c(500, 50))
   expect_s3_class(sized, "svyplan_cluster")

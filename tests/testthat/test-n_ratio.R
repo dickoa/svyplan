@@ -1,6 +1,4 @@
-## Expected sizes are computed here from the documented formula, never read
-## back from the result. dev/ratio-probe.R is the wider reference.
-
+## Expected sizes come from the documented formula, never from the result.
 ## r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7 gives
 ## L_R = 1.21 + 0.36 - 2 * 0.7 * 1.1 * 0.6 = 0.646 exactly.
 RELVAR <- 0.646
@@ -137,8 +135,8 @@ test_that("n_ratio refuses a target the frame cannot deliver", {
 })
 
 test_that("under full response the FPC keeps any CV target attainable", {
-  # n_net = deff * L / (c^2 + deff * L / N) is below N for every positive c, so
-  # only nonresponse can push the gross size past the frame.
+  # n_net stays below N for every positive target, so only nonresponse can
+  # push the gross size past the frame.
   res <- n_ratio(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
                  cv = 1e-8, N = 400)
   expect_lt(res$n, 400)
@@ -159,8 +157,8 @@ test_that("n_ratio takes design defaults from a plan, named and piped", {
 })
 
 test_that("every formal is reachable through a plan without an R-level error", {
-  # A formal with no default raises "argument ... is missing, with no default"
-  # from mget() inside .merge_plan_args() before any validator runs.
+  # A defaultless formal raises R's own "argument is missing" from mget()
+  # inside .merge_plan_args(), before any validator runs.
   plan <- svyplan(deff = 1.2)
   for (drop in c("r", "cv_num", "cv_den", "component_cor")) {
     args <- list(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
@@ -185,7 +183,7 @@ test_that("the result carries the moments and the derived coefficient", {
   expect_equal(p$cv, 0.05)
   expect_null(p$moe)
   expect_null(p$rmoe)
-  # The equivalent variance is a step in the calculation, not an observed one.
+  # The equivalent variance is a step, not an observed quantity.
   expect_null(p$var)
 })
 
@@ -218,8 +216,8 @@ test_that("a ratio print stays close to the mean's at the same size", {
 })
 
 test_that("no other estimand's print block gains a ratio field", {
-  # 'p$r' partial-matches 'resp_rate' on every params list that has one, so an
-  # unguarded read prints 'r = 0.9' on means and proportions.
+  # 'p$r' partial-matches 'resp_rate', so an unguarded read prints
+  # 'r = 0.9' on means and proportions.
   old <- options(width = 80)
   on.exit(options(old), add = TRUE)
   mean_line <- capture.output(
@@ -229,7 +227,7 @@ test_that("no other estimand's print block gains a ratio field", {
     print(n_prop(p = 0.3, moe = 0.05, resp_rate = 0.9))
   )[2L]
 
-  # Word-bounded: "var = 100.00" contains the substring "r = ".
+  # Word-bounded: "var = 100.00" contains "r = ".
   expect_false(grepl("\\br = ", mean_line))
   expect_false(grepl("\\br = ", prop_line))
   expect_false(grepl("unit_relvar", mean_line))
@@ -296,9 +294,8 @@ test_that("predict switches the target and honours df", {
 })
 
 test_that("df moves the size only when the target is a margin of error", {
-  # The sizing equation is stated in relative standard error, and the
-  # quantile enters only where a moe has to be converted into one. In CV mode
-  # df still moves the reported moe, because that is an interval width.
+  # The quantile enters only where a moe is converted to a relative standard
+  # error. In CV mode df still moves the reported moe, an interval width.
   by_cv <- n_ratio(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
                    cv = 0.05)
   cv_grid <- predict(by_cv, data.frame(df = c(5, 1000)))

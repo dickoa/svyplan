@@ -1,20 +1,15 @@
-## Regression for a pre-existing defect: predict() dropped a 'df' the object
-## itself was built with, so a predicted row reported a normal-quantile
-## interval for an object whose own interval used a t quantile. The proportion
-## branches always forwarded it, which is why it stayed invisible.
-##
-## Both directions are covered here because they are separate branches:
-## predict.svyplan_n() and predict.svyplan_prec().
+## predict() once dropped a 'df' the object was built with, reporting a
+## normal interval for an object whose own interval used t. The two branches,
+## predict.svyplan_n() and predict.svyplan_prec(), are covered separately.
 
 test_that("predict on a sized mean keeps the object's own df", {
   obj <- n_mean(var = 4, mu = 10, cv = 0.05, df = 12)
   grid <- predict(obj, data.frame(deff = c(1, 1.5)))
 
-  # At deff = 1 the row is the object, so its interval must be the object's.
+  # At deff = 1 the row is the object.
   expect_equal(grid$n[1L], obj$n, tolerance = 1e-10)
   expect_equal(grid$moe[1L], obj$moe, tolerance = 1e-10)
   expect_equal(grid$rmoe[1L], obj$rmoe, tolerance = 1e-10)
-  # And that interval is wider than the normal one it used to report.
   expect_gt(grid$moe[1L], qnorm(0.975) * grid$se[1L])
   expect_equal(grid$moe[1L], qt(0.975, 12) * grid$se[1L], tolerance = 1e-10)
 })
