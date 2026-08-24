@@ -32,7 +32,7 @@ See the Details section for the full column reference. At minimum,
 each row needs:
 \itemize{
 \item \strong{What to measure}: \code{p} for a proportion (e.g. 0.30 for
-30\\% stunting) \strong{or} \code{var} for a continuous variable's
+30\% stunting) \strong{or} \code{var} for a continuous variable's
 population variance. Each row must use exactly one.
 \item \strong{How precise}: \code{moe} (margin of error), \code{rmoe} (margin of
 error relative to the estimand) \strong{or} \code{cv} (coefficient of
@@ -168,7 +168,7 @@ it is in the same units as the variable (e.g. 10 dollars).}
 It is converted to \code{moe} on ingestion, so the row needs \code{p} or
 \code{mu}, and it is read under the row's own \code{prop_method}.}
 \item{\code{cv}}{Target coefficient of variation (relative standard
-error). For example, 0.10 means the SE should be at most 10\\%
+error). For example, 0.10 means the SE should be at most 10\%
 of the estimate.}
 \item{\code{alpha}}{Significance level for the confidence interval
 (default 0.05, giving a 95 percent CI).}

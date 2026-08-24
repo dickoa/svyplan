@@ -14,7 +14,7 @@
 #'   each row needs:
 #'   \itemize{
 #'     \item **What to measure**: `p` for a proportion (e.g. 0.30 for
-#'       30\% stunting) **or** `var` for a continuous variable's
+#'       30% stunting) **or** `var` for a continuous variable's
 #'       population variance. Each row must use exactly one.
 #'     \item **How precise**: `moe` (margin of error), `rmoe` (margin of
 #'       error relative to the estimand) **or** `cv` (coefficient of
@@ -136,7 +136,7 @@
 #'     It is converted to `moe` on ingestion, so the row needs `p` or
 #'     `mu`, and it is read under the row's own `prop_method`.}
 #'   \item{`cv`}{Target coefficient of variation (relative standard
-#'     error). For example, 0.10 means the SE should be at most 10\%
+#'     error). For example, 0.10 means the SE should be at most 10%
 #'     of the estimate.}
 #'   \item{`alpha`}{Significance level for the confidence interval
 #'     (default 0.05, giving a 95 percent CI).}
