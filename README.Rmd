@@ -144,7 +144,7 @@ n_multi(targets)
 Per-domain optimization works by specifying domain columns via the
 `domains` parameter.
 
-### Relative precision in surveys (e.g MICS/DHS)
+### Relative precision in MICS and DHS
 
 UNICEF's MICS states a precision requirement as a **relative margin of
 error**, the margin of error as a fraction of the indicator. State it
