@@ -94,7 +94,7 @@
 #' 2. **Precision target**: do you want an absolute margin of error
 #'    (`moe`, e.g. +/- 5 percentage points), the same margin stated
 #'    relative to the estimand (`rmoe`, e.g. 12 percent of the
-#'    proportion, as MICS and DHS state it), or a relative coefficient of
+#'    proportion), or a relative coefficient of
 #'    variation (`cv`, e.g. 10 percent relative error)?
 #'
 #' A minimal example for three health indicators:
@@ -237,7 +237,7 @@
 #' )
 #' n_multi(indicators)
 #'
-#' # MICS/DHS-style: state precision as a relative margin of error
+#' # MICS-style: state precision as a relative margin of error
 #' targets_rmoe <- data.frame(
 #'   name = c("stunting", "vaccination", "anemia"),
 #'   p    = c(0.30, 0.70, 0.10),
@@ -357,7 +357,9 @@ n_multi.default <- function(
   plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, n_multi.default, match.call(), environment())
-  if (!is.null(.plan)) return(do.call(n_multi.default, c(.plan, list(...))))
+  if (!is.null(.plan)) {
+    return(do.call(n_multi.default, c(.plan, list(...))))
+  }
   .check_multi_split_args(list(...), "n_multi_cluster()")
   .check_unused_dots(...)
   domain_sampling <- match.arg(domain_sampling)
@@ -366,7 +368,10 @@ n_multi.default <- function(
   }
   if (!is.null(min_n_domain)) {
     if (
-      !is.numeric(min_n_domain) || length(min_n_domain) != 1L || is.na(min_n_domain) || min_n_domain <= 0
+      !is.numeric(min_n_domain) ||
+        length(min_n_domain) != 1L ||
+        is.na(min_n_domain) ||
+        min_n_domain <= 0
     ) {
       stop("'min_n_domain' must be a positive numeric scalar", call. = FALSE)
     }
@@ -414,8 +419,12 @@ n_multi.default <- function(
   }
 
   if (length(domain_cols) == 0L) {
-    .n_multi_simple(indicators, domain_cols = domain_cols, mode = mode,
-                    prop_method = prop_method)
+    .n_multi_simple(
+      indicators,
+      domain_cols = domain_cols,
+      mode = mode,
+      prop_method = prop_method
+    )
   } else {
     .n_multi_domains(
       indicators,
@@ -560,7 +569,12 @@ n_multi.default <- function(
 #' @export
 n_multi_cluster <- function(indicators, ...) {
   if (!missing(indicators)) {
-    .res <- .dispatch_plan(indicators, "indicators", n_multi_cluster.default, ...)
+    .res <- .dispatch_plan(
+      indicators,
+      "indicators",
+      n_multi_cluster.default,
+      ...
+    )
     if (!is.null(.res)) return(.res)
   }
   UseMethod("n_multi_cluster")
@@ -609,9 +623,13 @@ n_multi_cluster.default <- function(
   allocation <- match.arg(allocation)
   domain_sampling <- match.arg(domain_sampling)
   joint <- identical(allocation, "joint")
-  if (!is.null(min_n_domain) &&
-      (!is.numeric(min_n_domain) || length(min_n_domain) != 1L || is.na(min_n_domain) ||
-       min_n_domain <= 0)) {
+  if (
+    !is.null(min_n_domain) &&
+      (!is.numeric(min_n_domain) ||
+        length(min_n_domain) != 1L ||
+        is.na(min_n_domain) ||
+        min_n_domain <= 0)
+  ) {
     stop("'min_n_domain' must be a positive numeric scalar", call. = FALSE)
   }
 
@@ -624,17 +642,27 @@ n_multi_cluster.default <- function(
   if (stages == 2L && resp_rate_ssu != 1) {
     stop("'resp_rate_ssu' is not applicable for 2-stage designs", call. = FALSE)
   }
-  if (!is.null(budget)) check_scalar(budget, "budget")
-  if (!is.null(n_psu)) check_scalar(n_psu, "n_psu")
-  if (!is.null(n_per_psu)) check_scalar(n_per_psu, "n_per_psu")
-  if (!is.null(n_per_ssu)) check_scalar(n_per_ssu, "n_per_ssu")
+  if (!is.null(budget)) {
+    check_scalar(budget, "budget")
+  }
+  if (!is.null(n_psu)) {
+    check_scalar(n_psu, "n_psu")
+  }
+  if (!is.null(n_per_psu)) {
+    check_scalar(n_per_psu, "n_per_psu")
+  }
+  if (!is.null(n_per_ssu)) {
+    check_scalar(n_per_ssu, "n_per_ssu")
+  }
   if (stages == 2L && !is.null(n_per_ssu)) {
     stop("'n_per_ssu' is not applicable for 2-stage designs", call. = FALSE)
   }
   n_fixed <- sum(!is.null(n_psu), !is.null(n_per_psu), !is.null(n_per_ssu))
   if (n_fixed >= stages) {
-    stop("cannot fix all stages; use prec_multi_cluster() instead",
-         call. = FALSE)
+    stop(
+      "cannot fix all stages; use prec_multi_cluster() instead",
+      call. = FALSE
+    )
   }
   check_fixed_cost(fixed_cost, budget)
 
@@ -658,14 +686,22 @@ n_multi_cluster.default <- function(
   indicators <- .convert_moe_to_cv(indicators)
 
   rv_final <- indicators$unit_relvar[!is.na(indicators$unit_relvar)]
-  if (length(rv_final) > 0L &&
-      (any(rv_final <= 0) || any(!is.finite(rv_final)))) {
+  if (
+    length(rv_final) > 0L &&
+      (any(rv_final <= 0) || any(!is.finite(rv_final)))
+  ) {
     stop("'unit_relvar' values must be positive and finite", call. = FALSE)
   }
-  if (any(indicators$var_ratio_psu <= 0) || any(!is.finite(indicators$var_ratio_psu))) {
+  if (
+    any(indicators$var_ratio_psu <= 0) ||
+      any(!is.finite(indicators$var_ratio_psu))
+  ) {
     stop("'var_ratio_psu' values must be positive and finite", call. = FALSE)
   }
-  if (any(indicators$var_ratio_ssu <= 0) || any(!is.finite(indicators$var_ratio_ssu))) {
+  if (
+    any(indicators$var_ratio_ssu <= 0) ||
+      any(!is.finite(indicators$var_ratio_ssu))
+  ) {
     stop("'var_ratio_ssu' values must be positive and finite", call. = FALSE)
   }
 
@@ -761,8 +797,15 @@ n_multi_cluster.default <- function(
 .check_multi_split_args <- function(dots, replacement) {
   moved <- intersect(
     names(dots) %||% character(0),
-    c("stage_cost", "budget", "n_psu", "n_per_psu", "n_per_ssu", "allocation",
-      "fixed_cost")
+    c(
+      "stage_cost",
+      "budget",
+      "n_psu",
+      "n_per_psu",
+      "n_per_ssu",
+      "allocation",
+      "fixed_cost"
+    )
   )
   if (length(moved) > 0L) {
     stop(
@@ -782,9 +825,13 @@ n_multi_cluster.default <- function(
 #' @return List with `indicator_type` (per-row "p" or "var") and `domain_cols`.
 #' @keywords internal
 #' @noRd
-.validate_targets <- function(indicators, multistage, domains = NULL,
-                              stages = NULL,
-                              context = "n_multi_cluster()") {
+.validate_targets <- function(
+  indicators,
+  multistage,
+  domains = NULL,
+  stages = NULL,
+  context = "n_multi_cluster()"
+) {
   if (!is.null(domains)) {
     if (!is.character(domains) || anyNA(domains)) {
       stop("'domains' must be a character vector without NAs", call. = FALSE)
@@ -809,15 +856,16 @@ n_multi_cluster.default <- function(
   is_ratio <- .is_ratio_row(indicators)
   .check_ratio_rows(indicators)
   if (!has_p && !has_var && !any(is_ratio)) {
-    stop("'indicators' must contain a 'p', 'var', or 'r' column",
-         call. = FALSE)
+    stop("'indicators' must contain a 'p', 'var', or 'r' column", call. = FALSE)
   }
 
   has_moe <- "moe" %in% names(indicators)
   has_cv <- "cv" %in% names(indicators)
   if (!has_moe && !has_cv) {
-    stop("'indicators' must contain a 'moe', 'rmoe', or 'cv' column",
-         call. = FALSE)
+    stop(
+      "'indicators' must contain a 'moe', 'rmoe', or 'cv' column",
+      call. = FALSE
+    )
   }
 
   if (has_p) {
@@ -868,14 +916,18 @@ n_multi_cluster.default <- function(
 
   if (multistage) {
     if (!has_cv && !has_moe) {
-      stop("multistage mode requires a 'cv', 'moe', or 'rmoe' column in indicators",
-           call. = FALSE)
+      stop(
+        "multistage mode requires a 'cv', 'moe', or 'rmoe' column in indicators",
+        call. = FALSE
+      )
     }
     if (has_moe && any(!is.na(indicators$moe))) {
       moe_rows <- !is.na(indicators$moe)
       var_moe <- has_var & moe_rows & !is.na(indicators$var)
       if (any(var_moe)) {
-        if (!"mu" %in% names(indicators) || any(is.na(indicators$mu[var_moe]))) {
+        if (
+          !"mu" %in% names(indicators) || any(is.na(indicators$mu[var_moe]))
+        ) {
           stop(
             "'mu' is required to convert 'moe' to 'cv' for mean indicators ",
             "in multistage mode",
@@ -898,13 +950,14 @@ n_multi_cluster.default <- function(
         )
       }
       if (anyNA(indicators$icc_ssu) || any(!is.finite(indicators$icc_ssu))) {
-        stop("'icc_ssu' must contain finite non-missing values",
-             call. = FALSE)
+        stop("'icc_ssu' must contain finite non-missing values", call. = FALSE)
       }
     }
     if (has_cv) {
       cv_vals <- indicators$cv[!is.na(indicators$cv)]
-      if (length(cv_vals) > 0L && (any(cv_vals <= 0) || any(!is.finite(cv_vals)))) {
+      if (
+        length(cv_vals) > 0L && (any(cv_vals <= 0) || any(!is.finite(cv_vals)))
+      ) {
         stop("'cv' values must be positive and finite", call. = FALSE)
       }
     }
@@ -951,15 +1004,25 @@ n_multi_cluster.default <- function(
   }
   if (multistage) {
     if ("var_ratio_psu" %in% names(indicators)) {
-      var_ratio_psu_vals <- indicators$var_ratio_psu[!is.na(indicators$var_ratio_psu)]
+      var_ratio_psu_vals <- indicators$var_ratio_psu[
+        !is.na(indicators$var_ratio_psu)
+      ]
       if (any(var_ratio_psu_vals <= 0) || any(!is.finite(var_ratio_psu_vals))) {
-        stop("'var_ratio_psu' values must be positive and finite", call. = FALSE)
+        stop(
+          "'var_ratio_psu' values must be positive and finite",
+          call. = FALSE
+        )
       }
     }
     if ("var_ratio_ssu" %in% names(indicators)) {
-      var_ratio_ssu_vals <- indicators$var_ratio_ssu[!is.na(indicators$var_ratio_ssu)]
+      var_ratio_ssu_vals <- indicators$var_ratio_ssu[
+        !is.na(indicators$var_ratio_ssu)
+      ]
       if (any(var_ratio_ssu_vals <= 0) || any(!is.finite(var_ratio_ssu_vals))) {
-        stop("'var_ratio_ssu' values must be positive and finite", call. = FALSE)
+        stop(
+          "'var_ratio_ssu' values must be positive and finite",
+          call. = FALSE
+        )
       }
     }
   }
@@ -1010,11 +1073,16 @@ n_multi_cluster.default <- function(
     # var_ratio_ssu is the within-PSU share of unit variance, not a free parameter:
     # var_ratio_psu * icc_psu + var_ratio_ssu must equal 1. See .var_ratio_ssu_default().
     if ("icc_ssu" %in% names(indicators) && "icc_psu" %in% names(indicators)) {
-      implied <- .var_ratio_ssu_default(indicators$var_ratio_psu, indicators$icc_psu)
+      implied <- .var_ratio_ssu_default(
+        indicators$var_ratio_psu,
+        indicators$icc_psu
+      )
       if (!"var_ratio_ssu" %in% names(indicators)) {
         indicators$var_ratio_ssu <- implied
       } else {
-        indicators$var_ratio_ssu[is.na(indicators$var_ratio_ssu)] <- implied[is.na(indicators$var_ratio_ssu)]
+        indicators$var_ratio_ssu[is.na(
+          indicators$var_ratio_ssu
+        )] <- implied[is.na(indicators$var_ratio_ssu)]
       }
     } else if (!"var_ratio_ssu" %in% names(indicators)) {
       indicators$var_ratio_ssu <- 1
@@ -1056,7 +1124,10 @@ n_multi_cluster.default <- function(
   if (!"unit_relvar" %in% names(indicators)) {
     indicators$unit_relvar <- NA_real_
   }
-  indicators$unit_relvar <- .derive_unit_relvar(indicators, require_all = multistage)
+  indicators$unit_relvar <- .derive_unit_relvar(
+    indicators,
+    require_all = multistage
+  )
 
   indicators
 }
@@ -1077,7 +1148,9 @@ n_multi_cluster.default <- function(
   for (i in which(needs)) {
     if (is_ratio[i]) {
       rv[i] <- .ratio_unit_relvar(
-        indicators$r[i], indicators$cv_num[i], indicators$cv_den[i],
+        indicators$r[i],
+        indicators$cv_num[i],
+        indicators$cv_den[i],
         indicators$component_cor[i]
       )
     } else if (has_p && !is.na(indicators$p[i])) {
@@ -1087,7 +1160,10 @@ n_multi_cluster.default <- function(
         rv[i] <- indicators$var[i] / indicators$mu[i]^2
       } else if (require_all) {
         stop(
-          sprintf("row %d: 'mu' is required to derive 'unit_relvar' from 'var'", i),
+          sprintf(
+            "row %d: 'mu' is required to derive 'unit_relvar' from 'var'",
+            i
+          ),
           call. = FALSE
         )
       }
@@ -1127,10 +1203,14 @@ n_multi_cluster.default <- function(
 #' @noRd
 .convert_moe_to_cv <- function(indicators) {
   has_moe <- "moe" %in% names(indicators)
-  if (!has_moe) return(indicators)
+  if (!has_moe) {
+    return(indicators)
+  }
 
   moe_rows <- !is.na(indicators$moe)
-  if (!any(moe_rows)) return(indicators)
+  if (!any(moe_rows)) {
+    return(indicators)
+  }
 
   if (!"cv" %in% names(indicators)) {
     indicators$cv <- NA_real_
@@ -1152,8 +1232,13 @@ n_multi_cluster.default <- function(
     } else if (has_p && !is.na(indicators$p[i])) {
       p_i <- indicators$p[i]
       method_i <- if (has_method) indicators$prop_method[i] else "wald"
-      n_eff <- .n_prop_effective(p_i, indicators$moe[i], indicators$alpha[i],
-                                 method_i, df_i)
+      n_eff <- .n_prop_effective(
+        p_i,
+        indicators$moe[i],
+        indicators$alpha[i],
+        method_i,
+        df_i
+      )
       indicators$cv[i] <- sqrt(p_i * (1 - p_i) / n_eff) / p_i
     } else if (has_var && !is.na(indicators$var[i])) {
       z <- .q_alpha(indicators$alpha[i], df_i)
@@ -1167,8 +1252,12 @@ n_multi_cluster.default <- function(
 #' Simple mode: compute n per indicator, take max
 #' @keywords internal
 #' @noRd
-.n_multi_simple <- function(indicators, domain_cols = character(0), mode = "moe",
-                           prop_method = "wald") {
+.n_multi_simple <- function(
+  indicators,
+  domain_cols = character(0),
+  mode = "moe",
+  prop_method = "wald"
+) {
   simple <- .compute_simple_n(indicators)
   n_vec <- simple$n
   cv_target_vec <- simple$cv_target
@@ -1194,28 +1283,49 @@ n_multi_cluster.default <- function(
   has_p <- "p" %in% names(indicators)
   has_mu <- "mu" %in% names(indicators)
   is_ratio <- .is_ratio_row(indicators)
-  cv_achieved_vec <- vapply(seq_len(nrow(indicators)), function(i) {
-    prec <- suppressWarnings(
-      if (is_ratio[i]) {
-        .prec_engine_ratio(indicators$r[i], indicators$unit_relvar[i], n_max,
-                           indicators$alpha[i], indicators$N[i],
-                           indicators$deff[i], indicators$resp_rate[i],
-                           .row_df(indicators, i))
-      } else if (has_p && !is.na(indicators$p[i])) {
-        .prec_engine_prop(indicators$p[i], n_max, indicators$alpha[i],
-                          indicators$N[i], indicators$deff[i],
-                          indicators$resp_rate[i], indicators$prop_method[i],
-                          .row_df(indicators, i))
-      } else {
-        .prec_engine_mean(indicators$var[i],
-                          if (has_mu) indicators$mu[i] else NULL,
-                          n_max, indicators$alpha[i], indicators$N[i],
-                          indicators$deff[i], indicators$resp_rate[i],
-                          .row_df(indicators, i))
-      }
-    )
-    prec$cv
-  }, numeric(1L))
+  cv_achieved_vec <- vapply(
+    seq_len(nrow(indicators)),
+    function(i) {
+      prec <- suppressWarnings(
+        if (is_ratio[i]) {
+          .prec_engine_ratio(
+            indicators$r[i],
+            indicators$unit_relvar[i],
+            n_max,
+            indicators$alpha[i],
+            indicators$N[i],
+            indicators$deff[i],
+            indicators$resp_rate[i],
+            .row_df(indicators, i)
+          )
+        } else if (has_p && !is.na(indicators$p[i])) {
+          .prec_engine_prop(
+            indicators$p[i],
+            n_max,
+            indicators$alpha[i],
+            indicators$N[i],
+            indicators$deff[i],
+            indicators$resp_rate[i],
+            indicators$prop_method[i],
+            .row_df(indicators, i)
+          )
+        } else {
+          .prec_engine_mean(
+            indicators$var[i],
+            if (has_mu) indicators$mu[i] else NULL,
+            n_max,
+            indicators$alpha[i],
+            indicators$N[i],
+            indicators$deff[i],
+            indicators$resp_rate[i],
+            .row_df(indicators, i)
+          )
+        }
+      )
+      prec$cv
+    },
+    numeric(1L)
+  )
 
   detail <- data.frame(
     name = labels,
@@ -1228,8 +1338,11 @@ n_multi_cluster.default <- function(
   .new_svyplan_n(
     n = n_max,
     type = "multi",
-    params = list(domain_cols = domain_cols, mode = mode,
-                  prop_method = prop_method),
+    params = list(
+      domain_cols = domain_cols,
+      mode = mode,
+      prop_method = prop_method
+    ),
     indicators = indicators,
     detail = detail,
     binding = binding_name
@@ -1306,31 +1419,60 @@ n_multi_cluster.default <- function(
 #' Multistage cluster mode dispatcher
 #' @keywords internal
 #' @noRd
-.n_multi_cluster <- function(indicators, stage_cost, budget, n_psu,
-                            n_per_psu = NULL, n_per_ssu = NULL, fixed_cost = 0,
-                            domain_cols = character(0), mode = "cv",
-                            prop_method = "wald") {
+.n_multi_cluster <- function(
+  indicators,
+  stage_cost,
+  budget,
+  n_psu,
+  n_per_psu = NULL,
+  n_per_ssu = NULL,
+  fixed_cost = 0,
+  domain_cols = character(0),
+  mode = "cv",
+  prop_method = "wald"
+) {
   .stop_min_cases_column(
     indicators,
     "a multistage design sizes stages against a cost, with no single total for a count to raise. Size the count-driven indicator with n_prop(min_cases = ) and set the stage takes around it"
   )
   stages <- length(stage_cost)
   if (stages == 2L) {
-    .n_multi_2stage(indicators, stage_cost, budget, n_psu, n_per_psu, fixed_cost,
-                    domain_cols = domain_cols, mode = mode,
-                    prop_method = prop_method)
+    .n_multi_2stage(
+      indicators,
+      stage_cost,
+      budget,
+      n_psu,
+      n_per_psu,
+      fixed_cost,
+      domain_cols = domain_cols,
+      mode = mode,
+      prop_method = prop_method
+    )
   } else {
-    .n_multi_3stage(indicators, stage_cost, budget, n_psu, n_per_psu, n_per_ssu,
-                    fixed_cost, domain_cols = domain_cols, mode = mode,
-                    prop_method = prop_method)
+    .n_multi_3stage(
+      indicators,
+      stage_cost,
+      budget,
+      n_psu,
+      n_per_psu,
+      n_per_ssu,
+      fixed_cost,
+      domain_cols = domain_cols,
+      mode = mode,
+      prop_method = prop_method
+    )
   }
 }
 
 #' Candidate whole stage sizes around a continuous optimum
 #' @keywords internal
 #' @noRd
-.multi_stage_candidates <- function(fixed, continuous, upper = Inf,
-                                    base_limit = 400L) {
+.multi_stage_candidates <- function(
+  fixed,
+  continuous,
+  upper = Inf,
+  base_limit = 400L
+) {
   if (!is.null(fixed)) {
     return(max(1L, as.integer(round(fixed))))
   }
@@ -1348,8 +1490,17 @@ n_multi_cluster.default <- function(
 #' Constraint-preserving whole-unit design for two-stage n_multi
 #' @keywords internal
 #' @noRd
-.op_multi_2stage <- function(n1_required, cv_fn, cv_t, stage_cost, budget,
-                             n_psu, n_per_psu, fixed_cost, cont_m) {
+.op_multi_2stage <- function(
+  n1_required,
+  cv_fn,
+  cv_t,
+  stage_cost,
+  budget,
+  n_psu,
+  n_per_psu,
+  fixed_cost,
+  cont_m
+) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   variable_budget <- if (is.null(budget)) NULL else budget - fixed_cost
@@ -1362,7 +1513,10 @@ n_multi_cluster.default <- function(
     (variable_budget - C1) / C2
   }
   m_cand <- .multi_stage_candidates(
-    n_per_psu, cont_m, upper = upper_m, base_limit = 100000L
+    n_per_psu,
+    cont_m,
+    upper = upper_m,
+    base_limit = 100000L
   )
 
   if (!is.null(budget)) {
@@ -1379,9 +1533,13 @@ n_multi_cluster.default <- function(
     a <- a[keep]
     m_cand <- m_cand[keep]
     cost <- cost[keep]
-    ratios <- vapply(seq_along(a), function(i) {
-      max(cv_fn(a[i], m_cand[i]) / cv_t)
-    }, numeric(1L))
+    ratios <- vapply(
+      seq_along(a),
+      function(i) {
+        max(cv_fn(a[i], m_cand[i]) / cv_t)
+      },
+      numeric(1L)
+    )
     j <- which.min(ratios + 1e-12 * m_cand)
   } else {
     need <- vapply(m_cand, function(m) max(n1_required(m)), numeric(1L))
@@ -1389,8 +1547,10 @@ n_multi_cluster.default <- function(
       a <- rep(max(1L, as.integer(round(n_psu))), length(m_cand))
       keep <- a + 1e-9 >= need
       if (!any(keep)) {
-        stop("target CV is not achievable with the fixed whole PSU count",
-             call. = FALSE)
+        stop(
+          "target CV is not achievable with the fixed whole PSU count",
+          call. = FALSE
+        )
       }
       a <- a[keep]
       m_cand <- m_cand[keep]
@@ -1416,9 +1576,18 @@ n_multi_cluster.default <- function(
 #' Constraint-preserving whole-unit design for three-stage n_multi
 #' @keywords internal
 #' @noRd
-.op_multi_3stage <- function(coef, cv_fn, cv_t, stage_cost, budget,
-                             n_psu, n_per_psu, n_per_ssu, fixed_cost,
-                             cont_m) {
+.op_multi_3stage <- function(
+  coef,
+  cv_fn,
+  cv_t,
+  stage_cost,
+  budget,
+  n_psu,
+  n_per_psu,
+  n_per_ssu,
+  fixed_cost,
+  cont_m
+) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   C3 <- stage_cost[3L]
@@ -1434,8 +1603,14 @@ n_multi_cluster.default <- function(
   m_cand <- .multi_stage_candidates(n_per_psu, cont_m, upper_m)
 
   hit <- .op_cluster3_search(
-    coef$alpha, coef$beta, coef$gamma, stage_cost, variable_budget,
-    n_psu, n_per_ssu, m_cand,
+    coef$alpha,
+    coef$beta,
+    coef$gamma,
+    stage_cost,
+    variable_budget,
+    n_psu,
+    n_per_ssu,
+    m_cand,
     msg_budget = "no whole-unit n_multi design fits the budget",
     msg_cv = "target CV is not achievable with the fixed whole PSU count"
   )
@@ -1455,10 +1630,17 @@ n_multi_cluster.default <- function(
 #' 2-stage multi-indicator optimization
 #' @keywords internal
 #' @noRd
-.n_multi_2stage <- function(indicators, stage_cost, budget, n_psu,
-                           n_per_psu = NULL, fixed_cost = 0,
-                           domain_cols = character(0), mode = "cv",
-                           prop_method = "wald") {
+.n_multi_2stage <- function(
+  indicators,
+  stage_cost,
+  budget,
+  n_psu,
+  n_per_psu = NULL,
+  fixed_cost = 0,
+  domain_cols = character(0),
+  mode = "cv",
+  prop_method = "wald"
+) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   nr <- nrow(indicators)
@@ -1540,8 +1722,11 @@ n_multi_cluster.default <- function(
       # The take grows as r falls, so the bracket is drawn at r and doubled to
       # keep the optimum interior across indicators.
       upper <- max(10, 2 * max(sqrt(C1 / C2 * (1 - icc) / (icc * ru))))
-      opt <- optimize(cost_fn, interval = c(1, upper),
-                      tol = .Machine$double.eps^0.5)
+      opt <- optimize(
+        cost_fn,
+        interval = c(1, upper),
+        tol = .Machine$double.eps^0.5
+      )
       n_per_psu_opt <- opt$minimum
 
       n1_vals <- n1_required(n_per_psu_opt)
@@ -1576,8 +1761,15 @@ n_multi_cluster.default <- function(
   n_vec <- c(n_psu = n1_opt, n_per_psu = n_per_psu_opt)
   total_n <- prod(n_vec)
   operational <- .op_multi_2stage(
-    n1_required, cv_achieved_fn, cv_t, stage_cost, budget,
-    n_psu, n_per_psu, fixed_cost, cont_m = n_per_psu_opt
+    n1_required,
+    cv_achieved_fn,
+    cv_t,
+    stage_cost,
+    budget,
+    n_psu,
+    n_per_psu,
+    fixed_cost,
+    cont_m = n_per_psu_opt
   )
 
   n1_per <- n1_required(n_per_psu_opt)
@@ -1591,8 +1783,12 @@ n_multi_cluster.default <- function(
     .binding = seq_len(nr) == binding_idx
   )
 
-  params <- list(stage_cost = stage_cost, domain_cols = domain_cols,
-                  mode = mode, prop_method = prop_method)
+  params <- list(
+    stage_cost = stage_cost,
+    domain_cols = domain_cols,
+    mode = mode,
+    prop_method = prop_method
+  )
   if (!is.null(budget)) {
     params$budget <- budget
   }
@@ -1623,10 +1819,18 @@ n_multi_cluster.default <- function(
 #' 3-stage multi-indicator optimization
 #' @keywords internal
 #' @noRd
-.n_multi_3stage <- function(indicators, stage_cost, budget, n_psu,
-                           n_per_psu = NULL, n_per_ssu = NULL, fixed_cost = 0,
-                           domain_cols = character(0), mode = "cv",
-                           prop_method = "wald") {
+.n_multi_3stage <- function(
+  indicators,
+  stage_cost,
+  budget,
+  n_psu,
+  n_per_psu = NULL,
+  n_per_ssu = NULL,
+  fixed_cost = 0,
+  domain_cols = character(0),
+  mode = "cv",
+  prop_method = "wald"
+) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   C3 <- stage_cost[3L]
@@ -1694,7 +1898,10 @@ n_multi_cluster.default <- function(
   search_coef <- list(
     alpha = unit_relvar * var_ratio_psu * icc_psu / (rr * cv_t^2),
     beta = unit_relvar * var_ratio_ssu * icc_ssu / (rr * rs * cv_t^2),
-    gamma = unit_relvar * var_ratio_ssu * (1 - icc_ssu) / (rr * rs * ru * cv_t^2)
+    gamma = unit_relvar *
+      var_ratio_ssu *
+      (1 - icc_ssu) /
+      (rr * rs * ru * cv_t^2)
   )
 
   # One representation for every fixed-stage branch, rather than re-deriving
@@ -1752,8 +1959,10 @@ n_multi_cluster.default <- function(
           call. = FALSE
         )
       }
-      if (opt$par[1L] >= upper_ps * (1 - 1e-6) ||
-        opt$par[2L] >= upper_ss * (1 - 1e-6)) {
+      if (
+        opt$par[1L] >= upper_ps * (1 - 1e-6) ||
+          opt$par[2L] >= upper_ss * (1 - 1e-6)
+      ) {
         warning(
           sprintf(
             "optimal stage size reached the search upper bound (n_per_psu <= %.0f, n_per_ssu <= %.0f); result may be unreliable -- review stage costs and target CVs",
@@ -1776,13 +1985,22 @@ n_multi_cluster.default <- function(
         n1_opt <- n_psu
 
         cv_floor <- .multistage_cv_floor(
-          unit_relvar, var_ratio_psu, icc_psu,
-          rr = rr, n_psu = n_psu
+          unit_relvar,
+          var_ratio_psu,
+          icc_psu,
+          rr = rr,
+          n_psu = n_psu
         )
         .check_multistage_feasibility(
-          cv_t, cv_floor, n_psu,
-          unit_relvar, var_ratio_psu, icc_psu,
-          rr = rr, labels = labels, context = "n_multi_cluster()"
+          cv_t,
+          cv_floor,
+          n_psu,
+          unit_relvar,
+          var_ratio_psu,
+          icc_psu,
+          rr = rr,
+          labels = labels,
+          context = "n_multi_cluster()"
         )
 
         n_per_psu_required_fn <- function(ss) ps_required(ss, n_psu)
@@ -1795,8 +2013,11 @@ n_multi_cluster.default <- function(
         n_per_ssu_analytic <- vapply(
           seq_len(nr),
           function(j) {
-            if (icc_ssu[j] <= 0) 1
-            else sqrt((1 - icc_ssu[j]) / icc_ssu[j] * C2 / C3)
+            if (icc_ssu[j] <= 0) {
+              1
+            } else {
+              sqrt((1 - icc_ssu[j]) / icc_ssu[j] * C2 / C3)
+            }
           },
           numeric(1L)
         )
@@ -1827,9 +2048,13 @@ n_multi_cluster.default <- function(
           seq_len(nr),
           function(j) {
             sqrt(
-              C1 * var_ratio_ssu[j] * (1 + icc_ssu[j] * (n_per_ssu_opt - 1)) /
-                (var_ratio_psu[j] * icc_psu[j] * n_per_ssu_opt *
-                   (C2 + C3 * n_per_ssu_opt))
+              C1 *
+                var_ratio_ssu[j] *
+                (1 + icc_ssu[j] * (n_per_ssu_opt - 1)) /
+                (var_ratio_psu[j] *
+                  icc_psu[j] *
+                  n_per_ssu_opt *
+                  (C2 + C3 * n_per_ssu_opt))
             )
           },
           numeric(1L)
@@ -1840,7 +2065,8 @@ n_multi_cluster.default <- function(
         n1_vals <- n1_required(n_per_psu_opt, n_per_ssu_opt)
         n1_opt <- max(n1_vals)
         total_cost <- fixed_cost +
-          n1_opt * (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu_opt)
+          n1_opt *
+            (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu_opt)
         binding_idx <- which.max(n1_vals)
       } else if (!is.null(n_per_psu) && is.null(n_psu) && is.null(n_per_ssu)) {
         n_per_psu_opt <- n_per_psu
@@ -1851,8 +2077,11 @@ n_multi_cluster.default <- function(
         n_per_ssu_analytic <- vapply(
           seq_len(nr),
           function(j) {
-            if (icc_ssu[j] <= 0) 1
-            else sqrt((1 - icc_ssu[j]) / icc_ssu[j] * C2 / C3)
+            if (icc_ssu[j] <= 0) {
+              1
+            } else {
+              sqrt((1 - icc_ssu[j]) / icc_ssu[j] * C2 / C3)
+            }
           },
           numeric(1L)
         )
@@ -1862,25 +2091,41 @@ n_multi_cluster.default <- function(
         n1_vals <- n1_required(n_per_psu_opt, n_per_ssu_opt)
         n1_opt <- max(n1_vals)
         total_cost <- fixed_cost +
-          n1_opt * (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu_opt)
+          n1_opt *
+            (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu_opt)
         binding_idx <- which.max(n1_vals)
       } else {
         n1_opt <- n_psu
         n_per_ssu_opt <- n_per_ssu
         cv_floor <- .multistage_cv_floor(
-          unit_relvar, var_ratio_psu, icc_psu,
-          rr = rr, n_psu = n_psu
+          unit_relvar,
+          var_ratio_psu,
+          icc_psu,
+          rr = rr,
+          n_psu = n_psu
         )
         .check_multistage_feasibility(
-          cv_t, cv_floor, n_psu,
-          unit_relvar, var_ratio_psu, icc_psu,
-          rr = rr, labels = labels, context = "n_multi_cluster()"
+          cv_t,
+          cv_floor,
+          n_psu,
+          unit_relvar,
+          var_ratio_psu,
+          icc_psu,
+          rr = rr,
+          labels = labels,
+          context = "n_multi_cluster()"
         )
         n_per_psu_required_fn2 <- function(j) {
-          denom <- cv_t[j]^2 * n_psu * rr[j] / (unit_relvar[j] * var_ratio_ssu[j]) -
+          denom <- cv_t[j]^2 *
+            n_psu *
+            rr[j] /
+            (unit_relvar[j] * var_ratio_ssu[j]) -
             var_ratio_psu[j] * icc_psu[j] / var_ratio_ssu[j]
-          if (denom <= 0) Inf
-          else (1 + icc_ssu[j] * (n_per_ssu - 1)) / (n_per_ssu * denom)
+          if (denom <= 0) {
+            Inf
+          } else {
+            (1 + icc_ssu[j] * (n_per_ssu - 1)) / (n_per_ssu * denom)
+          }
         }
         psu_per <- vapply(seq_len(nr), n_per_psu_required_fn2, numeric(1L))
         n_per_psu_opt <- max(psu_per)
@@ -1902,19 +2147,29 @@ n_multi_cluster.default <- function(
         n1_vals <- n1_required(n_per_psu_opt, n_per_ssu_opt)
         n1_opt <- max(n1_vals)
         total_cost <- fixed_cost +
-          n1_opt * (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu_opt)
+          n1_opt *
+            (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu_opt)
         binding_idx <- which.max(n1_vals)
       } else if (solve_for == "n2") {
         n1_opt <- n_psu
         n_per_ssu_opt <- n_per_ssu
         cv_floor <- .multistage_cv_floor(
-          unit_relvar, var_ratio_psu, icc_psu,
-          rr = rr, n_psu = n_psu
+          unit_relvar,
+          var_ratio_psu,
+          icc_psu,
+          rr = rr,
+          n_psu = n_psu
         )
         .check_multistage_feasibility(
-          cv_t, cv_floor, n_psu,
-          unit_relvar, var_ratio_psu, icc_psu,
-          rr = rr, labels = labels, context = "n_multi_cluster()"
+          cv_t,
+          cv_floor,
+          n_psu,
+          unit_relvar,
+          var_ratio_psu,
+          icc_psu,
+          rr = rr,
+          labels = labels,
+          context = "n_multi_cluster()"
         )
         n_per_psu_opt <- ps_required(n_per_ssu, n_psu)
         if (!is.finite(n_per_psu_opt) || n_per_psu_opt <= 0) {
@@ -1931,16 +2186,28 @@ n_multi_cluster.default <- function(
         n1_opt <- n_psu
         n_per_psu_opt <- n_per_psu
         cv_floor <- .multistage_cv_floor(
-          unit_relvar, var_ratio_psu, icc_psu,
-          var_ratio_ssu = var_ratio_ssu, icc_ssu = icc_ssu,
-          rr = rr, n_psu = n_psu, n_per_psu = n_per_psu
+          unit_relvar,
+          var_ratio_psu,
+          icc_psu,
+          var_ratio_ssu = var_ratio_ssu,
+          icc_ssu = icc_ssu,
+          rr = rr,
+          n_psu = n_psu,
+          n_per_psu = n_per_psu
         )
         .check_multistage_feasibility(
-          cv_t, cv_floor, n_psu,
-          unit_relvar, var_ratio_psu, icc_psu,
-          var_ratio_ssu = var_ratio_ssu, icc_ssu = icc_ssu,
+          cv_t,
+          cv_floor,
+          n_psu,
+          unit_relvar,
+          var_ratio_psu,
+          icc_psu,
+          var_ratio_ssu = var_ratio_ssu,
+          icc_ssu = icc_ssu,
           n_per_psu = n_per_psu,
-          rr = rr, labels = labels, context = "n_multi_cluster()"
+          rr = rr,
+          labels = labels,
+          context = "n_multi_cluster()"
         )
         n_per_ssu_opt <- ss_required(n_per_psu, n_psu)
         if (!is.finite(n_per_ssu_opt) || n_per_ssu_opt <= 0) {
@@ -1985,11 +2252,22 @@ n_multi_cluster.default <- function(
     total_cost <- fixed_cost + bres$cost
   }
 
-  n_vec <- c(n_psu = n1_opt, n_per_psu = n_per_psu_opt, n_per_ssu = n_per_ssu_opt)
+  n_vec <- c(
+    n_psu = n1_opt,
+    n_per_psu = n_per_psu_opt,
+    n_per_ssu = n_per_ssu_opt
+  )
   total_n <- prod(n_vec)
   operational <- .op_multi_3stage(
-    search_coef, cv_achieved_fn, cv_t, stage_cost, budget,
-    n_psu, n_per_psu, n_per_ssu, fixed_cost,
+    search_coef,
+    cv_achieved_fn,
+    cv_t,
+    stage_cost,
+    budget,
+    n_psu,
+    n_per_psu,
+    n_per_ssu,
+    fixed_cost,
     cont_m = n_per_psu_opt
   )
 
@@ -2004,14 +2282,24 @@ n_multi_cluster.default <- function(
     .binding = seq_len(nr) == binding_idx
   )
 
-  params <- list(stage_cost = stage_cost, domain_cols = domain_cols,
-                  mode = mode, prop_method = prop_method)
+  params <- list(
+    stage_cost = stage_cost,
+    domain_cols = domain_cols,
+    mode = mode,
+    prop_method = prop_method
+  )
   if (!is.null(budget)) {
     params$budget <- budget
   }
-  if (!is.null(n_psu)) params$n_psu <- n_psu
-  if (!is.null(n_per_psu)) params$n_per_psu <- n_per_psu
-  if (!is.null(n_per_ssu)) params$n_per_ssu <- n_per_ssu
+  if (!is.null(n_psu)) {
+    params$n_psu <- n_psu
+  }
+  if (!is.null(n_per_psu)) {
+    params$n_per_psu <- n_per_psu
+  }
+  if (!is.null(n_per_ssu)) {
+    params$n_per_ssu <- n_per_ssu
+  }
   if (fixed_cost > 0) {
     params$fixed_cost <- fixed_cost
   }
@@ -2078,8 +2366,15 @@ n_multi_cluster.default <- function(
     # Drop domain columns for inner solve
     sub_inner <- sub[, !names(sub) %in% domain_cols, drop = FALSE]
     if (multistage) {
-      .n_multi_cluster(sub_inner, stage_cost, budget, n_psu, n_per_psu,
-                       n_per_ssu, fixed_cost)
+      .n_multi_cluster(
+        sub_inner,
+        stage_cost,
+        budget,
+        n_psu,
+        n_per_psu,
+        n_per_ssu,
+        fixed_cost
+      )
     } else {
       .n_multi_simple(sub_inner)
     }
@@ -2136,24 +2431,34 @@ n_multi_cluster.default <- function(
       call. = FALSE
     )
   }
-  shares <- vapply(domain_levels, function(lev) {
-    v <- indicators$share[split_idx[[lev]]]
-    if (anyNA(v) || any(!is.finite(v)) || any(v <= 0) || any(v > 1)) {
-      stop("'share' must be in (0, 1] for every indicator row", call. = FALSE)
-    }
-    if (diff(range(v)) > 1e-8) {
-      stop(
-        sprintf("'share' identifies a domain, so it must be constant within one; it varies within %s", lev),
-        call. = FALSE
-      )
-    }
-    v[1L]
-  }, numeric(1L))
+  shares <- vapply(
+    domain_levels,
+    function(lev) {
+      v <- indicators$share[split_idx[[lev]]]
+      if (anyNA(v) || any(!is.finite(v)) || any(v <= 0) || any(v > 1)) {
+        stop("'share' must be in (0, 1] for every indicator row", call. = FALSE)
+      }
+      if (diff(range(v)) > 1e-8) {
+        stop(
+          sprintf(
+            "'share' identifies a domain, so it must be constant within one; it varies within %s",
+            lev
+          ),
+          call. = FALSE
+        )
+      }
+      v[1L]
+    },
+    numeric(1L)
+  )
 
   total <- sum(shares)
   if (total > 1 + 1e-6) {
     stop(
-      sprintf("domain 'share' values sum to %.4f; they are shares of one population and cannot exceed 1", total),
+      sprintf(
+        "domain 'share' values sum to %.4f; they are shares of one population and cannot exceed 1",
+        total
+      ),
       call. = FALSE
     )
   }
@@ -2206,9 +2511,12 @@ n_multi_cluster.default <- function(
   res <- .new_svyplan_n(
     n = n_overall,
     type = "multi",
-    params = list(domain_cols = domain_cols, mode = mode,
-                  prop_method = prop_method,
-                  domain_sampling = domain_sampling),
+    params = list(
+      domain_cols = domain_cols,
+      mode = mode,
+      prop_method = prop_method,
+      domain_sampling = domain_sampling
+    ),
     indicators = indicators,
     detail = NULL,
     binding = binding_label,
@@ -2295,15 +2603,25 @@ n_multi_cluster.default <- function(
   n_vec <- rep(NA_real_, stages)
   names(n_vec) <- stage_names
 
-  params <- list(stage_cost = stage_cost, domain_cols = domain_cols,
-                  mode = mode, prop_method = prop_method,
-                  domain_sampling = domain_sampling)
+  params <- list(
+    stage_cost = stage_cost,
+    domain_cols = domain_cols,
+    mode = mode,
+    prop_method = prop_method,
+    domain_sampling = domain_sampling
+  )
   if (!is.null(budget)) {
     params$budget <- budget
   }
-  if (!is.null(n_psu)) params$n_psu <- n_psu
-  if (!is.null(n_per_psu)) params$n_per_psu <- n_per_psu
-  if (!is.null(n_per_ssu)) params$n_per_ssu <- n_per_ssu
+  if (!is.null(n_psu)) {
+    params$n_psu <- n_psu
+  }
+  if (!is.null(n_per_psu)) {
+    params$n_per_psu <- n_per_psu
+  }
+  if (!is.null(n_per_ssu)) {
+    params$n_per_ssu <- n_per_ssu
+  }
   if (!is.null(min_n_domain)) {
     params$min_n_domain <- min_n_domain
   }
@@ -2437,8 +2755,14 @@ n_multi_cluster.default <- function(
     for (d in seq_len(nd)) {
       if (full_total[d] < min_n_domain) {
         lab <- paste(
-          unlist(lapply(indicators[split_idx[[domain_levels[d]]][1L],
-                                domain_cols, drop = FALSE], as.character)),
+          unlist(lapply(
+            indicators[
+              split_idx[[domain_levels[d]]][1L],
+              domain_cols,
+              drop = FALSE
+            ],
+            as.character
+          )),
           collapse = ":"
         )
         stop(
@@ -2710,7 +3034,9 @@ n_multi_cluster.default <- function(
       ps <- par[1L]
       ss <- par[2L]
       n1 <- budget / (C1 + C2 * ps + C3 * ps * ss)
-      if (n1 <= 0) return(1e12)
+      if (n1 <= 0) {
+        return(1e12)
+      }
       max(cv_fn(n1, ps, ss) / cv_t)
     }
     init_ps <- max(2, sqrt(C1 / C2))
@@ -2732,8 +3058,10 @@ n_multi_cluster.default <- function(
         call. = FALSE
       )
     }
-    if (opt$par[1L] >= upper_ps * (1 - 1e-6) ||
-      opt$par[2L] >= upper_ss * (1 - 1e-6)) {
+    if (
+      opt$par[1L] >= upper_ps * (1 - 1e-6) ||
+        opt$par[2L] >= upper_ss * (1 - 1e-6)
+    ) {
       warning(
         sprintf(
           "optimal stage size reached the search upper bound (n_per_psu <= %.0f, n_per_ssu <= %.0f); result may be unreliable -- review stage costs and target CVs",
@@ -2745,23 +3073,32 @@ n_multi_cluster.default <- function(
     }
     n_per_psu_opt <- opt$par[1L]
     n_per_ssu_opt <- opt$par[2L]
-    n1_opt <- budget / (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu_opt)
+    n1_opt <- budget /
+      (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu_opt)
     total_cost <- budget
   } else if (n_free == 2L) {
     if (!is.null(n_psu)) {
       n1_opt <- n_psu
       avail <- budget / n_psu - C1
       if (avail < C2 + C3) {
-        stop("budget is too small for the given fixed stage sizes", call. = FALSE)
+        stop(
+          "budget is too small for the given fixed stage sizes",
+          call. = FALSE
+        )
       }
       max_ss <- (avail - C2) / C3
       if (!is.finite(max_ss) || max_ss < 1) {
-        stop("budget is too small for the given fixed stage sizes", call. = FALSE)
+        stop(
+          "budget is too small for the given fixed stage sizes",
+          call. = FALSE
+        )
       }
       ps_from_ss <- function(ss) avail / (C2 + C3 * ss)
       obj_fn_ss <- function(ss) {
         ps <- ps_from_ss(ss)
-        if (!is.finite(ps) || ps < 1) return(Inf)
+        if (!is.finite(ps) || ps < 1) {
+          return(Inf)
+        }
         max(cv_fn(n_psu, ps, ss) / cv_t)
       }
       if (max_ss <= 1 + 1e-10) {
@@ -2772,12 +3109,17 @@ n_multi_cluster.default <- function(
       }
       n_per_psu_opt <- ps_from_ss(n_per_ssu_opt)
       if (!is.finite(n_per_psu_opt) || n_per_psu_opt < 1) {
-        stop("budget is too small for the given fixed stage sizes", call. = FALSE)
+        stop(
+          "budget is too small for the given fixed stage sizes",
+          call. = FALSE
+        )
       }
     } else if (!is.null(n_per_psu)) {
       obj_fn_ps <- function(ss) {
         n1 <- budget / (C1 + C2 * n_per_psu + C3 * n_per_psu * ss)
-        if (n1 <= 0) return(1e12)
+        if (n1 <= 0) {
+          return(1e12)
+        }
         max(cv_fn(n1, n_per_psu, ss) / cv_t)
       }
       upper <- max(10, budget / (C1 + C2 * n_per_psu + C3 * n_per_psu))
@@ -2788,16 +3130,20 @@ n_multi_cluster.default <- function(
     } else {
       obj_fn_ss2 <- function(ps) {
         n1 <- budget / (C1 + C2 * ps + C3 * ps * n_per_ssu)
-        if (n1 <= 0) return(1e12)
+        if (n1 <= 0) {
+          return(1e12)
+        }
         max(cv_fn(n1, ps, n_per_ssu) / cv_t)
       }
       upper <- max(10, budget / (C1 + C2 + C3 * n_per_ssu))
       opt <- optimize(obj_fn_ss2, interval = c(1, upper))
       n_per_psu_opt <- opt$minimum
       n_per_ssu_opt <- n_per_ssu
-      n1_opt <- budget / (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu)
+      n1_opt <- budget /
+        (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu)
     }
-    total_cost <- C1 * n1_opt +
+    total_cost <- C1 *
+      n1_opt +
       C2 * n1_opt * n_per_psu_opt +
       C3 * n1_opt * n_per_psu_opt * n_per_ssu_opt
   } else {
@@ -2805,26 +3151,36 @@ n_multi_cluster.default <- function(
       n_per_ssu_opt <- (budget - C1 * n_psu - C2 * n_psu * n_per_psu) /
         (C3 * n_psu * n_per_psu)
       if (n_per_ssu_opt <= 0) {
-        stop("budget is too small for the given fixed stage sizes", call. = FALSE)
+        stop(
+          "budget is too small for the given fixed stage sizes",
+          call. = FALSE
+        )
       }
       n1_opt <- n_psu
       n_per_psu_opt <- n_per_psu
     } else if (!is.null(n_psu) && !is.null(n_per_ssu)) {
       n_per_psu_opt <- (budget / n_psu - C1) / (C2 + C3 * n_per_ssu)
       if (n_per_psu_opt <= 0) {
-        stop("budget is too small for the given fixed stage sizes", call. = FALSE)
+        stop(
+          "budget is too small for the given fixed stage sizes",
+          call. = FALSE
+        )
       }
       n1_opt <- n_psu
       n_per_ssu_opt <- n_per_ssu
     } else {
       n1_opt <- budget / (C1 + C2 * n_per_psu + C3 * n_per_psu * n_per_ssu)
       if (n1_opt <= 0) {
-        stop("budget is too small for the given fixed stage sizes", call. = FALSE)
+        stop(
+          "budget is too small for the given fixed stage sizes",
+          call. = FALSE
+        )
       }
       n_per_psu_opt <- n_per_psu
       n_per_ssu_opt <- n_per_ssu
     }
-    total_cost <- C1 * n1_opt +
+    total_cost <- C1 *
+      n1_opt +
       C2 * n1_opt * n_per_psu_opt +
       C3 * n1_opt * n_per_psu_opt * n_per_ssu_opt
   }
@@ -2852,8 +3208,10 @@ n_multi.svyplan_prec <- function(indicators, ...) {
   if (x$type != "multi") {
     stop("n_multi requires a svyplan_prec of type 'multi'", call. = FALSE)
   }
-  if (identical(x$params$design, "cluster") ||
-      !is.null(x$params$stage_cost)) {
+  if (
+    identical(x$params$design, "cluster") ||
+      !is.null(x$params$stage_cost)
+  ) {
     stop(
       "cluster precision must be passed to n_multi_cluster()",
       call. = FALSE

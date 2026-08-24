@@ -125,7 +125,7 @@ column.
 \item \strong{Precision target}: do you want an absolute margin of error
 (\code{moe}, e.g. +/- 5 percentage points), the same margin stated
 relative to the estimand (\code{rmoe}, e.g. 12 percent of the
-proportion, as MICS and DHS state it), or a relative coefficient of
+proportion), or a relative coefficient of
 variation (\code{cv}, e.g. 10 percent relative error)?
 }
 
@@ -257,7 +257,7 @@ indicators <- data.frame(
 )
 n_multi(indicators)
 
-# MICS/DHS-style: state precision as a relative margin of error
+# MICS-style: state precision as a relative margin of error
 targets_rmoe <- data.frame(
   name = c("stunting", "vaccination", "anemia"),
   p    = c(0.30, 0.70, 0.10),

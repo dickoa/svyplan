@@ -14,12 +14,11 @@
 #'   For example, `cv = 0.10` means the standard error should be at
 #'   most 10 percent of the estimate. Use `cv` when you want precision
 #'   to scale with the estimate (common in economic surveys). Use `moe`
-#'   when you want a fixed absolute precision (common in health/DHS
-#'   surveys). Specify exactly one of `moe`, `cv`, or `rmoe`.
+#'   when you want a fixed absolute precision (common in health surveys).
+#'   Specify exactly one of `moe`, `cv`, or `rmoe`.
 #' @param rmoe Target margin of error relative to `p`, so `rmoe = 0.12`
 #'   asks for a 95 percent interval whose half-width is 12 percent of the
-#'   proportion. This is how MICS and DHS state a precision requirement.
-#'   It is `moe / p`, and therefore fixes the same interval `moe` does
+#'   proportion. It is `moe / p`, and therefore fixes the same interval `moe` does
 #'   while scaling with the estimate the way `cv` does. See the precision
 #'   quantities section of [prec_prop()]. Specify exactly one of `moe`,
 #'   `cv`, or `rmoe`.
@@ -311,7 +310,7 @@
 #' rare$binding
 #' rare$expected_cases
 #'
-#' # MICS/DHS-style relative margin of error: 12 percent of the proportion
+#' # MICS-style relative margin of error, 12% of the proportion
 #' n_prop(p = 0.2, rmoe = 0.12, deff = 1.5, resp_rate = 0.9)
 #'
 #' @export

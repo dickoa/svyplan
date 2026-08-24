@@ -1,7 +1,7 @@
 #' Constrained stratified allocation
 #'
 #' Distribute a total sample size across strata defined by a single
-#' stratification variable, under a fixed total \eqn{n}, target CV, or budget.
+#' stratification variable, under a fixed total `n`, target CV, or budget.
 #' When the design uses multiple stratification variables (e.g. region and
 #' urbanicity), cross them into a single variable beforehand so that each row
 #' of `frame` represents one unique stratum.

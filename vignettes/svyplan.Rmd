@@ -218,7 +218,8 @@ n_prop(p = 0.70, cv = 0.05)
 
 Or state the margin of error as a fraction of the proportion rather than in
 percentage points. `rmoe = 0.07` at `p = 0.70` asks for the same interval as
-`moe = 0.049`, and says it in the units MICS and DHS state a requirement in:
+`moe = 0.049`, and says it in the units UNICEF's Multiple Indicator Cluster
+Surveys (MICS) state a requirement in:
 
 ```{r n-prop-rmoe}
 n_prop(p = 0.70, rmoe = 0.07)
@@ -450,7 +451,7 @@ For proportions, the interval is clamped to [0, 1].
 
 ## Multi-indicator surveys
 
-Household surveys like Demographic and Health Surveys (DHS) or Multiple Indicator Cluster Survey (MICS) track many indicators simultaneously. Each indicator has its own expected prevalence, precision target, and design effect. `n_multi()` finds the sample size that satisfies all targets at once.
+Household surveys like the Demographic and Health Surveys (DHS) or MICS track many indicators simultaneously. Each indicator has its own expected prevalence, precision target, and design effect. `n_multi()` finds the sample size that satisfies all targets at once.
 
 ```{r n-multi}
 targets <- data.frame(
@@ -508,9 +509,13 @@ Domain columns are specified explicitly via the `domains` parameter, and `domain
 
 Neither reading is the largest single domain requirement. That number is reported separately as `n_domain_max`, and it is what `binding` refers to. Use `$domains` to see each domain's own sample size.
 
-### MICS/DHS-style relative margin of error
+### Relative precision in MICS and DHS
 
-Programs like UNICEF MICS and DHS express precision as a **relative margin of error**, the margin of error as a fraction of the indicator. `rmoe` states it directly, on the scalar functions and as an indicator column.
+MICS is a household survey program run by UNICEF, and DHS is one funded by USAID and implemented by ICF. Both run standardized questionnaires and sample designs across many countries so that indicators on children, women, health and nutrition stay comparable across borders, and both publish the sampling rules their country teams work to. Those rules are where a planner meets the two relative precision targets in this package, and the two programs do not use the same one.
+
+MICS states a requirement as a **relative margin of error**, the margin of error as a fraction of the indicator, which is what `rmoe` takes. DHS states one as a **relative standard error**, the standard error over the indicator, which its sampling manual also calls the coefficient of variation and which is what `cv` takes. They are not interchangeable: `rmoe` equals `z * cv` under the Wald method and departs from it under the others. `rmoe` is available on the scalar functions and as an indicator column.
+
+The sampling rules are published. UNICEF's [MICS tools](https://mics.unicef.org/tools) carry the sample size template for the current MICS7 round, and the DHS rules are in ICF International (2012), *Demographic and Health Survey Sampling and Household Listing Manual*, Calverton, Maryland ([PDF](https://dhsprogram.com/pubs/pdf/DHSM4/DHS6_Sampling_Manual_Sept2012_DHSM4.pdf)).
 
 `rmoe` is `moe / p`, so it fixes the same interval `moe` does while scaling with the estimate the way `cv` does. That places the package's four precision quantities on two axes: `se` and `cv` describe the sampling variance, while `moe` and `rmoe` describe the interval drawn around it.
 
@@ -1634,4 +1639,4 @@ Sample-size, cluster, power, and strata-boundary results support `as.integer()` 
 
 **Domains not identifiable on the frame.** Targets can be set per domain when domain membership is known before fielding, as it is for region or urban/rural. For domains realized only after contact, such as age or sex subgroups, the realized subsample is random and has to be inflated by hand from the expected domain share. The same line runs through `design_df()`: a domain that is a union of whole strata gets an exact degrees-of-freedom count in `$domains`, while one cutting across strata does not, because counting the PSUs that contain its members needs frame information a plan does not carry.
 
-**Converting between listing units and analysis units.** Sizing works in the units the precision target refers to. Converting a size in eligible persons to a number of households to list, given a mean household size and an eligibility rate, is arithmetic the user does explicitly. The MICS/DHS section above and the README both show the calculation.
+**Converting between listing units and analysis units.** Sizing works in the units the precision target refers to. Converting a size in eligible persons to a number of households to list, given a mean household size and an eligibility rate, is arithmetic the user does explicitly. The MICS and DHS section above and the README both show the calculation.

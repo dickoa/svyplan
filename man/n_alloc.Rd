@@ -298,7 +298,7 @@ epsilon-constraint \code{objective_bound} and its multiplier.
 }
 \description{
 Distribute a total sample size across strata defined by a single
-stratification variable, under a fixed total \eqn{n}, target CV, or budget.
+stratification variable, under a fixed total \code{n}, target CV, or budget.
 When the design uses multiple stratification variables (e.g. region and
 urbanicity), cross them into a single variable beforehand so that each row
 of \code{frame} represents one unique stratum.

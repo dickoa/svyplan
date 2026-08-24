@@ -144,11 +144,13 @@ n_multi(targets)
 Per-domain optimization works by specifying domain columns via the
 `domains` parameter.
 
-### MICS/DHS-style relative margin of error
+### Relative precision in surveys (e.g MICS/DHS)
 
-Programs like UNICEF MICS and DHS express precision as a **relative
-margin of error**, the margin of error as a fraction of the indicator.
-State it directly with `rmoe`.
+UNICEF's MICS states a precision requirement as a **relative margin of
+error**, the margin of error as a fraction of the indicator. State it
+directly with `rmoe`. DHS states one as a **relative standard error**,
+which is `cv`. The vignette describes both programs and cites the
+sampling rules each publishes.
 
 ```{r}
 targets_rmoe <- data.frame(

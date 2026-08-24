@@ -41,13 +41,12 @@ Specify exactly one of \code{moe}, \code{cv}, or \code{rmoe}.}
 For example, \code{cv = 0.10} means the standard error should be at
 most 10 percent of the estimate. Use \code{cv} when you want precision
 to scale with the estimate (common in economic surveys). Use \code{moe}
-when you want a fixed absolute precision (common in health/DHS
-surveys). Specify exactly one of \code{moe}, \code{cv}, or \code{rmoe}.}
+when you want a fixed absolute precision (common in health surveys).
+Specify exactly one of \code{moe}, \code{cv}, or \code{rmoe}.}
 
 \item{rmoe}{Target margin of error relative to \code{p}, so \code{rmoe = 0.12}
 asks for a 95 percent interval whose half-width is 12 percent of the
-proportion. This is how MICS and DHS state a precision requirement.
-It is \code{moe / p}, and therefore fixes the same interval \code{moe} does
+proportion. It is \code{moe / p}, and therefore fixes the same interval \code{moe} does
 while scaling with the estimate the way \code{cv} does. See the precision
 quantities section of \code{\link[=prec_prop]{prec_prop()}}. Specify exactly one of \code{moe},
 \code{cv}, or \code{rmoe}.}
@@ -331,7 +330,7 @@ rare <- n_prop(p = 0.02, moe = 0.02, min_cases = 30)
 rare$binding
 rare$expected_cases
 
-# MICS/DHS-style relative margin of error: 12 percent of the proportion
+# MICS-style relative margin of error, 12\% of the proportion
 n_prop(p = 0.2, rmoe = 0.12, deff = 1.5, resp_rate = 0.9)
 
 }

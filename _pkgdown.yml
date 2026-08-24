@@ -1,6 +1,7 @@
 url: https://dickoa.gitlab.io/svyplan
 template:
   bootstrap: 5
+  math-rendering: katex
 
 articles:
   - title: "Getting Started"
