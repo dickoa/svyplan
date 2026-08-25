@@ -89,6 +89,7 @@
     ratio = params$r,
     change = params$change,
     pooled = params$mu,
+    twophase = params$mu,
     multi = .indicator_estimand(params$indicators, length(moe)),
     alloc = .alloc_estimand(params$frame),
     NULL

@@ -215,7 +215,13 @@ prec_multi.default <- function(
 #' @param ... Additional arguments passed to methods. Unused arguments are
 #'   rejected.
 #' @param domains Optional character vector naming domain columns in
-#'   `indicators`.
+#'   `indicators`. Precision is computed row by row either way, so naming
+#'   domains leaves every `$detail` value unchanged. What it does is record
+#'   the domain structure on the result, so that a round trip back to
+#'   [n_multi_cluster()] rebuilds the same design. There is no
+#'   `domain_sampling` argument here, because that choice governs how
+#'   per-domain requirements combine into one size, and this direction
+#'   reads the sizes you already have.
 #' @param stage_cost Optional per-stage costs to retain for a later round trip
 #'   to [n_multi_cluster()]. Costs do not enter the precision calculation.
 #' @param resp_rate_psu Default expected PSU response rate, in (0, 1\].
@@ -227,8 +233,11 @@ prec_multi.default <- function(
 #' @param plan Optional [svyplan()] profile providing design metadata.
 #'
 #' @return A `svyplan_prec` object with per-indicator cluster precision in
-#'   `$detail`: `.se`, `.moe`, `.rmoe`, and `.cv`, with `.rmoe` measured
-#'   against the row's `p` or `abs(mu)`.
+#'   `$detail`: `.se`, `.moe`, `.rmoe`, and `.cv`. All four are reported
+#'   whatever target the design was sized against, since the achieved
+#'   precision does not depend on how the requirement was written. `.rmoe`
+#'   is measured against the row's own estimand, `p` for a proportion,
+#'   `abs(mu)` for a mean and `abs(r)` for a ratio.
 #'
 #' @examples
 #' indicators <- data.frame(
@@ -510,7 +519,6 @@ prec_multi_cluster.default <- function(
 #' @noRd
 .prec_multi_cluster <- function(indicators, stages, stage_cost = NULL,
                                 domain_cols = character(0),
-                                mode = "cv",
                                 resp_rate_psu = 1,
                                 resp_rate_ssu = 1,
                                 resp_rate = 1) {
@@ -680,28 +688,26 @@ prec_multi_cluster.default <- function(
   # The inverse of .convert_moe_to_cv(): the cluster model delivers a sampling
   # CV, and each row's own interval method turns that back into a margin of
   # error. Reading moe as z * se would assume the Wald half-width for all four.
-  if (identical(mode, "moe")) {
-    has_p <- "p" %in% names(indicators)
-    has_mu <- "mu" %in% names(indicators)
-    has_method <- "prop_method" %in% names(indicators)
-    is_ratio <- .is_ratio_row(indicators)
-    for (i in seq_len(nr)) {
-      df_i <- .row_df(indicators, i)
-      if (is_ratio[i]) {
-        se_vec[i] <- cv_vec[i] * abs(indicators$r[i])
-        moe_vec[i] <- .q_alpha(indicators$alpha[i], df_i) * se_vec[i]
-      } else if (has_p && !is.na(indicators$p[i])) {
-        p_i <- indicators$p[i]
-        se_vec[i] <- cv_vec[i] * p_i
-        method_i <- if (has_method) indicators$prop_method[i] else "wald"
-        moe_vec[i] <- .prec_engine_prop(
-          p_i, (1 - p_i) / (p_i * cv_vec[i]^2), indicators$alpha[i],
-          Inf, 1, 1, method_i, df_i
-        )$moe
-      } else if (has_mu && !is.na(indicators$mu[i])) {
-        se_vec[i] <- cv_vec[i] * abs(indicators$mu[i])
-        moe_vec[i] <- .q_alpha(indicators$alpha[i], df_i) * se_vec[i]
-      }
+  has_p <- "p" %in% names(indicators)
+  has_mu <- "mu" %in% names(indicators)
+  has_method <- "prop_method" %in% names(indicators)
+  is_ratio <- .is_ratio_row(indicators)
+  for (i in seq_len(nr)) {
+    df_i <- .row_df(indicators, i)
+    if (is_ratio[i]) {
+      se_vec[i] <- cv_vec[i] * abs(indicators$r[i])
+      moe_vec[i] <- .q_alpha(indicators$alpha[i], df_i) * se_vec[i]
+    } else if (has_p && !is.na(indicators$p[i])) {
+      p_i <- indicators$p[i]
+      se_vec[i] <- cv_vec[i] * p_i
+      method_i <- if (has_method) indicators$prop_method[i] else "wald"
+      moe_vec[i] <- .prec_engine_prop(
+        p_i, (1 - p_i) / (p_i * cv_vec[i]^2), indicators$alpha[i],
+        Inf, 1, 1, method_i, df_i
+      )$moe
+    } else if (has_mu && !is.na(indicators$mu[i])) {
+      se_vec[i] <- cv_vec[i] * abs(indicators$mu[i])
+      moe_vec[i] <- .q_alpha(indicators$alpha[i], df_i) * se_vec[i]
     }
   }
 
@@ -821,13 +827,11 @@ prec_multi_cluster.svyplan_cluster <- function(indicators, ...) {
   }
 
   stage_cost <- x$params$stage_cost
-  mode <- x$params$mode %||% "cv"
   args <- list(
     indicators = tgt,
     stages = x$stages,
     stage_cost = stage_cost,
-    domain_cols = dom_cols,
-    mode = mode
+    domain_cols = dom_cols
   )
   allowed <- c(
     "stage_cost", "domains",

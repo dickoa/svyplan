@@ -886,3 +886,50 @@ test_that("summary carries the continuous optimum and the comparator", {
   expect_true(any(grepl("^Single-phase comparator: ", out)))
   expect_true(any(grepl("reaches the target", out, fixed = TRUE)))
 })
+
+## prec_twophase() returned $moe as a hardcoded NA while $se was finite, so
+## the promised half-width was never reported. See the \value section.
+
+test_that("prec_twophase reports the half-width its own se implies", {
+  frame <- data.frame(
+    stratum = c("A", "B"), N = c(6000, 4000), sd = c(12, 25),
+    mean = c(40, 70), unit_cost = c(2, 5), nu = c(0.4, 0.6)
+  )
+  r <- prec_twophase(frame, n_phase1 = 2000, phase1_cost = 1)
+
+  expect_true(is.finite(r$se))
+  expect_true(is.finite(r$moe))
+  expect_true(is.finite(r$rmoe))
+  expect_equal(r$moe, qnorm(0.975) * r$se, tolerance = 1e-12)
+  expect_equal(r$rmoe, r$moe / r$params$mu, tolerance = 1e-12)
+  expect_equal(r$cv, r$se / r$params$mu, tolerance = 1e-8)
+})
+
+test_that("prec_twophase alpha moves the margin and leaves the se alone", {
+  frame <- data.frame(
+    stratum = c("A", "B"), N = c(6000, 4000), sd = c(12, 25),
+    mean = c(40, 70), unit_cost = c(2, 5), nu = c(0.4, 0.6)
+  )
+  wide <- prec_twophase(frame, n_phase1 = 2000, phase1_cost = 1, alpha = 0.01)
+  base <- prec_twophase(frame, n_phase1 = 2000, phase1_cost = 1)
+  narrow <- prec_twophase(frame, n_phase1 = 2000, phase1_cost = 1, alpha = 0.10)
+
+  expect_equal(wide$se, base$se, tolerance = 1e-12)
+  expect_equal(narrow$se, base$se, tolerance = 1e-12)
+  expect_gt(wide$moe, base$moe)
+  expect_lt(narrow$moe, base$moe)
+  expect_equal(wide$moe, qnorm(0.995) * wide$se, tolerance = 1e-12)
+  expect_error(prec_twophase(frame, n_phase1 = 2000, phase1_cost = 1,
+                             alpha = 1.5))
+})
+
+test_that("a two-phase plan carries its alpha back through prec_twophase", {
+  plan <- n_twophase(.tp_frame(), phase1_cost = 1, budget = 50000)
+  r <- prec_twophase(plan)
+
+  expect_true(is.finite(r$moe))
+  expect_equal(r$moe, qnorm(0.975) * r$se, tolerance = 1e-12)
+  # The round trip rebuilds the same problem, so the margin must survive it.
+  expect_equal(prec_twophase(n_twophase(r, budget = 50000))$moe, r$moe,
+               tolerance = 1e-6)
+})

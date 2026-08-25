@@ -213,7 +213,9 @@
 #'       unless the frame supplies `mean` or `p`.}
 #'     \item{`.share`}{The stratum's share of the design variance of the
 #'       overall mean. Sums to 1 and identifies where precision is
-#'       actually being bought.}
+#'       actually being bought. It is `NA` when the design variance is
+#'       zero, which a census is, since no stratum then holds a share of
+#'       nothing.}
 #'     \item{`take_all`, `mean`}{Present when take-all strata or stratum
 #'       means were supplied.}
 #'     \item{`n_per_psu`, `n_psu`}{Cluster mode only: the continuous

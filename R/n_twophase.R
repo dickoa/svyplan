@@ -885,10 +885,15 @@ n_twophase.default <- function(
 #'   rate travel in the frame's `deff` and `resp_rate` columns, as they do
 #'   there.
 #'
+#' @param alpha Significance level for the reported margin of error. The
+#'   default is 0.05. A two-phase design is sized against a cv, but the
+#'   half-width it achieves follows from the standard error either way, so
+#'   `$moe` is reported alongside `$cv`.
+#'
 #' @return A `svyplan_prec` object with `type = "twophase"`, carrying
-#'   `$se`, `$moe` (`NA`, since a two-phase plan is specified by a cv
-#'   rather than a half-width), `$cv`, and the per-stratum table in
-#'   `$detail`.
+#'   `$se`, `$moe`, `$rmoe`, `$cv`, and the per-stratum table in `$detail`.
+#'   `$moe` is the `alpha`-level half-width `z * $se`, and `$rmoe` states it
+#'   as a fraction of the population mean the design estimates.
 #'
 #' @family precision functions
 #' @seealso [n_twophase()] for the inverse.
@@ -923,6 +928,7 @@ prec_twophase.default <- function(
   between = NULL,
   mu = NULL,
   N = Inf,
+  alpha = 0.05,
   phase1_deff = 1,
   resp_rate = 1,
   fixed_cost = 0,
@@ -946,6 +952,7 @@ prec_twophase.default <- function(
     stop("'n_phase1' is required", call. = FALSE)
   }
   check_scalar(n_phase1, "n_phase1")
+  check_alpha(alpha)
   .check_twophase_deff(phase1_deff, "phase1_deff")
   check_resp_rate(resp_rate)
   if (any(nu > resp_rate + sqrt(.Machine$double.eps))) {
@@ -976,12 +983,13 @@ prec_twophase.default <- function(
   )
   .new_svyplan_prec(
     se = se,
-    moe = NA_real_,
+    moe = .q_alpha(alpha) * se,
     cv = .twophase_cv(n_phase1, var_unit, spec$mu, N, var_pop),
     type = "twophase",
     params = list(
       n_phase1 = n_phase1, phase1_cost = phase1_cost, between = spec$A,
-      mu = spec$mu, N = N, phase1_deff = phase1_deff, resp_rate = resp_rate,
+      mu = spec$mu, N = N, alpha = alpha,
+      phase1_deff = phase1_deff, resp_rate = resp_rate,
       take_all = spec$pinned,
       fixed_cost = fixed_cost,
       cost = fixed_cost + n_phase1 * (phase1_cost + sum(spec$cost * spec$W * nu))
@@ -1029,7 +1037,8 @@ prec_twophase.svyplan_twophase <- function(frame, ...) {
   out <- prec_twophase(
     d[, c("stratum", "N", "sd", "unit_cost", "deff", "resp_rate", "nu")],
     n_phase1 = frame$n[["n_phase1"]], phase1_cost = p$phase1_cost,
-    between = p$between, mu = p$mu, N = p$N, phase1_deff = p$phase1_deff,
+    between = p$between, mu = p$mu, N = p$N, alpha = p$alpha %||% 0.05,
+    phase1_deff = p$phase1_deff,
     resp_rate = p$resp_rate, fixed_cost = p$fixed_cost
   )
   # the design decisions a stratum table cannot express, so that

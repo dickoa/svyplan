@@ -1009,6 +1009,17 @@ test_that("the variance share is a partition of the aggregate variance", {
   expect_equal(p$detail$.share, W^2 * p$detail$.se^2 / p$se^2)
 })
 
+test_that("a census leaves the variance share undefined, not zero", {
+  # .share is term/V. A census drives V to exactly 0, so no stratum holds a
+  # share of it. NA is the answer here, and 0 would be a false partition.
+  f <- data.frame(N = c(800, 1200), sd = c(3, 4), mean = c(5, 7.5))
+  p <- prec_alloc(f, n = f$N)
+
+  expect_equal(p$se, 0)
+  expect_true(all(is.na(p$detail$.share)))
+  expect_false(any(p$detail$.share %in% 0))
+})
+
 test_that("prec_alloc reports the same domain table n_alloc does", {
   f <- data.frame(N = c(800, 1200, 1500, 300), sd = c(3, 4, 5, 2),
                   mean = c(5, 7.5, 8, 3), dom = c("N", "N", "S", "S"))

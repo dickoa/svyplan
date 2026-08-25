@@ -457,8 +457,8 @@ n_multi.default <- function(
 #'   `rmoe` target, and `icc_psu`. On a ratio row `icc_psu`, `icc_ssu` and
 #'   the stage variance ratios describe the linearized variable
 #'   `e = y - r * x`, not either component. Three-stage designs also require
-#'   `icc_ssu`. Optional
-#'   `var_ratio_psu` defaults to 1; three-stage `var_ratio_ssu` is derived as
+#'   `icc_ssu`. Optional `var_ratio_psu` defaults to 1. Three-stage
+#'   `var_ratio_ssu` is derived as
 #'   `var_ratio_psu * (1 - icc_psu)` when absent, the value the variance
 #'   decomposition implies (see [design_effect()]). For the `svyplan_prec`
 #'   method, a result from [prec_multi_cluster()].
@@ -469,10 +469,9 @@ n_multi.default <- function(
 #'   `indicators`. The function solves each domain independently unless
 #'   `allocation = "joint"` in budget mode. Domains are sized as separate
 #'   quotas, so `$total_n` is their sum and `$n` carries no aggregate stage
-#'   vector; the fieldable per-domain stage sizes are in `$domains`.
-#'   `domain_sampling = "natural"` is refused here, because a domain's
-#'   expected yield in a multistage design depends on how its members sit
-#'   inside PSUs and SSUs rather than on its population share alone.
+#'   vector. The fieldable per-domain stage sizes are in `$domains`, and
+#'   `domain_sampling` covers why the quota reading is the only one offered
+#'   for a multistage design.
 #' @param budget Optional total budget. Supply precision indicators or a budget,
 #'   according to the target schema described in Details.
 #' @param n_psu Optional fixed stage-1 sample size.
@@ -484,12 +483,19 @@ n_multi.default <- function(
 #'   (one budget split across domains to minimize the worst precision
 #'   ratio). `"joint"` applies only when `domains` and `budget` are
 #'   supplied.
-#' @param domain_sampling How the per-domain requirements combine into one
-#'   overall size. Only `"separate"` (the default) is available here, and
-#'   `$total_n` is then the sum of the per-domain totals. `"natural"` is
-#'   refused: a domain's expected yield in a multistage design depends on
-#'   how its members sit inside PSUs and SSUs rather than on its share of
-#'   the population alone, and that model is not in the package.
+#' @param domain_sampling How the per-domain requirements combine into the
+#'   one overall size. Under `"separate"` the domains are quotas you field
+#'   in their own right, the way a national survey fields a target per
+#'   region, and the overall size is the sum of those quotas. Under
+#'   `"natural"` they are analytic subgroups that simply turn up inside one
+#'   sample at their own rate, and the overall size is the one whose
+#'   expected yield covers every quota. Only `"separate"` (the default) is
+#'   available here, so `$total_n` is the sum of the per-domain totals.
+#'   `"natural"` is refused for a multistage design, because a domain's
+#'   expected yield then depends on how its members sit inside PSUs and
+#'   SSUs rather than on its share of the population alone, and that model
+#'   is not in the package. [n_multi()] offers both readings for a
+#'   single-stage design.
 #' @param min_n_domain Optional positive minimum total sample size per domain. In
 #'   joint budget mode it is a constraint. In independent domain mode,
 #'   domains below the floor produce a warning.
@@ -508,9 +514,9 @@ n_multi.default <- function(
 #'
 #' @details
 #' The indicator columns follow [n_multi()], with one difference that matters.
-#' Nonresponse is named for the stage it acts on: `resp_rate_psu` for
-#' clusters that cannot be worked at all, `resp_rate_ssu` for second-stage
-#' units in a three-stage design, and `resp_rate` for the ultimate units.
+#' Nonresponse is named for the stage it acts on. `resp_rate_psu` covers
+#' clusters that cannot be worked at all, `resp_rate_ssu` second-stage
+#' units in a three-stage design, and `resp_rate` the ultimate units.
 #' They are not interchangeable, and [n_cluster()] sets out why. A column
 #' naming a stage the design does not have is an error rather than a column
 #' carried along and ignored, since a silently dropped response rate plans a
@@ -545,8 +551,8 @@ n_multi.default <- function(
 #' a maximum over indicator requirements, which is not smooth, and it is
 #' minimized by a bounded quasi-Newton search. That search warns when it
 #' fails to converge or lands on a bound, but it carries no
-#' global-optimality or KKT certificate: a successful return means the best
-#' design this search found, not a proven minimum-cost one. The
+#' global-optimality or KKT certificate, so a successful return means the
+#' best design this search found, not a proven minimum-cost one. The
 #' `$operational` allocation can always be checked against its own
 #' precision or budget constraint, which is a separate and exact statement.
 #' [n_alloc()] gives the stronger guarantee where it applies, returning

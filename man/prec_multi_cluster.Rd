@@ -33,7 +33,13 @@ returned by \code{\link[=n_multi_cluster]{n_multi_cluster()}}.}
 rejected.}
 
 \item{domains}{Optional character vector naming domain columns in
-\code{indicators}.}
+\code{indicators}. Precision is computed row by row either way, so naming
+domains leaves every \verb{$detail} value unchanged. What it does is record
+the domain structure on the result, so that a round trip back to
+\code{\link[=n_multi_cluster]{n_multi_cluster()}} rebuilds the same design. There is no
+\code{domain_sampling} argument here, because that choice governs how
+per-domain requirements combine into one size, and this direction
+reads the sizes you already have.}
 
 \item{stage_cost}{Optional per-stage costs to retain for a later round trip
 to \code{\link[=n_multi_cluster]{n_multi_cluster()}}. Costs do not enter the precision calculation.}
@@ -51,8 +57,11 @@ Non-missing indicator columns override these three defaults row by row.}
 }
 \value{
 A \code{svyplan_prec} object with per-indicator cluster precision in
-\verb{$detail}: \code{.se}, \code{.moe}, \code{.rmoe}, and \code{.cv}, with \code{.rmoe} measured
-against the row's \code{p} or \code{abs(mu)}.
+\verb{$detail}: \code{.se}, \code{.moe}, \code{.rmoe}, and \code{.cv}. All four are reported
+whatever target the design was sized against, since the achieved
+precision does not depend on how the requirement was written. \code{.rmoe}
+is measured against the row's own estimand, \code{p} for a proportion,
+\code{abs(mu)} for a mean and \code{abs(r)} for a ratio.
 }
 \description{
 Compute achieved precision for several indicators under a two- or

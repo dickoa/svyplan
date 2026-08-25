@@ -36,8 +36,8 @@ per indicator. Each row requires \code{p}, \code{var}, or the ratio quartet
 \code{rmoe} target, and \code{icc_psu}. On a ratio row \code{icc_psu}, \code{icc_ssu} and
 the stage variance ratios describe the linearized variable
 \code{e = y - r * x}, not either component. Three-stage designs also require
-\code{icc_ssu}. Optional
-\code{var_ratio_psu} defaults to 1; three-stage \code{var_ratio_ssu} is derived as
+\code{icc_ssu}. Optional \code{var_ratio_psu} defaults to 1. Three-stage
+\code{var_ratio_ssu} is derived as
 \code{var_ratio_psu * (1 - icc_psu)} when absent, the value the variance
 decomposition implies (see \code{\link[=design_effect]{design_effect()}}). For the \code{svyplan_prec}
 method, a result from \code{\link[=prec_multi_cluster]{prec_multi_cluster()}}.}
@@ -51,10 +51,9 @@ rejected.}
 \code{indicators}. The function solves each domain independently unless
 \code{allocation = "joint"} in budget mode. Domains are sized as separate
 quotas, so \verb{$total_n} is their sum and \verb{$n} carries no aggregate stage
-vector; the fieldable per-domain stage sizes are in \verb{$domains}.
-\code{domain_sampling = "natural"} is refused here, because a domain's
-expected yield in a multistage design depends on how its members sit
-inside PSUs and SSUs rather than on its population share alone.}
+vector. The fieldable per-domain stage sizes are in \verb{$domains}, and
+\code{domain_sampling} covers why the quota reading is the only one offered
+for a multistage design.}
 
 \item{budget}{Optional total budget. Supply precision indicators or a budget,
 according to the target schema described in Details.}
@@ -72,12 +71,19 @@ only for three-stage designs.}
 ratio). \code{"joint"} applies only when \code{domains} and \code{budget} are
 supplied.}
 
-\item{domain_sampling}{How the per-domain requirements combine into one
-overall size. Only \code{"separate"} (the default) is available here, and
-\verb{$total_n} is then the sum of the per-domain totals. \code{"natural"} is
-refused: a domain's expected yield in a multistage design depends on
-how its members sit inside PSUs and SSUs rather than on its share of
-the population alone, and that model is not in the package.}
+\item{domain_sampling}{How the per-domain requirements combine into the
+one overall size. Under \code{"separate"} the domains are quotas you field
+in their own right, the way a national survey fields a target per
+region, and the overall size is the sum of those quotas. Under
+\code{"natural"} they are analytic subgroups that simply turn up inside one
+sample at their own rate, and the overall size is the one whose
+expected yield covers every quota. Only \code{"separate"} (the default) is
+available here, so \verb{$total_n} is the sum of the per-domain totals.
+\code{"natural"} is refused for a multistage design, because a domain's
+expected yield then depends on how its members sit inside PSUs and
+SSUs rather than on its share of the population alone, and that model
+is not in the package. \code{\link[=n_multi]{n_multi()}} offers both readings for a
+single-stage design.}
 
 \item{min_n_domain}{Optional positive minimum total sample size per domain. In
 joint budget mode it is a constraint. In independent domain mode,
@@ -108,9 +114,9 @@ shared budget across domains are supported.
 }
 \details{
 The indicator columns follow \code{\link[=n_multi]{n_multi()}}, with one difference that matters.
-Nonresponse is named for the stage it acts on: \code{resp_rate_psu} for
-clusters that cannot be worked at all, \code{resp_rate_ssu} for second-stage
-units in a three-stage design, and \code{resp_rate} for the ultimate units.
+Nonresponse is named for the stage it acts on. \code{resp_rate_psu} covers
+clusters that cannot be worked at all, \code{resp_rate_ssu} second-stage
+units in a three-stage design, and \code{resp_rate} the ultimate units.
 They are not interchangeable, and \code{\link[=n_cluster]{n_cluster()}} sets out why. A column
 naming a stage the design does not have is an error rather than a column
 carried along and ignored, since a silently dropped response rate plans a
@@ -144,8 +150,8 @@ closed-form cluster optimum. With all stage sizes free, the objective is
 a maximum over indicator requirements, which is not smooth, and it is
 minimized by a bounded quasi-Newton search. That search warns when it
 fails to converge or lands on a bound, but it carries no
-global-optimality or KKT certificate: a successful return means the best
-design this search found, not a proven minimum-cost one. The
+global-optimality or KKT certificate, so a successful return means the
+best design this search found, not a proven minimum-cost one. The
 \verb{$operational} allocation can always be checked against its own
 precision or budget constraint, which is a separate and exact statement.
 \code{\link[=n_alloc]{n_alloc()}} gives the stronger guarantee where it applies, returning

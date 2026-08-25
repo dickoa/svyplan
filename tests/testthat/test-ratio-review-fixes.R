@@ -242,9 +242,9 @@ test_that("a contradictory unit_relvar is still refused after the fix", {
   )
 })
 
-test_that("multistage cv mode reports .cv alone for every estimand", {
-  # Not a ratio limitation: se and moe are NA in cv mode for every estimand.
-  # Recorded so the ratio row is not later "fixed" on its own.
+test_that("multistage cv mode scales .se by the estimand of every row type", {
+  # Every estimand fills .se the same way, off its own scale. Checked across
+  # all three so the ratio row is never given a branch of its own.
   args <- list(n = 45, n_per_psu = 14, icc_psu = 0.05)
   rows <- list(
     prop = data.frame(p = 0.3),
@@ -252,10 +252,15 @@ test_that("multistage cv mode reports .cv alone for every estimand", {
     ratio = data.frame(r = 420, cv_num = 1.2, cv_den = 0.45,
                        component_cor = 0.65)
   )
+  estimand <- c(prop = 0.3, mean = 300, ratio = 420)
   for (nm in names(rows)) {
     res <- prec_multi_cluster(cbind(rows[[nm]], as.data.frame(args)),
                               stage_cost = c(500, 50))
-    expect_true(is.na(res$detail$.se), info = nm)
     expect_true(is.finite(res$detail$.cv), info = nm)
+    expect_true(is.finite(res$detail$.se), info = nm)
+    expect_equal(res$detail$.se, res$detail$.cv * estimand[[nm]],
+                 tolerance = 1e-12, info = nm)
+    expect_equal(res$detail$.moe, qnorm(0.975) * res$detail$.se,
+                 tolerance = 1e-10, info = nm)
   }
 })

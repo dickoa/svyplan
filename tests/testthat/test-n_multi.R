@@ -620,7 +620,9 @@ test_that("multistage moe round-trips through prec_multi", {
   expect_equal(s1$cv, s2$cv, tolerance = 1e-4)
 })
 
-test_that("multistage cv mode prec_multi: .moe column present with NA values", {
+test_that("multistage cv mode prec_multi reports a margin of error too", {
+  # The achieved margin does not depend on which target the design was sized
+  # against, so a cv-mode fit reports the same four columns a moe-mode one does.
   df <- data.frame(
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
@@ -629,9 +631,13 @@ test_that("multistage cv mode prec_multi: .moe column present with NA values", {
   s <- nm(df, stage_cost = c(500, 50))
   p <- prec_multi_cluster(s)
 
-  expect_true(all(is.na(p$moe)))
   expect_true(".moe" %in% names(p$detail))
-  expect_true(all(is.na(p$detail$.moe)))
+  expect_true(all(is.finite(p$moe)))
+  expect_true(all(is.finite(p$detail$.moe)))
+
+  z <- qnorm(0.975)
+  expect_equal(p$detail$.moe, p$detail$.cv * z * c(0.30, 0.10))
+  expect_equal(p$detail$.se, p$detail$.moe / z)
 })
 
 test_that("single indicator 2-stage matches n_cluster", {

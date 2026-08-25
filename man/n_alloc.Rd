@@ -261,7 +261,9 @@ as a fraction of the stratum mean. \code{.cv} and \code{.rmoe} are \code{NA}
 unless the frame supplies \code{mean} or \code{p}.}
 \item{\code{.share}}{The stratum's share of the design variance of the
 overall mean. Sums to 1 and identifies where precision is
-actually being bought.}
+actually being bought. It is \code{NA} when the design variance is
+zero, which a census is, since no stratum then holds a share of
+nothing.}
 \item{\code{take_all}, \code{mean}}{Present when take-all strata or stratum
 means were supplied.}
 \item{\code{n_per_psu}, \code{n_psu}}{Cluster mode only: the continuous

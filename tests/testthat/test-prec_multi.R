@@ -377,3 +377,71 @@ test_that("a negative mean does not misdirect budget-mode binding", {
   expect_equal(res$binding, "balance")
   expect_true(res$detail$.binding[res$detail$name == "balance"])
 })
+
+## The default prec_multi_cluster() path reported only .cv, leaving .se, .moe
+## and .rmoe NA against a \value that promises all four.
+
+test_that("prec_multi_cluster() fills every detail column from sizes alone", {
+  indicators <- data.frame(
+    name = c("stunting", "anemia"),
+    p = c(0.30, 0.10),
+    n = c(60, 60),
+    n_per_psu = c(12, 12),
+    icc_psu = c(0.02, 0.05)
+  )
+  d <- prec_multi_cluster(indicators)$detail
+
+  expect_true(all(is.finite(d$.se)))
+  expect_true(all(is.finite(d$.moe)))
+  expect_true(all(is.finite(d$.rmoe)))
+  expect_true(all(is.finite(d$.cv)))
+
+  expect_equal(d$.se, d$.cv * indicators$p, tolerance = 1e-12)
+  expect_equal(d$.moe, stats::qnorm(0.975) * d$.se, tolerance = 1e-10)
+  expect_equal(d$.rmoe, d$.moe / indicators$p, tolerance = 1e-12)
+})
+
+test_that("prec_multi_cluster() scales .se by each estimand without a target", {
+  mean_row <- prec_multi_cluster(data.frame(
+    var = 100, mu = -10, n = 60, n_per_psu = 12, icc_psu = 0.05
+  ))$detail
+  expect_gt(mean_row$.se, 0)
+  expect_equal(mean_row$.se, mean_row$.cv * 10, tolerance = 1e-12)
+
+  ratio_row <- prec_multi_cluster(data.frame(
+    r = 0.4, cv_num = 0.5, cv_den = 0.3, component_cor = 0.6,
+    n = 60, n_per_psu = 12, icc_psu = 0.03
+  ))$detail
+  expect_equal(ratio_row$.se, ratio_row$.cv * 0.4, tolerance = 1e-12)
+  expect_equal(ratio_row$.rmoe, ratio_row$.moe / 0.4, tolerance = 1e-12)
+})
+
+test_that("a cv-target allocation reports .se and .moe on the way back", {
+  fit <- n_multi_cluster(
+    data.frame(name = c("a", "b"), p = c(0.3, 0.1), cv = c(0.10, 0.15),
+               icc_psu = c(0.02, 0.05)),
+    stage_cost = c(500, 50)
+  )
+  d <- prec_multi_cluster(fit)$detail
+
+  expect_true(all(is.finite(d$.se)))
+  expect_equal(d$.se, d$.cv * c(0.3, 0.1), tolerance = 1e-12)
+  expect_true(all(d$.cv <= c(0.10, 0.15) + 1e-8))
+  expect_equal(max(d$.cv - c(0.10, 0.15)), 0, tolerance = 1e-6)
+})
+
+test_that("a prec object carrying no mode round trips on its cv", {
+  # n_multi_cluster.svyplan_prec() reads .moe only on a stored "moe" mode,
+  # never on the column being populated. Now that a result built from sizes
+  # alone carries a .moe, keying off the column instead would silently
+  # restate the target through a row's interval method, exact only under Wald.
+  p <- prec_multi_cluster(data.frame(
+    name = c("a", "b"), p = c(0.30, 0.10), n = c(60, 60),
+    n_per_psu = c(12, 12), icc_psu = c(0.02, 0.05)
+  ))
+  expect_null(p$params$mode)
+
+  back <- n_multi_cluster(p, stage_cost = c(500, 50))
+  expect_equal(back$params$mode, "cv")
+  expect_equal(back$detail$.cv_target, p$detail$.cv, tolerance = 1e-10)
+})

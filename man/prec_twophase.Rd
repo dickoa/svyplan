@@ -16,6 +16,7 @@ prec_twophase(frame, ...)
   between = NULL,
   mu = NULL,
   N = Inf,
+  alpha = 0.05,
   phase1_deff = 1,
   resp_rate = 1,
   fixed_cost = 0,
@@ -41,12 +42,17 @@ usable \code{nu} is \code{resp_rate} rather than 1.}
 in \code{\link[=n_twophase]{n_twophase()}}. The per-stratum phase-2 design effect and response
 rate travel in the frame's \code{deff} and \code{resp_rate} columns, as they do
 there.}
+
+\item{alpha}{Significance level for the reported margin of error. The
+default is 0.05. A two-phase design is sized against a cv, but the
+half-width it achieves follows from the standard error either way, so
+\verb{$moe} is reported alongside \verb{$cv}.}
 }
 \value{
 A \code{svyplan_prec} object with \code{type = "twophase"}, carrying
-\verb{$se}, \verb{$moe} (\code{NA}, since a two-phase plan is specified by a cv
-rather than a half-width), \verb{$cv}, and the per-stratum table in
-\verb{$detail}.
+\verb{$se}, \verb{$moe}, \verb{$rmoe}, \verb{$cv}, and the per-stratum table in \verb{$detail}.
+\verb{$moe} is the \code{alpha}-level half-width \verb{z * $se}, and \verb{$rmoe} states it
+as a fraction of the population mean the design estimates.
 }
 \description{
 Achieved precision for a two-phase design you already have, the inverse
