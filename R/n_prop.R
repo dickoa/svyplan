@@ -36,7 +36,8 @@
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The required sample size is inflated by `1 / resp_rate`.
 #'   Estimate from response rates observed in similar surveys in the same
-#'   population.
+#'   population. See the nonresponse section of [svyplan-package] for what
+#'   this adjustment does and does not claim.
 #' @param method One of `"wald"` (default), `"wilson"`, `"logodds"`, or
 #'   `"beta"`.
 #' @param df Degrees of freedom of the variance estimator the planned design
@@ -66,8 +67,10 @@
 #'     the sampling standard error and `cv` is `se / p`, so both are the
 #'     same under all four methods. `moe` is half the length of the
 #'     interval the chosen `method` builds, which equals
-#'     `qnorm(1 - alpha / 2) * se` under `"wald"` alone. For the three
-#'     asymmetric methods it is not an offset from either limit, so read
+#'     `q * se` under `"wald"` alone, with `q` defined in Details. Where
+#'     [confint()] truncates a Wald interval at 0 or 1, `moe` stays
+#'     `q * se` and exceeds half the reported width (see Details). For the
+#'     three asymmetric methods it is not an offset from either limit, so read
 #'     the limits with [confint()]. `rmoe` is `moe / p`, so a target
 #'     stated as a relative margin of error reads back in the units it
 #'     was stated in.}
@@ -128,16 +131,17 @@
 #' ## Choosing a method
 #'
 #' Reach for Wald unless you have a reason not to. It is the only method
-#' that also solves a `cv` target, and it is what every survey text and
-#' every sample size table reports. `moe` and `rmoe` targets are available
+#' that also solves a `cv` target, and it is what survey texts and sample
+#' size tables conventionally report. `moe` and `rmoe` targets are available
 #' under all four.
 #'
 #' How much the choice costs depends on the sample size, and the four
-#' methods converge on each other slowly. Over `p` from 0.1 to 0.9, the
-#' widest and narrowest margins of error differ by 8.2 percent at
+#' methods converge on each other slowly. With `alpha = 0.05`, `deff = 1`,
+#' `N = Inf`, `resp_rate = 1`, no supplied `df`, and `p` from 0.1 to 0.9,
+#' the widest and narrowest margins of error differ by 8.2 percent at
 #' `n = 100`, 3.8 percent at 500, 2.7 percent at 1000, and 1.2 percent at
-#' 5000. Below a few thousand the choice is worth a moment but at survey scale
-#' it usually is not.
+#' 5000. Below a few thousand the choice is worth a moment. At larger survey
+#' sizes its effect on required size is often modest over this range.
 #'
 #' The case that decides it is a rare or near-universal outcome. As `p`
 #' approaches 0 or 1 the Wald interval loses coverage and can extend past 0
@@ -146,45 +150,53 @@
 #' log-odds lie strictly inside \eqn{(0, 1)} and beta inside \eqn{[0, 1]},
 #' all three by construction, so none of them needs that truncation.
 #' Planning a survey for a 2 percent prevalence is the case that justifies
-#' `method = "wilson"`: the score interval keeps its nominal coverage far
-#' better there.
+#' `method = "wilson"`, since the score interval keeps its nominal coverage
+#' far better there.
 #'
-#' Log-odds is the narrower case again: it respects the parameter space like
+#' Log-odds is the narrower case again. It respects the parameter space like
 #' Wilson but keeps the estimate at the center of the interval on the logit
-#' scale, which matters when the plan will be reported as an odds ratio or
-#' fed into a logistic model. If you are not doing either, prefer Wilson.
+#' scale. Back-transforming its limits gives an interval for the proportion,
+#' or equivalently for its odds. It is not an interval for an odds ratio and
+#' does not size a logistic regression. Prefer Wilson unless reporting on the
+#' logit or odds scale is itself useful.
 #'
-#' Reach for `"beta"` when the expected number of positive cases is small in
-#' absolute terms, not merely when `p` is small: a few dozen cases or fewer,
-#' which is the regime Korn and Graubard wrote for and the one where the
-#' normality of the estimated proportion breaks down however large the
-#' sample is. Rare-outcome domain estimates in a clustered survey are the
-#' standard case. Beta is the widest of the four over most of the range,
-#' and so the most demanding to plan for, but not everywhere: for a very
+#' Reach for `"beta"` when the expected number of outcomes in the category
+#' nearest a boundary is small in absolute terms, not merely when `p` is
+#' numerically close to a boundary. Rare-outcome domain estimates in a
+#' clustered survey are the standard case. Near `p = 1`, apply the same
+#' reasoning to expected negative outcomes. Beta is the widest over most
+#' of the range, and so the most demanding to plan for, but not
+#' everywhere: for a very
 #' rare outcome at a small sample, log-odds is wider still. Nor is it the
 #' only method that answers to a variance estimated from few clusters. All
 #' four read `df` through the same t quantile and widen by it, so `df`
 #' alone is not a reason to choose beta.
 #'
-#' A note on where the methods bind. For *sizing*, the choice is usually
-#' secondary: over the range measured above the four sizes differ by a few
-#' percent, less than the uncertainty in the assumed `p`, `deff`, and
-#' response rate. For *assessing* an achieved design the choice can dominate,
-#' because that is where small realized samples of rare outcomes appear. If
-#' you are unsure, plan with Wald and report with `"beta"`.
+#' A note on where the methods bind. For *sizing*, the sizes differ by the
+#' measured few-percent amounts over the range above. That does not make the
+#' interval methods inferentially interchangeable. When the reported
+#' interval's width is the binding requirement, size under the method you
+#' will report. Compare methods with separate [n_prop()] or [prec_prop()]
+#' calls, or with separately constructed objects. [predict()] varies the
+#' permitted planning parameters while keeping an object's method fixed. For
+#' *assessing* an achieved design, method choice can dominate when realized
+#' counts are sparse or the estimate lies near a boundary.
 #'
 #' ## A minimum expected number of cases
 #'
 #' For a rare outcome in a small domain the constraint that actually binds
-#' is often not a margin of error but a count: an indicator nobody will
-#' publish on fewer than 30 observed cases, a subgroup analysis that needs
-#' enough events to fit anything to. `min_cases` states that requirement
+#' is often not a margin of error but an expected count. An indicator may
+#' require 30 positive cases on average, or a subgroup analysis may need a
+#' planning floor for its expected events. `min_cases` states that requirement
 #' directly. The size it demands is
 #' \deqn{n_\mathrm{cases} = \mathrm{min\_cases} / (p \cdot
 #'       \mathrm{resp\_rate}),}{n_cases = min_cases / (p * resp_rate),}
-#' and the result is the larger of that and the size precision asks for, so
-#' both constraints hold. `binding` says which one decided, and
-#' `expected_cases` reports the count either way.
+#' and the result is the larger of that and the size precision asks for.
+#' Thus the count floor holds in expectation. The realized count is random,
+#' and the calculation does not control the probability of observing at
+#' least `min_cases`. Such an assurance constraint is outside this function's
+#' scope. `binding` says which planning constraint decided, and
+#' `expected_cases` reports the expected positive count either way.
 #'
 #' `deff` does not enter this size, and that is deliberate rather than an
 #' omission. A design effect describes how precisely the proportion is
@@ -195,10 +207,12 @@
 #' other size the package reports.
 #'
 #' `expected_cases` is reported on every proportion result, with or without
-#' `min_cases`, since it is the number the method guidance above turns on:
-#' `"beta"` earns its place when the expected count of positive cases is
-#' small in absolute terms, and that count was previously left for the
-#' reader to work out.
+#' `min_cases`. It is the expected number of positive respondents after the
+#' response-rate adjustment, not an observed count or an assurance
+#' probability. It does not incorporate `deff` and is not an effective event
+#' count. It helps interpret a rare positive outcome, but it is not a complete
+#' interval diagnostic. Near `p = 1`, inspect the expected negative count
+#' instead. The `min_cases` constraint acts only on expected positive cases.
 #'
 #' ## Finite population correction
 #'
@@ -212,10 +226,10 @@
 #'
 #' ## Degrees of freedom
 #'
-#' The interval quantile is the normal one by default, which treats the
-#' variance as known. That is standard for survey sampling where the sample
-#' is large enough for the central limit theorem to apply, and it is what a
-#' `df` of `NULL` selects.
+#' Write \eqn{q} for the interval quantile. By default
+#' \eqn{q = \Phi^{-1}(1-\alpha/2)}{q = qnorm(1 - alpha/2)}, which treats the
+#' variance as known. Supplying `df` instead gives
+#' \eqn{q = t_{1-\alpha/2}(\mathrm{df})}{q = qt(1 - alpha/2, df)}.
 #'
 #' Supplying `df` says the variance will be estimated from a design with
 #' that many degrees of freedom, and switches the quantile to
@@ -224,14 +238,12 @@
 #' automatic version would need a fixed point. Read it off a plan you
 #' already have with [design_df()], or pass a count directly.
 #'
-#' The three interval methods and the Korn-Graubard one reach the same
+#' The three interval methods and the Korn-Graubard one apply that quantile
 #' widening by different routes. `"wald"`, `"wilson"` and `"logodds"`
 #' substitute the quantile in the half-width. `"beta"` instead scales the
 #' effective sample size by the squared ratio of the two t quantiles
 #' (Korn and Graubard, 1998, eq. 2.2), which is the same widening expressed
-#' on the sample size rather than on the interval. Both hold
-#' \eqn{\mathrm{moe} = q \cdot \mathrm{se}}{moe = q * se} with the one quantile, so a
-#' margin of error and the standard error reported beside it always agree.
+#' on the sample size rather than on the interval.
 #'
 #' The two routes differ in what an *unset* `df` means, because they differ
 #' in what they measure it against. For the three substituting methods
@@ -241,11 +253,11 @@
 #' claims more degrees of freedom than an SRS has and narrows the interval
 #' accordingly.
 #'
-#' The coefficient of variation is *not* uniformly invariant to `df`. Only
-#' `"wald"` and the mean engine build `se` without a quantile in it, so
-#' only their `cv` is unchanged. `"wilson"`, `"logodds"` and `"beta"` build
-#' the half-width first and read `se` back out of it, so their `cv` moves
-#' with the quantile.
+#' The reported `se` is the sampling standard error from the common variance
+#' above, and `cv = se / p`. Neither depends on `method`, `alpha`, or `df`.
+#' The margin of error reads the interval construction and is therefore
+#' method-specific. Under `"wald"`, `moe = q * se`. The other three methods
+#' are asymmetric, so their half-length has no universal `q * se` identity.
 #'
 #' `df` is deliberately absent from the power functions. There the
 #' quantile is a normal deviate for an alternative rather than an interval

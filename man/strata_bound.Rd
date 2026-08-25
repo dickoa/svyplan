@@ -170,7 +170,7 @@ rounding distortion.
 
 \subsection{What the boundaries are optimal for}{
 
-Every quantity the search reads comes from \code{x}: the stratum standard
+Every quantity the search reads comes from \code{x}. The stratum standard
 deviations \eqn{S_h} are the standard deviations of \code{x} inside each
 candidate stratum, and the variance being minimized is that of the
 estimated total or mean \strong{of \code{x}}. The boundaries returned are therefore
@@ -202,7 +202,7 @@ The variance evaluated here is the one the rest of the package uses,
 function's continuous total.
 
 A \emph{scalar} \code{deff} scales the variance of every candidate boundary set
-equally, so it does not move the boundaries: it changes the \code{n} a \code{cv}
+equally, so it does not move the boundaries. It changes the \code{n} a \code{cv}
 target needs and the \code{cv} a given \code{n} achieves. Expect the cutpoints to
 shift only by the local search's own tolerance. Boundaries would respond
 to a design effect that varied across strata, which a scalar argument

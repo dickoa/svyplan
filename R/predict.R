@@ -6,8 +6,8 @@
 #'
 #' @param object A svyplan object (`svyplan_n`, `svyplan_cluster`,
 #'   `svyplan_power`, or `svyplan_prec`). For `svyplan_prec`, only
-#'   types `"proportion"` and `"mean"` are supported (not `"cluster"` or
-#'   `"multi"`).
+#'   types `"proportion"`, `"mean"`, and `"ratio"` are supported. Types
+#'   `"cluster"` and `"multi"` are not supported.
 #' @param newdata A data frame of parameter combinations to evaluate.
 #'   Column names must be valid parameters for the object type (see
 #'   Details). Parameters not in `newdata` stay at their original
@@ -29,9 +29,11 @@
 #' Valid parameters for `newdata` by object type:
 #'
 #' - **`n_prop`**: `p`, `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`,
-#'   `resp_rate`, `df` (`method = "beta"` only)
+#'   `resp_rate`, `df`, `min_cases`
 #' - **`n_mean`**: `var`, `mu`, `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`,
-#'   `resp_rate`
+#'   `resp_rate`, `df`
+#' - **`n_ratio`**: `r`, `cv_num`, `cv_den`, `component_cor`, `moe`, `rmoe`,
+#'   `cv`, `alpha`, `N`, `deff`, `resp_rate`, `df`
 #' - **`n_change`**: `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`, `resp_rate`,
 #'   `ratio`, `overlap`, `overlap_cor`, and `change` on the mean scale only,
 #'   since two proportions determine it. The occasion variances are held at
@@ -56,9 +58,12 @@
 #'   `deff`, `alternative`, `overlap`, `overlap_cor`, `resp_rate` (excluding the
 #'   solved-for parameter). Not supported for objects with vector `n`.
 #' - **`prec_prop`**: `p`, `n`, `alpha`, `N`, `deff`, `resp_rate`,
-#'   `df` (`method = "beta"` only). A result that solved for `p` varies the
+#'   `df`. A result that solved for `p` varies the
 #'   target it solved from, `cv` or `rmoe`, in place of `p`.
-#' - **`prec_mean`**: `var`, `n`, `mu`, `alpha`, `N`, `deff`, `resp_rate`
+#' - **`prec_mean`**: `var`, `n`, `mu`, `alpha`, `N`, `deff`, `resp_rate`,
+#'   `df`. A result that solved for `mu` varies `cv` in place of `mu`.
+#' - **`prec_ratio`**: `r`, `n`, `cv_num`, `cv_den`, `component_cor`,
+#'   `alpha`, `N`, `deff`, `resp_rate`, `df`
 #'
 #' For `svyplan_n` objects, `moe`, `rmoe`, and `cv` are mutually exclusive
 #' in `newdata`. If one appears, that mode is used. If none appears, the
@@ -95,7 +100,7 @@
 #'
 #' A certainty-aware fit ([n_alloc()] with `psu`) varies `n_per_psu` too, even
 #' though the solver saw a one-stage problem, and reports `n_psu_certain` and
-#' `n_psu_draw` in place of the PSU counts. This is how the take is priced: it
+#' `n_psu_draw` in place of the PSU counts. This is how the take is priced. It
 #' also sets the certainty threshold, so a larger take leaves fewer certainty
 #' PSUs and costs more sample, and the resulting cost curve has a minimum
 #' worth finding rather than assuming.
@@ -780,10 +785,10 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 #'
 #' Re-solves the stored problem once per grid row. Two controls can be varied.
 #' A budget-objective fit varies `budget`, tracing the cost-versus-objective
-#' frontier; the root search already sweeps the minimum-cost problem across
+#' frontier. The root search already sweeps the minimum-cost problem across
 #' objective bounds, so the frontier costs little beyond the solves. A
 #' multistage fit varies the fixed takes, tracing how the PSU count, the
-#' ultimate sample and the cost respond; the cost curve over the take is
+#' ultimate sample and the cost respond. The cost curve over the take is
 #' U-shaped and its minimum is not evident in advance.
 #'
 #' A row the solver cannot satisfy yields an all-`NA` row with

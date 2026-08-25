@@ -41,10 +41,12 @@
 #'     `deff`, `N`, and `resp_rate`.}
 #'   \item{`moe`}{Half the length of the interval the chosen `method`
 #'     builds at that standard error. Only under `"wald"` is this
-#'     `qnorm(1 - alpha / 2) * se`. The other three close at a different
-#'     half-width, which is the whole of what distinguishes them. None of
-#'     the three is symmetric about `p`, so `p - moe` and `p + moe` are not
-#'     the endpoints. Use [confint()] for those.}
+#'     `q * se`, with `q` defined in [n_prop()]. Where [confint()]
+#'     truncates a Wald interval at 0 or 1, `moe` stays `q * se` and
+#'     exceeds half the reported width. The other three close at a
+#'     different half-width, which is the whole of what distinguishes
+#'     them. None of the three is symmetric about `p`, so `p - moe` and
+#'     `p + moe` are not the endpoints. Use [confint()] for those.}
 #'   \item{`cv`}{Relative standard error, `se / p`, and therefore also the
 #'     same under all four methods.}
 #'   \item{`rmoe`}{Margin of error relative to the proportion, `moe / p`.
@@ -79,7 +81,7 @@
 #' which an infinite-population simple random sample would carry the same
 #' variance.
 #'
-#' The FPC uses the Cochran (1977, Ch. 3) form: the finite-population
+#' The FPC uses the Cochran (1977, Ch. 3) form. The finite-population
 #' correction for a Bernoulli proportion is `(N - n_net) / (N - 1)`, not
 #' the simpler `1 - n_net / N` used for means. All four methods read the
 #' same variance through `n_eff`, so all four respond to `deff` and `N`
@@ -130,7 +132,7 @@
 #' direction. [n_prop()] fixes the proportion and the precision and returns
 #' the sample size. This function fixes the proportion and the sample size and
 #' returns the precision. Giving `n` and `cv` returns the proportion. That
-#' third reading answers which estimates a fielded design can carry: because
+#' third reading answers which estimates a fielded design can carry. Because
 #' `se(p) / p` falls as `p` rises, the solution is a floor, and every larger
 #' proportion meets the target. It is the planning form of a publication
 #' threshold. `expected_cases` is reported alongside it, so the precision
@@ -145,9 +147,9 @@
 #' proportion to be measured against.
 #'
 #' Giving `n` and `rmoe` asks the same question of the interval instead of
-#' the variance, and the answer is method-specific: the smallest proportion
-#' the design can report at a relative margin of error of `rmoe` under the
-#' chosen construction. There is no closed form, and two properties the
+#' the variance, and the answer is method-specific. It is the smallest
+#' proportion the design can report at a relative margin of error of `rmoe`
+#' under the chosen construction. There is no closed form, and two properties the
 #' `cv` solve does not share bound it. The Wilson and Korn-Graubard
 #' half-widths do not vanish as `p` approaches 1, so their relative margin
 #' of error has a positive floor and a target below it is refused with the

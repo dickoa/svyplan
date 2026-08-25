@@ -59,7 +59,7 @@
 #' \describe{
 #'   \item{`se`}{Standard error of the estimated change, computed on the net
 #'     sizes `n * resp_rate`.}
-#'   \item{`moe`}{Margin of error, `qnorm(1 - alpha / 2) * se`. The interval
+#'   \item{`moe`}{Margin of error, `q * se`, with `q` defined in Details. The interval
 #'     is symmetric about the change, so the limits are `change - moe` and
 #'     `change + moe`.}
 #'   \item{`cv`}{Standard error relative to the change, `se / abs(change)`.
@@ -76,6 +76,9 @@
 #' [n_change()] reproduces its `se`, `moe` and `cv` exactly.
 #'
 #' @details
+#' Here `q` is `qnorm(1 - alpha / 2)` by default and
+#' `qt(1 - alpha / 2, df)` when `df` is supplied.
+#'
 #' The estimand is the change in one population measured twice, not a
 #' difference between two populations. Writing \eqn{v_1, v_2} for the
 #' occasion variances, \eqn{n_1, n_2} for the net sizes and \eqn{k} for the

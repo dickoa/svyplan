@@ -1,26 +1,32 @@
 #' Two-phase sample allocation
 #'
-#' Allocate a two-phase (double) sample: a large cheap phase 1, then a
-#' subsample measured on the expensive variable. Minimizes cost for a
-#' target precision, or precision for a fixed budget.
+#' Allocate a two-phase (double) sample. Phase 1 draws a large sample and
+#' measures a variable the frame does not carry. Phase 2 subsamples those
+#' units and measures the variable of interest on them. Solves for the
+#' phase sizes and the per-stratum subsampling fractions, either to reach
+#' a target coefficient of variation or to minimize it under a fixed
+#' budget.
 #'
-#' One allocator covers the two designs that usually get separate
-#' treatments. Double sampling for stratification subsamples every phase-2
-#' stratum. Nonresponse follow-up carries the phase-1 respondents through
-#' untouched and subsamples only the nonrespondents. Both are the same
-#' problem with different strata marked `take_all`.
+#' What phase 1 measures decides which design this is. A stratification
+#' variable observed on the phase-1 sample lets phase 2 be stratified on
+#' something the frame could not supply. Response status observed in phase
+#' 1 makes the follow-up of nonrespondents a second phase. One allocator
+#' covers both. Double sampling for stratification subsamples every
+#' phase-2 stratum, nonresponse follow-up carries the phase-1 respondents
+#' through untouched and subsamples only the nonrespondents, and the two
+#' differ only in which strata are marked `take_all`.
 #'
 #' @param frame For the default method: a data frame with one row per
 #'   phase-2 stratum, in the [n_alloc()] column vocabulary (`N`, `sd`,
-#'   `mean`, `unit_cost`, `take_all`) but on a narrower contract: `sd` is
+#'   `mean`, `unit_cost`, `take_all`) but on a narrower contract. `sd` is
 #'   required where [n_alloc()] also accepts `var`, and the cost and
 #'   `p`/`mean` rules differ, so a table built for one may need adjusting
 #'   before it is passed to the other. Columns:
 #'   \describe{
 #'     \item{`N`}{Stratum size (**required**). Only relative size matters,
 #'       since the stratum weights are `N / sum(N)`.}
-#'     \item{`sd`}{Within-stratum standard deviation of the expensive
-#'       variable (**required**).}
+#'     \item{`sd`}{Within-stratum standard deviation of the variable of
+#'       interest (**required**).}
 #'     \item{`mean`}{Stratum mean. Supply it to let the between-stratum
 #'       component be derived, which is what makes stratifying worthwhile.
 #'       Omit it, or pass `between = 0`, when the strata are not expected
@@ -71,53 +77,48 @@
 #'   between-stratum component and, because phase 2 can only draw from
 #'   the units phase 1 actually classified, it also caps every
 #'   subsampling fraction at `resp_rate`. In a nonresponse follow-up
-#'   frame leave it at 1: there the strata *are* response status, so
+#'   frame leave it at 1, because there the strata *are* response status, so
 #'   classification succeeds for every unit and setting it again would
 #'   count the same loss twice.
-#' @param n_phase1 Fixed phase-1 sample size, or `NULL` (default) to
-#'   optimize it. Supply it when the screener has already run, when phase 1
-#'   is an existing survey or panel, or when its size is set by field
-#'   capacity rather than by this design. The relative allocation across
-#'   strata is unchanged, since it is `S_h sqrt(d_2h / c_h)` in every mode.
-#'   What changes is the overall scale, which is then pinned by the budget
-#'   left after paying for phase 1, or by what it takes to reach `cv` at
-#'   that size. Because the optimizing choice of `n_phase1` is the best
-#'   member of this family, fixing it can only match or lose to leaving it
-#'   free, and the gap is what a phase-1 size you did not choose is
-#'   costing. Two ways it can fail. The budget may not reach phase 2 at
-#'   all, once the screening and any `take_all` strata are paid for. And a
-#'   target `cv` may sit below the floor that remains when phase 2 carries
-#'   every classified unit through, which is the between-stratum component
-#'   `d_1 A / r_1` plus the phase-2 residual at `nu_h = resp_rate`. No
-#'   amount of subsampling can beat it, because both parts are already
-#'   paid for.
+#' @param n_phase1 Fixed phase-1 sample size, or `NULL` (default) to solve
+#'   for it. Supply it when phase 1 has already run, when it is an existing
+#'   survey or panel, or when its size is set by field capacity rather than
+#'   by this design. The relative allocation across strata is
+#'   `S_h sqrt(d_2h / c_h)` in every mode and does not move. Only the
+#'   overall scale does, pinned by the budget left after phase 1 or by what
+#'   reaching `cv` requires at that size, so fixing `n_phase1` can only
+#'   match or lose to leaving it free. It becomes infeasible in two ways.
+#'   The budget may not reach phase 2 once phase 1 and any `take_all`
+#'   strata are paid for. Or the target `cv` may sit below the floor left
+#'   when phase 2 carries every classified unit through, the
+#'   between-stratum component `d_1 A / r_1` plus the phase-2 residual at
+#'   `nu_h = resp_rate`, which no amount of subsampling can beat.
 #' @param assurance Probability in (0, 1), or `NULL` (default). Planning at
 #'   the expected respondent count leaves roughly half of all designs
 #'   short. Supplying a level reports, alongside the expected design, the
 #'   issued sizes for which the required respondents arrive with at least
 #'   that probability, from the binomial distribution of respondents.
 #'
-#'   The level is **marginal**, holding stratum by stratum. The chance that
-#'   every stratum clears its target at once is the product over strata and
-#'   so is lower, materially so with many strata: three strata at 0.95 give
-#'   about 0.86 together. Raise the level if you need a familywise
-#'   guarantee. It is also conditional on the phase-1 pool: the assured
-#'   phase-2 issue is compared against what phase 1 supplies, and a stratum
-#'   that needs more than its pool is reported in a warning, because the
-#'   answer there is to enlarge phase 1 rather than to over-issue. Phase-1
-#'   composition is itself random unless phase 1 is a census, so the
-#'   expected stratum shares behind that pool are not simultaneous lower
-#'   bounds either.
+#'   The level is **marginal**, holding stratum by stratum. Every stratum
+#'   clearing its target at once has the product probability and so is
+#'   lower, materially so with many strata, since three strata at 0.95 give
+#'   about 0.86 together. Raise the level for a familywise guarantee. It is
+#'   also conditional on the phase-1 pool. The assured phase-2 issue is
+#'   compared against what phase 1 supplies, and a stratum needing more
+#'   than its pool is reported in a warning, since the answer there is to
+#'   enlarge phase 1 rather than to over-issue. Phase-1 composition is
+#'   itself random unless phase 1 is a census, so the expected stratum
+#'   shares behind that pool are not simultaneous lower bounds either.
 #' @param single_deff Design effect of the single-phase comparator,
 #'   default 1. It is a separate number from the stratum `deff` column
 #'   because the comparator need not be fielded the same way as phase 2.
 #' @param single_resp_rate Expected response rate of the single-phase
 #'   comparator, in (0, 1], default 1.
 #' @param single_cost Cost per unit of the single-phase design that skips
-#'   phase 1 and measures the expensive variable directly. `NULL` (default)
+#'   phase 1 and measures the variable of interest directly. `NULL` (default)
 #'   uses `sum(share * unit_cost)`, which is the right baseline when
 #'   `unit_cost` is what measuring one unit costs. In a nonresponse
-#'   follow-up design it is not: a `unit_cost` of 0 there means "already
+#'   follow-up design it is not, since a `unit_cost` of 0 there means "already
 #'   measured", not "free", and the right baseline is the cost of one
 #'   completed interview without any follow-up, `phase1_cost / resp_rate`.
 #'   Supply it in that case.
@@ -149,7 +150,7 @@
 #'     for strata that were supplied pinned **and** for those the
 #'     allocator truncated at the classification rate.}
 #'   \item{`single_phase`}{The design that skips phase 1 and measures the
-#'     expensive variable directly, as `c(n = , cv = , cost = )`, plus
+#'     variable of interest directly, as `c(n = , cv = , cost = )`, plus
 #'     `reaches_target`, and `better`, `TRUE` when that plainer design
 #'     wins. Two-phase sampling is not always an improvement and this
 #'     comparison is the check that says so. In `cv` mode a comparator
@@ -168,7 +169,7 @@
 #'   \item{`params`}{Validated inputs, read back by [prec_twophase()]. They
 #'     include the design decisions a stratum table cannot express, so that
 #'     `n_twophase(prec_twophase(fit))` rebuilds this problem rather than a
-#'     new unconstrained one: the `take_all` set as *supplied*, a fixed
+#'     new unconstrained one, namely the `take_all` set as *supplied*, a fixed
 #'     `n_phase1`, `assurance`, and the comparator settings. There is no
 #'     `predict()` method for this class.}
 #' }
@@ -193,13 +194,13 @@
 #'
 #' where \eqn{P} is the set of pinned strata. The shape is Neyman-like,
 #' \eqn{\nu_h \propto S_h/\sqrt{c_h}}{nu_h proportional to S_h/sqrt(c_h)}, but the overall scale is set by the
-#' *between*-stratum variance: weak stratification pushes every
+#' *between*-stratum variance, so weak stratification pushes every
 #' \eqn{\nu_h} up, toward keeping everything phase 1 found.
 #'
 #' Any \eqn{\nu_h} above the cap is truncated there and the stratum joins
 #' \eqn{P}, which changes \eqn{\tilde A}{Atilde} and \eqn{\tilde c_a}{ctilde_a} and so the
-#' remaining strata are re-solved. The cap is `resp_rate`, not 1: phase 2
-#' can only subsample the units phase 1 succeeded in classifying, so a
+#' remaining strata are re-solved. The cap is `resp_rate` rather than 1.
+#' Phase 2 can only subsample the units phase 1 succeeded in classifying, so a
 #' stratum is "take-all" once it keeps all of those, not all of \eqn{N_h}.
 #' Strata are pinned one at a time in decreasing \eqn{S_h/\sqrt{c_h}}{S_h/sqrt(c_h)},
 #' because pinning lowers the multiplier and can bring others back below
@@ -275,9 +276,10 @@
 #' modeling the nonresponse as a follow-up phase, as below, is the
 #' alternative the design itself offers.
 #'
-#' Nonresponse follow-up is the two-stratum case: respondents with
-#' `unit_cost = 0` and `take_all = TRUE`, nonrespondents free, and no
-#' between-stratum component. The optimum reduces to
+#' Nonresponse follow-up is the two-stratum case. Respondents take
+#' `unit_cost = 0` and `take_all = TRUE`, the nonrespondent stratum is left
+#' free to be subsampled, and there is no between-stratum component. The
+#' optimum reduces to
 #' \eqn{\nu = \sqrt{c_1/(c_2\theta)}}{nu = sqrt(c_1/(c_2 theta))} for a phase-1 response rate
 #' \eqn{\theta}, which is the standard result.
 #'
@@ -301,8 +303,8 @@
 #'   analogue.
 #'
 #' @examples
-#' # Double sampling for stratification: a cheap screener splits the frame
-#' # into four groups, the expensive measurement goes to a subsample.
+#' # Double sampling for stratification. A screener splits the frame into
+#' # four groups, and the variable of interest is measured on a subsample.
 #' frame <- data.frame(
 #'   stratum   = c("A", "B", "C", "D"),
 #'   N         = c(3500, 2500, 2500, 1500),
@@ -794,7 +796,7 @@ n_twophase.default <- function(
 #' `var_pop` is the census term: what the design would still carry if every
 #' unit were measured. It holds the design effects, because one multiplies
 #' an SRSWOR variance here as it does throughout the package, but not the
-#' response divisors. Measuring every unit removes all the variance;
+#' response divisors. Measuring every unit removes all the variance.
 #' *issuing* to every unit and losing some of them to nonresponse does not,
 #' and reusing `var_unit` as the census term would report that case as
 #' exact.
@@ -826,8 +828,8 @@ n_twophase.default <- function(
 
 #' The single-phase design the two-phase one has to beat
 #'
-#' Phase 1 is skipped, so the expensive measurement is taken directly and
-#' the screening cost is not paid. Fuller (2009, Sect. 3.3.1) requires this
+#' Phase 1 is skipped, so the variable of interest is measured directly and
+#' no screening cost is paid. Fuller (2009, Sect. 3.3.1) requires this
 #' comparison because the interior optimum is not always an improvement.
 #' @keywords internal
 #' @noRd

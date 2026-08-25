@@ -42,7 +42,9 @@
 #'   the change rather than to either occasion separately. See Details.
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). Each occasion's size is inflated by `1 / resp_rate`. It is
-#'   a single round's response, not attrition across a panel.
+#'   a single round's response, not attrition across a panel. See the
+#'   nonresponse section of [svyplan-package] for what this adjustment does
+#'   and does not claim.
 #' @param ratio Size of the first occasion relative to the second, so
 #'   `ratio = 2` sizes a large baseline against a smaller follow-up. Default
 #'   1, equal occasions, which returns a single size. Because `overlap` is
@@ -59,8 +61,8 @@
 #'   [prec_change()] on what a response rate below 1 does to this reading.
 #' @param overlap_cor Correlation between the two occasions among the
 #'   overlapping units, in \[0, 1\]. Default 0, which makes overlap
-#'   worthless: it is the product `overlap * overlap_cor` that reduces the
-#'   size, so a full panel of uncorrelated measurements saves nothing. On the
+#'   worthless, since it is the product `overlap * overlap_cor` that reduces
+#'   the size, so a full panel of uncorrelated measurements saves nothing. On the
 #'   proportion scale two Bernoulli marginals bound the correlation they can
 #'   have, and a value above that bound is rejected.
 #' @param df Degrees of freedom of the variance estimator the planned design
@@ -107,7 +109,7 @@
 #'
 #' Overlap and correlation only ever act together. At `overlap_cor = 0` the
 #' size is what two independent samples would need whatever the overlap, and
-#' the two arguments are worth setting from the same evidence: a rotation
+#' the two arguments are worth setting from the same evidence. A rotation
 #' pattern fixes `overlap`, and a previous round of the same survey is what
 #' identifies `overlap_cor`.
 #'
@@ -121,7 +123,7 @@
 #'
 #' Two boundaries are worth knowing before reading a result. Full overlap
 #' with unit correlation at equal sizes and variances leaves the change with
-#' no sampling variance at all: the same units are measured twice, so no
+#' no sampling variance at all, since the same units are measured twice, so no
 #' size is identified and the function says so rather than returning zero.
 #'
 #' At a finite `N` with equal occasions and full response, the requirement
@@ -136,7 +138,7 @@
 #'
 #' Overlap improves a change and does nothing for the level at a single
 #' occasion, which is a function of that occasion's size alone. A fresh
-#' sample each round is not the reverse of this: it does nothing for the
+#' sample each round is not the reverse of this. It does nothing for the
 #' level either, and the two designs give the same single-occasion
 #' precision at the same size. What overlap does work against is an
 #' estimate pooled across occasions, an annual average of quarterly rounds

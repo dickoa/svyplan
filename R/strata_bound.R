@@ -149,7 +149,7 @@
 #'
 #' ## What the boundaries are optimal for
 #'
-#' Every quantity the search reads comes from `x`: the stratum standard
+#' Every quantity the search reads comes from `x`. The stratum standard
 #' deviations \eqn{S_h} are the standard deviations of `x` inside each
 #' candidate stratum, and the variance being minimized is that of the
 #' estimated total or mean **of `x`**. The boundaries returned are therefore
@@ -180,7 +180,7 @@
 #' function's continuous total.
 #'
 #' A *scalar* `deff` scales the variance of every candidate boundary set
-#' equally, so it does not move the boundaries: it changes the `n` a `cv`
+#' equally, so it does not move the boundaries. It changes the `n` a `cv`
 #' target needs and the `cv` a given `n` achieves. Expect the cutpoints to
 #' shift only by the local search's own tolerance. Boundaries would respond
 #' to a design effect that varied across strata, which a scalar argument

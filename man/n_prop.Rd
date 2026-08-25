@@ -68,7 +68,8 @@ Neyman allocation).}
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The required sample size is inflated by \code{1 / resp_rate}.
 Estimate from response rates observed in similar surveys in the same
-population.}
+population. See the nonresponse section of \link{svyplan-package} for what
+this adjustment does and does not claim.}
 
 \item{method}{One of \code{"wald"} (default), \code{"wilson"}, \code{"logodds"}, or
 \code{"beta"}.}
@@ -103,8 +104,10 @@ the same values \code{\link[=prec_prop]{prec_prop()}} reports for the same input
 the sampling standard error and \code{cv} is \code{se / p}, so both are the
 same under all four methods. \code{moe} is half the length of the
 interval the chosen \code{method} builds, which equals
-\code{qnorm(1 - alpha / 2) * se} under \code{"wald"} alone. For the three
-asymmetric methods it is not an offset from either limit, so read
+\code{q * se} under \code{"wald"} alone, with \code{q} defined in Details. Where
+\code{\link[=confint]{confint()}} truncates a Wald interval at 0 or 1, \code{moe} stays
+\code{q * se} and exceeds half the reported width (see Details). For the
+three asymmetric methods it is not an offset from either limit, so read
 the limits with \code{\link[=confint]{confint()}}. \code{rmoe} is \code{moe / p}, so a target
 stated as a relative margin of error reads back in the units it
 was stated in.}
@@ -169,16 +172,17 @@ several times the lower one.
 \subsection{Choosing a method}{
 
 Reach for Wald unless you have a reason not to. It is the only method
-that also solves a \code{cv} target, and it is what every survey text and
-every sample size table reports. \code{moe} and \code{rmoe} targets are available
+that also solves a \code{cv} target, and it is what survey texts and sample
+size tables conventionally report. \code{moe} and \code{rmoe} targets are available
 under all four.
 
 How much the choice costs depends on the sample size, and the four
-methods converge on each other slowly. Over \code{p} from 0.1 to 0.9, the
-widest and narrowest margins of error differ by 8.2 percent at
+methods converge on each other slowly. With \code{alpha = 0.05}, \code{deff = 1},
+\code{N = Inf}, \code{resp_rate = 1}, no supplied \code{df}, and \code{p} from 0.1 to 0.9,
+the widest and narrowest margins of error differ by 8.2 percent at
 \code{n = 100}, 3.8 percent at 500, 2.7 percent at 1000, and 1.2 percent at
-5000. Below a few thousand the choice is worth a moment but at survey scale
-it usually is not.
+5000. Below a few thousand the choice is worth a moment. At larger survey
+sizes its effect on required size is often modest over this range.
 
 The case that decides it is a rare or near-universal outcome. As \code{p}
 approaches 0 or 1 the Wald interval loses coverage and can extend past 0
@@ -187,46 +191,54 @@ is then no longer half the reported interval's length. Wilson and
 log-odds lie strictly inside \eqn{(0, 1)} and beta inside \eqn{[0, 1]},
 all three by construction, so none of them needs that truncation.
 Planning a survey for a 2 percent prevalence is the case that justifies
-\code{method = "wilson"}: the score interval keeps its nominal coverage far
-better there.
+\code{method = "wilson"}, since the score interval keeps its nominal coverage
+far better there.
 
-Log-odds is the narrower case again: it respects the parameter space like
+Log-odds is the narrower case again. It respects the parameter space like
 Wilson but keeps the estimate at the center of the interval on the logit
-scale, which matters when the plan will be reported as an odds ratio or
-fed into a logistic model. If you are not doing either, prefer Wilson.
+scale. Back-transforming its limits gives an interval for the proportion,
+or equivalently for its odds. It is not an interval for an odds ratio and
+does not size a logistic regression. Prefer Wilson unless reporting on the
+logit or odds scale is itself useful.
 
-Reach for \code{"beta"} when the expected number of positive cases is small in
-absolute terms, not merely when \code{p} is small: a few dozen cases or fewer,
-which is the regime Korn and Graubard wrote for and the one where the
-normality of the estimated proportion breaks down however large the
-sample is. Rare-outcome domain estimates in a clustered survey are the
-standard case. Beta is the widest of the four over most of the range,
-and so the most demanding to plan for, but not everywhere: for a very
+Reach for \code{"beta"} when the expected number of outcomes in the category
+nearest a boundary is small in absolute terms, not merely when \code{p} is
+numerically close to a boundary. Rare-outcome domain estimates in a
+clustered survey are the standard case. Near \code{p = 1}, apply the same
+reasoning to expected negative outcomes. Beta is the widest over most
+of the range, and so the most demanding to plan for, but not
+everywhere: for a very
 rare outcome at a small sample, log-odds is wider still. Nor is it the
 only method that answers to a variance estimated from few clusters. All
 four read \code{df} through the same t quantile and widen by it, so \code{df}
 alone is not a reason to choose beta.
 
-A note on where the methods bind. For \emph{sizing}, the choice is usually
-secondary: over the range measured above the four sizes differ by a few
-percent, less than the uncertainty in the assumed \code{p}, \code{deff}, and
-response rate. For \emph{assessing} an achieved design the choice can dominate,
-because that is where small realized samples of rare outcomes appear. If
-you are unsure, plan with Wald and report with \code{"beta"}.
+A note on where the methods bind. For \emph{sizing}, the sizes differ by the
+measured few-percent amounts over the range above. That does not make the
+interval methods inferentially interchangeable. When the reported
+interval's width is the binding requirement, size under the method you
+will report. Compare methods with separate \code{\link[=n_prop]{n_prop()}} or \code{\link[=prec_prop]{prec_prop()}}
+calls, or with separately constructed objects. \code{\link[=predict]{predict()}} varies the
+permitted planning parameters while keeping an object's method fixed. For
+\emph{assessing} an achieved design, method choice can dominate when realized
+counts are sparse or the estimate lies near a boundary.
 }
 
 \subsection{A minimum expected number of cases}{
 
 For a rare outcome in a small domain the constraint that actually binds
-is often not a margin of error but a count: an indicator nobody will
-publish on fewer than 30 observed cases, a subgroup analysis that needs
-enough events to fit anything to. \code{min_cases} states that requirement
+is often not a margin of error but an expected count. An indicator may
+require 30 positive cases on average, or a subgroup analysis may need a
+planning floor for its expected events. \code{min_cases} states that requirement
 directly. The size it demands is
 \deqn{n_\mathrm{cases} = \mathrm{min\_cases} / (p \cdot
       \mathrm{resp\_rate}),}{n_cases = min_cases / (p * resp_rate),}
-and the result is the larger of that and the size precision asks for, so
-both constraints hold. \code{binding} says which one decided, and
-\code{expected_cases} reports the count either way.
+and the result is the larger of that and the size precision asks for.
+Thus the count floor holds in expectation. The realized count is random,
+and the calculation does not control the probability of observing at
+least \code{min_cases}. Such an assurance constraint is outside this function's
+scope. \code{binding} says which planning constraint decided, and
+\code{expected_cases} reports the expected positive count either way.
 
 \code{deff} does not enter this size, and that is deliberate rather than an
 omission. A design effect describes how precisely the proportion is
@@ -237,10 +249,12 @@ respondents and the returned \code{n} is gross, on the same footing as every
 other size the package reports.
 
 \code{expected_cases} is reported on every proportion result, with or without
-\code{min_cases}, since it is the number the method guidance above turns on:
-\code{"beta"} earns its place when the expected count of positive cases is
-small in absolute terms, and that count was previously left for the
-reader to work out.
+\code{min_cases}. It is the expected number of positive respondents after the
+response-rate adjustment, not an observed count or an assurance
+probability. It does not incorporate \code{deff} and is not an effective event
+count. It helps interpret a rare positive outcome, but it is not a complete
+interval diagnostic. Near \code{p = 1}, inspect the expected negative count
+instead. The \code{min_cases} constraint acts only on expected positive cases.
 }
 
 \subsection{Finite population correction}{
@@ -256,10 +270,10 @@ variance is already defined on \code{N-1} degrees of freedom.
 
 \subsection{Degrees of freedom}{
 
-The interval quantile is the normal one by default, which treats the
-variance as known. That is standard for survey sampling where the sample
-is large enough for the central limit theorem to apply, and it is what a
-\code{df} of \code{NULL} selects.
+Write \eqn{q} for the interval quantile. By default
+\eqn{q = \Phi^{-1}(1-\alpha/2)}{q = qnorm(1 - alpha/2)}, which treats the
+variance as known. Supplying \code{df} instead gives
+\eqn{q = t_{1-\alpha/2}(\mathrm{df})}{q = qt(1 - alpha/2, df)}.
 
 Supplying \code{df} says the variance will be estimated from a design with
 that many degrees of freedom, and switches the quantile to
@@ -268,14 +282,12 @@ that many degrees of freedom, and switches the quantile to
 automatic version would need a fixed point. Read it off a plan you
 already have with \code{\link[=design_df]{design_df()}}, or pass a count directly.
 
-The three interval methods and the Korn-Graubard one reach the same
+The three interval methods and the Korn-Graubard one apply that quantile
 widening by different routes. \code{"wald"}, \code{"wilson"} and \code{"logodds"}
 substitute the quantile in the half-width. \code{"beta"} instead scales the
 effective sample size by the squared ratio of the two t quantiles
 (Korn and Graubard, 1998, eq. 2.2), which is the same widening expressed
-on the sample size rather than on the interval. Both hold
-\eqn{\mathrm{moe} = q \cdot \mathrm{se}}{moe = q * se} with the one quantile, so a
-margin of error and the standard error reported beside it always agree.
+on the sample size rather than on the interval.
 
 The two routes differ in what an \emph{unset} \code{df} means, because they differ
 in what they measure it against. For the three substituting methods
@@ -285,11 +297,11 @@ size would have, so \code{NULL} is equivalent to \code{df = n - 1}, and \code{df
 claims more degrees of freedom than an SRS has and narrows the interval
 accordingly.
 
-The coefficient of variation is \emph{not} uniformly invariant to \code{df}. Only
-\code{"wald"} and the mean engine build \code{se} without a quantile in it, so
-only their \code{cv} is unchanged. \code{"wilson"}, \code{"logodds"} and \code{"beta"} build
-the half-width first and read \code{se} back out of it, so their \code{cv} moves
-with the quantile.
+The reported \code{se} is the sampling standard error from the common variance
+above, and \code{cv = se / p}. Neither depends on \code{method}, \code{alpha}, or \code{df}.
+The margin of error reads the interval construction and is therefore
+method-specific. Under \code{"wald"}, \code{moe = q * se}. The other three methods
+are asymmetric, so their half-length has no universal \code{q * se} identity.
 
 \code{df} is deliberately absent from the power functions. There the
 quantile is a normal deviate for an alternative rather than an interval

@@ -23,6 +23,7 @@
 ^doc$
 ^Meta$
 ^air\.toml$
+^vignettes/articles$
 .*~$
 .*~undo-tree~$
 \.Rhistory$

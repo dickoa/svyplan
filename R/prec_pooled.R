@@ -62,7 +62,7 @@
 #' \describe{
 #'   \item{`se`}{Standard error of the pooled estimate, computed on the net
 #'     sizes `n * resp_rate`.}
-#'   \item{`moe`}{Margin of error, `qnorm(1 - alpha / 2) * se`.}
+#'   \item{`moe`}{Margin of error, `q * se`, with `q` defined in Details.}
 #'   \item{`cv`}{Standard error relative to the level, `se / abs(mu)`. `NA`
 #'     when `mu` is neither supplied nor determined by `p`.}
 #'   \item{`params`}{The validated inputs. Dispersion is always stored as
@@ -75,9 +75,12 @@
 #' [n_pooled()] reproduces its `se`, `moe` and `cv` exactly.
 #'
 #' @details
+#' Here `q` is `qnorm(1 - alpha / 2)` by default and
+#' `qt(1 - alpha / 2, df)` when `df` is supplied.
+#'
 #' The estimand is the equal-weight mean of the occasion estimates,
 #' \eqn{\bar y = T^{-1}\sum_t \bar y_t}{ybar = (1/T) sum_t ybar_t}. Three
-#' things share that name and this is none of the other two: it is not a
+#' things share that name and this is none of the other two. It is not a
 #' pooled variance, and it is not the pooling of the rotating cohorts that
 #' make up one occasion, which [n_panel()] describes.
 #'
@@ -127,7 +130,7 @@
 #'
 #' The level at a single occasion is unaffected either way, being a function
 #' of that occasion's size alone, so it is a reference line rather than a
-#' third position: what trades off is the change against the pooled
+#' third position. What trades off is the change against the pooled
 #' estimate. `?prec_change` and this page size the two arms.
 #'
 #' ## Issued overlap and respondent overlap

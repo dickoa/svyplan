@@ -75,10 +75,12 @@ is the same under all four methods and moves only with \code{p}, \code{n},
 \code{deff}, \code{N}, and \code{resp_rate}.}
 \item{\code{moe}}{Half the length of the interval the chosen \code{method}
 builds at that standard error. Only under \code{"wald"} is this
-\code{qnorm(1 - alpha / 2) * se}. The other three close at a different
-half-width, which is the whole of what distinguishes them. None of
-the three is symmetric about \code{p}, so \code{p - moe} and \code{p + moe} are not
-the endpoints. Use \code{\link[=confint]{confint()}} for those.}
+\code{q * se}, with \code{q} defined in \code{\link[=n_prop]{n_prop()}}. Where \code{\link[=confint]{confint()}}
+truncates a Wald interval at 0 or 1, \code{moe} stays \code{q * se} and
+exceeds half the reported width. The other three close at a
+different half-width, which is the whole of what distinguishes
+them. None of the three is symmetric about \code{p}, so \code{p - moe} and
+\code{p + moe} are not the endpoints. Use \code{\link[=confint]{confint()}} for those.}
 \item{\code{cv}}{Relative standard error, \code{se / p}, and therefore also the
 same under all four methods.}
 \item{\code{rmoe}}{Margin of error relative to the proportion, \code{moe / p}.
@@ -118,7 +120,7 @@ effective sample size \code{n_eff = n_net / (deff * fpc(n_net))}, the size at
 which an infinite-population simple random sample would carry the same
 variance.
 
-The FPC uses the Cochran (1977, Ch. 3) form: the finite-population
+The FPC uses the Cochran (1977, Ch. 3) form. The finite-population
 correction for a Bernoulli proportion is \code{(N - n_net) / (N - 1)}, not
 the simpler \code{1 - n_net / N} used for means. All four methods read the
 same variance through \code{n_eff}, so all four respond to \code{deff} and \code{N}
@@ -168,7 +170,7 @@ Supplying \code{cv} in place of \code{p} solves the same equation in the remaini
 direction. \code{\link[=n_prop]{n_prop()}} fixes the proportion and the precision and returns
 the sample size. This function fixes the proportion and the sample size and
 returns the precision. Giving \code{n} and \code{cv} returns the proportion. That
-third reading answers which estimates a fielded design can carry: because
+third reading answers which estimates a fielded design can carry. Because
 \code{se(p) / p} falls as \code{p} rises, the solution is a floor, and every larger
 proportion meets the target. It is the planning form of a publication
 threshold. \code{expected_cases} is reported alongside it, so the precision
@@ -183,9 +185,9 @@ unattainable. A census is an error, having no sampling variance for any
 proportion to be measured against.
 
 Giving \code{n} and \code{rmoe} asks the same question of the interval instead of
-the variance, and the answer is method-specific: the smallest proportion
-the design can report at a relative margin of error of \code{rmoe} under the
-chosen construction. There is no closed form, and two properties the
+the variance, and the answer is method-specific. It is the smallest
+proportion the design can report at a relative margin of error of \code{rmoe}
+under the chosen construction. There is no closed form, and two properties the
 \code{cv} solve does not share bound it. The Wilson and Korn-Graubard
 half-widths do not vanish as \code{p} approaches 1, so their relative margin
 of error has a positive floor and a target below it is refused with the

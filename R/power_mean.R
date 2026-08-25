@@ -82,7 +82,7 @@
 #' ## Normal approximation
 #'
 #' Critical values and power are computed from the standard normal, not
-#' from a t distribution with an estimated denominator: no degrees of
+#' from a t distribution with an estimated denominator. No degrees of
 #' freedom enter, and the variance is treated as known. This is the
 #' convention for survey-scale samples, where the two agree closely, and
 #' it is what makes `deff` and a finite `N` insertable directly into the

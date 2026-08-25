@@ -96,7 +96,8 @@ are the ultimate ones, and supplying it there is an error.}
 \item{resp_rate}{Expected \strong{ultimate-unit} response rate, in (0, 1].
 Default 1. It is the share of selected final-stage units, typically
 persons, that respond. This is the plain \code{resp_rate} the rest of the
-package uses.}
+package uses. See the nonresponse section of \link{svyplan-package} for what
+this adjustment does and does not claim.}
 
 \item{fixed_cost}{Fixed overhead cost (C0). Default 0.
 The total cost model becomes

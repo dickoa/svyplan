@@ -68,7 +68,7 @@ A \code{svyplan_prec} object with \code{type = "mean"}:
 \describe{
 \item{\code{se}}{Standard error of the planned estimate, computed on the
 net sample \code{n * resp_rate}.}
-\item{\code{moe}}{Margin of error, \code{qnorm(1 - alpha / 2) * se}. The
+\item{\code{moe}}{Margin of error, \code{q * se}, with \code{q} defined in Details. The
 interval is symmetric, so the limits are \code{mu - moe} and
 \code{mu + moe}.}
 \item{\code{cv}}{Relative standard error, \code{se / abs(mu)}. \code{NA} when \code{mu} is
@@ -77,7 +77,7 @@ relative to.}
 \item{\code{solved}}{\code{"mu"} when the mean was solved for, and absent
 otherwise. The solved value is in \code{params$mu}.}
 \item{\code{params}}{The validated inputs (\code{var}, \code{n}, \code{alpha}, \code{N},
-\code{deff}, \code{resp_rate}, and \code{mu} when given or solved for). Dispersion
+\code{deff}, \code{resp_rate}, \code{df}, and \code{mu} when given or solved for). Dispersion
 is always stored as \code{var}, including when you supplied \code{sd}.
 \code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the \code{\link[=n_mean]{n_mean()}} round trip read the
 design back from here.}
@@ -96,6 +96,8 @@ Computes the standard error for the given sample size and design
 parameters, then derives the margin of error and coefficient of
 variation. The effective sample size is \code{n * resp_rate / deff}, with
 optional finite population correction.
+The quantile \code{q} is \code{qnorm(1 - alpha / 2)} by default and
+\code{qt(1 - alpha / 2, df)} when \code{df} is supplied.
 
 Supplying \code{cv} in place of \code{mu} solves the same equation in the remaining
 direction, returning the smallest mean the design measures that precisely.

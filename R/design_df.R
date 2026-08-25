@@ -276,7 +276,7 @@ design_df.svyplan_twophase <- function(x, ...) {
 #' The domain-to-stratum mapping an allocation carries, if any
 #'
 #' Stored by [n_alloc()] as row indices into its own detail table, which is
-#' the only exact statement of which strata a domain is made of; the domain
+#' the only exact statement of which strata a domain is made of. The domain
 #' identifier columns do not survive into the detail table on their own.
 #' @keywords internal
 #' @noRd

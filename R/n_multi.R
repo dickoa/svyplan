@@ -39,7 +39,7 @@
 #'   `"natural"` treats them as analytic domains that arise at their own rate
 #'   inside one sample. It requires a `share` column giving each domain's
 #'   expected share of the population, constant within a domain, and reports
-#'   `n` as `max(.n / share)`. That is an *expected yield*: a sample of that
+#'   `n` as `max(.n / share)`. That is an *expected yield*. A sample of that
 #'   size delivers each domain's quota on average, not with certainty in any
 #'   one realized sample.
 #' @param min_n_domain Numeric scalar or `NULL` (default). Minimum total sample
@@ -53,7 +53,8 @@
 #'   interval half-width, so those rows need `moe` rather than `cv`.
 #' @param resp_rate Default expected response rate at the ultimate unit, in
 #'   (0, 1\]. Used for rows whose `resp_rate` column is absent or `NA`, and
-#'   a non-missing row value overrides it.
+#'   a non-missing row value overrides it. See the nonresponse section of
+#'   [svyplan-package] for what this adjustment does and does not claim.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_n` object. The output class is the same with or without
@@ -167,8 +168,8 @@
 #'     [n_prop()]`(min_cases = )`. Proportion rows only, and `NA` (the
 #'     default) sizes the row on precision alone. The row that ends up
 #'     largest is still the binding one, whichever constraint raised it.
-#'     Single-stage `n_multi()` only: a multistage design sizes stages
-#'     against a cost and has no single total for a count to raise.}
+#'     Single-stage `n_multi()` only, because a multistage design sizes
+#'     stages against a cost and has no single total for a count to raise.}
 #'   \item{`unit_relvar`}{Unit relvariance. If omitted, derived
 #'     automatically from `p` (as `(1 - p) / p`) or from
 #'     `var` / `mu^2`.}
@@ -248,7 +249,7 @@
 #'
 #' # Continuous indicators: 'var' for the dispersion, 'mu' for the mean.
 #' # A CV target needs 'mu', because a relative standard error is relative
-#' # to something; a MOE target does not.
+#' # to something. A MOE target does not.
 #' targets_mean <- data.frame(
 #'   name = c("expenditure", "hh_size"),
 #'   var  = c(250000, 4.0),
@@ -484,18 +485,13 @@ n_multi.default <- function(
 #'   ratio). `"joint"` applies only when `domains` and `budget` are
 #'   supplied.
 #' @param domain_sampling How the per-domain requirements combine into the
-#'   one overall size. Under `"separate"` the domains are quotas you field
-#'   in their own right, the way a national survey fields a target per
-#'   region, and the overall size is the sum of those quotas. Under
-#'   `"natural"` they are analytic subgroups that simply turn up inside one
-#'   sample at their own rate, and the overall size is the one whose
-#'   expected yield covers every quota. Only `"separate"` (the default) is
-#'   available here, so `$total_n` is the sum of the per-domain totals.
-#'   `"natural"` is refused for a multistage design, because a domain's
-#'   expected yield then depends on how its members sit inside PSUs and
-#'   SSUs rather than on its share of the population alone, and that model
-#'   is not in the package. [n_multi()] offers both readings for a
-#'   single-stage design.
+#'   one overall size. Only `"separate"` (the default) is available here,
+#'   so the domains are quotas fielded in their own right and `$total_n` is
+#'   the sum of the per-domain totals. `"natural"`, which [n_multi()] offers
+#'   for a single-stage design, is refused, because a domain's expected
+#'   yield then depends on how its members sit inside PSUs and SSUs rather
+#'   than on its share of the population alone, and that model is not in the
+#'   package.
 #' @param min_n_domain Optional positive minimum total sample size per domain. In
 #'   joint budget mode it is a constraint. In independent domain mode,
 #'   domains below the floor produce a warning.
@@ -1201,7 +1197,7 @@ n_multi_cluster.default <- function(
 #' standard error, so the restatement goes through the effective sample size
 #' the row's own method needs to reach that margin and reports the sampling
 #' CV there. Under `"wald"` this reproduces `moe / (z p)`, so no Wald result
-#' moves; under the other three it is what makes `prop_method` reach the
+#' moves. Under the other three it is what makes `prop_method` reach the
 #' multistage path at all.
 #'
 #' Rows that already have cv are left unchanged.
@@ -1358,7 +1354,7 @@ n_multi_cluster.default <- function(
 #' Compute per-indicator n by delegating to the single-indicator engines
 #'
 #' Returns list with `n` (per-indicator sample size) and `cv_target` (the CV
-#' each indicator achieves at its own n; equals the target CV for cv-mode and
+#' each indicator achieves at its own n. It equals the target CV for cv-mode and
 #' the CV implied by the target MOE for moe-mode).
 #' @keywords internal
 #' @noRd

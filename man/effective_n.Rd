@@ -50,7 +50,7 @@ effective_n(x = NULL, ...)
 \code{\link[=prec_cluster]{prec_cluster()}} allocation, a \code{\link[=varcomp]{varcomp()}} estimate, an \code{\link[=n_alloc]{n_alloc()}}
 allocation, or \code{NULL} (default) to build the design effect from the
 component arguments. A \code{\link[=n_prop]{n_prop()}} or \code{\link[=n_mean]{n_mean()}} result is not one of
-these: its design effect is the \code{deff} you supplied rather than
+these, since its design effect is the \code{deff} you supplied rather than
 something to be derived, so pass the two directly as
 \code{effective_n(n = x$n, deff = x$params$deff)}.}
 
@@ -90,7 +90,7 @@ arguments when it can be (the length of \code{weights}, the total of
 explicitly otherwise.
 
 Sizes are counted as units \strong{issued}, so nonresponse has to be taken
-off before the design effect is applied: a design that issues \code{n} and
+off before the design effect is applied. A design that issues \code{n} and
 analyzes \code{n * resp_rate} of them carries the information of
 \code{n * resp_rate / deff} simple random draws. This is the identity the
 allocation and precision functions plan on, and the one reported in the
@@ -100,7 +100,7 @@ column agree. Supply \code{resp_rate} yourself when you pass a bare \code{n} tha
 has not already been netted down.
 
 The design effect it divides by is a without-FPC planning quantity, so
-for an \code{\link[=n_alloc]{n_alloc()}} result the effective size inherits that scale: it
+for an \code{\link[=n_alloc]{n_alloc()}} result the effective size inherits that scale. It
 answers how many simple random draws carry the same information under
 the planning model, not how many the finite-population variance from
 \code{\link[=prec_alloc]{prec_alloc()}} would imply once sampling fractions are material. A

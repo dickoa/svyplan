@@ -73,7 +73,9 @@ guidance on estimating DEFF. Values < 1 are valid for efficient
 designs (e.g., stratified sampling with Neyman allocation).}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
-adjustment). The required sample size is inflated by \code{1 / resp_rate}.}
+adjustment). The required sample size is inflated by \code{1 / resp_rate}.
+See the nonresponse section of \link{svyplan-package} for what this adjustment
+does and does not claim.}
 
 \item{df}{Degrees of freedom of the variance estimator the planned design
 will have, typically sampled PSUs minus strata, and available from
@@ -95,11 +97,11 @@ round trip through \code{\link[=prec_mean]{prec_mean()}} exact. \code{print()} a
 Take the field figure from \code{as.integer()} rather than from \verb{$n}.}
 \item{\code{se}, \code{moe}, \code{cv}, \code{rmoe}}{Precision the design achieves at that
 \code{n}, the same values \code{\link[=prec_mean]{prec_mean()}} reports for the same inputs.
-\code{moe} is \code{qnorm(1 - alpha / 2) * se}, and the interval is symmetric
+\code{moe} is \code{q * se}, with \code{q} defined in Details, and the interval is symmetric
 about the mean. \code{cv} and \code{rmoe} are \code{NA} unless \code{mu} was supplied,
 both needing a mean to be relative to.}
 \item{\code{params}}{The validated inputs (\code{var}, \code{alpha}, \code{N}, \code{deff},
-\code{resp_rate}, \code{mu} when given, and whichever of \code{moe}, \code{cv}, or
+\code{resp_rate}, \code{df}, \code{mu} when given, and whichever of \code{moe}, \code{cv}, or
 \code{rmoe} was the target). Dispersion is always stored as \code{var}, including when
 you supplied \code{sd}. \code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the \code{\link[=prec_mean]{prec_mean()}}
 round trip read the design back from here.}
@@ -112,13 +114,13 @@ with a specified margin of error or coefficient of variation.
 \details{
 Two modes:
 \itemize{
-\item \strong{MOE mode}: \code{n = deff * z^2 * var / (moe^2 + deff * z^2 * var / N)}.
+\item \strong{MOE mode}: \code{n = deff * q^2 * var / (moe^2 + deff * q^2 * var / N)}.
 An \code{rmoe} target enters here as \code{moe = rmoe * abs(mu)}.
 \item \strong{CV mode}: Computes \code{CVpop = sqrt(var) / abs(mu)}, then
 \code{n = deff * CVpop^2 / (cv^2 + deff * CVpop^2 / N)}.
 }
 
-\code{deff} appears in the denominator as well as the numerator: it inflates
+\code{deff} appears in the denominator as well as the numerator, so it inflates
 the variance the finite population correction is then applied to, rather
 than scaling a size already corrected. The two coincide only at infinite
 \code{N}. For \code{var = 100}, \code{moe = 2}, \code{N = 100} and \code{deff = 2}, inflating
@@ -131,8 +133,9 @@ when n/N > 5 percent). Unlike \code{\link[=n_prop]{n_prop()}}, no \code{N/(N-1)}
 needed because \code{var} is already defined on \code{N-1} degrees of freedom.
 See \code{\link[=n_prop]{n_prop()}} for a fuller explanation of FPC.
 
-All methods use the normal (z) quantile. This is standard for survey
-sampling where the sample size is large enough for the CLT to apply.
+Here \code{q} is \code{qnorm(1 - alpha / 2)} by default and
+\code{qt(1 - alpha / 2, df)} when \code{df} is supplied. Thus \code{df} changes the
+interval margin of error but not the sampling standard error or CV.
 }
 
 \subsection{Sample size for a total}{

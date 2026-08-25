@@ -190,7 +190,7 @@ the stage-1 inclusion probabilities are proportional to the one-draw
 probabilities, so shares derived from inverse stage-1 weights,
 \code{pi1 / sum(pi1)}, are identical and can be used when the frame is
 not at hand. Certainty (take-all) PSUs have no place in the PPS
-path: they contribute no between-PSU variance and should be treated
+path, contributing no between-PSU variance and needing to be treated
 as separate strata, with \code{prob} renormalized over the remaining
 PSUs.
 
@@ -219,7 +219,7 @@ n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5)
 }\if{html}{\out{</div>}}
 
 A scalar design effect fixes one product and nothing more, so \code{varb},
-\code{varw} and \code{unit_relvar} come back \code{NA_real_}: they are not identified.
+\code{varw} and \code{unit_relvar} come back \code{NA_real_}, not being identified.
 Functions that need the unit relvariance, such as \code{\link[=n_cluster]{n_cluster()}} with a
 \code{cv} target, say so and ask for it directly.
 
@@ -234,7 +234,7 @@ sampled units per PSU,
 \deqn{b^* = \sum_i b_i^2 / \sum_i b_i = \bar b (1 + cv_b^2),}{b^* = sum_i b_i^2 / sum_i b_i = bbar (1 + cv_b^2),}
 with \eqn{cv_b} the population coefficient of variation of the realized
 takes. A \emph{planned} take is a constant, so \eqn{cv_b = 0} and
-\eqn{b^* = b}: the forward direction in \code{\link[=design_effect]{design_effect()}} never meets
+\eqn{b^* = b}, so the forward direction in \code{\link[=design_effect]{design_effect()}} never meets
 the distinction. A \emph{published} design effect was achieved with takes
 that varied, and since \eqn{\delta} moves inversely with \eqn{b - 1},
 using the nominal take understates it by roughly the same relative
@@ -250,7 +250,7 @@ varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)   # summary form
 
 The take is stored in \verb{$params} as provenance, since the same \code{icc}
 means different things at a take of 12 and of 30, and
-\code{\link[=design_effect]{design_effect()}} does not read it back: the reason to back an \code{icc}
+\code{\link[=design_effect]{design_effect()}} does not read it back. The reason to back an \code{icc}
 out at all is to re-plan at a different take, and defaulting to the old
 one would return the old design's number.
 }
@@ -320,7 +320,7 @@ back-out from a published design effect (leave \code{x} unset).
 \item \code{varcomp(survey.design)}: Method for survey design objects. Pass a one-sided
 formula (e.g., \code{~y}) to specify the outcome variable. Cluster
 structure, first-stage strata, and within-cluster weights are
-extracted from the design; \code{strata} and \code{weights} override what is
+extracted from the design. \code{strata} and \code{weights} override what is
 extracted.
 
 }}

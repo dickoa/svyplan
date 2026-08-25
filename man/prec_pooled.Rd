@@ -104,7 +104,7 @@ A \code{svyplan_prec} object with \code{type = "pooled"}:
 \describe{
 \item{\code{se}}{Standard error of the pooled estimate, computed on the net
 sizes \code{n * resp_rate}.}
-\item{\code{moe}}{Margin of error, \code{qnorm(1 - alpha / 2) * se}.}
+\item{\code{moe}}{Margin of error, \code{q * se}, with \code{q} defined in Details.}
 \item{\code{cv}}{Standard error relative to the level, \code{se / abs(mu)}. \code{NA}
 when \code{mu} is neither supplied nor determined by \code{p}.}
 \item{\code{params}}{The validated inputs. Dispersion is always stored as
@@ -124,9 +124,12 @@ average from quarterly rounds is the ordinary case. This is the inverse
 of \code{\link[=n_pooled]{n_pooled()}}.
 }
 \details{
+Here \code{q} is \code{qnorm(1 - alpha / 2)} by default and
+\code{qt(1 - alpha / 2, df)} when \code{df} is supplied.
+
 The estimand is the equal-weight mean of the occasion estimates,
 \eqn{\bar y = T^{-1}\sum_t \bar y_t}{ybar = (1/T) sum_t ybar_t}. Three
-things share that name and this is none of the other two: it is not a
+things share that name and this is none of the other two. It is not a
 pooled variance, and it is not the pooling of the rotating cohorts that
 make up one occasion, which \code{\link[=n_panel]{n_panel()}} describes.
 
@@ -175,7 +178,7 @@ against 0.050 for independent ones, while the change variance rises from
 
 The level at a single occasion is unaffected either way, being a function
 of that occasion's size alone, so it is a reference line rather than a
-third position: what trades off is the change against the pooled
+third position. What trades off is the change against the pooled
 estimate. \code{?prec_change} and this page size the two arms.
 }
 

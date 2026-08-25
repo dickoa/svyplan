@@ -12,13 +12,13 @@
 #'   [prec_prop()]. It supplies two things: the responding sample the panel
 #'   must deliver, and the estimand whose precision is reported at every
 #'   wave. Its own `resp_rate` is removed first, so the requirement is a
-#'   count of respondents and no response is counted twice: the panel's
+#'   count of respondents and no response is counted twice. The panel's
 #'   `resp_rate` is the only recruitment response that reaches the answer.
 #'   Where the two differ the target's is reported as unused, at the call
-#'   and again in `summary()`. Clustered,
-#'   allocation, multi-indicator, multi-domain, change and two-phase results
-#'   are refused, their stage-specific and occasion-specific sizes not being
-#'   one responding count.
+#'   and again in `summary()`. Clustered, allocation, multi-indicator,
+#'   multi-domain, change and two-phase results are refused, their
+#'   stage-specific and occasion-specific sizes not being one responding
+#'   count.
 #' @param retention Conditional retention, one value per wave transition,
 #'   each in (0, 1\]. `retention[j]` is the share of wave `j` respondents who
 #'   respond again at wave `j + 1`. Its length plus one is the number of
@@ -27,7 +27,8 @@
 #' @param resp_rate Response rate at recruitment, wave 1, in (0, 1\], `1` by
 #'   default. It is separate from `retention` because the first wave is where
 #'   most of a panel's loss happens, and an average rate spread over the waves
-#'   would under-issue.
+#'   would under-issue. See the nonresponse section of [svyplan-package] for
+#'   what this adjustment does and does not claim.
 #' @param design `"fixed"` for one cohort followed across its waves, or
 #'   `"rotating"` for equal cohorts entering every occasion and leaving at
 #'   the end of their life. The two return different quantities, described
@@ -203,7 +204,7 @@
 #' directions. A unit lost at wave \eqn{j} is treated as lost for good, so a
 #' panel whose nonrespondents return at a later wave will do better than
 #' planned here and this over-issues. And the rates are one set for the
-#' whole sample: where response differs by domain, recruitment should be
+#' whole sample. Where response differs by domain, recruitment should be
 #' solved separately within groups of similar attrition, which
 #' over-represents the hard-to-retain groups at wave 1. Call `n_panel()`
 #' once per group and hand the results on as a named vector.
@@ -541,7 +542,7 @@ n_panel <- function(
 
 #' Units the whole-unit design puts in sample, and whether the frame holds them
 #'
-#' A fixed panel issues its one cohort; a rotating one holds every live cohort
+#' A fixed panel issues its one cohort. A rotating one holds every live cohort
 #' at once, so rounding up costs a unit per cohort there.
 #' @keywords internal
 #' @noRd

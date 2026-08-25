@@ -4,9 +4,17 @@ template:
   math-rendering: katex
 
 articles:
-  - title: "Getting Started"
+  - title: "Getting started"
     contents:
       - svyplan
+  - title: "Design and allocation"
+    contents:
+      - articles/allocation
+      - articles/multistage
+  - title: "Repeated surveys and inference"
+    contents:
+      - articles/repeated-surveys
+      - articles/power
 
 reference:
 - title: Overview

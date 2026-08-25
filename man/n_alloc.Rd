@@ -196,7 +196,9 @@ overrides a \code{deff} column in \code{frame}.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1. A scalar
 applies to every stratum. A length-\code{nrow(frame)} vector gives one per
-stratum and overrides a \code{resp_rate} column in \code{frame}.}
+stratum and overrides a \code{resp_rate} column in \code{frame}. See the
+nonresponse section of \link{svyplan-package} for what this adjustment does
+and does not claim.}
 
 \item{df}{Degrees of freedom of the variance estimator the allocation
 will have, typically sampled PSUs minus strata, and available from
@@ -311,15 +313,17 @@ of \code{frame} represents one unique stratum.
 Supplying both \code{measures} and \code{targets} requests a minimum-cost allocation
 that meets all indicator-domain precision requirements simultaneously.
 This mode is mutually exclusive with scalar \code{n}, \code{cv}, \code{budget}, \code{domains},
-and an explicit \code{alloc} rule: the target table defines the constraints and
-the allocation is solved jointly.
+and an explicit \code{alloc} rule, because the target table defines the
+constraints and the allocation is solved jointly.
 
 CV targets apply to domain means or totals (the CV is the same on either
 scale). MOE targets are absolute margins of error for domain means. An
 \code{rmoe} target is a margin of error for the domain mean stated as a
-fraction of it, which is \code{qnorm(1 - alpha / 2)} times the CV of the same
+fraction of it, which is \code{q} times the CV of the same
 estimate. The solver takes it through the CV branch and reports
 \code{.achieved} and \code{.sensitivity} back in \code{rmoe} units. The
+quantile \code{q} is \code{qnorm(1 - alpha / 2)} by default and
+\code{qt(1 - alpha / 2, df)} when \code{df} is supplied. The
 variance model uses Wald/linearized variances, the package's gross-sample
 response-rate convention, design effects, and finite population correction.
 Domain classifications may overlap. For example, separate \code{region} and
@@ -339,7 +343,7 @@ What the optimum then means is worth stating plainly. The convex problem
 is solved to optimality for the planning coefficients supplied, and the
 feasibility and KKT diagnostics report on that problem. It is a planning
 model rather than an exact design-based variance for every multistage
-design: the later-stage takes are fixed inputs rather than decision
+design. The later-stage takes are fixed inputs rather than decision
 variables, and the stage variances enter through the design-effect and
 FPC adapter described above. A design that is optimal here is optimal
 within that family, not across all multistage designs.
@@ -485,7 +489,7 @@ and trimmed to be both target-feasible and affordable, then improved by
 spending residual budget and by pairwise exchanges. It satisfies
 \verb{$operational$cost <= budget} and \verb{all($operational$constraints$.pass)}, and
 it is a feasible, locally improved recommendation rather than a globally
-optimal integer allocation. The greedy construction is incomplete: it can
+optimal integer allocation. The greedy construction is incomplete and can
 report failure on a problem that does have a feasible integer point.
 
 \code{\link[=predict]{predict()}} on a fixed-budget result varies \code{budget} in \code{newdata} and
@@ -561,7 +565,7 @@ e.g. from \code{\link[=varcomp]{varcomp()}} with \code{strata}.
 operational whole-unit design as much as in the continuous one. Any
 \code{NA} entries are replaced by the cost-optimal take
 \code{sqrt(cost_psu / cost_ssu * (1 - icc_psu) / icc_psu)}. Holding the
-take is what \code{n} mode gives up its exact total for: the stratum is
+take is what \code{n} mode gives up its exact total for. The stratum is
 fielded as a whole number of clusters of that size, so its element
 count lands on the nearest multiple.
 \item \code{cost_psu}, \code{cost_ssu} (together): per-PSU and per-element costs.
@@ -680,7 +684,7 @@ The threshold and allocation determine each other, so the solver iterates.
 \verb{$optimization$certainty} records whether it converged, cycled, or reached
 its iteration limit. \verb{$detail} gives the split and threshold by stratum,
 while \verb{$psu} gives each PSU's classification, its source, and \code{n_take},
-the take the operational design fields in it: a certainty PSU carries its
+the take the operational design fields in it. A certainty PSU carries its
 own whole take at the stratum rate, capped at its size, and a remainder
 PSU carries \code{n_per_psu}. The takes are the operational design's own
 numbers, so \code{sum(n_take[certainty]) = n_certain_int} in every stratum.
@@ -729,7 +733,7 @@ rules above it. The three variance-based rules carry
 \eqn{\sqrt{d_h/r_h}}{sqrt(d_h/r_h)} because they minimize
 \eqn{\sum W_h^2S_h^2d_h/(r_hn_h)} against a constraint on the units
 \emph{drawn}, which is what a budget pays for. Proportional carries
-\eqn{1/r_h} instead, and no \eqn{d_h} at all: it is a count rule, not a
+\eqn{1/r_h} instead, and no \eqn{d_h} at all, because it is a count rule, not a
 variance optimum, and its purpose is a self-weighting sample, so it is
 the responding sample it holds proportional to \eqn{N_h}.
 

@@ -9,6 +9,16 @@
 #' When the plan is settled, \pkg{sondage} draws it. Analysis of the realized
 #' sample belongs to \pkg{survey} or \pkg{srvyr}.
 #'
+#' @section Nonresponse adjustment:
+#' Dividing by `resp_rate` is an expected-information calculation. It sets the
+#' expected respondent count and evaluates variance at that net size. It
+#' assumes response is ignorable under the adjustment planned for analysis.
+#' No sample-size inflation removes nonresponse bias, and this calculation
+#' does not include variance from response weights. Informative nonresponse
+#' calls for modeling, weighting, follow-up design, or sensitivity analysis
+#' over `resp_rate`. [n_twophase()] provides the package's explicit
+#' nonresponse follow-up design, and [predict()] supports sensitivity grids.
+#'
 #' @section Notation:
 #' Argument names spell out what a quantity is rather than reproducing the
 #' symbol used in any one textbook. Readers coming from the standard

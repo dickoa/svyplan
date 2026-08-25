@@ -40,7 +40,7 @@ shares to units. Its cohort count must match the schedule's life.}
 
 \item{...}{Additional graphical parameters. \code{main} and \code{col} are honored
 by both types, \code{col} being the cell fill for the chart and the bar fill
-for the profile; the profile passes the rest to \code{\link[=barplot]{barplot()}}.}
+for the profile. The profile passes the rest to \code{\link[=barplot]{barplot()}}.}
 }
 \value{
 \code{x}, invisibly.

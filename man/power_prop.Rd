@@ -71,9 +71,10 @@ Defined as the fraction of group 1 that also appears in group 2
 \item{overlap_cor}{Correlation between occasions in [0, 1].}
 
 \item{method}{Variance method: \code{"wald"} (default), \code{"arcsine"}, or
-\code{"logodds"}. Arcsine and log-odds transforms are variance-stabilizing
-and perform better for rare or extreme proportions (Valliant,
-2018, sections 4.3.4--4.3.5).}
+\code{"logodds"}. The arcsine square-root transform is variance-stabilizing.
+The log-odds transform is not, because its variance still depends on the
+proportion. Both provide alternatives to the Wald calculation near a
+boundary (Valliant, 2018, sections 4.3.4--4.3.5).}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -109,8 +110,9 @@ proportions. Uses Valliant Eq (4.23)/(4.24).}
 }
 
 For proportions in the 0.2--0.8 range, all three methods give similar
-results. For rare or extreme proportions, \code{"arcsine"} or \code{"logodds"}
-are more reliable.
+results. Near a boundary, the arcsine and log-odds calculations avoid
+relying on the untransformed Wald scale. Their operating characteristics
+still depend on the design and the planning values supplied.
 }
 
 \subsection{Null variance convention}{
@@ -128,7 +130,7 @@ power.prop.test(p1 = 0.3, p2 = 0.4, power = 0.8)$n   # 355.9
 }\if{html}{\out{</div>}}
 
 The unpooled form is used here because it is the variance the package
-reports everywhere else: it is the same expression that \code{deff}, the
+reports everywhere else. It is the same expression that \code{deff}, the
 finite population correction, and \code{resp_rate} act on in \code{\link[=n_prop]{n_prop()}} and
 \code{\link[=prec_prop]{prec_prop()}}, so a power calculation and a precision calculation for the
 same design stay on one scale. The pooled form has no finite-population

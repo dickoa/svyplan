@@ -422,3 +422,93 @@ test_that("df can be varied on a beta grid", {
   # fewer degrees of freedom widen the interval, so the size rises
   expect_true(all(diff(g$n) < 0))
 })
+
+test_that("documented sizing parameters are accepted in compatible grids", {
+  cases <- list(
+    proportion = list(
+      object = n_prop(p = 0.3, moe = 0.05),
+      grids = list(
+        p = data.frame(p = 0.35), moe = data.frame(moe = 0.04),
+        rmoe = data.frame(rmoe = 0.15), cv = data.frame(cv = 0.1),
+        alpha = data.frame(alpha = 0.1), N = data.frame(N = 5000),
+        deff = data.frame(deff = 1.2), resp_rate = data.frame(resp_rate = 0.9),
+        df = data.frame(df = 30), min_cases = data.frame(min_cases = 20)
+      )
+    ),
+    mean = list(
+      object = n_mean(var = 100, mu = 50, moe = 2),
+      grids = list(
+        var = data.frame(var = 120), mu = data.frame(mu = 45),
+        moe = data.frame(moe = 1.8), rmoe = data.frame(rmoe = 0.04),
+        cv = data.frame(cv = 0.04), alpha = data.frame(alpha = 0.1),
+        N = data.frame(N = 5000), deff = data.frame(deff = 1.2),
+        resp_rate = data.frame(resp_rate = 0.9), df = data.frame(df = 30)
+      )
+    ),
+    ratio = list(
+      object = n_ratio(r = 2, cv_num = 0.5, cv_den = 0.3,
+                       component_cor = 0.4, cv = 0.1),
+      grids = list(
+        r = data.frame(r = 2.2), cv_num = data.frame(cv_num = 0.55),
+        cv_den = data.frame(cv_den = 0.32),
+        component_cor = data.frame(component_cor = 0.3),
+        moe = data.frame(moe = 0.2), rmoe = data.frame(rmoe = 0.1),
+        cv = data.frame(cv = 0.08), alpha = data.frame(alpha = 0.1),
+        N = data.frame(N = 5000), deff = data.frame(deff = 1.2),
+        resp_rate = data.frame(resp_rate = 0.9), df = data.frame(df = 30)
+      )
+    )
+  )
+
+  for (case in cases) {
+    for (grid in case$grids) expect_s3_class(predict(case$object, grid), "data.frame")
+    expect_error(predict(case$object, data.frame(undocumented = 1)), "unknown parameter")
+  }
+})
+
+test_that("documented precision parameters are accepted in compatible grids", {
+  cases <- list(
+    proportion = list(
+      object = prec_prop(p = 0.3, n = 400),
+      grids = list(
+        p = data.frame(p = 0.35), n = data.frame(n = 500),
+        alpha = data.frame(alpha = 0.1), N = data.frame(N = 5000),
+        deff = data.frame(deff = 1.2), resp_rate = data.frame(resp_rate = 0.9),
+        df = data.frame(df = 30)
+      )
+    ),
+    mean = list(
+      object = prec_mean(var = 100, n = 400, mu = 50),
+      grids = list(
+        var = data.frame(var = 120), n = data.frame(n = 500),
+        mu = data.frame(mu = 45), alpha = data.frame(alpha = 0.1),
+        N = data.frame(N = 5000), deff = data.frame(deff = 1.2),
+        resp_rate = data.frame(resp_rate = 0.9), df = data.frame(df = 30)
+      )
+    ),
+    ratio = list(
+      object = prec_ratio(r = 2, n = 400, cv_num = 0.5, cv_den = 0.3,
+                          component_cor = 0.4),
+      grids = list(
+        r = data.frame(r = 2.2), n = data.frame(n = 500),
+        cv_num = data.frame(cv_num = 0.55), cv_den = data.frame(cv_den = 0.32),
+        component_cor = data.frame(component_cor = 0.3),
+        alpha = data.frame(alpha = 0.1), N = data.frame(N = 5000),
+        deff = data.frame(deff = 1.2), resp_rate = data.frame(resp_rate = 0.9),
+        df = data.frame(df = 30)
+      )
+    )
+  )
+
+  for (case in cases) {
+    for (grid in case$grids) expect_s3_class(predict(case$object, grid), "data.frame")
+    expect_error(predict(case$object, data.frame(undocumented = 1)), "unknown parameter")
+  }
+
+  solved_p <- prec_prop(p = NULL, n = 400, cv = 0.1)
+  expect_s3_class(predict(solved_p, data.frame(cv = 0.08)), "data.frame")
+  solved_rmoe <- prec_prop(p = NULL, n = 400, rmoe = 0.3, method = "wilson")
+  expect_s3_class(predict(solved_rmoe, data.frame(rmoe = 0.25)), "data.frame")
+  solved_mu <- prec_mean(var = 100, n = 400, cv = 0.05)
+  expect_s3_class(predict(solved_mu, data.frame(cv = 0.04)), "data.frame")
+})

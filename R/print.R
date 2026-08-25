@@ -128,7 +128,7 @@ NULL
 
 #' Format a design parameter that may vary by stratum
 #'
-#' A single value prints as itself; values that differ print as their range,
+#' A single value prints as itself. Values that differ print as their range,
 #' so the header stays one line however many strata there are.
 #' @keywords internal
 #' @noRd
@@ -1203,9 +1203,9 @@ format.svyplan_power <- function(x, ...) {
 #' Compute a confidence interval for the parameter a sizing or precision
 #' result was built around, at the planned sample size.
 #'
-#' @param object A [n_prop()], [n_mean()], [n_ratio()], [prec_prop()],
-#'   [prec_mean()], or [prec_ratio()] result. [n_change()] and [n_pooled()]
-#'   results are also supported.
+#' @param object A sizing or precision result from [n_prop()]/[prec_prop()],
+#'   [n_mean()]/[prec_mean()], [n_ratio()]/[prec_ratio()],
+#'   [n_change()]/[prec_change()], or [n_pooled()]/[prec_pooled()].
 #' @param parm Ignored (included for S3 consistency with [confint()]).
 #' @param level Confidence level (default 0.95). This is independent of the
 #'   `alpha` used to size the design, so a plan built at `alpha = 0.05` can
@@ -1217,10 +1217,11 @@ format.svyplan_power <- function(x, ...) {
 #'
 #' @details
 #' For proportions, the interval type matches the `method` the result was
-#' computed with (`"wald"`, `"wilson"`, `"logodds"`, or `"beta"`), including
-#' its `df` when the beta method carries one. Only the Wald interval is
+#' computed with (`"wald"`, `"wilson"`, `"logodds"`, or `"beta"`). All four
+#' methods read a stored `df`. Beta applies it through effective-size scaling,
+#' while the other three substitute the corresponding t quantile. Only the Wald interval is
 #' symmetric about `p`, so for the other three the limits are not
-#' `p` plus or minus the reported `moe`; `$moe` remains half the interval
+#' `p` plus or minus the reported `moe`. `$moe` remains half the interval
 #' width, and `confint()` is the way to read where the interval actually
 #' sits. All four apply `deff`, `resp_rate`, and the finite population
 #' correction through the same effective size the sizing functions use.
@@ -1260,6 +1261,13 @@ format.svyplan_power <- function(x, ...) {
 #'
 #' # The Korn-Graubard interval is asymmetric for a rare outcome
 #' confint(prec_prop(p = 0.02, n = 150, method = "beta"))
+#'
+#' # confint on a ratio, which always carries its center r
+#' confint(n_ratio(r = 2, cv_num = 0.5, cv_den = 0.3,
+#'                 component_cor = 0.4, cv = 0.05))
+#'
+#' # confint on a repeated-survey result, the pooled level here
+#' confint(prec_pooled(var = 100, n = 300, occasions = 2, mu = 50))
 #'
 #' @name confint.svyplan
 NULL
@@ -1667,13 +1675,13 @@ as.data.frame.svyplan_power <- function(
 #'   `format()` returns a character scalar, and `as.double()` returns the
 #'   overall design effect.
 #'   `as.data.frame()` returns a one-row table with the overall value and one
-#'   column per component; `as.list()` returns the same fields as a named
+#'   column per component. `as.list()` returns the same fields as a named
 #'   list, and `$` and `[[` return one of them. Arithmetic and mathematical
 #'   transformations return ordinary numeric results.
 #'
 #' @details
 #' A `svyplan_deff` behaves as the numeric overall design effect wherever one
-#' is expected: it can be passed to any `deff` argument, compared, and
+#' is expected. It can be passed to any `deff` argument, compared, and
 #' arithmetically combined, with the components dropped by any such
 #' operation.
 #'
@@ -2349,7 +2357,7 @@ print.svyplan_strata <- function(x, ...) {
 #' `summary()` separates a classic [n_alloc()] or [prec_alloc()] result into
 #' the overall answer, the per-stratum allocation, achieved precision,
 #' allocation bounds, domains, and assumptions. The design summary evaluates
-#' the whole-unit field allocation; the precision summary evaluates the
+#' the whole-unit field allocation. The precision summary evaluates the
 #' supplied allocation exactly. Generalized Bethel allocations return a
 #' separate diagnostic summary containing their constraint, objective,
 #' optimization, and bound tables.
@@ -2365,7 +2373,7 @@ print.svyplan_strata <- function(x, ...) {
 #'   `mode`, `overall`, `continuous`, `allocation`, `precision`, `bounds`,
 #'   `domains`, and `assumptions`. For a generalized allocation it returns the
 #'   `summary.svyplan_bethel` fields described in Details. Numeric quantities
-#'   remain unformatted; formatting is applied only by the summary print
+#'   remain unformatted. Formatting is applied only by the summary print
 #'   methods. `print()` returns the summary invisibly.
 #'
 #' @details
@@ -2373,7 +2381,7 @@ print.svyplan_strata <- function(x, ...) {
 #' describe `$detail$n_int` and the operational cluster takes when present.
 #' The mathematical optimum remains in `continuous`. For `prec_alloc()`, the
 #' same fields describe `$detail$n`, the allocation actually supplied to the
-#' precision calculation; `continuous` and `bounds` are `NULL`.
+#' precision calculation. `continuous` and `bounds` are `NULL`.
 #'
 #' Stratum standard errors, margins of error, and CVs do not add to their
 #' overall counterparts. `variance_share` is the stratum's contribution to
@@ -4289,7 +4297,7 @@ print.svyplan_twophase <- function(x, ...) {
 #' @param x A `summary.svyplan_twophase` object.
 #' @param ... Additional arguments are not supported and produce an error.
 #' @return `summary()` returns an object of class
-#'   `summary.svyplan_twophase`; its `print()` method returns it invisibly.
+#'   `summary.svyplan_twophase`. Its `print()` method returns it invisibly.
 #' @seealso [n_twophase()] for the planner, and [print.svyplan] for the
 #'   printed block this expands on.
 #'
@@ -4430,14 +4438,14 @@ print.summary.svyplan_twophase <- function(x, ...) {
 #'   the per-stratum decomposition when available, the per-domain counts,
 #'   and the counting basis. `format()` returns a character scalar, and
 #'   `as.double()` returns the degrees of freedom.
-#'   `as.data.frame()` returns a one-row table of the scalar fields;
+#'   `as.data.frame()` returns a one-row table of the scalar fields.
 #'   `as.list()` returns every field, including the per-stratum and
 #'   per-domain tables, and `$` and `[[` return one of them. Arithmetic and
 #'   mathematical transformations return ordinary numeric results.
 #'
 #' @details
 #' A `svyplan_df` behaves as the numeric degrees of freedom wherever one is
-#' expected: it can be passed to any `df` argument, compared, and
+#' expected. It can be passed to any `df` argument, compared, and
 #' arithmetically combined, with the detail dropped by any such operation.
 #'
 #' The fields are `df` for the count itself, `n_units` for the units it
@@ -4447,7 +4455,7 @@ print.summary.svyplan_twophase <- function(x, ...) {
 #' plan. Naming a field the object does not have is an error listing the
 #' ones it does.
 #'
-#' The summary's stratum table is an additive decomposition: a contributing
+#' The summary's stratum table is an additive decomposition. A contributing
 #' stratum uses one constraint and contributes its sampled units minus one.
 #' A census stratum has no units counted and no constraint, while a singleton
 #' uses its one constraint and contributes zero. The domain table is printed
@@ -4740,9 +4748,15 @@ Math.svyplan_df <- function(x, ...) {
 #' @param row.names,optional,stringsAsFactors,validRN Standard
 #'   `as.data.frame()` arguments.
 #' @param ... Additional arguments are not supported and produce an error.
-#' @return `print()` returns `x` invisibly; `format()` a string;
-#'   `as.double()` the overlap vector; `as.data.frame()` one row per lag;
-#'   `Ops()` and `Math()` bare numerics. Replacement is an error.
+#' @return The method-specific result:
+#' \describe{
+#'   \item{`print()`}{Returns `x` invisibly.}
+#'   \item{`format()`}{Returns a string.}
+#'   \item{`as.double()`}{Returns the overlap vector.}
+#'   \item{`as.data.frame()`}{Returns one row per lag.}
+#'   \item{`Ops()` and `Math()`}{Return bare numerics.}
+#' }
+#' Replacement is an error.
 #'
 #' @details
 #' The values, the shared counts and the schedule describe one design, so
@@ -4808,8 +4822,8 @@ print.svyplan_overlap <- function(x, ...) {
 
 #' Render a schedule as the spells a planner declared
 #'
-#' Run-length form, since that is how a rotation is named and argued about;
-#' the per-occasion vector it expands to is what the arithmetic reads.
+#' Run-length form, since that is how a rotation is named and argued about.
+#' The per-occasion vector it expands to is what the arithmetic reads.
 #' @keywords internal
 #' @noRd
 .fmt_schedule <- function(w) {
@@ -4954,7 +4968,7 @@ as.data.frame.svyplan_overlap <- function(
 #' response and retention it assumes, where the life's loss falls, and the
 #' launch a design reaching its steady state passes through.
 #' The coercions return the recruitment count, which is a number of units to
-#' release and not the analysis sample: those differ by the whole of the
+#' release and not the analysis sample. Those differ by the whole of the
 #' panel's attrition, and it is why `svyplan_panel` is a sibling of
 #' `svyplan_n` rather than a subtype.
 #'
@@ -4964,11 +4978,17 @@ as.data.frame.svyplan_overlap <- function(
 #' @param row.names,optional,stringsAsFactors,validRN Standard
 #'   `as.data.frame()` arguments.
 #' @param ... Additional arguments are not supported and produce an error.
-#' @return `print()` returns its argument invisibly; `summary()` an object of
-#'   class `summary.svyplan_panel` carrying the plan, the full wave table,
-#'   the launch path and the cohort composition; `format()` a string;
-#'   `as.double()` the recruitment count and `as.integer()` the whole units
-#'   that count rounds up to; `as.data.frame()` the wave table.
+#' @return The method-specific result:
+#' \describe{
+#'   \item{`print()`}{Returns its argument invisibly.}
+#'   \item{`summary()`}{Returns a `summary.svyplan_panel` object carrying the
+#'     plan, full wave table, launch path, and cohort composition.}
+#'   \item{`format()`}{Returns a string.}
+#'   \item{`as.double()`}{Returns the recruitment count.}
+#'   \item{`as.integer()`}{Returns the whole units to which the recruitment
+#'     count rounds up.}
+#'   \item{`as.data.frame()`}{Returns the wave table.}
+#' }
 #'
 #' @examples
 #' plan <- n_panel(
@@ -5157,7 +5177,7 @@ print.summary.svyplan_panel <- function(x, ...) {
 #' Name the standing sample a rotating design carries
 #'
 #' The entrants are the release and the live cohorts are what stands behind
-#' them; only a rotating design has the second quantity.
+#' them. Only a rotating design has the second quantity.
 #' @keywords internal
 #' @noRd
 .fmt_panel_in_sample <- function(x) {

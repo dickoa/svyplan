@@ -34,7 +34,7 @@ stored ones, so a stored plan can be re-read under worse retention.}
 
 \item{target}{A \code{svyplan_n} or \code{svyplan_prec} result for a mean or a
 proportion. Required in the default method, and the same object
-\code{\link[=n_panel]{n_panel()}} takes: it supplies the estimand each wave's precision is
+\code{\link[=n_panel]{n_panel()}} takes. It supplies the estimand each wave's precision is
 computed for, and the responding sample the design is compared against.}
 
 \item{retention}{Conditional retention, one value per wave transition,
@@ -54,7 +54,7 @@ recruitment the target would need at that level, which is what the
 supplied \code{n_recruit} can then be read against.}
 
 \item{start}{\code{"gradual"}, \code{"immediate"} or \code{NULL}. See \code{\link[=n_panel]{n_panel()}}. On a
-stored plan this may be overridden, unlike \code{design}: it selects which
+stored plan this may be overridden, unlike \code{design}. It selects which
 launch is described and moves no stored quantity, the recruitment being
 fixed before any of it is computed.}
 }
@@ -68,8 +68,8 @@ recruitment below the requirement reports a \code{moe} above the target's.
 \description{
 Take a recruitment size a panel already has, or has been budgeted, and
 report the responding sample and the precision it leaves at each wave of
-a unit's life. This is the inverse of \code{\link[=n_panel]{n_panel()}}: the same rates and the
-same embedded estimand, read from a size instead of solved for one.
+a unit's life. This is the inverse of \code{\link[=n_panel]{n_panel()}}, running the same rates
+and the same embedded estimand from a size instead of solving for one.
 }
 \details{
 The precision at a wave is the embedded estimand evaluated at that wave's

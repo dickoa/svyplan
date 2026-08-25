@@ -3,8 +3,8 @@
 #' Translate the launch and recruitment quantities in a rotating
 #' [svyplan_panel][n_panel()] into named cohort components, a dense
 #' panel-by-occasion schedule, and any interview commitments beyond the
-#' planning horizon. The result is a planning object: it does not inspect a
-#' frame, execute a sample, or construct analysis weights.
+#' planning horizon. The result is a planning object. It does not inspect
+#' a frame, execute a sample, or construct analysis weights.
 #'
 #' @param panel_plan A rotating `svyplan_panel` from [n_panel()] or
 #'   [prec_panel()] with `start = "immediate"` or `start = "gradual"`.

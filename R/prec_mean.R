@@ -33,7 +33,7 @@
 #' \describe{
 #'   \item{`se`}{Standard error of the planned estimate, computed on the
 #'     net sample `n * resp_rate`.}
-#'   \item{`moe`}{Margin of error, `qnorm(1 - alpha / 2) * se`. The
+#'   \item{`moe`}{Margin of error, `q * se`, with `q` defined in Details. The
 #'     interval is symmetric, so the limits are `mu - moe` and
 #'     `mu + moe`.}
 #'   \item{`cv`}{Relative standard error, `se / abs(mu)`. `NA` when `mu` is
@@ -42,7 +42,7 @@
 #'   \item{`solved`}{`"mu"` when the mean was solved for, and absent
 #'     otherwise. The solved value is in `params$mu`.}
 #'   \item{`params`}{The validated inputs (`var`, `n`, `alpha`, `N`,
-#'     `deff`, `resp_rate`, and `mu` when given or solved for). Dispersion
+#'     `deff`, `resp_rate`, `df`, and `mu` when given or solved for). Dispersion
 #'     is always stored as `var`, including when you supplied `sd`.
 #'     [predict()], [confint()] and the [n_mean()] round trip read the
 #'     design back from here.}
@@ -57,6 +57,8 @@
 #' parameters, then derives the margin of error and coefficient of
 #' variation. The effective sample size is `n * resp_rate / deff`, with
 #' optional finite population correction.
+#' The quantile `q` is `qnorm(1 - alpha / 2)` by default and
+#' `qt(1 - alpha / 2, df)` when `df` is supplied.
 #'
 #' Supplying `cv` in place of `mu` solves the same equation in the remaining
 #' direction, returning the smallest mean the design measures that precisely.

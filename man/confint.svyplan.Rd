@@ -11,9 +11,9 @@
 \method{confint}{svyplan_prec}(object, parm, level = 0.95, ...)
 }
 \arguments{
-\item{object}{A \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}}, \code{\link[=n_ratio]{n_ratio()}}, \code{\link[=prec_prop]{prec_prop()}},
-\code{\link[=prec_mean]{prec_mean()}}, or \code{\link[=prec_ratio]{prec_ratio()}} result. \code{\link[=n_change]{n_change()}} and \code{\link[=n_pooled]{n_pooled()}}
-results are also supported.}
+\item{object}{A sizing or precision result from \code{\link[=n_prop]{n_prop()}}/\code{\link[=prec_prop]{prec_prop()}},
+\code{\link[=n_mean]{n_mean()}}/\code{\link[=prec_mean]{prec_mean()}}, \code{\link[=n_ratio]{n_ratio()}}/\code{\link[=prec_ratio]{prec_ratio()}},
+\code{\link[=n_change]{n_change()}}/\code{\link[=prec_change]{prec_change()}}, or \code{\link[=n_pooled]{n_pooled()}}/\code{\link[=prec_pooled]{prec_pooled()}}.}
 
 \item{parm}{Ignored (included for S3 consistency with \code{\link[=confint]{confint()}}).}
 
@@ -33,10 +33,11 @@ result was built around, at the planned sample size.
 }
 \details{
 For proportions, the interval type matches the \code{method} the result was
-computed with (\code{"wald"}, \code{"wilson"}, \code{"logodds"}, or \code{"beta"}), including
-its \code{df} when the beta method carries one. Only the Wald interval is
+computed with (\code{"wald"}, \code{"wilson"}, \code{"logodds"}, or \code{"beta"}). All four
+methods read a stored \code{df}. Beta applies it through effective-size scaling,
+while the other three substitute the corresponding t quantile. Only the Wald interval is
 symmetric about \code{p}, so for the other three the limits are not
-\code{p} plus or minus the reported \code{moe}; \verb{$moe} remains half the interval
+\code{p} plus or minus the reported \code{moe}. \verb{$moe} remains half the interval
 width, and \code{confint()} is the way to read where the interval actually
 sits. All four apply \code{deff}, \code{resp_rate}, and the finite population
 correction through the same effective size the sizing functions use.
@@ -73,6 +74,13 @@ confint(prec)
 
 # The Korn-Graubard interval is asymmetric for a rare outcome
 confint(prec_prop(p = 0.02, n = 150, method = "beta"))
+
+# confint on a ratio, which always carries its center r
+confint(n_ratio(r = 2, cv_num = 0.5, cv_den = 0.3,
+                component_cor = 0.4, cv = 0.05))
+
+# confint on a repeated-survey result, the pooled level here
+confint(prec_pooled(var = 100, n = 300, occasions = 2, mu = 50))
 
 }
 \seealso{

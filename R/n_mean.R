@@ -40,6 +40,8 @@
 #'   designs (e.g., stratified sampling with Neyman allocation).
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The required sample size is inflated by `1 / resp_rate`.
+#'   See the nonresponse section of [svyplan-package] for what this adjustment
+#'   does and does not claim.
 #' @param df Degrees of freedom of the variance estimator the planned design
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the interval quantile from normal to t.
@@ -58,11 +60,11 @@
 #'     Take the field figure from `as.integer()` rather than from `$n`.}
 #'   \item{`se`, `moe`, `cv`, `rmoe`}{Precision the design achieves at that
 #'     `n`, the same values [prec_mean()] reports for the same inputs.
-#'     `moe` is `qnorm(1 - alpha / 2) * se`, and the interval is symmetric
+#'     `moe` is `q * se`, with `q` defined in Details, and the interval is symmetric
 #'     about the mean. `cv` and `rmoe` are `NA` unless `mu` was supplied,
 #'     both needing a mean to be relative to.}
 #'   \item{`params`}{The validated inputs (`var`, `alpha`, `N`, `deff`,
-#'     `resp_rate`, `mu` when given, and whichever of `moe`, `cv`, or
+#'     `resp_rate`, `df`, `mu` when given, and whichever of `moe`, `cv`, or
 #'     `rmoe` was the target). Dispersion is always stored as `var`, including when
 #'     you supplied `sd`. [predict()], [confint()] and the [prec_mean()]
 #'     round trip read the design back from here.}
@@ -71,12 +73,12 @@
 #' @details
 #' Two modes:
 #'
-#' - **MOE mode**: `n = deff * z^2 * var / (moe^2 + deff * z^2 * var / N)`.
+#' - **MOE mode**: `n = deff * q^2 * var / (moe^2 + deff * q^2 * var / N)`.
 #'   An `rmoe` target enters here as `moe = rmoe * abs(mu)`.
 #' - **CV mode**: Computes `CVpop = sqrt(var) / abs(mu)`, then
 #'   `n = deff * CVpop^2 / (cv^2 + deff * CVpop^2 / N)`.
 #'
-#' `deff` appears in the denominator as well as the numerator: it inflates
+#' `deff` appears in the denominator as well as the numerator, so it inflates
 #' the variance the finite population correction is then applied to, rather
 #' than scaling a size already corrected. The two coincide only at infinite
 #' `N`. For `var = 100`, `moe = 2`, `N = 100` and `deff = 2`, inflating
@@ -90,8 +92,9 @@
 #' needed because `var` is already defined on `N-1` degrees of freedom.
 #' See [n_prop()] for a fuller explanation of FPC.
 #'
-#' All methods use the normal (z) quantile. This is standard for survey
-#' sampling where the sample size is large enough for the CLT to apply.
+#' Here `q` is `qnorm(1 - alpha / 2)` by default and
+#' `qt(1 - alpha / 2, df)` when `df` is supplied. Thus `df` changes the
+#' interval margin of error but not the sampling standard error or CV.
 #'
 #' ## Sample size for a total
 #'

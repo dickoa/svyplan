@@ -59,7 +59,8 @@
 #' @param resp_rate Expected **ultimate-unit** response rate, in (0, 1\].
 #'   Default 1. It is the share of selected final-stage units, typically
 #'   persons, that respond. This is the plain `resp_rate` the rest of the
-#'   package uses.
+#'   package uses. See the nonresponse section of [svyplan-package] for what
+#'   this adjustment does and does not claim.
 #' @param fixed_cost Fixed overhead cost (C0). Default 0.
 #'   The total cost model becomes
 #'   `C = C0 + c1*n_psu + c2*n_psu*n_per_psu [+ c3*n_psu*n_per_psu*n_per_ssu]`.
@@ -400,7 +401,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 #' computes the largest affordable whole n_psu in budget mode or the
 #' smallest sufficient whole n_psu in cv mode, and returns the best
 #' integer design with its own recomputed cost and cv. Budget-mode
-#' designs never exceed the budget; cv-mode designs meet the target.
+#' designs never exceed the budget. CV-mode designs meet the target.
 #' @keywords internal
 #' @noRd
 .op_cluster_2stage <- function(stage_cost, icc, unit_relvar, var_ratio, cv, budget,

@@ -76,7 +76,9 @@ pooled estimate rather than to any one occasion.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). Each occasion's size is inflated by \code{1 / resp_rate}. It is
-a single round's response, not attrition across a panel.}
+a single round's response, not attrition across a panel. See the
+nonresponse section of \link{svyplan-package} for what this adjustment does
+and does not claim.}
 
 \item{overlap}{Fraction of one occasion's \strong{responding} sample carried
 into a later one, in [0, 1]. One number, meaning the same overlap at

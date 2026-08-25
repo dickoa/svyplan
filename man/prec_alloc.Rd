@@ -57,8 +57,8 @@ with \code{measures} in the default method and is recovered automatically from
 a fitted result.}
 
 \item{psu}{Optional PSU register for certainty-aware assessment. See the
-\code{psu} argument to \code{\link[=n_alloc]{n_alloc()}}. No loop is needed here: the allocation is
-supplied, so the threshold it implies is supplied with it and the
+\code{psu} argument to \code{\link[=n_alloc]{n_alloc()}}. No loop is needed here, since the
+allocation is supplied, so the threshold it implies is supplied with it and the
 classification is read off the design being assessed. The \verb{$psu} table
 carries the same columns as a fitted plan's, with \code{n_take} read off the
 supplied allocation. A fitted result
@@ -136,7 +136,7 @@ weighted value under the assessed allocation.
 Passing a joint precision result back to \code{\link[=n_alloc]{n_alloc()}} round trips the
 design. Minimum-cost results invert through precision, pinning the
 achieved values as the requirement. Budget-objective results invert
-through cost instead: the targets stay as specified and the assessed
+through cost instead. The targets stay as specified and the assessed
 allocation's cost becomes the budget, because pinning achieved precision
 as hard targets would over-constrain a design that already spends its
 whole budget.

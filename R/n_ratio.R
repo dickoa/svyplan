@@ -44,7 +44,7 @@
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param cv_num Coefficient of variation of the numerator variable,
 #'   `sd(y) / abs(mean(y))`, taken on the magnitude so it carries no sign.
-#'   It must be strictly positive: a component with no variation at all is
+#'   It must be strictly positive. A component with no variation at all is
 #'   not a sampling problem, and at `cv_num = 0` the ratio's own variance
 #'   comes entirely from the denominator.
 #' @param cv_den Coefficient of variation of the denominator variable,
@@ -69,7 +69,9 @@
 #' @param deff Design effect of the ratio estimator (> 0). See the section
 #'   above, which is the one place this differs from [n_mean()].
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1. The rate
-#'   is for records usable on both components, not on either alone.
+#'   is for records usable on both components, not on either alone. See the
+#'   nonresponse section of [svyplan-package] for what this adjustment does
+#'   and does not claim.
 #' @param df Degrees of freedom of the variance estimator the planned design
 #'   will have, available from [design_df()]. It switches the interval
 #'   quantile from normal to t. `NULL` (default) applies no adjustment.

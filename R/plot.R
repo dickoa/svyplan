@@ -35,7 +35,7 @@
 #' each budget buys on the objective indicator, over the range where the
 #' hard targets remain fundable. The fitted design is a filled dot. The
 #' curve is the same one [predict()] returns as a table, so read exact
-#' numbers there. Its shape is the point: the objective falls as
+#' numbers there. Its shape is the point, since the objective falls as
 #' `1 / cost`, so the marginal return on budget flattens, and the plot
 #' shows where. Other `svyplan_n` results have no frontier to draw and
 #' produce an error naming what is plottable.
@@ -241,7 +241,7 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #'   shares to units. Its cohort count must match the schedule's life.
 #' @param ... Additional graphical parameters. `main` and `col` are honored
 #'   by both types, `col` being the cell fill for the chart and the bar fill
-#'   for the profile; the profile passes the rest to [barplot()].
+#'   for the profile. The profile passes the rest to [barplot()].
 #'
 #' @return `x`, invisibly.
 #'
@@ -359,7 +359,7 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
 #' Rotation chart, cohorts down and time periods across
 #'
 #' Cohort `c` enters at period `c`, so period `t` shows it at stage
-#' `t - c + 1`. Everything drawn follows from that one index; the schedule
+#' `t - c + 1`. Everything drawn follows from that one index. The schedule
 #' decides only whether a cell is in sample and how dark it is.
 #' @keywords internal
 #' @noRd
@@ -490,7 +490,7 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
 #'
 #' Summed over the cohorts drawn rather than derived from the schedule, so
 #' one reading serves both launches. Under a gradual launch the total climbs
-#' until the whole life is spanned and is `sum(w)` from period `life` on;
+#' until the whole life is spanned and is `sum(w)` from period `life` on.
 #' under an immediate one it is `sum(w)` throughout. That figure is the
 #' `n_occasion` [design_overlap()] divides by, so where the total reaches it
 #' is where the chart's overlaps become the design's.
@@ -509,7 +509,7 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
 #'
 #' A panel may only scale a schedule it represents. [n_panel()] models equal
 #' cohorts interviewed at every wave of their life, so its `n_in_sample` is
-#' `n_cohorts` times the entrants; a schedule that leaves the sample and
+#' `n_cohorts` times the entrants. A schedule that leaves the sample and
 #' returns, or that subsamples a later wave, holds fewer than that at an
 #' occasion. Scaling one by the other would print two designs on one chart,
 #' the label column reading from the panel and the total row from the

@@ -104,7 +104,7 @@
 #' probabilities, so shares derived from inverse stage-1 weights,
 #' `pi1 / sum(pi1)`, are identical and can be used when the frame is
 #' not at hand. Certainty (take-all) PSUs have no place in the PPS
-#' path: they contribute no between-PSU variance and should be treated
+#' path, contributing no between-PSU variance and needing to be treated
 #' as separate strata, with `prob` renormalized over the remaining
 #' PSUs.
 #'
@@ -133,7 +133,7 @@
 #' ```
 #'
 #' A scalar design effect fixes one product and nothing more, so `varb`,
-#' `varw` and `unit_relvar` come back `NA_real_`: they are not identified.
+#' `varw` and `unit_relvar` come back `NA_real_`, not being identified.
 #' Functions that need the unit relvariance, such as [n_cluster()] with a
 #' `cv` target, say so and ask for it directly.
 #'
@@ -149,7 +149,7 @@
 #' \deqn{b^* = \sum_i b_i^2 / \sum_i b_i = \bar b (1 + cv_b^2),}{b^* = sum_i b_i^2 / sum_i b_i = bbar (1 + cv_b^2),}
 #' with \eqn{cv_b} the population coefficient of variation of the realized
 #' takes. A *planned* take is a constant, so \eqn{cv_b = 0} and
-#' \eqn{b^* = b}: the forward direction in [design_effect()] never meets
+#' \eqn{b^* = b}, so the forward direction in [design_effect()] never meets
 #' the distinction. A *published* design effect was achieved with takes
 #' that varied, and since \eqn{\delta} moves inversely with \eqn{b - 1},
 #' using the nominal take understates it by roughly the same relative
@@ -166,7 +166,7 @@
 #'
 #' The take is stored in `$params` as provenance, since the same `icc`
 #' means different things at a take of 12 and of 30, and
-#' [design_effect()] does not read it back: the reason to back an `icc`
+#' [design_effect()] does not read it back. The reason to back an `icc`
 #' out at all is to re-plan at a different take, and defaulting to the old
 #' one would return the old design's number.
 #'
@@ -459,7 +459,7 @@ varcomp.default <- function(x, ..., stage_id = NULL, prob = NULL,
 #' @describeIn varcomp Method for survey design objects. Pass a one-sided
 #'   formula (e.g., `~y`) to specify the outcome variable. Cluster
 #'   structure, first-stage strata, and within-cluster weights are
-#'   extracted from the design; `strata` and `weights` override what is
+#'   extracted from the design. `strata` and `weights` override what is
 #'   extracted.
 #'
 #' @export
@@ -653,7 +653,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' The `b` in the clustering identity is the size-weighted average take,
 #' `sum(b_i^2) / sum(b_i) = b_bar (1 + cv_b^2)`, with `cv_b` the population
 #' coefficient of variation of the takes. A planned take is a constant, so
-#' the two coincide going forward; a published design effect was achieved
+#' the two coincide going forward. A published design effect was achieved
 #' with takes that varied, and using their arithmetic mean understates the
 #' `icc` by about the same relative amount.
 #' @keywords internal

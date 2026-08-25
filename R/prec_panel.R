@@ -2,8 +2,8 @@
 #'
 #' Take a recruitment size a panel already has, or has been budgeted, and
 #' report the responding sample and the precision it leaves at each wave of
-#' a unit's life. This is the inverse of [n_panel()]: the same rates and the
-#' same embedded estimand, read from a size instead of solved for one.
+#' a unit's life. This is the inverse of [n_panel()], running the same rates
+#' and the same embedded estimand from a size instead of solving for one.
 #'
 #' @param n_recruit For the default method: units recruited, meaning the
 #'   whole issue to one cohort for a fixed panel and the entrants per
@@ -11,7 +11,7 @@
 #'   [n_panel()] or from this function.
 #' @param target A `svyplan_n` or `svyplan_prec` result for a mean or a
 #'   proportion. Required in the default method, and the same object
-#'   [n_panel()] takes: it supplies the estimand each wave's precision is
+#'   [n_panel()] takes. It supplies the estimand each wave's precision is
 #'   computed for, and the responding sample the design is compared against.
 #' @param retention Conditional retention, one value per wave transition,
 #'   each in (0, 1\]. See [n_panel()].
@@ -25,7 +25,7 @@
 #'   defaulting to the last. It must be absent for a rotating design, whose
 #'   precision belongs to the pooled occasion.
 #' @param start `"gradual"`, `"immediate"` or `NULL`. See [n_panel()]. On a
-#'   stored plan this may be overridden, unlike `design`: it selects which
+#'   stored plan this may be overridden, unlike `design`. It selects which
 #'   launch is described and moves no stored quantity, the recruitment being
 #'   fixed before any of it is computed.
 #' @param assurance Probability in (0, 1), or `NULL` (default). Reports the

@@ -18,7 +18,7 @@
 }
 \value{
 \code{summary()} returns an object of class
-\code{summary.svyplan_twophase}; its \code{print()} method returns it invisibly.
+\code{summary.svyplan_twophase}. Its \code{print()} method returns it invisibly.
 }
 \description{
 \code{print()} on a \code{\link[=n_twophase]{n_twophase()}} result gives the design as it would be

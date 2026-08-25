@@ -79,7 +79,9 @@ the change rather than to either occasion separately. See Details.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). Each occasion's size is inflated by \code{1 / resp_rate}. It is
-a single round's response, not attrition across a panel.}
+a single round's response, not attrition across a panel. See the
+nonresponse section of \link{svyplan-package} for what this adjustment does
+and does not claim.}
 
 \item{ratio}{Size of the first occasion relative to the second, so
 \code{ratio = 2} sizes a large baseline against a smaller follow-up. Default
@@ -99,8 +101,8 @@ at every lag. The two are the same number at full response only. See
 
 \item{overlap_cor}{Correlation between the two occasions among the
 overlapping units, in [0, 1]. Default 0, which makes overlap
-worthless: it is the product \code{overlap * overlap_cor} that reduces the
-size, so a full panel of uncorrelated measurements saves nothing. On the
+worthless, since it is the product \code{overlap * overlap_cor} that reduces
+the size, so a full panel of uncorrelated measurements saves nothing. On the
 proportion scale two Bernoulli marginals bound the correlation they can
 have, and a value above that bound is rejected.}
 
@@ -156,7 +158,7 @@ lets the two occasions come from different populations. See
 
 Overlap and correlation only ever act together. At \code{overlap_cor = 0} the
 size is what two independent samples would need whatever the overlap, and
-the two arguments are worth setting from the same evidence: a rotation
+the two arguments are worth setting from the same evidence. A rotation
 pattern fixes \code{overlap}, and a previous round of the same survey is what
 identifies \code{overlap_cor}.
 
@@ -169,7 +171,7 @@ here therefore over-sizes a design that keeps its clusters.
 
 Two boundaries are worth knowing before reading a result. Full overlap
 with unit correlation at equal sizes and variances leaves the change with
-no sampling variance at all: the same units are measured twice, so no
+no sampling variance at all, since the same units are measured twice, so no
 size is identified and the function says so rather than returning zero.
 
 At a finite \code{N} with equal occasions and full response, the requirement
@@ -185,7 +187,7 @@ reach is reported as unattainable.
 
 Overlap improves a change and does nothing for the level at a single
 occasion, which is a function of that occasion's size alone. A fresh
-sample each round is not the reverse of this: it does nothing for the
+sample each round is not the reverse of this. It does nothing for the
 level either, and the two designs give the same single-occasion
 precision at the same size. What overlap does work against is an
 estimate pooled across occasions, an annual average of quarterly rounds

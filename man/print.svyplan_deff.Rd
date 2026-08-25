@@ -82,7 +82,7 @@ components, component notes, and the basis of the decomposition.
 \code{format()} returns a character scalar, and \code{as.double()} returns the
 overall design effect.
 \code{as.data.frame()} returns a one-row table with the overall value and one
-column per component; \code{as.list()} returns the same fields as a named
+column per component. \code{as.list()} returns the same fields as a named
 list, and \code{$} and \code{[[} return one of them. Arithmetic and mathematical
 transformations return ordinary numeric results.
 }
@@ -95,7 +95,7 @@ in for the overall value wherever a plain number is expected.
 }
 \details{
 A \code{svyplan_deff} behaves as the numeric overall design effect wherever one
-is expected: it can be passed to any \code{deff} argument, compared, and
+is expected. It can be passed to any \code{deff} argument, compared, and
 arithmetically combined, with the components dropped by any such
 operation.
 

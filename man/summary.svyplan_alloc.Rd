@@ -31,14 +31,14 @@ For a classic allocation, \code{summary()} returns a
 \code{mode}, \code{overall}, \code{continuous}, \code{allocation}, \code{precision}, \code{bounds},
 \code{domains}, and \code{assumptions}. For a generalized allocation it returns the
 \code{summary.svyplan_bethel} fields described in Details. Numeric quantities
-remain unformatted; formatting is applied only by the summary print
+remain unformatted. Formatting is applied only by the summary print
 methods. \code{print()} returns the summary invisibly.
 }
 \description{
 \code{summary()} separates a classic \code{\link[=n_alloc]{n_alloc()}} or \code{\link[=prec_alloc]{prec_alloc()}} result into
 the overall answer, the per-stratum allocation, achieved precision,
 allocation bounds, domains, and assumptions. The design summary evaluates
-the whole-unit field allocation; the precision summary evaluates the
+the whole-unit field allocation. The precision summary evaluates the
 supplied allocation exactly. Generalized Bethel allocations return a
 separate diagnostic summary containing their constraint, objective,
 optimization, and bound tables.
@@ -48,7 +48,7 @@ For \code{n_alloc()}, \code{overall}, \code{allocation}, \code{precision}, and \
 describe \verb{$detail$n_int} and the operational cluster takes when present.
 The mathematical optimum remains in \code{continuous}. For \code{prec_alloc()}, the
 same fields describe \verb{$detail$n}, the allocation actually supplied to the
-precision calculation; \code{continuous} and \code{bounds} are \code{NULL}.
+precision calculation. \code{continuous} and \code{bounds} are \code{NULL}.
 
 Stratum standard errors, margins of error, and CVs do not add to their
 overall counterparts. \code{variance_share} is the stratum's contribution to

@@ -96,7 +96,7 @@ A \code{svyplan_prec} object with \code{type = "change"}:
 \describe{
 \item{\code{se}}{Standard error of the estimated change, computed on the net
 sizes \code{n * resp_rate}.}
-\item{\code{moe}}{Margin of error, \code{qnorm(1 - alpha / 2) * se}. The interval
+\item{\code{moe}}{Margin of error, \code{q * se}, with \code{q} defined in Details. The interval
 is symmetric about the change, so the limits are \code{change - moe} and
 \code{change + moe}.}
 \item{\code{cv}}{Standard error relative to the change, \code{se / abs(change)}.
@@ -119,6 +119,9 @@ the size of each occasion and how far the two samples overlap. This is
 the inverse of \code{\link[=n_change]{n_change()}}.
 }
 \details{
+Here \code{q} is \code{qnorm(1 - alpha / 2)} by default and
+\code{qt(1 - alpha / 2, df)} when \code{df} is supplied.
+
 The estimand is the change in one population measured twice, not a
 difference between two populations. Writing \eqn{v_1, v_2} for the
 occasion variances, \eqn{n_1, n_2} for the net sizes and \eqn{k} for the

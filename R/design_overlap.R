@@ -296,7 +296,7 @@ design_overlap <- function(schedule, max_lag = NULL) {
 #'
 #' Two notations are in published use and they look alike. Spell lengths
 #' ("4-8-4", the CPS convention) count occasions per spell, alternating from
-#' in sample; a per-occasion pattern ("1-1-0-0-1-1", Lynn 2012) carries one
+#' in sample. A per-occasion pattern ("1-1-0-0-1-1", Lynn 2012) carries one
 #' flag per occasion. A `0` can only be a pattern, since a spell of no
 #' occasions is not a spell, so that case is read as one. A string of all 1s
 #' is the one form both notations claim, and it is refused rather than

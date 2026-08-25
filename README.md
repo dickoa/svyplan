@@ -59,10 +59,10 @@ n_ratio(r = 420, cv_num = 1.20, cv_den = 0.45, component_cor = 0.65,
 #> n = 377 (r = 420, unit_relvar = 0.941, cv = 0.050, deff = 1)
 ```
 
-The correlation is what makes a ratio cheap to estimate. A numerator
-that moves with its denominator gives a stable ratio even when both
-components are individually variable, and the printed `unit_relvar` is
-the coefficient the size turns on. For a clustered design the
+The correlation between the components is what makes a ratio precise. A
+numerator that moves with its denominator gives a stable ratio even when
+both components are individually variable, and the printed `unit_relvar`
+is the coefficient the size turns on. For a clustered design the
 homogeneity that matters belongs to the linearized variable `y - r * x`
 rather than to either component, and `vignette("svyplan")` works that
 bridge through.
@@ -327,11 +327,12 @@ implementation of the published algorithms.
 
 ## Two-phase designs
 
-A large cheap phase 1, then a subsample measured on the expensive
-variable. `n_twophase()` allocates both at once. The frame is one row
-per phase-2 stratum, in the `n_alloc()` column vocabulary but on a
-narrower contract: `sd` is required where `n_alloc()` also accepts
-`var`.
+Phase 1 draws a large sample and measures a variable the frame does not
+carry. Phase 2 subsamples those units and measures the variable of
+interest on them. `n_twophase()` allocates both at once. The frame is
+one row per phase-2 stratum, in the `n_alloc()` column vocabulary but on
+a narrower contract, since `sd` is required where `n_alloc()` also
+accepts `var`.
 
 ``` r
 frame <- data.frame(
@@ -405,10 +406,10 @@ units are followed, against how many to recruit so that enough of them
 are still responding later.
 
 `n_change()` and `prec_change()` are the `n_*`/`prec_*` pair for a
-change in a mean or a proportion. Two independent rounds cost twice a
-single occasion. Measuring the same units twice is cheaper, because the
-change is a difference and the unit-level correlation cancels part of
-it: `overlap` is the share of the first occasion’s responding sample
+change in a mean or a proportion. Measuring the same units twice needs
+fewer of them than two independent rounds, because the change is a
+difference and the unit-level correlation cancels part of its variance.
+`overlap` is the share of the first occasion’s responding sample
 measured again, `overlap_cor` the correlation among those shared units,
 and only their product buys anything.
 

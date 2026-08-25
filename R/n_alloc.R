@@ -154,7 +154,9 @@
 #'   overrides a `deff` column in `frame`.
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1. A scalar
 #'   applies to every stratum. A length-`nrow(frame)` vector gives one per
-#'   stratum and overrides a `resp_rate` column in `frame`.
+#'   stratum and overrides a `resp_rate` column in `frame`. See the
+#'   nonresponse section of [svyplan-package] for what this adjustment does
+#'   and does not claim.
 #' @param df Degrees of freedom of the variance estimator the allocation
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the quantile used to translate a `moe`
@@ -256,15 +258,17 @@
 #' Supplying both `measures` and `targets` requests a minimum-cost allocation
 #' that meets all indicator-domain precision requirements simultaneously.
 #' This mode is mutually exclusive with scalar `n`, `cv`, `budget`, `domains`,
-#' and an explicit `alloc` rule: the target table defines the constraints and
-#' the allocation is solved jointly.
+#' and an explicit `alloc` rule, because the target table defines the
+#' constraints and the allocation is solved jointly.
 #'
 #' CV targets apply to domain means or totals (the CV is the same on either
 #' scale). MOE targets are absolute margins of error for domain means. An
 #' `rmoe` target is a margin of error for the domain mean stated as a
-#' fraction of it, which is `qnorm(1 - alpha / 2)` times the CV of the same
+#' fraction of it, which is `q` times the CV of the same
 #' estimate. The solver takes it through the CV branch and reports
 #' `.achieved` and `.sensitivity` back in `rmoe` units. The
+#' quantile `q` is `qnorm(1 - alpha / 2)` by default and
+#' `qt(1 - alpha / 2, df)` when `df` is supplied. The
 #' variance model uses Wald/linearized variances, the package's gross-sample
 #' response-rate convention, design effects, and finite population correction.
 #' Domain classifications may overlap. For example, separate `region` and
@@ -285,7 +289,7 @@
 #' is solved to optimality for the planning coefficients supplied, and the
 #' feasibility and KKT diagnostics report on that problem. It is a planning
 #' model rather than an exact design-based variance for every multistage
-#' design: the later-stage takes are fixed inputs rather than decision
+#' design. The later-stage takes are fixed inputs rather than decision
 #' variables, and the stage variances enter through the design-effect and
 #' FPC adapter described above. A design that is optimal here is optimal
 #' within that family, not across all multistage designs.
@@ -430,7 +434,7 @@
 #' spending residual budget and by pairwise exchanges. It satisfies
 #' `$operational$cost <= budget` and `all($operational$constraints$.pass)`, and
 #' it is a feasible, locally improved recommendation rather than a globally
-#' optimal integer allocation. The greedy construction is incomplete: it can
+#' optimal integer allocation. The greedy construction is incomplete and can
 #' report failure on a problem that does have a feasible integer point.
 #'
 #' [predict()] on a fixed-budget result varies `budget` in `newdata` and
@@ -504,7 +508,7 @@
 #'   operational whole-unit design as much as in the continuous one. Any
 #'   `NA` entries are replaced by the cost-optimal take
 #'   `sqrt(cost_psu / cost_ssu * (1 - icc_psu) / icc_psu)`. Holding the
-#'   take is what `n` mode gives up its exact total for: the stratum is
+#'   take is what `n` mode gives up its exact total for. The stratum is
 #'   fielded as a whole number of clusters of that size, so its element
 #'   count lands on the nearest multiple.
 #' - `cost_psu`, `cost_ssu` (together): per-PSU and per-element costs.
@@ -618,7 +622,7 @@
 #' `$optimization$certainty` records whether it converged, cycled, or reached
 #' its iteration limit. `$detail` gives the split and threshold by stratum,
 #' while `$psu` gives each PSU's classification, its source, and `n_take`,
-#' the take the operational design fields in it: a certainty PSU carries its
+#' the take the operational design fields in it. A certainty PSU carries its
 #' own whole take at the stratum rate, capped at its size, and a remainder
 #' PSU carries `n_per_psu`. The takes are the operational design's own
 #' numbers, so `sum(n_take[certainty]) = n_certain_int` in every stratum.
@@ -663,7 +667,7 @@
 #' \eqn{\sqrt{d_h/r_h}}{sqrt(d_h/r_h)} because they minimize
 #' \eqn{\sum W_h^2S_h^2d_h/(r_hn_h)} against a constraint on the units
 #' *drawn*, which is what a budget pays for. Proportional carries
-#' \eqn{1/r_h} instead, and no \eqn{d_h} at all: it is a count rule, not a
+#' \eqn{1/r_h} instead, and no \eqn{d_h} at all, because it is a count rule, not a
 #' variance optimum, and its purpose is a self-weighting sample, so it is
 #' the responding sample it holds proportional to \eqn{N_h}.
 #'
@@ -1397,8 +1401,8 @@ n_alloc.svyplan_prec <- function(
 #'   with `measures` in the default method and is recovered automatically from
 #'   a fitted result.
 #' @param psu Optional PSU register for certainty-aware assessment. See the
-#'   `psu` argument to [n_alloc()]. No loop is needed here: the allocation is
-#'   supplied, so the threshold it implies is supplied with it and the
+#'   `psu` argument to [n_alloc()]. No loop is needed here, since the
+#'   allocation is supplied, so the threshold it implies is supplied with it and the
 #'   classification is read off the design being assessed. The `$psu` table
 #'   carries the same columns as a fitted plan's, with `n_take` read off the
 #'   supplied allocation. A fitted result
@@ -1464,7 +1468,7 @@ n_alloc.svyplan_prec <- function(
 #'   Passing a joint precision result back to [n_alloc()] round trips the
 #'   design. Minimum-cost results invert through precision, pinning the
 #'   achieved values as the requirement. Budget-objective results invert
-#'   through cost instead: the targets stay as specified and the assessed
+#'   through cost instead. The targets stay as specified and the assessed
 #'   allocation's cost becomes the budget, because pinning achieved precision
 #'   as hard targets would over-constrain a design that already spends its
 #'   whole budget.
@@ -2540,7 +2544,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #' Chooses a whole per-stratum take b_h (floor/ceiling candidate with the
 #' lowest variance-cost product when stage costs are known) and a whole
 #' PSU count a_h per stratum. In cv mode a_h matches or beats each
-#' stratum's continuous variance contribution; in budget mode PSUs are
+#' stratum's continuous variance contribution. In budget mode PSUs are
 #' removed/added greedily so the field cost sum(a_h * (cost_psu +
 #' cost_ssu * b_h)) never exceeds the budget. In n mode a_h approximates
 #' the continuous element total. Returns the design plus recomputed

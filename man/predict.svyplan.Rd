@@ -19,8 +19,8 @@
 \arguments{
 \item{object}{A svyplan object (\code{svyplan_n}, \code{svyplan_cluster},
 \code{svyplan_power}, or \code{svyplan_prec}). For \code{svyplan_prec}, only
-types \code{"proportion"} and \code{"mean"} are supported (not \code{"cluster"} or
-\code{"multi"}).}
+types \code{"proportion"}, \code{"mean"}, and \code{"ratio"} are supported. Types
+\code{"cluster"} and \code{"multi"} are not supported.}
 
 \item{newdata}{A data frame of parameter combinations to evaluate.
 Column names must be valid parameters for the object type (see
@@ -51,9 +51,11 @@ quantities, suitable for sensitivity analysis or plotting.
 Valid parameters for \code{newdata} by object type:
 \itemize{
 \item \strong{\code{n_prop}}: \code{p}, \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
-\code{resp_rate}, \code{df} (\code{method = "beta"} only)
+\code{resp_rate}, \code{df}, \code{min_cases}
 \item \strong{\code{n_mean}}: \code{var}, \code{mu}, \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
-\code{resp_rate}
+\code{resp_rate}, \code{df}
+\item \strong{\code{n_ratio}}: \code{r}, \code{cv_num}, \code{cv_den}, \code{component_cor}, \code{moe}, \code{rmoe},
+\code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}, \code{df}
 \item \strong{\code{n_change}}: \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
 \code{ratio}, \code{overlap}, \code{overlap_cor}, and \code{change} on the mean scale only,
 since two proportions determine it. The occasion variances are held at
@@ -78,9 +80,12 @@ parameter). Not supported for objects with vector \code{n}.
 \code{deff}, \code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate} (excluding the
 solved-for parameter). Not supported for objects with vector \code{n}.
 \item \strong{\code{prec_prop}}: \code{p}, \code{n}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
-\code{df} (\code{method = "beta"} only). A result that solved for \code{p} varies the
+\code{df}. A result that solved for \code{p} varies the
 target it solved from, \code{cv} or \code{rmoe}, in place of \code{p}.
-\item \strong{\code{prec_mean}}: \code{var}, \code{n}, \code{mu}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}
+\item \strong{\code{prec_mean}}: \code{var}, \code{n}, \code{mu}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
+\code{df}. A result that solved for \code{mu} varies \code{cv} in place of \code{mu}.
+\item \strong{\code{prec_ratio}}: \code{r}, \code{n}, \code{cv_num}, \code{cv_den}, \code{component_cor},
+\code{alpha}, \code{N}, \code{deff}, \code{resp_rate}, \code{df}
 }
 
 For \code{svyplan_n} objects, \code{moe}, \code{rmoe}, and \code{cv} are mutually exclusive
@@ -118,7 +123,7 @@ infeasible design point, and stops.
 
 A certainty-aware fit (\code{\link[=n_alloc]{n_alloc()}} with \code{psu}) varies \code{n_per_psu} too, even
 though the solver saw a one-stage problem, and reports \code{n_psu_certain} and
-\code{n_psu_draw} in place of the PSU counts. This is how the take is priced: it
+\code{n_psu_draw} in place of the PSU counts. This is how the take is priced. It
 also sets the certainty threshold, so a larger take leaves fewer certainty
 PSUs and costs more sample, and the resulting cost curve has a minimum
 worth finding rather than assuming.

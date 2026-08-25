@@ -72,18 +72,13 @@ ratio). \code{"joint"} applies only when \code{domains} and \code{budget} are
 supplied.}
 
 \item{domain_sampling}{How the per-domain requirements combine into the
-one overall size. Under \code{"separate"} the domains are quotas you field
-in their own right, the way a national survey fields a target per
-region, and the overall size is the sum of those quotas. Under
-\code{"natural"} they are analytic subgroups that simply turn up inside one
-sample at their own rate, and the overall size is the one whose
-expected yield covers every quota. Only \code{"separate"} (the default) is
-available here, so \verb{$total_n} is the sum of the per-domain totals.
-\code{"natural"} is refused for a multistage design, because a domain's
-expected yield then depends on how its members sit inside PSUs and
-SSUs rather than on its share of the population alone, and that model
-is not in the package. \code{\link[=n_multi]{n_multi()}} offers both readings for a
-single-stage design.}
+one overall size. Only \code{"separate"} (the default) is available here,
+so the domains are quotas fielded in their own right and \verb{$total_n} is
+the sum of the per-domain totals. \code{"natural"}, which \code{\link[=n_multi]{n_multi()}} offers
+for a single-stage design, is refused, because a domain's expected
+yield then depends on how its members sit inside PSUs and SSUs rather
+than on its share of the population alone, and that model is not in the
+package.}
 
 \item{min_n_domain}{Optional positive minimum total sample size per domain. In
 joint budget mode it is a constraint. In independent domain mode,

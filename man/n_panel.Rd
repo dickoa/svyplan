@@ -21,13 +21,13 @@ proportion, from \code{\link[=n_mean]{n_mean()}}, \code{\link[=n_prop]{n_prop()}
 \code{\link[=prec_prop]{prec_prop()}}. It supplies two things: the responding sample the panel
 must deliver, and the estimand whose precision is reported at every
 wave. Its own \code{resp_rate} is removed first, so the requirement is a
-count of respondents and no response is counted twice: the panel's
+count of respondents and no response is counted twice. The panel's
 \code{resp_rate} is the only recruitment response that reaches the answer.
 Where the two differ the target's is reported as unused, at the call
-and again in \code{summary()}. Clustered,
-allocation, multi-indicator, multi-domain, change and two-phase results
-are refused, their stage-specific and occasion-specific sizes not being
-one responding count.}
+and again in \code{summary()}. Clustered, allocation, multi-indicator,
+multi-domain, change and two-phase results are refused, their
+stage-specific and occasion-specific sizes not being one responding
+count.}
 
 \item{retention}{Conditional retention, one value per wave transition,
 each in (0, 1]. \code{retention[j]} is the share of wave \code{j} respondents who
@@ -39,7 +39,8 @@ waves in a unit's life, so a five-wave panel takes four values.}
 \item{resp_rate}{Response rate at recruitment, wave 1, in (0, 1], \code{1} by
 default. It is separate from \code{retention} because the first wave is where
 most of a panel's loss happens, and an average rate spread over the waves
-would under-issue.}
+would under-issue. See the nonresponse section of \link{svyplan-package} for
+what this adjustment does and does not claim.}
 
 \item{design}{\code{"fixed"} for one cohort followed across its waves, or
 \code{"rotating"} for equal cohorts entering every occasion and leaving at
@@ -229,7 +230,7 @@ Two assumptions are worth stating because they push in opposite
 directions. A unit lost at wave \eqn{j} is treated as lost for good, so a
 panel whose nonrespondents return at a later wave will do better than
 planned here and this over-issues. And the rates are one set for the
-whole sample: where response differs by domain, recruitment should be
+whole sample. Where response differs by domain, recruitment should be
 solved separately within groups of similar attrition, which
 over-represents the hard-to-retain groups at wave 1. Call \code{n_panel()}
 once per group and hand the results on as a named vector.

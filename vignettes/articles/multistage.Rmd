@@ -1,0 +1,168 @@
+---
+title: "Multistage survey planning"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Multistage survey planning}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5,
+  fig.align = "center"
+)
+library(svyplan)
+```
+This article covers variance components, two- and three-stage cluster designs, design effects, and design degrees of freedom. See [Getting started](svyplan.html) for the core sizing and precision workflow, and [allocation](allocation.html) for stratified and joint allocation.
+
+## Multistage cluster designs
+
+For two-stage or three-stage designs, the question is not just "how many?" but "how many clusters and how many units per cluster?" The answer depends on the cost structure and the degree of clustering.
+
+### Variance components from frame data
+
+If frame data with cluster identifiers is available, `varcomp()` estimates between-cluster and within-cluster variance components:
+
+```{r varcomp}
+set.seed(1)
+n_clust <- 80
+n_hh <- 15
+cluster_id <- rep(seq_len(n_clust), each = n_hh)
+cluster_mean <- rnorm(n_clust, mean = 50, sd = 10)
+expenditure <- cluster_mean[cluster_id] + rnorm(n_clust * n_hh, sd = 20)
+frame <- data.frame(cluster = cluster_id, expenditure = expenditure)
+
+vc <- varcomp(expenditure ~ cluster, data = frame)
+vc
+as.data.frame(vc)
+```
+
+The `icc` value is the survey-planning measure of homogeneity. It feeds directly into `n_cluster()` and the cluster-planning mode of `design_effect()`. This `icc` is not a generic mixed-model ICC: `varcomp()` returns the bounded planning quantity from Valliant, Dever, and Kreuter (2018), and that is the scale expected by the cluster-planning functions. When `icc` is near 0, most variation is within clusters, so the analytical cluster optimum tends to favor many interviews in very few PSUs. When `icc` is near 1, most variation is between clusters, so the optimum tends to favor very few interviews in many PSUs. Both are degenerate boundary cases for the closed-form optimizer, so `n_cluster()` rejects values numerically too close to 0 or 1.
+
+### Optimal two-stage allocation
+
+Given per-stage costs and the variance structure, `n_cluster()` finds the allocation that either minimizes cost for a target CV, or minimizes CV for a given budget:
+
+```{r n-cluster-2stage}
+# Minimize cost to achieve CV = 0.05
+n_cluster(stage_cost = c(500, 50), icc = vc, cv = 0.05)
+
+# Maximize precision within a budget
+n_cluster(stage_cost = c(500, 50), icc = vc, budget = 100000)
+```
+
+Passing `icc = vc` (the varcomp object) automatically extracts `icc`, `unit_relvar`, and `var_ratio`.
+
+### Three-stage designs
+
+Add a third cost element and a second icc for three-stage designs:
+
+```{r n-cluster-3stage}
+n_cluster(
+  stage_cost  = c(1000, 200, 20),
+  icc = c(0.01, 0.05),
+  cv    = 0.05
+)
+```
+
+### Response rate in cluster designs
+
+A cluster design can lose units at more than one stage, and the two losses are not interchangeable, so they are named for the stage they act on. `resp_rate_psu` is the share of selected clusters that can be worked at all: whole PSUs lost to insecurity, flooding, or an inaccessible road. Losing a PSU removes its entire contribution, so it deflates every variance term alike and the first-stage sample is inflated by `1 / resp_rate_psu` to cover it.
+
+In budget mode, applying a response rate does not change the allocation because the budget constrains the design. The achieved CV worsens instead. In CV mode:
+
+```{r n-cluster-resp}
+n_cluster(stage_cost = c(500, 50), icc = vc, cv = 0.05, resp_rate_psu = 0.90)
+```
+
+Household or individual nonresponse is a different quantity acting at a different stage, and each has its own argument: `resp_rate_ssu` for second-stage units in a three-stage design, and `resp_rate` for the ultimate units. Naming a stage the design does not have is an error rather than a silently ignored argument, because a dropped response rate plans a design with none.
+
+The three are not interchangeable. Losing whole PSUs deflates every variance term alike, whereas losing ultimate units shrinks the realized cluster and so changes the clustering penalty too. That is why the later-stage rates move the cost-optimal take while the PSU rate does not:
+
+```{r n-cluster-resp-stages}
+# a DHS-shaped design: EAs, households within EAs, one person per household
+n_cluster(stage_cost = c(500, 100, 50), icc = c(0.02, 0.05), cv = 0.05,
+          resp_rate_psu = 0.95, resp_rate_ssu = 0.90, resp_rate = 0.85)
+```
+
+Sizes and costs stay gross: `$n` counts the units to issue and `$cost` pays for them, while the variance reads what they realize. Lumping the later rates into `resp_rate_psu` is conservative but wrong, and the gap grows with the between-PSU homogeneity.
+
+### Fixed overhead costs
+
+The standard cost model is purely linear: `C = c1*n_psu + c2*n_psu*n_per_psu`. Real surveys also have a fixed overhead (training, infrastructure, setup). The `fixed_cost` parameter adds this term: `C = C0 + c1*n_psu + c2*n_psu*n_per_psu`. In budget mode, only `budget - fixed_cost` is available for the variable component, reducing n_psu while leaving the optimal n_per_psu/n_psu ratio unchanged. In CV mode, all sample sizes stay the same and `fixed_cost` is simply added to the total cost:
+
+```{r n-cluster-fixed}
+# Budget mode: fixed overhead reduces the allocatable budget
+n_cluster(stage_cost = c(500, 50), icc = vc, budget = 100000, fixed_cost = 5000)
+
+# CV mode: same allocation, cost increases by fixed_cost
+n_cluster(stage_cost = c(500, 50), icc = vc, cv = 0.05, fixed_cost = 5000)
+```
+
+The same parameter is available in `n_multi_cluster()` for multistage
+multi-indicator designs.
+
+### Evaluating cluster allocations
+
+`prec_cluster()` computes the achieved CV for any allocation:
+
+```{r prec-cluster}
+alloc <- n_cluster(stage_cost = c(500, 50), icc = vc, budget = 100000)
+prec_cluster(alloc)
+
+# Arbitrary allocation
+prec_cluster(n = c(50, 12), icc = 0.05)
+```
+
+### Design effects
+
+`design_effect()` builds the design effect you expect a plan to produce, from the design features you are choosing. The clustering component uses the same variance model as `n_cluster()` and `prec_cluster()`, so the two always agree:
+
+```{r design-effect}
+design_effect(icc = 0.05, n_per_psu = 20)
+```
+
+Components are selected by the arguments you supply and multiply together. Unequal weighting comes from planned weights or from a planned allocation's stratum sizes and takes, and the stratification gain (the only component that can fall below 1) from the stratum standard deviations and means:
+
+```{r design-effect-components}
+frame <- data.frame(
+  N = c(50000, 120000), n = c(600, 400), sd = c(12, 20), mean = c(55, 48)
+)
+deff <- design_effect(icc = 0.05, n_per_psu = 20, strata = frame)
+deff
+```
+
+The result is a plain number wherever one is expected, and `effective_n()` is its mirror:
+
+```{r design-effect-use}
+n_prop(p = 0.3, moe = 0.05, deff = deff)
+effective_n(deff, n = 1000)
+```
+
+You can also read the features off a plan you already built, including an `n_alloc()` allocation:
+
+```{r design-effect-plan}
+design_effect(n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05))
+```
+
+These are planning quantities. After data collection, compute the design effect the sample actually achieved with `survey::svymean(..., deff = TRUE)`, which uses the realized weights, strata, and clusters.
+
+### Multi-indicator multistage
+
+For surveys with multiple indicators in a cluster design, provide
+`icc_psu` columns and stage costs to `n_multi_cluster()`:
+
+```{r n-multi-cluster}
+targets_ms <- data.frame(
+  name   = c("stunting", "vaccination"),
+  p      = c(0.25, 0.70),
+  cv     = c(0.10, 0.08),
+  icc_psu = c(0.05, 0.02)
+)
+
+n_multi_cluster(targets_ms, stage_cost = c(500, 50), budget = 80000)
+```

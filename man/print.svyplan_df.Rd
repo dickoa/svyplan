@@ -81,7 +81,7 @@ derived from the strata and domains it carries.}
 the per-stratum decomposition when available, the per-domain counts,
 and the counting basis. \code{format()} returns a character scalar, and
 \code{as.double()} returns the degrees of freedom.
-\code{as.data.frame()} returns a one-row table of the scalar fields;
+\code{as.data.frame()} returns a one-row table of the scalar fields.
 \code{as.list()} returns every field, including the per-stratum and
 per-domain tables, and \code{$} and \code{[[} return one of them. Arithmetic and
 mathematical transformations return ordinary numeric results.
@@ -95,7 +95,7 @@ object stand in for the headline count wherever a plain number is expected.
 }
 \details{
 A \code{svyplan_df} behaves as the numeric degrees of freedom wherever one is
-expected: it can be passed to any \code{df} argument, compared, and
+expected. It can be passed to any \code{df} argument, compared, and
 arithmetically combined, with the detail dropped by any such operation.
 
 The fields are \code{df} for the count itself, \code{n_units} for the units it
@@ -105,7 +105,7 @@ counts and \code{stage} for what those units are (\code{"psu"} or \code{"element
 plan. Naming a field the object does not have is an error listing the
 ones it does.
 
-The summary's stratum table is an additive decomposition: a contributing
+The summary's stratum table is an additive decomposition. A contributing
 stratum uses one constraint and contributes its sampled units minus one.
 A census stratum has no units counted and no constraint, while a singleton
 uses its one constraint and contributes zero. The domain table is printed

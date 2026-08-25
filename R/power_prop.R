@@ -35,9 +35,10 @@
 #'   (`overlap = n12 / n1`). Only supported with `method = "wald"`.
 #' @param overlap_cor Correlation between occasions in \[0, 1\].
 #' @param method Variance method: `"wald"` (default), `"arcsine"`, or
-#'   `"logodds"`. Arcsine and log-odds transforms are variance-stabilizing
-#'   and perform better for rare or extreme proportions (Valliant,
-#'   2018, sections 4.3.4--4.3.5).
+#'   `"logodds"`. The arcsine square-root transform is variance-stabilizing.
+#'   The log-odds transform is not, because its variance still depends on the
+#'   proportion. Both provide alternatives to the Wald calculation near a
+#'   boundary (Valliant, 2018, sections 4.3.4--4.3.5).
 #' @param plan Optional [svyplan()] object providing design defaults.
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'
@@ -67,8 +68,9 @@
 #' }
 #'
 #' For proportions in the 0.2--0.8 range, all three methods give similar
-#' results. For rare or extreme proportions, `"arcsine"` or `"logodds"`
-#' are more reliable.
+#' results. Near a boundary, the arcsine and log-odds calculations avoid
+#' relying on the untransformed Wald scale. Their operating characteristics
+#' still depend on the design and the planning values supplied.
 #'
 #' ## Null variance convention
 #'
@@ -86,7 +88,7 @@
 #' ```
 #'
 #' The unpooled form is used here because it is the variance the package
-#' reports everywhere else: it is the same expression that `deff`, the
+#' reports everywhere else. It is the same expression that `deff`, the
 #' finite population correction, and `resp_rate` act on in [n_prop()] and
 #' [prec_prop()], so a power calculation and a precision calculation for the
 #' same design stay on one scale. The pooled form has no finite-population

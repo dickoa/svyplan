@@ -69,9 +69,15 @@ whatever it was transformed into.}
 computed from a schedule rather than assembled.}
 }
 \value{
-\code{print()} returns \code{x} invisibly; \code{format()} a string;
-\code{as.double()} the overlap vector; \code{as.data.frame()} one row per lag;
-\code{Ops()} and \code{Math()} bare numerics. Replacement is an error.
+The method-specific result:
+\describe{
+\item{\code{print()}}{Returns \code{x} invisibly.}
+\item{\code{format()}}{Returns a string.}
+\item{\code{as.double()}}{Returns the overlap vector.}
+\item{\code{as.data.frame()}}{Returns one row per lag.}
+\item{\code{Ops()} and \code{Math()}}{Return bare numerics.}
+}
+Replacement is an error.
 }
 \description{
 A \code{svyplan_overlap} from \code{\link[=design_overlap]{design_overlap()}} is a numeric vector of

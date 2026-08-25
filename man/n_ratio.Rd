@@ -38,7 +38,7 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_ratio
 
 \item{cv_num}{Coefficient of variation of the numerator variable,
 \code{sd(y) / abs(mean(y))}, taken on the magnitude so it carries no sign.
-It must be strictly positive: a component with no variation at all is
+It must be strictly positive. A component with no variation at all is
 not a sampling problem, and at \code{cv_num = 0} the ratio's own variance
 comes entirely from the denominator.}
 
@@ -72,7 +72,9 @@ exactly one of \code{moe}, \code{cv}, or \code{rmoe}.}
 above, which is the one place this differs from \code{\link[=n_mean]{n_mean()}}.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1. The rate
-is for records usable on both components, not on either alone.}
+is for records usable on both components, not on either alone. See the
+nonresponse section of \link{svyplan-package} for what this adjustment does
+and does not claim.}
 
 \item{df}{Degrees of freedom of the variance estimator the planned design
 will have, available from \code{\link[=design_df]{design_df()}}. It switches the interval

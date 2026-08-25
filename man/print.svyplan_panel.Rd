@@ -43,11 +43,17 @@
 \code{as.data.frame()} arguments.}
 }
 \value{
-\code{print()} returns its argument invisibly; \code{summary()} an object of
-class \code{summary.svyplan_panel} carrying the plan, the full wave table,
-the launch path and the cohort composition; \code{format()} a string;
-\code{as.double()} the recruitment count and \code{as.integer()} the whole units
-that count rounds up to; \code{as.data.frame()} the wave table.
+The method-specific result:
+\describe{
+\item{\code{print()}}{Returns its argument invisibly.}
+\item{\code{summary()}}{Returns a \code{summary.svyplan_panel} object carrying the
+plan, full wave table, launch path, and cohort composition.}
+\item{\code{format()}}{Returns a string.}
+\item{\code{as.double()}}{Returns the recruitment count.}
+\item{\code{as.integer()}}{Returns the whole units to which the recruitment
+count rounds up.}
+\item{\code{as.data.frame()}}{Returns the wave table.}
+}
 }
 \description{
 Display and coercion methods for the object \code{\link[=n_panel]{n_panel()}} and
@@ -58,7 +64,7 @@ around that answer: the standing sample a rotating design holds, the
 response and retention it assumes, where the life's loss falls, and the
 launch a design reaching its steady state passes through.
 The coercions return the recruitment count, which is a number of units to
-release and not the analysis sample: those differ by the whole of the
+release and not the analysis sample. Those differ by the whole of the
 panel's attrition, and it is why \code{svyplan_panel} is a sibling of
 \code{svyplan_n} rather than a subtype.
 }

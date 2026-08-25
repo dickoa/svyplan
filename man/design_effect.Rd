@@ -171,7 +171,7 @@ unspecified are simply absent, which is equivalent to setting them to 1.
 Multiplying the components you supply by hand is Kish's approximation. It
 is exact when the stratum standard deviations are equal, whatever the
 stratum sizes, means and takes, and not otherwise. The gap runs in
-either direction, so it is not a bound: the weighting component charges
+either direction, so it is not a bound. The weighting component charges
 a disproportionate allocation as a loss without knowing which strata
 were favored, so a Neyman allocation over strata that differ sharply in
 \code{sd} is reported well above its true variance ratio, while a constraint
@@ -196,8 +196,9 @@ The clustering bracket reads \eqn{m_hr_h}, the take that responds, because
 that is the take \code{\link[=n_alloc]{n_alloc()}} sized the design on. So the ratio reported
 here falls as the ultimate-unit response rate falls, and describes the
 variance model the allocation actually used rather than the one its gross
-take would suggest. PSU-level response is absent from the bracket: it
-removes whole clusters instead of shrinking the ones that are worked.
+take would suggest. PSU-level response is absent from the bracket,
+because it removes whole clusters instead of shrinking the ones that
+are worked.
 
 This ratio is computed without finite population corrections, on the
 same planning scale as the component arguments. \code{\link[=prec_alloc]{prec_alloc()}} applies

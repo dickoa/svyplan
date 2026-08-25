@@ -60,7 +60,7 @@ smaller total delivers the design.
 \code{"natural"} treats them as analytic domains that arise at their own rate
 inside one sample. It requires a \code{share} column giving each domain's
 expected share of the population, constant within a domain, and reports
-\code{n} as \code{max(.n / share)}. That is an \emph{expected yield}: a sample of that
+\code{n} as \code{max(.n / share)}. That is an \emph{expected yield}. A sample of that
 size delivers each domain's quota on average, not with certainty in any
 one realized sample.}
 
@@ -77,7 +77,8 @@ interval half-width, so those rows need \code{moe} rather than \code{cv}.}
 
 \item{resp_rate}{Default expected response rate at the ultimate unit, in
 (0, 1]. Used for rows whose \code{resp_rate} column is absent or \code{NA}, and
-a non-missing row value overrides it.}
+a non-missing row value overrides it. See the nonresponse section of
+\link{svyplan-package} for what this adjustment does and does not claim.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -199,8 +200,8 @@ must yield, a floor on that row's own size, as in
 \code{\link[=n_prop]{n_prop()}}\verb{(min_cases = )}. Proportion rows only, and \code{NA} (the
 default) sizes the row on precision alone. The row that ends up
 largest is still the binding one, whichever constraint raised it.
-Single-stage \code{n_multi()} only: a multistage design sizes stages
-against a cost and has no single total for a count to raise.}
+Single-stage \code{n_multi()} only, because a multistage design sizes
+stages against a cost and has no single total for a count to raise.}
 \item{\code{unit_relvar}}{Unit relvariance. If omitted, derived
 automatically from \code{p} (as \code{(1 - p) / p}) or from
 \code{var} / \code{mu^2}.}
@@ -268,7 +269,7 @@ n_multi(targets_rmoe)
 
 # Continuous indicators: 'var' for the dispersion, 'mu' for the mean.
 # A CV target needs 'mu', because a relative standard error is relative
-# to something; a MOE target does not.
+# to something. A MOE target does not.
 targets_mean <- data.frame(
   name = c("expenditure", "hh_size"),
   var  = c(250000, 4.0),
