@@ -100,7 +100,15 @@ field.
 * `power_did()` covers difference-in-differences, parametrized by `treat` and
   `control` baseline and endline pairs, for proportion and mean outcomes.
 * All three accept panel overlap between the two occasions of a repeated
-  survey.
+  survey. Bernoulli outcomes use the same finite-population variance as the
+  precision family on every scale, Wald, arcsine, and log-odds alike, and
+  correlations between repeated Bernoulli outcomes are restricted to the
+  attainable Frechet-Hoeffding range.
+* Solved sample sizes are at least two units per group and report the power
+  achieved at that size. A requested power used to solve a size or minimum
+  detectable effect must exceed `alpha`, the power at zero effect, and
+  two-sided solutions include both rejection tails. A design that enumerates
+  its population has no minimum detectable effect and says so.
 
 ## Stratification
 
@@ -109,6 +117,9 @@ field.
   optimization, or Kozak random-restart search, under the same four allocation
   methods `n_alloc()` offers. `$strata` matches the `n_alloc()` frame contract,
   so the table can be handed straight on.
+* Bounded allocation satisfies the requested total together with minimum,
+  maximum, and take-all constraints. Boundary searches reserve the census
+  take correctly, including the full-population scaling of a target CV.
 * `predict()` applies fitted boundaries to new data, returning a factor.
 
 ## Design components
@@ -135,9 +146,10 @@ field.
 ## Survey plan profiles
 
 * `svyplan()` captures shared design defaults such as `deff`, `N`, `resp_rate`,
-  `alpha`, `stage_cost`, and `unit_cost`, validated at construction. Pass it as
-  `plan = plan` or pipe with `plan |> n_prop(...)`. Explicit arguments override
-  a profile, and `update()` revises one.
+  stage-specific response rates, `df`, `alpha`, `stage_cost`, and `unit_cost`,
+  validated at construction. Pass it as `plan = plan` or pipe with
+  `plan |> n_prop(...)`. Explicit arguments override a profile, and `update()`
+  revises one.
 
 ## Naming
 

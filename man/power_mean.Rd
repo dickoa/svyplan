@@ -41,7 +41,9 @@ Leave \code{NULL} to solve for MDE.}
 \item{n}{Per-group sample size. Scalar (equal groups) or length-2 vector
 \code{c(n1, n2)} for unequal groups. Leave \code{NULL} to solve for sample size.}
 
-\item{power}{Target power, in (0, 1). Leave \code{NULL} to solve for power.}
+\item{power}{Target power, in (0, 1). When solving for sample size or MDE,
+it must exceed \code{alpha}, the power at zero effect. Leave \code{NULL} to solve
+for power.}
 
 \item{alpha}{Significance level, default 0.05.}
 

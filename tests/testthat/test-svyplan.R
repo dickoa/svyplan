@@ -748,3 +748,31 @@ test_that("a plan default reaches n_multi without disturbing prop_method", {
     prec_multi(n_targets, domains = "region", prop_method = "wilson")$cv
   )
 })
+
+test_that("documented plan defaults match accepted defaults", {
+  rd_path <- testthat::test_path("..", "..", "man", "svyplan.Rd")
+  rd <- if (file.exists(rd_path)) {
+    tools::parse_Rd(rd_path)
+  } else {
+    tools::Rd_db("svyplan")[["svyplan.Rd"]]
+  }
+  arguments <- rd[vapply(
+    rd, function(x) identical(attr(x, "Rd_tag"), "\\arguments"), logical(1L)
+  )][[1L]]
+  items <- arguments[vapply(
+    arguments, function(x) identical(attr(x, "Rd_tag"), "\\item"),
+    logical(1L)
+  )]
+  dots <- items[vapply(
+    items, function(x) identical(paste(unlist(x[[1L]]), collapse = ""), "..."),
+    logical(1L)
+  )][[1L]]
+  code <- dots[[2L]][vapply(
+    dots[[2L]], function(x) identical(attr(x, "Rd_tag"), "\\code"),
+    logical(1L)
+  )]
+  documented <- vapply(code, function(x) paste(unlist(x), collapse = ""),
+                       character(1L))
+
+  expect_setequal(documented, svyplan:::.svyplan_allowed_defaults())
+})

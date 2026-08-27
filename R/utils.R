@@ -1084,7 +1084,7 @@ check_df <- function(df, name = "df") {
   resp_rate,
   tol = 1e-8
 ) {
-  lo <- sqrt(.Machine$double.eps)
+  lo <- max(2, 2 / ratio)
   p_lo <- suppressWarnings(power_fn(lo))
   if (!is.finite(p_lo)) {
     p_lo <- 0
@@ -1113,7 +1113,7 @@ check_df <- function(df, name = "df") {
     hi <- max(2, lo * 2)
     p_hi <- suppressWarnings(power_fn(hi))
     iter <- 0L
-    while ((is.na(p_hi) || p_hi < target_power) && hi < 1e12 && iter < 100L) {
+    while ((is.na(p_hi) || p_hi < target_power) && iter < 100L) {
       hi <- hi * 2
       p_hi <- suppressWarnings(power_fn(hi))
       iter <- iter + 1L
@@ -1130,6 +1130,75 @@ check_df <- function(df, name = "df") {
   )$root
 }
 
+#' Validate a power target used for inversion
+#' @keywords internal
+#' @noRd
+.check_power_target <- function(power, alpha) {
+  if (power <= alpha) {
+    stop(
+      sprintf(
+        "'power' must be greater than 'alpha' (%.4g) when solving for sample size or minimum detectable effect; alpha is the power at zero effect",
+        alpha
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+#' Normal-approximation power for a standardized absolute effect
+#' @keywords internal
+#' @noRd
+.normal_power <- function(effect, se, alpha, alternative) {
+  if (se == 0) {
+    return(if (effect == 0) alpha else 1)
+  }
+  z_a <- .z_alpha(alpha, alternative)
+  z <- abs(effect) / se
+  out <- pnorm(z - z_a)
+  if (alternative == "two.sided") {
+    out <- out + pnorm(-z - z_a)
+  }
+  min(out, 1)
+}
+
+#' Refuse a minimum detectable effect that a census does not have
+#'
+#' Enumerating the population leaves no sampling variance, so power is
+#' `alpha` at exactly zero effect and 1 at every nonzero effect. No effect
+#' has any intermediate power, so the requested target has no solution and
+#' reporting zero alongside it would state a power the design never achieves.
+#' @keywords internal
+#' @noRd
+.stop_census_mde <- function() {
+  stop(
+    "no minimum detectable effect exists: the design enumerates its population, so the sampling variance is zero and power is 'alpha' at zero effect and 1 at any nonzero effect",
+    call. = FALSE
+  )
+}
+
+#' Invert normal-approximation power for an absolute effect
+#' @keywords internal
+#' @noRd
+.solve_normal_mde <- function(power, se, alpha, alternative, tol = 1e-10) {
+  if (se == 0) {
+    .stop_census_mde()
+  }
+  if (alternative == "one.sided") {
+    return((.z_alpha(alpha, alternative) + qnorm(power)) * se)
+  }
+  hi <- (.z_alpha(alpha, alternative) + qnorm(power)) * se
+  hi <- max(hi, se * sqrt(.Machine$double.eps))
+  while (.normal_power(hi, se, alpha, alternative) < power) {
+    hi <- hi * 2
+  }
+  uniroot(
+    function(effect) .normal_power(effect, se, alpha, alternative) - power,
+    c(0, hi),
+    tol = tol
+  )$root
+}
+
 #' Per-group FPC factor (returns 1 for Inf, 0-clamped)
 #' @keywords internal
 #' @noRd
@@ -1138,6 +1207,25 @@ check_df <- function(df, name = "df") {
     return(1)
   }
   max(0, 1 - n / N)
+}
+
+#' Finite population correction on N - 1 degrees of freedom
+#'
+#' The transformed proportion scales carry their dispersion through
+#' \eqn{Var(\hat p) = S^2(1/n - 1/N)} with the Bernoulli population variance
+#' \eqn{S^2 = Np(1-p)/(N-1)}, so the factor that multiplies the per-unit term
+#' is \eqn{(N-n)/(N-1)}, not \eqn{1 - n/N}. The delta-method variances on the
+#' arcsine and log-odds scales inherit it unchanged, because both divide
+#' \eqn{Var(\hat p)} by a function of \eqn{p} alone. Matches
+#' `.bernoulli_var()` and `.prec_engine_prop()`, and reduces to
+#' `.fpc_factor()` as \eqn{N} grows.
+#' @keywords internal
+#' @noRd
+.fpc_factor_prop <- function(n, N) {
+  if (is.infinite(N)) {
+    return(1)
+  }
+  max(0, (N - n) / (N - 1))
 }
 
 #' Smallest proportion a design measures to a given CV
@@ -1691,6 +1779,19 @@ check_df <- function(df, name = "df") {
   deff * V
 }
 
+#' Finite-population variance of a Bernoulli variable
+#'
+#' The variance consumed by the package's without-replacement kernels is the
+#' population variance on `N - 1` degrees of freedom. For a population
+#' proportion `p`, that is `N * p * (1 - p) / (N - 1)`. The infinite-
+#' population limit is the usual `p * (1 - p)`.
+#' @keywords internal
+#' @noRd
+.bernoulli_var <- function(p, N) {
+  adj <- ifelse(is.infinite(N), 1, N / (N - 1))
+  p * (1 - p) * adj
+}
+
 #' Resolve the two occasions' variances and the change they bound
 #'
 #' A change is planned on one of two scales. On the mean scale the
@@ -1727,9 +1828,10 @@ check_df <- function(df, name = "df") {
     }
     check_proportion(p[1L], "p[1]")
     check_proportion(p[2L], "p[2]")
-    adj <- ifelse(is.infinite(N_pair), 1, N_pair / (N_pair - 1))
     return(list(
-      var_pair = p * (1 - p) * adj, change = p[2L] - p[1L], p = p
+      var_pair = .bernoulli_var(p, N_pair),
+      change = p[2L] - p[1L],
+      p = p
     ))
   }
   var <- .resolve_var(var, sd)
@@ -1763,6 +1865,21 @@ check_df <- function(df, name = "df") {
     )
   }
   invisible(TRUE)
+}
+
+#' Feasible second marginal at a requested Bernoulli correlation
+#' @keywords internal
+#' @noRd
+.bernoulli_cor_interval <- function(p1, overlap_cor, overlap) {
+  if (overlap == 0 || overlap_cor == 0) {
+    return(c(0, 1))
+  }
+  rho2 <- overlap_cor^2
+  q1 <- 1 - p1
+  c(
+    rho2 * p1 / (q1 + rho2 * p1),
+    p1 / (p1 + rho2 * q1)
+  )
 }
 
 #' Check a size supplied per occasion

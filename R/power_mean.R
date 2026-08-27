@@ -13,7 +13,9 @@
 #'   Leave `NULL` to solve for MDE.
 #' @param n Per-group sample size. Scalar (equal groups) or length-2 vector
 #'   `c(n1, n2)` for unequal groups. Leave `NULL` to solve for sample size.
-#' @param power Target power, in (0, 1). Leave `NULL` to solve for power.
+#' @param power Target power, in (0, 1). When solving for sample size or MDE,
+#'   it must exceed `alpha`, the power at zero effect. Leave `NULL` to solve
+#'   for power.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size for finite-population correction. A scalar applies
 #'   to both groups. A length-2 vector `c(N1, N2)` sets group-specific
@@ -175,6 +177,9 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
     .check_overlap_n(overlap, ratio = ratio)
   }
   if (!is.null(power)) check_proportion(power, "power")
+  if (!is.null(power) && (is.null(n) || is.null(effect))) {
+    .check_power_target(power, alpha)
+  }
 
   z_a <- .z_alpha(alpha, alternative)
 
@@ -188,41 +193,29 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
   if (is.null(n)) {
     params$effect <- effect
     params$power <- power
-    z_b <- qnorm(power)
-
-    if (all(is.infinite(N_pair))) {
-      if (ratio == 1) {
-        V <- var_pair[1] + var_pair[2] - ov_term
-        n2_0 <- (z_a + z_b)^2 * V * deff / effect^2
-        n0 <- n2_0 / resp_rate
-      } else {
-        r <- ratio
-        V_r <- var_pair[1] / r + var_pair[2] - ov_term
-        n2 <- (z_a + z_b)^2 * V_r * deff / effect^2
-        n2 <- n2 / resp_rate
-        n0 <- c(r * n2, n2)
-      }
-    } else {
-      r <- ratio
-      power_n2 <- function(n2) {
-        n_vec <- if (r == 1) c(n2, n2) else c(r * n2, n2)
-        n_eff <- n_vec * resp_rate
-
-        V_d <- .diff_var_fpc(n_eff, var_pair, N_pair, deff, overlap, overlap_cor)
-        V_d <- .safe_variance(V_d, "difference variance")
-        if (V_d == 0) return(1)
-        se <- sqrt(V_d)
-        pw <- pnorm(abs(effect) / se - z_a)
-        if (alternative == "two.sided")
-          pw <- pw + pnorm(-abs(effect) / se - z_a)
-        min(pw, 1)
-      }
-
-      n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
-      n0 <- if (r == 1) n2 else c(r * n2, n2)
+    r <- ratio
+    power_n2 <- function(n2) {
+      n_vec <- if (r == 1) c(n2, n2) else c(r * n2, n2)
+      n_eff <- n_vec * resp_rate
+      V_d <- .diff_var_fpc(
+        n_eff, var_pair, N_pair, deff, overlap, overlap_cor
+      )
+      V_d <- .safe_variance(V_d, "difference variance")
+      .normal_power(effect, sqrt(V_d), alpha, alternative)
     }
 
-    .new_svyplan_power(n = n0, power = power, effect = effect,
+    if (alternative == "one.sided" && all(is.infinite(N_pair))) {
+      z_b <- qnorm(power)
+      V_r <- var_pair[1] / r + var_pair[2] - ov_term
+      n2 <- (z_a + z_b)^2 * V_r * deff / effect^2 / resp_rate
+      n2 <- max(n2, 2, 2 / r)
+    } else {
+      n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
+    }
+    n0 <- if (r == 1) n2 else c(r * n2, n2)
+    achieved_power <- power_n2(n2)
+
+    .new_svyplan_power(n = n0, power = achieved_power, effect = effect,
                        type = "mean", solved = "n", params = params)
 
   } else if (is.null(power)) {
@@ -250,7 +243,6 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
   } else {
     params$n <- n
     params$power <- power
-    z_b <- qnorm(power)
     n_vec <- if (length(n) == 1L) c(n, n) else n
     .check_gross_n(n_vec, N_pair, label = c("group 1", "group 2"))
     n_eff <- n_vec * resp_rate
@@ -258,7 +250,7 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
     V_d <- .diff_var_fpc(n_eff, var_pair, N_pair, deff, overlap, overlap_cor)
     V_d <- .safe_variance(V_d, "difference variance")
     se <- sqrt(V_d)
-    mde <- (z_a + z_b) * se
+    mde <- .solve_normal_mde(power, se, alpha, alternative)
 
     .new_svyplan_power(n = n, power = power, effect = mde,
                        type = "mean", solved = "mde", params = params)

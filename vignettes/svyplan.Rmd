@@ -471,10 +471,12 @@ predict(baseline, data.frame(resp_rate = c(0.7, 0.8, 0.9, 1.0)))
 
 ## Continue with the focused articles
 
-- [Allocation, domains, and two-phase designs](allocation.html)
-- [Multistage survey planning](multistage.html)
-- [Repeated surveys, panels, and rotation](repeated-surveys.html)
-- [Power and sensitivity analysis](power.html)
+The following detailed articles are available on the package website:
+
+- [Allocation, domains, and two-phase designs](https://dickoa.gitlab.io/svyplan/articles/allocation.html)
+- [Multistage survey planning](https://dickoa.gitlab.io/svyplan/articles/multistage.html)
+- [Repeated surveys, panels, and rotation](https://dickoa.gitlab.io/svyplan/articles/repeated-surveys.html)
+- [Power and sensitivity analysis](https://dickoa.gitlab.io/svyplan/articles/power.html)
 
 ## Scope
 

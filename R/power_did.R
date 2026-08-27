@@ -33,7 +33,9 @@
 #' @param n Per-arm sample size per wave. Scalar (equal treated/control)
 #'   or length-2 vector `c(n_treat, n_control)`. Leave `NULL` to solve
 #'   for n.
-#' @param power Target power, in (0, 1). Leave `NULL` to solve for power.
+#' @param power Target power, in (0, 1). When solving for sample size or MDE,
+#'   it must exceed `alpha`, the power at zero effect. Leave `NULL` to solve
+#'   for power.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size for finite-population correction.
 #'   A scalar applies to both arms. Use a length-2 vector
@@ -77,21 +79,38 @@
 #'   - 2 \cdot \text{overlap} \cdot \rho \cdot
 #'   \sqrt{V_{\text{pre}} \cdot V_{\text{post}}}}{V_arm = V_pre + V_post - 2 * overlap * rho * sqrt(V_pre * V_post)}
 #'
-#' The DiD test statistic variance is then:
+#' A finite arm population does not scale that quantity by an ordinary
+#' \eqn{1 - n/N}. The overlap covariance carries a single \eqn{1/N} rather
+#' than the arm's marginal factor, so each arm splits into a per-unit part
+#' and a census part that are *different* expressions whenever the overlap is
+#' partial:
 #'
-#' \deqn{V_d = \text{deff} \left(
-#'   \frac{V_{\text{trt}} \cdot \text{fpc}_t}{n_t} +
-#'   \frac{V_{\text{ctrl}} \cdot \text{fpc}_c}{n_c}
-#' \right)}{V_d = deff ( (V_trt * fpc_t)/n_t + (V_ctrl * fpc_c)/n_c )}
+#' \deqn{V_{\text{arm}}^{\text{census}} = V_{\text{pre}} + V_{\text{post}}
+#'   - 2 \rho \sqrt{V_{\text{pre}} \cdot V_{\text{post}}}}{V_arm^census = V_pre + V_post - 2 * rho * sqrt(V_pre * V_post)}
 #'
-#' When `overlap = 0`, this reduces to the classical flat-variance formula.
+#' the same expression with the overlap fraction set to one. The DiD test
+#' statistic variance is then
+#'
+#' \deqn{V_d = \text{deff} \sum_{a \in \{t, c\}} \left(
+#'   \frac{V_{a}}{n_{a}} - \frac{V_{a}^{\text{census}}}{N_{a}}
+#' \right)}{V_d = deff * sum over arms of ( V_a/n_a - V_a^census/N_a )}
+#'
+#' with the census part dropped for an infinite \eqn{N_a}. The two
+#' expressions coincide only at the extremes. At `overlap = 1` the census
+#' part equals the per-unit numerator and the whole collapses to
+#' \eqn{V_a(1/n_a - 1/N_a)}. At `overlap = 0` the two occasions are
+#' independent populations, the census part loses its cross term as well, and
+#' the result reduces to the classical flat-variance formula. At a partial
+#' overlap it is neither, which is why the correction is written as a
+#' subtracted census term rather than as a factor on \eqn{V_a}.
 #'
 #' ## What `treat` and `control` are used for
 #'
 #' Both paths always supply the contrast. Whether they also supply the
 #' variance depends on `outcome`: for `"prop"` the four cell variances are
-#' \eqn{p(1-p)} at each path value, while for `"mean"` the variance comes
-#' entirely from `var` and the paths are used for the contrast alone.
+#' \eqn{p(1-p)} at each path value, multiplied by \eqn{N/(N-1)} for a finite
+#' arm population, while for `"mean"` the variance comes entirely from `var`
+#' and the paths are used for the contrast alone.
 #'
 #' Because the contrast is derived, `effect` is redundant with the paths and
 #' is only needed to plan for a different effect than they describe, for
@@ -244,13 +263,20 @@ power_did.default <- function(
   }
   if (!is.null(power)) check_proportion(power, "power")
   if (!is.null(effect)) check_scalar(effect, "effect")
+  if (!is.null(power) && (is.null(n) || is.null(effect))) {
+    .check_power_target(power, alpha)
+  }
 
   if (outcome == "mean") {
     var_parts <- .did_var_parts(var)
     var_terms <- .did_var_terms_mean(var_parts, overlap, overlap_cor)
   } else {
     var_parts <- NULL
-    var_terms <- .did_var_terms_prop(treat, control, overlap, overlap_cor)
+    .check_bernoulli_cor(treat, overlap_cor, overlap)
+    .check_bernoulli_cor(control, overlap_cor, overlap)
+    var_terms <- .did_var_terms_prop(
+      treat, control, overlap, overlap_cor, N_pair
+    )
   }
 
   type <- if (outcome == "prop") "did_prop" else "did_mean"
@@ -275,40 +301,35 @@ power_did.default <- function(
     params$effect <- effect
     params$power <- power
 
-    z_a <- .z_alpha(alpha, alternative)
-    z_b <- qnorm(power)
-
-    if (all(is.infinite(N_pair))) {
-      if (ratio == 1) {
-        n0 <- (z_a + z_b)^2 * deff * sum(var_terms$change) / effect^2
-        n0 <- n0 / resp_rate
-      } else {
-        n_c <- (z_a + z_b)^2 * deff *
-          (var_terms$change[1] / ratio + var_terms$change[2]) / effect^2
-        n_c <- n_c / resp_rate
-        n0 <- c(ratio * n_c, n_c)
-      }
-    } else {
-      r <- ratio
-      power_n2 <- function(n2) {
-        n_vec <- if (r == 1) c(n2, n2) else c(r * n2, n2)
-        n_eff <- n_vec * resp_rate
-        .power_did_power_core(
-          effect = effect,
-          n_eff = n_eff,
-          var_terms = var_terms,
-          alpha = alpha,
-          N_pair = N_pair,
-          deff = deff,
-          alternative = alternative
-        )
-      }
-      n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
-      n0 <- if (r == 1) n2 else c(r * n2, n2)
+    r <- ratio
+    power_n2 <- function(n2) {
+      n_vec <- if (r == 1) c(n2, n2) else c(r * n2, n2)
+      n_eff <- n_vec * resp_rate
+      .power_did_power_core(
+        effect = effect,
+        n_eff = n_eff,
+        var_terms = var_terms,
+        alpha = alpha,
+        N_pair = N_pair,
+        deff = deff,
+        alternative = alternative
+      )
     }
 
+    if (alternative == "one.sided" && all(is.infinite(N_pair))) {
+      z_a <- .z_alpha(alpha, alternative)
+      z_b <- qnorm(power)
+      V_r <- var_terms$change[1] / r + var_terms$change[2]
+      n2 <- (z_a + z_b)^2 * deff * V_r / effect^2 / resp_rate
+      n2 <- max(n2, 2, 2 / r)
+    } else {
+      n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
+    }
+    n0 <- if (r == 1) n2 else c(r * n2, n2)
+    achieved_power <- power_n2(n2)
+
     .new_svyplan_power(
-      n = n0, power = power, effect = effect,
+      n = n0, power = achieved_power, effect = effect,
       type = type, solved = "n", params = params
     )
 
@@ -401,27 +422,38 @@ power_did.default <- function(
 #' finite population correction subtracts. The overlap covariance carries a
 #' single \eqn{1/N} rather than the arm's marginal factor, so the change
 #' variance splits as \eqn{v/n - v^{census}/N}{v/n - v^census/N} with the census term the
-#' same expression at full overlap. See `.diff_var_fpc()`.
+#' same expression at full overlap. At `overlap = 0`, the two occasions are
+#' independent populations and the census term therefore has no cross term,
+#' matching `.diff_var_fpc()`.
 #' @keywords internal
 #' @noRd
 .did_var_pair <- function(v0, v1, overlap, overlap_cor, what) {
   cross <- overlap_cor * sqrt(v0 * v1)
   list(
     change = .safe_variance(v0 + v1 - 2 * overlap * cross, what),
-    census = .safe_variance(v0 + v1 - 2 * cross, what)
+    census = .safe_variance(
+      v0 + v1 - if (overlap > 0) 2 * cross else 0,
+      what
+    )
   )
 }
 
 #' @keywords internal
 #' @noRd
-.did_var_terms_prop <- function(treat, control, overlap, overlap_cor) {
+.did_var_terms_prop <- function(treat, control, overlap, overlap_cor, N_pair) {
   t0 <- treat[1]; t1 <- treat[2]
   c0 <- control[1]; c1 <- control[2]
 
-  vt <- .did_var_pair(t0 * (1 - t0), t1 * (1 - t1), overlap, overlap_cor,
-                      "treated change variance")
-  vc <- .did_var_pair(c0 * (1 - c0), c1 * (1 - c1), overlap, overlap_cor,
-                      "control change variance")
+  vt <- .did_var_pair(
+    .bernoulli_var(t0, N_pair[1L]),
+    .bernoulli_var(t1, N_pair[1L]),
+    overlap, overlap_cor, "treated change variance"
+  )
+  vc <- .did_var_pair(
+    .bernoulli_var(c0, N_pair[2L]),
+    .bernoulli_var(c1, N_pair[2L]),
+    overlap, overlap_cor, "control change variance"
+  )
 
   list(change = c(vt$change, vc$change), census = c(vt$census, vc$census))
 }
@@ -474,7 +506,5 @@ power_did.default <- function(
   V_d <- .did_var_d(n_eff, var_terms, N_pair, deff)
   V_d <- .safe_variance(V_d, "DiD variance")
 
-  z_a <- .z_alpha(alpha, alternative)
-  z_b <- qnorm(power)
-  (z_a + z_b) * sqrt(V_d)
+  .solve_normal_mde(power, sqrt(V_d), alpha, alternative)
 }

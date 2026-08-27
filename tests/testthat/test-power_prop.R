@@ -1,4 +1,4 @@
-test_that("power_prop solve-n matches formula", {
+test_that("power_prop solve-n matches the closed-form starting value", {
   p1 <- 0.30
   p2 <- 0.35
   power <- 0.80
@@ -11,7 +11,7 @@ test_that("power_prop solve-n matches formula", {
 
   res <- power_prop(p1 = p1, p2 = p2)
   expect_s3_class(res, "svyplan_power")
-  expect_equal(res$n, expected, tolerance = 1e-6)
+  expect_equal(res$n, expected, tolerance = 1e-4)
   expect_equal(res$solved, "n")
   expect_equal(res$type, "proportion")
   expect_equal(res$power, 0.80)
@@ -104,6 +104,36 @@ test_that("power_prop validates inputs", {
   )
 })
 
+test_that("finite-population Wald power uses the Bernoulli population variance", {
+  p <- c(0.2, 0.6)
+  N <- 10
+  n <- 5
+  S2 <- N / (N - 1) * p * (1 - p)
+  se <- sqrt(sum(S2 * (1 / n - 1 / N)))
+  z_a <- qnorm(0.975)
+  expected <- pnorm(abs(diff(p)) / se - z_a) +
+    pnorm(-abs(diff(p)) / se - z_a)
+
+  got <- power_prop(p[1], p2 = p[2], n = n, power = NULL, N = N)
+  expect_equal(got$power, expected, tolerance = 1e-12)
+  expect_equal(got$power, 0.4751009, tolerance = 1e-7)
+})
+
+test_that("Wald overlap refuses unattainable Bernoulli correlations", {
+  expect_error(
+    power_prop(0.01, p2 = 0.9, n = 100, power = NULL,
+               overlap = 1, overlap_cor = 0.9),
+    "0.0335"
+  )
+
+  bound <- (min(0.3, 0.4) - 0.3 * 0.4) /
+    sqrt(0.3 * 0.7 * 0.4 * 0.6)
+  expect_silent(
+    power_prop(0.3, p2 = 0.4, n = 100, power = NULL,
+               overlap = 1, overlap_cor = bound * (1 - 1e-10))
+  )
+})
+
 test_that("power_prop format and print", {
   res <- power_prop(p1 = 0.30, p2 = 0.35)
   expect_match(format(res), "svyplan_power")
@@ -164,10 +194,13 @@ test_that("power_prop handles partial and full censuses for every method", {
     )
     expect_equal(full$power, 1)
 
-    mde <- power_prop(
-      p1 = 0.4, n = 100, power = 0.8, N = 100, method = method
+    # A census leaves no sampling variance, so no effect has the requested
+    # power and there is nothing to report as a minimum detectable one.
+    expect_error(
+      power_prop(p1 = 0.4, n = 100, power = 0.8, N = 100, method = method),
+      "no minimum detectable effect exists",
+      info = method
     )
-    expect_equal(mde$effect, 0)
   }
 })
 
@@ -421,8 +454,8 @@ test_that("supplied-n power and mde modes reject gross draws above N", {
 test_that("power_prop applies the overlap correction like power_mean", {
   za <- qnorm(0.975)
   p1 <- 0.30; p2 <- 0.40; nn <- c(60, 60); NN <- 400
-  v <- c(p1 * (1 - p1), p2 * (1 - p2))
-  for (rho in c(0.4, 1)) {
+  v <- NN / (NN - 1) * c(p1 * (1 - p1), p2 * (1 - p2))
+  for (rho in c(0.4, 0.8)) {
     for (ov in c(0.3, 0.8)) {
       exact <- v[1] * (1 / nn[1] - 1 / NN) + v[2] * (1 / nn[2] - 1 / NN) -
         2 * rho * sqrt(v[1] * v[2]) * (ov / nn[2] - 1 / NN)
@@ -456,8 +489,10 @@ logodds_power_ref <- function(p1, p2, n, alpha = 0.05, N = c(Inf, Inf),
   d <- log(p1 / (1 - p1)) - log(p2 / (1 - p2))
   p_bar <- (n[1] * p1 + n[2] * p2) / (n[1] + n[2])
   q_bar <- 1 - p_bar
+  # A finite Bernoulli population has S^2 = N p (1 - p)/(N - 1), so the factor
+  # on the per-unit term is (N - n)/(N - 1) rather than 1 - n/N.
   f <- vapply(1:2, function(i) {
-    if (is.infinite(N[i])) 1 else max(0, 1 - n[i] / N[i])
+    if (is.infinite(N[i])) 1 else max(0, (N[i] - n[i]) / (N[i] - 1))
   }, numeric(1L))
   V0 <- deff * (f[1] / (n[1] * p_bar * q_bar) + f[2] / (n[2] * p_bar * q_bar))
   VA <- deff * (f[1] / (n[1] * p1 * (1 - p1)) +
@@ -470,7 +505,8 @@ logodds_power_ref <- function(p1, p2, n, alpha = 0.05, N = c(Inf, Inf),
 }
 
 test_that("the log-odds pooled null is weighted by the allocation", {
-  # Hand-calculated from the closed form in ?power_prop at ratio 4.
+  # Hand-calculated one-tail starting value at ratio 4. The two-sided solver
+  # then closes the tiny far-tail difference numerically.
   z_a <- qnorm(0.975)
   z_b <- qnorm(0.80)
   p1 <- 0.1; p2 <- 0.2; r <- 4
@@ -481,7 +517,8 @@ test_that("the log-odds pooled null is weighted by the allocation", {
   n2 <- ((z_a * sqrt(V0) + z_b * sqrt(VA)) / abs(d))^2
 
   res <- power_prop(p1 = p1, p2 = p2, ratio = r, method = "logodds")
-  expect_equal(unname(res$n), c(r * n2, n2), tolerance = 1e-10)
+  expect_equal(unname(res$n), c(r * n2, n2), tolerance = 1e-4)
+  expect_equal(res$power, 0.8, tolerance = 1e-8)
   expect_equal(ceiling(unname(res$n)), c(523, 131))
 
   # The unweighted null the allocation-weighted one replaces.
@@ -502,7 +539,8 @@ test_that("equal allocation leaves the log-odds pooled null at the midpoint", {
   n_ref <- ((z_a * sqrt(V0) + z_b * sqrt(VA)) / abs(d))^2
 
   res <- power_prop(p1 = p1, p2 = p2, method = "logodds")
-  expect_equal(unname(res$n), n_ref, tolerance = 1e-10)
+  expect_equal(unname(res$n), n_ref, tolerance = 1e-4)
+  expect_equal(res$power, 0.8, tolerance = 1e-8)
   expect_equal(res$n, power_prop(p1 = p1, p2 = p2, ratio = 1,
                                  method = "logodds")$n)
 })
@@ -539,14 +577,12 @@ test_that("log-odds sizing inverts to its target power at any allocation", {
                                      alternative = "one.sided"),
                    target, tolerance = 1e-10)
 
-      # Two-sided, where the closed form drops the far tail, as it does under
-      # every method. The size is conservative by that amount and no more.
+      # Two-sided sizing numerically includes the far tail.
       res2 <- power_prop(p1 = 0.1, p2 = 0.2, ratio = r, power = target,
                          method = "logodds")
       back2 <- power_prop(p1 = 0.1, p2 = 0.2, n = res2$n, power = NULL,
                           method = "logodds")
-      expect_gte(back2$power, target)
-      expect_lt(back2$power - target, 1e-4)
+      expect_equal(back2$power, target, tolerance = 1e-8)
       expect_equal(logodds_power_ref(0.1, 0.2, res2$n), back2$power,
                    tolerance = 1e-12)
     }

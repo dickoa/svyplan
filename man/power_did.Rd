@@ -62,7 +62,9 @@ with both \code{n} and \code{power} given to solve for the MDE.}
 or length-2 vector \code{c(n_treat, n_control)}. Leave \code{NULL} to solve
 for n.}
 
-\item{power}{Target power, in (0, 1). Leave \code{NULL} to solve for power.}
+\item{power}{Target power, in (0, 1). When solving for sample size or MDE,
+it must exceed \code{alpha}, the power at zero effect. Leave \code{NULL} to solve
+for power.}
 
 \item{alpha}{Significance level, default 0.05.}
 
@@ -124,20 +126,37 @@ Per-arm variance of the before-after change accounts for panel overlap:
   - 2 \cdot \text{overlap} \cdot \rho \cdot
   \sqrt{V_{\text{pre}} \cdot V_{\text{post}}}}{V_arm = V_pre + V_post - 2 * overlap * rho * sqrt(V_pre * V_post)}
 
-The DiD test statistic variance is then:
+A finite arm population does not scale that quantity by an ordinary
+\eqn{1 - n/N}. The overlap covariance carries a single \eqn{1/N} rather
+than the arm's marginal factor, so each arm splits into a per-unit part
+and a census part that are \emph{different} expressions whenever the overlap is
+partial:
 
-\deqn{V_d = \text{deff} \left(
-  \frac{V_{\text{trt}} \cdot \text{fpc}_t}{n_t} +
-  \frac{V_{\text{ctrl}} \cdot \text{fpc}_c}{n_c}
-\right)}{V_d = deff ( (V_trt * fpc_t)/n_t + (V_ctrl * fpc_c)/n_c )}
+\deqn{V_{\text{arm}}^{\text{census}} = V_{\text{pre}} + V_{\text{post}}
+  - 2 \rho \sqrt{V_{\text{pre}} \cdot V_{\text{post}}}}{V_arm^census = V_pre + V_post - 2 * rho * sqrt(V_pre * V_post)}
 
-When \code{overlap = 0}, this reduces to the classical flat-variance formula.
+the same expression with the overlap fraction set to one. The DiD test
+statistic variance is then
+
+\deqn{V_d = \text{deff} \sum_{a \in \{t, c\}} \left(
+  \frac{V_{a}}{n_{a}} - \frac{V_{a}^{\text{census}}}{N_{a}}
+\right)}{V_d = deff * sum over arms of ( V_a/n_a - V_a^census/N_a )}
+
+with the census part dropped for an infinite \eqn{N_a}. The two
+expressions coincide only at the extremes. At \code{overlap = 1} the census
+part equals the per-unit numerator and the whole collapses to
+\eqn{V_a(1/n_a - 1/N_a)}. At \code{overlap = 0} the two occasions are
+independent populations, the census part loses its cross term as well, and
+the result reduces to the classical flat-variance formula. At a partial
+overlap it is neither, which is why the correction is written as a
+subtracted census term rather than as a factor on \eqn{V_a}.
 \subsection{What \code{treat} and \code{control} are used for}{
 
 Both paths always supply the contrast. Whether they also supply the
 variance depends on \code{outcome}: for \code{"prop"} the four cell variances are
-\eqn{p(1-p)} at each path value, while for \code{"mean"} the variance comes
-entirely from \code{var} and the paths are used for the contrast alone.
+\eqn{p(1-p)} at each path value, multiplied by \eqn{N/(N-1)} for a finite
+arm population, while for \code{"mean"} the variance comes entirely from \code{var}
+and the paths are used for the contrast alone.
 
 Because the contrast is derived, \code{effect} is redundant with the paths and
 is only needed to plan for a different effect than they describe, for

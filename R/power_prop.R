@@ -13,7 +13,9 @@
 #' @param n Per-group sample size, measured as gross units drawn and bounded
 #'   by the corresponding finite `N`. Scalar (equal groups) or length-2 vector
 #'   `c(n1, n2)` for unequal groups. Leave `NULL` to solve for sample size.
-#' @param power Target power, in (0, 1). Leave `NULL` to solve for power.
+#' @param power Target power, in (0, 1). When solving for sample size or MDE,
+#'   it must exceed `alpha`, the power at zero effect. Leave `NULL` to solve
+#'   for power.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size for finite-population correction. A scalar applies
 #'   to both groups. A length-2 vector `c(N1, N2)` sets group-specific
@@ -227,6 +229,12 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
     .check_overlap_n(overlap, ratio = ratio)
   }
   if (!is.null(power)) check_proportion(power, "power")
+  if (!is.null(power) && (is.null(n) || is.null(p2))) {
+    .check_power_target(power, alpha)
+  }
+  if (method == "wald" && !is.null(p2)) {
+    .check_bernoulli_cor(c(p1, p2), overlap_cor, overlap)
+  }
 
   params <- list(p1 = p1, alpha = alpha, N = N, deff = deff,
                  resp_rate = resp_rate, alternative = alternative,
@@ -246,7 +254,21 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
       logodds = .power_prop_n_logodds(p1, p2, power, alpha, N_pair, deff,
                                       alternative, ratio, resp_rate))
 
-    .new_svyplan_power(n = res, power = power, effect = abs(p1 - p2),
+    n_eff <- res * resp_rate
+    achieved_power <- switch(method,
+      wald = .power_prop_power_wald(
+        p1, p2, n_eff, alpha, N_pair, deff,
+        alternative, overlap, overlap_cor
+      ),
+      arcsine = .power_prop_power_arcsine(
+        p1, p2, n_eff, alpha, N_pair, deff, alternative
+      ),
+      logodds = .power_prop_power_logodds(
+        p1, p2, n_eff, alpha, N_pair, deff, alternative
+      )
+    )
+
+    .new_svyplan_power(n = res, power = achieved_power, effect = abs(p1 - p2),
                        type = "proportion", solved = "n", params = params)
 
   } else if (is.null(power)) {
@@ -306,30 +328,21 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   q1 <- 1 - p1; q2 <- 1 - p2
   ov_term <- 2 * overlap * overlap_cor * sqrt(p1 * q1 * p2 * q2)
 
-  if (all(is.infinite(N_pair))) {
-    if (ratio == 1) {
-      V <- p1 * q1 + p2 * q2 - ov_term
-      n2_0 <- (z_a + z_b)^2 * V * deff / icc^2
-      n0 <- n2_0 / resp_rate
-    } else {
-      r <- ratio
-      V_r <- p1 * q1 / r + p2 * q2 - ov_term
-      n2 <- (z_a + z_b)^2 * V_r * deff / icc^2
-      n2 <- n2 / resp_rate
-      n0 <- c(r * n2, n2)
-    }
-  } else {
-    r <- ratio
-    power_n2 <- function(n2) {
-      n_eff <- if (r == 1) c(n2, n2) else c(r * n2, n2)
-      n_eff <- n_eff * resp_rate
-      .power_prop_power_wald(p1, p2, n_eff, alpha, N_pair, deff,
-                             alternative, overlap, overlap_cor)
-    }
-    n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
-    n0 <- if (r == 1) n2 else c(r * n2, n2)
+  r <- ratio
+  power_n2 <- function(n2) {
+    n_eff <- if (r == 1) c(n2, n2) else c(r * n2, n2)
+    n_eff <- n_eff * resp_rate
+    .power_prop_power_wald(p1, p2, n_eff, alpha, N_pair, deff,
+                           alternative, overlap, overlap_cor)
   }
-  n0
+  if (alternative == "one.sided" && all(is.infinite(N_pair))) {
+    V_r <- p1 * q1 / r + p2 * q2 - ov_term
+    n2 <- (z_a + z_b)^2 * V_r * deff / icc^2 / resp_rate
+    n2 <- max(n2, 2, 2 / r)
+  } else {
+    n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
+  }
+  if (r == 1) n2 else c(r * n2, n2)
 }
 
 .power_prop_power_wald <- function(p1, p2, n_eff, alpha, N_pair, deff,
@@ -337,10 +350,9 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
 
   z_a <- .z_alpha(alpha, alternative)
-  q1 <- 1 - p1; q2 <- 1 - p2
   icc <- abs(p1 - p2)
 
-  V_d <- .diff_var_fpc(n_vec, c(p1 * q1, p2 * q2), N_pair, deff,
+  V_d <- .diff_var_fpc(n_vec, .bernoulli_var(c(p1, p2), N_pair), N_pair, deff,
                        overlap, overlap_cor)
   V_d <- .safe_variance(V_d, "difference variance")
   if (V_d == 0) return(1)
@@ -356,8 +368,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
                                   alternative, overlap, overlap_cor) {
   n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
   if (all(vapply(seq_len(2L), function(i) {
-    .fpc_factor(n_vec[i], N_pair[i]) == 0
-  }, logical(1L)))) return(p1)
+    .fpc_factor_prop(n_vec[i], N_pair[i]) == 0
+  }, logical(1L)))) .stop_census_mde()
 
   target_fn <- function(p2) {
     .power_prop_power_wald(p1, p2, n_eff, alpha, N_pair, deff,
@@ -366,8 +378,9 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
   eps <- 1e-8
   roots <- list()
+  feasible <- .bernoulli_cor_interval(p1, overlap_cor, overlap)
 
-  up_lo <- p1 + eps; up_hi <- 1 - eps
+  up_lo <- p1 + eps; up_hi <- min(1 - eps, feasible[2L])
   if (up_lo < up_hi) {
     f_lo <- target_fn(up_lo); f_hi <- target_fn(up_hi)
     if (is.finite(f_lo) && is.finite(f_hi)) {
@@ -378,7 +391,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
     }
   }
 
-  dn_lo <- eps; dn_hi <- p1 - eps
+  dn_lo <- max(eps, feasible[1L]); dn_hi <- p1 - eps
   if (dn_lo < dn_hi) {
     f_lo <- target_fn(dn_lo); f_hi <- target_fn(dn_hi)
     if (is.finite(f_lo) && is.finite(f_hi)) {
@@ -404,28 +417,21 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   z_b <- qnorm(power)
   diff_phi <- asin(sqrt(p1)) - asin(sqrt(p2))
 
-  if (all(is.infinite(N_pair))) {
-    if (ratio == 1) {
-      n2_0 <- ((z_a + z_b) / (sqrt(2) * abs(diff_phi)))^2 * deff
-      n0 <- n2_0 / resp_rate
-    } else {
-      r <- ratio
-      n2 <- ((z_a + z_b) / abs(diff_phi))^2 * deff * (1 / r + 1) / 4
-      n2 <- n2 / resp_rate
-      n0 <- c(r * n2, n2)
-    }
-  } else {
-    r <- ratio
-    power_n2 <- function(n2) {
-      n_eff <- if (r == 1) c(n2, n2) else c(r * n2, n2)
-      n_eff <- n_eff * resp_rate
-      .power_prop_power_arcsine(p1, p2, n_eff, alpha, N_pair, deff,
-                                alternative)
-    }
-    n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
-    n0 <- if (r == 1) n2 else c(r * n2, n2)
+  r <- ratio
+  power_n2 <- function(n2) {
+    n_eff <- if (r == 1) c(n2, n2) else c(r * n2, n2)
+    n_eff <- n_eff * resp_rate
+    .power_prop_power_arcsine(p1, p2, n_eff, alpha, N_pair, deff,
+                              alternative)
   }
-  n0
+  if (alternative == "one.sided" && all(is.infinite(N_pair))) {
+    n2 <- ((z_a + z_b) / abs(diff_phi))^2 * deff * (1 / r + 1) / 4
+    n2 <- n2 / resp_rate
+    n2 <- max(n2, 2, 2 / r)
+  } else {
+    n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
+  }
+  if (r == 1) n2 else c(r * n2, n2)
 }
 
 .power_prop_power_arcsine <- function(p1, p2, n_eff, alpha, N_pair, deff,
@@ -435,8 +441,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   z_a <- .z_alpha(alpha, alternative)
   diff_phi <- asin(sqrt(p1)) - asin(sqrt(p2))
 
-  fpc1 <- .fpc_factor(n_vec[1], N_pair[1])
-  fpc2 <- .fpc_factor(n_vec[2], N_pair[2])
+  fpc1 <- .fpc_factor_prop(n_vec[1], N_pair[1])
+  fpc2 <- .fpc_factor_prop(n_vec[2], N_pair[2])
   se_phi <- sqrt(deff * (fpc1 / (4 * n_vec[1]) + fpc2 / (4 * n_vec[2])))
 
   if (se_phi == 0) return(1)
@@ -451,14 +457,11 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 .power_prop_mde_arcsine <- function(p1, n_eff, power, alpha, N_pair, deff,
                                      alternative) {
   n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
-  z_a <- .z_alpha(alpha, alternative)
-  z_b <- qnorm(power)
-
-  fpc1 <- .fpc_factor(n_vec[1], N_pair[1])
-  fpc2 <- .fpc_factor(n_vec[2], N_pair[2])
+  fpc1 <- .fpc_factor_prop(n_vec[1], N_pair[1])
+  fpc2 <- .fpc_factor_prop(n_vec[2], N_pair[2])
   se_phi <- sqrt(deff * (fpc1 / (4 * n_vec[1]) + fpc2 / (4 * n_vec[2])))
-  if (se_phi == 0) return(p1)
-  mde_phi <- (z_a + z_b) * se_phi
+  if (se_phi == 0) .stop_census_mde()
+  mde_phi <- .solve_normal_mde(power, se_phi, alpha, alternative)
 
   phi1 <- asin(sqrt(p1))
 
@@ -491,32 +494,23 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   p_bar <- (ratio * p1 + p2) / (ratio + 1)
   q_bar <- 1 - p_bar
 
-  if (all(is.infinite(N_pair))) {
-    if (ratio == 1) {
-      V0 <- 2 / (p_bar * q_bar)
-      VA <- 1 / (p1 * q1) + 1 / (p2 * q2)
-      n2_0 <- ((z_a * sqrt(V0) + z_b * sqrt(VA)) / abs(diff_phi))^2 * deff
-      n0 <- n2_0 / resp_rate
-    } else {
-      r <- ratio
-      V0_coeff <- (1 / r + 1) / (p_bar * q_bar)
-      VA_coeff <- 1 / (r * p1 * q1) + 1 / (p2 * q2)
-      n2 <- ((z_a * sqrt(V0_coeff) + z_b * sqrt(VA_coeff)) / abs(diff_phi))^2 * deff
-      n2 <- n2 / resp_rate
-      n0 <- c(r * n2, n2)
-    }
-  } else {
-    r <- ratio
-    power_n2 <- function(n2) {
-      n_eff <- if (r == 1) c(n2, n2) else c(r * n2, n2)
-      n_eff <- n_eff * resp_rate
-      .power_prop_power_logodds(p1, p2, n_eff, alpha, N_pair, deff,
-                                alternative)
-    }
-    n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
-    n0 <- if (r == 1) n2 else c(r * n2, n2)
+  r <- ratio
+  power_n2 <- function(n2) {
+    n_eff <- if (r == 1) c(n2, n2) else c(r * n2, n2)
+    n_eff <- n_eff * resp_rate
+    .power_prop_power_logodds(p1, p2, n_eff, alpha, N_pair, deff,
+                              alternative)
   }
-  n0
+  if (alternative == "one.sided" && all(is.infinite(N_pair))) {
+    V0_coeff <- (1 / r + 1) / (p_bar * q_bar)
+    VA_coeff <- 1 / (r * p1 * q1) + 1 / (p2 * q2)
+    n2 <- ((z_a * sqrt(V0_coeff) + z_b * sqrt(VA_coeff)) /
+      abs(diff_phi))^2 * deff / resp_rate
+    n2 <- max(n2, 2, 2 / r)
+  } else {
+    n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
+  }
+  if (r == 1) n2 else c(r * n2, n2)
 }
 
 .power_prop_power_logodds <- function(p1, p2, n_eff, alpha, N_pair, deff,
@@ -532,8 +526,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   p_bar <- (n_vec[1] * p1 + n_vec[2] * p2) / (n_vec[1] + n_vec[2])
   q_bar <- 1 - p_bar
 
-  fpc1 <- .fpc_factor(n_vec[1], N_pair[1])
-  fpc2 <- .fpc_factor(n_vec[2], N_pair[2])
+  fpc1 <- .fpc_factor_prop(n_vec[1], N_pair[1])
+  fpc2 <- .fpc_factor_prop(n_vec[2], N_pair[2])
 
   V0 <- deff * (fpc1 / (n_vec[1] * p_bar * q_bar) +
                 fpc2 / (n_vec[2] * p_bar * q_bar))
@@ -553,8 +547,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
                                      alternative) {
   n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
   if (all(vapply(seq_len(2L), function(i) {
-    .fpc_factor(n_vec[i], N_pair[i]) == 0
-  }, logical(1L)))) return(p1)
+    .fpc_factor_prop(n_vec[i], N_pair[i]) == 0
+  }, logical(1L)))) .stop_census_mde()
 
   target_fn <- function(p2) {
     .power_prop_power_logodds(p1, p2, n_eff, alpha, N_pair, deff,

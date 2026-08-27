@@ -95,6 +95,20 @@ test_that("n_alloc: take_all column", {
   expect_equal(res$detail$n[3], 50, tolerance = 1e-6)
 })
 
+test_that("n_alloc: tight take-all allocation preserves requested total", {
+  frame <- data.frame(
+    stratum = c("a", "b", "c"),
+    N = c(10, 100, 40),
+    sd = c(100, 1, 5),
+    take_all = c(FALSE, FALSE, TRUE)
+  )
+  res <- n_alloc(frame, n = 45, alloc = "neyman")
+
+  expect_equal(sum(res$detail$n), 45, tolerance = 1e-8)
+  expect_equal(res$detail$n[frame$take_all], 40, tolerance = 1e-8)
+  expect_equal(sum(res$detail$n_int), 45L)
+})
+
 test_that("n_alloc: cv target without domains", {
   frame <- data.frame(
     N = c(1000, 2000, 3000),

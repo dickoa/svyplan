@@ -127,7 +127,7 @@ test_that("df switches the interval quantile from normal to t", {
 
 ## P5. Agreement with the power family, which shares the variance
 
-test_that("prec_change moe equals the power_mean MDE at power 0.5", {
+test_that("prec_change variance reproduces the power_mean MDE at power 0.5", {
   cfgs <- list(
     list(N = Inf, ov = 0, rho = 0, n = 900, rr = 1, deff = 1),
     list(N = Inf, ov = 0.5, rho = 0.6, n = 900, rr = 1, deff = 1),
@@ -142,7 +142,12 @@ test_that("prec_change moe equals the power_mean MDE at power 0.5", {
     pc <- prec_change(var = 100, n = cfg$n, N = cfg$N, deff = cfg$deff,
                       resp_rate = cfg$rr, overlap = cfg$ov,
                       overlap_cor = cfg$rho)
-    expect_equal(pw$effect, pc$moe, tolerance = 1e-10)
+    z <- qnorm(0.975)
+    manual_power <- pnorm(pw$effect / pc$se - z) +
+      pnorm(-pw$effect / pc$se - z)
+    expect_equal(manual_power, 0.5, tolerance = 1e-8)
+    expect_lt(pw$effect, pc$moe)
+    expect_equal(pw$effect, pc$moe, tolerance = 1e-3)
   }
 })
 

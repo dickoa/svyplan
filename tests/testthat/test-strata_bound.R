@@ -148,6 +148,42 @@ test_that("take_all CV regression meets its requested precision", {
   expect_lte(res$cv, 0.05 + 1e-10)
 })
 
+test_that("take-all search reserves its census budget", {
+  set.seed(1)
+  x <- c(runif(60, 1, 100), runif(40, 200, 300))
+
+  for (method in c("lh", "kozak")) {
+    args <- list(
+      x = x, n_strata = 3, n = 70, take_all_above = 200,
+      method = method, max_iter = 50L
+    )
+    if (method == "kozak") args$n_restart <- 10L
+    res <- do.call(strata_bound, args)
+    expect_equal(sum(res$strata$n), 70L, info = method)
+    expect_equal(res$strata$n[res$strata$take_all], 40L, info = method)
+    expect_lte(res$cv, 0.0081)
+  }
+})
+
+test_that("take-all CV search uses the full-population target", {
+  set.seed(1)
+  x <- c(runif(60, 1, 100), runif(40, 200, 300))
+  target_cv <- 0.008
+  expected_target_V <- (target_cv * mean(x) * length(x) / 60)^2
+  direct <- svyplan:::.strata_lh(
+    sort(x[x < 200]), L = 2L, n_total = NULL, target_cv = target_cv,
+    alloc = "neyman", q = 0.5, cost_h = c(1, 1), max_iter = 50L,
+    target_V = expected_target_V
+  )
+  res <- strata_bound(
+    x, n_strata = 3, cv = target_cv, take_all_above = 200,
+    method = "lh", max_iter = 50L
+  )
+
+  expect_equal(res$boundaries[1], direct$bk, tolerance = 1e-8)
+  expect_lte(res$cv, target_cv + 1e-10)
+})
+
 test_that("cumrootf: uniform data yields reasonable strata", {
   res <- strata_bound(x_unif, n_strata = 3, n = 100, method = "cumrootf")
   expect_s3_class(res, "svyplan_strata")
@@ -492,15 +528,28 @@ test_that("alloc field stores method name for all methods", {
 })
 
 test_that("cumrootf falls back to distinct-value boundaries on discrete data", {
+  # Three of the four distinct values carry one unit each, so no stratification
+  # into four sampled strata exists. The fallback still produces the distinct
+  # value boundaries and warns, and the design is then refused rather than
+  # returned with strata that cannot be sampled.
   expect_warning(
-    x <- strata_bound(rep(1:4, c(100, 1, 1, 1)), n_strata = 4, n = 20,
+    expect_error(
+      strata_bound(rep(1:4, c(100, 1, 1, 1)), n_strata = 4, n = 20,
+                   method = "cumrootf"),
+      "at least two population units"
+    ),
+    "adjacent distinct values"
+  )
+
+  expect_warning(
+    x <- strata_bound(rep(1:4, c(100, 4, 6, 5)), n_strata = 4, n = 20,
                       method = "cumrootf"),
     "adjacent distinct values"
   )
   d <- x$strata
   expect_equal(nrow(d), 4L)
-  expect_true(all(d$N >= 1))
-  expect_equal(sum(d$N), 103)
+  expect_true(all(d$N >= 2))
+  expect_equal(sum(d$N), 115)
   expect_length(x$boundaries, 3L)
   expect_true(all(diff(x$boundaries) > 0))
   expect_equal(sum(d$n), 20L)
@@ -543,10 +592,18 @@ test_that("strata cv describes the integer allocation", {
 
 test_that("kozak handles highly discrete data without NA crashes", {
   set.seed(7)
-  x <- strata_bound(rep(1:6, c(200, 1, 1, 1, 1, 1)), n_strata = 4, n = 30,
+  # The tied tail admits no four sampled strata, so this must be a clean
+  # refusal rather than an NA or a stratum of one unit.
+  expect_error(
+    strata_bound(rep(1:6, c(200, 1, 1, 1, 1, 1)), n_strata = 4, n = 30,
+                 method = "kozak"),
+    "at least two population units"
+  )
+
+  x <- strata_bound(rep(1:6, c(200, 3, 2, 4, 2, 3)), n_strata = 4, n = 30,
                     method = "kozak")
   expect_equal(nrow(x$strata), 4L)
-  expect_true(all(x$strata$N >= 1))
+  expect_true(all(x$strata$N >= 2))
   expect_equal(sum(x$strata$n), 30L)
 })
 

@@ -34,7 +34,11 @@
 #' @param x Numeric vector: finite stratification variable values. Must not
 #'   contain missing values.
 #' @param n_strata Required integer: number of strata (including take-all if
-#'   `take_all_above` is specified). Must be >= 2.
+#'   `take_all_above` is specified). Must be >= 2. Every sampled stratum must
+#'   hold at least two population units, so a request that only sparse or tied
+#'   data could satisfy is refused rather than met with a stratum that carries
+#'   no within-stratum variance. A take-all stratum is enumerated instead of
+#'   sampled, so one unit is enough there.
 #' @param ... Unused. Present so that every optional argument must be named.
 #'   Unused arguments are rejected.
 #' @param n Target total sample size, supplied as a whole number. Specify at
@@ -367,6 +371,25 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
   x_sort <- sort(x_work)
 
   n_total <- if (has_n) n else if (has_cv) NULL else length(x) / 2
+  search_target_V <- NULL
+  if (has_cv && !is.null(take_all_above)) {
+    N_full <- length(x)
+    N_work <- length(x_work)
+    search_target_V <- (cv * abs(mean(x)) * N_full / N_work)^2
+  }
+
+  # Every sampled stratum needs two units, and a take-all stratum is enumerated
+  # in full, so the total is bounded below before any boundary is chosen.
+  min_required <- 2L * L_work +
+    if (is.null(take_all_above)) 0L else n_take_all
+  if (has_n && n < min_required) {
+    stop(
+      "'n' is infeasible: minimum feasible is ", min_required,
+      call. = FALSE
+    )
+  }
+
+  search_feasible <- TRUE
 
   if (method == "cumrootf") {
     bk <- .strata_cumrootf(x_sort, L_work, n_class)
@@ -374,20 +397,28 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
     bk <- .strata_geo(x_sort, L_work)
   } else if (method == "lh") {
     target_cv <- if (has_cv) cv else NULL
-    n_opt <- if (has_n) n else NULL
+    n_opt <- if (has_n) {
+      if (is.null(take_all_above)) n else n - n_take_all
+    } else NULL
     res <- .strata_lh(x_sort, L_work, n_opt, target_cv, alloc, alloc_q,
                        cost_h[seq_len(L_work)], max_iter,
-                       deff = deff, resp_rate = resp_rate)
+                       deff = deff, resp_rate = resp_rate,
+                       target_V = search_target_V)
     bk <- res$bk
     converged <- res$converged
+    search_feasible <- isTRUE(res$feasible)
   } else {
     target_cv <- if (has_cv) cv else NULL
-    n_opt <- if (has_n) n else NULL
+    n_opt <- if (has_n) {
+      if (is.null(take_all_above)) n else n - n_take_all
+    } else NULL
     res <- .strata_kozak(x_sort, L_work, n_opt, target_cv, alloc, alloc_q,
                           cost_h[seq_len(L_work)], max_iter, n_restart,
-                          deff = deff, resp_rate = resp_rate)
+                          deff = deff, resp_rate = resp_rate,
+                          target_V = search_target_V)
     bk <- res$bk
     converged <- res$converged
+    search_feasible <- isTRUE(res$feasible)
   }
 
   if (!is.null(take_all_above)) {
@@ -409,30 +440,42 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
 
   take_all_strata <- if (!is.null(take_all_above)) n_strata else NULL
 
-  if (has_cv && !has_n) {
-    n_total <- .strata_n_for_cv(
-      x, bk, cv, alloc, alloc_q, cost_h, take_all_idx = take_all_strata,
-      deff = deff, resp_rate = resp_rate
+  bins <- findInterval(x, bk, left.open = TRUE) + 1L
+  if (!is.null(take_all_strata)) {
+    bins[x >= bk[take_all_strata - 1L]] <- take_all_strata
+  }
+  N_h <- tabulate(bins, nbins = n_strata)
+
+  # Reached when no boundary set can satisfy the request, so the search returns
+  # its starting point. Every method lands here, including the ones that do not
+  # search at all.
+  if (.strata_degenerate(N_h, take_all_strata)) {
+    stop(
+      "computed strata must contain at least two population units, ",
+      "except for an explicitly take-all stratum; ",
+      "reduce 'n_strata' or set 'take_all_above' to enumerate the ",
+      "sparse upper values",
+      call. = FALSE
     )
-    if (!is.finite(n_total)) {
-      stop("target 'cv' is unattainable for the computed strata",
-           call. = FALSE)
-    }
-  } else if (!has_n) {
-    n_total <- length(x) / 2
   }
 
-  alloc_res <- .strata_alloc(x, bk, n_total, alloc, alloc_q, cost_h,
-                             take_all_strata, deff = deff,
-                             resp_rate = resp_rate)
+  if (!search_feasible) {
+    stop(
+      sprintf(
+        "no stratification into %d strata satisfies the request; method '%s' found no feasible boundary set",
+        n_strata, method
+      ),
+      call. = FALSE
+    )
+  }
 
   if (has_n) {
-    m_h <- pmin(rep(2, n_strata), alloc_res$N_h)
+    m_h <- pmin(rep(2, n_strata), N_h)
     if (!is.null(take_all_strata)) {
-      m_h[take_all_strata] <- alloc_res$N_h[take_all_strata]
+      m_h[take_all_strata] <- N_h[take_all_strata]
     }
     min_feasible <- sum(m_h)
-    max_feasible <- sum(alloc_res$N_h)
+    max_feasible <- sum(N_h)
     tol <- max(1e-8, 1e-8 * max(1, n))
     if (n < min_feasible - tol) {
       stop(
@@ -449,6 +492,23 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
       )
     }
   }
+
+  if (has_cv && !has_n) {
+    n_total <- .strata_n_for_cv(
+      x, bk, cv, alloc, alloc_q, cost_h, take_all_idx = take_all_strata,
+      deff = deff, resp_rate = resp_rate
+    )
+    if (!is.finite(n_total)) {
+      stop("target 'cv' is unattainable for the computed strata",
+           call. = FALSE)
+    }
+  } else if (!has_n) {
+    n_total <- length(x) / 2
+  }
+
+  alloc_res <- .strata_alloc(x, bk, n_total, alloc, alloc_q, cost_h,
+                             take_all_strata, deff = deff,
+                             resp_rate = resp_rate)
 
   strata_df <- data.frame(
     stratum = seq_len(n_strata),

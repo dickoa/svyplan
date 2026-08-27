@@ -29,7 +29,11 @@ strata_bound(
 contain missing values.}
 
 \item{n_strata}{Required integer: number of strata (including take-all if
-\code{take_all_above} is specified). Must be >= 2.}
+\code{take_all_above} is specified). Must be >= 2. Every sampled stratum must
+hold at least two population units, so a request that only sparse or tied
+data could satisfy is refused rather than met with a stratum that carries
+no within-stratum variance. A take-all stratum is enumerated instead of
+sampled, so one unit is enough there.}
 
 \item{...}{Unused. Present so that every optional argument must be named.
 Unused arguments are rejected.}

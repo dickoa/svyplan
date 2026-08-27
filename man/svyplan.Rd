@@ -11,7 +11,8 @@ svyplan(...)
 }
 \arguments{
 \item{...}{Named defaults to reuse across calls. Allowed names:
-\code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
+\code{alpha}, \code{df}, \code{N}, \code{deff}, \code{resp_rate}, \code{resp_rate_psu},
+\code{resp_rate_ssu},
 \code{prop_method},
 \code{stage_cost}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{fixed_cost},
 \code{unit_cost},

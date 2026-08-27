@@ -18,7 +18,8 @@
 #' ```
 #'
 #' @param ... Named defaults to reuse across calls. Allowed names:
-#'   `alpha`, `N`, `deff`, `resp_rate`,
+#'   `alpha`, `df`, `N`, `deff`, `resp_rate`, `resp_rate_psu`,
+#'   `resp_rate_ssu`,
 #'   `prop_method`,
 #'   `stage_cost`, `icc`, `unit_relvar`, `var_ratio`, `fixed_cost`,
 #'   `unit_cost`,

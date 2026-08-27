@@ -1,4 +1,4 @@
-test_that("power_did prop: solve for n matches closed-form (no overlap)", {
+test_that("power_did prop: solve for n matches the closed-form starting value", {
   treat <- c(0.50, 0.55)
   control <- c(0.50, 0.48)
   effect <- abs((treat[2] - treat[1]) - (control[2] - control[1]))
@@ -12,14 +12,14 @@ test_that("power_did prop: solve for n matches closed-form (no overlap)", {
 
   res <- power_did(treat = treat, control = control, outcome = "prop",
                     effect = effect)
-  expect_equal(res$n, n_expected, tolerance = 1e-6)
+  expect_equal(res$n, n_expected, tolerance = 1e-4)
   expect_equal(res$effect, effect)
   expect_equal(res$power, 0.80)
   expect_equal(res$solved, "n")
   expect_equal(res$type, "did_prop")
 })
 
-test_that("power_did mean: solve for n matches closed-form (no overlap)", {
+test_that("power_did mean: solve for n matches the closed-form starting value", {
   var <- 100
   effect <- 5
   V <- 4 * var  # 4 cells equal variance, no overlap
@@ -31,7 +31,8 @@ test_that("power_did mean: solve for n matches closed-form (no overlap)", {
     treat = c(50, 55), control = c(50, 50),
     outcome = "mean", var = var, effect = effect
   )
-  expect_equal(res$n, n_expected, tolerance = 1e-6)
+  expect_equal(res$n, n_expected, tolerance = 1e-4)
+  expect_equal(res$power, 0.8, tolerance = 1e-8)
   expect_equal(res$type, "did_mean")
   expect_equal(res$solved, "n")
 })
@@ -49,7 +50,7 @@ test_that("power_did mean: length-2 var", {
     treat = c(50, 55), control = c(50, 50),
     outcome = "mean", var = var2, effect = effect
   )
-  expect_equal(res$n, n_expected, tolerance = 1e-6)
+  expect_equal(res$n, n_expected, tolerance = 1e-4)
 })
 
 test_that("power_did mean: length-4 var", {
@@ -64,7 +65,7 @@ test_that("power_did mean: length-4 var", {
     treat = c(50, 55), control = c(50, 50),
     outcome = "mean", var = var4, effect = effect
   )
-  expect_equal(res$n, n_expected, tolerance = 1e-6)
+  expect_equal(res$n, n_expected, tolerance = 1e-4)
 })
 
 test_that("power_did: solve for power", {
@@ -102,7 +103,15 @@ test_that("power_did: solve for MDE (mean)", {
   V <- 4 * 100
   se <- sqrt(V / 500)
   mde_expected <- (z_a + z_b) * se
-  expect_equal(res$effect, mde_expected, tolerance = 1e-6)
+  expect_equal(res$effect, mde_expected, tolerance = 1e-4)
+  expect_equal(
+    power_did(
+      treat = c(50, 50 + res$effect), control = c(50, 50), outcome = "mean",
+      var = 100, effect = res$effect, n = 500, power = NULL
+    )$power,
+    0.8,
+    tolerance = 1e-8
+  )
 })
 
 test_that("power_did round-trip: n -> power -> n", {
@@ -167,6 +176,58 @@ test_that("power_did: per-arm overlap formula gives same as flat when overlap=0"
     outcome = "prop", effect = 0.07
   )
   expect_equal(res_ov0$n, res_no_ov$n, tolerance = 1e-10)
+})
+
+test_that("power_did finite-N overlap zero ignores overlap_cor", {
+  power_at <- function(rho) {
+    power_did(
+      treat = c(50, 55), control = c(50, 50), outcome = "mean",
+      var = 100, effect = 5, n = 100, power = NULL, N = 1000,
+      overlap = 0, overlap_cor = rho
+    )$power
+  }
+  expect_equal(power_at(0), power_at(0.3), tolerance = 1e-12)
+  expect_equal(power_at(0), power_at(0.9), tolerance = 1e-12)
+})
+
+test_that("power_did proportions use finite-population Bernoulli variances", {
+  treat <- c(0.2, 0.6)
+  control <- c(0.3, 0.4)
+  N <- c(10, 12)
+  n <- c(5, 6)
+  effect <- abs(diff(treat) - diff(control))
+  S2_t <- N[1] / (N[1] - 1) * treat * (1 - treat)
+  S2_c <- N[2] / (N[2] - 1) * control * (1 - control)
+  V <- sum(S2_t) * (1 / n[1] - 1 / N[1]) +
+    sum(S2_c) * (1 / n[2] - 1 / N[2])
+  z_a <- qnorm(0.975)
+  expected <- pnorm(effect / sqrt(V) - z_a) +
+    pnorm(-effect / sqrt(V) - z_a)
+
+  got <- power_did(
+    treat, control = control, outcome = "prop", effect = effect,
+    n = n, power = NULL, N = N
+  )
+  expect_equal(got$power, expected, tolerance = 1e-12)
+})
+
+test_that("power_did proportions check each arm's attainable correlation", {
+  expect_error(
+    power_did(
+      treat = c(0.01, 0.9), control = c(0.4, 0.4), outcome = "prop",
+      effect = 0.89, n = 100, power = NULL,
+      overlap = 1, overlap_cor = 0.9
+    ),
+    "0.0335"
+  )
+  expect_error(
+    power_did(
+      treat = c(0.4, 0.4), control = c(0.01, 0.9), outcome = "prop",
+      effect = 0.89, n = 100, power = NULL,
+      overlap = 1, overlap_cor = 0.9
+    ),
+    "0.0335"
+  )
 })
 
 test_that("power_did: one-sided gives smaller n", {

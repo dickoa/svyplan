@@ -53,37 +53,159 @@
 #' @keywords internal
 #' @noRd
 .rna_alloc <- function(a_h, n_total, m_h, M_h) {
-  n_h <- numeric(length(a_h))
-  fixed <- logical(length(a_h))
-  budget <- n_total
+  if (!is.numeric(a_h) || !is.numeric(m_h) || !is.numeric(M_h) ||
+      length(a_h) == 0L || length(m_h) != length(a_h) ||
+      length(M_h) != length(a_h) || anyNA(a_h) || anyNA(m_h) ||
+      anyNA(M_h) || any(!is.finite(a_h)) || any(!is.finite(m_h)) ||
+      any(!is.finite(M_h)) || any(a_h < 0) || any(m_h > M_h)) {
+    stop("internal error: invalid bounded-allocation inputs", call. = FALSE)
+  }
 
-  for (pass in seq_len(2L * length(a_h))) {
-    act <- which(!fixed)
-    if (length(act) == 0L) {
-      break
-    }
-    sa <- sum(a_h[act])
-    if (sa <= 0) {
-      n_h[act] <- budget / length(act)
-      break
-    }
-    n_h[act] <- budget * a_h[act] / sa
-    hi <- act[n_h[act] > M_h[act]]
-    lo <- act[n_h[act] < m_h[act]]
-    if (length(hi) == 0L && length(lo) == 0L) {
-      break
-    }
-    if (length(hi) > 0L) {
-      n_h[hi] <- M_h[hi]
-      fixed[hi] <- TRUE
-      budget <- budget - sum(M_h[hi])
-    } else {
-      n_h[lo] <- m_h[lo]
-      fixed[lo] <- TRUE
-      budget <- budget - sum(m_h[lo])
+  if (!is.numeric(n_total) || length(n_total) != 1L || is.na(n_total) ||
+      !is.finite(n_total)) {
+    stop("internal error: invalid bounded-allocation total", call. = FALSE)
+  }
+  tol <- max(1e-10, 1e-10 * max(1, abs(n_total)))
+  lo_total <- sum(m_h)
+  hi_total <- sum(M_h)
+  if (n_total < lo_total - tol ||
+      n_total > hi_total + tol) {
+    stop(structure(
+      list(message = sprintf(
+        "bounded allocation total %.10g is infeasible; feasible range is %.10g to %.10g",
+        n_total, lo_total, hi_total
+      )),
+      class = c("svyplan_alloc_infeasible", "error", "condition")
+    ))
+  }
+
+  n_total <- min(max(n_total, lo_total), hi_total)
+  if (abs(n_total - lo_total) <= tol) {
+    return(.rna_check(as.numeric(m_h), n_total, m_h, M_h, tol))
+  }
+  if (abs(n_total - hi_total) <= tol) {
+    return(.rna_check(as.numeric(M_h), n_total, m_h, M_h, tol))
+  }
+
+  # The plain ratio allocation, when it already lies inside every bound, is
+  # the bounded solution: no breakpoint can bind, so the search below would
+  # return this same vector. Skipping it is exact rather than approximate.
+  # A zero weight sits at 0 here, which satisfies its own lower bound only
+  # when that bound is 0, so a fixed or take-all component declines this
+  # branch on its own and takes the general path. Placed ahead of the
+  # positive-weight bookkeeping so an unconstrained call never pays for it.
+  sa <- sum(a_h)
+  if (sa > 0) {
+    raw <- n_total * a_h / sa
+    if (all(raw >= m_h) && all(raw <= M_h) &&
+        all(is.finite(raw)) && abs(sum(raw) - n_total) <= tol) {
+      return(.rna_check(raw, n_total, m_h, M_h, tol))
     }
   }
+
+  # Positive weights follow the bounded ratio rule n_h = clamp(lambda a_h).
+  # Zero-weight strata remain at their lower bounds unless all positive-weight
+  # capacity is exhausted, after which they share the unavoidable residual.
+  pos <- a_h > 0
+  reachable <- sum(ifelse(pos, M_h, m_h))
+  target_pos <- min(n_total, reachable)
+  n_h <- as.numeric(m_h)
+
+  if (any(pos) && target_pos > lo_total + tol) {
+    idx_pos <- which(pos)
+    budget <- target_pos - sum(m_h[!pos])
+    lower_bp <- m_h[idx_pos] / a_h[idx_pos]
+    upper_bp <- M_h[idx_pos] / a_h[idx_pos]
+    breakpoints <- sort(unique(c(lower_bp, upper_bp)))
+    at_lambda <- function(lambda) {
+      sum(pmin(pmax(lambda * a_h[idx_pos], m_h[idx_pos]), M_h[idx_pos]))
+    }
+    values <- vapply(breakpoints, at_lambda, numeric(1L))
+    hit <- which(values >= budget - tol)[1L]
+
+    if (abs(values[hit] - budget) <= tol) {
+      lambda <- breakpoints[hit]
+    } else {
+      lambda_lo <- if (hit == 1L) 0 else breakpoints[hit - 1L]
+      lambda_hi <- breakpoints[hit]
+      lambda_mid <- (lambda_lo + lambda_hi) / 2
+      raw_mid <- lambda_mid * a_h[idx_pos]
+      active <- raw_mid > m_h[idx_pos] & raw_mid < M_h[idx_pos]
+      fixed <- ifelse(raw_mid <= m_h[idx_pos], m_h[idx_pos], M_h[idx_pos])
+      fixed[active] <- 0
+      lambda <- (budget - sum(fixed)) / sum(a_h[idx_pos][active])
+    }
+    n_h[idx_pos] <- pmin(
+      pmax(lambda * a_h[idx_pos], m_h[idx_pos]),
+      M_h[idx_pos]
+    )
+  }
+
+  residual <- n_total - sum(n_h)
+  if (residual > tol) {
+    zero <- which(!pos & M_h > n_h + tol)
+    capacity <- M_h[zero] - n_h[zero]
+    caps <- sort(unique(capacity))
+    used <- 0
+    remaining <- length(capacity)
+    level <- 0
+    for (cap in caps) {
+      if (used + remaining * (cap - level) >= residual - tol) {
+        level <- level + (residual - used) / remaining
+        break
+      }
+      used <- used + remaining * (cap - level)
+      remaining <- remaining - sum(capacity == cap)
+      level <- cap
+    }
+    n_h[zero] <- n_h[zero] + pmin(level, capacity)
+  }
+
+  total_gap <- n_total - sum(n_h)
+  if (abs(total_gap) <= tol && total_gap != 0) {
+    candidates <- which(
+      n_h + total_gap >= m_h - tol & n_h + total_gap <= M_h + tol
+    )
+    if (length(candidates) > 0L) {
+      idx <- candidates[1L]
+      n_h[idx] <- n_h[idx] + total_gap
+    }
+  }
+  .rna_check(n_h, n_total, m_h, M_h, tol)
+}
+
+#' Post-condition every bounded allocation must satisfy
+#'
+#' Both the fast path and the breakpoint search return through here, so no
+#' route out of `.rna_alloc()` can skip the total-and-bounds guarantee its
+#' callers rely on.
+#' @keywords internal
+#' @noRd
+.rna_check <- function(n_h, n_total, m_h, M_h, tol) {
+  if (abs(sum(n_h) - n_total) > tol || any(n_h < m_h - tol) ||
+      any(n_h > M_h + tol)) {
+    stop("internal error: bounded allocation violated its total or bounds",
+         call. = FALSE)
+  }
   n_h
+}
+
+#' Reject a stratification that cannot support its own allocation
+#'
+#' A sampled stratum needs two units. `m_h = pmin(2, N_h)` falls to one for a
+#' single-unit stratum, so shrinking a stratum to one unit lowers the minimum
+#' feasible total and lets a search satisfy a total that should have been
+#' refused. Such a stratum also carries `sd = 0` and supports no within-stratum
+#' variance estimate. A take-all stratum is enumerated rather than sampled, so
+#' one unit is enough there.
+#' @keywords internal
+#' @noRd
+.strata_degenerate <- function(N_h, take_all_idx = NULL) {
+  floor_h <- rep(2L, length(N_h))
+  if (!is.null(take_all_idx)) {
+    floor_h[take_all_idx] <- 1L
+  }
+  any(N_h < floor_h)
 }
 
 #' Stratified variance of the mean under the package's shared convention
@@ -102,6 +224,76 @@
   active <- N_h > 0 & n_eff > 0
   fpc <- pmax(0, 1 - n_net[active] / N_h[active])
   sum(W_h[active]^2 * S_h[active]^2 * fpc / n_eff[active])
+}
+
+#' Smallest total whose allocation reaches a target variance
+#'
+#' The one sizing routine behind both the LH/general path and the Kozak inner
+#' objective, so the two cannot drift apart on formula, tolerance, or edge
+#' behaviour.
+#'
+#' While no bound binds, the allocation is proportional, \eqn{n_h = n c_h}
+#' with \eqn{c_h = a_h / \sum a_h}, and the package's variance is
+#' \eqn{V(n) = A/n - B} with
+#' \eqn{A = (deff / resp\_rate) \sum W_h^2 S_h^2 / c_h} and
+#' \eqn{B = deff \sum W_h^2 S_h^2 / N_h}. That inverts exactly to
+#' \eqn{n = A / (V_{target} + B)}, so the ordinary case needs no search at
+#' all. The candidate is accepted only when it lands inside the feasible
+#' total, keeps every \eqn{n c_h} within its bounds, and is confirmed to meet
+#' the target once. A fixed or take-all component breaks the proportional
+#' form, so those cases take the bracket below.
+#'
+#' The fallback keeps a directional bracket: `lo` is known to miss the target
+#' and `hi` to meet it, so returning `hi` preserves the contract that the
+#' continuous size achieves the requested precision. It stops on interval
+#' width rather than a fixed iteration count, with a cap as a backstop
+#' against a non-monotone objective.
+#' @keywords internal
+#' @noRd
+.strata_size_for_target <- function(W_h, S_h, N_h, a_h, m_h, M_h, target_V,
+                                    deff = 1, resp_rate = 1,
+                                    abs_tol = 1e-8, rel_tol = 1e-12,
+                                    max_iter = 200L) {
+  lo <- sum(m_h)
+  hi <- sum(M_h)
+
+  variance_at <- function(n_total) {
+    n_h <- .rna_alloc(a_h, n_total, m_h, M_h)
+    .strata_variance(W_h, S_h, n_h, N_h, deff, resp_rate)
+  }
+
+  if (variance_at(lo) <= target_V) {
+    return(lo)
+  }
+  if (variance_at(hi) > target_V) {
+    return(Inf)
+  }
+
+  if (all(a_h > 0)) {
+    c_h <- a_h / sum(a_h)
+    ws <- W_h^2 * S_h^2
+    A <- deff / resp_rate * sum(ws / c_h)
+    B <- deff * sum(ws / N_h)
+    if (is.finite(A) && A > 0 && is.finite(B)) {
+      cand <- A / (target_V + B)
+      if (is.finite(cand) && cand >= lo && cand <= hi) {
+        n_cand <- cand * c_h
+        if (all(n_cand >= m_h) && all(n_cand <= M_h) &&
+            variance_at(cand) <= target_V) {
+          return(cand)
+        }
+      }
+    }
+  }
+
+  for (i in seq_len(max_iter)) {
+    if (hi - lo <= max(abs_tol, rel_tol * max(1, hi))) {
+      break
+    }
+    mid <- (lo + hi) / 2
+    if (variance_at(mid) > target_V) lo <- mid else hi <- mid
+  }
+  hi
 }
 
 #' Evaluate stratified allocation for given boundaries
@@ -168,16 +360,7 @@
     m_h[take_all_idx] <- N_h[take_all_idx]
   }
 
-  sa <- sum(a_h)
-  if (sa <= 0) {
-    n_h <- rep(2, L)
-    if (!is.null(take_all_idx)) {
-      n_h[take_all_idx] <- N_h[take_all_idx]
-    }
-    n_h <- n_h * (n_total / sum(n_h))
-  } else {
-    n_h <- .rna_alloc(a_h, n_total, m_h, M_h)
-  }
+  n_h <- .rna_alloc(a_h, n_total, m_h, M_h)
 
   V <- .strata_variance(W_h, S_h, n_h, N_h, deff, resp_rate)
   ybar <- .aggregate_mean(W_h, mean_h)
@@ -214,9 +397,15 @@
   if (is.unsorted(bk)) {
     return(Inf)
   }
-  res <- .strata_alloc(x, bk, n_total, alloc, q, cost_h, take_all_idx, .pre,
-                       deff, resp_rate)
-  if (any(res$N_h == 0L)) {
+  res <- tryCatch(
+    .strata_alloc(x, bk, n_total, alloc, q, cost_h, take_all_idx, .pre,
+                  deff, resp_rate),
+    svyplan_alloc_infeasible = function(e) NULL
+  )
+  if (is.null(res)) {
+    return(Inf)
+  }
+  if (.strata_degenerate(res$N_h, take_all_idx)) {
     return(Inf)
   }
   res$cv
@@ -235,7 +424,8 @@
   take_all_idx = NULL,
   .pre = NULL,
   deff = 1,
-  resp_rate = 1
+  resp_rate = 1,
+  target_V = NULL
 ) {
   if (is.unsorted(bk)) {
     return(Inf)
@@ -246,7 +436,7 @@
     idx <- .bk_to_idx(.pre$x_sort, bk)
     stats <- .strata_stats_from_prefix(.pre, idx)
     N_h <- stats$N_h
-    if (any(N_h == 0L)) {
+    if (.strata_degenerate(N_h, take_all_idx)) {
       return(Inf)
     }
     N <- .pre$n
@@ -259,7 +449,7 @@
       bins[x >= bk[take_all_idx - 1L]] <- take_all_idx
     }
     N_h <- tabulate(bins, nbins = L)
-    if (any(N_h == 0L)) {
+    if (.strata_degenerate(N_h, take_all_idx)) {
       return(Inf)
     }
     N <- length(x)
@@ -282,7 +472,9 @@
   }
 
   ybar <- .aggregate_mean(W_h, mean_h)
-  target_V <- (target_cv * abs(ybar))^2
+  if (is.null(target_V)) {
+    target_V <- (target_cv * abs(ybar))^2
+  }
 
   a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h)
   m_h <- pmin(rep(2, L), N_h)
@@ -292,30 +484,8 @@
     m_h[take_all_idx] <- N_h[take_all_idx]
   }
 
-  sa <- sum(a_h)
-  if (sa <= 0) {
-    return(Inf)
-  }
-
-  active <- N_h > 0
-  lo <- sum(m_h)
-  hi <- N
-  variance_at <- function(n_total) {
-    n_h <- .rna_alloc(a_h, n_total, m_h, M_h)
-    .strata_variance(W_h, S_h, n_h, N_h, deff, resp_rate)
-  }
-  if (variance_at(lo) <= target_V) {
-    return(lo)
-  }
-  if (variance_at(hi) > target_V) {
-    return(Inf)
-  }
-  for (i in seq_len(60L)) {
-    mid <- (lo + hi) / 2
-    V <- variance_at(mid)
-    if (V > target_V) lo <- mid else hi <- mid
-  }
-  (lo + hi) / 2
+  .strata_size_for_target(W_h, S_h, N_h, a_h, m_h, M_h, target_V,
+                          deff, resp_rate)
 }
 
 #' Dalenius-Hodges cumulative sqrt(f) rule
@@ -401,7 +571,8 @@
   max_iter,
   take_all_idx = NULL,
   deff = 1,
-  resp_rate = 1
+  resp_rate = 1,
+  target_V = NULL
 ) {
   x_uniq <- sort(unique(x_sort))
   nu <- length(x_uniq)
@@ -418,7 +589,7 @@
   pre <- .strata_precompute(x_sort)
 
   use_cv <- !is.null(target_cv)
-  obj_fn <- if (use_cv) {
+  raw_obj <- if (use_cv) {
     function(bk_) {
       .strata_n_for_cv(
         x_sort,
@@ -430,7 +601,8 @@
         take_all_idx,
         .pre = pre,
         deff = deff,
-        resp_rate = resp_rate
+        resp_rate = resp_rate,
+        target_V = target_V
       )
     }
   } else {
@@ -450,17 +622,67 @@
     }
   }
 
+  # The objective reads the population partition, so any two boundary vectors
+  # falling between the same pair of observations describe the same design and
+  # share an answer. `optimize()` probes a whole interval per coordinate and
+  # revisits the same partitions across sweeps, so a fit-local cache keyed by
+  # the cut indices removes most of the work. It is fit-local because the
+  # objective also depends on the data, allocation, target, costs, deff and
+  # response rate, none of which vary within one call. Infinite objectives are
+  # cached too: a degenerate partition is just as repeatable as a good one.
+  memo <- new.env(hash = TRUE, parent = emptyenv())
+  obj_fn <- function(bk_) {
+    key <- paste0(findInterval(bk_, x_sort), collapse = ",")
+    hit <- memo[[key]]
+    if (!is.null(hit)) {
+      return(hit)
+    }
+    val <- raw_obj(bk_)
+    assign(key, val, envir = memo)
+    val
+  }
+
+  # A boundary anywhere between two adjacent observations describes the same
+  # design, so the search is really over cut indices and only their motion is
+  # progress. Pinning each boundary to the observation it sits above keeps the
+  # next sweep's coordinate intervals stable, which is what makes an unchanged
+  # index vector mean the search has actually stopped rather than merely
+  # drifted inside one partition. Boundaries that would not round-trip, at a
+  # run of tied values, are left where they are.
+  canonicalize <- function(bk_) {
+    p <- findInterval(bk_, x_sort)
+    keep <- p >= 1L
+    if (!any(keep)) {
+      return(bk_)
+    }
+    cand <- x_sort[pmax(p, 1L)]
+    ok <- keep & findInterval(cand, x_sort) == p
+    bk_[ok] <- cand[ok]
+    bk_
+  }
+  key_of <- function(bk_) paste0(findInterval(bk_, x_sort), collapse = ",")
+
+  # Canonicalize before recording anything. A sweep from non-canonical
+  # boundaries searches different coordinate intervals than a sweep from the
+  # canonical representative of the same partition, so comparing the two
+  # would compare sweeps from different starting points and could call a
+  # first sweep converged when another sweep from the boundaries actually
+  # returned still moves.
+  bk <- canonicalize(bk)
   best_obj <- obj_fn(bk)
   if (!is.finite(best_obj)) {
     best_obj <- Inf
   }
   best_bk <- bk
-  prev_obj <- best_obj
+  best_key <- key_of(bk)
   converged <- FALSE
   tol <- diff(range(x_sort)) * 1e-6
 
+  seen <- new.env(hash = TRUE, parent = emptyenv())
+  prev_key <- best_key
+  assign(prev_key, TRUE, envir = seen)
+
   for (iter in seq_len(max_iter)) {
-    bk_old <- bk
     for (h in seq_len(L - 1L)) {
       lo <- if (h == 1L) x_uniq[1L] + tol else bk[h - 1L] + tol
       hi <- if (h == L - 1L) x_uniq[nu] - tol else bk[h + 1L] - tol
@@ -475,25 +697,46 @@
         },
         interval = c(lo, hi)
       ))
-      bk[h] <- opt$minimum
+      # `optimize()` assumes a continuous unimodal objective and this one is a
+      # step function, so its proposal can be worse than where the coordinate
+      # already sits. Take it only when it does not worsen the objective, or
+      # when the current state is infeasible and any move is an escape.
+      cand <- bk
+      cand[h] <- opt$minimum
+      cur_obj <- obj_fn(bk)
+      if (!is.finite(cur_obj) || obj_fn(cand) <= cur_obj) {
+        bk <- cand
+      }
     }
+    bk <- canonicalize(bk)
     new_obj <- obj_fn(bk)
+    key <- key_of(bk)
     if (is.finite(new_obj) && (is.infinite(best_obj) || new_obj < best_obj)) {
       best_obj <- new_obj
       best_bk <- bk
+      best_key <- key
     }
-    rel_change <- if (is.finite(new_obj) && is.finite(prev_obj)) {
-      abs(new_obj - prev_obj) / (abs(prev_obj) + 1e-12)
-    } else {
-      Inf
-    }
-    prev_obj <- new_obj
-    if (max(abs(bk - bk_old)) < tol || rel_change < 1e-8) {
-      converged <- TRUE
+
+    if (identical(key, prev_key)) {
+      # Convergence has to describe the design actually returned, which is the
+      # best partition seen rather than necessarily the last one visited.
+      converged <- is.finite(new_obj) && identical(key, best_key)
       break
     }
+    if (!is.null(seen[[key]])) {
+      # The sweep returned to a partition it has already left. Further sweeps
+      # retrace the same cycle, so stop with the best partition seen and say
+      # plainly that this is not a fixed point.
+      break
+    }
+    assign(key, TRUE, envir = seen)
+    prev_key <- key
   }
-  list(bk = best_bk, converged = converged)
+  list(
+    bk = canonicalize(best_bk),
+    converged = converged,
+    feasible = is.finite(best_obj)
+  )
 }
 
 #' Kozak-inspired random-restart adjacent-boundary local search
@@ -511,7 +754,8 @@
   n_restart,
   take_all_idx = NULL,
   deff = 1,
-  resp_rate = 1
+  resp_rate = 1,
+  target_V = NULL
 ) {
   x_uniq <- sort(unique(x_sort))
   nu <- length(x_uniq)
@@ -533,6 +777,9 @@
     lo <- pidx[seq_len(L)] + 1L
     hi <- pidx[seq_len(L) + 1L] + 1L
     N_h <- diff(pidx)
+    if (.strata_degenerate(N_h, take_all_idx)) {
+      return(Inf)
+    }
     sum_h <- cs[hi] - cs[lo]
     sum2_h <- cs2[hi] - cs2[lo]
     mean_h <- ifelse(N_h > 0L, sum_h / N_h, 0)
@@ -547,10 +794,6 @@
     if (!is.null(take_all_idx)) {
       a_h[take_all_idx] <- 0
     }
-    sa <- sum(a_h)
-    if (sa <= 0) {
-      return(Inf)
-    }
     m_h <- pmin(rep(2, L), N_h)
     M_h <- N_h
     if (!is.null(take_all_idx)) {
@@ -559,18 +802,15 @@
 
     if (use_cv) {
       ybar <- .aggregate_mean(W_h, mean_h)
-      tgt_V <- (target_cv * abs(ybar))^2
-      active <- N_h > 0
-      bi_lo <- 2 * L
-      bi_hi <- N
-      for (i in seq_len(20L)) {
-        mid <- (bi_lo + bi_hi) / 2
-        n_h <- .rna_alloc(a_h, mid, m_h, M_h)
-        V <- .strata_variance(W_h, S_h, n_h, N_h, deff, resp_rate)
-        if (V > tgt_V) bi_lo <- mid else bi_hi <- mid
+      tgt_V <- if (is.null(target_V)) {
+        (target_cv * abs(ybar))^2
+      } else {
+        target_V
       }
-      (bi_lo + bi_hi) / 2
+      .strata_size_for_target(W_h, S_h, N_h, a_h, m_h, M_h, tgt_V,
+                              deff, resp_rate)
     } else {
+      if (n_total < sum(m_h) || n_total > sum(M_h)) return(Inf)
       n_h <- .rna_alloc(a_h, n_total, m_h, M_h)
       V <- .strata_variance(W_h, S_h, n_h, N_h, deff, resp_rate)
       ybar <- .aggregate_mean(W_h, mean_h)
@@ -645,7 +885,11 @@
       best_obj <- cur_obj
     }
   }
-  list(bk = x_uniq[best_idx], converged = NA)
+  list(
+    bk = x_uniq[best_idx],
+    converged = NA,
+    feasible = is.finite(best_obj)
+  )
 }
 
 #' Largest-remainder rounding constrained to integer bounds

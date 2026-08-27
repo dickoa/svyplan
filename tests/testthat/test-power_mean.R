@@ -1,4 +1,4 @@
-test_that("power_mean solve-n matches formula", {
+test_that("power_mean solve-n matches the closed-form starting value", {
   icc <- 5; var <- 100; power <- 0.80; alpha <- 0.05
   z_a <- qnorm(1 - alpha / 2)
   z_b <- qnorm(power)
@@ -7,7 +7,8 @@ test_that("power_mean solve-n matches formula", {
 
   res <- power_mean(effect = icc, var = var)
   expect_s3_class(res, "svyplan_power")
-  expect_equal(res$n, expected, tolerance = 1e-6)
+  expect_equal(res$n, expected, tolerance = 1e-4)
+  expect_equal(res$power, power, tolerance = 1e-8)
   expect_equal(res$solved, "n")
   expect_equal(res$type, "mean")
   expect_equal(res$effect, 5)
@@ -25,7 +26,7 @@ test_that("power_mean solve-power matches formula", {
   expect_equal(res$solved, "power")
 })
 
-test_that("power_mean solve-mde matches analytical formula", {
+test_that("power_mean solve-mde matches the closed-form starting value", {
   var <- 100; n <- 500; power <- 0.80; alpha <- 0.05
   z_a <- qnorm(1 - alpha / 2)
   z_b <- qnorm(power)
@@ -33,7 +34,12 @@ test_that("power_mean solve-mde matches analytical formula", {
   expected <- (z_a + z_b) * sqrt(V / n)
 
   res <- power_mean(var = var, n = n)
-  expect_equal(res$effect, expected, tolerance = 1e-6)
+  expect_equal(res$effect, expected, tolerance = 1e-4)
+  expect_equal(
+    power_mean(var = var, n = n, effect = res$effect, power = NULL)$power,
+    power,
+    tolerance = 1e-8
+  )
   expect_equal(res$solved, "mde")
 })
 
