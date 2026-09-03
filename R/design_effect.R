@@ -139,6 +139,7 @@
 #' *Practical Tools for Designing and Weighting Survey Samples*
 #' (2nd ed.). Springer. Ch. 9.
 #'
+#' @family design input functions
 #' @seealso [effective_n()] for the sample size this design effect costs
 #'   you, [varcomp()] for estimating `icc` and `var_ratio`, [n_cluster()] for
 #'   optimizing a multistage design directly.

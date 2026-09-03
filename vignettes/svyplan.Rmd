@@ -49,18 +49,18 @@ draw_box(5, 8.5, 3.8, 1.0, "Plan Profile",
 
 draw_box(2.5, 6.5, 3.8, 2.1, "Sample Size",
          paste0("n_prop \u00b7 n_mean \u00b7 n_ratio\n",
-                "n_cluster \u00b7 n_multi \u00b7 n_multi_cluster\n",
+                "n_cluster \u00b7 n_multi\n",
                 "n_alloc \u00b7 n_twophase\n",
                 "n_change \u00b7 n_panel \u00b7 n_pooled"))
 draw_box(7.5, 6.5, 3.8, 2.1, "Precision",
          paste0("prec_prop \u00b7 prec_mean \u00b7 prec_ratio\n",
-                "prec_cluster \u00b7 prec_multi \u00b7 prec_multi_cluster\n",
+                "prec_cluster \u00b7 prec_multi\n",
                 "prec_alloc \u00b7 prec_twophase\n",
                 "prec_change \u00b7 prec_panel\nprec_pooled"))
 draw_box(2.5, 3.5, 3.8, 1.7, "Design Components",
          paste0("varcomp \u00b7 design_effect\n",
                 "effective_n \u00b7 design_df\n",
-                "design_overlap \u00b7 design_schedule"))
+                "design_rotation \u00b7 design_overlap\ndesign_schedule"))
 draw_box(7.5, 3.5, 3.8, 1.4, "Power Analysis",
          "power_prop \u00b7 power_mean \u00b7 power_did")
 draw_box(5, 1, 3.8, 1.2, "Stratification",
@@ -86,27 +86,29 @@ par(op)
 | Family      | Functions                                                        | Purpose                                |
 |:------------|:-----------------------------------------------------------------|:---------------------------------------|
 | Plan        | `svyplan`                                                        | Reusable profile for design defaults   |
-| Sample size | `n_prop`, `n_mean`, `n_ratio`, `n_cluster`, `n_multi`, `n_multi_cluster`, `n_alloc`, `n_twophase`, `n_change`, `n_panel`, `n_pooled` | "How many units do I need?"        |
-| Precision   | `prec_prop`, `prec_mean`, `prec_ratio`, `prec_cluster`, `prec_multi`, `prec_multi_cluster`, `prec_alloc`, `prec_twophase`, `prec_change`, `prec_panel`, `prec_pooled` | "What precision does *n* achieve?" |
+| Sample size | `n_prop`, `n_mean`, `n_ratio`, `n_cluster`, `n_multi`, `n_alloc`, `n_twophase`, `n_change`, `n_panel`, `n_pooled` | "How many units do I need?"        |
+| Precision   | `prec_prop`, `prec_mean`, `prec_ratio`, `prec_cluster`, `prec_multi`, `prec_alloc`, `prec_twophase`, `prec_change`, `prec_panel`, `prec_pooled` | "What precision does *n* achieve?" |
 | Power       | `power_prop`, `power_mean`, `power_did`                          | "Can I detect a difference?"            |
-| Design      | `varcomp`, `design_effect`, `effective_n`, `design_df`, `design_overlap`, `design_schedule` | Variance components, design effects, degrees of freedom, and rotation schedules |
+| Design      | `varcomp`, `design_effect`, `effective_n`, `design_df`, `design_rotation`, `design_overlap`, `design_schedule` | Variance components, design effects, degrees of freedom, and rotation patterns |
 | Strata      | `strata_bound`                                                   | Optimal stratification boundaries      |
 
-The same table read by question rather than by family, since several questions cut across the rows:
+### Which function
 
-| Question | Where |
-|:---------|:------|
-| How many units for a target precision on a level? | `n_prop`, `n_mean`, and the cluster, allocation and two-phase members |
-| How many units for a ratio of two totals from the same sample? | `n_ratio` |
-| How many for a target precision on a **change** between two occasions? | `n_change` |
-| How many to **recruit** so that enough survive to a later wave? | `n_panel` |
-| How many for a target precision on an **average across occasions**, an annual figure from quarterly rounds? | `n_pooled` |
-| What precision does a design I already have achieve? | the `prec_*` counterpart of each |
-| Can I detect a difference, and how large a one? | `power_prop`, `power_mean`, `power_did` |
-| Can I detect a change over two occasions? | `power_prop` and `power_mean` with `overlap` set, which is the same variance `n_change` inverts |
-| What overlap does my rotation schedule produce? | `design_overlap` |
-| What should each startup or intake cohort issue, and when is it active? | `design_schedule` |
-| What design effect, effective size or degrees of freedom will the design have? | `design_effect`, `effective_n`, `design_df`, `varcomp` |
+The same functions read by problem rather than by family. Eleven problems, each with the function or pair that answers it. Every `n_` has a `prec_` reading the same design back the other way, so a row names one thing to learn rather than two.
+
+| **I want to size, or evaluate** | **Functions** |
+|:----------------------------|:----------|
+| a proportion, a mean or a ratio of two totals | `n_prop()`/`prec_prop()`, `n_mean()`/`prec_mean()`, `n_ratio()`/`prec_ratio()` |
+| several indicators at once, taking the most demanding | `n_multi()`/`prec_multi()` |
+| a two- or three-stage cluster design, for one indicator or a table of them | `n_cluster()`/`prec_cluster()` |
+| an allocation across strata or domains, under a budget or a CV target | `n_alloc()`/`prec_alloc()`, `strata_bound()` |
+| a two-phase design that screens or follows up | `n_twophase()`/`prec_twophase()` |
+| a change between two occasions of a repeated survey | `n_change()`/`prec_change()` |
+| the average of several occasions of a repeated survey | `n_pooled()`/`prec_pooled()` |
+| a panel that must still deliver a sample after attrition | `n_panel()`/`prec_panel()` |
+| the overlap and field schedule a rotation pattern produces | `design_rotation()`, `design_overlap()`, `design_schedule()` |
+| the power of a two-group comparison or a difference-in-differences | `power_prop()`, `power_mean()`, `power_did()` |
+| the design effect, effective size or degrees of freedom of a plan | `design_effect()`, `effective_n()`, `design_df()`, `varcomp()` |
 
 Most planning functions return structured S3 objects. Available methods depend on the result class. See the relevant help page for details.
 
@@ -135,12 +137,12 @@ rrect(8.5, 3.2, 3.0, 0.7, '"Can I detect a difference?"', cex = 0.72)
 
 rrect(1.5, 1.2, 3.0, 1.7, paste0(
         "n_prop \u00b7 n_mean \u00b7 n_ratio\nn_cluster \u00b7 n_multi\n",
-        "n_multi_cluster\nn_alloc \u00b7 n_twophase\n",
+        "n_alloc \u00b7 n_twophase\n",
         "n_change \u00b7 n_panel\nn_pooled"),
       col = "white", border = "black", cex = 0.62)
 rrect(5.0, 1.2, 3.0, 1.7, paste0(
         "prec_prop \u00b7 prec_mean \u00b7 prec_ratio\nprec_cluster \u00b7 prec_multi\n",
-        "prec_multi_cluster\nprec_alloc \u00b7 prec_twophase\n",
+        "prec_alloc \u00b7 prec_twophase\n",
         "prec_change \u00b7 prec_panel\nprec_pooled"),
       col = "white", border = "black", cex = 0.62)
 rrect(8.5, 1.2, 3.0, 1.7, paste0(
@@ -492,7 +494,7 @@ The following detailed articles are available on the package website:
 
 **More than three stages.** Two- and three-stage designs are supported. Surveys rarely go deeper, and the cost and variance models for a fourth stage would carry more assumptions than they would earn.
 
-**Attrition, and choosing a rotation.** `n_panel()` is arithmetic on declared rates. It says what recruitment yields under a response rate and a retention curve, not where those rates come from. Attrition modelling, attrition weighting, and any adjustment for informative dropout are analysis-stage work and outside the boundary. Two consequences are worth stating. A unit lost at one wave is treated as lost for good, so a panel whose nonrespondents return later does better than planned here, and planning this way over-issues. Also, `design_overlap()` reads a schedule that has already been chosen. It does not solve the inverse problem of finding a schedule that delivers a target overlap while limiting how many times a unit may be interviewed.
+**Attrition, and choosing a rotation.** `n_panel()` is arithmetic on declared rates. It says what recruitment yields under a response rate and a retention curve, not where those rates come from. Attrition modelling, attrition weighting, and any adjustment for informative dropout are analysis-stage work and outside the boundary. Two consequences are worth stating. A unit lost at one wave is treated as lost for good, so a panel whose nonrespondents return later does better than planned here, and planning this way over-issues. Also, `design_rotation()` records a rotation that has already been chosen. It does not solve the inverse problem of finding one that delivers a target overlap while limiting how many times a unit may be interviewed.
 
 **Targeting nonresponse follow-up.** Deciding *how much* follow-up to do is answered by `n_twophase()`. Deciding *which* cases to pursue is not, and is out of scope: prioritizing by response propensity, or adapting effort as fieldwork proceeds, needs paradata from the field that no planning stage has.
 

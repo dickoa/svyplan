@@ -8,8 +8,10 @@
 #'
 #' @param panel_plan A rotating `svyplan_panel` from [n_panel()] or
 #'   [prec_panel()] with `start = "immediate"` or `start = "gradual"`.
-#' @param life An unbroken equal-take `svyplan_overlap`, such as
-#'   `design_overlap("4")`. Its length must match the panel life.
+#' @param rotation An unbroken equal-take `svyplan_rotation` from
+#'   [design_rotation()], such as `design_rotation("4")`. Its length must
+#'   match the panel life. The overlap the manifest records is computed from
+#'   it here, so the caller does not supply one.
 #' @param horizon A positive whole number of program occasions in the finite
 #'   planning window.
 #' @param horizon_policy One of `"continuing"`, `"truncate_lives"`, or
@@ -45,8 +47,9 @@
 #'
 #' The generated activity is checked against `panel_plan$launch_waves` over
 #' every shared period that the horizon policy has not changed. Its realized
-#' issued overlap is also checked against `life` at every mature membership
-#' origin for which the destination occasion exists.
+#' issued overlap is also checked against the overlap `rotation` produces, at
+#' every mature membership origin for which the destination occasion
+#' exists.
 #'
 #' @examples
 #' panel <- n_panel(
@@ -58,7 +61,7 @@
 #' )
 #' schedule <- design_schedule(
 #'   panel,
-#'   design_overlap("4"),
+#'   design_rotation("4"),
 #'   horizon = 6,
 #'   horizon_policy = "continuing",
 #'   refreshment = "entrant_register",
@@ -67,15 +70,16 @@
 #' schedule
 #' schedule$components
 #'
-#' @seealso [n_panel()] and [prec_panel()] for the rotating plan this
-#'   schedules, [plot.svyplan_overlap()] for the rotation chart, and
-#'   [print.svyplan_schedule()] for the printed form and its `summary()`.
+#' @seealso [design_rotation()] for the pattern this schedules, [n_panel()]
+#'   and [prec_panel()] for the rotating plan, [plot.svyplan_overlap()] for
+#'   the rotation chart, and [print.svyplan_schedule()] for the printed form
+#'   and its `summary()`.
 #'
-#' @family repeated survey planning
+#' @family repeated survey functions
 #' @export
 design_schedule <- function(
   panel_plan,
-  life,
+  rotation,
   horizon,
   horizon_policy,
   refreshment,
@@ -93,22 +97,31 @@ design_schedule <- function(
       call. = FALSE
     )
   }
-  if (!inherits(life, "svyplan_overlap")) {
-    stop("'life' must be a svyplan_overlap from design_overlap()", call. = FALSE)
+  if (!inherits(rotation, "svyplan_rotation")) {
+    stop(
+      "'rotation' must be a svyplan_rotation from design_rotation()",
+      call. = FALSE
+    )
   }
 
-  take <- attr(life, "schedule", exact = TRUE)
-  if (any(take == 0)) {
-    stop("'life' must be unbroken in the first schedule schema", call. = FALSE)
+  take <- as.double(rotation)
+  if (!isTRUE(attr(rotation, "unbroken", exact = TRUE))) {
+    stop(
+      "'rotation' must be unbroken in the first schedule schema",
+      call. = FALSE
+    )
   }
-  if (length(unique(signif(take, 14L))) != 1L) {
-    stop("'life' must be equal-take in the first schedule schema", call. = FALSE)
+  if (!isTRUE(attr(rotation, "equal_take", exact = TRUE))) {
+    stop(
+      "'rotation' must be equal-take in the first schedule schema",
+      call. = FALSE
+    )
   }
-  life_length <- length(take)
+  life_length <- attr(rotation, "life", exact = TRUE)
   if (life_length != nrow(panel_plan$waves)) {
     stop(
       sprintf(
-        "the overlap life length is %d but 'panel_plan' has a %d-wave life",
+        "the rotation life length is %d but 'panel_plan' has a %d-wave life",
         life_length, nrow(panel_plan$waves)
       ),
       call. = FALSE
@@ -199,6 +212,7 @@ design_schedule <- function(
     as.integer(steady_waves[[1L]])
   }
 
+  overlap <- design_overlap(rotation)
   issue <- .schedule_issue_profile(components, horizon, steady)
   panel_parameters <- .schedule_panel_parameters(
     schedule, tail_commitments, startup_panels
@@ -221,7 +235,7 @@ design_schedule <- function(
     ),
     rounding = list(rule = rounding, level = "panel_and_cohort"),
     steady_state_from = steady_state_from,
-    overlap = as.data.frame(life),
+    overlap = as.data.frame(overlap),
     refreshment = refreshment,
     requires_disjoint_entrants = identical(refreshment, "entrant_register"),
     n_entrants = entrant_issue,
@@ -235,7 +249,7 @@ design_schedule <- function(
   )
 
   .check_schedule_launch(out, panel_plan$launch_waves, horizon_policy, max_entry)
-  .check_schedule_overlap(out, as.double(life))
+  .check_schedule_overlap(out, as.double(overlap))
   out
 }
 
@@ -845,7 +859,7 @@ design_schedule <- function(
 #' )
 #' schedule <- design_schedule(
 #'   panel,
-#'   design_overlap("4"),
+#'   design_rotation("4"),
 #'   horizon = 6,
 #'   horizon_policy = "continuing",
 #'   refreshment = "entrant_register",

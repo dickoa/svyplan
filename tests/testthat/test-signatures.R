@@ -8,8 +8,6 @@ test_that("calculation methods place dots after required arguments", {
     prec_cluster.default = 2L,
     n_multi.default = 2L,
     prec_multi.default = 2L,
-    n_multi_cluster.default = 2L,
-    prec_multi_cluster.default = 2L,
     n_alloc.default = 2L,
     prec_alloc.default = 3L,
     n_panel = 3L,

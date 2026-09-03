@@ -376,8 +376,8 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
   .check_unused_dots(...)
   if (!is.null(object$indicators)) {
     stop(
-      "predict() is not supported for multi-indicator cluster results; ",
-      "use n_cluster() directly",
+      "predict() is not supported for a several-indicators cluster result. ",
+      "Re-solve with n_cluster(indicators = ) at the inputs you want",
       call. = FALSE
     )
   }

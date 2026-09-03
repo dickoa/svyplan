@@ -208,9 +208,9 @@ automatically from \code{p} (as \code{(1 - p) / p}) or from
 \item{\code{resp_rate}}{Expected response rate at the ultimate unit, in
 (0, 1]. Default 1 (no adjustment). A value of 0.90 inflates the
 sample size by \code{1 / 0.90} to compensate for 10 percent
-non-response. It means the same thing in \code{\link[=n_multi_cluster]{n_multi_cluster()}},
-which additionally takes \code{resp_rate_psu} for whole clusters that
-cannot be worked and \code{resp_rate_ssu} for second-stage units in a
+non-response. It means the same thing in a cluster design, where
+\code{\link[=n_cluster]{n_cluster()}} additionally takes \code{resp_rate_psu} for whole clusters
+that cannot be worked and \code{resp_rate_ssu} for second-stage units in a
 three-stage design. Naming a stage the design does not have is an
 error rather than a column carried along and ignored.}
 }
@@ -322,40 +322,6 @@ targets_dom <- data.frame(
 )
 n_multi(targets_dom, domains = "region")
 
-# Two-stage CV mode
-targets_cl <- data.frame(
-  name   = c("stunting", "anemia"),
-  p      = c(0.30, 0.10),
-  cv     = c(0.10, 0.15),
-  icc_psu = c(0.02, 0.05)
-)
-n_multi_cluster(targets_cl, stage_cost = c(500, 50))
-
-# Two-stage with MOE (converted to CV internally)
-targets_moe <- data.frame(
-  name   = c("stunting", "anemia"),
-  p      = c(0.30, 0.10),
-  moe    = c(0.05, 0.03),
-  icc_psu = c(0.02, 0.05)
-)
-n_multi_cluster(targets_moe, stage_cost = c(500, 50))
-
-# Joint budget allocation across domains
-targets_jnt <- data.frame(
-  name   = rep(c("stunting", "anemia"), each = 2),
-  p      = c(0.30, 0.25, 0.10, 0.15),
-  cv     = c(0.10, 0.10, 0.15, 0.15),
-  icc_psu = c(0.02, 0.03, 0.05, 0.04),
-  region = rep(c("Urban", "Rural"), 2)
-)
-n_multi_cluster(
-  targets_jnt,
-  stage_cost = c(500, 50),
-  domains = "region",
-  budget = 100000,
-  allocation = "joint"
-)
-
 }
 \references{
 Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
@@ -367,19 +333,10 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 \seealso{
 \code{\link[=n_prop]{n_prop()}} and \code{\link[=n_mean]{n_mean()}} for single-indicator sizing,
 \code{\link[=n_alloc]{n_alloc()}} to split a multi-indicator size across strata or domains,
-\code{\link[=n_multi_cluster]{n_multi_cluster()}} for multistage cluster designs, and \code{\link[=prec_multi]{prec_multi()}}
-for the inverse.
+\code{\link[=n_cluster]{n_cluster()}} for a multistage cluster design over the same indicator
+table, and \code{\link[=prec_multi]{prec_multi()}} for the inverse.
 
-Other sample size functions:
-\code{\link[=n_alloc]{n_alloc()}},
-\code{\link[=n_change]{n_change()}},
-\code{\link[=n_cluster]{n_cluster()}},
-\code{\link[=n_mean]{n_mean()}},
-\code{\link[=n_multi_cluster]{n_multi_cluster()}},
-\code{\link[=n_panel]{n_panel()}},
-\code{\link[=n_pooled]{n_pooled()}},
-\code{\link[=n_prop]{n_prop()}},
-\code{\link[=n_ratio]{n_ratio()}},
-\code{\link[=n_twophase]{n_twophase()}}
+Other multi-indicator functions:
+\code{\link[=prec_multi]{prec_multi()}}
 }
-\concept{sample size functions}
+\concept{multi-indicator functions}

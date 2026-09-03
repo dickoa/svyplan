@@ -301,7 +301,7 @@ test_that("prec_cluster requires icc", {
   expect_error(prec_cluster(n = c(50, 12)), "'icc' is required")
 })
 
-test_that("n_multi_cluster uses plan for stage_cost", {
+test_that("n_cluster(indicators = ) uses plan for stage_cost", {
   targets <- data.frame(
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
@@ -309,8 +309,8 @@ test_that("n_multi_cluster uses plan for stage_cost", {
     icc_psu = c(0.02, 0.05)
   )
   plan <- svyplan(stage_cost = c(500, 50))
-  res <- suppressMessages(n_multi_cluster(targets, plan = plan))
-  ref <- suppressMessages(n_multi_cluster(targets, stage_cost = c(500, 50)))
+  res <- suppressMessages(n_cluster(indicators = targets, plan = plan))
+  ref <- suppressMessages(n_cluster(indicators = targets, stage_cost = c(500, 50)))
   expect_equal(res$n, ref$n)
 })
 
@@ -445,7 +445,7 @@ test_that("pipe: plan |> prec_cluster", {
   expect_equal(res$cv, ref$cv)
 })
 
-test_that("pipe: plan |> n_multi_cluster", {
+test_that("pipe: plan |> n_cluster(indicators = )", {
   targets <- data.frame(
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
@@ -453,8 +453,8 @@ test_that("pipe: plan |> n_multi_cluster", {
     icc_psu = c(0.02, 0.05)
   )
   plan <- svyplan(stage_cost = c(500, 50))
-  res <- suppressMessages(plan |> n_multi_cluster(targets))
-  ref <- suppressMessages(n_multi_cluster(targets, stage_cost = c(500, 50)))
+  res <- suppressMessages(plan |> n_cluster(indicators = targets))
+  ref <- suppressMessages(n_cluster(indicators = targets, stage_cost = c(500, 50)))
   expect_equal(res$n, ref$n)
 })
 
@@ -577,7 +577,7 @@ test_that("named pipe: plan |> prec_cluster(n = ...) matches all styles", {
   expect_equal(res_named_pipe$cv, res_pos_pipe$cv)
 })
 
-test_that("named pipe: plan |> n_multi_cluster() matches all styles", {
+test_that("named pipe: plan |> n_cluster() matches all styles", {
   targets <- data.frame(
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
@@ -585,11 +585,15 @@ test_that("named pipe: plan |> n_multi_cluster() matches all styles", {
     icc_psu = c(0.02, 0.05)
   )
   plan <- svyplan(stage_cost = c(500, 50))
-  res_named_plan <- suppressMessages(n_multi_cluster(targets, plan = plan))
-  res_pos_pipe <- suppressMessages(plan |> n_multi_cluster(targets))
-  res_named_pipe <- suppressMessages(plan |> n_multi_cluster(indicators = targets))
+  res_named_plan <- suppressMessages(n_cluster(indicators = targets, plan = plan))
+  res_named_pipe <- suppressMessages(plan |> n_cluster(indicators = targets))
   expect_equal(res_named_pipe$n, res_named_plan$n)
-  expect_equal(res_named_pipe$n, res_pos_pipe$n)
+  # 'indicators' sits after the dots, so the first slot is 'stage_cost' in
+  # both modes and a table handed to it is named, not solved.
+  expect_error(
+    suppressMessages(plan |> n_cluster(targets)),
+    "table of indicators goes to 'indicators'"
+  )
 })
 
 test_that("named pipe: plan |> n_alloc(frame = ...) matches all styles", {
@@ -620,7 +624,7 @@ test_that("named pipe: plan |> prec_alloc(frame = ...) matches all styles", {
   expect_equal(res_named_pipe$se, res_pos_pipe$se)
 })
 
-test_that("named pipe: plan |> prec_multi_cluster() with stage_cost", {
+test_that("named pipe: plan |> prec_cluster() with stage_cost", {
   targets <- data.frame(
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
@@ -629,9 +633,9 @@ test_that("named pipe: plan |> prec_multi_cluster() with stage_cost", {
     icc_psu = c(0.02, 0.05)
   )
   plan <- svyplan(stage_cost = c(500, 50))
-  res_explicit <- prec_multi_cluster(targets, stage_cost = c(500, 50))
-  res_named_plan <- prec_multi_cluster(targets, plan = plan)
-  res_named_pipe <- plan |> prec_multi_cluster(indicators = targets)
+  res_explicit <- prec_cluster(indicators = targets, stage_cost = c(500, 50))
+  res_named_plan <- prec_cluster(indicators = targets, plan = plan)
+  res_named_pipe <- plan |> prec_cluster(indicators = targets)
   expect_equal(res_named_plan$cv, res_explicit$cv)
   expect_equal(res_named_pipe$cv, res_explicit$cv)
 })

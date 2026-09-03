@@ -403,4 +403,9 @@ Hansen, M. H., Hurwitz, W. N., and Madow, W. G. (1953).
 \seealso{
 \code{\link[=n_cluster]{n_cluster()}} which accepts a \code{svyplan_varcomp} as \code{icc},
 \code{\link[=design_effect]{design_effect()}} for the forward identity the back-out inverts.
+
+Other cluster design functions:
+\code{\link[=n_cluster]{n_cluster()}},
+\code{\link[=prec_cluster]{prec_cluster()}}
 }
+\concept{cluster design functions}

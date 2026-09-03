@@ -291,7 +291,7 @@
 #' fiducial limits illustrated in the case of the binomial.
 #' *Biometrika*, 26(4), 404--413.
 #'
-#' @family sample size functions
+#' @family proportion, mean and ratio functions
 #' @seealso [n_mean()] for continuous variables, [n_cluster()] for
 #'   multistage designs, [n_multi()] for multiple indicators,
 #'   [prec_prop()] for the inverse.

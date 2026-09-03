@@ -151,6 +151,7 @@
 #'
 #' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
 #'
+#' @family power analysis functions
 #' @seealso [power_mean()] for continuous outcomes, [power_did()] for
 #'   difference-in-differences, [n_prop()] for estimation precision.
 #'   With `overlap` set, this is the two-occasion change of one population:

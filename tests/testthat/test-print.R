@@ -207,7 +207,7 @@ test_that("as.data.frame.svyplan_cluster returns domains when present", {
     cv = 0.08,
     icc_psu = 0.05
   )
-  res <- n_multi_cluster(targets, domains = "domain", stage_cost = c(500, 50))
+  res <- n_cluster(indicators = targets, domains = "domain", stage_cost = c(500, 50))
   expect_identical(as.data.frame(res), res$domains)
 })
 

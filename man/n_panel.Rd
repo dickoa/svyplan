@@ -320,16 +320,14 @@ already have, \code{\link[=design_overlap]{design_overlap()}} for the overlap a 
 \code{\link[=design_schedule]{design_schedule()}} for turning a rotating plan into an operational
 schedule, \code{\link[=n_change]{n_change()}} for sizing the change between two occasions.
 
-Other sample size functions:
-\code{\link[=n_alloc]{n_alloc()}},
+Other repeated survey functions:
+\code{\link[=design_overlap]{design_overlap()}},
+\code{\link[=design_rotation]{design_rotation()}},
+\code{\link[=design_schedule]{design_schedule()}},
 \code{\link[=n_change]{n_change()}},
-\code{\link[=n_cluster]{n_cluster()}},
-\code{\link[=n_mean]{n_mean()}},
-\code{\link[=n_multi]{n_multi()}},
-\code{\link[=n_multi_cluster]{n_multi_cluster()}},
 \code{\link[=n_pooled]{n_pooled()}},
-\code{\link[=n_prop]{n_prop()}},
-\code{\link[=n_ratio]{n_ratio()}},
-\code{\link[=n_twophase]{n_twophase()}}
+\code{\link[=prec_change]{prec_change()}},
+\code{\link[=prec_panel]{prec_panel()}},
+\code{\link[=prec_pooled]{prec_pooled()}}
 }
-\concept{sample size functions}
+\concept{repeated survey functions}

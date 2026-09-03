@@ -91,7 +91,18 @@
 #'     a pair, and `p` is kept as well when the proportion scale was used.}
 #' }
 #'
-#' @details
+#' @details#'
+#' ## Level or change
+#'
+#' A repeated survey publishes three things, and each is sized by its own
+#' function. The level at one occasion is [n_mean()] or [n_prop()] and is a
+#' function of that occasion's size alone. The change between two occasions
+#' is this function, which overlap improves. The average of several
+#' occasions is [n_pooled()], which overlap works against, because the
+#' covariance it induces is subtracted in a difference and added in a sum. A
+#' design serving more than one of the three takes the largest of the three
+#' requirements, since none dominates.
+#'
 #' The change variance is \eqn{A/n_2 + B} in the net second-occasion size,
 #' where
 #'
@@ -153,7 +164,7 @@
 #' @references
 #' Kish, L. (1965). *Survey Sampling*. Wiley. Chapter 12.
 #'
-#' @family sample size functions
+#' @family repeated survey functions
 #' @seealso [prec_change()] for the inverse (compute precision from a size),
 #'   [n_mean()] and [n_prop()] for a single occasion, [power_mean()] and
 #'   [power_prop()] to frame the same overlap as a hypothesis test.

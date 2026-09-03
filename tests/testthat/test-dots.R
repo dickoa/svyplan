@@ -85,8 +85,8 @@ test_that("round-trip overrides remain supported and validated", {
   expect_error(prec_prop(n_result, alpa = 0.1), "unused argument.*alpa")
 
   targets <- data.frame(p = 0.3, cv = 0.1, icc_psu = 0.05)
-  cluster_result <- n_multi_cluster(targets, stage_cost = c(500, 50))
-  expect_error(prec_multi_cluster(cluster_result, alpa = 0.1),
+  cluster_result <- n_cluster(indicators = targets, stage_cost = c(500, 50))
+  expect_error(prec_cluster(cluster_result, alpa = 0.1),
                "unused argument.*alpa")
 })
 

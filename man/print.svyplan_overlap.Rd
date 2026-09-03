@@ -56,17 +56,17 @@
 number, carrying neither the class nor the lag as a name.}
 
 \item{e1, e2}{Operands. Arithmetic and comparison return bare numerics,
-the counts and the schedule describing the profile as computed and not
+the counts and the rotation describing the profile as computed and not
 whatever it was transformed into.}
 
 \item{name}{Field to extract: \code{overlap}, \code{shared}, \code{n_occasion},
-\code{schedule}, \code{lag} or \code{life}.}
+\code{rotation}, \code{lag} or \code{life}.}
 
 \item{row.names, optional, stringsAsFactors, validRN}{Standard
 \code{as.data.frame()} arguments.}
 
 \item{value}{Replacement value. Replacement is refused, an overlap being
-computed from a schedule rather than assembled.}
+computed from a rotation rather than assembled.}
 }
 \value{
 The method-specific result:
@@ -83,10 +83,10 @@ Replacement is an error.
 A \code{svyplan_overlap} from \code{\link[=design_overlap]{design_overlap()}} is a numeric vector of
 overlap fractions indexed by lag, so \code{x[1]} and \code{x[12]} are plain
 numbers ready for an \code{overlap} argument. \code{$} reaches the counts and the
-schedule behind them.
+rotation behind them.
 }
 \details{
-The values, the shared counts and the schedule describe one design, so
+The values, the shared counts and the rotation describe one design, so
 nothing may move the values while leaving the rest: subsetting and
 arithmetic return bare numerics, and replacement is an error. That also
 settles \code{pmax()} and \code{pmin()}, which copy the attributes of their first
@@ -105,7 +105,7 @@ cps[["12"]]
 
 # the fields behind the values
 cps$shared
-cps$n_occasion
+cps$rotation
 as.data.frame(cps)
 
 # arithmetic drops the class rather than carrying stale counts
@@ -114,6 +114,7 @@ as.double(cps)[1:3]
 }
 \seealso{
 \code{\link[=design_overlap]{design_overlap()}}, which builds these objects,
+\code{\link[=design_rotation]{design_rotation()}} for the pattern behind them,
 \code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for the rotation chart, and
 \code{\link[=print.svyplan_schedule]{print.svyplan_schedule()}} for the operational schedule a rotation
 becomes.

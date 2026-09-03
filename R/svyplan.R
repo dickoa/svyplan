@@ -65,6 +65,7 @@
 #' original first argument (e.g., `p` in [n_prop()]) can be passed
 #' either positionally or by name.
 #'
+#' @family design input functions
 #' @seealso [n_prop()], [n_mean()], [n_cluster()], [power_prop()],
 #'   [power_mean()], [power_did()].
 #'

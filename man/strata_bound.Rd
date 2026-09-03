@@ -277,4 +277,10 @@ constraints. \emph{arXiv preprint} arXiv:1501.00014.
 \code{\link[=n_alloc]{n_alloc()}} to distribute a sample across an existing set of strata,
 which accepts \verb{$strata} directly, and \code{\link[=svyplan]{svyplan()}} for reusable design
 defaults.
+
+Other stratified design functions:
+\code{\link[=n_alloc]{n_alloc()}},
+\code{\link{n_alloc-generalized}},
+\code{\link[=prec_alloc]{prec_alloc()}}
 }
+\concept{stratified design functions}

@@ -29,6 +29,26 @@ precision, and it never draws a sample: no selection probabilities, no weights,
 no drawn units come out of any function here. When the plan is settled,
 [sondage](https://cran.r-project.org/package=sondage) draws it.
 
+## Which function
+
+Eleven problems, each with the function or pair that answers it. Every `n_`
+has a `prec_` reading the same design back the other way, so a row names one
+thing to learn rather than two.
+
+| **I want to size, or evaluate** | **Functions** |
+|:----------------------------|:----------|
+| a proportion, a mean or a ratio of two totals | `n_prop()`/`prec_prop()`, `n_mean()`/`prec_mean()`, `n_ratio()`/`prec_ratio()` |
+| several indicators at once, taking the most demanding | `n_multi()`/`prec_multi()` |
+| a two- or three-stage cluster design, for one indicator or a table of them | `n_cluster()`/`prec_cluster()` |
+| an allocation across strata or domains, under a budget or a CV target | `n_alloc()`/`prec_alloc()`, `strata_bound()` |
+| a two-phase design that screens or follows up | `n_twophase()`/`prec_twophase()` |
+| a change between two occasions of a repeated survey | `n_change()`/`prec_change()` |
+| the average of several occasions of a repeated survey | `n_pooled()`/`prec_pooled()` |
+| a panel that must still deliver a sample after attrition | `n_panel()`/`prec_panel()` |
+| the overlap and field schedule a rotation pattern produces | `design_rotation()`, `design_overlap()`, `design_schedule()` |
+| the power of a two-group comparison or a difference-in-differences | `power_prop()`, `power_mean()`, `power_did()` |
+| the design effect, effective size or degrees of freedom of a plan | `design_effect()`, `effective_n()`, `design_df()`, `varcomp()` |
+
 ## Installation
 
 ```r
@@ -312,23 +332,24 @@ n_change(p = c(0.30, 0.36), moe = 0.02, overlap = 0.75, overlap_cor = 0.5)
 
 The overlap is a property of the design, fixed once the rotation is declared.
 The correlation is a property of the variable and has to come from a previous
-round of the same survey. `design_overlap()` supplies the design half. Give it
-the occasions a unit spends in and out of sample over its whole life and it
-returns the overlap at every lag the schedule reaches:
+round of the same survey. `design_rotation()` declares the design half once.
+Give it the occasions a unit spends in and out of sample over its whole life,
+and `design_overlap()` returns the overlap at every lag it reaches:
 
 ```{r overlap}
-cps <- design_overlap("4-8-4")
+rotation <- design_rotation("4-8-4")
+cps <- design_overlap(rotation)
 cps[c(1, 12)]
 ```
 
 Those are the two published CPS figures, 75 percent of the sample shared
 between consecutive months and 50 percent between the same month a year apart.
-A schedule is a finite life, not a repeating pattern, and reading `"4-8-4"` as
+A rotation is a finite life, not a repeating pattern, and reading `"4-8-4"` as
 "four in, eight out, repeat" gives 87.5 percent instead. Each lag is a
 different design question, so name the one the change spans rather than
 passing the profile whole.
 
-Two notations for a schedule are in print and both are accepted, told apart by
+Two notations for a rotation are in print and both are accepted, told apart by
 the `0`, which no spell can be. `"4-8-4"` counts occasions per spell and
 `"1-1-0-0-1-1"` carries one flag per occasion, and is the same life as
 `"2-2-2"`. A string of all 1s is a valid sentence in both and a different
@@ -336,11 +357,11 @@ design in each, so it is refused rather than resolved by precedence:
 `"1-1-1"` is three consecutive occasions as a pattern and in-out-in as
 spells, whose consecutive overlaps are 2/3 and 0. Write `"3"` or `"1-0-1"`.
 
-`plot()` draws the schedule as the chart rotation designs are published as,
+`plot()` draws the rotation as the chart these designs are published as,
 one row per cohort and one column per time period:
 
 ```{r overlap-chart, fig.width=7, fig.height=4.5, fig.alt="A rotation chart. Ten rows, one per cohort, and ten time periods. Each cohort is in sample for two consecutive periods, out for two, then in for two more, and a new cohort enters at every period. The total row climbs from one to four and holds at four from period six, which is marked as the steady state."}
-plot(design_overlap("1-1-0-0-1-1"))
+plot(design_overlap(design_rotation("1-1-0-0-1-1")))
 ```
 
 A cohort enters at every period drawn, so the total row climbs through the
@@ -410,7 +431,7 @@ rot <- n_panel(target,
                retention = c(0.878, 0.963, 0.936, 0.956),
                resp_rate = 0.728, design = "rotating", start = "immediate")
 field_plan <- design_schedule(
-  rot, design_overlap("5"), horizon = 8,
+  rot, design_rotation("5"), horizon = 8,
   horizon_policy = "continuing",
   refreshment = "entrant_register",
   rounding = "ceiling"

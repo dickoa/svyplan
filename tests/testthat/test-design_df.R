@@ -183,8 +183,8 @@ test_that("a whole design on a single PSU warns at construction", {
     "single PSU"
   )
   expect_warning(
-    n_multi_cluster(
-      data.frame(name = "a", p = 0.3, cv = 0.5, icc_psu = 0.05),
+    n_cluster(
+      indicators = data.frame(name = "a", p = 0.3, cv = 0.5, icc_psu = 0.05),
       stage_cost = c(5000, 50), budget = 9000
     ),
     "single PSU"

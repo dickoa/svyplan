@@ -217,4 +217,9 @@ Designing and Weighting Survey Samples} (2nd ed.). Springer. Chapter 4.
 \seealso{
 \code{\link[=power_prop]{power_prop()}} for two-sample proportions, \code{\link[=power_mean]{power_mean()}} for
 two-sample means.
+
+Other power analysis functions:
+\code{\link[=power_mean]{power_mean()}},
+\code{\link[=power_prop]{power_prop()}}
 }
+\concept{power analysis functions}

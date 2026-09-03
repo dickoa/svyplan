@@ -2,34 +2,14 @@
 % Please edit documentation in R/design_overlap.R
 \name{design_overlap}
 \alias{design_overlap}
-\title{Sample overlap a rotation schedule produces}
+\title{Sample overlap a rotation produces}
 \usage{
-design_overlap(schedule, max_lag = NULL)
+design_overlap(rotation, max_lag = NULL)
 }
 \arguments{
-\item{schedule}{The occasions a unit spends in and out of sample over its
-whole life, in one of two forms.
-
-A \strong{compact string} in either of the two notations the literature
-uses, told apart by whether it contains a \code{0}. Without one it names the
-\strong{spells} in order, starting in sample: \code{"4-8-4"} is the CPS pattern,
-four occasions in, eight out, four in, and \code{"5"} is a five-occasion
-panel with no break. The count of spells must be odd, so the life starts
-and ends in sample. With a \code{0} it is one \strong{flag per occasion}:
-\code{"1-1-0-0-1-1"} is in for two, out for two, in for two, the same life as
-\code{"2-2-2"}. A string of all 1s is the one form both notations claim and
-is refused, naming the two readings and the unambiguous spelling of
-each.
-
-A \strong{numeric or logical vector} gives one entry per occasion of a
-unit's life, \code{0}/\code{FALSE} for out of sample. Positive values may differ,
-in which case they are the number of units still measured at that
-occasion of the life, which is how a design that subsamples later waves
-is described. No entry may exceed the first, a wave being able only to
-re-interview part of the cohort it recruited. The first and last entries
-must be positive, since an out-of-sample spell before the first or after
-the last interview is not part of a unit's life. A life shorter than two
-occasions is refused, having no lag at which any sample is shared.}
+\item{rotation}{A \code{svyplan_rotation} from \code{\link[=design_rotation]{design_rotation()}}, or anything
+that function accepts, which is wrapped for you. The pattern vocabulary,
+the two notations and every refusal live on \code{\link[=design_rotation]{design_rotation()}}.}
 
 \item{max_lag}{Largest lag to report. Defaults to one less than the life,
 which is the largest lag at which any overlap is possible.}
@@ -42,17 +22,16 @@ Subsetting returns a plain number, which is what the \code{overlap}
 arguments take, and arithmetic returns bare numerics. It also carries:
 \describe{
 \item{\verb{$shared}}{Units in sample on both occasions, at each lag.}
-\item{\verb{$n_occasion}}{Units in sample at any one occasion. Constant, see
-Details.}
-\item{\verb{$schedule}}{The resolved per-occasion vector.}
-\item{\verb{$life}}{Occasions from a unit's first interview to its last.}
+\item{\verb{$rotation}}{The \code{\link[=design_rotation]{design_rotation()}} it was computed from, which
+carries the life, the per-occasion takes and the units in sample at
+any one occasion.}
 }
 }
 \description{
-Compute the fraction of the units a rotation schedule puts in sample that
-it carries from one occasion to another, at every lag the schedule
-reaches. This is the overlap of the \strong{issued} sample, a property of the
-schedule alone. It is the \code{overlap} that \code{\link[=n_change]{n_change()}}, \code{\link[=prec_change]{prec_change()}},
+Compute the fraction of the units a rotation puts in sample that it
+carries from one occasion to another, at every lag the rotation reaches.
+This is the overlap of the \strong{issued} sample, a property of the rotation
+alone. It is the \code{overlap} that \code{\link[=n_change]{n_change()}}, \code{\link[=prec_change]{prec_change()}},
 \code{\link[=power_mean]{power_mean()}}, \code{\link[=power_prop]{power_prop()}} and \code{\link[=power_did]{power_did()}} take when response is
 complete, replacing a number the planner would otherwise have to know.
 See Details for what a response rate below 1 does to that reading.
@@ -60,7 +39,7 @@ See Details for what a response rate below 1 does to that reading.
 \details{
 One cohort enters at every occasion, so at a steady state the cohorts
 alive span every stage of the life and the sample at occasion \eqn{t} is
-\eqn{\sum_s w_s}, writing \eqn{w} for the schedule. Units in sample at
+\eqn{\sum_s w_s}, writing \eqn{w} for the rotation. Units in sample at
 both \eqn{t} and \eqn{t + m} are those whose cohort is in sample at
 stages \eqn{s} and \eqn{s + m}, so
 
@@ -96,7 +75,7 @@ stages that hold the steady state include two that are out of sample, so
 the cohorts starting there are selected but not interviewed until they
 reach their first in-sample stage. Splitting the first occasion's
 interviewed sample alone puts six cohorts in sample where the design holds
-four, and gives a consecutive overlap of 0.83 against the schedule's 0.50.
+four, and gives a consecutive overlap of 0.83 against the rotation's 0.50.
 \code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} draws the one-cohort-an-occasion launch and marks
 the occasion the steady state begins.
 
@@ -107,35 +86,9 @@ size. Under a stationary rotation every occasion holds the same mix of
 life stages, so \eqn{n_t} is the same at every occasion and the two
 directions coincide. A design whose cohorts differ in size by entry date
 has no steady state and is outside what this function describes.
-\subsection{Why a life, and not a repeating pattern}{
-
-A schedule is a finite life, not a cycle. Reading \code{"4-8-4"} as "four in,
-eight out, repeat forever" gives the wrong answer, and gives it quietly.
-Under the cycle only the cohort finishing its four-occasion stint leaves
-each occasion, so seven of eight are retained and the consecutive overlap
-comes out at 87.5\%. Under the finite life two cohorts leave, one reaching
-the end of its first spell and one reaching the end of its second, so six
-of eight are retained and the answer is the published 75\%. A compact
-string with an even number of spells would have to be read as a cycle and
-is rejected for that reason.
-}
-
-\subsection{Two notations, and the one string that means both}{
-
-Rotation designs are named two ways in print. \code{"4-8-4"} counts occasions
-per spell, and \code{"1-1-0-0-1-1"} carries one flag per occasion. Both are
-accepted, told apart by the \code{0}, which no spell can be. The exception is a
-string of all 1s, which is a valid sentence in both notations and a
-different design in each: \code{"1-1-1"} is three occasions in sample as a
-pattern and one in, one out, one in as spells, whose consecutive overlaps
-are 2/3 and 0. Neither reading is given precedence, because the wrong one
-is invisible in the answer. Write \code{"3"} or \code{"1-0-1"}, which each say one
-thing only.
-}
-
 \subsection{Issued overlap, and the overlap a variance formula reads}{
 
-What a schedule fixes is which units are \strong{issued} at both occasions.
+What a rotation fixes is which units are \strong{issued} at both occasions.
 The \code{overlap} argument of \code{\link[=n_change]{n_change()}}, \code{\link[=prec_change]{prec_change()}} and the power
 family is the fraction of the first occasion's \strong{responding} sample
 measured again, those functions netting each occasion down by \code{resp_rate}
@@ -158,21 +111,21 @@ produced it.
 \subsection{What it does not give you}{
 
 The correlation between occasions. \code{overlap} is a property of the
-schedule and is fixed once the design is declared, whereas \code{overlap_cor}
+rotation and is fixed once the design is declared, whereas \code{overlap_cor}
 is a
 property of the variable being measured and has to come from a previous
 round of the same survey. Both enter the variance of a change, and only
-their product buys precision, so a schedule alone does not say what a
+their product buys precision, so a rotation alone does not say what a
 rotation is worth.
 }
 }
 \examples{
 # CPS 4-8-4: 75 percent month to month, 50 percent a year apart
-cps <- design_overlap("4-8-4")
+cps <- design_overlap(design_rotation("4-8-4"))
 cps[1]
 cps[12]
 
-# A five-wave panel with no break
+# A string is wrapped for you, which is the one-liner form
 design_overlap("5")[1]
 
 # Feed it straight into a change requirement, response being complete here
@@ -196,10 +149,10 @@ design_overlap("1-1-0-0-1-1")
 identical(as.double(design_overlap("2-2-2")),
           as.double(design_overlap("1-1-0-0-1-1")))
 
-# An explicit schedule, halving the take at later waves
+# An explicit take vector, halving the take at later waves
 design_overlap(c(1, 1, 0.5, 0.5))
 
-# The chart of the schedule, one row per cohort
+# The chart of the rotation, one row per cohort
 plot(design_overlap("1-1-0-0-1-1"))
 
 }
@@ -213,12 +166,20 @@ one-flag-per-occasion notation, and the 1-1-0-0-1-1 design whose lag
 profile the examples reproduce.
 }
 \seealso{
-\code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for the rotation chart of a schedule,
-\code{\link[=n_change]{n_change()}} and \code{\link[=prec_change]{prec_change()}}, which take the result as their
-\code{overlap}, and \code{\link[=design_effect]{design_effect()}} and \code{\link[=design_df]{design_df()}} for the other quantities
-a planned design determines.
+\code{\link[=design_rotation]{design_rotation()}} for the pattern this reads,
+\code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for the rotation chart, \code{\link[=n_change]{n_change()}} and
+\code{\link[=prec_change]{prec_change()}}, which take the result as their \code{overlap}, and
+\code{\link[=design_effect]{design_effect()}} and \code{\link[=design_df]{design_df()}} for the other quantities a planned
+design determines.
 
-Other repeated survey planning:
-\code{\link[=design_schedule]{design_schedule()}}
+Other repeated survey functions:
+\code{\link[=design_rotation]{design_rotation()}},
+\code{\link[=design_schedule]{design_schedule()}},
+\code{\link[=n_change]{n_change()}},
+\code{\link[=n_panel]{n_panel()}},
+\code{\link[=n_pooled]{n_pooled()}},
+\code{\link[=prec_change]{prec_change()}},
+\code{\link[=prec_panel]{prec_panel()}},
+\code{\link[=prec_pooled]{prec_pooled()}}
 }
-\concept{repeated survey planning}
+\concept{repeated survey functions}

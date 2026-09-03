@@ -65,7 +65,7 @@
 #' The method omits the ratio estimator's bias and assumes a denominator
 #' safely away from zero.
 #'
-#' @family precision functions
+#' @family proportion, mean and ratio functions
 #' @seealso [n_ratio()] for the inverse, [prec_mean()] for a mean,
 #'   [prec_cluster()] for a multistage design.
 #'

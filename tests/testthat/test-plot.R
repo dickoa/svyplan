@@ -198,8 +198,10 @@ test_that("the chart's total row climbs to the steady state and holds", {
   for (spec in c("4-8-4", "5", "1-1-0-0-1-1")) {
     x <- design_overlap(spec)
     life <- x$life
-    totals <- .chart_totals(.chart_cohorts(x$schedule, "gradual", life + 4L),
-                            life + 4L)
+    totals <- .chart_totals(
+      .chart_cohorts(as.double(x$rotation), "gradual", life + 4L),
+      life + 4L
+    )
     expect_equal(totals[life:(life + 4L)], rep(x$n_occasion, 5L),
                  tolerance = 1e-12)
     expect_lt(totals[1L], x$n_occasion)
@@ -222,7 +224,7 @@ test_that("the chart draws an immediate launch, full from the first period", {
 
   # Lynn Figure 5: launch cohorts remain for one through six interviews, so
   # the sample is full from period 1 and never climbs
-  co <- .chart_cohorts(x$schedule, "immediate", 10L)
+  co <- .chart_cohorts(as.double(x$rotation), "immediate", 10L)
   expect_length(co, x$life + 10L - 1L)
   # Lynn orders the six launch samples by remaining life: Sample 1 appears
   # once, Sample 2 twice, ..., and Sample 6 for all six waves. Sample 7 is
@@ -241,7 +243,8 @@ test_that("the chart draws an immediate launch, full from the first period", {
   expect_equal(totals, rep(x$n_occasion, 10L), tolerance = 1e-12)
 
   # against the gradual launch, which reaches the same figure at the life
-  grad <- .chart_totals(.chart_cohorts(x$schedule, "gradual", 10L), 10L)
+  grad <- .chart_totals(
+    .chart_cohorts(as.double(x$rotation), "gradual", 10L), 10L)
   expect_lt(grad[[1L]], x$n_occasion)
   expect_equal(grad[x$life:10L], rep(x$n_occasion, 10L - x$life + 1L),
                tolerance = 1e-12)
@@ -288,7 +291,7 @@ test_that("the chart draws the launch its panel was planned with", {
                   design = "rotating", start = "gradual")
   plain <- n_panel(target, retention = ret, resp_rate = 0.8,
                    design = "rotating")
-  w <- design_overlap("3")$schedule
+  w <- as.double(design_overlap("3")$rotation)
   # inherited when not stated
   expect_identical(.check_chart_start(NULL, w, imm), "immediate")
   expect_identical(.check_chart_start(NULL, w, grad), "gradual")

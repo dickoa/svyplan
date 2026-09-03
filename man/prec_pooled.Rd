@@ -4,7 +4,7 @@
 \alias{prec_pooled}
 \alias{prec_pooled.default}
 \alias{prec_pooled.svyplan_n}
-\title{Sampling precision for an estimate pooled across occasions}
+\title{Precision of the average of several occasions of a repeated survey}
 \usage{
 prec_pooled(var = NULL, ...)
 
@@ -117,11 +117,12 @@ Nothing here is rounded, so passing a continuous \code{n} back from
 \code{\link[=n_pooled]{n_pooled()}} reproduces its \code{se}, \code{moe} and \code{cv} exactly.
 }
 \description{
-Compute the sampling error (SE, margin of error, CV) for the equal-weight
-mean of the occasion estimates of a repeated survey, given the size of
-each occasion and how far consecutive occasions overlap. An annual
-average from quarterly rounds is the ordinary case. This is the inverse
-of \code{\link[=n_pooled]{n_pooled()}}.
+Compute the sampling error (SE, margin of error, CV) for the average of
+several occasions of a repeated survey, the equal-weight mean of the
+occasion estimates, given the size of each occasion and how far
+consecutive occasions overlap. An annual average from quarterly rounds is
+the ordinary case, and that average is what "pooled" names here. This is
+the inverse of \code{\link[=n_pooled]{n_pooled()}}.
 }
 \details{
 Here \code{q} is \code{qnorm(1 - alpha / 2)} by default and
@@ -247,16 +248,14 @@ target), \code{\link[=prec_change]{prec_change()}} for the other arm of the trad
 \code{\link[=design_overlap]{design_overlap()}} for the overlap a rotation schedule gives,
 \code{\link[=prec_mean]{prec_mean()}} and \code{\link[=prec_prop]{prec_prop()}} for a single occasion.
 
-Other precision functions:
-\code{\link[=prec_alloc]{prec_alloc()}},
+Other repeated survey functions:
+\code{\link[=design_overlap]{design_overlap()}},
+\code{\link[=design_rotation]{design_rotation()}},
+\code{\link[=design_schedule]{design_schedule()}},
+\code{\link[=n_change]{n_change()}},
+\code{\link[=n_panel]{n_panel()}},
+\code{\link[=n_pooled]{n_pooled()}},
 \code{\link[=prec_change]{prec_change()}},
-\code{\link[=prec_cluster]{prec_cluster()}},
-\code{\link[=prec_mean]{prec_mean()}},
-\code{\link[=prec_multi]{prec_multi()}},
-\code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
-\code{\link[=prec_panel]{prec_panel()}},
-\code{\link[=prec_prop]{prec_prop()}},
-\code{\link[=prec_ratio]{prec_ratio()}},
-\code{\link[=prec_twophase]{prec_twophase()}}
+\code{\link[=prec_panel]{prec_panel()}}
 }
-\concept{precision functions}
+\concept{repeated survey functions}

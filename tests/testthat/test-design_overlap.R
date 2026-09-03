@@ -40,18 +40,6 @@ test_that("a two-spell life is not a repeating cycle", {
   expect_equal(cps$n_occasion, 8)
 })
 
-test_that("an even spell count is refused rather than read as a cycle", {
-  expect_error(design_overlap("4-8"), "repeating cycle")
-  expect_error(design_overlap("4-8-4-8"), "repeating cycle")
-  expect_silent(design_overlap("4-8-4"))
-  expect_silent(design_overlap("4-8-4-8-4"))
-})
-
-test_that("a schedule must start and end in sample", {
-  expect_error(design_overlap(c(0, 1, 1)), "start and end in sample")
-  expect_error(design_overlap(c(1, 1, 0)), "start and end in sample")
-})
-
 ## O3. The arithmetic behind the fractions
 
 test_that("shared counts the cohorts in sample at both stages", {
@@ -71,7 +59,7 @@ test_that("the lag profile is symmetric about the gap for two equal spells", {
                tolerance = 1e-12)
 })
 
-test_that("overlap is zero past the reach of the schedule", {
+test_that("overlap is zero past the reach of the rotation", {
   o <- design_overlap("5", max_lag = 8)
   expect_equal(as.double(o)[5:8], rep(0, 4L))
 })
@@ -83,16 +71,16 @@ test_that("a subsampled later wave is nested inside the earlier one", {
   expect_equal(o[1], 2 / 3, tolerance = 1e-12)
 })
 
-test_that("logical and numeric schedules agree", {
+test_that("logical and numeric take vectors agree", {
   a <- design_overlap(c(TRUE, TRUE, FALSE, TRUE))
   b <- design_overlap(c(1, 1, 0, 1))
   expect_equal(as.double(a), as.double(b), tolerance = 1e-12)
 })
 
 test_that("the compact string expands to the explicit vector", {
-  expect_equal(design_overlap("4-8-4")$schedule,
+  expect_equal(as.double(design_overlap("4-8-4")$rotation),
                c(rep(1, 4), rep(0, 8), rep(1, 4)))
-  expect_equal(design_overlap("3")$schedule, rep(1, 3))
+  expect_equal(as.double(design_overlap("3")$rotation), rep(1, 3))
 })
 
 ## O4. max_lag
@@ -167,7 +155,7 @@ test_that("$ reaches the fields and rejects unknown names", {
   expect_equal(cps$life, 16L)
   expect_equal(cps$n_occasion, 8)
   expect_equal(cps$lag, 1:15)
-  expect_length(cps$schedule, 16L)
+  expect_length(cps$rotation, 16L)
   expect_error(cps$nope, "no field 'nope'")
 })
 
@@ -195,25 +183,6 @@ test_that("the methods reject unused arguments", {
   expect_error(as.data.frame(cps, nope = 1), "unused argument")
 })
 
-## O7. Rejected inputs
-
-test_that("a schedule must be a spec or a finite numeric vector", {
-  expect_error(design_overlap(list(1, 2)), "compact string")
-  expect_error(design_overlap(c(1, NA, 1)), "compact string")
-  expect_error(design_overlap(c(1, Inf, 1)), "compact string")
-  expect_error(design_overlap(numeric(0)), "compact string")
-  expect_error(design_overlap(c(1, -1, 1)), "must not be negative")
-})
-
-test_that("a malformed compact spec names itself", {
-  expect_error(design_overlap("4-x-4"), "is not a rotation spec")
-  expect_error(design_overlap("4.5-8-4"), "is not a rotation spec")
-  # a 0 makes it a per-occasion pattern, where 8 is not a flag
-  expect_error(design_overlap("0-8-4"), "other than 0 or 1")
-  expect_error(design_overlap(""), "single non-empty string")
-  expect_error(design_overlap(c("4", "5")), "single non-empty string")
-})
-
 ## O8. Transformations do not leave an invalid overlap behind
 
 test_that("arithmetic returns bare numerics, not a contradicted object", {
@@ -223,7 +192,7 @@ test_that("arithmetic returns bare numerics, not a contradicted object", {
   expect_null(attributes(y))
   expect_equal(y[1L], 1.5, tolerance = 1e-12)
   # Keeping the class would leave an overlap of 1.5 still claiming the
-  # schedule and the shared counts it no longer follows from.
+  # rotation and the shared counts it no longer follows from.
   expect_false(inherits(cps / 2, "svyplan_overlap"))
   expect_false(inherits(1 - cps, "svyplan_overlap"))
   expect_false(inherits(-cps, "svyplan_overlap"))
@@ -248,26 +217,6 @@ test_that("an empty subscript strips the structure it no longer describes", {
   expect_equal(cps[["12"]], 0.5, tolerance = 1e-12)
   expect_equal(cps["12"], 0.5, tolerance = 1e-12)
   expect_null(names(cps["12"]))
-})
-
-## O9. Schedules the takes cannot describe
-
-test_that("a life of one occasion has no lag and is refused", {
-  expect_error(design_overlap("1"), "at least two occasions")
-  expect_error(design_overlap(1), "at least two occasions")
-  expect_error(design_overlap(TRUE), "at least two occasions")
-  expect_silent(design_overlap("2"))
-})
-
-test_that("no wave may take more units than the cohort recruited", {
-  expect_error(design_overlap(c(0.5, 1)), "more units at a later occasion")
-  expect_error(design_overlap(c(1, 2, 1)), "more units at a later occasion")
-  # An interim wave subsampled and then the whole cohort again is nested and
-  # stays accepted: the take never exceeds the recruitment.
-  o <- design_overlap(c(1, 0.5, 1))
-  expect_equal(o$n_occasion, 2.5, tolerance = 1e-12)
-  expect_equal(o$shared, c(1, 1), tolerance = 1e-12)
-  expect_equal(o[1], 0.4, tolerance = 1e-12)
 })
 
 ## O10. In-place modification is refused
@@ -318,7 +267,7 @@ test_that("passing the whole profile as overlap names the fix", {
     expect_error(call(), "'overlap' is one lag")
     expect_error(call(), "design_overlap")
   }
-  # A schedule passed whole carries no lag, and defaulting to the consecutive
+  # A profile passed whole carries no lag, and defaulting to the consecutive
   # figure would answer an annual-lag question with the monthly number.
   expect_error(
     n_change(p = c(0.3, 0.36), moe = 0.02, overlap = design_overlap("2")),
@@ -334,7 +283,7 @@ test_that("passing the whole profile as overlap names the fix", {
 test_that("a spec containing a 0 is one flag per occasion", {
   # Lynn (2012) Figure 3: in for two, out for two, in for two
   lynn <- design_overlap("1-1-0-0-1-1")
-  expect_equal(attr(lynn, "schedule"), c(1, 1, 0, 0, 1, 1))
+  expect_equal(as.double(attr(lynn, "rotation")), c(1, 1, 0, 0, 1, 1))
   expect_identical(as.double(lynn), as.double(design_overlap("2-2-2")))
   expect_identical(as.double(lynn), as.double(design_overlap(c(1, 1, 0, 0, 1, 1))))
 })
@@ -354,35 +303,6 @@ test_that("Lynn Figure 2, three consecutive waves, is the spell spec 3", {
   # one third of the sample replaced each period
   x <- design_overlap("3")
   expect_equal(as.double(x), c(2 / 3, 1 / 3), tolerance = 1e-12)
-})
-
-test_that("an all-1s spec is refused, naming both readings", {
-  # "1-1-1" is three consecutive occasions in one notation and in-out-in in
-  # the other, and the two differ at every lag
-  expect_error(design_overlap("1-1-1"), "is ambiguous")
-  expect_error(design_overlap("1-1-1"), "consecutive occasions in sample")
-  expect_error(design_overlap("1-1-1"), "\"3\"")
-  expect_error(design_overlap("1-1-1"), "\"1-0-1\"")
-  # the two readings it names are the two designs, and neither is silent
-  expect_equal(as.double(design_overlap("3")), c(2 / 3, 1 / 3),
-               tolerance = 1e-12)
-  expect_equal(as.double(design_overlap("1-0-1")), c(0, 0.5),
-               tolerance = 1e-12)
-})
-
-test_that("an even all-1s spec offers the pattern reading only", {
-  # Lynn Figures 4 and 5: six consecutive years
-  expect_error(design_overlap("1-1-1-1-1-1"), "is ambiguous")
-  expect_error(design_overlap("1-1-1-1-1-1"), "\"6\"")
-  expect_error(design_overlap("1-1-1-1-1-1"), "repeating cycle")
-  expect_equal(design_overlap("6")[1], 5 / 6, tolerance = 1e-12)
-})
-
-test_that("a pattern is validated as a life like any other schedule", {
-  expect_error(design_overlap("0-1-1"), "must start and end in sample")
-  expect_error(design_overlap("1-1-0"), "must start and end in sample")
-  expect_error(design_overlap("2-2-0"), "other than 0 or 1")
-  expect_error(design_overlap("1-0.5-1"), "is not a rotation spec")
 })
 
 test_that("spell notation is untouched by the pattern reading", {
@@ -429,7 +349,7 @@ test_that("spell notation is untouched by the pattern reading", {
 test_that("an immediate start reproduces the steady-state overlap from occasion 1", {
   for (spec in c("6", "5", "1-1-0-0-1-1", "4-8-4")) {
     x <- design_overlap(spec)
-    w <- x$schedule
+    w <- as.double(x$rotation)
     imm <- .launch(w, "immediate", n_period = 3L * length(w))
     for (t in 1:4) {
       expect_equal(
@@ -444,7 +364,7 @@ test_that("an immediate start reproduces the steady-state overlap from occasion 
 
 test_that("a gradual start reaches the steady-state overlap at the life", {
   x <- design_overlap("6")
-  grad <- .launch(x$schedule, "gradual")
+  grad <- .launch(as.double(x$rotation), "gradual")
   # nothing has rotated out yet, so early overlaps are higher than the design's
   expect_equal(vapply(1:5, function(m) .cohort_overlap(grad, 1L, m), numeric(1L)),
                rep(1, 5L), tolerance = 1e-12)
@@ -459,9 +379,9 @@ test_that("a gradual start reaches the steady-state overlap at the life", {
 test_that("splitting the first occasion by remaining length is not an immediate start", {
   # The trap: under a gapped life, covering every stage requires cohorts that
   # start out of sample. Truncating instead holds six cohorts where the design
-  # holds four, and reads 0.83 consecutive against the schedule's 0.50.
+  # holds four, and reads 0.83 consecutive against the rotation's 0.50.
   x <- design_overlap("1-1-0-0-1-1")
-  w <- x$schedule
+  w <- as.double(x$rotation)
   naive <- .launch(w, "truncated")
   in_sample <- function(co, t) {
     sum(vapply(co, function(c1) {

@@ -6,7 +6,7 @@
 \usage{
 design_schedule(
   panel_plan,
-  life,
+  rotation,
   horizon,
   horizon_policy,
   refreshment,
@@ -18,8 +18,10 @@ design_schedule(
 \item{panel_plan}{A rotating \code{svyplan_panel} from \code{\link[=n_panel]{n_panel()}} or
 \code{\link[=prec_panel]{prec_panel()}} with \code{start = "immediate"} or \code{start = "gradual"}.}
 
-\item{life}{An unbroken equal-take \code{svyplan_overlap}, such as
-\code{design_overlap("4")}. Its length must match the panel life.}
+\item{rotation}{An unbroken equal-take \code{svyplan_rotation} from
+\code{\link[=design_rotation]{design_rotation()}}, such as \code{design_rotation("4")}. Its length must
+match the panel life. The overlap the manifest records is computed from
+it here, so the caller does not supply one.}
 
 \item{horizon}{A positive whole number of program occasions in the finite
 planning window.}
@@ -61,8 +63,9 @@ in-horizon occasion. \code{\link[=as.data.frame]{as.data.frame()}} returns this 
 
 The generated activity is checked against \code{panel_plan$launch_waves} over
 every shared period that the horizon policy has not changed. Its realized
-issued overlap is also checked against \code{life} at every mature membership
-origin for which the destination occasion exists.
+issued overlap is also checked against the overlap \code{rotation} produces, at
+every mature membership origin for which the destination occasion
+exists.
 }
 \description{
 Translate the launch and recruitment quantities in a rotating
@@ -81,7 +84,7 @@ panel <- n_panel(
 )
 schedule <- design_schedule(
   panel,
-  design_overlap("4"),
+  design_rotation("4"),
   horizon = 6,
   horizon_policy = "continuing",
   refreshment = "entrant_register",
@@ -92,11 +95,19 @@ schedule$components
 
 }
 \seealso{
-\code{\link[=n_panel]{n_panel()}} and \code{\link[=prec_panel]{prec_panel()}} for the rotating plan this
-schedules, \code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for the rotation chart, and
-\code{\link[=print.svyplan_schedule]{print.svyplan_schedule()}} for the printed form and its \code{summary()}.
+\code{\link[=design_rotation]{design_rotation()}} for the pattern this schedules, \code{\link[=n_panel]{n_panel()}}
+and \code{\link[=prec_panel]{prec_panel()}} for the rotating plan, \code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for
+the rotation chart, and \code{\link[=print.svyplan_schedule]{print.svyplan_schedule()}} for the printed form
+and its \code{summary()}.
 
-Other repeated survey planning:
-\code{\link[=design_overlap]{design_overlap()}}
+Other repeated survey functions:
+\code{\link[=design_overlap]{design_overlap()}},
+\code{\link[=design_rotation]{design_rotation()}},
+\code{\link[=n_change]{n_change()}},
+\code{\link[=n_panel]{n_panel()}},
+\code{\link[=n_pooled]{n_pooled()}},
+\code{\link[=prec_change]{prec_change()}},
+\code{\link[=prec_panel]{prec_panel()}},
+\code{\link[=prec_pooled]{prec_pooled()}}
 }
-\concept{repeated survey planning}
+\concept{repeated survey functions}

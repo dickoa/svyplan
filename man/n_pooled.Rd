@@ -4,7 +4,7 @@
 \alias{n_pooled}
 \alias{n_pooled.default}
 \alias{n_pooled.svyplan_prec}
-\title{Sample size for an estimate pooled across occasions}
+\title{Sample size for the average of several occasions of a repeated survey}
 \usage{
 n_pooled(var = NULL, ...)
 
@@ -130,11 +130,12 @@ were resolved under.}
 }
 }
 \description{
-Compute the sample size per occasion required to estimate the
-equal-weight mean of the occasion estimates of a repeated survey with a
-specified margin of error or coefficient of variation, given how far the
-occasions overlap. Sizing an annual average built from quarterly rounds
-is the ordinary case. This is the inverse of \code{\link[=prec_pooled]{prec_pooled()}}.
+Compute the sample size per occasion required to estimate the average of
+several occasions of a repeated survey, the equal-weight mean of the
+occasion estimates, with a specified margin of error or coefficient of
+variation, given how far the occasions overlap. An annual average built
+from quarterly rounds is the ordinary case, and that average is what
+"pooled" names here. This is the inverse of \code{\link[=prec_pooled]{prec_pooled()}}.
 }
 \details{
 The pooled variance is \eqn{deff\{A/(n r) + B\}}{deff (A/(n r) + B)} in the gross size per
@@ -199,16 +200,14 @@ and for what the covariance assumes, \code{\link[=n_change]{n_change()}} for the
 the trade-off, \code{\link[=design_overlap]{design_overlap()}} for the overlap a rotation schedule
 gives, \code{\link[=n_mean]{n_mean()}} and \code{\link[=n_prop]{n_prop()}} for a single occasion.
 
-Other sample size functions:
-\code{\link[=n_alloc]{n_alloc()}},
+Other repeated survey functions:
+\code{\link[=design_overlap]{design_overlap()}},
+\code{\link[=design_rotation]{design_rotation()}},
+\code{\link[=design_schedule]{design_schedule()}},
 \code{\link[=n_change]{n_change()}},
-\code{\link[=n_cluster]{n_cluster()}},
-\code{\link[=n_mean]{n_mean()}},
-\code{\link[=n_multi]{n_multi()}},
-\code{\link[=n_multi_cluster]{n_multi_cluster()}},
 \code{\link[=n_panel]{n_panel()}},
-\code{\link[=n_prop]{n_prop()}},
-\code{\link[=n_ratio]{n_ratio()}},
-\code{\link[=n_twophase]{n_twophase()}}
+\code{\link[=prec_change]{prec_change()}},
+\code{\link[=prec_panel]{prec_panel()}},
+\code{\link[=prec_pooled]{prec_pooled()}}
 }
-\concept{sample size functions}
+\concept{repeated survey functions}

@@ -6,17 +6,20 @@
 \alias{prec_cluster.svyplan_cluster}
 \title{Sampling precision for a multistage cluster allocation}
 \usage{
-prec_cluster(n, ...)
+prec_cluster(n = NULL, ...)
 
 \method{prec_cluster}{default}(
-  n,
+  n = NULL,
   ...,
   icc = NULL,
-  unit_relvar = 1,
-  var_ratio = 1,
+  unit_relvar = NULL,
+  var_ratio = NULL,
   resp_rate_psu = 1,
   resp_rate_ssu = 1,
   resp_rate = 1,
+  indicators = NULL,
+  domains = NULL,
+  stage_cost = NULL,
   plan = NULL
 )
 
@@ -55,13 +58,41 @@ Default 1. It scales the final stage, so it also shrinks the realized
 cluster and therefore the clustering penalty. See \code{\link[=n_cluster]{n_cluster()}} for the
 decomposition.}
 
-\item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
+\item{indicators}{Optional data frame with one row per indicator, which
+switches the function to the several-indicators mode of Details. It
+carries the stage sizes per row in \code{n} and \code{n_per_psu}, plus
+\code{n_per_ssu} for a three-stage design, so \code{n} is left \code{NULL}.}
+
+\item{domains}{Optional character vector naming domain columns in
+\code{indicators}. Precision is computed row by row either way, so naming
+domains leaves every \verb{$detail} value unchanged. What it does is record
+the domain structure on the result, so that a round trip back to
+\code{\link[=n_cluster]{n_cluster()}} rebuilds the same design. There is no \code{domain_sampling}
+argument here, because that choice governs how per-domain requirements
+combine into one size, and this direction reads the sizes you already
+have.}
+
+\item{stage_cost}{Optional per-stage costs, recorded on the result so that
+a later round trip to \code{\link[=n_cluster]{n_cluster()}} can re-solve the design. Costs do not
+enter the precision calculation.}
+
+\item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults. In the
+several-indicators mode a profile supplies only the defaults that mode
+accepts, so \code{icc}, \code{unit_relvar} and \code{var_ratio} are left to the
+indicator columns.}
 }
 \value{
 A \code{svyplan_prec} object with components \verb{$se}, \verb{$moe}, and \verb{$cv}.
 Because the cluster model is parameterized with unit relvariance
 (\code{unit_relvar = S^2 / Y_bar^2}), only \verb{$cv} is computable. The \verb{$se} and
 \verb{$moe} components are \code{NA}.
+
+With \code{indicators}, per-indicator precision is in \verb{$detail}: \code{.se},
+\code{.moe}, \code{.rmoe} and \code{.cv}. All four are reported whatever target the
+design was sized against, since the achieved precision does not depend on
+how the requirement was written. \code{.rmoe} is measured against the row's
+own estimand, \code{p} for a proportion, \code{abs(mu)} for a mean and \code{abs(r)} for
+a ratio.
 }
 \description{
 Compute the sampling error (SE, MOE, CV) for a given multistage sample
@@ -80,6 +111,21 @@ Stage count is determined by \code{length(n)}.
 \strong{3-stage}:
 \deqn{CV = \sqrt{\frac{V}{n_1 \cdot n_2 \cdot n_3} (k_1 \delta_1 n_2 n_3
   + k_2 (1 + \delta_2 (n_3 - 1)))}}{CV = sqrt(V/(n_1 * n_2 * n_3) (k_1 delta_1 n_2 n_3 + k_2 (1 + delta_2 (n_3 - 1))))}
+\subsection{Several indicators at once}{
+
+\code{indicators} reads the precision of several indicators under one
+allocation. It is a data frame with one row per indicator, carrying \code{n} and
+\code{n_per_psu}, plus \code{n_per_ssu} for a three-stage design. The homogeneity and
+indicator columns follow the schema \code{\link[=n_cluster]{n_cluster()}} documents, including the
+derived three-stage \code{var_ratio_ssu}. The scalar arguments \code{n}, \code{icc},
+\code{unit_relvar} and \code{var_ratio} are refused in this mode, because the frame
+carries each of them per row.
+
+\code{resp_rate_psu}, \code{resp_rate_ssu} and \code{resp_rate} are the defaults used
+where a row's own column is absent or \code{NA}, as they are in \code{\link[=n_cluster]{n_cluster()}}.
+Precision is computed row by row, so an allocation returned by
+\code{n_cluster(indicators = )} can be passed straight in.
+}
 }
 \examples{
 # Direct usage
@@ -90,6 +136,16 @@ prec_cluster(n = c(50, 12, 8), icc = c(0.01, 0.05))
 res <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
 prec_cluster(res)
 
+# Several indicators under one allocation
+indicators <- data.frame(
+  name      = c("stunting", "anemia"),
+  p         = c(0.30, 0.10),
+  n         = c(60, 60),
+  n_per_psu = c(12, 12),
+  icc_psu   = c(0.02, 0.05)
+)
+prec_cluster(indicators = indicators)
+
 }
 \references{
 Valliant, R., Dever, J. A., and Kreuter, F. (2018).
@@ -98,18 +154,11 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 }
 \seealso{
 \code{\link[=n_cluster]{n_cluster()}} for the inverse operation, \code{\link[=varcomp]{varcomp()}} for
-estimating variance components.
+estimating variance components, and \code{\link[=prec_multi]{prec_multi()}} for several
+indicators without clustering.
 
-Other precision functions:
-\code{\link[=prec_alloc]{prec_alloc()}},
-\code{\link[=prec_change]{prec_change()}},
-\code{\link[=prec_mean]{prec_mean()}},
-\code{\link[=prec_multi]{prec_multi()}},
-\code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
-\code{\link[=prec_panel]{prec_panel()}},
-\code{\link[=prec_pooled]{prec_pooled()}},
-\code{\link[=prec_prop]{prec_prop()}},
-\code{\link[=prec_ratio]{prec_ratio()}},
-\code{\link[=prec_twophase]{prec_twophase()}}
+Other cluster design functions:
+\code{\link[=n_cluster]{n_cluster()}},
+\code{\link[=varcomp]{varcomp()}}
 }
-\concept{precision functions}
+\concept{cluster design functions}

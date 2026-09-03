@@ -88,8 +88,8 @@
 #'     proportion method and on mean rows alike. `NA` (the default) applies
 #'     no adjustment.}
 #'   \item{`resp_rate`}{Expected response rate at the ultimate unit
-#'     (default 1). [prec_multi_cluster()] spends its rate at stage 1 and
-#'     names the column `resp_rate_psu`.}
+#'     (default 1). A cluster design spends a rate at stage 1 too, and
+#'     [prec_cluster()] names that column `resp_rate_psu`.}
 #' }
 #'
 #' Domain columns are specified via the `domains` parameter.
@@ -99,10 +99,10 @@
 #' `indicators$prop_method` column to choose `"wald"`, `"wilson"`,
 #' `"logodds"` or `"beta"` for proportion rows. It is ignored elsewhere.
 #'
-#' @family precision functions
-#' @seealso [n_multi()] for the inverse, [prec_multi_cluster()] for
-#'   multistage cluster designs, and [prec_prop()] and [prec_mean()] for
-#'   single-indicator precision.
+#' @family multi-indicator functions
+#' @seealso [n_multi()] for the inverse, [prec_cluster()] for a multistage
+#'   cluster design over the same indicator table, and [prec_prop()] and
+#'   [prec_mean()] for single-indicator precision.
 #'
 #' @examples
 #' # Simple mode: precision for three indicators at n = 400
@@ -144,7 +144,7 @@ prec_multi.default <- function(
   if (!is.null(merged)) {
     return(do.call(prec_multi.default, c(merged, list(...))))
   }
-  .check_multi_split_args(list(...), "prec_multi_cluster()")
+  .check_multi_split_args(list(...), "prec_cluster(indicators = )")
   .check_unused_dots(...)
   # An unresolved default arrives either as a missing argument or, through
   # the plan-merge path, as the full choice vector itself.
@@ -200,96 +200,21 @@ prec_multi.default <- function(
                      domain_cols = domain_cols)
 }
 
-#' Multi-indicator precision for cluster designs
+#' Cluster precision from a table of indicators
 #'
-#' Compute achieved precision for several indicators under a two- or
-#' three-stage cluster allocation. This is the inverse of
-#' [n_multi_cluster()].
-#'
-#' @param indicators For the default method, a non-empty data frame with one row
-#'   per indicator. It must contain `n` and `n_per_psu`. Include `n_per_ssu` for
-#'   a three-stage design. Cluster homogeneity and indicator columns follow
-#'   the schema used by [n_multi_cluster()], including the derived
-#'   three-stage `var_ratio_ssu`. For `svyplan_cluster` methods, an allocation
-#'   returned by [n_multi_cluster()].
-#' @param ... Additional arguments passed to methods. Unused arguments are
-#'   rejected.
-#' @param domains Optional character vector naming domain columns in
-#'   `indicators`. Precision is computed row by row either way, so naming
-#'   domains leaves every `$detail` value unchanged. What it does is record
-#'   the domain structure on the result, so that a round trip back to
-#'   [n_multi_cluster()] rebuilds the same design. There is no
-#'   `domain_sampling` argument here, because that choice governs how
-#'   per-domain requirements combine into one size, and this direction
-#'   reads the sizes you already have.
-#' @param stage_cost Optional per-stage costs to retain for a later round trip
-#'   to [n_multi_cluster()]. Costs do not enter the precision calculation.
-#' @param resp_rate_psu Default expected PSU response rate, in (0, 1\].
-#'   Used where the indicator column is absent or `NA`.
-#' @param resp_rate_ssu Default expected SSU response rate for a three-stage
-#'   design, in (0, 1\]. It is not applicable to a two-stage design.
-#' @param resp_rate Default expected ultimate-unit response rate, in (0, 1\].
-#'   Non-missing indicator columns override these three defaults row by row.
-#' @param plan Optional [svyplan()] profile providing design metadata.
-#'
-#' @return A `svyplan_prec` object with per-indicator cluster precision in
-#'   `$detail`: `.se`, `.moe`, `.rmoe`, and `.cv`. All four are reported
-#'   whatever target the design was sized against, since the achieved
-#'   precision does not depend on how the requirement was written. `.rmoe`
-#'   is measured against the row's own estimand, `p` for a proportion,
-#'   `abs(mu)` for a mean and `abs(r)` for a ratio.
-#'
-#' @examples
-#' indicators <- data.frame(
-#'   name = c("stunting", "anemia"),
-#'   p = c(0.30, 0.10),
-#'   n = c(60, 60),
-#'   n_per_psu = c(12, 12),
-#'   icc_psu = c(0.02, 0.05)
-#' )
-#' prec_multi_cluster(indicators)
-#'
-#' @family precision functions
-#' @seealso [n_multi_cluster()] for the inverse, [prec_multi()] for the
-#'   single-stage counterpart, and [prec_cluster()] for one indicator.
-#'
-#' @export
-prec_multi_cluster <- function(indicators, ...) {
-  if (!missing(indicators)) {
-    .res <- .dispatch_plan(
-      indicators,
-      "indicators",
-      prec_multi_cluster.default,
-      ...
-    )
-    if (!is.null(.res)) return(.res)
-  }
-  UseMethod("prec_multi_cluster")
-}
-
-#' @rdname prec_multi_cluster
-#' @export
-prec_multi_cluster.default <- function(
+#' The several-indicators mode of [prec_cluster()]. The frame carries the
+#' stage sizes per row, so nothing here is a scalar the scalar branch could
+#' share.
+#' @keywords internal
+#' @noRd
+.prec_cluster_indicators <- function(
   indicators,
-  ...,
   domains = NULL,
   stage_cost = NULL,
   resp_rate_psu = 1,
   resp_rate_ssu = 1,
-  resp_rate = 1,
-  plan = NULL
+  resp_rate = 1
 ) {
-  merged <- .merge_plan_args(
-    plan,
-    prec_multi_cluster.default,
-    match.call(),
-    environment()
-  )
-  if (!is.null(merged)) {
-    return(do.call(prec_multi_cluster.default, c(merged, list(...))))
-  }
-  .check_unused_dots(...)
-
   if (!is.data.frame(indicators) || nrow(indicators) == 0L) {
     stop("'indicators' must be a non-empty data frame", call. = FALSE)
   }
@@ -299,7 +224,7 @@ prec_multi_cluster.default <- function(
   .check_estimand_markers(indicators)
   .stop_min_cases_column(
     indicators,
-    "prec_multi_cluster() reads the sizes you already have; a case floor is a sizing constraint, so it belongs to n_multi()"
+    "prec_cluster(indicators = ) reads the sizes you already have, and a case floor is a sizing constraint, so it belongs to n_multi()"
   )
 
   if (!"n" %in% names(indicators)) {
@@ -780,101 +705,7 @@ prec_multi.svyplan_n <- function(indicators, ...) {
 #' @export
 prec_multi.svyplan_cluster <- function(indicators, ...) {
   stop(
-    "cluster allocations must be passed to prec_multi_cluster()",
+    "cluster allocations must be passed to prec_cluster()",
     call. = FALSE
   )
-}
-
-#' @rdname prec_multi_cluster
-#' @export
-prec_multi_cluster.svyplan_cluster <- function(indicators, ...) {
-  x <- indicators
-  dots <- list(...)
-  if (is.null(x$indicators)) {
-    stop(
-      "prec_multi_cluster requires a svyplan_cluster from n_multi_cluster()",
-      call. = FALSE
-    )
-  }
-  tgt <- x$indicators
-  for (rate in intersect(
-    c("resp_rate_psu", "resp_rate_ssu", "resp_rate"),
-    names(dots)
-  )) {
-    tgt[[rate]] <- NA_real_
-  }
-  tgt$cv <- NULL
-  tgt$moe <- NULL
-  tgt$n <- x$n[1L]
-  if (x$stages >= 2L) {
-    tgt$n_per_psu <- x$n[2L]
-  }
-  if (x$stages >= 3L) {
-    tgt$n_per_ssu <- x$n[3L]
-  }
-
-  dom_cols <- x$params$domain_cols %||% character(0)
-  if (!is.null(x$domains) && length(dom_cols) > 0L) {
-    dom <- x$domains
-    tgt_key <- .domain_key(tgt, dom_cols)
-    dom_key <- .domain_key(dom, dom_cols)
-    dom_idx <- match(tgt_key, dom_key)
-    tgt$n <- dom$n_psu[dom_idx]
-    if (x$stages >= 2L) {
-      tgt$n_per_psu <- dom$n_per_psu[dom_idx]
-    }
-    if (x$stages >= 3L) tgt$n_per_ssu <- dom$n_per_ssu[dom_idx]
-  }
-
-  stage_cost <- x$params$stage_cost
-  args <- list(
-    indicators = tgt,
-    stages = x$stages,
-    stage_cost = stage_cost,
-    domain_cols = dom_cols
-  )
-  allowed <- c(
-    "stage_cost", "domains",
-    "resp_rate_psu", "resp_rate_ssu", "resp_rate"
-  )
-  dot_names <- names(dots) %||% rep("", length(dots))
-  unknown <- setdiff(dot_names, allowed)
-  if (length(unknown) > 0L || any(!nzchar(dot_names))) {
-    .check_unused_dots(...)
-  }
-  if ("stage_cost" %in% names(dots)) {
-    check_stage_cost(dots$stage_cost)
-    override_cost <- .reorder_stage_cost(dots$stage_cost)
-    if (length(override_cost) != x$stages) {
-      stop(
-        sprintf("'stage_cost' must have length %d", x$stages),
-        call. = FALSE
-      )
-    }
-    args$stage_cost <- override_cost
-  }
-  if ("domains" %in% names(dots)) {
-    if (!is.null(dots$domains) &&
-        (!is.character(dots$domains) || anyNA(dots$domains) ||
-         any(!dots$domains %in% names(tgt)))) {
-      stop("'domains' must name columns in indicators", call. = FALSE)
-    }
-    args$domain_cols <- dots$domains %||% character(0)
-  }
-  for (rate in intersect(
-    c("resp_rate_psu", "resp_rate_ssu", "resp_rate"),
-    names(dots)
-  )) {
-    check_resp_rate(dots[[rate]], rate)
-    if (rate == "resp_rate_ssu" && x$stages == 2L && dots[[rate]] != 1) {
-      stop("'resp_rate_ssu' is not applicable for 2-stage designs", call. = FALSE)
-    }
-    args[[rate]] <- dots[[rate]]
-  }
-  res <- do.call(.prec_multi_cluster, args)
-  for (p in c("budget", "n_psu", "n_per_psu", "n_per_ssu", "joint", "fixed_cost",
-              "min_n_domain", "mode")) {
-    if (!is.null(x$params[[p]])) res$params[[p]] <- x$params[[p]]
-  }
-  res
 }

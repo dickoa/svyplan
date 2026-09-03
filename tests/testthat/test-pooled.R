@@ -610,7 +610,7 @@ test_that("interviews per cohort are recovered from the overlap profile", {
   # the schedule has gaps. Reading the last positive lag gives the span.
   for (spec in c("4", "6", "4-8-4", "1-1-0-0-1-1", "2-2-2")) {
     s <- design_overlap(spec, max_lag = 30)
-    expect_equal(1 + 2 * sum(as.numeric(s)), sum(s$schedule),
+    expect_equal(1 + 2 * sum(as.numeric(s)), sum(as.double(s$rotation)),
                  info = spec)
   }
 })

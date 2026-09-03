@@ -297,7 +297,7 @@
 #' Tools for Designing and Weighting Survey Samples}, 2nd edition,
 #' Sect. 17.5.2. Springer.
 #'
-#' @family sample size functions
+#' @family two-phase design functions
 #' @seealso [prec_twophase()] for the inverse, [n_alloc()] for
 #'   single-phase stratified allocation, [n_cluster()] for the multistage
 #'   analogue.
@@ -897,7 +897,7 @@ n_twophase.default <- function(
 #'   `$moe` is the `alpha`-level half-width `z * $se`, and `$rmoe` states it
 #'   as a fraction of the population mean the design estimates.
 #'
-#' @family precision functions
+#' @family two-phase design functions
 #' @seealso [n_twophase()] for the inverse.
 #'
 #' @examples

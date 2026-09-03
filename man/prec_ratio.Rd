@@ -124,16 +124,11 @@ prec_ratio(size)$cv
 \code{\link[=n_ratio]{n_ratio()}} for the inverse, \code{\link[=prec_mean]{prec_mean()}} for a mean,
 \code{\link[=prec_cluster]{prec_cluster()}} for a multistage design.
 
-Other precision functions:
-\code{\link[=prec_alloc]{prec_alloc()}},
-\code{\link[=prec_change]{prec_change()}},
-\code{\link[=prec_cluster]{prec_cluster()}},
+Other proportion, mean and ratio functions:
+\code{\link[=n_mean]{n_mean()}},
+\code{\link[=n_prop]{n_prop()}},
+\code{\link[=n_ratio]{n_ratio()}},
 \code{\link[=prec_mean]{prec_mean()}},
-\code{\link[=prec_multi]{prec_multi()}},
-\code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
-\code{\link[=prec_panel]{prec_panel()}},
-\code{\link[=prec_pooled]{prec_pooled()}},
-\code{\link[=prec_prop]{prec_prop()}},
-\code{\link[=prec_twophase]{prec_twophase()}}
+\code{\link[=prec_prop]{prec_prop()}}
 }
-\concept{precision functions}
+\concept{proportion, mean and ratio functions}

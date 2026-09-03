@@ -104,4 +104,10 @@ n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2.0)
 \seealso{
 \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}}, \code{\link[=n_cluster]{n_cluster()}}, \code{\link[=power_prop]{power_prop()}},
 \code{\link[=power_mean]{power_mean()}}, \code{\link[=power_did]{power_did()}}.
+
+Other design input functions:
+\code{\link[=design_df]{design_df()}},
+\code{\link[=design_effect]{design_effect()}},
+\code{\link[=effective_n]{effective_n()}}
 }
+\concept{design input functions}

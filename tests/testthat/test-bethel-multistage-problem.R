@@ -72,7 +72,7 @@ test_that("three-stage coefficients reproduce the established stage formula", {
       z$frame$cost_tsu * m * q
   )
 
-  # Removing the FPC term leaves exactly the n_multi_cluster() CV formula
+  # Removing the FPC term leaves exactly the n_cluster() CV formula
   # within each atomic stratum.
   n_psu <- c(8, 12, 10, 7)
   no_fpc_var <- p$A[, k] / n_psu

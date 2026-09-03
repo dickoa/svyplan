@@ -66,8 +66,39 @@
 #'   `C = C0 + c1*n_psu + c2*n_psu*n_per_psu [+ c3*n_psu*n_per_psu*n_per_ssu]`.
 #'   In budget mode, only `budget - fixed_cost` is available for variable
 #'   costs. In CV mode, `fixed_cost` is added to the variable cost.
+#' @param indicators Optional data frame with one row per indicator, which
+#'   switches the function to the several-indicators mode of Details. Each
+#'   row carries its own homogeneity and its own precision target, and the
+#'   allocation returned satisfies every row. Leave it `NULL` for the single
+#'   indicator that `icc`, `unit_relvar`, `var_ratio` and `cv` describe.
+#' @param domains Optional character vector naming domain columns in
+#'   `indicators`. Each domain is solved on its own unless
+#'   `allocation = "joint"` in budget mode. Domains are sized as separate
+#'   quotas, so `$total_n` is their sum and `$n` carries no aggregate stage
+#'   vector. The fieldable per-domain stage sizes are in `$domains`, and
+#'   `domain_sampling` covers why the quota reading is the only one offered
+#'   for a multistage design.
+#' @param allocation How a budget is split across domains, either
+#'   `"separate"` (default, each domain sized on its own) or `"joint"` (one
+#'   budget split across domains to minimize the worst precision ratio).
+#'   `"joint"` applies only when `indicators`, `domains` and `budget` are all
+#'   supplied.
+#' @param domain_sampling How the per-domain requirements combine into the
+#'   one overall size. Only `"separate"` (the default) is available for a
+#'   cluster design, so the domains are quotas fielded in their own right and
+#'   `$total_n` is the sum of the per-domain totals. `"natural"`, which
+#'   [n_multi()] offers for a single-stage design, is refused, because a
+#'   domain's expected yield then depends on how its members sit inside PSUs
+#'   and SSUs rather than on its share of the population alone, and that
+#'   model is not in the package.
+#' @param min_n_domain Optional positive minimum total sample size per
+#'   domain. In joint budget mode it is a constraint. With domains solved
+#'   separately, domains below the floor produce a warning.
 #' @param plan Optional [svyplan()] object providing design defaults
 #'   (including `stage_cost`, `icc`, `unit_relvar`, `var_ratio`, `resp_rate_psu`, `fixed_cost`).
+#'   In the several-indicators mode a profile supplies only the defaults that
+#'   mode accepts, so `icc`, `unit_relvar` and `var_ratio` are left to the
+#'   indicator columns.
 #'
 #' @return A `svyplan_cluster` object with components:
 #' \describe{
@@ -87,6 +118,9 @@
 #'     continuous `n`.}
 #'   \item{`params`}{List of input parameters.}
 #' }
+#'   With `indicators`, the same class carries `$indicators`, the per-row
+#'   `$detail` and, where domains were named, `$domains`. The class does not
+#'   depend on which optional arguments were supplied.
 #'
 #' @details
 #' ## Getting started
@@ -129,6 +163,60 @@
 #'
 #' If `icc` is a `svyplan_varcomp` object, `icc`, `unit_relvar`, and `var_ratio`
 #' are extracted automatically.
+#'
+#' ## Several indicators at once
+#'
+#' `indicators` sizes one design against several requirements at once. It is a
+#' data frame with one row per indicator, and the design returned satisfies
+#' every row. The scalar arguments `icc`, `unit_relvar`, `var_ratio` and `cv`
+#' are refused in this mode, because the frame carries each of them per row.
+#'
+#' Each row needs `p`, `var`, or the ratio quartet (`r`, `cv_num`, `cv_den`,
+#' `component_cor`), a `cv`, `moe` or `rmoe` target, and `icc_psu`. A
+#' three-stage design also needs `icc_ssu`. Optional `var_ratio_psu` defaults
+#' to 1, and three-stage `var_ratio_ssu` is derived as
+#' `var_ratio_psu * (1 - icc_psu)` when absent, the value the variance
+#' decomposition implies (see [design_effect()]). On a ratio row `icc_psu`,
+#' `icc_ssu` and the stage variance ratios describe the linearized variable
+#' `e = y - r * x`, not either component. The remaining columns follow
+#' [n_multi()].
+#'
+#' Nonresponse is still named for the stage it acts on. `resp_rate_psu`,
+#' `resp_rate_ssu` and `resp_rate` are the defaults used where a row's own
+#' column is absent or `NA`. A column naming a stage the design does not have
+#' is an error rather than a column carried along and ignored, since a
+#' silently dropped response rate plans a design with none.
+#'
+#' Margin-of-error rows are converted to CV before optimization, respecting
+#' the row's `prop_method`. The multistage model is driven by a relative
+#' standard error, and only the Wald interval has half-width `z * se`, so a
+#' proportion row's `moe` is restated as the sampling CV at the effective
+#' sample size its own method needs to close the interval to that margin. A
+#' stricter interval therefore asks for a larger design, in the same order it
+#' does in [n_prop()]. Under `"wald"` the restatement is `moe / (z * p)`
+#' exactly. A mean row converts as `moe / (z * |mu|)`, on the magnitude so
+#' that a negative mean yields a positive target. [prec_cluster()] inverts the
+#' same way, so a design sized from a `moe` target reports that `moe` back.
+#'
+#' For each candidate allocation the required stage-1 size is the maximum
+#' across rows. The solver minimizes total cost against the precision targets,
+#' or the worst precision ratio under a fixed budget. `domains` sizes each
+#' domain on its own, `allocation = "joint"` splits one budget across them to
+#' minimize the worst precision ratio, and `min_n_domain` sets a floor.
+#'
+#' ## How strong the several-indicators optimum is
+#'
+#' With a stage size fixed, the remaining problem is solved from the
+#' closed-form cluster optimum. With all stage sizes free, the objective is a
+#' maximum over indicator requirements, which is not smooth, and it is
+#' minimized by a bounded quasi-Newton search. That search warns when it fails
+#' to converge or lands on a bound, but it carries no global-optimality or KKT
+#' certificate, so a successful return means the best design this search
+#' found, not a proven minimum-cost one. The `$operational` allocation can
+#' always be checked against its own precision or budget constraint, which is
+#' a separate and exact statement. [n_alloc()] gives the stronger guarantee
+#' where it applies, returning feasibility and KKT diagnostics for its convex
+#' continuous problem.
 #'
 #' ## Boundary icc values
 #'
@@ -187,10 +275,10 @@
 #' *Practical Tools for Designing and Weighting Survey Samples*
 #' (2nd ed.). Springer. Ch. 9.
 #'
-#' @family sample size functions
+#' @family cluster design functions
 #' @seealso [prec_cluster()] for the inverse, [varcomp()] for estimating
-#'   variance components, [n_multi_cluster()] for several indicators at once,
-#'   and [n_alloc()] for a stratified multistage allocation.
+#'   variance components, [n_multi()] for several indicators without
+#'   clustering, and [n_alloc()] for a stratified multistage allocation.
 #'
 #' @examples
 #' # 2-stage, budget mode
@@ -217,6 +305,40 @@
 #' # With fixed overhead cost
 #' n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, fixed_cost = 5000)
 #'
+#' # Several indicators, CV mode
+#' indicators <- data.frame(
+#'   name    = c("stunting", "anemia"),
+#'   p       = c(0.30, 0.10),
+#'   cv      = c(0.10, 0.15),
+#'   icc_psu = c(0.02, 0.05)
+#' )
+#' n_cluster(indicators = indicators, stage_cost = c(500, 50))
+#'
+#' # Several indicators with MOE targets, converted to CV internally
+#' by_moe <- data.frame(
+#'   name    = c("stunting", "anemia"),
+#'   p       = c(0.30, 0.10),
+#'   moe     = c(0.05, 0.03),
+#'   icc_psu = c(0.02, 0.05)
+#' )
+#' n_cluster(indicators = by_moe, stage_cost = c(500, 50))
+#'
+#' # One budget split across domains
+#' by_domain <- data.frame(
+#'   name    = rep(c("stunting", "anemia"), each = 2),
+#'   p       = c(0.30, 0.25, 0.10, 0.15),
+#'   cv      = c(0.10, 0.10, 0.15, 0.15),
+#'   icc_psu = c(0.02, 0.03, 0.05, 0.04),
+#'   region  = rep(c("Urban", "Rural"), 2)
+#' )
+#' n_cluster(
+#'   indicators = by_domain,
+#'   stage_cost = c(500, 50),
+#'   domains = "region",
+#'   budget = 100000,
+#'   allocation = "joint"
+#' )
+#'
 #' @export
 n_cluster <- function(stage_cost = NULL, ...) {
   if (!missing(stage_cost)) {
@@ -232,8 +354,8 @@ n_cluster.default <- function(
   stage_cost = NULL,
   ...,
   icc = NULL,
-  unit_relvar = 1,
-  var_ratio = 1,
+  unit_relvar = NULL,
+  var_ratio = NULL,
   cv = NULL,
   budget = NULL,
   n_psu = NULL,
@@ -243,19 +365,53 @@ n_cluster.default <- function(
   resp_rate_ssu = 1,
   resp_rate = 1,
   fixed_cost = 0,
+  indicators = NULL,
+  domains = NULL,
+  allocation = c("separate", "joint"),
+  domain_sampling = c("separate", "natural"),
+  min_n_domain = NULL,
   plan = NULL
 ) {
-  # Ask before the plan merge, which makes every formal explicit and so
-  # erases the difference between a supplied unit relvariance and the
-  # default one.
+  plan <- .plan_for_cluster_mode(plan, !is.null(indicators))
+  # Before the merge, which is the only point at which the profile's own
+  # defaults are still distinguishable from the formals.
   .check_relvar_identified(
     icc,
-    !missing(unit_relvar) || "unit_relvar" %in% names(plan$defaults),
+    !is.null(unit_relvar) || "unit_relvar" %in% names(plan$defaults),
     "n_cluster()"
   )
   .plan <- .merge_plan_args(plan, n_cluster.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(n_cluster.default, c(.plan, list(...))))
   .check_unused_dots(...)
+  .check_cluster_mode_args(
+    indicators,
+    icc = icc, unit_relvar = unit_relvar, var_ratio = var_ratio, cv = cv,
+    domains = domains, allocation = allocation,
+    domain_sampling = domain_sampling, min_n_domain = min_n_domain
+  )
+  if (!is.null(indicators)) {
+    return(.n_cluster_indicators(
+      indicators,
+      stage_cost = stage_cost,
+      domains = domains,
+      budget = budget,
+      n_psu = n_psu,
+      n_per_psu = n_per_psu,
+      n_per_ssu = n_per_ssu,
+      allocation = allocation,
+      domain_sampling = domain_sampling,
+      min_n_domain = min_n_domain,
+      fixed_cost = fixed_cost,
+      resp_rate_psu = resp_rate_psu,
+      resp_rate_ssu = resp_rate_ssu,
+      resp_rate = resp_rate
+    ))
+  }
+  if (is.data.frame(stage_cost)) {
+    .stop_frame_in_first_slot("stage_cost", "per-stage costs")
+  }
+  unit_relvar <- unit_relvar %||% 1
+  var_ratio <- var_ratio %||% 1
   if (is.null(stage_cost))
     stop("'stage_cost' is required (directly or via plan)", call. = FALSE)
   if (is.null(icc))
@@ -370,8 +526,17 @@ n_cluster.default <- function(
 #' @export
 n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   x <- stage_cost
+  if (
+    identical(x[["type"]], "multi") &&
+      identical(x[["params"]][["design"]], "cluster")
+  ) {
+    return(.n_cluster_from_indicator_prec(x, list(...), cv, budget))
+  }
   if (x$type != "cluster") {
-    stop("n_cluster requires a svyplan_prec of type 'cluster'", call. = FALSE)
+    stop(
+      "n_cluster requires a svyplan_prec of type 'cluster', from prec_cluster()",
+      call. = FALSE
+    )
   }
   p <- x$params
   if (is.null(cv) && is.null(budget)) {
@@ -393,6 +558,61 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     fixed_cost = p$fixed_cost %||% 0
   )
   do.call(n_cluster.default, .roundtrip_args(args, list(...), n_cluster.default))
+}
+
+#' Rebuild a several-indicators cluster allocation from its precision
+#'
+#' The target the design was sized against is read back from `$detail`, in
+#' whichever of `cv` and `moe` the fit recorded, so the round trip returns
+#' the allocation rather than a design sized against a different quantity.
+#' @keywords internal
+#' @noRd
+.n_cluster_from_indicator_prec <- function(x, dots, cv, budget) {
+  if (!is.null(cv)) {
+    stop(
+      "'cv' is carried by the 'indicators' column 'cv', one value per row",
+      call. = FALSE
+    )
+  }
+  p <- x[["params"]]
+  tgt <- p[["indicators"]]
+  for (rate in intersect(
+    c("resp_rate_psu", "resp_rate_ssu", "resp_rate"),
+    names(dots)
+  )) {
+    tgt[[rate]] <- NA_real_
+  }
+  tgt$n <- NULL
+  tgt$n_per_psu <- NULL
+  tgt$n_per_ssu <- NULL
+
+  stored_mode <- p[["mode"]]
+  if (identical(stored_mode, "moe")) {
+    tgt$moe <- x$detail$.moe
+    tgt$cv <- NULL
+  } else if (!is.null(x$detail) && ".cv" %in% names(x$detail)) {
+    tgt$cv <- x$detail$.cv
+    tgt$moe <- NULL
+  }
+
+  args <- list(
+    indicators = tgt,
+    stage_cost = p[["stage_cost"]],
+    domains = p[["domain_cols"]],
+    budget = budget %||% p[["budget"]],
+    n_psu = p[["n_psu"]],
+    n_per_psu = p[["n_per_psu"]],
+    n_per_ssu = p[["n_per_ssu"]],
+    allocation = p[["allocation"]] %||%
+      if (isTRUE(p[["joint"]])) "joint" else "separate",
+    min_n_domain = p[["min_n_domain"]],
+    domain_sampling = p[["domain_sampling"]] %||% "separate",
+    fixed_cost = p[["fixed_cost"]] %||% 0
+  )
+  do.call(
+    n_cluster.default,
+    .roundtrip_args(args, dots, n_cluster.default)
+  )
 }
 
 #' Discrete (integer) 2-stage design

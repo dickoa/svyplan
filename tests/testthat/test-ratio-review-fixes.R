@@ -17,13 +17,13 @@ test_that("an incidental mu does not rescale a ratio row's rmoe", {
 })
 
 test_that("an incidental mu does not rescale a clustered ratio row", {
-  bare <- n_multi_cluster(
-    data.frame(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
+  bare <- n_cluster(
+    indicators = data.frame(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
                rmoe = 0.1, icc_psu = 0.05),
     stage_cost = c(500, 50)
   )
-  with_mu <- n_multi_cluster(
-    data.frame(r = 2, mu = 100, cv_num = 1.1, cv_den = 0.6,
+  with_mu <- n_cluster(
+    indicators = data.frame(r = 2, mu = 100, cv_num = 1.1, cv_den = 0.6,
                component_cor = 0.7, rmoe = 0.1, icc_psu = 0.05),
     stage_cost = c(500, 50)
   )
@@ -52,7 +52,7 @@ test_that("a unit_relvar contradicting the ratio moments is refused", {
     "but its moments imply"
   )
   expect_error(
-    n_multi_cluster(data.frame(r = 2, cv_num = 1.1, cv_den = 0.6,
+    n_cluster(indicators = data.frame(r = 2, cv_num = 1.1, cv_den = 0.6,
                                component_cor = 0.7, cv = 0.05,
                                icc_psu = 0.05, unit_relvar = 100),
                     stage_cost = c(500, 50)),
@@ -71,7 +71,7 @@ test_that("a unit_relvar agreeing with the moments is accepted", {
 
 test_that("a non-ratio row may still supply unit_relvar", {
   expect_s3_class(
-    n_multi_cluster(data.frame(var = 100, mu = 50, cv = 0.05, icc_psu = 0.05,
+    n_cluster(indicators = data.frame(var = 100, mu = 50, cv = 0.05, icc_psu = 0.05,
                                unit_relvar = 0.04),
                     stage_cost = c(500, 50)),
     "svyplan_cluster"
@@ -86,7 +86,7 @@ test_that("the precision paths require exactly one estimand per row", {
     "only one of 'p', 'var', or 'r'"
   )
   expect_error(
-    prec_multi_cluster(cbind(two, n = 50, n_per_psu = 10, icc_psu = 0.05),
+    prec_cluster(indicators = cbind(two, n = 50, n_per_psu = 10, icc_psu = 0.05),
                        stage_cost = c(500, 50)),
     "only one of 'p', 'var', or 'r'"
   )
@@ -97,24 +97,24 @@ test_that("the precision paths require exactly one estimand per row", {
   )
 })
 
-test_that("prec_multi_cluster validates ratio moments", {
+test_that("prec_cluster(indicators = ) validates ratio moments", {
   base <- list(n = 50, n_per_psu = 10, icc_psu = 0.05)
   expect_error(
-    do.call(prec_multi_cluster,
-            list(data.frame(r = 0, cv_num = 1.1, cv_den = 0.6,
-                            component_cor = 0.7, n = 50, n_per_psu = 10,
-                            icc_psu = 0.05),
+    do.call(prec_cluster,
+            list(indicators = data.frame(r = 0, cv_num = 1.1, cv_den = 0.6,
+                                         component_cor = 0.7, n = 50,
+                                         n_per_psu = 10, icc_psu = 0.05),
                  stage_cost = c(500, 50))),
     "must not be zero"
   )
   expect_error(
-    prec_multi_cluster(data.frame(r = 2, cv_num = 1.1, n = 50,
+    prec_cluster(indicators = data.frame(r = 2, cv_num = 1.1, n = 50,
                                   n_per_psu = 10, icc_psu = 0.05),
                        stage_cost = c(500, 50)),
     "column\\(s\\) .*'cv_den'.*are absent"
   )
   expect_error(
-    prec_multi_cluster(data.frame(r = 2, cv_num = 1.1, cv_den = 0.6,
+    prec_cluster(indicators = data.frame(r = 2, cv_num = 1.1, cv_den = 0.6,
                                   component_cor = 5, n = 50, n_per_psu = 10,
                                   icc_psu = 0.05),
                        stage_cost = c(500, 50)),
@@ -197,13 +197,13 @@ test_that("a ratio result round-trips through prec_multi() and back", {
 })
 
 test_that("a clustered ratio result round-trips in both directions", {
-  sized <- n_multi_cluster(
-    data.frame(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
+  sized <- n_cluster(
+    indicators = data.frame(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
                cv = 0.05, icc_psu = 0.05),
     stage_cost = c(500, 50)
   )
-  prec <- prec_multi_cluster(sized)
-  back <- n_multi_cluster(prec)
+  prec <- prec_cluster(sized)
+  back <- n_cluster(prec)
 
   expect_equal(prec$detail$.cv, 0.05, tolerance = 1e-6)
   expect_equal(unname(back$n), unname(sized$n), tolerance = 1e-6)
@@ -254,7 +254,7 @@ test_that("multistage cv mode scales .se by the estimand of every row type", {
   )
   estimand <- c(prop = 0.3, mean = 300, ratio = 420)
   for (nm in names(rows)) {
-    res <- prec_multi_cluster(cbind(rows[[nm]], as.data.frame(args)),
+    res <- prec_cluster(indicators = cbind(rows[[nm]], as.data.frame(args)),
                               stage_cost = c(500, 50))
     expect_true(is.finite(res$detail$.cv), info = nm)
     expect_true(is.finite(res$detail$.se), info = nm)

@@ -1,10 +1,11 @@
-#' Sample size for an estimate pooled across occasions
+#' Sample size for the average of several occasions of a repeated survey
 #'
-#' Compute the sample size per occasion required to estimate the
-#' equal-weight mean of the occasion estimates of a repeated survey with a
-#' specified margin of error or coefficient of variation, given how far the
-#' occasions overlap. Sizing an annual average built from quarterly rounds
-#' is the ordinary case. This is the inverse of [prec_pooled()].
+#' Compute the sample size per occasion required to estimate the average of
+#' several occasions of a repeated survey, the equal-weight mean of the
+#' occasion estimates, with a specified margin of error or coefficient of
+#' variation, given how far the occasions overlap. An annual average built
+#' from quarterly rounds is the ordinary case, and that average is what
+#' "pooled" names here. This is the inverse of [prec_pooled()].
 #'
 #' @param var For the default method: the population variance \eqn{S^2} on
 #'   one occasion, taken to be the same on each. Estimate from a pilot
@@ -120,7 +121,7 @@
 #' @references
 #' Kish, L. (1965). *Survey Sampling*. Wiley. Chapter 12.
 #'
-#' @family sample size functions
+#' @family repeated survey functions
 #' @seealso [prec_pooled()] for the inverse (compute precision from a size)
 #'   and for what the covariance assumes, [n_change()] for the other arm of
 #'   the trade-off, [design_overlap()] for the overlap a rotation schedule

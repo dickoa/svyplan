@@ -118,8 +118,8 @@ switches that row's interval quantile from normal to t, under every
 proportion method and on mean rows alike. \code{NA} (the default) applies
 no adjustment.}
 \item{\code{resp_rate}}{Expected response rate at the ultimate unit
-(default 1). \code{\link[=prec_multi_cluster]{prec_multi_cluster()}} spends its rate at stage 1 and
-names the column \code{resp_rate_psu}.}
+(default 1). A cluster design spends a rate at stage 1 too, and
+\code{\link[=prec_cluster]{prec_cluster()}} names that column \code{resp_rate_psu}.}
 }
 
 Domain columns are specified via the \code{domains} parameter.
@@ -144,20 +144,11 @@ prec_multi(data.frame(p = 0.05, n = 400), prop_method = "wilson")
 
 }
 \seealso{
-\code{\link[=n_multi]{n_multi()}} for the inverse, \code{\link[=prec_multi_cluster]{prec_multi_cluster()}} for
-multistage cluster designs, and \code{\link[=prec_prop]{prec_prop()}} and \code{\link[=prec_mean]{prec_mean()}} for
-single-indicator precision.
+\code{\link[=n_multi]{n_multi()}} for the inverse, \code{\link[=prec_cluster]{prec_cluster()}} for a multistage
+cluster design over the same indicator table, and \code{\link[=prec_prop]{prec_prop()}} and
+\code{\link[=prec_mean]{prec_mean()}} for single-indicator precision.
 
-Other precision functions:
-\code{\link[=prec_alloc]{prec_alloc()}},
-\code{\link[=prec_change]{prec_change()}},
-\code{\link[=prec_cluster]{prec_cluster()}},
-\code{\link[=prec_mean]{prec_mean()}},
-\code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
-\code{\link[=prec_panel]{prec_panel()}},
-\code{\link[=prec_pooled]{prec_pooled()}},
-\code{\link[=prec_prop]{prec_prop()}},
-\code{\link[=prec_ratio]{prec_ratio()}},
-\code{\link[=prec_twophase]{prec_twophase()}}
+Other multi-indicator functions:
+\code{\link[=n_multi]{n_multi()}}
 }
-\concept{precision functions}
+\concept{multi-indicator functions}

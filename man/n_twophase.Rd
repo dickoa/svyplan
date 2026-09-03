@@ -386,16 +386,7 @@ Sect. 17.5.2. Springer.
 single-phase stratified allocation, \code{\link[=n_cluster]{n_cluster()}} for the multistage
 analogue.
 
-Other sample size functions:
-\code{\link[=n_alloc]{n_alloc()}},
-\code{\link[=n_change]{n_change()}},
-\code{\link[=n_cluster]{n_cluster()}},
-\code{\link[=n_mean]{n_mean()}},
-\code{\link[=n_multi]{n_multi()}},
-\code{\link[=n_multi_cluster]{n_multi_cluster()}},
-\code{\link[=n_panel]{n_panel()}},
-\code{\link[=n_pooled]{n_pooled()}},
-\code{\link[=n_prop]{n_prop()}},
-\code{\link[=n_ratio]{n_ratio()}}
+Other two-phase design functions:
+\code{\link[=prec_twophase]{prec_twophase()}}
 }
-\concept{sample size functions}
+\concept{two-phase design functions}

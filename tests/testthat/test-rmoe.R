@@ -138,8 +138,8 @@ test_that("an rmoe column works in the cluster path and reads the row method", {
     icc_psu = 0.05, prop_method = "wilson"
   )
   expect_identical(
-    n_multi_cluster(by_rmoe, stage_cost = c(500, 50))$n,
-    n_multi_cluster(by_moe, stage_cost = c(500, 50))$n
+    n_cluster(indicators = by_rmoe, stage_cost = c(500, 50))$n,
+    n_cluster(indicators = by_moe, stage_cost = c(500, 50))$n
   )
 })
 

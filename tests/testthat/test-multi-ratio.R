@@ -213,13 +213,13 @@ test_that("min_cases is refused on a ratio row and names it", {
 
 test_that("the multistage paths take ratio rows", {
   # test-multi-cluster-ratio.R covers the stage semantics.
-  sized <- n_multi_cluster(ratio_row(cv = 0.05, icc_psu = 0.05),
+  sized <- n_cluster(indicators = ratio_row(cv = 0.05, icc_psu = 0.05),
                            stage_cost = c(500, 50))
   expect_s3_class(sized, "svyplan_cluster")
   expect_length(sized$n, 2L)
 
-  prec <- prec_multi_cluster(
-    ratio_row(n = sized$n[1L], n_per_psu = sized$n[2L], icc_psu = 0.05),
+  prec <- prec_cluster(
+    indicators = ratio_row(n = sized$n[1L], n_per_psu = sized$n[2L], icc_psu = 0.05),
     stage_cost = c(500, 50)
   )
   expect_equal(prec$detail$.cv, 0.05, tolerance = 1e-6)

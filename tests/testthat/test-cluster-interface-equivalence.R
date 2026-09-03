@@ -1,11 +1,11 @@
 ## One indicator on one design is one answer, whichever interface states it.
 ##
 ## svyplan reaches the same two-stage and three-stage cluster design from four
-## directions: n_cluster(), n_multi_cluster(), n_alloc() cluster mode, and
-## n_alloc() generalized fixed-take allocation. They share a variance model, so
-## a design described identically to all four must size identically in all
-## four. Nothing else in the suite compares them, and a coefficient that drifts
-## in one of them stays green everywhere else.
+## directions: n_cluster(), n_cluster(indicators = ), n_alloc() cluster mode,
+## and n_alloc() generalized fixed-take allocation. They share a variance
+## model, so a design described identically to all four must size identically
+## in all four. Nothing else in the suite compares them, and a coefficient
+## that drifts in one of them stays green everywhere else.
 ##
 ## The comparisons run at a negligible sampling fraction. That is the regime
 ## every one of these interfaces claims: n_cluster() applies no finite
@@ -45,8 +45,8 @@ test_that("two-stage cluster interfaces agree at full response", {
     unit_relvar = .eq_relvar, stage_cost = c(300, 25)
   )$n[["n_psu"]]
 
-  by_multi <- n_multi_cluster(
-    data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_psu = icc),
+  by_multi <- n_cluster(
+    indicators = data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_psu = icc),
     n_per_psu = m, stage_cost = c(300, 25)
   )$n[["n_psu"]]
 
@@ -78,8 +78,8 @@ test_that("two-stage cluster interfaces agree below full response", {
     unit_relvar = .eq_relvar, stage_cost = c(300, 25)
   )$n[["n_psu"]]
 
-  by_multi <- n_multi_cluster(
-    data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_psu = icc),
+  by_multi <- n_cluster(
+    indicators = data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_psu = icc),
     n_per_psu = m, resp_rate = rr, stage_cost = c(300, 25)
   )$n[["n_psu"]]
 
@@ -306,4 +306,138 @@ test_that("the allocation FPC sits between no correction and the exact one", {
     got_var <- S2 * (1 + icc * (m - 1)) * (1 / got - 1 / N)
     expect_gte(got_var, exact_var - 1e-12)
   }
+})
+
+## T6. One row of indicators is the scalar pair
+##
+## The several-indicators mode is a second entry into the same solver, so a
+## frame carrying one indicator and no domain must return the allocation the
+## scalar arguments return, exactly, in every branch. Both directions of the
+## pair are checked, because a wrapper can carry the stage rates into the
+## design it reports and not into the precision it reads back.
+
+.eq_one_row <- function(stages, rr, rp, rs) {
+  row <- data.frame(
+    name = "y", p = .eq_p, cv = .eq_cv, icc_psu = 0.05,
+    resp_rate = rr, resp_rate_psu = rp
+  )
+  if (stages == 3L) {
+    row$icc_ssu <- 0.10
+    row$resp_rate_ssu <- rs
+  }
+  row
+}
+
+.eq_scalar_args <- function(stages, rr, rp, rs) {
+  args <- list(
+    icc = if (stages == 2L) 0.05 else c(0.05, 0.10),
+    unit_relvar = .eq_relvar,
+    stage_cost = if (stages == 2L) c(300, 25) else c(300, 50, 25),
+    resp_rate = rr, resp_rate_psu = rp
+  )
+  if (stages == 3L) args$resp_rate_ssu <- rs
+  args
+}
+
+.eq_rate_grid <- function(stages) {
+  rates <- list(c(1, 1, 1), c(0.6, 1, 1), c(1, 0.8, 1), c(0.6, 0.8, 1))
+  if (stages == 3L) {
+    rates <- c(rates, list(c(1, 1, 0.9), c(0.6, 0.8, 0.9)))
+  }
+  rates
+}
+
+test_that("one row of indicators reproduces the scalar allocation", {
+  for (stages in c(2L, 3L)) {
+    for (mode in c("cv", "budget")) {
+      for (r in .eq_rate_grid(stages)) {
+        label <- sprintf("%d-stage %s, rates %s", stages, mode,
+                         paste(r, collapse = "/"))
+        constraint <- if (mode == "cv") {
+          list(cv = .eq_cv)
+        } else {
+          list(budget = 5e5)
+        }
+        scalar <- do.call(
+          n_cluster,
+          c(.eq_scalar_args(stages, r[1L], r[2L], r[3L]), constraint)
+        )
+        multi_args <- c(
+          list(indicators = .eq_one_row(stages, r[1L], r[2L], r[3L]),
+               stage_cost = if (stages == 2L) c(300, 25) else c(300, 50, 25)),
+          constraint[names(constraint) == "budget"]
+        )
+        multi <- do.call(n_cluster, multi_args)
+        # The indicators branch minimizes a maximum over rows by search
+        # wherever the scalar branch has a closed form, so the continuous
+        # optima agree to the search tolerance while the fielded integer
+        # design agrees exactly.
+        tol <- if (stages == 3L) {
+          1e-4
+        } else if (mode == "budget") {
+          1e-6
+        } else {
+          1e-8
+        }
+        expect_equal(unname(multi$n), unname(scalar$n), tolerance = tol,
+                     info = label)
+        expect_identical(as.integer(multi$operational$n),
+                         as.integer(scalar$operational$n), info = label)
+        expect_equal(multi$cv, scalar$cv, tolerance = tol, info = label)
+      }
+    }
+  }
+})
+
+test_that("one row of indicators reproduces the scalar precision", {
+  for (stages in c(2L, 3L)) {
+    sizes <- if (stages == 2L) c(80, 20) else c(80, 5, 4)
+    for (r in .eq_rate_grid(stages)) {
+      label <- sprintf("%d-stage, rates %s", stages, paste(r, collapse = "/"))
+      row <- .eq_one_row(stages, r[1L], r[2L], r[3L])
+      row$cv <- NULL
+      row$n <- sizes[1L]
+      row$n_per_psu <- sizes[2L]
+      if (stages == 3L) row$n_per_ssu <- sizes[3L]
+
+      scalar_args <- .eq_scalar_args(stages, r[1L], r[2L], r[3L])
+      scalar_args$stage_cost <- NULL
+      scalar_args$n <- sizes
+      scalar <- do.call(prec_cluster, scalar_args)
+
+      multi <- prec_cluster(indicators = row)
+      expect_equal(multi$detail$.cv, scalar$cv, tolerance = 1e-10,
+                   info = label)
+    }
+  }
+})
+
+## T7. The pair round-trips in both directions
+
+test_that("an indicators allocation reports the target it was sized against", {
+  row <- data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_psu = 0.05)
+  fit <- n_cluster(indicators = row, stage_cost = c(300, 25))
+  expect_equal(prec_cluster(fit)$detail$.cv, .eq_cv, tolerance = 1e-8)
+})
+
+test_that("an indicators precision rebuilds the design it describes", {
+  row <- data.frame(
+    name = c("y", "z"), p = c(0.30, 0.10), cv = c(0.10, 0.15),
+    icc_psu = c(0.02, 0.05)
+  )
+  fit <- n_cluster(indicators = row, stage_cost = c(300, 25))
+  back <- n_cluster(prec_cluster(fit))
+  expect_equal(unname(back$n), unname(fit$n), tolerance = 1e-6)
+  expect_equal(back$cv, fit$cv, tolerance = 1e-6)
+})
+
+test_that("a costed indicators precision sizes the design it describes", {
+  row <- data.frame(
+    name = c("y", "z"), p = c(0.30, 0.10), n = c(80, 80),
+    n_per_psu = c(20, 20), icc_psu = c(0.02, 0.05)
+  )
+  prec <- prec_cluster(indicators = row, stage_cost = c(300, 25))
+  fit <- n_cluster(prec)
+  expect_equal(prec_cluster(fit)$detail$.cv, prec$detail$.cv,
+               tolerance = 1e-8)
 })

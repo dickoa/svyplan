@@ -12,8 +12,8 @@ n_cluster(stage_cost = NULL, ...)
   stage_cost = NULL,
   ...,
   icc = NULL,
-  unit_relvar = 1,
-  var_ratio = 1,
+  unit_relvar = NULL,
+  var_ratio = NULL,
   cv = NULL,
   budget = NULL,
   n_psu = NULL,
@@ -23,6 +23,11 @@ n_cluster(stage_cost = NULL, ...)
   resp_rate_ssu = 1,
   resp_rate = 1,
   fixed_cost = 0,
+  indicators = NULL,
+  domains = NULL,
+  allocation = c("separate", "joint"),
+  domain_sampling = c("separate", "natural"),
+  min_n_domain = NULL,
   plan = NULL
 )
 
@@ -105,8 +110,44 @@ The total cost model becomes
 In budget mode, only \code{budget - fixed_cost} is available for variable
 costs. In CV mode, \code{fixed_cost} is added to the variable cost.}
 
+\item{indicators}{Optional data frame with one row per indicator, which
+switches the function to the several-indicators mode of Details. Each
+row carries its own homogeneity and its own precision target, and the
+allocation returned satisfies every row. Leave it \code{NULL} for the single
+indicator that \code{icc}, \code{unit_relvar}, \code{var_ratio} and \code{cv} describe.}
+
+\item{domains}{Optional character vector naming domain columns in
+\code{indicators}. Each domain is solved on its own unless
+\code{allocation = "joint"} in budget mode. Domains are sized as separate
+quotas, so \verb{$total_n} is their sum and \verb{$n} carries no aggregate stage
+vector. The fieldable per-domain stage sizes are in \verb{$domains}, and
+\code{domain_sampling} covers why the quota reading is the only one offered
+for a multistage design.}
+
+\item{allocation}{How a budget is split across domains, either
+\code{"separate"} (default, each domain sized on its own) or \code{"joint"} (one
+budget split across domains to minimize the worst precision ratio).
+\code{"joint"} applies only when \code{indicators}, \code{domains} and \code{budget} are all
+supplied.}
+
+\item{domain_sampling}{How the per-domain requirements combine into the
+one overall size. Only \code{"separate"} (the default) is available for a
+cluster design, so the domains are quotas fielded in their own right and
+\verb{$total_n} is the sum of the per-domain totals. \code{"natural"}, which
+\code{\link[=n_multi]{n_multi()}} offers for a single-stage design, is refused, because a
+domain's expected yield then depends on how its members sit inside PSUs
+and SSUs rather than on its share of the population alone, and that
+model is not in the package.}
+
+\item{min_n_domain}{Optional positive minimum total sample size per
+domain. In joint budget mode it is a constraint. With domains solved
+separately, domains below the floor produce a warning.}
+
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults
-(including \code{stage_cost}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{resp_rate_psu}, \code{fixed_cost}).}
+(including \code{stage_cost}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{resp_rate_psu}, \code{fixed_cost}).
+In the several-indicators mode a profile supplies only the defaults that
+mode accepts, so \code{icc}, \code{unit_relvar} and \code{var_ratio} are left to the
+indicator columns.}
 }
 \value{
 A \code{svyplan_cluster} object with components:
@@ -127,6 +168,9 @@ meets the target at the lowest cost among the designs searched.
 continuous \code{n}.}
 \item{\code{params}}{List of input parameters.}
 }
+With \code{indicators}, the same class carries \verb{$indicators}, the per-row
+\verb{$detail} and, where domains were named, \verb{$domains}. The class does not
+depend on which optional arguments were supplied.
 }
 \description{
 Compute optimal per-stage sample sizes for a multistage cluster
@@ -181,6 +225,62 @@ The remaining free stage is derived from the budget or CV constraint.
 
 If \code{icc} is a \code{svyplan_varcomp} object, \code{icc}, \code{unit_relvar}, and \code{var_ratio}
 are extracted automatically.
+}
+
+\subsection{Several indicators at once}{
+
+\code{indicators} sizes one design against several requirements at once. It is a
+data frame with one row per indicator, and the design returned satisfies
+every row. The scalar arguments \code{icc}, \code{unit_relvar}, \code{var_ratio} and \code{cv}
+are refused in this mode, because the frame carries each of them per row.
+
+Each row needs \code{p}, \code{var}, or the ratio quartet (\code{r}, \code{cv_num}, \code{cv_den},
+\code{component_cor}), a \code{cv}, \code{moe} or \code{rmoe} target, and \code{icc_psu}. A
+three-stage design also needs \code{icc_ssu}. Optional \code{var_ratio_psu} defaults
+to 1, and three-stage \code{var_ratio_ssu} is derived as
+\code{var_ratio_psu * (1 - icc_psu)} when absent, the value the variance
+decomposition implies (see \code{\link[=design_effect]{design_effect()}}). On a ratio row \code{icc_psu},
+\code{icc_ssu} and the stage variance ratios describe the linearized variable
+\code{e = y - r * x}, not either component. The remaining columns follow
+\code{\link[=n_multi]{n_multi()}}.
+
+Nonresponse is still named for the stage it acts on. \code{resp_rate_psu},
+\code{resp_rate_ssu} and \code{resp_rate} are the defaults used where a row's own
+column is absent or \code{NA}. A column naming a stage the design does not have
+is an error rather than a column carried along and ignored, since a
+silently dropped response rate plans a design with none.
+
+Margin-of-error rows are converted to CV before optimization, respecting
+the row's \code{prop_method}. The multistage model is driven by a relative
+standard error, and only the Wald interval has half-width \code{z * se}, so a
+proportion row's \code{moe} is restated as the sampling CV at the effective
+sample size its own method needs to close the interval to that margin. A
+stricter interval therefore asks for a larger design, in the same order it
+does in \code{\link[=n_prop]{n_prop()}}. Under \code{"wald"} the restatement is \code{moe / (z * p)}
+exactly. A mean row converts as \verb{moe / (z * |mu|)}, on the magnitude so
+that a negative mean yields a positive target. \code{\link[=prec_cluster]{prec_cluster()}} inverts the
+same way, so a design sized from a \code{moe} target reports that \code{moe} back.
+
+For each candidate allocation the required stage-1 size is the maximum
+across rows. The solver minimizes total cost against the precision targets,
+or the worst precision ratio under a fixed budget. \code{domains} sizes each
+domain on its own, \code{allocation = "joint"} splits one budget across them to
+minimize the worst precision ratio, and \code{min_n_domain} sets a floor.
+}
+
+\subsection{How strong the several-indicators optimum is}{
+
+With a stage size fixed, the remaining problem is solved from the
+closed-form cluster optimum. With all stage sizes free, the objective is a
+maximum over indicator requirements, which is not smooth, and it is
+minimized by a bounded quasi-Newton search. That search warns when it fails
+to converge or lands on a bound, but it carries no global-optimality or KKT
+certificate, so a successful return means the best design this search
+found, not a proven minimum-cost one. The \verb{$operational} allocation can
+always be checked against its own precision or budget constraint, which is
+a separate and exact statement. \code{\link[=n_alloc]{n_alloc()}} gives the stronger guarantee
+where it applies, returning feasibility and KKT diagnostics for its convex
+continuous problem.
 }
 
 \subsection{Boundary icc values}{
@@ -262,6 +362,40 @@ n_cluster(
 # With fixed overhead cost
 n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, fixed_cost = 5000)
 
+# Several indicators, CV mode
+indicators <- data.frame(
+  name    = c("stunting", "anemia"),
+  p       = c(0.30, 0.10),
+  cv      = c(0.10, 0.15),
+  icc_psu = c(0.02, 0.05)
+)
+n_cluster(indicators = indicators, stage_cost = c(500, 50))
+
+# Several indicators with MOE targets, converted to CV internally
+by_moe <- data.frame(
+  name    = c("stunting", "anemia"),
+  p       = c(0.30, 0.10),
+  moe     = c(0.05, 0.03),
+  icc_psu = c(0.02, 0.05)
+)
+n_cluster(indicators = by_moe, stage_cost = c(500, 50))
+
+# One budget split across domains
+by_domain <- data.frame(
+  name    = rep(c("stunting", "anemia"), each = 2),
+  p       = c(0.30, 0.25, 0.10, 0.15),
+  cv      = c(0.10, 0.10, 0.15, 0.15),
+  icc_psu = c(0.02, 0.03, 0.05, 0.04),
+  region  = rep(c("Urban", "Rural"), 2)
+)
+n_cluster(
+  indicators = by_domain,
+  stage_cost = c(500, 50),
+  domains = "region",
+  budget = 100000,
+  allocation = "joint"
+)
+
 }
 \references{
 Valliant, R., Dever, J. A., and Kreuter, F. (2018).
@@ -270,19 +404,11 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 }
 \seealso{
 \code{\link[=prec_cluster]{prec_cluster()}} for the inverse, \code{\link[=varcomp]{varcomp()}} for estimating
-variance components, \code{\link[=n_multi_cluster]{n_multi_cluster()}} for several indicators at once,
-and \code{\link[=n_alloc]{n_alloc()}} for a stratified multistage allocation.
+variance components, \code{\link[=n_multi]{n_multi()}} for several indicators without
+clustering, and \code{\link[=n_alloc]{n_alloc()}} for a stratified multistage allocation.
 
-Other sample size functions:
-\code{\link[=n_alloc]{n_alloc()}},
-\code{\link[=n_change]{n_change()}},
-\code{\link[=n_mean]{n_mean()}},
-\code{\link[=n_multi]{n_multi()}},
-\code{\link[=n_multi_cluster]{n_multi_cluster()}},
-\code{\link[=n_panel]{n_panel()}},
-\code{\link[=n_pooled]{n_pooled()}},
-\code{\link[=n_prop]{n_prop()}},
-\code{\link[=n_ratio]{n_ratio()}},
-\code{\link[=n_twophase]{n_twophase()}}
+Other cluster design functions:
+\code{\link[=prec_cluster]{prec_cluster()}},
+\code{\link[=varcomp]{varcomp()}}
 }
-\concept{sample size functions}
+\concept{cluster design functions}

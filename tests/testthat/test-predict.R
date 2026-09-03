@@ -247,15 +247,15 @@ test_that("predict.svyplan_cluster errors on both cv and budget", {
   expect_error(predict(x, nd), "cannot contain both")
 })
 
-test_that("predict.svyplan_cluster rejects multi-indicator results", {
+test_that("predict.svyplan_cluster rejects a several-indicators result", {
   targets <- data.frame(
     name   = c("a", "b"),
     p      = c(0.3, 0.1),
     cv     = c(0.10, 0.15),
     icc_psu = c(0.02, 0.05)
   )
-  x <- n_multi_cluster(targets, stage_cost = c(500, 50))
-  expect_error(predict(x, data.frame(cv = 0.05)), "multi-indicator")
+  x <- n_cluster(indicators = targets, stage_cost = c(500, 50))
+  expect_error(predict(x, data.frame(cv = 0.05)), "several-indicators")
 })
 
 test_that("predict.svyplan_power varies n (solved for power)", {

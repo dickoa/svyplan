@@ -21,7 +21,7 @@
 #' @details
 #' ## Print and coercion
 #'
-#' Constrained designs (`n_cluster()`, `n_alloc()`, `n_multi_cluster()`)
+#' Constrained designs (`n_cluster()`, `n_alloc()`)
 #' carry two representations: the continuous mathematical
 #' optimum in the top-level fields (`n`, `cv`, `cost`, ...) and the
 #' whole-unit field design in `$operational`, whose cost and precision
@@ -4727,24 +4727,104 @@ Math.svyplan_df <- function(x, ...) {
   do.call(.Generic, c(list(as.double(x)), list(...)))
 }
 
+#' Print, format and coerce a rotation pattern
+#'
+#' A `svyplan_rotation` from [design_rotation()] is a numeric vector of takes,
+#' one entry per occasion of a unit's life. `as.double()` gives that vector
+#' bare, and `as.data.frame()` gives it one row per occasion.
+#'
+#' @param x A `svyplan_rotation` object.
+#' @param row.names,optional,stringsAsFactors,validRN Standard
+#'   `as.data.frame()` arguments.
+#' @param ... Additional arguments are not supported and produce an error.
+#' @return The method-specific result:
+#' \describe{
+#'   \item{`print()`}{Returns `x` invisibly.}
+#'   \item{`format()`}{Returns a string.}
+#'   \item{`as.double()`}{Returns the take vector.}
+#'   \item{`as.data.frame()`}{Returns one row per occasion, with `occasion`,
+#'     `in_sample` and `take`.}
+#' }
+#'
+#' @seealso [design_rotation()], which builds these objects, and
+#'   [design_overlap()] for the lag profile one produces.
+#'
+#' @examples
+#' cps <- design_rotation("4-8-4")
+#' cps
+#' as.double(cps)
+#' as.data.frame(design_rotation("1-1-0-0-1-1"))
+#'
+#' @name print.svyplan_rotation
+NULL
+
+#' @rdname print.svyplan_rotation
+#' @export
+print.svyplan_rotation <- function(x, ...) {
+  .check_unused_dots(...)
+  cat("Rotation pattern (planning)\n\n")
+  cat(.fmt_rotation_header(x))
+  invisible(x)
+}
+
+#' @rdname print.svyplan_rotation
+#' @export
+format.svyplan_rotation <- function(x, ...) {
+  .check_unused_dots(...)
+  sprintf(
+    "svyplan_rotation [%s]",
+    .fmt_rotation(as.double(x))
+  )
+}
+
+#' @rdname print.svyplan_rotation
+#' @export
+as.double.svyplan_rotation <- function(x, ...) {
+  .check_unused_dots(...)
+  out <- unclass(x)
+  attributes(out) <- NULL
+  out
+}
+
+#' @rdname print.svyplan_rotation
+#' @export
+as.data.frame.svyplan_rotation <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  validRN = TRUE,
+  ...
+) {
+  .check_unused_dots(...)
+  take <- as.double(x)
+  data.frame(
+    occasion = seq_along(take),
+    in_sample = take > 0,
+    take = take,
+    row.names = row.names,
+    stringsAsFactors = stringsAsFactors
+  )
+}
+
 #' Print, format and coerce a rotation overlap
 #'
 #' A `svyplan_overlap` from [design_overlap()] is a numeric vector of
 #' overlap fractions indexed by lag, so `x[1]` and `x[12]` are plain
 #' numbers ready for an `overlap` argument. `$` reaches the counts and the
-#' schedule behind them.
+#' rotation behind them.
 #'
 #' @param x A `svyplan_overlap` object.
 #' @param e1,e2 Operands. Arithmetic and comparison return bare numerics,
-#'   the counts and the schedule describing the profile as computed and not
+#'   the counts and the rotation describing the profile as computed and not
 #'   whatever it was transformed into.
 #' @param i Lag to extract, by position or by its name, so `x[12]` and
 #'   `x[["12"]]` are both the twelve-occasion overlap. The result is a bare
 #'   number, carrying neither the class nor the lag as a name.
 #' @param value Replacement value. Replacement is refused, an overlap being
-#'   computed from a schedule rather than assembled.
+#'   computed from a rotation rather than assembled.
 #' @param name Field to extract: `overlap`, `shared`, `n_occasion`,
-#'   `schedule`, `lag` or `life`.
+#'   `rotation`, `lag` or `life`.
 #' @param row.names,optional,stringsAsFactors,validRN Standard
 #'   `as.data.frame()` arguments.
 #' @param ... Additional arguments are not supported and produce an error.
@@ -4759,7 +4839,7 @@ Math.svyplan_df <- function(x, ...) {
 #' Replacement is an error.
 #'
 #' @details
-#' The values, the shared counts and the schedule describe one design, so
+#' The values, the shared counts and the rotation describe one design, so
 #' nothing may move the values while leaving the rest: subsetting and
 #' arithmetic return bare numerics, and replacement is an error. That also
 #' settles `pmax()` and `pmin()`, which copy the attributes of their first
@@ -4769,6 +4849,7 @@ Math.svyplan_df <- function(x, ...) {
 #' with `as.double(x)` and they work as usual.
 #'
 #' @seealso [design_overlap()], which builds these objects,
+#'   [design_rotation()] for the pattern behind them,
 #'   [plot.svyplan_overlap()] for the rotation chart, and
 #'   [print.svyplan_schedule()] for the operational schedule a rotation
 #'   becomes.
@@ -4783,7 +4864,7 @@ Math.svyplan_df <- function(x, ...) {
 #'
 #' # the fields behind the values
 #' cps$shared
-#' cps$n_occasion
+#' cps$rotation
 #' as.data.frame(cps)
 #'
 #' # arithmetic drops the class rather than carrying stale counts
@@ -4796,14 +4877,10 @@ NULL
 #' @export
 print.svyplan_overlap <- function(x, ...) {
   .check_unused_dots(...)
-  w <- attr(x, "schedule", exact = TRUE)
+  rot <- .overlap_rotation(x)
   cat("Rotation overlap (planning)\n\n")
-  cat(sprintf(
-    "  %s-occasion life, %s in sample each occasion\n",
-    .fmt_count_n(attr(x, "life", exact = TRUE)),
-    .fmt_count_n(attr(x, "n_occasion", exact = TRUE))
-  ))
-  cat(sprintf("  schedule: %s\n\n", .fmt_schedule(w)))
+  cat(.fmt_rotation_header(rot))
+  cat("\n")
   # n_occasion is constant by construction and is already in the header;
   # as.data.frame() keeps it, since a table read into code wants it.
   tab <- as.data.frame(x)[c("lag", "shared", "overlap")]
@@ -4820,13 +4897,38 @@ print.svyplan_overlap <- function(x, ...) {
   invisible(x)
 }
 
-#' Render a schedule as the spells a planner declared
+#' The rotation a result was computed from
+#'
+#' One accessor, so a reader never has to know whether the life and the
+#' takes ride on the overlap or on the rotation it came from.
+#' @keywords internal
+#' @noRd
+.overlap_rotation <- function(x) attr(x, "rotation", exact = TRUE)
+
+#' The two lines that describe a rotation
+#'
+#' Shared by the rotation's own print method and the overlap's, so the two
+#' cannot drift into describing the same design differently.
+#' @keywords internal
+#' @noRd
+.fmt_rotation_header <- function(rot) {
+  paste0(
+    sprintf(
+      "  %s-occasion life, %s in sample each occasion\n",
+      .fmt_count_n(attr(rot, "life", exact = TRUE)),
+      .fmt_count_n(attr(rot, "n_occasion", exact = TRUE))
+    ),
+    sprintf("  rotation: %s\n", .fmt_rotation(as.double(rot)))
+  )
+}
+
+#' Render a rotation as the spells a planner declared
 #'
 #' Run-length form, since that is how a rotation is named and argued about.
 #' The per-occasion vector it expands to is what the arithmetic reads.
 #' @keywords internal
 #' @noRd
-.fmt_schedule <- function(w) {
+.fmt_rotation <- function(w) {
   r <- rle(w)
   paste(
     vapply(
@@ -4852,7 +4954,7 @@ format.svyplan_overlap <- function(x, ...) {
   .check_unused_dots(...)
   sprintf(
     "svyplan_overlap [life %g, lag 1 = %.4g]",
-    attr(x, "life", exact = TRUE),
+    attr(.overlap_rotation(x), "life", exact = TRUE),
     unclass(x)[[1L]]
   )
 }
@@ -4872,13 +4974,14 @@ as.double.svyplan_overlap <- function(x, ...) {
 #' @export
 as.list.svyplan_overlap <- function(x, ...) {
   .check_unused_dots(...)
+  rot <- .overlap_rotation(x)
   list(
     overlap = as.double(x),
     shared = attr(x, "shared", exact = TRUE),
-    n_occasion = attr(x, "n_occasion", exact = TRUE),
-    schedule = attr(x, "schedule", exact = TRUE),
+    n_occasion = attr(rot, "n_occasion", exact = TRUE),
+    rotation = rot,
     lag = as.integer(names(x)),
-    life = attr(x, "life", exact = TRUE)
+    life = attr(rot, "life", exact = TRUE)
   )
 }
 
@@ -4951,7 +5054,7 @@ as.data.frame.svyplan_overlap <- function(
   data.frame(
     lag = as.integer(names(x)),
     shared = attr(x, "shared", exact = TRUE),
-    n_occasion = attr(x, "n_occasion", exact = TRUE),
+    n_occasion = attr(.overlap_rotation(x), "n_occasion", exact = TRUE),
     overlap = as.double(x),
     row.names = row.names,
     stringsAsFactors = stringsAsFactors

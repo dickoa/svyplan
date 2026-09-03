@@ -115,3 +115,47 @@ test_that("prec_cluster accepts named n vectors and reorders", {
     "unrecognized names"
   )
 })
+
+## The two entry modes refuse each other's arguments
+
+test_that("the several-indicators mode refuses the scalar sizes and moments", {
+  ind <- data.frame(name = "y", p = 0.3, n = 60, n_per_psu = 12,
+                    icc_psu = 0.05)
+  refused <- list(n = c(60, 12), icc = 0.05, unit_relvar = 2, var_ratio = 1.2)
+  columns <- c(n = "n", icc = "icc_psu", unit_relvar = "unit_relvar",
+               var_ratio = "var_ratio_psu")
+  for (nm in names(refused)) {
+    expect_error(
+      do.call(prec_cluster, c(list(indicators = ind), refused[nm])),
+      sprintf("'%s' is carried by the 'indicators' column '%s'",
+              nm, columns[[nm]]),
+      info = nm
+    )
+  }
+})
+
+test_that("the scalar mode refuses the several-indicators arguments", {
+  expect_error(
+    prec_cluster(n = c(50, 12), icc = 0.05, domains = "region"),
+    "'domains' applies to 'indicators'"
+  )
+})
+
+test_that("an indicator table handed to the first slot is named", {
+  ind <- data.frame(name = "y", p = 0.3, n = 60, n_per_psu = 12,
+                    icc_psu = 0.05)
+  expect_error(
+    prec_cluster(ind, icc = 0.05),
+    "table of indicators goes to 'indicators'"
+  )
+})
+
+test_that("scalar costs are recorded for the round trip", {
+  p <- prec_cluster(n = c(50, 12), icc = 0.05, stage_cost = c(500, 50))
+  expect_equal(unname(p$params$stage_cost), c(500, 50))
+  expect_s3_class(n_cluster(p), "svyplan_cluster")
+  expect_error(
+    prec_cluster(n = c(50, 12), icc = 0.05, stage_cost = c(500, 50, 20)),
+    "must have length 2"
+  )
+})

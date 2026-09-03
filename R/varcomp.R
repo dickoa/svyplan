@@ -230,6 +230,7 @@
 #' Hansen, M. H., Hurwitz, W. N., and Madow, W. G. (1953).
 #' *Sample Survey Methods and Theory* (Vol. I). Wiley.
 #'
+#' @family cluster design functions
 #' @seealso [n_cluster()] which accepts a `svyplan_varcomp` as `icc`,
 #'   [design_effect()] for the forward identity the back-out inverts.
 #'

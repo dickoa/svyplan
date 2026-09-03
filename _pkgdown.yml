@@ -22,67 +22,81 @@ reference:
   contents:
   - svyplan-package
 
-- title: Survey plan profiles
-  desc: Reusable design defaults for survey planning.
-  contents:
-  - svyplan
-
-- title: Sample size determination
-  desc: Compute required sample sizes for different designs.
+- title: Proportions, means and ratios
+  desc: Size or evaluate a proportion, a mean or a ratio of two totals.
   contents:
   - n_prop
-  - n_mean
-  - n_ratio
-  - n_change
-  - n_panel
-  - n_pooled
-  - n_cluster
-  - n_multi
-  - n_multi_cluster
-  - n_alloc
-  - n_twophase
-
-- title: Precision analysis
-  desc: Evaluate sampling precision for a given design.
-  contents:
   - prec_prop
+  - n_mean
   - prec_mean
+  - n_ratio
   - prec_ratio
-  - prec_change
-  - prec_panel
-  - prec_pooled
-  - prec_cluster
+
+- title: Several indicators at once
+  desc: Size or evaluate several indicators at once, taking the most demanding.
+  contents:
+  - n_multi
   - prec_multi
-  - prec_multi_cluster
+
+- title: Cluster designs
+  desc: >
+    Size or evaluate a two- or three-stage cluster design, for one indicator
+    or a table of them.
+  contents:
+  - n_cluster
+  - prec_cluster
+  - varcomp
+
+- title: Stratified designs
+  desc: >
+    Size or evaluate an allocation across strata or domains, under a budget
+    or a CV target.
+  contents:
+  - n_alloc
   - prec_alloc
+  - n_alloc-generalized
+  - strata_bound
+  - predict.svyplan_strata
+
+- title: Two-phase designs
+  desc: Size or evaluate a two-phase design that screens or follows up.
+  contents:
+  - n_twophase
   - prec_twophase
 
-- title: Power analysis
-  desc: Statistical power for two-sample tests.
+- title: Repeated surveys
+  desc: >
+    Size or evaluate a change between two occasions, the average of several,
+    or a panel that must survive attrition, and describe the rotation the
+    three share.
+  contents:
+  - n_change
+  - prec_change
+  - n_pooled
+  - prec_pooled
+  - n_panel
+  - prec_panel
+  - design_rotation
+  - design_overlap
+  - design_schedule
+
+- title: Power
+  desc: >
+    Find the power of a two-group comparison or a difference-in-differences.
   contents:
   - power_prop
   - power_mean
   - power_did
 
-- title: Variance components
-  desc: Estimate variance components from frame data.
+- title: Design inputs
+  desc: >
+    Reusable design defaults, and the design effect, effective size and
+    degrees of freedom a plan implies.
   contents:
-  - varcomp
-
-- title: Stratification
-  desc: Optimal strata boundary determination.
-  contents:
-  - strata_bound
-  - predict.svyplan_strata
-
-- title: Design effects and degrees of freedom
-  desc: Plan design effects, effective sample sizes, design df, and schedules.
-  contents:
+  - svyplan
   - design_effect
-  - design_df
-  - design_overlap
-  - design_schedule
   - effective_n
+  - design_df
 
 - title: Confidence intervals
   desc: Confidence intervals for a planned design.
@@ -97,6 +111,7 @@ reference:
   - print.svyplan_df
   - print.svyplan_overlap
   - print.svyplan_panel
+  - print.svyplan_rotation
   - print.svyplan_schedule
   - summary.svyplan_alloc
   - summary.svyplan_twophase

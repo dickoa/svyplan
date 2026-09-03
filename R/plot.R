@@ -346,7 +346,8 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
     ylim = c(0, 1),
     xlab = "Lag (occasions)",
     ylab = "Issued-sample overlap",
-    main = sprintf("Overlap by lag (%s)", .fmt_schedule(attr(x, "schedule")))
+    main = sprintf("Overlap by lag (%s)",
+                   .fmt_rotation(as.double(.overlap_rotation(x))))
   )
   args <- modifyList(defaults, list(...))
   do.call(
@@ -364,8 +365,9 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
 #' @keywords internal
 #' @noRd
 .plot_rotation_chart <- function(x, n_period, panel, start, ...) {
-  w <- attr(x, "schedule")
-  life <- attr(x, "life")
+  rot <- .overlap_rotation(x)
+  w <- as.double(rot)
+  life <- attr(rot, "life", exact = TRUE)
 
   # a cohort enters at every period drawn, which is what holds the sample at
   # a steady state once the life is spanned; drawing a fixed set of cohorts
@@ -377,8 +379,8 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
   n_sample <- length(cohorts)
 
   args <- modifyList(
-    list(col = "grey75", main = sprintf("Rotation chart (%s)",
-                                        .fmt_schedule(attr(x, "schedule")))),
+    list(col = "grey75",
+         main = sprintf("Rotation chart (%s)", .fmt_rotation(w))),
     list(...)
   )
 

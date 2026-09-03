@@ -119,6 +119,17 @@ the size of each occasion and how far the two samples overlap. This is
 the inverse of \code{\link[=n_change]{n_change()}}.
 }
 \details{
+#'
+\subsection{Level or change}{
+
+A repeated survey publishes three things, and each is read by its own
+function. The level at one occasion is \code{\link[=prec_mean]{prec_mean()}} or \code{\link[=prec_prop]{prec_prop()}} and
+is a function of that occasion's size alone. The change between two
+occasions is this function, which overlap improves. The average of
+several occasions is \code{\link[=prec_pooled]{prec_pooled()}}, which overlap works against,
+because the covariance it induces is subtracted in a difference and added
+in a sum.
+
 Here \code{q} is \code{qnorm(1 - alpha / 2)} by default and
 \code{qt(1 - alpha / 2, df)} when \code{df} is supplied.
 
@@ -155,6 +166,8 @@ measured twice and the change is observed rather than estimated.
 change, which is not in general either occasion's design effect, and a
 clustered design measuring the same clusters twice will have a smaller
 one than a design that reclusters.
+}
+
 \subsection{What the overlap covariance assumes}{
 
 The covariance is a model form, a correlation \code{overlap_cor} between
@@ -216,16 +229,14 @@ target), \code{\link[=prec_mean]{prec_mean()}} and \code{\link[=prec_prop]{prec_
 \code{\link[=power_mean]{power_mean()}} and \code{\link[=power_prop]{power_prop()}} to frame the same overlap as a
 hypothesis test.
 
-Other precision functions:
-\code{\link[=prec_alloc]{prec_alloc()}},
-\code{\link[=prec_cluster]{prec_cluster()}},
-\code{\link[=prec_mean]{prec_mean()}},
-\code{\link[=prec_multi]{prec_multi()}},
-\code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
+Other repeated survey functions:
+\code{\link[=design_overlap]{design_overlap()}},
+\code{\link[=design_rotation]{design_rotation()}},
+\code{\link[=design_schedule]{design_schedule()}},
+\code{\link[=n_change]{n_change()}},
+\code{\link[=n_panel]{n_panel()}},
+\code{\link[=n_pooled]{n_pooled()}},
 \code{\link[=prec_panel]{prec_panel()}},
-\code{\link[=prec_pooled]{prec_pooled()}},
-\code{\link[=prec_prop]{prec_prop()}},
-\code{\link[=prec_ratio]{prec_ratio()}},
-\code{\link[=prec_twophase]{prec_twophase()}}
+\code{\link[=prec_pooled]{prec_pooled()}}
 }
-\concept{precision functions}
+\concept{repeated survey functions}

@@ -79,7 +79,7 @@ panel <- n_panel(
 )
 schedule <- design_schedule(
   panel,
-  design_overlap("4"),
+  design_rotation("4"),
   horizon = 6,
   horizon_policy = "continuing",
   refreshment = "entrant_register",

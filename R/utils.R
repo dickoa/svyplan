@@ -487,6 +487,112 @@ check_icc <- function(icc, expected_length = NULL) {
   invisible(TRUE)
 }
 
+#' Restrict a profile to the defaults the chosen cluster entry mode accepts
+#'
+#' A profile describes a design, not the way a design is entered. Its scalar
+#' homogeneity is refused by the several-indicators mode, where the frame
+#' carries one value per row, and its domain floor means nothing to a single
+#' indicator. Dropping the inapplicable defaults keeps one profile usable
+#' from both modes.
+#' @keywords internal
+#' @noRd
+.plan_for_cluster_mode <- function(plan, has_indicators) {
+  if (!inherits(plan, "svyplan") || length(plan$defaults) == 0L) {
+    return(plan)
+  }
+  drop <- if (has_indicators) {
+    c("icc", "unit_relvar", "var_ratio")
+  } else {
+    "min_n_domain"
+  }
+  plan$defaults <- plan$defaults[!names(plan$defaults) %in% drop]
+  plan
+}
+
+#' Refuse an argument the indicator frame carries per row
+#' @keywords internal
+#' @noRd
+.stop_carried_by_column <- function(given, cols) {
+  stop(
+    sprintf(
+      "%s %s carried by the 'indicators' column%s %s, one value per row",
+      .quote_names(given),
+      if (length(given) > 1L) "are" else "is",
+      if (length(given) > 1L) "s" else "",
+      .quote_names(unname(cols[given]))
+    ),
+    call. = FALSE
+  )
+}
+
+#' Refuse a table of indicators handed to the numeric first argument
+#'
+#' The two entry modes take their first argument from different vocabularies,
+#' and `indicators` is never positional, so a frame arriving here is a
+#' misplaced table rather than a malformed vector.
+#' @keywords internal
+#' @noRd
+.stop_frame_in_first_slot <- function(arg, what) {
+  stop(
+    sprintf(
+      "'%s' is a numeric vector of %s. A table of indicators goes to 'indicators'",
+      arg, what
+    ),
+    call. = FALSE
+  )
+}
+
+#' Refuse an argument that belongs to the several-indicators mode
+#' @keywords internal
+#' @noRd
+.stop_applies_to_indicators <- function(given) {
+  stop(
+    sprintf(
+      "%s appl%s to 'indicators', a data frame with one row per indicator",
+      .quote_names(given),
+      if (length(given) > 1L) "y" else "ies"
+    ),
+    call. = FALSE
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.quote_names <- function(x) paste(sprintf("'%s'", x), collapse = ", ")
+
+#' Refuse the arguments the other cluster entry mode owns
+#'
+#' Read the mode from `indicators` alone, so a scalar input that the frame
+#' already carries per row is an error rather than a value the solver never
+#' looks at.
+#' @keywords internal
+#' @noRd
+.check_cluster_mode_args <- function(indicators, icc, unit_relvar, var_ratio,
+                                     cv, domains, allocation, domain_sampling,
+                                     min_n_domain) {
+  if (is.null(indicators)) {
+    given <- c(
+      if (!is.null(domains)) "domains",
+      if (length(allocation) == 1L) "allocation",
+      if (length(domain_sampling) == 1L) "domain_sampling",
+      if (!is.null(min_n_domain)) "min_n_domain"
+    )
+    if (length(given) > 0L) .stop_applies_to_indicators(given)
+    return(invisible(TRUE))
+  }
+  cols <- c(
+    icc = "icc_psu", unit_relvar = "unit_relvar",
+    var_ratio = "var_ratio_psu", cv = "cv"
+  )
+  supplied <- !vapply(
+    list(icc = icc, unit_relvar = unit_relvar, var_ratio = var_ratio, cv = cv),
+    is.null,
+    logical(1L)
+  )
+  if (any(supplied)) .stop_carried_by_column(names(cols)[supplied], cols)
+  invisible(TRUE)
+}
+
 #' Tolerance for detecting numerically degenerate cluster homogeneity
 #' @keywords internal
 #' @noRd

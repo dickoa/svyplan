@@ -139,25 +139,25 @@ test_that("multi round trips can override the response rate", {
 
 test_that("multi-cluster scalar stage rates match indicator columns", {
   indicators <- data.frame(p = 0.3, cv = 0.1, icc_psu = 0.05)
-  direct <- n_multi_cluster(
-    indicators,
+  direct <- n_cluster(
+    indicators = indicators,
     stage_cost = c(500, 50),
     resp_rate_psu = 0.9,
     resp_rate = 0.8
   )
-  column <- n_multi_cluster(
-    transform(indicators, resp_rate_psu = 0.9, resp_rate = 0.8),
+  column <- n_cluster(
+    indicators = transform(indicators, resp_rate_psu = 0.9, resp_rate = 0.8),
     stage_cost = c(500, 50)
   )
   expect_equal(direct$n, column$n)
   expect_equal(direct$total_n, column$total_n)
 
-  achieved <- prec_multi_cluster(
-    data.frame(p = 0.3, n = 40, n_per_psu = 10, icc_psu = 0.05),
+  achieved <- prec_cluster(
+    indicators = data.frame(p = 0.3, n = 40, n_per_psu = 10, icc_psu = 0.05),
     resp_rate_psu = 0.9,
     resp_rate = 0.8
   )
-  achieved_column <- prec_multi_cluster(data.frame(
+  achieved_column <- prec_cluster(indicators = data.frame(
     p = 0.3, n = 40, n_per_psu = 10, icc_psu = 0.05,
     resp_rate_psu = 0.9, resp_rate = 0.8
   ))
@@ -172,21 +172,21 @@ test_that("multi-cluster validates every stage response rate", {
     bad <- three_stage
     bad[[rate]] <- 0
     expect_error(
-      n_multi_cluster(bad, stage_cost = c(500, 100, 50)),
+      n_cluster(indicators = bad, stage_cost = c(500, 100, 50)),
       paste0("'", rate, "' values must be in")
     )
   }
 
   expect_error(
-    prec_multi_cluster(data.frame(
+    prec_cluster(indicators = data.frame(
       p = 0.3, n = 20, n_per_psu = 10, icc_psu = 0.05,
       resp_rate_psu = 0
     )),
     "'resp_rate_psu' values must be in"
   )
   expect_error(
-    n_multi_cluster(
-      data.frame(p = 0.3, cv = 0.1, icc_psu = 0.05),
+    n_cluster(
+      indicators = data.frame(p = 0.3, cv = 0.1, icc_psu = 0.05),
       stage_cost = c(500, 50),
       resp_rate_ssu = 0.9
     ),
@@ -280,10 +280,10 @@ test_that("stage columns are refused where the design has no such stage", {
   tg3 <- data.frame(name = c("a", "b"), p = c(0.30, 0.10),
                     cv = c(0.10, 0.15), icc_psu = c(0.02, 0.05),
                     resp_rate_ssu = c(0.9, 0.9))
-  expect_error(n_multi_cluster(tg3, stage_cost = c(500, 50)),
+  expect_error(n_cluster(indicators = tg3, stage_cost = c(500, 50)),
                "not applicable for 2-stage")
   expect_error(
-    prec_multi_cluster(transform(tg3, cv = NULL, n = 50, n_per_psu = 10)),
+    prec_cluster(indicators = transform(tg3, cv = NULL, n = 50, n_per_psu = 10)),
     "not applicable for 2-stage"
   )
 })
@@ -293,9 +293,9 @@ test_that("a cluster frame's two rates act at different stages", {
   psu <- transform(base, resp_rate_psu = 0.8)
   unit <- transform(base, resp_rate = 0.8)
 
-  r0 <- n_multi_cluster(base, stage_cost = c(500, 50))
-  r1 <- n_multi_cluster(psu, stage_cost = c(500, 50))
-  r2 <- n_multi_cluster(unit, stage_cost = c(500, 50))
+  r0 <- n_cluster(indicators = base, stage_cost = c(500, 50))
+  r1 <- n_cluster(indicators = psu, stage_cost = c(500, 50))
+  r2 <- n_cluster(indicators = unit, stage_cost = c(500, 50))
 
   expect_equal(unname(r1$n[["n_per_psu"]]), unname(r0$n[["n_per_psu"]]),
                tolerance = 1e-9)

@@ -48,6 +48,7 @@
 #' realized by collected data, use `survey::svymean(..., deff = TRUE)` with
 #' the actual weights, strata, and clusters.
 #'
+#' @family design input functions
 #' @seealso [design_effect()] for the design effect itself.
 #'
 #' @examples

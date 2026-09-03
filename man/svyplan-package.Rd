@@ -30,6 +30,28 @@ over \code{resp_rate}. \code{\link[=n_twophase]{n_twophase()}} provides the pack
 nonresponse follow-up design, and \code{\link[=predict]{predict()}} supports sensitivity grids.
 }
 
+\section{Which function}{
+
+Eleven problems, each with the function or pair that answers it. Every
+\code{n_} has a \code{prec_} reading the same design back the other way, so a row
+names one thing to learn rather than two.
+
+\tabular{ll}{
+\strong{I want to size, or evaluate} \tab \strong{Functions} \cr
+a proportion, a mean or a ratio of two totals \tab \code{n_prop()}/\code{prec_prop()}, \code{n_mean()}/\code{prec_mean()}, \code{n_ratio()}/\code{prec_ratio()} \cr
+several indicators at once, taking the most demanding \tab \code{n_multi()}/\code{prec_multi()} \cr
+a two- or three-stage cluster design, for one indicator or a table of them \tab \code{n_cluster()}/\code{prec_cluster()} \cr
+an allocation across strata or domains, under a budget or a CV target \tab \code{n_alloc()}/\code{prec_alloc()}, \code{strata_bound()} \cr
+a two-phase design that screens or follows up \tab \code{n_twophase()}/\code{prec_twophase()} \cr
+a change between two occasions of a repeated survey \tab \code{n_change()}/\code{prec_change()} \cr
+the average of several occasions of a repeated survey \tab \code{n_pooled()}/\code{prec_pooled()} \cr
+a panel that must still deliver a sample after attrition \tab \code{n_panel()}/\code{prec_panel()} \cr
+the overlap and field schedule a rotation pattern produces \tab \code{design_rotation()}, \code{design_overlap()}, \code{design_schedule()} \cr
+the power of a two-group comparison or a difference-in-differences \tab \code{power_prop()}, \code{power_mean()}, \code{power_did()} \cr
+the design effect, effective size or degrees of freedom of a plan \tab \code{design_effect()}, \code{effective_n()}, \code{design_df()}, \code{varcomp()}
+}
+}
+
 \section{Notation}{
 
 Argument names spell out what a quantity is rather than reproducing the

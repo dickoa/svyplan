@@ -224,4 +224,9 @@ With \code{overlap} set, this is the two-occasion change of one population:
 \code{\link[=n_change]{n_change()}} and \code{\link[=prec_change]{prec_change()}} size and evaluate the same quantity as
 an estimate with a margin of error rather than as a test, and
 \code{\link[=design_overlap]{design_overlap()}} derives the overlap from a rotation schedule.
+
+Other power analysis functions:
+\code{\link[=power_did]{power_did()}},
+\code{\link[=power_mean]{power_mean()}}
 }
+\concept{power analysis functions}

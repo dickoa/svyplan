@@ -53,7 +53,7 @@
 #' the wave-1-only estimate a rotating design sometimes publishes, and they
 #' are not the occasion's precision.
 #'
-#' @family precision functions
+#' @family repeated survey functions
 #' @seealso [n_panel()] for the inverse (solve the recruitment from a
 #'   target), [design_schedule()] for turning a rotating plan into an
 #'   operational schedule, [prec_mean()] and [prec_prop()] for the

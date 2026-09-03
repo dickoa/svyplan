@@ -175,18 +175,11 @@ prec_alloc(jf, n = c(120, 150), measures = jm, targets = jt)
 
 }
 \seealso{
-\code{\link[=n_alloc]{n_alloc()}}.
+\code{\link[=n_alloc]{n_alloc()}}, and \link{n_alloc-generalized} for the joint mode.
 
-Other precision functions:
-\code{\link[=prec_change]{prec_change()}},
-\code{\link[=prec_cluster]{prec_cluster()}},
-\code{\link[=prec_mean]{prec_mean()}},
-\code{\link[=prec_multi]{prec_multi()}},
-\code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
-\code{\link[=prec_panel]{prec_panel()}},
-\code{\link[=prec_pooled]{prec_pooled()}},
-\code{\link[=prec_prop]{prec_prop()}},
-\code{\link[=prec_ratio]{prec_ratio()}},
-\code{\link[=prec_twophase]{prec_twophase()}}
+Other stratified design functions:
+\code{\link[=n_alloc]{n_alloc()}},
+\code{\link{n_alloc-generalized}},
+\code{\link[=strata_bound]{strata_bound()}}
 }
-\concept{precision functions}
+\concept{stratified design functions}

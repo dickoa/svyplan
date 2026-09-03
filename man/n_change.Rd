@@ -141,6 +141,18 @@ specified margin of error or coefficient of variation, given how far the
 two samples overlap.
 }
 \details{
+#'
+\subsection{Level or change}{
+
+A repeated survey publishes three things, and each is sized by its own
+function. The level at one occasion is \code{\link[=n_mean]{n_mean()}} or \code{\link[=n_prop]{n_prop()}} and is a
+function of that occasion's size alone. The change between two occasions
+is this function, which overlap improves. The average of several
+occasions is \code{\link[=n_pooled]{n_pooled()}}, which overlap works against, because the
+covariance it induces is subtracted in a difference and added in a sum. A
+design serving more than one of the three takes the largest of the three
+requirements, since none dominates.
+
 The change variance is \eqn{A/n_2 + B} in the net second-occasion size,
 where
 
@@ -167,6 +179,8 @@ clustered design revisiting the same clusters has a smaller one than a
 design that reclusters between occasions, because the cluster effects
 partly cancel in the difference. Passing an occasion's design effect
 here therefore over-sizes a design that keeps its clusters.
+}
+
 \subsection{When no size is enough, and when any size is}{
 
 Two boundaries are worth knowing before reading a result. Full overlap
@@ -231,16 +245,14 @@ Kish, L. (1965). \emph{Survey Sampling}. Wiley. Chapter 12.
 \code{\link[=n_mean]{n_mean()}} and \code{\link[=n_prop]{n_prop()}} for a single occasion, \code{\link[=power_mean]{power_mean()}} and
 \code{\link[=power_prop]{power_prop()}} to frame the same overlap as a hypothesis test.
 
-Other sample size functions:
-\code{\link[=n_alloc]{n_alloc()}},
-\code{\link[=n_cluster]{n_cluster()}},
-\code{\link[=n_mean]{n_mean()}},
-\code{\link[=n_multi]{n_multi()}},
-\code{\link[=n_multi_cluster]{n_multi_cluster()}},
+Other repeated survey functions:
+\code{\link[=design_overlap]{design_overlap()}},
+\code{\link[=design_rotation]{design_rotation()}},
+\code{\link[=design_schedule]{design_schedule()}},
 \code{\link[=n_panel]{n_panel()}},
 \code{\link[=n_pooled]{n_pooled()}},
-\code{\link[=n_prop]{n_prop()}},
-\code{\link[=n_ratio]{n_ratio()}},
-\code{\link[=n_twophase]{n_twophase()}}
+\code{\link[=prec_change]{prec_change()}},
+\code{\link[=prec_panel]{prec_panel()}},
+\code{\link[=prec_pooled]{prec_pooled()}}
 }
-\concept{sample size functions}
+\concept{repeated survey functions}

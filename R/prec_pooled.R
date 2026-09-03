@@ -1,10 +1,11 @@
-#' Sampling precision for an estimate pooled across occasions
+#' Precision of the average of several occasions of a repeated survey
 #'
-#' Compute the sampling error (SE, margin of error, CV) for the equal-weight
-#' mean of the occasion estimates of a repeated survey, given the size of
-#' each occasion and how far consecutive occasions overlap. An annual
-#' average from quarterly rounds is the ordinary case. This is the inverse
-#' of [n_pooled()].
+#' Compute the sampling error (SE, margin of error, CV) for the average of
+#' several occasions of a repeated survey, the equal-weight mean of the
+#' occasion estimates, given the size of each occasion and how far
+#' consecutive occasions overlap. An annual average from quarterly rounds is
+#' the ordinary case, and that average is what "pooled" names here. This is
+#' the inverse of [n_pooled()].
 #'
 #' @param var For the default method: the population variance \eqn{S^2} on
 #'   one occasion, taken to be the same on each. Supply this or `p`, not
@@ -167,7 +168,7 @@
 #' @references
 #' Kish, L. (1965). *Survey Sampling*. Wiley. Chapter 12.
 #'
-#' @family precision functions
+#' @family repeated survey functions
 #' @seealso [n_pooled()] for the inverse (compute n from a precision
 #'   target), [prec_change()] for the other arm of the trade-off,
 #'   [design_overlap()] for the overlap a rotation schedule gives,

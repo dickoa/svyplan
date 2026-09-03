@@ -176,4 +176,10 @@ survey data. \emph{Survey Methodology}, 24(2), 193--201.
 \code{\link[=design_effect]{design_effect()}} for the other property of a design read off a
 plan, \code{\link[=n_prop]{n_prop()}} and \code{\link[=n_mean]{n_mean()}}, whose \code{df} argument this is the input
 to, and \code{\link[=varcomp]{varcomp()}} for the components a clustered plan is built from.
+
+Other design input functions:
+\code{\link[=design_effect]{design_effect()}},
+\code{\link[=effective_n]{effective_n()}},
+\code{\link[=svyplan]{svyplan()}}
 }
+\concept{design input functions}

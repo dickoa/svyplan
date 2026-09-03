@@ -276,4 +276,10 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 \code{\link[=effective_n]{effective_n()}} for the sample size this design effect costs
 you, \code{\link[=varcomp]{varcomp()}} for estimating \code{icc} and \code{var_ratio}, \code{\link[=n_cluster]{n_cluster()}} for
 optimizing a multistage design directly.
+
+Other design input functions:
+\code{\link[=design_df]{design_df()}},
+\code{\link[=effective_n]{effective_n()}},
+\code{\link[=svyplan]{svyplan()}}
 }
+\concept{design input functions}

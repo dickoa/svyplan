@@ -236,7 +236,7 @@
 #' longitudinal surveys. In P. Lynn (ed.), *Methodology of Longitudinal
 #' Surveys*, 21-33. Wiley.
 #'
-#' @family sample size functions
+#' @family repeated survey functions
 #' @seealso [prec_panel()] for the same design from a recruitment you
 #'   already have, [design_overlap()] for the overlap a rotation produces,
 #'   [design_schedule()] for turning a rotating plan into an operational

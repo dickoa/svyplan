@@ -195,6 +195,7 @@
 #' continuous optimum, the two totals differ by the rounding, not by the
 #' model.
 #'
+#' @family stratified design functions
 #' @seealso [predict.svyplan_strata] to assign new data to strata,
 #'   [n_alloc()] to distribute a sample across an existing set of strata,
 #'   which accepts `$strata` directly, and [svyplan()] for reusable design

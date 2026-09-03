@@ -75,7 +75,17 @@
 #' Nothing here is rounded, so passing a continuous `n` back from
 #' [n_change()] reproduces its `se`, `moe` and `cv` exactly.
 #'
-#' @details
+#' @details#'
+#' ## Level or change
+#'
+#' A repeated survey publishes three things, and each is read by its own
+#' function. The level at one occasion is [prec_mean()] or [prec_prop()] and
+#' is a function of that occasion's size alone. The change between two
+#' occasions is this function, which overlap improves. The average of
+#' several occasions is [prec_pooled()], which overlap works against,
+#' because the covariance it induces is subtracted in a difference and added
+#' in a sum.
+#'
 #' Here `q` is `qnorm(1 - alpha / 2)` by default and
 #' `qt(1 - alpha / 2, df)` when `df` is supplied.
 #'
@@ -145,7 +155,7 @@
 #' @references
 #' Kish, L. (1965). *Survey Sampling*. Wiley. Chapter 12.
 #'
-#' @family precision functions
+#' @family repeated survey functions
 #' @seealso [n_change()] for the inverse (compute n from a precision
 #'   target), [prec_mean()] and [prec_prop()] for a single occasion,
 #'   [power_mean()] and [power_prop()] to frame the same overlap as a

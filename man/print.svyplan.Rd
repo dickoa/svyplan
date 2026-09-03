@@ -155,7 +155,7 @@ downstream package can consume.
 \details{
 \subsection{Print and coercion}{
 
-Constrained designs (\code{n_cluster()}, \code{n_alloc()}, \code{n_multi_cluster()})
+Constrained designs (\code{n_cluster()}, \code{n_alloc()})
 carry two representations: the continuous mathematical
 optimum in the top-level fields (\code{n}, \code{cv}, \code{cost}, ...) and the
 whole-unit field design in \verb{$operational}, whose cost and precision

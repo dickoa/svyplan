@@ -7,8 +7,8 @@ test_that("simple and cluster multi-indicator APIs have invariant classes", {
   )
 
   simple <- n_multi(simple_targets)
-  cluster <- n_multi_cluster(
-    cluster_targets,
+  cluster <- n_cluster(
+    indicators = cluster_targets,
     stage_cost = c(500, 50)
   )
 
@@ -16,7 +16,7 @@ test_that("simple and cluster multi-indicator APIs have invariant classes", {
   expect_s3_class(cluster, "svyplan_cluster")
   expect_error(
     n_multi(cluster_targets, stage_cost = c(500, 50)),
-    "moved to n_multi_cluster"
+    "belongs to n_cluster"
   )
 })
 
@@ -35,25 +35,25 @@ test_that("cluster precision does not require costs", {
     icc_psu = 0.05
   )
 
-  precision <- prec_multi_cluster(targets)
+  precision <- prec_cluster(indicators = targets)
 
   expect_s3_class(precision, "svyplan_prec")
   expect_identical(precision$params$design, "cluster")
   expect_null(precision$params$stage_cost)
-  expect_error(n_multi_cluster(precision), "'stage_cost' is required")
+  expect_error(n_cluster(precision), "'stage_cost' is required")
   expect_s3_class(
-    n_multi_cluster(precision, stage_cost = c(500, 50)),
+    n_cluster(prec_cluster(indicators = targets, stage_cost = c(500, 50))),
     "svyplan_cluster"
   )
 })
 
 test_that("simple and cluster round trips cannot be mixed", {
-  cluster <- n_multi_cluster(
-    data.frame(p = 0.30, cv = 0.10, icc_psu = 0.05),
+  cluster <- n_cluster(
+    indicators = data.frame(p = 0.30, cv = 0.10, icc_psu = 0.05),
     stage_cost = c(500, 50)
   )
-  precision <- prec_multi_cluster(cluster)
+  precision <- prec_cluster(cluster)
 
-  expect_error(prec_multi(cluster), "prec_multi_cluster")
-  expect_error(n_multi(precision), "n_multi_cluster")
+  expect_error(prec_multi(cluster), "prec_cluster")
+  expect_error(n_multi(precision), "n_cluster")
 })

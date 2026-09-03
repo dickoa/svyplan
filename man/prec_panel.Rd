@@ -109,16 +109,14 @@ target), \code{\link[=design_schedule]{design_schedule()}} for turning a rotatin
 operational schedule, \code{\link[=prec_mean]{prec_mean()}} and \code{\link[=prec_prop]{prec_prop()}} for the
 single-occasion precision the waves are evaluated with.
 
-Other precision functions:
-\code{\link[=prec_alloc]{prec_alloc()}},
+Other repeated survey functions:
+\code{\link[=design_overlap]{design_overlap()}},
+\code{\link[=design_rotation]{design_rotation()}},
+\code{\link[=design_schedule]{design_schedule()}},
+\code{\link[=n_change]{n_change()}},
+\code{\link[=n_panel]{n_panel()}},
+\code{\link[=n_pooled]{n_pooled()}},
 \code{\link[=prec_change]{prec_change()}},
-\code{\link[=prec_cluster]{prec_cluster()}},
-\code{\link[=prec_mean]{prec_mean()}},
-\code{\link[=prec_multi]{prec_multi()}},
-\code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
-\code{\link[=prec_pooled]{prec_pooled()}},
-\code{\link[=prec_prop]{prec_prop()}},
-\code{\link[=prec_ratio]{prec_ratio()}},
-\code{\link[=prec_twophase]{prec_twophase()}}
+\code{\link[=prec_pooled]{prec_pooled()}}
 }
-\concept{precision functions}
+\concept{repeated survey functions}

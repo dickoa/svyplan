@@ -1092,20 +1092,20 @@ test_that("a loose target settles on a single PSU rather than below one", {
   expect_equal(op$cost, ref$cost, tolerance = 1e-9)
 })
 
-test_that("n_multi_cluster reaches the same three-stage design as n_cluster", {
+test_that("one indicator row reaches the same three-stage design", {
   ind <- data.frame(name = "x", var = 1.5, mu = 1, cv = 0.05,
                     icc_psu = 0.02, icc_ssu = 0.0005)
   nc <- suppressWarnings(n_cluster(cv = 0.05, icc = c(0.02, 0.0005),
                                    unit_relvar = 1.5,
                                    stage_cost = c(1000, 200, 0.02)))
-  nm <- suppressWarnings(n_multi_cluster(ind, stage_cost = c(1000, 200, 0.02)))
+  nm <- suppressWarnings(n_cluster(indicators = ind, stage_cost = c(1000, 200, 0.02)))
   expect_identical(as.integer(nm$operational$n), as.integer(nc$operational$n))
   expect_equal(nm$operational$cost, nc$operational$cost)
 
   ncb <- suppressWarnings(n_cluster(budget = 2e5, icc = c(0.02, 0.005),
                                     stage_cost = c(500, 100, 20)))
-  nmb <- suppressWarnings(n_multi_cluster(
-    data.frame(name = "x", var = 1, mu = 1, cv = 0.05,
+  nmb <- suppressWarnings(n_cluster(
+    indicators = data.frame(name = "x", var = 1, mu = 1, cv = 0.05,
                icc_psu = 0.02, icc_ssu = 0.005),
     stage_cost = c(500, 100, 20), budget = 2e5
   ))
@@ -1117,10 +1117,80 @@ test_that("the binding indicator drives the multi-indicator three-stage search",
     name = c("loose", "tight"), var = c(1, 1.5), mu = c(1, 1),
     cv = c(0.2, 0.05), icc_psu = c(0.01, 0.02), icc_ssu = c(0.02, 0.0005)
   )
-  nm <- suppressWarnings(n_multi_cluster(ind, stage_cost = c(1000, 200, 0.02)))
-  tight <- suppressWarnings(n_multi_cluster(ind[2, ],
+  nm <- suppressWarnings(n_cluster(indicators = ind, stage_cost = c(1000, 200, 0.02)))
+  tight <- suppressWarnings(n_cluster(indicators = ind[2, ],
                                             stage_cost = c(1000, 200, 0.02)))
   expect_identical(as.integer(nm$operational$n),
                    as.integer(tight$operational$n))
   expect_true(all(nm$operational$cv_by_target <= ind$cv + 1e-12))
+})
+
+## The two entry modes refuse each other's arguments
+##
+## A scalar handed to the several-indicators mode is a value the frame already
+## carries per row, and a domain argument handed to the scalar mode names a
+## structure a single indicator does not have. Either one silently ignored
+## would plan a design nobody asked for.
+
+test_that("the several-indicators mode refuses the scalar design inputs", {
+  ind <- data.frame(name = "y", p = 0.3, cv = 0.05, icc_psu = 0.05)
+  base <- list(indicators = ind, stage_cost = c(500, 50))
+  refused <- list(
+    icc = 0.05, unit_relvar = 2, var_ratio = 1.2, cv = 0.05
+  )
+  columns <- c(icc = "icc_psu", unit_relvar = "unit_relvar",
+               var_ratio = "var_ratio_psu", cv = "cv")
+  for (nm in names(refused)) {
+    expect_error(
+      do.call(n_cluster, c(base, refused[nm])),
+      sprintf("'%s' is carried by the 'indicators' column '%s'",
+              nm, columns[[nm]]),
+      info = nm
+    )
+  }
+  expect_error(
+    do.call(n_cluster, c(base, refused[c("icc", "cv")])),
+    "'icc', 'cv' are carried by the 'indicators' columns 'icc_psu', 'cv'"
+  )
+})
+
+test_that("the scalar mode refuses the several-indicators arguments", {
+  base <- list(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
+  refused <- list(
+    domains = "region", allocation = "joint",
+    domain_sampling = "separate", min_n_domain = 100
+  )
+  for (nm in names(refused)) {
+    expect_error(
+      do.call(n_cluster, c(base, refused[nm])),
+      sprintf("'%s' applies to 'indicators'", nm),
+      info = nm
+    )
+  }
+  expect_error(
+    do.call(n_cluster, c(base, refused[c("domains", "min_n_domain")])),
+    "'domains', 'min_n_domain' apply to 'indicators'"
+  )
+})
+
+test_that("a profile supplies only the defaults the entry mode accepts", {
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, unit_relvar = 7 / 3)
+  ind <- data.frame(name = "y", p = 0.3, cv = 0.05, icc_psu = 0.05)
+  from_plan <- n_cluster(indicators = ind, plan = plan)
+  direct <- n_cluster(indicators = ind, stage_cost = c(500, 50))
+  expect_equal(from_plan$n, direct$n)
+
+  scalar_plan <- svyplan(stage_cost = c(500, 50), min_n_domain = 100)
+  expect_s3_class(
+    n_cluster(icc = 0.05, cv = 0.05, plan = scalar_plan),
+    "svyplan_cluster"
+  )
+})
+
+test_that("an indicator table handed to the first slot is named", {
+  ind <- data.frame(name = "y", p = 0.3, cv = 0.05, icc_psu = 0.05)
+  expect_error(
+    n_cluster(ind, icc = 0.05, cv = 0.05),
+    "table of indicators goes to 'indicators'"
+  )
 })

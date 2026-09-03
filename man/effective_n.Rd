@@ -154,4 +154,10 @@ effective_n(n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05))
 }
 \seealso{
 \code{\link[=design_effect]{design_effect()}} for the design effect itself.
+
+Other design input functions:
+\code{\link[=design_df]{design_df()}},
+\code{\link[=design_effect]{design_effect()}},
+\code{\link[=svyplan]{svyplan()}}
 }
+\concept{design input functions}

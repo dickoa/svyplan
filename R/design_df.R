@@ -96,6 +96,7 @@
 #' proportions with small expected number of positive counts estimated from
 #' survey data. *Survey Methodology*, 24(2), 193--201.
 #'
+#' @family design input functions
 #' @seealso [design_effect()] for the other property of a design read off a
 #'   plan, [n_prop()] and [n_mean()], whose `df` argument this is the input
 #'   to, and [varcomp()] for the components a clustered plan is built from.

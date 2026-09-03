@@ -118,7 +118,7 @@
 #' *Practical Tools for Designing and Weighting Survey Samples*
 #' (2nd ed.). Springer.
 #'
-#' @family sample size functions
+#' @family proportion, mean and ratio functions
 #' @seealso [n_prop()] for proportions, [n_cluster()] for multistage designs,
 #'   [n_multi()] for multiple indicators, [prec_mean()] for the inverse.
 #'

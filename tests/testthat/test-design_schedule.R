@@ -39,7 +39,7 @@ test_that("an immediate schedule has stable components and a dense grid", {
 
   x <- design_schedule(
     plan,
-    design_overlap("4"),
+    design_rotation("4"),
     horizon = 6,
     horizon_policy = "continuing",
     refreshment = "entrant_register",
@@ -99,7 +99,7 @@ test_that("generated schedules reconcile with the launch table where applicable"
     for (policy in c("continuing", "truncate_lives")) {
       x <- design_schedule(
         plan,
-        design_overlap("4"),
+        design_rotation("4"),
         6,
         policy,
         refreshment = "entrant_register",
@@ -132,7 +132,7 @@ test_that("generated schedules reconcile with the launch table where applicable"
   plan <- schedule_panel_plan("immediate")
   closed <- design_schedule(
     plan,
-    design_overlap("4"),
+    design_rotation("4"),
     6,
     "close_intake",
     refreshment = "entrant_register",
@@ -150,7 +150,7 @@ test_that("overlap matches the life only from mature membership origins", {
 
   immediate <- design_schedule(
     schedule_panel_plan("immediate"),
-    design_overlap("4"),
+    design_rotation("4"),
     8,
     "continuing",
     refreshment = "entrant_register",
@@ -170,7 +170,7 @@ test_that("overlap matches the life only from mature membership origins", {
 
   gradual <- design_schedule(
     schedule_panel_plan("gradual"),
-    design_overlap("4"),
+    design_rotation("4"),
     8,
     "continuing",
     refreshment = "entrant_register",
@@ -197,7 +197,7 @@ test_that("horizon policies separate issue, commitments and tail composition", {
   make <- function(policy) {
     design_schedule(
       plan,
-      design_overlap("4"),
+      design_rotation("4"),
       6,
       policy,
       refreshment = "entrant_register",
@@ -238,7 +238,7 @@ test_that("horizon policies separate issue, commitments and tail composition", {
 test_that("a gradual launch has one startup panel and reaches composition at L", {
   x <- design_schedule(
     schedule_panel_plan("gradual"),
-    design_overlap("4"),
+    design_rotation("4"),
     6,
     "continuing",
     refreshment = "whole_vintage",
@@ -268,7 +268,7 @@ test_that("inputs that do not define the first schema are refused", {
   expect_error(
     design_schedule(
       fixed,
-      design_overlap("4"),
+      design_rotation("4"),
       6,
       "continuing",
       refreshment = "entrant_register",
@@ -279,7 +279,7 @@ test_that("inputs that do not define the first schema are refused", {
   expect_error(
     design_schedule(
       launchless,
-      design_overlap("4"),
+      design_rotation("4"),
       6,
       "continuing",
       refreshment = "entrant_register",
@@ -290,7 +290,7 @@ test_that("inputs that do not define the first schema are refused", {
   expect_error(
     design_schedule(
       rotating,
-      design_overlap("3"),
+      design_rotation("3"),
       6,
       "continuing",
       refreshment = "entrant_register",
@@ -301,7 +301,7 @@ test_that("inputs that do not define the first schema are refused", {
   expect_error(
     design_schedule(
       rotating,
-      design_overlap("1-0-1"),
+      design_rotation("1-0-1"),
       6,
       "continuing",
       refreshment = "entrant_register",
@@ -312,7 +312,7 @@ test_that("inputs that do not define the first schema are refused", {
   expect_error(
     design_schedule(
       rotating,
-      design_overlap(c(1, 0.5, 0.5, 0.5)),
+      design_rotation(c(1, 0.5, 0.5, 0.5)),
       6,
       "continuing",
       refreshment = "entrant_register",
@@ -323,7 +323,7 @@ test_that("inputs that do not define the first schema are refused", {
   expect_error(
     design_schedule(
       rotating,
-      design_overlap("4"),
+      design_rotation("4"),
       0,
       "continuing",
       refreshment = "entrant_register",
@@ -334,7 +334,7 @@ test_that("inputs that do not define the first schema are refused", {
   expect_error(
     design_schedule(
       rotating,
-      design_overlap("4"),
+      design_rotation("4"),
       3,
       "close_intake",
       refreshment = "entrant_register",
@@ -345,7 +345,7 @@ test_that("inputs that do not define the first schema are refused", {
   expect_error(
     design_schedule(
       rotating,
-      design_overlap("4"),
+      design_rotation("4"),
       6,
       "continuing",
       refreshment = "entrant_register",
@@ -356,7 +356,7 @@ test_that("inputs that do not define the first schema are refused", {
   expect_error(
     design_schedule(
       rotating,
-      design_overlap("4"),
+      design_rotation("4"),
       6,
       "later",
       refreshment = "entrant_register",
@@ -367,7 +367,7 @@ test_that("inputs that do not define the first schema are refused", {
   expect_error(
     design_schedule(
       rotating,
-      design_overlap("4"),
+      design_rotation("4"),
       6,
       "continuing",
       refreshment = "other",
@@ -378,7 +378,7 @@ test_that("inputs that do not define the first schema are refused", {
   expect_error(
     design_schedule(
       rotating,
-      design_overlap("4"),
+      design_rotation("4"),
       6,
       "continuing",
       refreshment = "entrant_register",
@@ -394,7 +394,7 @@ test_that("horizon policy and rounding are explicit", {
   expect_error(
     design_schedule(
       plan,
-      design_overlap("4"),
+      design_rotation("4"),
       horizon_policy = "continuing",
       refreshment = "entrant_register",
       rounding = "ceiling"
@@ -404,7 +404,7 @@ test_that("horizon policy and rounding are explicit", {
   expect_error(
     design_schedule(
       plan,
-      design_overlap("4"),
+      design_rotation("4"),
       6,
       refreshment = "entrant_register",
       rounding = "ceiling"
@@ -414,7 +414,7 @@ test_that("horizon policy and rounding are explicit", {
   expect_error(
     design_schedule(
       plan,
-      design_overlap("4"),
+      design_rotation("4"),
       6,
       "continuing",
       refreshment = "entrant_register"
@@ -424,7 +424,7 @@ test_that("horizon policy and rounding are explicit", {
   expect_error(
     design_schedule(
       plan,
-      design_overlap("4"),
+      design_rotation("4"),
       6,
       "continuing",
       rounding = "ceiling"
@@ -436,7 +436,7 @@ test_that("horizon policy and rounding are explicit", {
 test_that("the versioned schedule schema is validated at construction", {
   x <- design_schedule(
     schedule_panel_plan(),
-    design_overlap("4"),
+    design_rotation("4"),
     6,
     "continuing",
     refreshment = "entrant_register",
@@ -531,7 +531,7 @@ test_that("operational counts remain whole-valued above the integer range", {
   expect_warning(
     x <- design_schedule(
       plan,
-      design_overlap("4"),
+      design_rotation("4"),
       6,
       "continuing",
       refreshment = "entrant_register",
@@ -551,7 +551,7 @@ test_that("operational counts remain whole-valued above the integer range", {
 test_that("schedule replacement cannot create cross-field contradictions", {
   x <- design_schedule(
     schedule_panel_plan(),
-    design_overlap("4"),
+    design_rotation("4"),
     6,
     "continuing",
     refreshment = "entrant_register",
@@ -587,7 +587,7 @@ test_that("schedule replacement cannot create cross-field contradictions", {
 test_that("schedule methods lead with the issue profile", {
   x <- design_schedule(
     schedule_panel_plan(),
-    design_overlap("4"),
+    design_rotation("4"),
     6,
     "continuing",
     refreshment = "entrant_register",
@@ -605,7 +605,7 @@ test_that("schedule methods lead with the issue profile", {
 test_that("a schedule survives an RDS round trip", {
   x <- design_schedule(
     schedule_panel_plan(),
-    design_overlap("4"),
+    design_rotation("4"),
     6,
     "continuing",
     refreshment = "entrant_register",
@@ -629,7 +629,7 @@ test_that("a schedule survives an RDS round trip", {
 
 test_that("print states the issue profile as runs, not one row per occasion", {
   mk <- function(h, policy = "continuing") {
-    design_schedule(schedule_panel_plan(), design_overlap("4"), h, policy,
+    design_schedule(schedule_panel_plan(), design_rotation("4"), h, policy,
                     refreshment = "entrant_register", rounding = "ceiling")
   }
   # A schedule's length is set by the reporting window, not by the design, so
@@ -648,7 +648,7 @@ test_that("print states the issue profile as runs, not one row per occasion", {
 
 test_that("each horizon policy states its own profile", {
   mk <- function(h, policy) {
-    design_schedule(schedule_panel_plan(), design_overlap("4"), h, policy,
+    design_schedule(schedule_panel_plan(), design_rotation("4"), h, policy,
                     refreshment = "entrant_register", rounding = "ceiling")
   }
   # Intake stopping is a fact about the schedule, not a gap in the report.
@@ -664,7 +664,7 @@ test_that("each horizon policy states its own profile", {
 })
 
 test_that("the life line keeps the branch where no steady state is reached", {
-  short <- design_schedule(schedule_panel_plan(), design_overlap("4"), 2L,
+  short <- design_schedule(schedule_panel_plan(), design_rotation("4"), 2L,
                            "continuing", refreshment = "entrant_register",
                            rounding = "ceiling")
   expect_true(is.na(short$steady_state_from))
@@ -674,7 +674,7 @@ test_that("the life line keeps the branch where no steady state is reached", {
 })
 
 test_that("summary carries every table print no longer shows", {
-  x <- design_schedule(schedule_panel_plan(), design_overlap("4"), 6L,
+  x <- design_schedule(schedule_panel_plan(), design_rotation("4"), 6L,
                        "continuing", refreshment = "entrant_register",
                        rounding = "ceiling")
   sm <- summary(x)
@@ -694,4 +694,26 @@ test_that("summary carries every table print no longer shows", {
   shown <- ceiling(x$n_entrants) * x$n_cohorts
   expect_true(any(grepl(sprintf("%d in sample", shown), out)))
   expect_identical(shown, x$issue$operational_issue[[1L]])
+})
+
+## A rotation, and nothing that merely describes one
+
+test_that("only a svyplan_rotation is accepted as the rotation", {
+  plan <- schedule_panel_plan()
+  build <- function(rot) {
+    design_schedule(plan, rot, 6, "continuing",
+                    refreshment = "entrant_register", rounding = "ceiling")
+  }
+  for (bad in list("4", c(1, 1, 1, 1), design_overlap("4"))) {
+    expect_error(build(bad), "svyplan_rotation from design_rotation")
+  }
+  expect_s3_class(build(design_rotation("4")), "svyplan_schedule")
+})
+
+test_that("the manifest computes its own overlap from the rotation", {
+  out <- design_schedule(
+    schedule_panel_plan(), design_rotation("4"), 6, "continuing",
+    refreshment = "entrant_register", rounding = "ceiling"
+  )
+  expect_identical(out$overlap, as.data.frame(design_overlap("4")))
 })

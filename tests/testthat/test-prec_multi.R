@@ -102,7 +102,7 @@ test_that("prec_multi multistage mode computes per-indicator CV", {
     n_per_psu     = c(12, 12),
     icc_psu = c(0.02, 0.05)
   )
-  result <- prec_multi_cluster(targets, stage_cost = c(500, 50))
+  result <- prec_cluster(indicators = targets, stage_cost = c(500, 50))
   expect_equal(result$type, "multi")
   expect_equal(nrow(result$detail), 2L)
   expect_true(all(!is.na(result$detail$.cv)))
@@ -175,7 +175,7 @@ test_that("prec_multi cluster requires n_per_psu column", {
     p = 0.3, n = 50, icc_psu = 0.05
   )
   expect_error(
-    prec_multi_cluster(targets, stage_cost = c(500, 50)),
+    prec_cluster(indicators = targets, stage_cost = c(500, 50)),
     "n_per_psu.*required"
   )
 })
@@ -185,7 +185,7 @@ test_that("prec_multi 3-stage requires n_per_ssu column", {
     p = 0.3, n = 50, n_per_psu = 10, icc_psu = 0.05
   )
   expect_error(
-    prec_multi_cluster(targets, stage_cost = c(500, 100, 50)),
+    prec_cluster(indicators = targets, stage_cost = c(500, 100, 50)),
     "n_per_ssu.*required"
   )
 })
@@ -195,7 +195,7 @@ test_that("prec_multi cluster rejects NA in n_per_psu", {
     p = c(0.3, 0.1), n = c(50, 50), n_per_psu = c(10, NA), icc_psu = c(0.05, 0.02)
   )
   expect_error(
-    prec_multi_cluster(targets, stage_cost = c(500, 50)),
+    prec_cluster(indicators = targets, stage_cost = c(500, 50)),
     "n_per_psu.*required"
   )
 })
@@ -205,7 +205,7 @@ test_that("prec_multi cluster rejects negative unit_relvar", {
     p = 0.3, n = 50, n_per_psu = 10, icc_psu = 0.05, unit_relvar = -1
   )
   expect_error(
-    prec_multi_cluster(targets, stage_cost = c(500, 50)),
+    prec_cluster(indicators = targets, stage_cost = c(500, 50)),
     "unit_relvar.*positive"
   )
 })
@@ -215,7 +215,7 @@ test_that("prec_multi cluster rejects zero unit_relvar", {
     p = 0.3, n = 50, n_per_psu = 10, icc_psu = 0.05, unit_relvar = 0
   )
   expect_error(
-    prec_multi_cluster(targets, stage_cost = c(500, 50)),
+    prec_cluster(indicators = targets, stage_cost = c(500, 50)),
     "unit_relvar.*positive"
   )
 })
@@ -225,7 +225,7 @@ test_that("prec_multi cluster rejects negative var_ratio_psu", {
     p = 0.3, n = 50, n_per_psu = 10, icc_psu = 0.05, var_ratio_psu = -1
   )
   expect_error(
-    prec_multi_cluster(targets, stage_cost = c(500, 50)),
+    prec_cluster(indicators = targets, stage_cost = c(500, 50)),
     "var_ratio_psu.*positive"
   )
 })
@@ -235,7 +235,7 @@ test_that("prec_multi cluster rejects negative var_ratio_ssu", {
     p = 0.3, n = 50, n_per_psu = 10, icc_psu = 0.05, var_ratio_ssu = -1
   )
   expect_error(
-    prec_multi_cluster(targets, stage_cost = c(500, 50)),
+    prec_cluster(indicators = targets, stage_cost = c(500, 50)),
     "var_ratio_ssu.*positive"
   )
 })
@@ -243,7 +243,7 @@ test_that("prec_multi cluster rejects negative var_ratio_ssu", {
 test_that("prec_multi cluster rejects missing icc_psu", {
   targets <- data.frame(p = 0.3, n = 50, n_per_psu = 10)
   expect_error(
-    prec_multi_cluster(targets, stage_cost = c(500, 50)),
+    prec_cluster(indicators = targets, stage_cost = c(500, 50)),
     "icc_psu.*required"
   )
 })
@@ -251,12 +251,12 @@ test_that("prec_multi cluster rejects missing icc_psu", {
 test_that("prec_multi cluster rejects icc_psu out of range", {
   targets <- data.frame(p = 0.3, n = 50, n_per_psu = 2, icc_psu = -2)
   expect_error(
-    prec_multi_cluster(targets, stage_cost = c(500, 50)),
+    prec_cluster(indicators = targets, stage_cost = c(500, 50)),
     "icc_psu.*\\[0, 1\\]"
   )
   targets2 <- data.frame(p = 0.3, n = 50, n_per_psu = 2, icc_psu = 1.5)
   expect_error(
-    prec_multi_cluster(targets2, stage_cost = c(500, 50)),
+    prec_cluster(indicators = targets2, stage_cost = c(500, 50)),
     "icc_psu.*\\[0, 1\\]"
   )
 })
@@ -264,7 +264,7 @@ test_that("prec_multi cluster rejects icc_psu out of range", {
 test_that("prec_multi cluster rejects NA icc_psu", {
   targets <- data.frame(p = 0.3, n = 50, n_per_psu = 10, icc_psu = NA_real_)
   expect_error(
-    prec_multi_cluster(targets, stage_cost = c(500, 50)),
+    prec_cluster(indicators = targets, stage_cost = c(500, 50)),
     "icc_psu.*NA"
   )
 })
@@ -272,7 +272,7 @@ test_that("prec_multi cluster rejects NA icc_psu", {
 test_that("prec_multi 3-stage rejects missing icc_ssu", {
   targets <- data.frame(p = 0.3, n = 50, n_per_psu = 10, n_per_ssu = 5, icc_psu = 0.05)
   expect_error(
-    prec_multi_cluster(targets, stage_cost = c(500, 100, 50)),
+    prec_cluster(indicators = targets, stage_cost = c(500, 100, 50)),
     "icc_ssu.*required"
   )
 })
@@ -282,7 +282,7 @@ test_that("prec_multi 3-stage rejects NA icc_ssu", {
     p = 0.3, n = 50, n_per_psu = 10, n_per_ssu = 5, icc_psu = 0.05, icc_ssu = NA_real_
   )
   expect_error(
-    prec_multi_cluster(targets, stage_cost = c(500, 100, 50)),
+    prec_cluster(indicators = targets, stage_cost = c(500, 100, 50)),
     "icc_ssu.*NA"
   )
 })
@@ -298,14 +298,14 @@ test_that("prop_method reaches the multistage path and Wald is unchanged", {
   sizes <- vapply(c("wald", "wilson", "logodds", "beta"), function(m) {
     tg <- base
     tg$prop_method <- m
-    n_multi_cluster(tg, stage_cost = c(500, 50))$total_n
+    n_cluster(indicators = tg, stage_cost = c(500, 50))$total_n
   }, numeric(1L))
 
   # A Wald moe target still converts as moe / (z p), so the Wald size is the
   # one the package returned before the conversion became method-specific.
   expect_equal(unname(sizes[["wald"]]), 546.5310, tolerance = 1e-4)
   expect_equal(unname(sizes[["wald"]]),
-               n_multi_cluster(base, stage_cost = c(500, 50))$total_n,
+               n_cluster(indicators = base, stage_cost = c(500, 50))$total_n,
                tolerance = 1e-10)
 
   # The stricter intervals demand more, in the order they demand it in the
@@ -317,7 +317,7 @@ test_that("the multistage moe round trip closes under every method", {
   for (m in c("wald", "wilson", "logodds", "beta")) {
     tg <- data.frame(name = "stunting", p = 0.10, moe = 0.03, icc_psu = 0.02,
                      prop_method = m)
-    achieved <- prec_multi_cluster(n_multi_cluster(tg, stage_cost = c(500, 50)))
+    achieved <- prec_cluster(n_cluster(indicators = tg, stage_cost = c(500, 50)))
     expect_equal(achieved$detail$.moe, 0.03, tolerance = 1e-8)
     expect_equal(achieved$detail$.se, achieved$detail$.cv * 0.10,
                  tolerance = 1e-12)
@@ -327,12 +327,12 @@ test_that("the multistage moe round trip closes under every method", {
 test_that("a negative mean keeps the multistage moe conversion positive", {
   tg <- data.frame(name = "balance", var = 100, mu = -10, moe = 1,
                    icc_psu = 0.05)
-  res <- n_multi_cluster(tg, stage_cost = c(500, 50))
+  res <- n_cluster(indicators = tg, stage_cost = c(500, 50))
   expect_gt(res$detail$.cv_target, 0)
   expect_equal(res$detail$.cv_target, res$detail$.cv_achieved,
                tolerance = 1e-6)
 
-  achieved <- prec_multi_cluster(res)
+  achieved <- prec_cluster(res)
   expect_gt(achieved$detail$.se, 0)
   expect_equal(achieved$detail$.moe, 1, tolerance = 1e-8)
 })
@@ -371,17 +371,17 @@ test_that("a negative mean does not misdirect budget-mode binding", {
   # makes its target negative, so the worst-ratio search cannot select it.
   tg <- data.frame(name = c("balance", "income"), var = c(100, 400),
                    mu = c(-10, 50), moe = c(1, 10), icc_psu = c(0.05, 0.05))
-  res <- n_multi_cluster(tg, stage_cost = c(500, 50), budget = 200000)
+  res <- n_cluster(indicators = tg, stage_cost = c(500, 50), budget = 200000)
 
   expect_true(all(res$detail$.cv_target > 0))
   expect_equal(res$binding, "balance")
   expect_true(res$detail$.binding[res$detail$name == "balance"])
 })
 
-## The default prec_multi_cluster() path reported only .cv, leaving .se, .moe
+## The default prec_cluster() path reported only .cv, leaving .se, .moe
 ## and .rmoe NA against a \value that promises all four.
 
-test_that("prec_multi_cluster() fills every detail column from sizes alone", {
+test_that("prec_cluster() fills every detail column from sizes alone", {
   indicators <- data.frame(
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
@@ -389,7 +389,7 @@ test_that("prec_multi_cluster() fills every detail column from sizes alone", {
     n_per_psu = c(12, 12),
     icc_psu = c(0.02, 0.05)
   )
-  d <- prec_multi_cluster(indicators)$detail
+  d <- prec_cluster(indicators = indicators)$detail
 
   expect_true(all(is.finite(d$.se)))
   expect_true(all(is.finite(d$.moe)))
@@ -401,14 +401,14 @@ test_that("prec_multi_cluster() fills every detail column from sizes alone", {
   expect_equal(d$.rmoe, d$.moe / indicators$p, tolerance = 1e-12)
 })
 
-test_that("prec_multi_cluster() scales .se by each estimand without a target", {
-  mean_row <- prec_multi_cluster(data.frame(
+test_that("prec_cluster() scales .se by each estimand without a target", {
+  mean_row <- prec_cluster(indicators = data.frame(
     var = 100, mu = -10, n = 60, n_per_psu = 12, icc_psu = 0.05
   ))$detail
   expect_gt(mean_row$.se, 0)
   expect_equal(mean_row$.se, mean_row$.cv * 10, tolerance = 1e-12)
 
-  ratio_row <- prec_multi_cluster(data.frame(
+  ratio_row <- prec_cluster(indicators = data.frame(
     r = 0.4, cv_num = 0.5, cv_den = 0.3, component_cor = 0.6,
     n = 60, n_per_psu = 12, icc_psu = 0.03
   ))$detail
@@ -417,12 +417,12 @@ test_that("prec_multi_cluster() scales .se by each estimand without a target", {
 })
 
 test_that("a cv-target allocation reports .se and .moe on the way back", {
-  fit <- n_multi_cluster(
-    data.frame(name = c("a", "b"), p = c(0.3, 0.1), cv = c(0.10, 0.15),
+  fit <- n_cluster(
+    indicators = data.frame(name = c("a", "b"), p = c(0.3, 0.1), cv = c(0.10, 0.15),
                icc_psu = c(0.02, 0.05)),
     stage_cost = c(500, 50)
   )
-  d <- prec_multi_cluster(fit)$detail
+  d <- prec_cluster(fit)$detail
 
   expect_true(all(is.finite(d$.se)))
   expect_equal(d$.se, d$.cv * c(0.3, 0.1), tolerance = 1e-12)
@@ -431,17 +431,20 @@ test_that("a cv-target allocation reports .se and .moe on the way back", {
 })
 
 test_that("a prec object carrying no mode round trips on its cv", {
-  # n_multi_cluster.svyplan_prec() reads .moe only on a stored "moe" mode,
+  # The indicators round trip reads .moe only on a stored "moe" mode,
   # never on the column being populated. Now that a result built from sizes
   # alone carries a .moe, keying off the column instead would silently
   # restate the target through a row's interval method, exact only under Wald.
-  p <- prec_multi_cluster(data.frame(
-    name = c("a", "b"), p = c(0.30, 0.10), n = c(60, 60),
-    n_per_psu = c(12, 12), icc_psu = c(0.02, 0.05)
-  ))
+  p <- prec_cluster(
+    indicators = data.frame(
+      name = c("a", "b"), p = c(0.30, 0.10), n = c(60, 60),
+      n_per_psu = c(12, 12), icc_psu = c(0.02, 0.05)
+    ),
+    stage_cost = c(500, 50)
+  )
   expect_null(p$params$mode)
 
-  back <- n_multi_cluster(p, stage_cost = c(500, 50))
+  back <- n_cluster(p)
   expect_equal(back$params$mode, "cv")
   expect_equal(back$detail$.cv_target, p$detail$.cv, tolerance = 1e-10)
 })

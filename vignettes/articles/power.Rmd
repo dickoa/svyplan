@@ -56,7 +56,7 @@ power_prop(p1 = 0.70, n = 1500, deff = 2.0)
 
 ### Panel surveys
 
-The power family takes the same `overlap` and `overlap_cor` as `n_change()`, and `design_overlap()` supplies the first of them from a rotation schedule. If the follow-up resamples a fraction of the original households and the between-round correlation is known, the required sample size drops:
+The power family takes the same `overlap` and `overlap_cor` as `n_change()`, and `design_overlap()` supplies the first of them from a `design_rotation()`. If the follow-up resamples a fraction of the original households and the between-round correlation is known, the required sample size drops:
 
 ```{r power-panel}
 power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0,
@@ -166,7 +166,7 @@ A typical planning sequence for a national household survey ties several `svypla
 4. Evaluate achieved precision with `prec_multi()`
 5. Run sensitivity analysis with `predict()`
 6. If frame data is available, estimate variance components with `varcomp()`
-7. Optimize the multistage allocation with `n_cluster()` or `n_multi_cluster()`
+7. Optimize the multistage allocation with `n_cluster()`
 8. Determine strata boundaries with `strata_bound()`
 9. Check that the design has adequate power with `power_prop()` / `power_mean()`
 

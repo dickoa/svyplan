@@ -49,10 +49,10 @@ field.
   optimum is reported separately from the feasible whole-unit recommendation.
 * `psu` gives `n_alloc()` a PSU register, which separates the PSUs a PPS design
   would select with certainty and reports the take each fielded PSU carries.
-* `n_multi()` and `n_multi_cluster()` size a table of indicators, with optional
-  per-domain sizing and a `min_n_domain` floor. Multistage designs have their
-  own function and class, so a cluster argument never changes what `n_multi()`
-  returns.
+* `n_multi()` sizes a table of indicators, with optional per-domain sizing and
+  a `min_n_domain` floor. `n_cluster(indicators = )` and
+  `prec_cluster(indicators = )` take the same table for a multistage design, so
+  a cluster argument never changes what `n_multi()` returns.
 * `n_twophase()` allocates a two-phase sample. One allocator covers double
   sampling for stratification and nonresponse follow-up, which differ only in
   which strata are marked `take_all`. Every result prices the single-phase
@@ -80,8 +80,7 @@ field.
 * Each `n_*` function has a `prec_*` counterpart reporting `se`, `moe`, `cv`,
   and `rmoe` for a size already chosen, namely `prec_prop()`, `prec_mean()`,
   `prec_ratio()`, `prec_cluster()`, `prec_alloc()`, `prec_multi()`,
-  `prec_multi_cluster()`, `prec_twophase()`, `prec_change()`, `prec_pooled()`,
-  and `prec_panel()`.
+  `prec_twophase()`, `prec_change()`, `prec_pooled()`, and `prec_panel()`.
 * `prec_prop()` and `prec_mean()` also solve the remaining direction. Supplying
   `cv` or `rmoe` in place of the level returns the smallest estimand the design
   measures that precisely, which is the planning form of a publication
@@ -139,9 +138,14 @@ field.
   estimator will have, the planning analogue of `survey::degf()`, with additive
   per-stratum and non-additive per-domain detail. `df` switches the interval
   quantile from the normal to `t` in every function that builds an interval.
-* `design_overlap()` reports the issued-sample overlap a rotation schedule
-  produces at every lag, from a compact spec in either notation the literature
-  uses. `plot()` draws the rotation chart the design would be published as.
+* `design_rotation()` declares the occasions a unit spends in and out of
+  sample over its whole life, from a compact spec in either notation the
+  literature uses or from an explicit per-occasion take. It is the object
+  `design_overlap()` and `design_schedule()` both read, so a pattern is parsed
+  in one place.
+* `design_overlap()` reports the issued-sample overlap that rotation produces
+  at every lag. `plot()` draws the rotation chart the design would be
+  published as.
 
 ## Survey plan profiles
 

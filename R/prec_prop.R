@@ -166,7 +166,7 @@
 #' size under that formula. The round-trip will not be exact because `n`
 #' was determined under the original method.
 #'
-#' @family precision functions
+#' @family proportion, mean and ratio functions
 #' @seealso [n_prop()] for the inverse (compute n from a precision target),
 #'   [prec_mean()] for continuous variables.
 #'

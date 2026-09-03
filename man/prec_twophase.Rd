@@ -73,16 +73,7 @@ prec_twophase(frame, n_phase1 = 2000, phase1_cost = 1)
 \seealso{
 \code{\link[=n_twophase]{n_twophase()}} for the inverse.
 
-Other precision functions:
-\code{\link[=prec_alloc]{prec_alloc()}},
-\code{\link[=prec_change]{prec_change()}},
-\code{\link[=prec_cluster]{prec_cluster()}},
-\code{\link[=prec_mean]{prec_mean()}},
-\code{\link[=prec_multi]{prec_multi()}},
-\code{\link[=prec_multi_cluster]{prec_multi_cluster()}},
-\code{\link[=prec_panel]{prec_panel()}},
-\code{\link[=prec_pooled]{prec_pooled()}},
-\code{\link[=prec_prop]{prec_prop()}},
-\code{\link[=prec_ratio]{prec_ratio()}}
+Other two-phase design functions:
+\code{\link[=n_twophase]{n_twophase()}}
 }
-\concept{precision functions}
+\concept{two-phase design functions}

@@ -7,12 +7,13 @@ nm <- function(...) {
   first <- if (length(args) > 0L) args[[1L]] else NULL
   cluster_precision <- inherits(first, "svyplan_prec") &&
     identical(first$params$design, "cluster")
-  solver <- if (cluster_precision || any(names(args) %in% cluster_args)) {
-    n_multi_cluster
-  } else {
-    n_multi
+  if (!cluster_precision && !any(names(args) %in% cluster_args)) {
+    return(suppressMessages(do.call(n_multi, args)))
   }
-  suppressMessages(do.call(solver, args))
+  if (!cluster_precision && !nzchar(names(args)[[1L]])) {
+    names(args)[[1L]] <- "indicators"
+  }
+  suppressMessages(do.call(n_cluster, args))
 }
 
 test_that("n_multi rejects non-data-frame", {
@@ -24,7 +25,7 @@ test_that("2-stage operational budget design never exceeds the budget", {
   targets <- data.frame(name = "x", p = 0.5, cv = 0.1, icc_psu = 0.05)
   # a budget this small buys one PSU, which warns
   expect_warning(
-    x <- n_multi_cluster(targets, stage_cost = c(500, 50), budget = 1200),
+    x <- n_cluster(indicators = targets, stage_cost = c(500, 50), budget = 1200),
     "single PSU"
   )
 
@@ -41,7 +42,7 @@ test_that("multi-indicator operational CV designs meet every target", {
     name = c("a", "b"), p = c(0.3, 0.5), cv = c(0.08, 0.06),
     icc_psu = c(0.03, 0.08)
   )
-  x <- n_multi_cluster(targets, stage_cost = c(500, 50))
+  x <- n_cluster(indicators = targets, stage_cost = c(500, 50))
 
   expect_true(all(x$operational$cv_by_target <= targets$cv + 1e-10))
 })
@@ -53,11 +54,11 @@ test_that("3-stage operational designs preserve budget and precision constraints
   )
   costs <- c(500, 100, 20)
 
-  budget <- n_multi_cluster(targets, stage_cost = costs, budget = 5000)
+  budget <- n_cluster(indicators = targets, stage_cost = costs, budget = 5000)
   expect_lte(budget$operational$cost, 5000 + 1e-8)
   expect_true(all(budget$operational$n == as.integer(budget$operational$n)))
 
-  precision <- n_multi_cluster(targets, stage_cost = costs)
+  precision <- n_cluster(indicators = targets, stage_cost = costs)
   expect_true(all(precision$operational$cv_by_target <= targets$cv + 1e-10))
 })
 
@@ -80,12 +81,12 @@ test_that("n_multi rejects rows with both p and var set", {
   expect_error(nm(df), "only one of")
 })
 
-test_that("n_multi_cluster requires stage_cost with a budget", {
+test_that("the indicators cluster mode requires stage_cost with a budget", {
   df <- data.frame(p = 0.3, moe = 0.05)
   expect_error(nm(df, budget = 10000), "'stage_cost' is required")
 })
 
-test_that("n_multi_cluster requires stage_cost with a fixed n_psu", {
+test_that("the indicators cluster mode requires stage_cost with n_psu", {
   df <- data.frame(p = 0.3, moe = 0.05)
   expect_error(nm(df, n_psu = 50), "'stage_cost' is required")
 })
@@ -483,7 +484,7 @@ test_that("multistage domains report no aggregate stage vector", {
     name = rep("a", 2), p = c(0.3, 0.3), cv = c(0.1, 0.1),
     icc_psu = c(0.02, 0.05), region = c("N", "S")
   )
-  res <- n_multi_cluster(df, stage_cost = c(500, 50), domains = "region")
+  res <- n_cluster(indicators = df, stage_cost = c(500, 50), domains = "region")
 
   # A componentwise maximum across domains is not a design anyone fields, and
   # its product disagreed with the reported total. The per-domain stage sizes
@@ -500,7 +501,7 @@ test_that("natural domain sampling is refused for multistage designs", {
     icc_psu = c(0.02, 0.05), region = c("N", "S"), share = c(0.4, 0.6)
   )
   expect_error(
-    n_multi_cluster(df, stage_cost = c(500, 50), domains = "region",
+    n_cluster(indicators = df, stage_cost = c(500, 50), domains = "region",
                     domain_sampling = "natural"),
     "not available for multistage"
   )
@@ -593,7 +594,7 @@ test_that("prec_multi exposes moe for multistage moe input", {
     icc_psu = c(0.02, 0.05)
   )
   s <- nm(df, stage_cost = c(500, 50))
-  p <- prec_multi_cluster(s)
+  p <- prec_cluster(s)
 
   expect_true(all(!is.na(p$moe)))
   expect_true(all(!is.na(p$se)))
@@ -612,8 +613,8 @@ test_that("multistage moe round-trips through prec_multi", {
     icc_psu = c(0.02, 0.05)
   )
   s1 <- nm(df, stage_cost = c(500, 50))
-  p1 <- prec_multi_cluster(s1)
-  s2 <- n_multi_cluster(p1)
+  p1 <- prec_cluster(s1)
+  s2 <- n_cluster(p1)
 
   expect_s3_class(s2, "svyplan_cluster")
   expect_equal(s1$n, s2$n, tolerance = 1e-4)
@@ -629,7 +630,7 @@ test_that("multistage cv mode prec_multi reports a margin of error too", {
     icc_psu = c(0.02, 0.05)
   )
   s <- nm(df, stage_cost = c(500, 50))
-  p <- prec_multi_cluster(s)
+  p <- prec_cluster(s)
 
   expect_true(".moe" %in% names(p$detail))
   expect_true(all(is.finite(p$moe)))
@@ -999,7 +1000,7 @@ test_that("print.svyplan_cluster works for multi type with domains", {
 })
 
 
-test_that("n_multi_cluster rejects invalid allocation values", {
+test_that("the indicators cluster mode rejects invalid allocation", {
   df <- data.frame(p = 0.3, moe = 0.05)
   expect_error(nm(df, stage_cost = c(500, 50), allocation = "yes"), "should be one of")
   expect_error(nm(df, stage_cost = c(500, 50), allocation = NA), "separate.*joint")
@@ -1202,8 +1203,8 @@ test_that("cluster arguments are rejected by the simple API", {
     p = c(0.3, 0.5),
     moe = c(0.05, 0.05)
   )
-  expect_error(n_multi(df, allocation = "separate"), "moved to n_multi_cluster")
-  expect_error(n_multi(df, allocation = "joint"), "moved to n_multi_cluster")
+  expect_error(n_multi(df, allocation = "separate"), "belongs to n_cluster")
+  expect_error(n_multi(df, allocation = "joint"), "belongs to n_cluster")
 })
 
 test_that("joint budget: 3+ domains work", {
@@ -1880,7 +1881,7 @@ test_that("3-stage n_psu + n_per_psu budget mode", {
 test_that("n_multi n_per_psu/n_per_ssu round-trip via prec_multi", {
   df <- data.frame(p = 0.30, cv = 0.10, icc_psu = 0.05, icc_ssu = 0.10)
   res <- nm(df, stage_cost = c(500, 50, 5), n_per_psu = 10, n_per_ssu = 5)
-  prec <- prec_multi_cluster(res)
+  prec <- prec_cluster(res)
   expect_equal(prec$params$n_per_psu, 10)
   expect_equal(prec$params$n_per_ssu, 5)
   res2 <- nm(prec)
@@ -1990,7 +1991,7 @@ test_that("2-stage single indicator matches n_cluster optimum at low icc", {
   nc <- n_cluster(cv = 0.05, icc = 0.005, unit_relvar = 1,
                   stage_cost = c(500, 50))
   ind <- data.frame(name = "x", p = 0.5, cv = 0.05, icc_psu = 0.005)
-  nm <- n_multi_cluster(ind, stage_cost = c(500, 50))
+  nm <- n_cluster(indicators = ind, stage_cost = c(500, 50))
   expect_equal(nm$n[["n_per_psu"]], nc$n[["n_per_psu"]], tolerance = 1e-4)
   expect_equal(nm$n[["n_psu"]], nc$n[["n_psu"]], tolerance = 1e-4)
 })
@@ -2000,13 +2001,13 @@ test_that("3-stage fixed n_per_ssu matches n_cluster optimum at low icc", {
                   stage_cost = c(500, 100, 20), n_per_ssu = 5)
   ind <- data.frame(name = "x", p = 0.5, cv = 0.05,
                     icc_psu = 0.005, icc_ssu = 0.02)
-  nm <- n_multi_cluster(ind, stage_cost = c(500, 100, 20), n_per_ssu = 5)
+  nm <- n_cluster(indicators = ind, stage_cost = c(500, 100, 20), n_per_ssu = 5)
   expect_equal(nm$n[["n_per_psu"]], nc$n[["n_per_psu"]], tolerance = 1e-4)
 })
 
 test_that("3-stage mode requires icc_ssu", {
   expect_error(
-    n_multi_cluster(data.frame(p = 0.3, cv = 0.1, icc_psu = 0.02),
+    n_cluster(indicators = data.frame(p = 0.3, cv = 0.1, icc_psu = 0.02),
                     stage_cost = c(500, 100, 50)),
     "requires a 'icc_ssu' column"
   )
@@ -2015,14 +2016,14 @@ test_that("3-stage mode requires icc_ssu", {
 test_that("missing domain values are rejected in n_multi", {
   tg <- data.frame(region = c("N", NA), p = c(0.3, 0.4), cv = c(0.1, 0.1),
                    icc_psu = c(0.02, 0.02))
-  expect_error(n_multi_cluster(tg, stage_cost = c(500, 50), domains = "region"),
+  expect_error(n_cluster(indicators = tg, stage_cost = c(500, 50), domains = "region"),
                "must not contain missing values")
 })
 
 test_that("domain values containing the separator do not collide in n_multi", {
   tg <- data.frame(d1 = c("a:b", "a"), d2 = c("c", "b:c"), p = c(0.3, 0.1),
                    cv = c(0.10, 0.15), icc_psu = c(0.02, 0.05))
-  x <- n_multi_cluster(tg, stage_cost = c(500, 50), domains = c("d1", "d2"))
+  x <- n_cluster(indicators = tg, stage_cost = c(500, 50), domains = c("d1", "d2"))
   expect_equal(nrow(x$domains), 2L)
 })
 
@@ -2038,7 +2039,7 @@ test_that("achieved precision is method-consistent for nonbinding rows", {
 test_that("n_multi cluster results carry accurate operational metrics", {
   tg <- data.frame(p = c(0.3, 0.15), cv = c(0.1, 0.12),
                    icc_psu = c(0.02, 0.05))
-  x <- n_multi_cluster(tg, stage_cost = c(500, 50))
+  x <- n_cluster(indicators = tg, stage_cost = c(500, 50))
   op <- x$operational
   expect_true(all(op$n == round(op$n)))
   expect_equal(op$total_n, prod(op$n))
@@ -2084,7 +2085,7 @@ test_that("the dispersion may be given as sd or var, but not both", {
                           icc_psu = 0.02)
   expect_warning(
     expect_s3_class(
-      n_multi_cluster(clustered, stage_cost = c(cost_psu = 500, cost_ssu = 50)),
+      n_cluster(indicators = clustered, stage_cost = c(cost_psu = 500, cost_ssu = 50)),
       "svyplan_cluster"
     ),
     "single PSU"
@@ -2097,15 +2098,15 @@ test_that("the dispersion may be given as sd or var, but not both", {
 
 test_that("stage-specific indicator columns are rejected when given unstaged", {
   expect_error(
-    n_multi_cluster(
-      data.frame(name = "a", p = 0.3, cv = 0.05, icc = 0.05, n_per_psu = 10),
+    n_cluster(
+      indicators = data.frame(name = "a", p = 0.3, cv = 0.05, icc = 0.05, n_per_psu = 10),
       stage_cost = c(500, 20), n_psu = 50
     ),
     "Did you mean .*icc_psu"
   )
   expect_error(
-    n_multi_cluster(
-      data.frame(name = "a", p = 0.3, cv = 0.05, icc_psu = 0.05,
+    n_cluster(
+      indicators = data.frame(name = "a", p = 0.3, cv = 0.05, icc_psu = 0.05,
                  var_ratio = 1, n_per_psu = 10),
       stage_cost = c(500, 20), n_psu = 50
     ),
@@ -2281,8 +2282,8 @@ test_that("a case floor is refused where it has no size to raise", {
     "applies to proportion rows only"
   )
   expect_error(
-    n_multi_cluster(
-      data.frame(name = c("a", "b"), p = c(0.3, 0.02), cv = c(0.05, 0.10),
+    n_cluster(
+      indicators = data.frame(name = c("a", "b"), p = c(0.3, 0.02), cv = c(0.05, 0.10),
                  icc_psu = c(0.05, 0.05), min_cases = c(NA, 60)),
       stage_cost = c(500, 50), budget = 1e6
     ),
@@ -2308,13 +2309,13 @@ test_that("an all-NA case floor column changes nothing", {
   expect_equal(n_multi(ind)$n, n_multi(ind[, 1:3])$n)
   # and it stays inert where the column could not be honoured at all
   expect_equal(
-    n_multi_cluster(
-      data.frame(name = "a", p = 0.3, cv = 0.05, icc_psu = 0.05,
+    n_cluster(
+      indicators = data.frame(name = "a", p = 0.3, cv = 0.05, icc_psu = 0.05,
                  min_cases = NA_real_),
       stage_cost = c(500, 50), budget = 1e6
     )$n,
-    n_multi_cluster(
-      data.frame(name = "a", p = 0.3, cv = 0.05, icc_psu = 0.05),
+    n_cluster(
+      indicators = data.frame(name = "a", p = 0.3, cv = 0.05, icc_psu = 0.05),
       stage_cost = c(500, 50), budget = 1e6
     )$n
   )

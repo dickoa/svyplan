@@ -1,6 +1,6 @@
 ## Stage-specific response in the clustered planners
 ##
-## One indicator is one design, so n_multi_cluster() must return what
+## One indicator is one design, so n_cluster() must return what
 ## n_cluster() returns for the same problem. That invariant is what catches a
 ## branch that carries the response rates into the variance it reports but not
 ## into the optimization that chose the design.
@@ -14,7 +14,7 @@ mc_vs_cluster <- function(mode = c("cv", "budget"), rr = 1, rp = 1,
   fixed <- list(...)
   ind <- data.frame(name = "a", p = p, icc_psu = icc, cv = target,
                     resp_rate = rr, resp_rate_psu = rp)
-  multi_args <- c(list(ind, stage_cost = cost), fixed)
+  multi_args <- c(list(indicators = ind, stage_cost = cost), fixed)
   cluster_args <- c(
     list(stage_cost = cost, icc = icc, unit_relvar = (1 - p) / p,
          resp_rate = rr, resp_rate_psu = rp),
@@ -26,7 +26,7 @@ mc_vs_cluster <- function(mode = c("cv", "budget"), rr = 1, rp = 1,
     multi_args$budget <- budget
     cluster_args$budget <- budget
   }
-  list(multi = do.call(n_multi_cluster, multi_args),
+  list(multi = do.call(n_cluster, multi_args),
        cluster = do.call(n_cluster, cluster_args))
 }
 
@@ -52,8 +52,8 @@ test_that("the two-stage take follows the response-aware closed form", {
   # below r = 0.25 it escapes any bracket drawn at the gross scale, however
   # generous the safety margin on it.
   for (rr in c(1, 0.85, 0.5, 0.2, 0.1)) {
-    fit <- n_multi_cluster(
-      data.frame(name = "a", p = 0.3, cv = 0.05, icc_psu = 0.05,
+    fit <- n_cluster(
+      indicators = data.frame(name = "a", p = 0.3, cv = 0.05, icc_psu = 0.05,
                  resp_rate = rr),
       stage_cost = c(500, 50)
     )
@@ -73,15 +73,15 @@ test_that("two-stage budget mode matches n_cluster at every response rate", {
 
 ## The reported CV must be the one the precision function confirms
 
-test_that("budget-mode CV is the CV prec_multi_cluster recomputes", {
+test_that("budget-mode CV is the CV prec_cluster() recomputes", {
   for (stages in 2:3) {
     for (rr in c(1, 0.85, 0.5)) {
       ind <- data.frame(name = "a", p = 0.3, cv = 0.10, icc_psu = 0.04,
                         resp_rate = rr)
       cost <- if (stages == 2L) c(500, 50) else c(500, 100, 50)
       if (stages == 3L) ind$icc_ssu <- 0.06
-      fit <- n_multi_cluster(ind, stage_cost = cost, budget = 1e5)
-      expect_equal(fit$cv, prec_multi_cluster(fit)$cv, tolerance = 1e-8,
+      fit <- n_cluster(indicators = ind, stage_cost = cost, budget = 1e5)
+      expect_equal(fit$cv, prec_cluster(fit)$cv, tolerance = 1e-8,
                    info = sprintf("%d-stage, resp_rate=%.2f", stages, rr))
     }
   }
@@ -91,23 +91,23 @@ test_that("CV-mode results already agree, and stay agreeing", {
   for (rr in c(1, 0.5)) {
     ind <- data.frame(name = "a", p = 0.3, cv = 0.10, icc_psu = 0.04,
                       resp_rate = rr)
-    fit <- n_multi_cluster(ind, stage_cost = c(500, 50))
-    expect_equal(fit$cv, prec_multi_cluster(fit)$cv, tolerance = 1e-8)
+    fit <- n_cluster(indicators = ind, stage_cost = c(500, 50))
+    expect_equal(fit$cv, prec_cluster(fit)$cv, tolerance = 1e-8)
   }
 })
 
 ## Fixed stage sizes
 
 test_that("a fixed n_psu is respected by the continuous two-stage solution", {
-  fit <- n_multi_cluster(
-    data.frame(name = "a", p = 0.3, cv = 0.08, icc_psu = 0.05),
+  fit <- n_cluster(
+    indicators = data.frame(name = "a", p = 0.3, cv = 0.08, icc_psu = 0.05),
     stage_cost = c(500, 50), n_psu = 30
   )
   expect_equal(fit$n[[1L]], 30, tolerance = 1e-8)
   expect_equal(fit$operational$n[[1L]], 30)
   # The take must be the one that reaches the target at that PSU count, not
   # the unconstrained cost optimum.
-  expect_equal(prec_multi_cluster(fit)$cv, 0.08, tolerance = 1e-6)
+  expect_equal(prec_cluster(fit)$cv, 0.08, tolerance = 1e-6)
 })
 
 test_that("a fixed n_psu matches n_cluster, response or not", {
@@ -126,9 +126,9 @@ test_that("joint-domain budget allocation reads the ultimate response rate", {
     data.frame(name = rep("a", 2L), dom = c("A", "B"), p = 0.3,
                cv = 0.10, icc_psu = 0.05, resp_rate = rr)
   }
-  full <- n_multi_cluster(mk(1), stage_cost = c(500, 50), domains = "dom",
+  full <- n_cluster(indicators = mk(1), stage_cost = c(500, 50), domains = "dom",
                           budget = 2e5, allocation = "joint")
-  half <- n_multi_cluster(mk(0.5), stage_cost = c(500, 50), domains = "dom",
+  half <- n_cluster(indicators = mk(0.5), stage_cost = c(500, 50), domains = "dom",
                           budget = 2e5, allocation = "joint")
   # Half the ultimate units respond, so the same budget buys less precision.
   expect_gt(max(half$domains$.cv), max(full$domains$.cv))
@@ -180,11 +180,12 @@ test_that("every three-stage fixed-stage combination meets an attainable target"
     list(n_per_psu = 8, n_per_ssu = 4)
   )
   for (spec in specs) {
-    fit <- do.call(n_multi_cluster,
-                   c(list(base, stage_cost = c(500, 100, 50)), spec))
+    fit <- do.call(n_cluster,
+                   c(list(indicators = base, stage_cost = c(500, 100, 50)),
+                     spec))
     label <- paste(names(spec), collapse = "+")
     expect_equal(fit$cv, 0.10, tolerance = 1e-6, info = label)
-    expect_equal(prec_multi_cluster(fit)$cv, 0.10, tolerance = 1e-6,
+    expect_equal(prec_cluster(fit)$cv, 0.10, tolerance = 1e-6,
                  info = label)
     for (nm in names(spec)) {
       expect_equal(fit$n[[nm]], spec[[nm]], tolerance = 1e-8, info = label)
@@ -196,7 +197,7 @@ test_that("a fixed three-stage count below the PSU floor is refused", {
   base <- data.frame(name = "a", p = 0.3, cv = 0.02, icc_psu = 0.10,
                      icc_ssu = 0.05, resp_rate = 0.7)
   expect_error(
-    n_multi_cluster(base, stage_cost = c(500, 100, 50), n_psu = 3),
+    n_cluster(indicators = base, stage_cost = c(500, 100, 50), n_psu = 3),
     "floor|below|achievable"
   )
 })
