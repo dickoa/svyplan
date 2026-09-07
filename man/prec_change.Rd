@@ -170,6 +170,13 @@ one than a design that reclusters.
 
 \subsection{What the overlap covariance assumes}{
 
+Positive overlap on a finite frame must also fit the population:
+\eqn{n_1 + n_2 - \mathrm{overlap}\,n_1 \le N}{n1 + n2 - overlap * n1 <= N},
+where the sizes count respondents after \code{resp_rate}. An inconsistent
+design is rejected even when \code{overlap_cor = 0}. In particular, two
+censuses require full overlap. The special \code{overlap = 0} convention
+continues to denote independent samples.
+
 The covariance is a model form, a correlation \code{overlap_cor} between
 occasions among the units the two occasions share, and simple random
 sampling otherwise. It is not the design-based covariance of two waves of

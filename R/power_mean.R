@@ -55,6 +55,12 @@
 #' }
 #'
 #' @details
+#' At positive overlap on a finite frame, the responding samples must obey
+#' `n1_net + n2_net - overlap * n1_net <= N`. This bound applies to supplied
+#' sizes and to the sample-size search, independently of `overlap_cor`.
+#' A target requiring a larger union is unattainable at that overlap.
+#' Zero overlap retains the independent-samples convention.
+#'
 #' The `var` argument is the within-group population variance. Estimate it
 #' from a pilot study, a previous survey, or published data for a similar
 #' population. When uncertain, use a conservative (larger) estimate. This
@@ -211,7 +217,8 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
       n2 <- (z_a + z_b)^2 * V_r * deff / effect^2 / resp_rate
       n2 <- max(n2, 2, 2 / r)
     } else {
-      n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
+      n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate,
+                                 overlap = overlap)
     }
     n0 <- if (r == 1) n2 else c(r * n2, n2)
     achieved_power <- power_n2(n2)

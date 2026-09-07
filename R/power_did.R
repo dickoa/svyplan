@@ -70,6 +70,13 @@
 #' }
 #'
 #' @details
+#' Positive overlap is checked within each arm across its two waves:
+#' `(2 - overlap) * n_arm * resp_rate <= N_arm`. Arm-specific populations
+#' and unequal treatment/control sizes are allowed; the allocation ratio
+#' does not constrain the within-arm overlap. Supplied sizes must fit these
+#' bounds, and sample-size searches stop at the most restrictive arm bound.
+#' Zero overlap retains the independent-wave convention.
+#'
 #' The DiD estimand is
 #' `(treat_endline - treat_baseline) - (control_endline - control_baseline)`.
 #'
@@ -258,9 +265,8 @@ power_did.default <- function(
 
   if (!is.null(n)) {
     n <- .check_power_n(n)
-    .check_overlap_n(overlap, n = n)
-  } else {
-    .check_overlap_n(overlap, ratio = ratio)
+    n_pair <- rep_len(n, 2L) * resp_rate
+    .check_overlap_frame(n_pair, n_pair, N_pair, overlap)
   }
   if (!is.null(power)) check_proportion(power, "power")
   if (!is.null(effect)) check_scalar(effect, "effect")
@@ -324,7 +330,8 @@ power_did.default <- function(
       n2 <- (z_a + z_b)^2 * deff * V_r / effect^2 / resp_rate
       n2 <- max(n2, 2, 2 / r)
     } else {
-      n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
+      n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate,
+                                 overlap = overlap, within_arm = TRUE)
     }
     n0 <- if (r == 1) n2 else c(r * n2, n2)
     achieved_power <- power_n2(n2)

@@ -89,7 +89,7 @@
 #' the total. The `$cv` component is identical.
 #' See Examples below.
 #'
-#' @family proportion, mean and ratio functions
+#' @family sample size and precision functions
 #' @seealso [n_mean()] for the inverse (compute n from a precision target),
 #'   [prec_prop()] for proportions.
 #'

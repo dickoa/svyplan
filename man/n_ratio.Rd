@@ -209,11 +209,11 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 \code{\link[=n_cluster]{n_cluster()}} for a multistage design, \code{\link[=varcomp]{varcomp()}} for the linearized
 variable's components.
 
-Other proportion, mean and ratio functions:
+Other sample size and precision functions:
 \code{\link[=n_mean]{n_mean()}},
 \code{\link[=n_prop]{n_prop()}},
 \code{\link[=prec_mean]{prec_mean()}},
 \code{\link[=prec_prop]{prec_prop()}},
 \code{\link[=prec_ratio]{prec_ratio()}}
 }
-\concept{proportion, mean and ratio functions}
+\concept{sample size and precision functions}

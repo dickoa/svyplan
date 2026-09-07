@@ -371,11 +371,11 @@ fiducial limits illustrated in the case of the binomial.
 multistage designs, \code{\link[=n_multi]{n_multi()}} for multiple indicators,
 \code{\link[=prec_prop]{prec_prop()}} for the inverse.
 
-Other proportion, mean and ratio functions:
+Other sample size and precision functions:
 \code{\link[=n_mean]{n_mean()}},
 \code{\link[=n_ratio]{n_ratio()}},
 \code{\link[=prec_mean]{prec_mean()}},
 \code{\link[=prec_prop]{prec_prop()}},
 \code{\link[=prec_ratio]{prec_ratio()}}
 }
-\concept{proportion, mean and ratio functions}
+\concept{sample size and precision functions}

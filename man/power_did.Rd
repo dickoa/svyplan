@@ -117,6 +117,13 @@ optional: leave \code{n} or \code{power} as \code{NULL} to solve for it. Leaving
 \code{n} and \code{power} supplied while \code{effect} is \code{NULL} solves for the MDE
 instead. Exactly one quantity must remain unknown.
 
+Positive overlap is checked within each arm across its two waves:
+\code{(2 - overlap) * n_arm * resp_rate <= N_arm}. Arm-specific populations
+and unequal treatment/control sizes are allowed; the allocation ratio
+does not constrain the within-arm overlap. Supplied sizes must fit these
+bounds, and sample-size searches stop at the most restrictive arm bound.
+Zero overlap retains the independent-wave convention.
+
 The DiD estimand is
 \code{(treat_endline - treat_baseline) - (control_endline - control_baseline)}.
 

@@ -132,6 +132,12 @@
 #'
 #' ## When no size is enough, and when any size is
 #'
+#' At positive overlap, the two responding samples must fit their shared
+#' finite population. A target whose required sizes violate
+#' `n1_net + n2_net - overlap * n1_net <= N` is unattainable at the stated
+#' overlap, even if each individual sample fits. Increase overlap or relax
+#' the precision target. See [prec_change()] for the variance and bound.
+#'
 #' Two boundaries are worth knowing before reading a result. Full overlap
 #' with unit correlation at equal sizes and variances leaves the change with
 #' no sampling variance at all, since the same units are measured twice, so no

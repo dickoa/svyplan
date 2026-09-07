@@ -1170,13 +1170,23 @@ check_df <- function(df, name = "df") {
   min(N_pair[2], N_pair[1] / ratio)
 }
 
-#' Upper bound for n2 from finite-population constraints on effective n
+#' Upper bound for gross n2 from frame and respondent-overlap constraints
 #' @keywords internal
 #' @noRd
-.n2_upper_bound <- function(N_pair, ratio, resp_rate) {
+.n2_upper_bound <- function(N_pair, ratio, resp_rate, overlap = 0,
+                            within_arm = FALSE) {
   b1 <- if (is.infinite(N_pair[1])) Inf else N_pair[1] / ratio
   b2 <- N_pair[2]
-  min(b1, b2)
+  cap <- min(b1, b2)
+  if (overlap > 0) {
+    overlap_cap <- if (within_arm) {
+      cap / (resp_rate * (2 - overlap))
+    } else {
+      N_pair[1L] / (resp_rate * (1 + ratio * (1 - overlap)))
+    }
+    cap <- min(cap, overlap_cap)
+  }
+  cap
 }
 
 #' Solve n2 by inverting a monotone power function
@@ -1188,9 +1198,16 @@ check_df <- function(df, name = "df") {
   N_pair,
   ratio,
   resp_rate,
-  tol = 1e-8
+  tol = 1e-8,
+  overlap = 0,
+  within_arm = FALSE
 ) {
   lo <- max(2, 2 / ratio)
+  hi_cap <- .n2_upper_bound(N_pair, ratio, resp_rate, overlap, within_arm)
+  if (hi_cap < lo) {
+    stop("target power is unattainable under finite population and overlap constraints",
+         call. = FALSE)
+  }
   p_lo <- suppressWarnings(power_fn(lo))
   if (!is.finite(p_lo)) {
     p_lo <- 0
@@ -1199,22 +1216,22 @@ check_df <- function(df, name = "df") {
     return(lo)
   }
 
-  hi_cap <- .n2_upper_bound(N_pair, ratio, resp_rate)
   if (is.finite(hi_cap)) {
-    hi <- hi_cap * (1 - 1e-7)
+    hi <- hi_cap
     if (hi <= lo) {
       stop(
-        "target power is unattainable under finite population constraints",
+        "target power is unattainable under finite population and overlap constraints",
         call. = FALSE
       )
     }
     p_hi <- suppressWarnings(power_fn(hi))
-    if (!is.finite(p_hi) || p_hi < target_power - tol) {
+    if (!is.finite(p_hi) || p_hi < target_power - 32 * .Machine$double.eps) {
       stop(
-        "target power is unattainable under finite population constraints",
+        "target power is unattainable under finite population and overlap constraints",
         call. = FALSE
       )
     }
+    if (abs(p_hi - target_power) <= 32 * .Machine$double.eps) return(hi)
   } else {
     hi <- max(2, lo * 2)
     p_hi <- suppressWarnings(power_fn(hi))
@@ -1224,7 +1241,7 @@ check_df <- function(df, name = "df") {
       p_hi <- suppressWarnings(power_fn(hi))
       iter <- iter + 1L
     }
-    if (!is.finite(p_hi) || p_hi < target_power - tol) {
+    if (!is.finite(p_hi) || p_hi < target_power) {
       stop("could not bracket sample size for target power", call. = FALSE)
     }
   }
@@ -1814,6 +1831,30 @@ check_df <- function(df, name = "df") {
   }
 }
 
+#' Positive-overlap samples must fit their shared finite frame
+#'
+#' Sizes here count respondents. Zero overlap retains the public independent-
+#' samples convention. Vector inputs check several pairs (DiD arms or pooled
+#' lags), not the union of an entire rotation schedule.
+#' @keywords internal
+#' @noRd
+.check_overlap_frame <- function(n1_net, n2_net, N, overlap) {
+  distinct <- n2_net + (1 - overlap) * n1_net
+  bad <- which(overlap > 0 & is.finite(N) &
+                 distinct > N + 32 * .Machine$double.eps * pmax(1, N))
+  if (length(bad)) {
+    j <- bad[1L]
+    # Recycle scalar arguments explicitly for an informative vector diagnostic.
+    counts <- distinct[j]
+    population <- rep_len(N, length(distinct))[j]
+    stop(sprintf(
+      "finite population overlap is infeasible: the two responding samples require %.10g distinct units but 'N' is %.10g; increase 'overlap', reduce 'n', or relax the sizing target",
+      counts, population
+    ), call. = FALSE)
+  }
+  invisible(NULL)
+}
+
 #' Validate and normalize a take_all column
 #'
 #' Documented as logical or 0/1, so any other number is a mistake rather
@@ -1874,6 +1915,7 @@ check_df <- function(df, name = "df") {
 #' @noRd
 .diff_var_fpc <- function(n_eff, var_pair, N_pair, deff, overlap, overlap_cor) {
   if (length(n_eff) == 1L) n_eff <- c(n_eff, n_eff)
+  .check_overlap_frame(n_eff[1L], n_eff[2L], N_pair[1L], overlap)
   fpc1 <- .fpc_factor(n_eff[1], N_pair[1])
   fpc2 <- .fpc_factor(n_eff[2], N_pair[2])
   V <- var_pair[1] * fpc1 / n_eff[1] + var_pair[2] * fpc2 / n_eff[2]
@@ -2301,6 +2343,7 @@ check_df <- function(df, name = "df") {
   n_net <- n * resp_rate
   K <- .pooled_kernel(var, n_net, N, occasions, ov, rho)
   .check_lag_psd(K, n, n_net, N, ov, rho, occasions)
+  .check_overlap_frame(n_net, n_net, N, ov)
   .safe_variance(deff * sum(K) / occasions^2, "pooled variance")
 }
 

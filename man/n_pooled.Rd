@@ -138,6 +138,11 @@ from quarterly rounds is the ordinary case, and that average is what
 "pooled" names here. This is the inverse of \code{\link[=prec_pooled]{prec_pooled()}}.
 }
 \details{
+A required size must fit the finite frame at each positive-overlap lag:
+\code{(2 - overlap[lag]) * n * resp_rate <= N}. A target violating a pairwise
+bound is rejected, as is a size producing an invalid covariance matrix.
+See \code{\link[=prec_pooled]{prec_pooled()}} for these necessary feasibility conditions.
+
 The pooled variance is \eqn{deff\{A/(n r) + B\}}{deff (A/(n r) + B)} in the gross size per
 occasion, with \eqn{r} the response rate, \eqn{T} the number of occasions
 and

@@ -157,11 +157,11 @@ p$cv        # CV is the same for mean and total
 \code{\link[=n_mean]{n_mean()}} for the inverse (compute n from a precision target),
 \code{\link[=prec_prop]{prec_prop()}} for proportions.
 
-Other proportion, mean and ratio functions:
+Other sample size and precision functions:
 \code{\link[=n_mean]{n_mean()}},
 \code{\link[=n_prop]{n_prop()}},
 \code{\link[=n_ratio]{n_ratio()}},
 \code{\link[=prec_prop]{prec_prop()}},
 \code{\link[=prec_ratio]{prec_ratio()}}
 }
-\concept{proportion, mean and ratio functions}
+\concept{sample size and precision functions}

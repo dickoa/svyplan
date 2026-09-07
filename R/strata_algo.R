@@ -17,9 +17,17 @@
 #' @keywords internal
 #' @noRd
 .strata_precompute <- function(x_sort) {
+  center <- x_sort[ceiling(length(x_sort) / 2)]
+  centered <- x_sort - center
+  scale <- max(abs(centered))
+  if (scale == 0) scale <- 1
+  z <- centered / scale
   list(
-    cs = c(0, cumsum(x_sort)),
-    cs2 = c(0, cumsum(x_sort^2)),
+    cs = c(0, cumsum(z)),
+    cs2 = c(0, cumsum(z^2)),
+    cs_abs = c(0, cumsum(abs(z))),
+    center = center,
+    scale = scale,
     n = length(x_sort),
     x_sort = x_sort
   )
@@ -40,12 +48,32 @@
   hi <- idx[seq_len(L) + 1L] + 1L
   sum_h <- pre$cs[hi] - pre$cs[lo]
   sum2_h <- pre$cs2[hi] - pre$cs2[lo]
-  mean_h <- ifelse(N_h > 0L, sum_h / N_h, 0)
-  var_h <- ifelse(N_h > 1L, pmax(0, (sum2_h - N_h * mean_h^2) / (N_h - 1L)), 0)
+  mean_z <- ifelse(N_h > 0L, sum_h / N_h, 0)
+  m2 <- sum2_h - N_h * mean_z^2
+  # Subtracting two cumulative sums can lose the entire spread of a tight
+  # tail stratum even after global centering. Bound that rounding error and
+  # recompute suspect ranges directly, rather than treating lost variance
+  # as a constant stratum. The common well-conditioned case stays O(L).
+  error <- 8 * .Machine$double.eps * (
+    pre$cs2[hi] + pre$cs2[lo] +
+      2 * abs(mean_z) * (pre$cs_abs[hi] + pre$cs_abs[lo]) +
+      N_h * mean_z^2
+  )
+  # Require the estimated roundoff to stay below 1e-8 of the range moment.
+  suspect <- which(N_h > 1L & m2 <= 1e8 * error)
+  mean_h <- ifelse(N_h > 0L, pre$center + pre$scale * mean_z, 0)
+  single <- which(N_h == 1L)
+  mean_h[single] <- pre$x_sort[idx[single] + 1L]
+  S_h <- pre$scale * sqrt(ifelse(N_h > 1L, pmax(0, m2) / (N_h - 1L), 0))
+  for (h in suspect) {
+    values <- pre$x_sort[seq.int(idx[h] + 1L, idx[h + 1L])]
+    mean_h[h] <- mean(values)
+    S_h[h] <- sd(values)
+  }
   list(
     N_h = N_h,
     W_h = N_h / pre$n,
-    S_h = sqrt(var_h),
+    S_h = S_h,
     mean_h = mean_h
   )
 }
@@ -689,20 +717,22 @@
       if (lo >= hi) {
         next
       }
+      # optimize() includes a tolerance proportional to the coordinate's
+      # magnitude. A unit interval preserves resolution after translation.
       opt <- suppressWarnings(optimize(
         function(b) {
           bk_try <- bk
-          bk_try[h] <- b
+          bk_try[h] <- lo + b * (hi - lo)
           obj_fn(bk_try)
         },
-        interval = c(lo, hi)
+        interval = c(0, 1), tol = 1e-8
       ))
       # `optimize()` assumes a continuous unimodal objective and this one is a
       # step function, so its proposal can be worse than where the coordinate
       # already sits. Take it only when it does not worsen the objective, or
       # when the current state is infeasible and any move is an escape.
       cand <- bk
-      cand[h] <- opt$minimum
+      cand[h] <- lo + opt$minimum * (hi - lo)
       cur_obj <- obj_fn(bk)
       if (!is.finite(cur_obj) || obj_fn(cand) <= cur_obj) {
         bk <- cand
@@ -766,30 +796,20 @@
 
   pre <- .strata_precompute(x_sort)
   N <- pre$n
-  cs <- pre$cs
-  cs2 <- pre$cs2
   use_cv <- !is.null(target_cv)
 
   # Map each unique value to its rightmost position in x_sort (prefix index)
   uniq_pidx <- findInterval(x_uniq, x_sort)
 
   obj_from_pidx <- function(pidx) {
-    lo <- pidx[seq_len(L)] + 1L
-    hi <- pidx[seq_len(L) + 1L] + 1L
     N_h <- diff(pidx)
     if (.strata_degenerate(N_h, take_all_idx)) {
       return(Inf)
     }
-    sum_h <- cs[hi] - cs[lo]
-    sum2_h <- cs2[hi] - cs2[lo]
-    mean_h <- ifelse(N_h > 0L, sum_h / N_h, 0)
-    var_h <- ifelse(
-      N_h > 1L,
-      pmax(0, (sum2_h - N_h * mean_h^2) / (N_h - 1L)),
-      0
-    )
-    S_h <- sqrt(var_h)
-    W_h <- N_h / N
+    st <- .strata_stats_from_prefix(pre, pidx)
+    mean_h <- st$mean_h
+    S_h <- st$S_h
+    W_h <- st$W_h
     a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h)
     if (!is.null(take_all_idx)) {
       a_h[take_all_idx] <- 0

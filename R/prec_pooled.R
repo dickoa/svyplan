@@ -148,6 +148,14 @@
 #'
 #' ## When the inputs do not describe a covariance
 #'
+#' Each positive-overlap lag must also satisfy
+#' `(2 - overlap[lag]) * n * resp_rate <= N`: the two responding samples
+#' cannot require more distinct units than the frame contains. This bound
+#' applies even at zero outcome correlation. Zero-overlap lags retain the
+#' independent-samples convention. These pairwise bounds and the covariance
+#' check below are necessary conditions, not a proof that an arbitrary
+#' overlap vector can be realized by a complete multi-occasion schedule.
+#'
 #' A lag's covariance changes sign once its overlap falls below the sampling
 #' fraction `n / N`, and a covariance whose sign varies across lags need not
 #' be a valid covariance at all. This is checked on the assembled matrix,

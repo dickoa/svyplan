@@ -97,6 +97,11 @@ two-sample test of proportions. Leave exactly one of \code{n}, \code{power}, or
 \code{p2} as \code{NULL} to solve for that quantity.
 }
 \details{
+At positive overlap on a finite frame, the responding samples must obey
+\code{n1_net + n2_net - overlap * n1_net <= N}. This bound applies to supplied
+sizes and to the sample-size search, independently of \code{overlap_cor}.
+A target requiring a larger union is unattainable at that overlap.
+Zero overlap retains the independent-samples convention.
 \subsection{Choosing a method}{
 
 \describe{
