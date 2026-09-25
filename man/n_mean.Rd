@@ -35,7 +35,7 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_mean]
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
-\item{sd}{Population standard deviation, an alternative spelling of
+\item{sd}{Population standard deviation, an alternative parametrization to
 \code{var}. Supply exactly one of \code{var} or \code{sd}. Stratum frames and
 published survey reports usually quote standard deviations.}
 

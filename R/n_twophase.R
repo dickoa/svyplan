@@ -94,8 +94,9 @@
 #'   between-stratum component `d_1 A / r_1` plus the phase-2 residual at
 #'   `nu_h = resp_rate`, which no amount of subsampling can beat.
 #' @param assurance Probability in (0, 1), or `NULL` (default). Planning at
-#'   the expected respondent count leaves roughly half of all designs
-#'   short. Supplying a level reports, alongside the expected design, the
+#'   the expected respondent count does not guarantee that the target will
+#'   be reached. The shortfall probability depends on the response distribution
+#'   and integer rounding. Supplying a level reports, alongside the expected design, the
 #'   issued sizes for which the required respondents arrive with at least
 #'   that probability, from the binomial distribution of respondents.
 #'
@@ -773,7 +774,7 @@ n_twophase.default <- function(
     warning(sprintf(
       paste("the phase-1 pool rounds to zero units in %s, so the operational",
             "design cannot estimate %s and its 'cv' is Inf; enlarge phase 1,",
-            "or collapse the stratum into a neighbour"),
+            "or collapse the stratum into a neighbor"),
       paste(sprintf("'%s'", spec$stratum[starved]), collapse = ", "),
       if (sum(starved) > 1L) "those strata" else "that stratum"),
       call. = FALSE)

@@ -9,7 +9,7 @@
 #'   (larger) estimate to avoid under-sizing.
 #'   For `svyplan_prec` objects: a precision result from [prec_mean()].
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
-#' @param sd Population standard deviation, an alternative spelling of
+#' @param sd Population standard deviation, an alternative parametrization to
 #'   `var`. Supply exactly one of `var` or `sd`. Stratum frames and
 #'   published survey reports usually quote standard deviations.
 #' @param mu Population mean. Required when `cv` or `rmoe` is

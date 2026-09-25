@@ -1582,7 +1582,7 @@ check_df <- function(df, name = "df") {
 
 #' Half-width of the back-transformed log-odds interval
 #'
-#' Builds a symmetric interval on the logit scale from the icc-method
+#' Builds a symmetric interval on the logit scale from the delta-method
 #' standard error of `logit(p_hat)`, then maps both endpoints back to the
 #' probability scale and halves their distance. The variance of `p_hat`
 #' follows the package convention shared with the Wald method,
@@ -2557,7 +2557,7 @@ check_df <- function(df, name = "df") {
 #' Extra columns are allowed, as in the `n_alloc()` frame, so this rejects
 #' only names that the rest of the package would lead a reader to expect
 #' here: the spelling the `n_alloc()` frame uses for the same quantity,
-#' the argument name a neighbouring function takes, or the singular of
+#' the argument name a neighboring function takes, or the singular of
 #' the argument this table is passed as.
 #' @keywords internal
 #' @noRd

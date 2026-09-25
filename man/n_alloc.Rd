@@ -87,9 +87,13 @@ column (e.g. \code{sd = 1}) yields proportional-to-size allocation.}
 be unique, or unique within each domain when \code{domains} is set.}
 \item{\code{mean} \strong{or} \code{p}}{The stratum population mean or
 proportion of the variable of interest. \strong{Required when solving
-for \code{cv}}, because the coefficient of variation is defined
+for \code{cv} or using \code{alloc = "power"}}, because the coefficient of variation is defined
 relative to the mean. Use \code{mean} for continuous variables
 and \code{p} (in \eqn{[0, 1]}) for binary (yes/no) variables.}
+\item{\code{alloc_measure}}{Positive finite stratum measure used only by
+Bankier allocation (\code{alloc = "power"}). Defaults to
+\code{N * abs(mean)} (or \code{N * p}). Population CV is derived from
+\code{sd / abs(mean)} and requires a nonzero mean in every stratum.}
 \item{\code{unit_cost}}{Per-unit interviewing cost in each stratum
 (positive, finite). Set higher values for strata that are more
 expensive to reach. Defaults to 1 everywhere (equal cost).}
@@ -139,7 +143,12 @@ are incompatible.}
 \item{measures}{Optional long data frame for joint constrained allocation,
 with one row per required \code{stratum} and indicator \code{name}. Each row must
 contain either \code{p} in \verb{[0, 1]}, or \code{mean} and exactly one of non-negative
-\code{sd} or \code{var}. Optional row-specific \code{deff} and \code{resp_rate} values override
+\code{sd} or \code{var}. In element-level designs, \code{p} implies the finite-population
+variance \code{N * p * (1 - p) / (N - 1)}, using its stratum's \code{N > 1},
+consistently with \code{\link[=prec_prop]{prec_prop()}}. Explicit \code{var} and \code{sd} values are used
+as supplied. Multistage designs, including PSU-register designs, retain
+the working proportion variance \code{p * (1 - p)}.
+Optional row-specific \code{deff} and \code{resp_rate} values override
 the scalar arguments, and \code{NA} uses the scalar default. In fixed-take
 multistage mode, \code{icc_psu} is required and \code{var_ratio_psu} defaults to 1.
 Three-stage mode also requires \code{icc_ssu} and derives \code{var_ratio_ssu} as
@@ -208,9 +217,11 @@ and is unaffected. \code{NULL} (default) applies no adjustment.}
 
 \item{min_n_stratum}{Optional minimum sample size per stratum.}
 
-\item{alloc_q}{Bankier power parameter, used only when \code{alloc = "power"}.
-Numeric scalar in \eqn{[0, 1]}. At \code{alloc_q = 1} the allocation equals
-Neyman. At \code{alloc_q = 0} it yields near-equal subnational CVs.
+\item{alloc_q}{Bankier allocation exponent, used only when \code{alloc = "power"}.
+Numeric scalar in \eqn{[0, 1]}. With the default \code{alloc_measure},
+\code{alloc_q = 1} gives Neyman allocation. At \code{alloc_q = 0} weights depend
+on population CVs and the response/design-effect adjustment, independently
+of \code{alloc_measure}. This does not generally equalize domain CVs.
 Default 0.5.}
 
 \item{fpc}{Which finite population correction the variance carries in
@@ -235,17 +246,28 @@ derived effective per-element cost
 \code{cost_psu / n_per_psu + cost_ssu} (1 when no stage costs were
 given), while \code{sd} stays the input stratum SD.}
 \item{\code{n}}{Allocated sample size (continuous).}
-\item{\code{n_int}}{Integer allocation. In \code{n} mode the requested
-total is preserved (bounded largest-remainder rounding), except
-under a fixed cluster take, where the take is held and the total
-moves to the nearest whole multiple of it instead. In
-\code{cv} mode each stratum is rounded up so the integer design
-meets the target. In \code{budget} mode units are added by variance
-reduction per unit cost so the integer design stays within
-budget. Always inside the integerized bounds
-(\code{ceiling(.lower)}, \code{floor(.upper)}). An error is raised when
-no integer allocation can satisfy them.}
-\item{\code{weight}}{Design weight \code{N / n}.}
+\item{\code{n_int}}{Integer allocation. In \code{n} mode an element design
+keeps the requested total (bounded largest-remainder rounding). A
+cluster design fields whole PSUs at one whole take per stratum,
+near its cost-optimal value, so its total can miss \code{n} by at most
+half the largest take. The allocation is re-solved within what each
+stratum can field at its take, and each rounded PSU count then moves
+by at most one PSU, jointly across strata, toward \code{n}. A take is
+raised above that value only when the strata at their \code{N_psu}
+limits would otherwise fall more than half a take short. In \code{cv}
+mode each stratum is rounded up so the integer design meets the
+target. In \code{budget} mode units are added by variance reduction per
+unit cost so the integer design stays within budget. Always inside
+the integerized bounds (\code{ceiling(.lower)}, \code{floor(.upper)}), except
+that an \code{N_psu} cap bounds the whole PSU count rather than the
+element count, since the whole take can round up. An error is
+raised when no integer allocation satisfies them, and when no
+whole-unit cluster design comes within half a take of \code{n}, above or
+below. That error gives the nearest total the design can field, the
+smallest when lower bounds and one PSU per stratum force more, the
+largest when \code{N} and \code{N_psu} allow less.}
+\item{\code{weight}}{Base weight \code{N / n} of the issued sample, before
+nonresponse or calibration adjustment.}
 \item{\code{n_eff}}{Effective sample size \code{n * resp_rate / deff}.}
 \item{\code{.lower}, \code{.upper}}{Bounds applied to the stratum
 (from \code{min_n_stratum}, \code{max_weight}, \code{take_all}, \code{N_psu}, or
@@ -404,7 +426,7 @@ replace \code{unit_cost}, which is not allowed in this mode.
 \code{N_psu} is a feasibility constraint and nothing more. It caps the
 allocation at \code{N_psu * n_per_psu} ultimate units and caps the whole-unit
 design at \code{N_psu} clusters, matching the bound the fixed-take path
-already applies. Leaving it out preserves the unbounded behaviour, in
+already applies. Leaving it out preserves the unbounded behavior, in
 which the allocation may ask for more PSUs than a stratum contains.
 
 On its own it does \strong{not} activate a first-stage finite population
@@ -426,6 +448,12 @@ reaches zero only when every stage is enumerated.
 Because taking every PSU leaves the within-PSU take in force, it does not
 enumerate a stratum, and \code{take_all} is refused in cluster mode for the
 same reason the fixed-take path refuses it.
+
+The whole-unit design keeps its PSU count within \code{N_psu} as well. When the
+strata at their \code{N_psu} limits cannot hold \code{n} at their cost-optimal
+whole takes, a take is raised above its continuous value. When no whole
+take brings the design within half a take of \code{n}, \code{n_alloc()} stops with
+an error giving the largest total it can field.
 }
 
 \subsection{Which correction the variance carries}{
@@ -504,6 +532,16 @@ the usual clustering component, and the two are combined into the
 anticipated design effect. \code{psu$certainty} can add a PSU to the certainty
 part. It cannot remove a PSU above the threshold.
 
+This uses an aggregate planning approximation. The noncertainty part
+uses a with-replacement clustering approximation, a standard approach
+in PPS sample-size planning. The design effect uses
+\code{ceiling(f_h * N_certain)} for the certainty part and the remaining
+stratum allocation for the noncertainty part. A common stratum-level
+finite population correction is then applied. Precision therefore uses
+aggregate counts rather than each PSU's individually rounded take and
+stage-specific sampling fractions. Check sensitivity to this aggregation
+when rounding or sampling fractions are substantial.
+
 The threshold and allocation determine each other, so the solver iterates.
 \verb{$optimization$certainty} records whether it converged, cycled, or reached
 its iteration limit. \verb{$detail} gives the split and threshold by stratum,
@@ -520,7 +558,8 @@ rather than on \verb{$detail} column names.
 The operational design is fieldable: certainty PSUs use their whole take
 at the stratum rate and the remainder uses whole PSUs at \code{n_per_psu}. Thus
 \code{n_int = n_certain_int + n_psu_draw * n_per_psu} in every stratum.
-\verb{$operational} reports the count, cost, and precision of that same design.
+\verb{$operational} reports its count and cost, with precision evaluated under
+the aggregate planning approximation described above.
 Use \code{cost_psu} and \code{cost_ssu} together to price PSU visits and interviews.
 \link{predict.svyplan} can compare fixed values of \code{n_per_psu}.
 }
@@ -546,17 +585,26 @@ Allocation is controlled by the \code{alloc} parameter (same methods as
 \item \strong{proportional}: \eqn{n_h \propto N_h / r_h}{n_h proportional to N_h / r_h}
 \item \strong{neyman}: \eqn{n_h \propto N_h S_h \sqrt{d_h / r_h}}{n_h proportional to N_h S_h sqrt(d_h / r_h)}
 \item \strong{optimal}: \eqn{n_h \propto N_h S_h \sqrt{d_h / r_h} / \sqrt{c_h}}{n_h proportional to N_h S_h sqrt(d_h / r_h) / sqrt(c_h)}
-\item \strong{power}: Bankier (1988), \eqn{n_h \propto S_h N_h^{q}\sqrt{d_h/r_h}}{n_h ~ S_h * N_h^alloc_q * sqrt(deff_h / resp_rate_h)},
-with exponent \code{alloc_q}
+\item \strong{power}: Bankier (1988) allocation,
+\eqn{n_h \propto (S_h/|\mu_h|) X_h^q\sqrt{d_h/r_h}}{n_h ~ (S_h / abs(mean_h)) * alloc_measure_h^alloc_q * sqrt(deff_h / resp_rate_h)},
+where \eqn{X_h} is \code{frame$alloc_measure}, defaulting to
+\eqn{N_h|\mu_h|}. Every stratum needs a finite nonzero \code{mean} or \code{p}.
+The population CV \eqn{S_h/|\mu_h|} is distinct from the target \code{cv},
+which describes the relative standard error of an estimate.
+Zero-variance strata have zero allocation weight and remain subject to
+the allocation bounds. If all variances are zero, the existing fallback
+allocates in proportion to population size, with a warning.
+Use explicit domain targets when comparable domain precision is required.
 }
 
 The design effect \eqn{d_h} and response rate \eqn{r_h} enter only when
 they vary by stratum. A value shared by every stratum is a constant
 factor and cancels out of a proportional weighting, leaving the classical
-rules above it. The three variance-based rules carry
-\eqn{\sqrt{d_h/r_h}}{sqrt(d_h/r_h)} because they minimize
-\eqn{\sum W_h^2S_h^2d_h/(r_hn_h)} against a constraint on the units
-\emph{drawn}, which is what a budget pays for. Proportional carries
+rules above it. Neyman and optimal allocation carry
+\eqn{\sqrt{d_h/r_h}}{sqrt(d_h/r_h)} from minimizing
+\eqn{\sum W_h^2S_h^2d_h/(r_hn_h)} under a constraint on issued count
+or cost, respectively. The power rule retains that adjustment while
+weighting population CVs by \code{alloc_measure^alloc_q}. Proportional carries
 \eqn{1/r_h} instead, and no \eqn{d_h} at all, because it is a count rule, not a
 variance optimum, and its purpose is a self-weighting sample, so it is
 the responding sample it holds proportional to \eqn{N_h}.

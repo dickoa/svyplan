@@ -1,9 +1,8 @@
 #' Estimate variance components
 #'
-#' Estimate between- and within-stage variance components using nested
-#' ANOVA decomposition, from frame data, from a sample, or from a previous
-#' round's published design effect. Supports SRS and PPS first-stage
-#' designs.
+#' Estimate variance components for multistage sampling from frame or
+#' sample data, or infer a measure of homogeneity from a previous round's
+#' published design effect. Supports SRS and PPS first-stage designs.
 #'
 #' @param x A formula, numeric vector, or survey design object
 #'   (see Details). Leave unset to back an `icc` out of a published design
@@ -108,13 +107,19 @@
 #' as separate strata, with `prob` renormalized over the remaining
 #' PSUs.
 #'
-#' The returned `icc` is the design-based measure of homogeneity
+#' For two-stage designs, `icc` represents the measure of homogeneity
 #' \eqn{\delta = V_b / (V_b + V_w)}{icc = Vb / (Vb + Vw)}, written
-#' \eqn{\delta} in Valliant, Dever, and Kreuter (2018, Ch. 9).
-#' Unlike the traditional ANOVA
-#' intraclass correlation coefficient, `icc` is constrained to \eqn{[0, 1]}
-#' and should not be compared directly to mixed-model ICCs (e.g. from lme4)
-#' which can be negative.
+#' \eqn{\delta} in Valliant, Dever, and Kreuter (2018, Ch. 9), in the
+#' multistage sampling variance decomposition. It lies in \eqn{[0, 1]}
+#' when the components are nonnegative and their sum is positive.
+#' It is related to conventional intraclass correlation measures, including
+#' Kish's rate of homogeneity (\emph{roh}), but is not generally numerically
+#' identical to them. Survey ICC estimates such as \emph{roh} can be negative.
+#' A random-intercept ICC formed from nonnegative variance components cannot.
+#' When using an ICC from another source, check its definition and the
+#' associated design-effect formula. Here the two-stage approximation is
+#' \eqn{k[1 + (b - 1)\delta]}, with `var_ratio` supplying \eqn{k}.
+#' The three-stage component definitions are given below.
 #'
 #' ## From a published design effect
 #'
@@ -136,6 +141,9 @@
 #' `varw` and `unit_relvar` come back `NA_real_`, not being identified.
 #' Functions that need the unit relvariance, such as [n_cluster()] with a
 #' `cv` target, say so and ask for it directly.
+#' Inverting a published design effect can return an `icc` outside
+#' \eqn{[0, 1]}. The value is retained with a warning, but the cluster-planning
+#' functions do not accept it.
 #'
 #' Where the report gives a standard error instead of a design effect,
 #' `se` with the quantity it refers to forms the design effect against the
@@ -1021,7 +1029,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 .check_min_psu <- function(psu_count) {
   if (psu_count < 2L) {
     stop(
-      "at least two PSUs are required to estimate between-PSU variance. Collapse single-PSU strata with a neighbour",
+      "at least two PSUs are required to estimate between-PSU variance. Collapse single-PSU strata with a neighbor",
       call. = FALSE
     )
   }

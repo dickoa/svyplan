@@ -40,8 +40,9 @@
 #'   be absent for a rotating design, whose target is an occasion rather
 #'   than a wave.
 #' @param assurance Probability in (0, 1), or `NULL` (default). The
-#'   recruitment above is an expected-value calculation, which leaves about
-#'   half of all panels short of the target. Supplying a level reports, next
+#'   recruitment above is an expected-value calculation, which does not
+#'   guarantee that the target will be reached. The shortfall probability
+#'   depends on the response distribution and integer rounding. Supplying a level reports, next
 #'   to it, the recruitment for which the required respondents arrive with
 #'   at least that probability. See Details.
 #'
@@ -286,8 +287,7 @@
 #'                resp_rate = 0.728, design = "rotating", start = "immediate")
 #' subset(imm$launch_waves, period <= 2)
 #'
-#' # Expected recruitment leaves half of all panels short, and assurance does
-#' # not
+#' # Request at least a 95% probability of reaching the respondent target
 #' n_panel(target, retention = c(0.9, 0.9), resp_rate = 0.8,
 #'         assurance = 0.95)$n_assured
 #'

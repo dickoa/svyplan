@@ -19,7 +19,7 @@ test_that("the analytic size matches a hand-written inversion", {
     for (deff in c(1, 1.8)) {
       for (resp_rate in c(1, 0.85)) {
         a_h <- svyplan:::.alloc_weights(alloc, 0.5, f$N_h, f$S_h,
-                                        rep(1, length(f$N_h)))
+                                        rep(1, length(f$N_h)), mean_h = f$mean_h)
         m_h <- pmin(rep(2, length(f$N_h)), f$N_h)
         M_h <- f$N_h
         target_V <- (0.05 * abs(sum(f$W_h * f$mean_h)))^2
@@ -91,6 +91,44 @@ test_that("the returned size is the smallest that meets the target", {
   # A materially smaller size must miss it, so the answer is not merely
   # somewhere in a flat region.
   expect_gt(var_at(got * 0.99), target_V)
+})
+
+test_that("binding bounds are solved exactly on the allocator's segments", {
+  set.seed(11)
+  checked <- 0L
+  for (i in seq_len(400)) {
+    L <- sample(2:7, 1)
+    N_h <- sample(c(2:10, 40, 400), L, replace = TRUE)
+    W_h <- N_h / sum(N_h)
+    S_h <- rexp(L) * sample(c(0, 1, 1, 1), L, replace = TRUE)
+    a_h <- N_h * S_h
+    m_h <- pmin(2, N_h)
+    M_h <- N_h
+    if (i %% 5 == 0) {
+      m_h[L] <- N_h[L]
+      a_h[L] <- 0
+    }
+    if (sum(a_h) == 0) next
+    n_mid <- runif(1, sum(m_h), sum(M_h))
+    raw <- n_mid * a_h / sum(a_h)
+    if (all(raw >= m_h & raw <= M_h)) next
+    deff <- runif(1, 0.5, 3)
+    resp_rate <- runif(1, 0.5, 1)
+    var_at <- function(n) {
+      n_h <- svyplan:::.rna_alloc(a_h, n, m_h, M_h)
+      svyplan:::.strata_variance(W_h, S_h, n_h, N_h, deff, resp_rate)
+    }
+    target_V <- var_at(n_mid)
+    got <- svyplan:::.strata_size_for_target(
+      W_h, S_h, N_h, a_h, m_h, M_h, target_V, deff, resp_rate
+    )
+    expect_lte(var_at(got), target_V)
+    if (got > sum(m_h) * (1 + 1e-6)) {
+      expect_gt(var_at(got * (1 - 1e-7)), target_V)
+    }
+    checked <- checked + 1L
+  }
+  expect_gt(checked, 300L)
 })
 
 test_that("an unattainable target is reported rather than approximated", {

@@ -379,7 +379,8 @@ test_that("fixed_cost validation rejects bad inputs", {
 
 test_that("as.integer returns the operational stage vector", {
   res <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
-  expect_identical(as.integer(res), as.integer(res$operational$n))
+  expect_identical(as.integer(res),
+                   setNames(as.integer(res$operational$n), names(res$operational$n)))
   expect_named(res$operational$n, c("n_psu", "n_per_psu"))
 })
 

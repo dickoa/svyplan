@@ -31,6 +31,15 @@
 #' Domain classifications may overlap. For example, separate `region` and
 #' `residence` targets can use the same atomic `region x residence` frame rows.
 #'
+#' For element-level proportion measures, the stratum population variance is
+#' \eqn{S_h^2 = N_h p_h(1-p_h)/(N_h-1)}{S_h^2 = N_h*p_h*(1-p_h)/(N_h-1)},
+#' with \eqn{N_h > 1}. Combining this with the finite population correction
+#' gives the same variance as [prec_prop()] for a one-stratum design with the
+#' same response rate and design effect. It applies to both precision targets
+#' and budget objectives. Explicit `var` or `sd` values are used as supplied.
+#' Multistage designs, including designs supplied through a PSU register,
+#' retain the working proportion variance `p * (1 - p)`.
+#'
 #' ## Fixed-take multistage joint designs
 #'
 #' Fixed-take two- and three-stage joint designs keep only the first-stage PSU

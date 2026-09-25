@@ -2,9 +2,9 @@
 #'
 #' @section Where svyplan stops:
 #' svyplan stops at the plan. It decides how many units, allocated where, to
-#' what precision, and it never draws a sample: no selection probabilities,
-#' no weights, no drawn units come out of any function here. What you get is
-#' the design a sampler is then asked to realize.
+#' what precision. It reports stratum-level design quantities such as sizes,
+#' sampling fractions and base weights. It never draws a sample and never
+#' attaches selection probabilities or weights to units.
 #'
 #' When the plan is settled, \pkg{sondage} draws it. Analysis of the realized
 #' sample belongs to \pkg{survey} or \pkg{srvyr}.
@@ -20,9 +20,9 @@
 #' nonresponse follow-up design, and [predict()] supports sensitivity grids.
 #'
 #' @section Which function:
-#' Eleven problems, each with the function or pair that answers it. Every
-#' `n_` has a `prec_` reading the same design back the other way, so a row
-#' names one thing to learn rather than two.
+#' Each row identifies a planning problem and the functions that address it.
+#' The paired `prec_` functions evaluate precision under the corresponding
+#' sizing model.
 #'
 #' \tabular{ll}{
 #'   **I want to size, or evaluate** \tab **Functions** \cr
@@ -46,11 +46,12 @@
 #'
 #' \tabular{lll}{
 #'   **Argument** \tab **Symbol** \tab **Meaning** \cr
-#'   `icc` \tab \eqn{\delta} \tab Design-based measure of homogeneity within
-#'     clusters, \eqn{V_b/(V_b+V_w)}. Constrained to \eqn{[0, 1]}, so it is
-#'     not interchangeable with a mixed-model ICC, which can be negative.
-#'     Written \eqn{\delta} by Valliant, Dever and Kreuter (2018) and
-#'     related to Kish's \emph{roh}. \cr
+#'   `icc` \tab \eqn{\delta} \tab Measure of homogeneity in the multistage
+#'     sampling variance decomposition. For two stages, \eqn{V_b/(V_b+V_w)},
+#'     in \eqn{[0, 1]} for nonnegative components with a positive sum.
+#'     Written \eqn{\delta} by Valliant, Dever, and Kreuter (2018).
+#'     Related to conventional ICCs and Kish's \emph{roh}, but not generally
+#'     numerically identical. See [varcomp()] for the definitions. \cr
 #'   `var_ratio` \tab \eqn{k} \tab Ratio of the stage components' unit
 #'     variance to the analysis variable's. Defaults to 1. \cr
 #'   `unit_relvar` \tab \eqn{V} \tab Unit relvariance, \eqn{S^2/\bar{y}^2}{S^2/ybar^2},
@@ -66,7 +67,9 @@
 #'     error. \cr
 #'   `overlap`, `overlap_cor` \tab \eqn{\gamma}, \eqn{\rho} \tab Panel
 #'     overlap fraction and the correlation between occasions. \cr
-#'   `alloc_q` \tab \eqn{q} \tab Bankier power-allocation exponent, used only
+#'   `alloc_measure` \tab \eqn{X_h} \tab Positive stratum measure for Bankier
+#'     allocation, supplied as a frame column. Defaults to \eqn{N_h|\mu_h|}. \cr
+#'   `alloc_q` \tab \eqn{q} \tab Bankier allocation exponent, used only
 #'     when `alloc = "power"`. It is unrelated to statistical power. \cr
 #' }
 #'

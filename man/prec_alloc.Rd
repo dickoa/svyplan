@@ -37,9 +37,15 @@ with at least \code{N} and \code{sd} or \code{var} columns). See \code{\link[=n_
 the full column reference).
 For \code{svyplan_n} objects: an allocation result from \code{\link[=n_alloc]{n_alloc()}}.}
 
-\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
+\item{...}{Additional arguments passed to methods. Unused arguments are
+rejected. For an allocation result, named arguments override the fitted
+values, and \code{n_per_psu} sets the take per PSU of a cluster allocation,
+one value or one per stratum. See "Evaluating a cluster field design".}
 
-\item{n}{Stratum sample sizes, length \code{nrow(frame)}. For a fitted joint
+\item{n}{Stratum sample sizes, length \code{nrow(frame)}. In a cluster
+allocation these count ultimate units, fielded at the take in the
+frame's \code{n_per_psu} column, or at the continuous cost-optimal take when
+the frame has none. For a fitted joint
 allocation, omission uses its continuous allocation. Pass \verb{$detail$n_int}
 to assess the operational recommendation. A named vector is matched to
 \code{frame$stratum}, an unnamed vector is positional. In fixed-take
@@ -145,6 +151,22 @@ whole budget.
 Compute aggregate precision for a stratum allocation. For a joint
 constrained allocation, return one achieved-precision row per target and
 separate stratum-bound diagnostics.
+}
+\details{
+\subsection{Evaluating a cluster field design}{
+
+The take is part of a cluster design. Whole-unit counts evaluated at the
+continuous take imply a fractional number of PSUs, which no field design
+has. \verb{$operational} on an \code{\link[=n_alloc]{n_alloc()}} result already reports the
+precision of its whole-unit design. The same design, or a variation of it,
+is evaluated here by supplying both stage sizes:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{prec_alloc(fit, n = fit$detail$n_int, n_per_psu = fit$detail$n_per_psu_int)
+}\if{html}{\out{</div>}}
+
+which reproduces \code{fit$operational$cv}. \code{n_per_psu} does not apply to an
+allocation built on a PSU register, whose takes come from the register.
+}
 }
 \examples{
 frame <- data.frame(

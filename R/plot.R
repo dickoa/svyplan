@@ -107,7 +107,7 @@ plot.svyplan_strata <- function(x, ...) {
     cumrootf = "Dalenius-Hodges",
     geo = "Geometric",
     lh = "LH-inspired coordinate search",
-    kozak = "Kozak-inspired local search",
+    kozak = "Kozak random search",
     x$method
   )
 

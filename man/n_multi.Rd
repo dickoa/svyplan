@@ -101,8 +101,13 @@ the sum of the domain quotas under \code{"separate"}, or the size whose
 expected yield meets every quota under \code{"natural"}. It is not the
 largest domain requirement, which is a different and smaller
 number.}
-\item{\code{n_domain_max}}{The largest single domain requirement, and the
-one \code{binding} refers to.}
+\item{\code{n_domain_max}}{The largest single domain requirement. Under
+\code{domain_sampling = "natural"}, this need not be the domain that
+determines \code{n}, which is selected after division by \code{.share}.}
+\item{\code{binding}}{The binding indicator within the domain that
+determines \code{n}: the largest domain quota under \code{"separate"}, or the
+largest share-adjusted requirement under \code{"natural"}. Use
+\verb{$domains} to identify the domain itself.}
 \item{\code{domains}}{Data frame with one row per domain, including
 domain variables, \code{.n}, \code{.binding}, and \code{.share} under
 \code{"natural"}.}

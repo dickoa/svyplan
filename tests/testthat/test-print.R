@@ -45,9 +45,22 @@ test_that("as.double.svyplan_n returns raw n", {
 
 test_that("as.integer.svyplan_cluster returns the operational stage vector", {
   result <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
-  expect_identical(as.integer(result), as.integer(result$operational$n))
+  expect_identical(as.integer(result),
+                   setNames(as.integer(result$operational$n),
+                            c("n_psu", "n_per_psu")))
   expect_length(as.integer(result), 2L)
   expect_lte(result$operational$cost, 100000)
+})
+
+test_that("cluster integer coercion preserves three-stage and fallback names", {
+  result <- n_cluster(stage_cost = c(500, 50, 5), icc = c(0.05, 0.1),
+                      budget = 100000)
+  expect_identical(names(as.integer(result)),
+                   c("n_psu", "n_per_psu", "n_per_ssu"))
+  expect_identical(unname(as.integer(result)), as.integer(result$operational$n))
+  result$operational <- NULL
+  expect_identical(as.integer(result),
+                   setNames(as.integer(ceiling(result$n)), names(result$n)))
 })
 
 test_that("print returns invisible(x)", {
@@ -195,8 +208,8 @@ test_that("as.data.frame.svyplan_cluster returns the stage table", {
   df <- as.data.frame(res)
   expect_equal(df$stage, c("n_psu", "n_per_psu"))
   expect_equal(df$n, as.numeric(res$n))
-  expect_identical(df$n_int, as.integer(res))
-  expect_false(identical(as.integer(ceiling(res$n)), as.integer(res)))
+  expect_identical(df$n_int, unname(as.integer(res)))
+  expect_false(identical(as.integer(ceiling(res$n)), unname(as.integer(res))))
 })
 
 test_that("as.data.frame.svyplan_cluster returns domains when present", {

@@ -75,8 +75,13 @@
 #'       expected yield meets every quota under `"natural"`. It is not the
 #'       largest domain requirement, which is a different and smaller
 #'       number.}
-#'     \item{`n_domain_max`}{The largest single domain requirement, and the
-#'       one `binding` refers to.}
+#'     \item{`n_domain_max`}{The largest single domain requirement. Under
+#'       `domain_sampling = "natural"`, this need not be the domain that
+#'       determines `n`, which is selected after division by `.share`.}
+#'     \item{`binding`}{The binding indicator within the domain that
+#'       determines `n`: the largest domain quota under `"separate"`, or the
+#'       largest share-adjusted requirement under `"natural"`. Use
+#'       `$domains` to identify the domain itself.}
 #'     \item{`domains`}{Data frame with one row per domain, including
 #'       domain variables, `.n`, `.binding`, and `.share` under
 #'       `"natural"`.}

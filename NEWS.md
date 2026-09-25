@@ -2,25 +2,29 @@
 
 Initial CRAN release.
 
-svyplan sizes survey samples and reports the precision a size buys. It plans
-designs and emits no inclusion probabilities and no weights, which is the
-sampling stage's work.
+svyplan sizes survey samples and reports the precision a size buys. It
+reports stratum-level design quantities such as sizes, sampling fractions and
+base weights. It never draws a sample and never attaches selection
+probabilities or weights to units, which is the sampling stage's work.
 
-Every calculation accepts `deff`, `N` and `resp_rate` under one shared variance
-equation, takes a `svyplan()` profile as `plan`, and pairs with an inverse, so
-passing a result to the opposite function recovers the target it was sized for
-under named `...` overrides. Results carry `print()`, `summary()`, `format()`
+Single-stage size, precision and power functions accept `deff`, `N` and
+`resp_rate` and take a `svyplan()` profile as `plan`. Cluster functions take
+`icc` and stage costs in place of `deff`. Every `n_` function has a `prec_`
+counterpart, so passing a sized result to it reports the precision the design
+was sized for, and named `...` overrides evaluate a variation of it.
+Results carry `print()`, `summary()`, `format()`
 and `as.data.frame()` methods, and `confint()`, `plot()` or `predict()` where
-those apply. Whole-unit field designs are kept in `$operational`, separate from
-the continuous optimum, and `as.integer()` returns the design a planner would
-field.
+those apply. Optimization results with a whole-unit recommendation keep it in
+`$operational`, separate from the continuous solution. Integer coercion uses
+that recommendation when available, or rounds the continuous size up.
 
 ## Sample size determination
 
 * `n_prop()`, `n_mean()` and `n_ratio()` size a proportion, a mean, or a ratio
   of two totals observed on the same units. Targets are `moe`, `cv`, or `rmoe`,
-  a margin of error relative to the estimand, which is how MICS and DHS state
-  one.
+  a margin of error relative to the estimand. MICS uses relative margins of
+  error, while DHS also describes precision using relative standard errors
+  (`cv`). These targets differ by the confidence-level multiplier.
 * Proportions offer four intervals, Wald, Wilson, log-odds, and the Korn and
   Graubard (1998) beta. Each size inverts the half-width its `prec_prop()`
   counterpart reports, so the four converge as the margin of error shrinks and
@@ -42,11 +46,19 @@ field.
   Neyman, optimal, or Bankier power allocation. An `icc_psu` frame column makes
   it a stratified two-stage design, where `fpc` picks between the ultimate-unit
   correction, the exact stage-by-stage one, and none.
+  Bankier allocation weights each stratum's population CV by a size measure
+  raised to `alloc_q`. The measure is the stratum total `N * abs(mean)` unless
+  a positive `alloc_measure` frame column supplies another. With that default
+  measure, `alloc_q = 1` gives Neyman allocation. In cluster mode each stratum
+  fields whole PSUs at a whole take near its cost-optimal value.
 * Long `measures` and `targets` tables request joint constrained allocation
   across indicators and overlapping domains. Without `objective` the result is
   the cheapest design meeting every requirement, and with `objective` and
   `budget` it is the best design that budget buys. A KKT-certified continuous
   optimum is reported separately from the feasible whole-unit recommendation.
+  An element-level proportion measure uses the population variance
+  `N * p * (1 - p) / (N - 1)`, so a one-stratum joint allocation equals
+  `n_prop()`. Multistage designs use the working variance `p * (1 - p)`.
 * `psu` gives `n_alloc()` a PSU register, which separates the PSUs a PPS design
   would select with certainty and reports the take each fielded PSU carries.
 * `n_multi()` sizes a table of indicators, with optional per-domain sizing and
@@ -88,7 +100,9 @@ field.
 * `prec_alloc()` reports at three levels, the population overall, each stratum
   in `$detail` with its share of the design variance, and each domain in
   `$domains`, using the same table `n_alloc()` returns so a design and its
-  assessment compare row for row.
+  assessment compare row for row. For a cluster allocation, `n_per_psu` sets
+  the take, so the whole-unit counts and whole take of `$operational`
+  reproduce its precision exactly.
 
 ## Power analysis
 
@@ -113,7 +127,7 @@ field.
 
 * `strata_bound()` builds candidate boundaries for a continuous stratification
   variable by cumulative root frequency, geometric progression, LH coordinate
-  optimization, or Kozak random-restart search, under the same four allocation
+  optimization, or Kozak's random search, under the same four allocation
   methods `n_alloc()` offers. `$strata` matches the `n_alloc()` frame contract,
   so the table can be handed straight on.
 * Bounded allocation satisfies the requested total together with minimum,

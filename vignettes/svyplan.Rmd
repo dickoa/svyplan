@@ -1,6 +1,11 @@
 ---
 title: "Getting started with svyplan"
+description: >
+  Calculate a survey sample size, check its expected precision, and compare
+  planning assumptions.
 output: rmarkdown::html_vignette
+bibliography: references.bib
+link-citations: true
 vignette: >
   %\VignetteIndexEntry{Getting started with svyplan}
   %\VignetteEngine{knitr::rmarkdown}
@@ -15,89 +20,193 @@ knitr::opts_chunk$set(
   fig.height = 4.5,
   fig.align = "center"
 )
+```
+
+`svyplan` helps you plan survey sample sizes, allocate a sample across a
+design, and assess expected precision or power. You supply anticipated outcome
+variability, design features, and response assumptions. This vignette shows
+how to calculate a sample size, check its precision, and compare planning
+assumptions.
+
+The calculations describe a design before data collection. They do not select
+sample records or replace design-based analysis of the collected data.
+
+## Plan a coverage estimate
+
+Suppose a survey must estimate vaccination coverage. A previous survey
+suggests that 70% of eligible people are vaccinated. The new survey should
+have a 95% confidence interval with a margin of error no greater than 5
+percentage points.
+
+Load the package and calculate the sample size:
+
+```{r first-size}
 library(svyplan)
+
+coverage <- n_prop(p = 0.70, moe = 0.05)
+coverage
 ```
 
-`svyplan` provides a toolkit for survey sample size determination. It covers sample sizes for proportions and means, precision analysis, multistage cluster allocation, multi-indicator optimization, strata boundary optimization, and power analysis. The core sizing and precision functions use paired `S3` interfaces for round-trip conversions. Sensitivity analysis via `predict()` is available for supported result classes.
+Here `p` is the anticipated proportion and `moe` is the desired interval
+half-width. The result keeps a continuous calculation in `$n`. Printing and
+`as.integer()` give the whole-unit sample to field:
 
-## Function ecosystem
-
-The package exports `r length(getNamespaceExports("svyplan"))` functions organized into six families. The diagram below shows how they relate to each other.
-
-```{r ecosystem-diagram, echo = FALSE, fig.height = 6.5, fig.width = 7}
-op <- par(mar = c(0, 0, 0, 0), family = "sans")
-plot.new()
-plot.window(xlim = c(0, 10), ylim = c(0, 9.5))
-
-draw_box <- function(x, y, w, h, label, sublabel = NULL,
-                     col = "white", border = "black") {
-  rect(x - w / 2, y - h / 2, x + w / 2, y + h / 2,
-       col = col, border = border, lwd = 1.5)
-  text(x, y + if (!is.null(sublabel)) h / 2 - 0.22 else 0,
-       label, cex = 0.85, font = 2)
-  if (!is.null(sublabel))
-    text(x, y - 0.12, sublabel, cex = 0.65, col = "grey30")
-}
-
-draw_arrow <- function(x0, y0, x1, y1, both = FALSE, ...) {
-  arrows(x0, y0, x1, y1, length = 0.10, lwd = 1.5,
-         col = "grey40", code = if (both) 3L else 2L, ...)
-}
-
-draw_box(5, 8.5, 3.8, 1.0, "Plan Profile",
-         "svyplan")
-
-draw_box(2.5, 6.5, 3.8, 2.1, "Sample Size",
-         paste0("n_prop \u00b7 n_mean \u00b7 n_ratio\n",
-                "n_cluster \u00b7 n_multi\n",
-                "n_alloc \u00b7 n_twophase\n",
-                "n_change \u00b7 n_panel \u00b7 n_pooled"))
-draw_box(7.5, 6.5, 3.8, 2.1, "Precision",
-         paste0("prec_prop \u00b7 prec_mean \u00b7 prec_ratio\n",
-                "prec_cluster \u00b7 prec_multi\n",
-                "prec_alloc \u00b7 prec_twophase\n",
-                "prec_change \u00b7 prec_panel\nprec_pooled"))
-draw_box(2.5, 3.5, 3.8, 1.7, "Design Components",
-         paste0("varcomp \u00b7 design_effect\n",
-                "effective_n \u00b7 design_df\n",
-                "design_rotation \u00b7 design_overlap\ndesign_schedule"))
-draw_box(7.5, 3.5, 3.8, 1.4, "Power Analysis",
-         "power_prop \u00b7 power_mean \u00b7 power_did")
-draw_box(5, 1, 3.8, 1.2, "Stratification",
-         "strata_bound")
-
-draw_arrow(3.5, 8.0, 2.5, 7.5)
-draw_arrow(6.5, 8.0, 7.5, 7.5)
-
-draw_arrow(4.4, 6.9, 5.6, 6.9, both = TRUE)
-text(5, 7.3, "round-trip", cex = 0.6, col = "grey40", font = 3)
-
-draw_arrow(2.5, 4.25, 2.5, 5.5)
-draw_arrow(4.5, 3.4, 5.5, 3.4)
-draw_arrow(7.5, 4.25, 7.5, 5.5)
-
-text(1.6, 4.9, "feeds into", cex = 0.55, col = "grey40", font = 3, srt = 90)
-text(5.0, 3.7, "evaluate", cex = 0.55, col = "grey40", font = 3)
-text(8.3, 4.8, "informs", cex = 0.55, col = "grey40", font = 3, srt = 90)
-
-par(op)
+```{r exact-and-operational}
+c(
+  continuous = as.double(coverage),
+  fielded = as.integer(coverage)
+)
 ```
 
-| Family      | Functions                                                        | Purpose                                |
-|:------------|:-----------------------------------------------------------------|:---------------------------------------|
-| Plan        | `svyplan`                                                        | Reusable profile for design defaults   |
-| Sample size | `n_prop`, `n_mean`, `n_ratio`, `n_cluster`, `n_multi`, `n_alloc`, `n_twophase`, `n_change`, `n_panel`, `n_pooled` | "How many units do I need?"        |
-| Precision   | `prec_prop`, `prec_mean`, `prec_ratio`, `prec_cluster`, `prec_multi`, `prec_alloc`, `prec_twophase`, `prec_change`, `prec_panel`, `prec_pooled` | "What precision does *n* achieve?" |
-| Power       | `power_prop`, `power_mean`, `power_did`                          | "Can I detect a difference?"            |
-| Design      | `varcomp`, `design_effect`, `effective_n`, `design_df`, `design_rotation`, `design_overlap`, `design_schedule` | Variance components, design effects, degrees of freedom, and rotation patterns |
-| Strata      | `strata_bound`                                                   | Optimal stratification boundaries      |
+Use the whole-unit value for fieldwork. Keeping the continuous value inside
+the object avoids accumulating rounding differences when the result is passed
+to another calculation.
 
-### Which function
+## Add design and response assumptions
 
-The same functions read by problem rather than by family. Eleven problems, each with the function or pair that answers it. Every `n_` has a `prec_` reading the same design back the other way, so a row names one thing to learn rather than two.
+The first calculation assumes simple random sampling and complete response.
+Suppose earlier rounds suggest a design effect of 1.5 and an 85% response
+rate:
+
+```{r design-assumptions}
+coverage <- n_prop(
+  p = 0.70,
+  moe = 0.05,
+  deff = 1.5,
+  resp_rate = 0.85
+)
+coverage
+```
+
+The design effect increases the variance relative to simple random sampling.
+The response-rate adjustment increases the issued sample so the expected
+number of respondents meets the precision target. It assumes response is
+ignorable under the planned adjustment. It does not remove nonresponse bias
+or account for variation from response weights.
+
+A finite population size can also be supplied with `N`. The finite population
+correction matters when the planned sampling fraction is appreciable:
+
+```{r finite-population}
+n_prop(
+  p = 0.70,
+  moe = 0.05,
+  N = 5000,
+  deff = 1.5,
+  resp_rate = 0.85
+)
+```
+
+The single-stage `n_*()` and `prec_*()` functions share these arguments:
+
+| Argument | Meaning | Default |
+|:---|:---|:---|
+| `deff` | Design effect multiplying the simple random sampling variance | 1 |
+| `N` | Finite population size, which applies the finite population correction | `Inf` |
+| `alpha` | Significance level of `moe` and `rmoe` targets and of intervals | 0.05 |
+| `resp_rate` | Expected response rate. The issued sample is the respondent sample divided by it | 1 |
+
+Any `deff > 0` is accepted. A design effect below 1 describes a design more
+efficient than simple random sampling, such as a well-stratified sample.
+`n_cluster()` takes `icc` and stage costs in place of `deff` and `N`, and
+accepts a response rate for each stage.
+
+## Check expected precision
+
+Every core `n_*()` function has a paired `prec_*()` function. Passing the
+sample-size result carries its assumptions into the precision calculation:
+
+```{r precision-check}
+coverage_precision <- prec_prop(coverage)
+coverage_precision
+confint(coverage)
+```
+
+The interval is the interval expected at the planning value of 70%. It is not
+an interval estimated from survey data. Under the same method and continuous
+design assumptions, passing the precision result back to `n_prop()` recovers
+the original calculation:
+
+```{r round-trip}
+n_prop(coverage_precision)
+```
+
+Operational rounding and constrained allocations can make a fielded design
+slightly more precise than its continuous target. In those cases, assess the
+reported operational allocation rather than expecting exact numerical
+reversal.
+
+## Compare uncertain assumptions
+
+Response rates and design effects are usually estimates. `predict()` evaluates
+supported planning results at new parameter combinations while holding the
+other assumptions fixed:
+
+```{r sensitivity}
+predict(
+  coverage,
+  expand.grid(
+    deff = c(1.2, 1.5, 2.0),
+    resp_rate = c(0.70, 0.85, 1.00)
+  )
+)
+```
+
+This grid shows the sample-size consequences of optimistic and conservative
+assumptions. See `?predict.svyplan` for the parameters supported by each result
+class. For example, prediction from a `strata_bound()` result assigns new
+observations to its existing strata. It does not rerun a sensitivity grid.
+
+## Reuse shared assumptions
+
+When several calculations use the same population and fieldwork assumptions,
+store them in a plan profile:
+
+```{r plan-profile}
+design <- svyplan(
+  deff = 1.5,
+  resp_rate = 0.85,
+  N = 5000
+)
+
+n_prop(p = 0.70, moe = 0.05, plan = design)
+n_mean(var = 100, moe = 2, plan = design)
+```
+
+An explicit function argument overrides the corresponding profile value. This
+lets a common profile hold the defaults while an indicator supplies its own
+design effect or response rate:
+
+```{r plan-override}
+n_prop(p = 0.70, moe = 0.05, plan = design, deff = 2)
+```
+
+Profiles can also be piped into functions whose first argument accepts them:
+
+```{r plan-pipe}
+design |> n_prop(p = 0.70, moe = 0.05)
+```
+
+A profile can also carry cluster context. Stage costs and the intraclass
+correlation stored in the profile are read by `n_cluster()`:
+
+```{r plan-cluster}
+cluster_design <- svyplan(
+  stage_cost = c(500, 50),
+  icc = 0.05,
+  resp_rate = 0.85
+)
+
+n_cluster(cv = 0.05, plan = cluster_design)
+```
+
+## Which function
+
+Each row names a planning problem and the functions that address it. The
+paired `prec_` function evaluates precision under the same sizing model.
 
 | **I want to size, or evaluate** | **Functions** |
-|:----------------------------|:----------|
+|:---|:---|
 | a proportion, a mean or a ratio of two totals | `n_prop()`/`prec_prop()`, `n_mean()`/`prec_mean()`, `n_ratio()`/`prec_ratio()` |
 | several indicators at once, taking the most demanding | `n_multi()`/`prec_multi()` |
 | a two- or three-stage cluster design, for one indicator or a table of them | `n_cluster()`/`prec_cluster()` |
@@ -110,413 +219,35 @@ The same functions read by problem rather than by family. Eleven problems, each 
 | the power of a two-group comparison or a difference-in-differences | `power_prop()`, `power_mean()`, `power_did()` |
 | the design effect, effective size or degrees of freedom of a plan | `design_effect()`, `effective_n()`, `design_df()`, `varcomp()` |
 
-Most planning functions return structured S3 objects. Available methods depend on the result class. See the relevant help page for details.
-
-## The n_\*/prec_\* duality
-
-The most distinctive feature of svyplan is the bidirectional link between sample size and precision functions. Every `n_*` function has a `prec_*` counterpart, and each pair supports round-trip conversion. Under the same formula and continuous design assumptions, converting a result to its counterpart and back reproduces the original target. Changing methods or using an operational integer allocation can change the result.
-
-```{r decision-diagram, echo = FALSE, fig.height = 4, fig.width = 7}
-op <- par(mar = c(0, 0, 0, 0), family = "sans")
-plot.new()
-plot.window(xlim = c(0, 10), ylim = c(0, 6))
-
-rrect <- function(x, y, w, h, label, col = "white", border = "black",
-                  cex = 0.75, font = 1) {
-  rect(x - w / 2, y - h / 2, x + w / 2, y + h / 2,
-       col = col, border = border, lwd = 1.5)
-  text(x, y, label, cex = cex, font = font)
-}
-
-rrect(5, 5.2, 4, 0.8, "What is your question?",
-      col = "white", border = "black", cex = 0.9, font = 2)
-
-rrect(1.5, 3.2, 3.0, 0.7, '"How many units?"')
-rrect(5.0, 3.2, 3.0, 0.7, '"What precision at n?"')
-rrect(8.5, 3.2, 3.0, 0.7, '"Can I detect a difference?"', cex = 0.72)
-
-rrect(1.5, 1.2, 3.0, 1.7, paste0(
-        "n_prop \u00b7 n_mean \u00b7 n_ratio\nn_cluster \u00b7 n_multi\n",
-        "n_alloc \u00b7 n_twophase\n",
-        "n_change \u00b7 n_panel\nn_pooled"),
-      col = "white", border = "black", cex = 0.62)
-rrect(5.0, 1.2, 3.0, 1.7, paste0(
-        "prec_prop \u00b7 prec_mean \u00b7 prec_ratio\nprec_cluster \u00b7 prec_multi\n",
-        "prec_alloc \u00b7 prec_twophase\n",
-        "prec_change \u00b7 prec_panel\nprec_pooled"),
-      col = "white", border = "black", cex = 0.62)
-rrect(8.5, 1.2, 3.0, 1.7, paste0(
-        "power_prop \u00b7 power_mean\npower_did\n\n",
-        "with overlap, the same\ntwo-occasion change"),
-      col = "white", border = "black", cex = 0.62)
-
-draw_arrow <- function(x0, y0, x1, y1)
-  arrows(x0, y0, x1, y1, length = 0.08, lwd = 1.3, col = "grey40")
-
-draw_arrow(3.5, 4.8, 1.5, 3.6)
-draw_arrow(5.0, 4.8, 5.0, 3.6)
-draw_arrow(6.5, 4.8, 8.5, 3.6)
-
-draw_arrow(1.5, 2.85, 1.5, 2.1)
-draw_arrow(5.0, 2.85, 5.0, 2.1)
-draw_arrow(8.5, 2.85, 8.5, 2.1)
-# the duality the section is about, drawn where the two families meet
-arrows(3.0, 1.3, 3.5, 1.3, length = 0.08, lwd = 1.3, col = "grey40", code = 3)
-text(3.25, 2.25, "round-trip", cex = 0.55, col = "grey40", font = 3)
-
-par(op)
-```
-
-Because `n_*` and `prec_*` are S3 generics, you can pass a result object directly to its inverse. All design parameters travel with the object:
-
-```{r round-trip}
-# Compute sample size for a proportion
-s <- n_prop(p = 0.3, moe = 0.05, deff = 1.5)
-s
-
-# What precision does this n achieve?
-p <- prec_prop(s)
-p
-
-# Recover the original sample size
-n_prop(p)
-```
-
-You can also override a parameter on the way back:
-
-```{r round-trip-override}
-n_prop(p, cv = 0.08)
-```
-
-## Sample sizes for proportions and means
-
-### Proportions
-
-Estimate vaccination coverage (expected ~70%) with a 5 percentage point margin of error:
-
-```{r n-prop-basic}
-n_prop(p = 0.70, moe = 0.05)
-```
-
-Four method options control how the margin of error is computed:
-
-- **`"wald"`** (default): the textbook normal approximation
-- **`"wilson"`**: Wilson score interval, better coverage near 0 or 1
-- **`"logodds"`**: log-odds transformation. Its back-transformed limits bound the proportion, or equivalently its odds. They do not bound an odds ratio or size a logistic regression.
-- **`"beta"`**: Korn-Graubard interval, for a proportion near a boundary where the expected count in the nearer category is small. It stays inside $[0, 1]$ by construction, and a `df` argument widens it for a variance estimated from few clusters.
-
-```{r n-prop-methods}
-n_prop(p = 0.05, moe = 0.02, method = "wald")
-n_prop(p = 0.05, moe = 0.02, method = "wilson")
-n_prop(p = 0.05, moe = 0.02, method = "logodds")
-n_prop(p = 0.05, moe = 0.02, method = "beta", df = 25)
-```
-
-The four differ materially only when the expected count is small. For sizing that difference is rarely worth acting on, but for assessing an achieved design it often is. `?n_prop` has the full comparison.
-
-Target a coefficient of variation instead of a margin of error:
-
-```{r n-prop-cv}
-n_prop(p = 0.70, cv = 0.05)
-```
-
-Or state the margin of error as a fraction of the proportion rather than in
-percentage points. `rmoe = 0.07` at `p = 0.70` asks for the same interval as
-`moe = 0.049`, and says it in the units UNICEF's Multiple Indicator Cluster
-Surveys (MICS) state a requirement in:
-
-```{r n-prop-rmoe}
-n_prop(p = 0.70, rmoe = 0.07)
-```
-
-The three are targets on one design, not three designs. `moe` and `rmoe` fix
-the interval the chosen `method` builds, `cv` fixes the sampling variance
-underneath it, and every result reports all of them back whichever one you
-supplied.
-
-### Means
-
-Estimate average household expenditure (variance = 40,000, mean = 800) with a margin of error of 30:
-
-```{r n-mean}
-n_mean(var = 40000, moe = 30)
-```
-
-### Common parameters
-
-Most single-stage `n_*()` and `prec_*()` functions share these parameters:
-
-| Parameter | Meaning |
-|:----------|:--------|
-| `deff` | Design effect multiplier (default 1) |
-| `N` | Finite population size (enables FPC correction) |
-| `alpha` | Significance level (default 0.05) |
-| `resp_rate` | Expected response rate (inflates *n* by `1/resp_rate`) |
-
-Dividing by `resp_rate` sets an expected respondent count and evaluates variance at that net size. It assumes response is ignorable under the planned adjustment. Inflation does not remove nonresponse bias or include variation from response weights. Use sensitivity analysis over plausible rates, and see the allocation article for explicit nonresponse follow-up.
-
-```{r common-params}
-n_prop(p = 0.70, moe = 0.05, deff = 1.5, N = 50000, resp_rate = 0.85)
-```
-
-The design effect can be less than 1 for efficient designs (e.g. well-stratified or PPS samples). svyplan accepts any `deff > 0`.
-
-`n_cluster()` / `prec_cluster()` use cluster-specific inputs instead (`stage_cost`, `icc`, `unit_relvar`, and optionally `resp_rate_psu`), and `n_alloc()` / `prec_alloc()` have their own allocation-oriented interfaces.
-
-### Survey plan profiles
-
-When the same `deff`, `N`, `resp_rate`, or `alpha` apply across many single-stage calls, bundle them into a `svyplan()` profile to avoid repetition:
-
-```{r svyplan-profile}
-plan <- svyplan(deff = 1.5, resp_rate = 0.85, N = 50000)
-
-# Pass as a named argument
-n_prop(p = 0.3, moe = 0.05, plan = plan)
-n_mean(var = 100, moe = 2, plan = plan)
-power_prop(p1 = 0.30, p2 = 0.35, plan = plan)
-```
-
-The profile can also hold cluster context (`stage_cost`, `icc`) for `n_cluster()`:
-
-```{r svyplan-cluster}
-cl_plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = 0.85)
-n_cluster(cv = 0.05, plan = cl_plan)
-```
-
-Piping works with both positional and named arguments:
-
-```{r svyplan-pipe}
-plan |> n_prop(0.3, moe = 0.05)
-plan |> n_prop(p = 0.3, moe = 0.05)
-plan |> power_mean(200, effect = 5)
-```
-
-Explicit arguments always override plan defaults:
-
-```{r svyplan-override}
-# plan has deff = 1.5, but deff = 2.0 wins here
-n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2.0)
-```
-
-## Ratios of two totals
-
-Some headline indicators are neither a mean nor a proportion but a ratio of two totals estimated from the same sample: consumption per person, yield per hectare, spending per pupil. `n_ratio()` sizes for the ratio itself.
-
-Give it the anticipated ratio, the coefficient of variation of each component, and the correlation between them across units:
-
-```{r n-ratio-basic}
-# Per-capita household consumption: total consumption over total members
-n_ratio(r = 420, cv_num = 1.20, cv_den = 0.45, component_cor = 0.65, cv = 0.05)
-```
-
-The printed `unit_relvar` is the coefficient the size is driven by. It is the relative variance of the linearized variable $e = y - Rx$, and the correlation is what makes it small: a numerator that moves with its denominator produces a stable ratio even when both components are individually variable. Moving `component_cor` from 0.30 to 0.90, with everything else held, nearly halves the required sample:
-
-```{r n-ratio-correlation}
-predict(
-  n_ratio(r = 420, cv_num = 1.20, cv_den = 0.45, component_cor = 0.65, cv = 0.05),
-  data.frame(component_cor = c(0.30, 0.65, 0.90))
-)
-```
-
-Targets work on the ratio's own scale. `moe = 20` asks for an interval of plus or minus 20 currency units per person, and `rmoe` states the same thing relative to `r`:
-
-```{r n-ratio-targets}
-n_ratio(r = 420, cv_num = 1.20, cv_den = 0.45, component_cor = 0.65,
-        moe = 20, deff = 1.3, resp_rate = 0.85)
-```
-
-`prec_ratio()` is the inverse, and the pair round-trips like every other:
-
-```{r n-ratio-roundtrip}
-size <- n_ratio(r = 420, cv_num = 1.20, cv_den = 0.45,
-                component_cor = 0.65, cv = 0.05)
-prec_ratio(size)
-```
-
-What this is, and is not: the estimand is $R = T_y / T_x$, with numerator and denominator observed on the same units. It is not the mean of the unit ratios $y_i / x_i$, which is an ordinary mean and belongs in `n_mean()`. A rate whose denominator is a subpopulation count, such as coverage among an eligible group, is usually easier to plan as a domain proportion with `n_prop()`. `n_ratio()` earns its place when the denominator is a continuous per-unit quantity, where there is no domain share to inflate by.
-
-One warning is worth knowing about. When the two coefficients of variation are close and the correlation is near its bound, the ratio is nearly constant and the size collapses toward zero. The result then rests entirely on a correlation almost nobody knows to three decimals, so the function says so:
-
-```{r n-ratio-warning}
-tryCatch(
-  n_ratio(r = 420, cv_num = 1.20, cv_den = 1.19, component_cor = 0.9999,
-          cv = 0.05),
-  warning = function(w) conditionMessage(w)
-)
-```
-
-### Clustered ratios
-
-For a multistage design, the quantity that matters is the homogeneity of the linearized variable, not of either component. They can differ by an order of magnitude in the same population, so substituting the numerator's `icc` is not a conservative approximation but a different design.
-
-Compute $e = y - Rx$ from pilot data and pass its components to `n_cluster()`:
-
-```{r n-ratio-cluster}
-set.seed(1)
-psu <- rep(1:30, each = 20)
-x <- rlnorm(600, 1, 0.4)
-y <- 3 * x + rnorm(600, 0, 0.8)
-
-R <- mean(y) / mean(x)
-e <- y - R * x
-
-vc <- suppressWarnings(varcomp(e, stage_id = list(psu)))
-n_cluster(stage_cost = c(500, 50), icc = vc$icc,
-          unit_relvar = var(e) / mean(y)^2,
-          var_ratio = vc$var_ratio, cv = 0.05)
-```
-
-`e` has mean zero by construction, so `varcomp()` warns that its relative variances are infinite. Its `icc` and `var_ratio` do not depend on the mean and stay valid, which is why they are taken from the object while `unit_relvar` is supplied separately. Passing the whole `vc` object would carry the infinite value in with it.
-
-## Evaluating precision
-
-The `prec_*()` functions answer the reverse question: given a fixed sample size, what precision can you achieve?
-
-```{r prec-basic}
-prec_prop(p = 0.3, n = 400)
-
-prec_mean(var = 40000, n = 300, mu = 800)
-```
-
-Design parameters work identically:
-
-```{r prec-design}
-prec_prop(p = 0.3, n = 400, deff = 1.5, resp_rate = 0.85)
-```
-
-### Solving for the level
-
-`n_prop()` and `prec_prop()` are two readings of one equation relating the
-proportion, the sample size, and the precision. Fixing any two returns the
-third. Supplying `cv` in place of `p` takes the remaining direction and
-returns the smallest proportion the design measures that precisely:
-
-```{r prec-solve}
-prec_prop(n = 1500, cv = 0.10, N = 2e6)
-```
-
-Because `se(p) / p` falls as `p` rises, the answer is a floor: every larger
-proportion meets the target, and everything below it is too rare for this
-design to report at that precision. It is the planning form of a publication
-threshold, and `expected_cases` is printed beside it so the precision floor
-and the `min_cases` floor `n_prop()` applies can be read together.
-
-`predict()` traces the floor across designs, varying `cv` rather than the
-proportion it now solves for:
-
-```{r prec-solve-grid}
-predict(prec_prop(n = 1500, cv = 0.10, N = 2e6),
-        expand.grid(n = c(500, 1500, 5000)))
-```
-
-`prec_mean()` takes `cv` the same way. The standard error of a mean does not
-involve the mean, so that inversion is a division rather than a search, and
-it returns the magnitude:
-
-```{r prec-solve-mean}
-prec_mean(var = 25, n = 1500, cv = 0.10)$params$mu
-```
-
-Supplying `rmoe` asks the same question of the interval instead of the
-variance: the smallest proportion the design can report at that relative
-half-width, under the interval method it will actually use. Unlike the `cv`
-solve, this one moves with `method`:
-
-```{r prec-solve-rmoe}
-prec_prop(n = 1500, rmoe = 0.20, method = "wald", N = 2e6)$params$p
-prec_prop(n = 1500, rmoe = 0.20, method = "beta", N = 2e6)$params$p
-```
-
-Two properties bound that search, and both are reported rather than
-approximated past. The Wilson and Korn-Graubard half-widths do not shrink to
-zero as `p` approaches 1, so their relative margin of error has a positive
-floor and a target below it is refused with the floor named. The
-back-transformed log-odds half-width turns upward once the logit spread
-outgrows `logit(p)`, near `p = 0.999` at `n = 1500` but as low as `p = 0.97`
-at `n = 30`, so under `"logodds"` the search brackets at that turn and
-returns its lower root.
-
-### Confidence intervals
-
-`confint()` extracts the expected confidence interval from sizing and precision results for proportions, means, ratios, changes, and pooled estimates. Cluster, allocation, power, and multi-indicator results have no single interval to report and are not supported. A mean needs `mu`, since an interval has to be centered somewhere:
-
-```{r confint}
-s <- n_prop(p = 0.3, moe = 0.05)
-confint(s)
-
-pr <- prec_prop(p = 0.3, n = 400)
-confint(pr)
-
-confint(pr, level = 0.99)
-
-# a mean carries no center of its own, so supply mu
-confint(n_mean(var = 100, moe = 2, mu = 50))
-
-# a ratio always carries its center r
-confint(n_ratio(r = 420, cv_num = 1.20, cv_den = 0.45,
-                component_cor = 0.65, cv = 0.05))
-
-# a repeated-survey result, the pooled level across two occasions
-confint(prec_pooled(var = 100, n = 300, occasions = 2, mu = 50))
-```
-
-For proportions, Wald endpoints are truncated to [0, 1] when needed. The other methods stay within the parameter space by construction.
-
-## Explore planning assumptions
-
-A fitted result keeps its planning assumptions. `predict()` evaluates compatible parameter grids while holding the remaining assumptions, including the interval method, fixed:
-
-```{r predict-taste}
-baseline <- n_prop(p = 0.3, moe = 0.05, deff = 1.5)
-predict(baseline, data.frame(resp_rate = c(0.7, 0.8, 0.9, 1.0)))
-```
-
-## Continue with the focused articles
-
-The following detailed articles are available on the package website:
-
-- [Allocation, domains, and two-phase designs](https://dickoa.gitlab.io/svyplan/articles/allocation.html)
-- [Multistage survey planning](https://dickoa.gitlab.io/svyplan/articles/multistage.html)
-- [Repeated surveys, panels, and rotation](https://dickoa.gitlab.io/svyplan/articles/repeated-surveys.html)
-- [Power and sensitivity analysis](https://dickoa.gitlab.io/svyplan/articles/power.html)
-
-## Scope
-
-`svyplan` answers one question in several forms: how many units does a planned design need, and what precision does a given design achieve. Some neighbouring topics are deliberately outside that boundary. They are listed here so their absence reads as a decision rather than an oversight.
-
-**Totals.** There is no `n_total()`. A total is a mean rescaled by *N*, so the CV target is identical and a margin of error on the total is `moe / N` on the mean. `?n_mean` has a worked section on sizing for a total.
-
-**Ratio estimation as a variance-reduction technique.** Using an auxiliary variable to sharpen an estimate of a mean or total is analysis-stage work, and is not the same thing as planning for a ratio estimand, which `n_ratio()` covers. Its planning effect is a smaller residual variance, so supply it directly: fit the ratio model, take the residual variance, and pass it as `n_mean(var = )` with the mean of the analysis variable. A target stated as a CV then gives the same size as sizing for the ratio itself, because the two have the same relative variance.
-
-**Regression coefficients.** Sizing for a regression slope is a general statistical problem rather than a survey one, covered by packages such as `pwr`. The survey-specific part, the variance inflation from a complex design, is already the `deff` argument. There is no `n_reg()`.
-
-**Two-phase designs beyond stratification and follow-up.** `n_twophase()` allocates a two-phase sample, phase 1 measuring a variable the frame does not carry and phase 2 measuring the variable of interest on a subsample of the phase-1 units. Double sampling for stratification and nonresponse follow-up are the same problem in that function, differing only in which strata are marked `take_all`. What is *not* covered is double sampling for a regression or ratio estimator, where the phase-1 variable is continuous rather than a stratifier. That is a two-phase allocation question and is separate from `n_ratio()`, which sizes a single-phase design for a ratio estimand.
-
-Estimating the auxiliary population mean at phase 1 adds sampling uncertainty.
-For nested simple random samples of sizes $n_1$ and $n_2$, the first-order
-variance of the regression estimate of a mean is
-
-$$
-S_y^2\left(\frac{1}{n_1}-\frac{1}{N}\right)
-+ S_e^2\left(\frac{1}{n_2}-\frac{1}{n_1}\right),
-$$
-
-where $S_e^2$ is the variance of the regression residuals. See
-[Brus, *Spatial sampling with R*, section 11.2](https://dickbrus.github.io/SpatialSamplingwithR/Twophase.html).
-The familiar residual-variance multiplier $1-\rho^2$ alone applies when
-the auxiliary population mean is known. When that mean is estimated,
-the approximation with negligible sampling fractions is
-$S_y^2\{(1-\rho^2)/n_2 + \rho^2/n_1\}$, so a design effect would also depend
-on the phase sizes. Their cost and precision trade-off is not implemented here.
-
-**More than three stages.** Two- and three-stage designs are supported. Surveys rarely go deeper, and the cost and variance models for a fourth stage would carry more assumptions than they would earn.
-
-**Attrition, and choosing a rotation.** `n_panel()` is arithmetic on declared rates. It says what recruitment yields under a response rate and a retention curve, not where those rates come from. Attrition modelling, attrition weighting, and any adjustment for informative dropout are analysis-stage work and outside the boundary. Two consequences are worth stating. A unit lost at one wave is treated as lost for good, so a panel whose nonrespondents return later does better than planned here, and planning this way over-issues. Also, `design_rotation()` records a rotation that has already been chosen. It does not solve the inverse problem of finding one that delivers a target overlap while limiting how many times a unit may be interviewed.
-
-**Targeting nonresponse follow-up.** Deciding *how much* follow-up to do is answered by `n_twophase()`. Deciding *which* cases to pursue is not, and is out of scope: prioritizing by response propensity, or adapting effort as fieldwork proceeds, needs paradata from the field that no planning stage has.
-
-**PPS selection inside joint allocation.** `varcomp()` estimates variance components under PPS first-stage selection, but the joint allocator (`n_alloc()` with `measures` and `targets`) uses an anticipated variance model. Feeding it components estimated under PPS is therefore an approximation, and the more unequal the sizes, the rougher it is. A two-stage joint allocation can identify certainty PSUs from a register. It does not support `take_all` in a fixed-take multistage frame because a census of PSUs still leaves within-PSU sampling.
-
-**Domains not identifiable on the frame.** Targets can be set per domain when domain membership is known before fielding, as it is for region or urban/rural. For domains realized only after contact, such as age or sex subgroups, the realized subsample is random and has to be inflated by hand from the expected domain share. The same line runs through `design_df()`: a domain that is a union of whole strata gets an exact degrees-of-freedom count in `$domains`, while one cutting across strata does not, because counting the PSUs that contain its members needs frame information a plan does not carry.
-
-**Converting between listing units and analysis units.** Sizing works in the units the precision target refers to. Converting a size in eligible persons to a number of households to list, given a mean household size and an eligibility rate, is arithmetic the user does explicitly. The MICS and DHS section above and the README both show the calculation.
+Sizing for a regression coefficient is not implemented, and there is no
+`n_reg()`. The survey-specific part of that calculation, the variance
+inflation from a complex design, is the `deff` argument.
+
+## Choose the next guide
+
+The package supports several estimands and design structures. The detailed
+guides below are available from the package website's
+[article index](https://dickoa.gitlab.io/svyplan/articles/index.html). Start
+from the question your plan must answer:
+
+| Planning question | Continue with |
+|:---|:---|
+| Which precision target or interval method should I use? | [Precision targets](https://dickoa.gitlab.io/svyplan/articles/precision.html) |
+| How do several indicators or domains determine one sample? | [Multiple indicators and domains](https://dickoa.gitlab.io/svyplan/articles/multi-indicator.html) |
+| How should I construct strata or allocate a sample? | [Stratification and allocation](https://dickoa.gitlab.io/svyplan/articles/allocation.html) |
+| How do I satisfy several allocation requirements together? | [Joint allocation](https://dickoa.gitlab.io/svyplan/articles/joint-allocation.html) |
+| How many clusters and units per cluster do I need? | [Multistage surveys](https://dickoa.gitlab.io/svyplan/articles/multistage.html) |
+| How do I plan screening or nonresponse follow-up? | [Two-phase surveys](https://dickoa.gitlab.io/svyplan/articles/two-phase.html) |
+| How do overlap, attrition, and rotation affect repeated surveys? | [Repeated surveys and panels](https://dickoa.gitlab.io/svyplan/articles/repeated-surveys.html) |
+| Can the design detect a group difference or change? | [Power for comparisons and changes](https://dickoa.gitlab.io/svyplan/articles/power.html) |
+
+These advanced guides are website articles and require an internet connection
+when opened from the installed vignette. For household sampling, the
+[analysis-to-listing-unit conversion](https://dickoa.gitlab.io/svyplan/articles/multi-indicator.html#convert-analysis-units-to-listing-units)
+explains how to translate a required person count into a household issue.
+
+Sample-size planning depends on anticipated variances and on the sample design
+[@cochran1977; @valliant2018]. Treat those inputs as documented assumptions and
+revisit the plan when better information becomes available.
+
+## References

@@ -748,3 +748,42 @@ test_that("max_iter defaults to 200 for the iterative methods", {
   res <- strata_bound(x, n_strata = 3, n = 100, method = "lh")
   expect_equal(res$params$max_iter, 200)
 })
+
+## Kozak's random search
+
+test_that("kozak enumerates a small problem and returns its exact optimum", {
+  set.seed(4)
+  x <- round(rlnorm(400, 3, 0.8))
+  xu <- sort(unique(x))
+  expect_lte(choose(length(xu) - 1, 2), 10000)
+  fit <- strata_bound(x, n_strata = 3, n = 60, method = "kozak")
+  expect_true(fit$converged)
+
+  cv_of <- function(k) {
+    g <- findInterval(x, xu[k], left.open = TRUE) + 1L
+    N_h <- tabulate(g, 3L)
+    if (any(N_h < 2L)) return(Inf)
+    fr <- data.frame(
+      stratum = 1:3, N = N_h,
+      sd = vapply(1:3, function(h) sd(x[g == h]), numeric(1L)),
+      mean = vapply(1:3, function(h) mean(x[g == h]), numeric(1L))
+    )
+    n_alloc(fr, n = 60, alloc = "neyman")$cv
+  }
+  sets <- combn(length(xu) - 1L, 2L)
+  cvs <- apply(sets, 2L, cv_of)
+  best <- sets[, which.min(cvs)]
+  expect_equal(unname(fit$boundaries), xu[best])
+})
+
+test_that("kozak converges by its stopping rule and matches LH on a smooth frame", {
+  set.seed(12345)
+  x <- rlnorm(2000, 6, 1.2)
+  set.seed(1)
+  kz <- strata_bound(x, n_strata = 4, cv = 0.05, method = "kozak",
+                     alloc = "proportional")
+  lh <- strata_bound(x, n_strata = 4, cv = 0.05, method = "lh",
+                     alloc = "proportional")
+  expect_true(kz$converged)
+  expect_lte(kz$n, lh$n)
+})

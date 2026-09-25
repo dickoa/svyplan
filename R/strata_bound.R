@@ -28,8 +28,7 @@
 #' Determine where to cut a continuous stratification variable to form
 #' useful strata. Supports four methods: cumulative root frequency
 #' (Dalenius-Hodges), geometric progression, coordinate optimization inspired
-#' by Lavall\enc{é}{e}e-Hidiroglou, and random-restart local search inspired
-#' by Kozak.
+#' by Lavall\enc{é}{e}e-Hidiroglou, and Kozak's random search.
 #'
 #' @param x Numeric vector: finite stratification variable values. Must not
 #'   contain missing values.
@@ -50,15 +49,15 @@
 #'   `"kozak"`.
 #' @param method Stratification method: `"cumrootf"` (Dalenius-Hodges),
 #'   `"geo"` (geometric), `"lh"` (LH-inspired coordinate optimization), or
-#'   `"kozak"` (Kozak-inspired random-restart local search). The short method
-#'   names are retained for compatibility and do not claim exact
-#'   implementations of the published algorithms. Default `"lh"`.
+#'   `"kozak"` (Kozak's random search). `"lh"` is a coordinate search in
+#'   the spirit of the published method, not its recurrence. Default `"lh"`.
 #' @param alloc Allocation rule: `"proportional"`, `"neyman"`,
-#'   `"optimal"`, or `"power"` (Bankier compromise). Default `"neyman"`.
+#'   `"optimal"`, or `"power"` (Bankier allocation). Default `"neyman"`.
 #'   See Details.
-#' @param alloc_q Bankier power parameter, used only when `alloc = "power"`.
+#' @param alloc_q Bankier allocation exponent, used only when `alloc = "power"`.
 #'   Numeric scalar in \eqn{[0, 1]}. At `alloc_q = 1` the allocation equals
-#'   Neyman. At `alloc_q = 0` it yields near-equal subnational CVs.
+#'   Neyman. At `alloc_q = 0` weights are proportional to population CVs.
+#'   This does not generally equalize stratum CVs.
 #'   Default 0.5.
 #' @param unit_cost Per-stratum unit costs, ordered from lowest to highest
 #'   stratum. Scalar (equal costs) or vector of length `n_strata`.
@@ -77,12 +76,15 @@
 #'   `method = "cumrootf"` only. Supplying it with another method is an
 #'   error rather than a silent no-op.
 #'   Default `NULL` (Freedman-Diaconis rule).
-#' @param max_iter Positive whole number of maximum iterations. Applies to
-#'   `method = "lh"` and `"kozak"` only. Supplying it with another method is
-#'   an error rather than a silent no-op. Default `NULL` (= 200).
-#' @param n_restart Positive whole number of random restarts. Applies to
-#'   `method = "kozak"` only. Supplying it with another method is an error
-#'   rather than a silent no-op. Default `NULL` (= 10 * `n_strata`).
+#' @param max_iter Positive whole number, the iteration cap. For
+#'   `method = "lh"` it counts sweeps over the boundaries (default 200). For
+#'   `"kozak"` it caps the moves in each run (default 10,000), which
+#'   normally stops earlier on its own convergence rule. Supplying it with
+#'   another method is an error rather than a silent no-op.
+#' @param n_restart Positive whole number of Kozak runs from each starting
+#'   boundary set. Applies to `method = "kozak"` only. Supplying it with
+#'   another method is an error rather than a silent no-op. Default `NULL`
+#'   (= 5).
 #' @param plan Optional [svyplan()] object providing design defaults. It can
 #'   supply `alloc`, `alloc_q`, `deff`, `resp_rate`, and a scalar
 #'   `unit_cost`. A profile carrying a *vector* `unit_cost` is rejected,
@@ -106,7 +108,9 @@
 #'   \item{method}{Algorithm used.}
 #'   \item{alloc}{Allocation method name (character).}
 #'   \item{params}{List of additional parameters.}
-#'   \item{converged}{Logical (for iterative methods).}
+#'   \item{converged}{Logical (for iterative methods). For `"kozak"`, whether
+#'     the best run stopped on its no-change rule rather than at `max_iter`,
+#'     or the boundary sets were enumerated.}
 #' }
 #'
 #' @details
@@ -125,14 +129,30 @@
 #'   and repeatedly performs bounded one-dimensional minimizations. Requires
 #'   `n` or `cv`. This is a local heuristic, not the published LH recurrence
 #'   and not a globally optimal algorithm.
-#' - **kozak**: random-restart adjacent-boundary local search inspired by
-#'   Kozak (2004). Requires `n` or `cv`. It can explore more starting points
-#'   than `"lh"`, but it can still finish at a local optimum and provides no
-#'   global-optimality guarantee.
+#' - **kozak**: Kozak's (2004) random search, as described by Baillargeon
+#'   and Rivest (2011, section 3.3). Each iteration moves one randomly chosen
+#'   boundary by a random number of positions among the distinct values of
+#'   `x`, and keeps the move only when it lowers the objective on a feasible
+#'   partition. A run stops once the boundaries have not changed for a set
+#'   number of consecutive iterations, and is then reported converged. That
+#'   rule does not certify a local optimum, and the method returns the best
+#'   partition found across its runs, with no global-optimality guarantee.
+#'   Requires `n` or `cv`.
+#'
+#'   The tuning defaults follow the current \pkg{stratification} package, not
+#'   the 2011 paper, which uses a maximum step of 3, a stopping count of 100,
+#'   three runs, and enumeration below 1,000 boundary sets. Here the maximum
+#'   step is a tenth of the distinct values, rounded up and capped at 100,
+#'   and the stopping count is ten times the step, between 50 and 500.
+#'   `n_restart` runs start from each of the cumulative root frequency,
+#'   geometric (when `x > 0`) and quantile boundaries. When there are at most
+#'   10,000 possible boundary sets they are all evaluated instead, which gives
+#'   the exact optimum.
 #'
 #' In summary, `"lh"` is the faster iterative heuristic. `"kozak"` spends more
-#' computation on random restarts and may find a better local solution. Use
-#' `"cumrootf"` or `"geo"` when you do not yet have `n` or `cv`.
+#' computation on random moves from several starting points, and is exact on
+#' small problems. Use `"cumrootf"` or `"geo"` when you do not yet have `n`
+#' or `cv`.
 #'
 #' Allocation is controlled by the `alloc` parameter. Four methods are
 #' available:
@@ -141,11 +161,15 @@
 #'   Minimizes the national CV when unit costs are equal.
 #' - **optimal**: \eqn{n_h \propto N_h S_h / \sqrt{c_h}}{n_h ~ N_h * S_h / sqrt(c_h)}.
 #'   Accounts for differential unit costs.
-#' - **power**: Bankier (1988) compromise,
-#'   \eqn{n_h \propto S_h N_h^{q}}{n_h ~ S_h * N_h^alloc_q}.
-#'   The parameter `alloc_q` controls the trade-off between national precision
-#'   (`alloc_q = 1`, equivalent to Neyman) and near-equal subnational CVs
-#'   (`alloc_q = 0`).
+#' - **power**: Bankier (1988) allocation,
+#'   \eqn{n_h \propto (S_h/|\mu_h|)(N_h|\mu_h|)^q}{n_h ~ (S_h / abs(mean_h)) * (N_h * abs(mean_h))^alloc_q}.
+#'   The population CV and default allocation measure `N * abs(mean)` are
+#'   recomputed for each candidate partition. Stratum means must be
+#'   nonzero, and `x` may not take both signs. At `alloc_q = 1` this gives
+#'   Neyman allocation. At `alloc_q = 0` it
+#'   allocates in proportion to population CVs. The rule does not generally
+#'   equalize stratum CVs. For a custom measure, first construct the strata,
+#'   then supply an `alloc_measure` column to [n_alloc()].
 #'
 #' Stratum allocations are rounded to integers using the ORIC method
 #' (Cont and Heidari, 2015), which preserves `sum(n) = n` while minimizing
@@ -211,6 +235,10 @@
 #' Kozak, M. (2004). Optimal stratification using random search method in
 #' agricultural surveys. \emph{Statistics in Transition}, 6(5), 797--806.
 #'
+#' Baillargeon, S. and Rivest, L.-P. (2011). The construction of stratified
+#' designs in R with the package stratification. \emph{Survey Methodology},
+#' 37(1), 53--65.
+#'
 #' Gunning, P. and Horgan, J. M. (2004). A new algorithm for the
 #' construction of stratum boundaries in skewed populations.
 #' \emph{Survey Methodology}, 30(2), 159--166.
@@ -235,7 +263,7 @@
 #' # LH (default, iterative)
 #' strata_bound(x, n_strata = 4, n = 100)
 #'
-#' # Bankier power allocation (compromise between national and subnational CVs)
+#' # Bankier allocation balances population CVs and stratum totals
 #' strata_bound(x, n_strata = 4, n = 100, alloc = "power", alloc_q = 0.5)
 #'
 #' # With take-all stratum
@@ -312,6 +340,12 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
     if (!is.numeric(alloc_q) || length(alloc_q) != 1L || is.na(alloc_q) || alloc_q < 0 || alloc_q > 1) {
       stop("'alloc_q' must be a numeric scalar in [0, 1]", call. = FALSE)
     }
+    if (min(x) < 0 && max(x) > 0) {
+      stop(
+        "alloc = \"power\" divides by each stratum's mean, which is unstable for a variable taking both signs. Use a positive size measure, or another 'alloc'",
+        call. = FALSE
+      )
+    }
   }
 
   x_work <- x
@@ -364,8 +398,8 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
 
   .check_method_controls(method, n_class, max_iter, n_restart)
   if (!is.null(n_class)) n_class <- check_count(n_class, "n_class")
-  if (is.null(max_iter)) max_iter <- 200L
-  if (is.null(n_restart)) n_restart <- 10 * n_strata
+  if (is.null(max_iter)) max_iter <- if (method == "kozak") 10000L else 200L
+  if (is.null(n_restart)) n_restart <- 5L
   max_iter <- check_count(max_iter, "max_iter")
   n_restart <- check_count(n_restart, "n_restart")
 

@@ -1,5 +1,45 @@
 ## T1. Counting rules, one per design shape
 
+test_that("certainty PSU allocations cannot be counted as element samples", {
+  frame <- data.frame(stratum = "S", N = 1000, n_per_psu = 10)
+  psu <- data.frame(stratum = "S", psu_id = 1:10, N = c(550, rep(50, 9)))
+  measures <- data.frame(stratum = "S", name = "y", p = .3, icc_psu = .08)
+  fit <- n_alloc(frame, measures = measures,
+                 targets = data.frame(name = "y", cv = .2), psu = psu)
+  expect_true(any(fit$psu$certainty))
+  expect_error(design_df(fit), "does not yet support allocations containing certainty PSUs")
+})
+
+test_that("PSU registers without certainty units count operational PSUs", {
+  frame <- data.frame(stratum = "S", N = 1000, n_per_psu = 10)
+  psu <- data.frame(stratum = "S", psu_id = 1:20, N = 50)
+  measures <- data.frame(stratum = "S", name = "y", p = .3, icc_psu = .08)
+  fit <- n_alloc(frame, measures = measures,
+                 targets = data.frame(name = "y", cv = .2), psu = psu)
+  expect_false(any(fit$psu$certainty))
+  expect_equal(fit$detail$n_psu_draw, 10)
+  d <- design_df(fit)
+  expect_equal(as.double(d), 9)
+  expect_equal(d$n_units, 10)
+  expect_identical(d$stage, "psu")
+  expect_equal(d$strata$n_units, 10)
+})
+
+test_that("PSU-register counts subtract one constraint per stratum", {
+  frame <- data.frame(stratum = c("A", "B"), N = 1000, n_per_psu = 10)
+  psu <- data.frame(stratum = rep(c("A", "B"), each = 20), psu_id = 1:40, N = 50)
+  measures <- data.frame(stratum = c("A", "B"), name = "y", p = .3,
+                         icc_psu = .08)
+  targets <- data.frame(name = "y", cv = .2, domain = "stratum", level = c("A", "B"))
+  fit <- n_alloc(frame, measures = measures, targets = targets, psu = psu)
+  expect_false(any(fit$psu$certainty))
+  d <- design_df(fit)
+  expect_equal(d$strata$n_units, c(10, 10))
+  expect_equal(d$strata$df, c(9, 9))
+  expect_equal(as.double(d), 18)
+  expect_identical(d$n_strata, 2L)
+})
+
 alloc_cluster_frame <- function() {
   data.frame(
     stratum = c("a", "b", "c"),

@@ -1,7 +1,34 @@
 #' @keywords internal
 #' @noRd
 .alloc_weights <- function(alloc, q, N_h, S_h, cost_h,
-                           deff_h = 1, resp_rate_h = 1) {
+                           deff_h = 1, resp_rate_h = 1,
+                           mean_h = NULL, alloc_measure = NULL) {
+  if (alloc == "power") {
+    if (!is.numeric(mean_h) || length(mean_h) != length(N_h) ||
+        anyNA(mean_h) || any(!is.finite(mean_h)) || any(mean_h == 0)) {
+      stop(structure(
+        list(message = "Bankier allocation requires finite nonzero 'mean' (or 'p') values in every stratum"),
+        class = c("svyplan_alloc_infeasible", "error", "condition")
+      ))
+    }
+    if (!is.null(alloc_measure) &&
+        (!is.numeric(alloc_measure) || length(alloc_measure) != length(N_h) ||
+         anyNA(alloc_measure) || any(!is.finite(alloc_measure)) ||
+         any(alloc_measure <= 0))) {
+      stop("'alloc_measure' must contain one positive finite value per stratum",
+           call. = FALSE)
+    }
+    # Common rescaling leaves allocation unchanged. Log weights avoid
+    # overflow in the population CV and default total N * abs(mean).
+    log_weight <- log(S_h) + 0.5 * (log(deff_h) - log(resp_rate_h))
+    if (is.null(alloc_measure)) {
+      log_weight <- log_weight + q * log(N_h) + (q - 1) * log(abs(mean_h))
+    } else {
+      log_weight <- log_weight - log(abs(mean_h)) + q * log(alloc_measure)
+    }
+    if (all(S_h == 0)) return(rep(0, length(S_h)))
+    return(exp(log_weight - max(log_weight)))
+  }
   # Proportional is a count rule rather than an optimum, so it takes 1 / R
   # and no deff. Both collapse to the plain weights under scalar inputs.
   var_adj <- sqrt(deff_h / resp_rate_h)
@@ -9,8 +36,7 @@
     alloc,
     proportional = N_h / resp_rate_h,
     neyman = N_h * S_h * var_adj,
-    optimal = N_h * S_h * var_adj / sqrt(cost_h),
-    power = S_h * N_h^q * var_adj
+    optimal = N_h * S_h * var_adj / sqrt(cost_h)
   )
 }
 
@@ -145,10 +171,10 @@
     lower_bp <- m_h[idx_pos] / a_h[idx_pos]
     upper_bp <- M_h[idx_pos] / a_h[idx_pos]
     breakpoints <- sort(unique(c(lower_bp, upper_bp)))
-    at_lambda <- function(lambda) {
-      sum(pmin(pmax(lambda * a_h[idx_pos], m_h[idx_pos]), M_h[idx_pos]))
-    }
-    values <- vapply(breakpoints, at_lambda, numeric(1L))
+    values <- colSums(pmin(
+      pmax(outer(a_h[idx_pos], breakpoints), m_h[idx_pos]),
+      M_h[idx_pos]
+    ))
     hit <- which(values >= budget - tol)[1L]
 
     if (abs(values[hit] - budget) <= tol) {
@@ -258,7 +284,7 @@
 #'
 #' The one sizing routine behind both the LH/general path and the Kozak inner
 #' objective, so the two cannot drift apart on formula, tolerance, or edge
-#' behaviour.
+#' behavior.
 #'
 #' While no bound binds, the allocation is proportional, \eqn{n_h = n c_h}
 #' with \eqn{c_h = a_h / \sum a_h}, and the package's variance is
@@ -290,10 +316,11 @@
     .strata_variance(W_h, S_h, n_h, N_h, deff, resp_rate)
   }
 
-  if (variance_at(lo) <= target_V) {
+  # At its two end totals the allocator returns the bounds themselves.
+  if (.strata_variance(W_h, S_h, m_h, N_h, deff, resp_rate) <= target_V) {
     return(lo)
   }
-  if (variance_at(hi) > target_V) {
+  if (.strata_variance(W_h, S_h, M_h, N_h, deff, resp_rate) > target_V) {
     return(Inf)
   }
 
@@ -314,6 +341,17 @@
     }
   }
 
+  exact <- .strata_size_on_segments(W_h, S_h, N_h, a_h, m_h, M_h, target_V,
+                                    deff, resp_rate)
+  if (!is.null(exact) && exact >= lo && exact <= hi) {
+    for (nudge in c(0, 1e-12, 1e-10)) {
+      cand <- min(hi, exact * (1 + nudge))
+      if (variance_at(cand) <= target_V) {
+        return(cand)
+      }
+    }
+  }
+
   for (i in seq_len(max_iter)) {
     if (hi - lo <= max(abs_tol, rel_tol * max(1, hi))) {
       break
@@ -322,6 +360,48 @@
     if (variance_at(mid) > target_V) lo <- mid else hi <- mid
   }
   hi
+}
+
+#' Size meeting a variance target when bounds bind, solved per clamp segment
+#' @keywords internal
+#' @noRd
+.strata_size_on_segments <- function(W_h, S_h, N_h, a_h, m_h, M_h, target_V,
+                                     deff = 1, resp_rate = 1) {
+  pos <- a_h > 0
+  if (!any(pos)) {
+    return(NULL)
+  }
+  k <- deff / resp_rate
+  ws <- W_h^2 * S_h^2
+  B <- deff * sum(ws / N_h)
+  fixed_zero <- k * sum(ws[!pos] / m_h[!pos])
+  a <- a_h[pos]
+  m <- m_h[pos]
+  M <- M_h[pos]
+  w <- ws[pos]
+  bp <- sort(unique(c(m / a, M / a)))
+  n_at <- pmin(pmax(outer(a, bp), m), M)
+  V_at <- k * colSums(w / n_at) + fixed_zero - B
+  hit <- which(V_at <= target_V)
+  if (length(hit) == 0L) {
+    return(NULL)
+  }
+  j <- hit[1L]
+  lambda <- if (j == 1L) {
+    bp[1L]
+  } else {
+    mid <- (bp[j - 1L] + bp[j]) / 2
+    free <- mid * a > m & mid * a < M
+    clamped <- ifelse(mid * a <= m, m, M)
+    D <- k * sum(w[free] / a[free])
+    C <- k * sum(w[!free] / clamped[!free]) + fixed_zero - B
+    if (D <= 0 || target_V <= C) {
+      bp[j]
+    } else {
+      min(max(D / (target_V - C), bp[j - 1L]), bp[j])
+    }
+  }
+  sum(pmin(pmax(lambda * a, m), M)) + sum(m_h[!pos])
 }
 
 #' Evaluate stratified allocation for given boundaries
@@ -380,7 +460,7 @@
     mean_h[is.nan(mean_h)] <- 0
   }
 
-  a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h)
+  a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h, mean_h = mean_h)
   m_h <- pmin(rep(2, L), N_h)
   M_h <- N_h
   if (!is.null(take_all_idx)) {
@@ -504,7 +584,8 @@
     target_V <- (target_cv * abs(ybar))^2
   }
 
-  a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h)
+  if (alloc == "power" && any(mean_h == 0)) return(Inf)
+  a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h, mean_h = mean_h)
   m_h <- pmin(rep(2, L), N_h)
   M_h <- N_h
   if (!is.null(take_all_idx)) {
@@ -769,7 +850,7 @@
   )
 }
 
-#' Kozak-inspired random-restart adjacent-boundary local search
+#' Kozak's random search, tuned as the current stratification package
 #' @keywords internal
 #' @noRd
 .strata_kozak <- function(
@@ -810,7 +891,8 @@
     mean_h <- st$mean_h
     S_h <- st$S_h
     W_h <- st$W_h
-    a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h)
+    if (alloc == "power" && any(mean_h == 0)) return(Inf)
+    a_h <- .alloc_weights(alloc, q, N_h, S_h, cost_h, mean_h = mean_h)
     if (!is.null(take_all_idx)) {
       a_h[take_all_idx] <- 0
     }
@@ -838,77 +920,83 @@
     }
   }
 
-  init_bk <- .strata_cumrootf(x_sort, L, warn = FALSE)
-  if (length(init_bk) < L - 1L) {
-    quant_p <- seq(0, 1, length.out = L + 1L)[2:L]
-    init_bk <- unname(quantile(x_sort, probs = quant_p))
+  obj_from_idx <- function(idx) obj_from_pidx(c(0L, uniq_pidx[idx], N))
+
+  n_pos <- nu - 1L
+  if (choose(n_pos, L - 1L) <= 10000) {
+    sets <- utils::combn(n_pos, L - 1L)
+    obj <- apply(sets, 2L, obj_from_idx)
+    best <- which.min(obj)
+    return(list(
+      bk = x_uniq[sets[, best]],
+      converged = TRUE,
+      feasible = is.finite(obj[best])
+    ))
   }
 
   idx_of <- function(bk_) {
     k <- findInterval(bk_, x_uniq, all.inside = TRUE)
     k1 <- k + 1L
-    ifelse(abs(x_uniq[k1] - bk_) < abs(x_uniq[k] - bk_), k1, k)
+    k <- ifelse(abs(x_uniq[k1] - bk_) < abs(x_uniq[k] - bk_), k1, k)
+    pmin(pmax(k, 1L), n_pos)
+  }
+  admissible <- function(idx) {
+    length(idx) == L - 1L && !anyNA(idx) && all(diff(idx) > 0L) &&
+      idx[1L] >= 1L && idx[L - 1L] <= n_pos
   }
 
-  init_idx <- idx_of(init_bk)
-  init_pidx <- c(0L, uniq_pidx[init_idx], N)
-  best_obj <- obj_from_pidx(init_pidx)
-  best_idx <- init_idx
+  starts <- list(idx_of(.strata_cumrootf(x_sort, L, warn = FALSE)))
+  if (x_uniq[1L] > 0) {
+    starts <- c(starts, list(idx_of(.strata_geo(x_sort, L))))
+  }
+  quant_p <- seq(0, 1, length.out = L + 1L)[2:L]
+  starts <- c(starts, list(idx_of(unname(quantile(x_sort, probs = quant_p)))))
+  starts <- Filter(admissible, starts)
+  starts <- starts[!duplicated(lapply(starts, paste, collapse = ","))]
+  if (length(starts) == 0L) {
+    starts <- list(as.integer(round(seq(1, n_pos, length.out = L - 1L))))
+  }
 
-  total_steps <- as.integer(n_restart) * as.integer(max_iter)
-  rand_h <- sample.int(L - 1L, total_steps, replace = TRUE)
-  rand_dir <- sample(c(-1L, 1L), total_steps, replace = TRUE)
-  ri <- 0L
+  maxstep <- min(100L, as.integer(ceiling(nu / 10)))
+  maxstill <- min(500L, max(50L, 10L * maxstep))
+  moves <- c(-(maxstep:1L), 1:maxstep)
 
-  for (restart in seq_len(n_restart)) {
-    if (restart == 1L) {
-      cur_idx <- init_idx
-    } else {
-      cur_idx <- sort(sample.int(nu - 1L, L - 1L) + 0L)
-      cur_idx <- pmin(cur_idx, nu - 1L)
-      cur_idx <- pmax(cur_idx, 2L)
-    }
-    cur_pidx <- c(0L, uniq_pidx[cur_idx], N)
-    cur_obj <- obj_from_pidx(cur_pidx)
-    if (!is.finite(cur_obj)) {
-      cur_obj <- Inf
-    }
-
-    for (step in seq_len(max_iter)) {
-      ri <- ri + 1L
-      h <- rand_h[ri]
-      new_h <- cur_idx[h] + rand_dir[ri]
-
-      if (new_h < 2L || new_h >= nu) {
-        next
-      }
-      if (h > 1L && new_h <= cur_idx[h - 1L]) {
-        next
-      }
-      if (h < L - 1L && new_h >= cur_idx[h + 1L]) {
-        next
-      }
-
-      new_pidx <- cur_pidx
-      new_pidx[h + 1L] <- uniq_pidx[new_h]
-      new_obj <- obj_from_pidx(new_pidx)
-
+  run <- function(idx) {
+    cur_obj <- obj_from_idx(idx)
+    h_draw <- sample.int(L - 1L, max_iter, replace = TRUE)
+    step_draw <- moves[sample.int(length(moves), max_iter, replace = TRUE)]
+    still <- 0L
+    for (it in seq_len(max_iter)) {
+      if (still >= maxstill) break
+      h <- h_draw[it]
+      new_h <- idx[h] + step_draw[it]
+      lower <- if (h > 1L) idx[h - 1L] + 1L else 1L
+      upper <- if (h < L - 1L) idx[h + 1L] - 1L else n_pos
+      still <- still + 1L
+      if (new_h < lower || new_h > upper) next
+      cand <- idx
+      cand[h] <- new_h
+      new_obj <- obj_from_idx(cand)
       if (is.finite(new_obj) && new_obj < cur_obj) {
-        cur_idx[h] <- new_h
-        cur_pidx <- new_pidx
+        idx <- cand
         cur_obj <- new_obj
+        still <- 0L
       }
     }
+    list(idx = idx, obj = cur_obj, converged = still >= maxstill)
+  }
 
-    if (cur_obj < best_obj) {
-      best_idx <- cur_idx
-      best_obj <- cur_obj
+  best <- list(obj = Inf, converged = FALSE, idx = starts[[1L]])
+  for (start in starts) {
+    for (r in seq_len(n_restart)) {
+      res <- run(start)
+      if (res$obj < best$obj) best <- res
     }
   }
   list(
-    bk = x_uniq[best_idx],
-    converged = NA,
-    feasible = is.finite(best_obj)
+    bk = x_uniq[best$idx],
+    converged = isTRUE(best$converged),
+    feasible = is.finite(best$obj)
   )
 }
 

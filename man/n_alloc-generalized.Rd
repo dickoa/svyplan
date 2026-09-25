@@ -34,6 +34,15 @@ variance model uses Wald/linearized variances, the package's gross-sample
 response-rate convention, design effects, and finite population correction.
 Domain classifications may overlap. For example, separate \code{region} and
 \code{residence} targets can use the same atomic \verb{region x residence} frame rows.
+
+For element-level proportion measures, the stratum population variance is
+\eqn{S_h^2 = N_h p_h(1-p_h)/(N_h-1)}{S_h^2 = N_h*p_h*(1-p_h)/(N_h-1)},
+with \eqn{N_h > 1}. Combining this with the finite population correction
+gives the same variance as \code{\link[=prec_prop]{prec_prop()}} for a one-stratum design with the
+same response rate and design effect. It applies to both precision targets
+and budget objectives. Explicit \code{var} or \code{sd} values are used as supplied.
+Multistage designs, including designs supplied through a PSU register,
+retain the working proportion variance \code{p * (1 - p)}.
 }
 
 \subsection{Fixed-take multistage joint designs}{

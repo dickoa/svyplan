@@ -116,10 +116,9 @@ return the table stored in \verb{$strata}. A backed-out result adds
 fields a design effect does not identify.
 }
 \description{
-Estimate between- and within-stage variance components using nested
-ANOVA decomposition, from frame data, from a sample, or from a previous
-round's published design effect. Supports SRS and PPS first-stage
-designs.
+Estimate variance components for multistage sampling from frame or
+sample data, or infer a measure of homogeneity from a previous round's
+published design effect. Supports SRS and PPS first-stage designs.
 }
 \details{
 The interface is determined by the class of \code{x}:
@@ -194,13 +193,19 @@ path, contributing no between-PSU variance and needing to be treated
 as separate strata, with \code{prob} renormalized over the remaining
 PSUs.
 
-The returned \code{icc} is the design-based measure of homogeneity
+For two-stage designs, \code{icc} represents the measure of homogeneity
 \eqn{\delta = V_b / (V_b + V_w)}{icc = Vb / (Vb + Vw)}, written
-\eqn{\delta} in Valliant, Dever, and Kreuter (2018, Ch. 9).
-Unlike the traditional ANOVA
-intraclass correlation coefficient, \code{icc} is constrained to \eqn{[0, 1]}
-and should not be compared directly to mixed-model ICCs (e.g. from lme4)
-which can be negative.
+\eqn{\delta} in Valliant, Dever, and Kreuter (2018, Ch. 9), in the
+multistage sampling variance decomposition. It lies in \eqn{[0, 1]}
+when the components are nonnegative and their sum is positive.
+It is related to conventional intraclass correlation measures, including
+Kish's rate of homogeneity (\emph{roh}), but is not generally numerically
+identical to them. Survey ICC estimates such as \emph{roh} can be negative.
+A random-intercept ICC formed from nonnegative variance components cannot.
+When using an ICC from another source, check its definition and the
+associated design-effect formula. Here the two-stage approximation is
+\eqn{k[1 + (b - 1)\delta]}, with \code{var_ratio} supplying \eqn{k}.
+The three-stage component definitions are given below.
 }
 
 \subsection{From a published design effect}{
@@ -222,6 +227,9 @@ A scalar design effect fixes one product and nothing more, so \code{varb},
 \code{varw} and \code{unit_relvar} come back \code{NA_real_}, not being identified.
 Functions that need the unit relvariance, such as \code{\link[=n_cluster]{n_cluster()}} with a
 \code{cv} target, say so and ask for it directly.
+Inverting a published design effect can return an \code{icc} outside
+\eqn{[0, 1]}. The value is retained with a warning, but the cluster-planning
+functions do not accept it.
 
 Where the report gives a standard error instead of a design effect,
 \code{se} with the quantity it refers to forms the design effect against the

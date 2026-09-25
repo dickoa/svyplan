@@ -45,10 +45,10 @@ test_that("n_alloc: optimal allocation with cost", {
 test_that("n_alloc: power allocation", {
   frame <- data.frame(
     N = c(1000, 2000, 3000),
-    sd = c(10, 20, 15)
+    sd = c(10, 20, 15), mean = c(50, 80, 60)
   )
   res <- n_alloc(frame, n = 600, alloc = "power", alloc_q = 0.5)
-  a_h <- frame$sd * frame$N^0.5
+  a_h <- frame$sd / abs(frame$mean) * (frame$N * abs(frame$mean))^0.5
   expected_frac <- a_h / sum(a_h)
   actual_frac <- res$detail$n / sum(res$detail$n)
   expect_equal(actual_frac, expected_frac, tolerance = 0.02)
@@ -825,7 +825,7 @@ test_that("cluster operational designs enforce lower and take-all bounds", {
   expect_error(n_alloc(census, n = 5), "does not imply an ultimate-unit census")
 })
 
-test_that("cluster n-mode preserves the requested integer total when the take is free", {
+test_that("cluster n-mode comes as close to the total as whole takes allow", {
   fr <- data.frame(
     stratum = c("a", "b", "c"), N = c(61, 83, 97),
     sd = c(1, 2, 3), mean = c(4, 5, 6),
@@ -835,7 +835,11 @@ test_that("cluster n-mode preserves the requested integer total when the take is
   expect_warning(x <- n_alloc(fr, n = 73, min_n_stratum = 8), "single PSU")
   d <- x$detail
 
-  expect_equal(sum(d$n_int), 73L)
+  gap <- abs(73 - sum(d$n_int))
+  up <- d$n_int + d$n_per_psu_int <= floor(d$.upper + 1e-9)
+  down <- d$n_int - d$n_per_psu_int >= ceiling(d$.lower - 1e-9)
+  expect_true(all(abs(73 - sum(d$n_int) - d$n_per_psu_int[up]) >= gap))
+  expect_true(all(abs(73 - sum(d$n_int) + d$n_per_psu_int[down]) >= gap))
   expect_equal(d$n_int, d$n_psu_int * d$n_per_psu_int)
   expect_true(all(d$n_int >= ceiling(d$.lower - 1e-9)))
   expect_true(all(d$n_int <= floor(d$.upper + 1e-9)))
@@ -1063,7 +1067,7 @@ test_that("a take-all stratum with no variability contributes no variance", {
 
 test_that("the four allocation rules carry their response and deff factors", {
   f <- data.frame(N = c(800, 1200, 1500, 300), sd = sqrt(c(9, 16, 25, 4)),
-                  unit_cost = c(1, 2, 4, 1.5))
+                  unit_cost = c(1, 2, 4, 1.5), mean = c(5, 7, 8, 3))
   d <- c(1.5, 1.2, 2, 1)
   r <- c(0.9, 0.8, 0.85, 1)
   adj <- sqrt(d / r)
@@ -1076,7 +1080,7 @@ test_that("the four allocation rules carry their response and deff factors", {
                prop_to(f$N * f$sd * adj / sqrt(f$unit_cost)))
   expect_equal(n_alloc(f, n = n, alloc = "power", alloc_q = 0.5,
                        deff = d, resp_rate = r)$detail$n,
-               prop_to(f$sd * f$N^0.5 * adj))
+               prop_to(f$sd / abs(f$mean) * (f$N * abs(f$mean))^0.5 * adj))
   # proportional is a count rule: 1 / r, and no deff
   expect_equal(n_alloc(f, n = n, alloc = "proportional",
                        deff = d, resp_rate = r)$detail$n,

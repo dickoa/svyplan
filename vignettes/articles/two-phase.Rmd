@@ -1,0 +1,297 @@
+---
+title: "Planning two-phase surveys and nonresponse follow-up"
+description: >
+  Allocate screening and measurement phases, account for stage-specific
+  response, and compare with a single-phase design.
+output: rmarkdown::html_vignette
+bibliography: ../references.bib
+link-citations: true
+vignette: >
+  %\VignetteIndexEntry{Planning two-phase surveys and nonresponse follow-up}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5,
+  fig.align = "center"
+)
+library(svyplan)
+```
+
+In a two-phase design, phase 1 collects a relatively inexpensive variable
+that is absent from the frame. Phase 2 subsamples the classified phase-1 units
+and measures the outcome of interest. Double sampling for stratification and
+subsampling nonrespondents for follow-up both have this structure.
+
+See [Stratification and sample allocation](allocation.html) for a one-phase
+allocation and [Joint allocation](joint-allocation.html) for several
+indicators and domains.
+
+## Allocate two phases
+
+The frame has one row per phase-2 stratum. `N` is the stratum population,
+`sd` and `mean` describe the outcome measured in phase 2, and `unit_cost` is
+the incremental phase-2 cost:
+
+```{r two-phase-frame}
+frame <- data.frame(
+  stratum = c("A", "B", "C", "D"),
+  N = c(350000, 250000, 250000, 150000),
+  sd = c(12, 25, 8, 40),
+  mean = c(40, 70, 35, 90),
+  unit_cost = c(2, 5, 1, 9)
+)
+
+two_phase <- n_twophase(
+  frame,
+  phase1_cost = 1,
+  budget = 50000,
+  N = sum(frame$N)
+)
+two_phase
+```
+
+The population contains one million units. The frame's `N` column determines
+relative stratum shares. The separate function argument `N = sum(frame$N)`
+supplies the population size for the phase-1 finite population correction and
+sample-size bound. It is not inferred from the column. If only relative sizes
+are known, leave that argument at its default `Inf` and document the
+large-population approximation.
+
+The output distinguishes units issued at phase 1, the phase-2 allocation, and
+the expected precision. `nu` is the fraction of the phase-1 units in a stratum
+issued to phase 2. Its relative pattern reflects variability and phase-2
+costs. Its overall scale also depends on how much variation phase-1
+stratification explains.
+
+Every result includes a single-phase comparator because a second phase is not
+automatically more efficient. Screening can cost more than it saves when the
+phase-1 variable explains little or costs too much to measure.
+
+Compare the designs at the same budget:
+
+```{r single-phase-comparison}
+data.frame(
+  design = c("Two phases", "Single phase"),
+  cv = c(two_phase$cv, two_phase$single_phase$cv),
+  cost = c(two_phase$cost, two_phase$single_phase$cost)
+)
+```
+
+The design with the smaller CV uses the budget more efficiently under these
+assumptions. The sizes need different interpretations, because phase 1 screens
+units whereas the single-phase comparator measures the outcome directly.
+
+## Design effects and response at each phase
+
+The arguments refer to different pieces of the variance:
+
+| Input and location | Applies to |
+|:---|:---|
+| Argument `phase1_deff` | Between-stratum component estimated through phase 1. |
+| Frame column `deff` | Within-stratum residual measured in phase 2. |
+| Argument `resp_rate` | Phase-1 response or successful classification. |
+| Frame column `resp_rate` | Phase-2 completion within each stratum. |
+| Arguments `single_deff` and `single_resp_rate` | Single-phase comparator. |
+
+Design effects multiply their variance components. Each variance component is
+divided by its corresponding response rate, so lower response reduces
+effective information and increases variance for a given issued sample.
+Applying one common factor to the whole variance represents a different design.
+
+```{r two-phase-design}
+screened <- transform(
+  frame,
+  deff = c(1.2, 2.5, 0.8, 1.7),
+  resp_rate = c(0.90, 0.70, 0.85, 0.60)
+)
+
+two_phase_adjusted <- n_twophase(
+  screened,
+  phase1_cost = 1,
+  budget = 50000,
+  N = sum(frame$N),
+  phase1_deff = 2.2,
+  resp_rate = 0.80,
+  single_deff = 2.9,
+  single_resp_rate = 0.80
+)
+two_phase_adjusted
+```
+
+All counts are issued units. Convert a phase cost quoted per completed
+interview before supplying it. For example, a cost with contact and completion
+components is `contact_cost + resp_rate * completion_cost` per unit issued.
+
+Response-rate adjustments assume response is ignorable within the supplied
+strata. They do not remove nonresponse bias.
+
+## Check the fieldwork design
+
+`$operational` contains reconciled whole-unit phase sizes and stratum takes.
+Calculate expected responding counts from its issue counts and the response
+rates. In budget mode, the construction remains inside the budget. In
+target-CV mode, it rounds toward meeting the target.
+
+```{r operational}
+two_phase_adjusted$operational
+c(
+  continuous_cv = prec_twophase(two_phase_adjusted)$cv,
+  fieldwork_cv = two_phase_adjusted$operational$cv
+)
+```
+
+`prec_twophase()` applied to the result evaluates the continuous design. The
+operational CV describes the whole-unit allocation to field. Its expected
+respondents are:
+
+```{r operational-respondents}
+c(
+  phase1 = two_phase_adjusted$operational$n["n_phase1"] * 0.80,
+  phase2 = sum(two_phase_adjusted$operational$n_int * screened$resp_rate)
+)
+```
+
+Use the operational result as a unit. Rounding each phase or stratum
+independently can produce an infeasible plan.
+
+## Fix an existing phase-1 sample
+
+Sometimes phase 1 is already complete or set by operational capacity. Supply
+its issued size with `n_phase1`:
+
+```{r fixed-phase-one}
+fixed_phase_one <- n_twophase(
+  frame,
+  phase1_cost = 1,
+  budget = 50000,
+  N = sum(frame$N),
+  n_phase1 = 20000
+)
+fixed_phase_one
+```
+
+The phase-2 relative allocation retains its variance-cost form, while its
+scale is determined by the budget remaining after phase 1. Fixing phase 1 can
+only match or be less efficient than allowing the optimizer to choose it
+within the same model.
+
+A fixed phase-1 sample imposes a precision floor. Even carrying every
+successfully classified unit into phase 2 cannot recover information that
+phase 1 did not collect. If a requested CV lies below that floor,
+`n_twophase()` returns an error describing the infeasible target. The detailed
+formula and component definitions are documented in `?n_twophase`.
+
+## Plan for a probability of meeting the target
+
+Realized respondent counts can fall below their expectation. `assurance`
+reports additional issue counts that meet each required responding count with
+at least the requested probability under a binomial response model. Phase-2
+assurance is **marginal by stratum and conditional on the phase-1 pool**. It
+does not guarantee that all stratum targets are met simultaneously, and random
+phase-1 composition can leave a stratum short of its expected pool.
+
+To isolate phase-1 response uncertainty, return to the unclustered `frame`,
+with 80% phase-1 response and complete phase-2 response:
+
+```{r assurance}
+assured_plan <- n_twophase(
+  frame,
+  phase1_cost = 1,
+  cv = 0.03,
+  N = sum(frame$N),
+  resp_rate = 0.80,
+  assurance = 0.90
+)
+assured_plan$operational[c(
+  "n", "cost", "assured_phase1", "assured", "pool", "assured_cost"
+)]
+```
+
+`n` and `cost` describe the expected-response plan. `assured_phase1` is the
+phase-1 issue with assurance, `assured` gives the phase-2 issues by stratum,
+and `assured_cost` is their combined cost. Here complete phase-2 response
+requires no extra phase-2 issue. With incomplete phase-2 response, assurance
+can increase both phases and can exceed the budget of the expected design.
+
+If the assured phase-2 issue exceeds the pool supplied by phase 1, enlarge
+phase 1 or revise the response assumptions. A simultaneous guarantee needs an
+explicit treatment of all strata and the random phase-1 pool. A marginal
+level of 0.90 alone does not provide one.
+
+## Nonresponse follow-up
+
+Subsampling nonrespondents is the same allocation structure with two strata.
+Initial respondents are already measured, so they have zero additional cost
+and are all retained. Only initial nonrespondents are subsampled:
+
+```{r nonresponse-follow-up}
+initial_response <- 0.50
+
+follow_up_frame <- data.frame(
+  stratum = c("respondents", "nonrespondents"),
+  N = c(initial_response, 1 - initial_response),
+  sd = c(1, 1),
+  unit_cost = c(0, 200),
+  take_all = c(TRUE, FALSE)
+)
+
+follow_up <- n_twophase(
+  follow_up_frame,
+  phase1_cost = 50,
+  budget = 100000,
+  mu = 1,
+  single_cost = 50 / initial_response
+)
+follow_up
+```
+
+`single_cost` states the cost of one completed interview without follow-up. A
+zero phase-2 cost for respondents means “already measured,” not “free.” Leave
+the function-level `resp_rate` at 1 here. The strata already encode response
+status, so another phase-1 response adjustment would count the same loss twice.
+
+The design decides how much follow-up effort to allocate. Selecting particular
+cases using response propensities or live fieldwork information is a separate
+operational decision.
+
+## Method boundary
+
+`n_twophase()` covers a phase-1 categorical variable used for stratification
+or response status. It does not implement two-phase regression or ratio
+estimators based on a continuous auxiliary variable. The variance of those
+estimators has a component from each phase, so a single-phase calculation
+does not carry over.
+
+Suppose phase 1 is a simple random sample of $n_1$ units from a population of
+$N$, measuring the auxiliary variable $x$, and phase 2 is a simple random
+subsample of $n_2$ of those units, measuring the study variable $y$. Let
+$S_y^2$ be the population variance of $y$, and $S_e^2$ the variance of the
+residuals from the regression of $y$ on $x$. To first order, the regression
+estimator of the mean of $y$ has variance [@brus2022, section 11.2]
+
+$$
+S_y^2\left(\frac{1}{n_1}-\frac{1}{N}\right)
++ S_e^2\left(\frac{1}{n_2}-\frac{1}{n_1}\right).
+$$
+
+The familiar multiplier $1-\rho^2$ on $S_y^2$, with $\rho$ the correlation
+between $x$ and $y$, applies alone only when the population mean of $x$ is
+known. Here that mean is estimated from phase 1. With $S_e^2 = (1-\rho^2)S_y^2$
+and negligible sampling fractions, the variance becomes
+
+$$
+S_y^2\left\{\frac{1-\rho^2}{n_2} + \frac{\rho^2}{n_1}\right\},
+$$
+
+so a design effect for this estimator would depend on both phase sizes. Record
+this distinction rather than treating a single-phase `n_ratio()` calculation
+as a two-phase allocation. The cost and precision trade-off between the two
+phases is not implemented.
+
+## References

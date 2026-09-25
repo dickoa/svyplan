@@ -1,9 +1,8 @@
 #' Design degrees of freedom
 #'
-#' Count the degrees of freedom the variance estimator of a planned design
-#' will have, before any data are collected. The planning analogue of
-#' `survey::degf()`, which reports the same quantity for a design that has
-#' already been fielded.
+#' Count nominal degrees of freedom from a planned design's issued units.
+#' This is a planning counterpart to `survey::degf()`. Realized degrees of
+#' freedom depend on the responding sample and the analysis variance estimator.
 #'
 #' @param x A `svyplan` result to count from: a [n_cluster()] or
 #'   [prec_cluster()] allocation, a [n_alloc()] allocation, a
@@ -26,10 +25,11 @@
 #' ultimate units, which is why a survey of 12,000 households in 300
 #' clusters across 20 strata has 280 degrees of freedom rather than 11,999.
 #'
-#' That number is what a `t` quantile needs, what a Korn-Graubard interval
-#' widens on, and what decides whether a domain estimate can be published
-#' at all. Nothing reports it for a design that has only been planned, and
-#' the plan is the only place it can be known before fielding.
+#' Pass the count as `df` to use a `t` quantile in place of the normal one,
+#' and to the Korn-Graubard interval, which widens as the count falls. It is
+#' the nominal first-stage count. The degrees of freedom of a particular
+#' estimator, such as a Satterthwaite approximation combining several
+#' variance components, differ from it.
 #'
 #' ## What is counted, per design shape
 #'
@@ -42,12 +42,14 @@
 #' | Two-phase | phase-2 units per stratum | \eqn{\sum_h n_{2h} - H}{sum_h n_2h - H} |
 #'
 #' The counts are read from the whole-unit columns a plan reports
-#' (`n_int`, `n_psu_int`, `operational$n`), never from the continuous
+#' (`n_int`, `n_psu_int`, `n_psu_draw`, `operational$n`), never from the continuous
 #' optimum, since a degree of freedom is a unit that will be fielded. They
-#' are the planned counts and are not netted down for element nonresponse:
-#' a response rate is already priced into the size the plan reports, and
-#' element nonresponse does not reduce the number of PSUs, which is what
-#' the df of a clustered design counts.
+#' are issued counts and are not adjusted for nonresponse. For an element
+#' design, fewer respondents generally mean fewer degrees of freedom. For
+#' a cluster design, element nonresponse need not change the PSU count,
+#' but lost PSUs or PSUs with no responding domain members can reduce it.
+#' The two-phase count is a phase-2 planning convention, not a derivation of
+#' the degrees of freedom of the combined two-phase variance estimator.
 #'
 #' A stratum that carries no sampling variance drops out of both terms. In
 #' element mode a `take_all` stratum is a census and contributes nothing.
@@ -59,7 +61,7 @@
 #'
 #' ## Per-domain degrees of freedom
 #'
-#' `$domains` is exact rather than an approximation. The allocation API
+#' `$domains` applies the same nominal counting rule by domain. The allocation API
 #' expresses a domain as a set of whole strata, so a domain's df is that
 #' union's own contribution, \eqn{\sum_{h \in d} m_h - H_d}{sum_(h in d) m_h - H_d}, and the
 #' per-domain values sum to the overall df whenever the domains partition
@@ -75,11 +77,13 @@
 #' ## What the count cannot see
 #'
 #' Certainty, or self-representing, PSUs contribute no between-PSU variance
-#' and should not count toward df. The API expresses certainty through
-#' `take_all` and [strata_bound()]`(take_all_above = )` at the stratum
-#' level rather than as a PSU-level flag, so sampled PSUs are counted as
-#' they stand. A design with a material number of certainty PSUs has fewer
-#' degrees of freedom than reported here.
+#' and should not count toward first-stage df. For a PSU register supplied
+#' through [n_alloc()] with no certainty PSUs, this helper counts the
+#' operational PSUs (`n_psu_draw`) minus strata. Allocations containing
+#' certainty PSUs remain unsupported: combining their within-PSU variance
+#' contributions with other strata requires an explicit degrees-of-freedom
+#' convention that this helper does not yet implement. In other inputs,
+#' unrecorded certainty PSUs can make the nominal first-stage count too large.
 #'
 #' A stratum holding a single PSU supports no within-stratum variance
 #' estimate at all, and warns, naming the stratum. Its own contribution is
@@ -187,6 +191,15 @@ design_df.svyplan_cluster <- function(x, ...) {
 #' @export
 design_df.svyplan_n <- function(x, ...) {
   .check_unused_dots(...)
+  if (identical(x$type, "alloc") && !is.null(x$params$psu) &&
+      any(x$psu$certainty)) {
+    stop(
+      paste("design_df() does not yet support allocations containing certainty PSUs:",
+            "their within-PSU variance contributions need an explicit",
+            "degrees-of-freedom convention"),
+      call. = FALSE
+    )
+  }
   if (identical(x$type, "multi")) {
     stop(
       "a multi-indicator result sizes several indicators against one design; count that design with design_df() on the allocation or pass the counts by name",
@@ -248,9 +261,10 @@ design_df.svyplan_twophase <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .df_alloc_parts <- function(detail) {
-  cluster <- "n_psu_int" %in% names(detail) || "n_psu" %in% names(detail)
+  cluster <- any(c("n_psu_draw", "n_psu_int", "n_psu") %in% names(detail))
   if (cluster) {
-    units <- as.numeric(detail[["n_psu_int"]] %||% ceiling(detail$n_psu))
+    units <- as.numeric(detail[["n_psu_draw"]] %||%
+                          detail[["n_psu_int"]] %||% ceiling(detail$n_psu))
     # take_all is an element-level census inside the stratum and leaves the
     # PSU stage sampling, so no stratum drops out at this stage.
     census <- rep(FALSE, nrow(detail))
@@ -367,7 +381,7 @@ design_df.svyplan_twophase <- function(x, ...) {
   many <- length(labels) > 1L
   warning(
     sprintf(
-      "%s %s %s a single %s, so no within-stratum variance can be estimated there. Collapse %s with a neighbour",
+      "%s %s %s a single %s, so no within-stratum variance can be estimated there. Collapse %s with a neighbor",
       if (many) "strata" else "stratum",
       paste0("'", labels, "'", collapse = ", "),
       if (many) "each hold" else "holds",

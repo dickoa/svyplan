@@ -1,8 +1,11 @@
 ---
-title: "Power and sensitivity analysis"
+title: "Power for comparisons and changes"
+description: >
+  Solve for per-group sample size, power, or a minimum detectable effect under
+  independent, overlapping, and difference-in-differences designs.
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Power and sensitivity analysis}
+  %\VignetteIndexEntry{Power for comparisons and changes}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -17,188 +20,272 @@ knitr::opts_chunk$set(
 )
 library(svyplan)
 ```
-This article covers power calculations, parameter grids, and an end-to-end planning workflow. See [Getting started](svyplan.html) for the core sizing and precision workflow, [repeated surveys](repeated-surveys.html) for overlap definitions, and [multistage planning](multistage.html) for cluster design inputs.
 
-## Power analysis
+Precision planning asks how well a survey can estimate one quantity. Power
+planning asks whether a design can detect a specified difference. State the
+comparison first, whether two independent groups, two occasions with overlap,
+or a treated-versus-control change.
 
-Precision analysis answers "how precisely can we estimate a level?" Power analysis answers a different question: "can we detect a change or difference between two groups or time points?"
+The `n` reported by `power_prop()` and `power_mean()` is the gross sample size
+per group. For `power_did()`, it is the gross sample size per arm per wave. See
+[Repeated surveys](repeated-surveys.html) for the distinction between issued
+and respondent overlap.
 
-### Sample size for a detectable change
+## Detect a difference between proportions
 
-A survey measured vaccination coverage at 70%. How many households are
-needed in a follow-up to detect a 5 percentage point increase with 80%
-power?
+How many units per group are needed to detect a change from 70% to 75% with
+80% power and a two-sided 5% significance level?
 
-```{r power-n}
-power_prop(p1 = 0.70, p2 = 0.75, power = 0.80)
-```
-
-With a design effect:
-
-```{r power-n-deff}
-power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
-```
-
-### Three solve modes
-
-`power_prop()` and `power_mean()` each solve for whichever of `n`, `power`, or the effect size is left unspecified:
-
-```{r power-modes}
-# Solve for n (default when p2 and power given)
-power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
-
-# Solve for power (set power = NULL)
-power_prop(p1 = 0.70, p2 = 0.75, n = 1500, power = NULL, deff = 2.0)
-
-# Solve for MDE (omit p2)
-power_prop(p1 = 0.70, n = 1500, deff = 2.0)
-```
-
-### Panel surveys
-
-The power family takes the same `overlap` and `overlap_cor` as `n_change()`, and `design_overlap()` supplies the first of them from a `design_rotation()`. If the follow-up resamples a fraction of the original households and the between-round correlation is known, the required sample size drops:
-
-```{r power-panel}
-power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0,
-           overlap = 0.50, overlap_cor = 0.6)
-```
-
-### Continuous outcomes
-
-The same three solve modes work for means:
-
-```{r power-mean}
-# Sample size to detect a difference of 5 (within-group var = 200)
-power_mean(200, effect = 5)
-
-# MDE with n = 400 per group
-power_mean(200, n = 400)
-```
-
-### Difference-in-differences
-
-`power_did()` handles two-group, two-period DiD designs. Specify treated and control group outcomes as `c(baseline, endline)` vectors:
-
-```{r power-did}
-# Proportion outcome: treated improves, control stable
-power_did(treat = c(0.50, 0.55), control = c(0.50, 0.48),
-          outcome = "prop", effect = 0.07)
-
-# Mean outcome with panel overlap
-power_did(treat = c(50, 55), control = c(50, 52),
-          outcome = "mean", var = 100, effect = 3,
-          overlap = 0.5, overlap_cor = 0.6)
-```
-
-### Unequal groups and alternative methods
-
-Both `power_prop()` and `power_mean()` support unequal group sizes via `ratio` or explicit `n = c(n1, n2)`:
-
-```{r power-unequal}
-# 2:1 allocation ratio
-power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
-
-# Unequal group variances
-power_mean(c(80, 120), effect = 5)
-```
-
-Near a boundary, the arcsine and log-odds calculations provide transformed-scale alternatives to the untransformed Wald calculation. Their operating characteristics still depend on the design and planning values:
-
-```{r power-methods}
-power_prop(p1 = 0.15, p2 = 0.18, alternative = "one.sided",
-           method = "arcsine")
-
-power_prop(p1 = 0.15, p2 = 0.18, alternative = "one.sided",
-           method = "logodds")
-```
-
-### Power curve
-
-`plot()` draws the power-vs-sample-size curve with reference lines at the solved point:
-
-```{r power-plot, fig.width=7, fig.height=4}
-pw <- power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2.0)
-plot(pw)
-```
-
-## Sensitivity analysis
-
-How sensitive is a sample size to assumptions about the design effect, response rate, or prevalence? The `predict()` method evaluates any `svyplan` result at new parameter combinations.
-
-### Varying design parameters
-
-```{r predict-n}
-x <- n_prop(p = 0.3, moe = 0.05, deff = 1.5)
-predict(x, expand.grid(
-  deff = c(1.0, 1.5, 2.0, 2.5),
-  resp_rate = c(0.8, 0.9, 1.0)
-))
-```
-
-### Cluster budget scenarios
-
-```{r predict-cluster}
-cl <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
-predict(cl, data.frame(budget = c(50000, 100000, 150000, 200000)))
-```
-
-### Power curves
-
-```{r predict-power}
-pw <- power_prop(p1 = 0.30, p2 = 0.35, n = 500, power = NULL)
-predict(pw, data.frame(n = seq(200, 1000, 200)))
-```
-
-### Precision by sample size
-
-```{r predict-prec}
-pr <- prec_prop(p = 0.3, n = 400)
-predict(pr, data.frame(n = c(100, 200, 400, 800, 1600)))
-```
-
-## Putting it all together
-
-A typical planning sequence for a national household survey ties several `svyplan` functions together. A `svyplan()` profile captures the shared design assumptions:
-
-1. Set shared design parameters once with `svyplan()`
-2. Define indicators and precision targets per domain
-3. Compute sample sizes with `n_multi()`
-4. Evaluate achieved precision with `prec_multi()`
-5. Run sensitivity analysis with `predict()`
-6. If frame data is available, estimate variance components with `varcomp()`
-7. Optimize the multistage allocation with `n_cluster()`
-8. Determine strata boundaries with `strata_bound()`
-9. Check that the design has adequate power with `power_prop()` / `power_mean()`
-
-```{r workflow}
-# 1: shared design assumptions
-design <- svyplan(deff = 2.0, resp_rate = 0.85)
-
-# 2-3: multi-indicator sample size
-targets <- data.frame(
-  name = c("stunting", "vaccination", "anemia"),
-  p    = c(0.25, 0.70, 0.12),
-  moe  = c(0.05, 0.05, 0.03),
-  deff = c(2.0, 1.5, 2.5)
-)
-result <- n_multi(targets)
-result
-
-# 4: achieved precision for each indicator
-prec_multi(result)
-
-# 5: how sensitive is the binding indicator to the response rate?
-predict(
-  n_prop(p = 0.25, moe = 0.05, plan = design),
-  data.frame(resp_rate = c(0.7, 0.8, 0.9, 1.0))
-)
-
-# 9: can we detect a 5pp decline in stunting with this sample?
+```{r power-size}
 power_prop(
-  p1 = 0.25, p2 = 0.20,
-  n = as.integer(result), power = NULL,
+  p1 = 0.70,
+  p2 = 0.75,
+  power = 0.80,
+  alpha = 0.05
+)
+```
+
+Add design and response assumptions in the same units as the sample size:
+
+```{r power-design}
+power_prop(
+  p1 = 0.70,
+  p2 = 0.75,
+  power = 0.80,
+  deff = 2,
+  resp_rate = 0.85
+)
+```
+
+The design effect multiplies variance, while the response rate converts the
+gross issued size into its expected responding size. Neither adjustment
+addresses nonresponse bias.
+
+## Three solve modes
+
+The proportion and mean functions solve for whichever of sample size, power,
+or effect size is unspecified:
+
+```{r solve-modes}
+# Gross sample size per group
+power_prop(p1 = 0.70, p2 = 0.75, power = 0.80, deff = 2)
+
+# Power at 1,500 issued units per group
+power_prop(p1 = 0.70, p2 = 0.75, n = 1500, power = NULL, deff = 2)
+
+# Minimum detectable second proportion
+power_prop(p1 = 0.70, n = 1500, deff = 2)
+```
+
+The minimum detectable effect (MDE) is the smallest difference that reaches
+the requested power under the planning assumptions. A one-sided test changes
+the critical value and must be justified before looking at results.
+
+For continuous outcomes, supply the anticipated within-group variance:
+
+```{r mean-power}
+# Detect a difference of 5 when each group has variance 200
+power_mean(var = 200, effect = 5, power = 0.80)
+
+# MDE at 400 issued units per group
+power_mean(var = 200, n = 400)
+```
+
+## Unequal groups
+
+`ratio` is group 1 size divided by group 2 size (`n1 / n2`). For example,
+`ratio = 2` allocates twice as many units to group 1:
+
+```{r unequal-groups}
+power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
+power_mean(var = c(80, 120), effect = 5, ratio = 2)
+```
+
+When sample sizes are already fixed, supply a length-two `n` vector in group 1,
+group 2 order.
+
+## Overlapping occasions
+
+If some respondents are observed at both occasions, their positive outcome
+correlation reduces the variance of change:
+
+```{r overlap-power}
+power_prop(
+  p1 = 0.70,
+  p2 = 0.75,
+  power = 0.80,
+  deff = 2,
+  overlap = 0.50,
+  overlap_cor = 0.60
+)
+```
+
+`overlap` is the share of the first occasion's responding sample observed
+again. A rotation object describes issued overlap, so convert it using an
+explicit response-persistence assumption when response is incomplete.
+
+## Difference-in-differences
+
+`power_did()` plans the interaction contrast
+
+$$
+(Y_{T,1} - Y_{T,0}) - (Y_{C,1} - Y_{C,0}),
+$$
+
+where $T$ and $C$ denote treated and control arms and 0 and 1 denote baseline
+and endline. Supply each arm as `c(baseline, endline)`:
+
+```{r did-power}
+# Proportion: treated rises by 5 points while control falls by 2
+power_did(
+  treat = c(0.50, 0.55),
+  control = c(0.50, 0.48),
+  outcome = "prop",
+  effect = 0.07
+)
+
+# Mean outcome with half of each arm observed again
+power_did(
+  treat = c(50, 55),
+  control = c(50, 52),
+  outcome = "mean",
+  var = 100,
+  effect = 3,
+  overlap = 0.50,
+  overlap_cor = 0.60
+)
+```
+
+Here `n` is per arm per wave. Unequal treated and control arms are supported.
+Supply `n = c(n_treat, n_control)` to evaluate fixed sizes, or
+`ratio = n_treat / n_control` when solving for sizes. Within each arm, the
+calculation assumes the same issued size at baseline and endline, and it does
+not accept four independently chosen cell sizes.
+
+## Alternative proportion methods
+
+Near a boundary, arcsine and log-odds calculations provide transformed-scale
+alternatives to the untransformed Wald calculation:
+
+```{r transformed-power}
+power_prop(
+  p1 = 0.15,
+  p2 = 0.18,
+  alternative = "one.sided",
+  method = "arcsine"
+)
+
+power_prop(
+  p1 = 0.15,
+  p2 = 0.18,
+  alternative = "one.sided",
+  method = "logodds"
+)
+```
+
+The methods test differences on different scales and can produce different
+operating characteristics. Choose the method to match the planned analysis,
+not after comparing which result is smallest.
+
+## Inspect a power curve
+
+The curve shows how many issued units each independent group needs before the
+design reaches the requested power:
+
+```{r power-curve, fig.cap="Power to detect a 5 percentage point difference with a design effect of 2 and complete response. The intersection marks the 80 percent power requirement per group.", fig.alt="Power curve against gross sample size per group. Dashed lines identify 80 percent power and the corresponding required sample size for detecting a change from 70 to 75 percent with a design effect of 2."}
+power_plan <- power_prop(
+  p1 = 0.70,
+  p2 = 0.75,
+  power = 0.80,
+  deff = 2
+)
+plot(power_plan)
+```
+
+For exact values, use `predict()` on supported power results:
+
+```{r power-grid}
+power_at_n <- power_prop(
+  p1 = 0.70,
+  p2 = 0.75,
+  n = 500,
+  power = NULL,
+  deff = 2
+)
+predict(power_at_n, data.frame(n = seq(500, 2500, by = 500)))
+```
+
+## A consistent planning workflow
+
+Suppose the same independent survey design will estimate baseline coverage and
+compare baseline with a later round. Store shared assumptions once:
+
+```{r workflow-profile}
+design <- svyplan(deff = 2, resp_rate = 0.85)
+```
+
+First, size each occasion for a 5 percentage point margin of error and check
+the expected precision:
+
+```{r workflow-precision}
+occasion <- n_prop(p = 0.70, moe = 0.05, plan = design)
+occasion
+prec_prop(occasion)
+```
+
+Then evaluate the power to detect a change from 70% to 75% when both occasions
+issue that many units:
+
+```{r workflow-power}
+power_prop(
+  p1 = 0.70,
+  p2 = 0.75,
+  n = as.integer(occasion),
+  power = NULL,
   plan = design
 )
 ```
 
-Sample-size, cluster, power, and strata-boundary results support `as.integer()` and `as.double()`. For sample-size results, these return the rounded-up and exact values of *n*, respectively, which makes it straightforward to pass results between functions or into other packages.
+If that power is insufficient, solve for the per-occasion requirement and use
+the larger of the precision and power sizes:
+
+```{r workflow-decision}
+power_requirement <- power_prop(
+  p1 = 0.70,
+  p2 = 0.75,
+  power = 0.80,
+  plan = design
+)
+
+max(
+  precision = as.integer(occasion),
+  power = as.integer(power_requirement)
+)
+```
+
+The design effect and response rate are planning guesses. Check how the power
+requirement moves across plausible values before fixing the sample:
+
+```{r workflow-sensitivity}
+predict(
+  power_requirement,
+  expand.grid(
+    deff = c(1.5, 2.0, 2.5),
+    resp_rate = c(0.75, 0.85, 0.95)
+  )
+)
+```
+
+The requirement is proportional to the design effect and inversely
+proportional to the response rate, so the grid brackets the sample the field
+budget must cover.
+
+Meeting a precision target does not automatically meet a power target. This
+workflow keeps the design effect, response rate, sample-size units, and group
+definition consistent across both calculations. Surveys with several
+indicators combine their requirements as shown in
+[Multiple indicators and domains](multi-indicator.html). A clustered design
+uses variance components and stage costs in place of the scalar design
+effect, as in [Multistage survey planning](multistage.html), and a
+stratified design adds the steps in
+[Stratification and sample allocation](allocation.html).

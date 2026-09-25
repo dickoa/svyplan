@@ -106,8 +106,9 @@ between-stratum component \verb{d_1 A / r_1} plus the phase-2 residual at
 \code{nu_h = resp_rate}, which no amount of subsampling can beat.}
 
 \item{assurance}{Probability in (0, 1), or \code{NULL} (default). Planning at
-the expected respondent count leaves roughly half of all designs
-short. Supplying a level reports, alongside the expected design, the
+the expected respondent count does not guarantee that the target will
+be reached. The shortfall probability depends on the response distribution
+and integer rounding. Supplying a level reports, alongside the expected design, the
 issued sizes for which the required respondents arrive with at least
 that probability, from the binomial distribution of respondents.
 

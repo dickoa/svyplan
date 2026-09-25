@@ -59,9 +59,13 @@
 #'       be unique, or unique within each domain when `domains` is set.}
 #'     \item{`mean` **or** `p`}{The stratum population mean or
 #'       proportion of the variable of interest. **Required when solving
-#'       for `cv`**, because the coefficient of variation is defined
+#'       for `cv` or using `alloc = "power"`**, because the coefficient of variation is defined
 #'       relative to the mean. Use `mean` for continuous variables
 #'       and `p` (in \eqn{[0, 1]}) for binary (yes/no) variables.}
+#'     \item{`alloc_measure`}{Positive finite stratum measure used only by
+#'       Bankier allocation (`alloc = "power"`). Defaults to
+#'       `N * abs(mean)` (or `N * p`). Population CV is derived from
+#'       `sd / abs(mean)` and requires a nonzero mean in every stratum.}
 #'     \item{`unit_cost`}{Per-unit interviewing cost in each stratum
 #'       (positive, finite). Set higher values for strata that are more
 #'       expensive to reach. Defaults to 1 everywhere (equal cost).}
@@ -105,7 +109,12 @@
 #' @param measures Optional long data frame for joint constrained allocation,
 #'   with one row per required `stratum` and indicator `name`. Each row must
 #'   contain either `p` in `[0, 1]`, or `mean` and exactly one of non-negative
-#'   `sd` or `var`. Optional row-specific `deff` and `resp_rate` values override
+#'   `sd` or `var`. In element-level designs, `p` implies the finite-population
+#'   variance `N * p * (1 - p) / (N - 1)`, using its stratum's `N > 1`,
+#'   consistently with [prec_prop()]. Explicit `var` and `sd` values are used
+#'   as supplied. Multistage designs, including PSU-register designs, retain
+#'   the working proportion variance `p * (1 - p)`.
+#'   Optional row-specific `deff` and `resp_rate` values override
 #'   the scalar arguments, and `NA` uses the scalar default. In fixed-take
 #'   multistage mode, `icc_psu` is required and `var_ratio_psu` defaults to 1.
 #'   Three-stage mode also requires `icc_ssu` and derives `var_ratio_ssu` as
@@ -163,9 +172,11 @@
 #'   target in and to report `moe` out. A `cv` target carries no quantile
 #'   and is unaffected. `NULL` (default) applies no adjustment.
 #' @param min_n_stratum Optional minimum sample size per stratum.
-#' @param alloc_q Bankier power parameter, used only when `alloc = "power"`.
-#'   Numeric scalar in \eqn{[0, 1]}. At `alloc_q = 1` the allocation equals
-#'   Neyman. At `alloc_q = 0` it yields near-equal subnational CVs.
+#' @param alloc_q Bankier allocation exponent, used only when `alloc = "power"`.
+#'   Numeric scalar in \eqn{[0, 1]}. With the default `alloc_measure`,
+#'   `alloc_q = 1` gives Neyman allocation. At `alloc_q = 0` weights depend
+#'   on population CVs and the response/design-effect adjustment, independently
+#'   of `alloc_measure`. This does not generally equalize domain CVs.
 #'   Default 0.5.
 #' @param fpc Which finite population correction the variance carries in
 #'   cluster allocation: `"unit"` (default) for the ultimate-unit
@@ -187,17 +198,28 @@
 #'       `cost_psu / n_per_psu + cost_ssu` (1 when no stage costs were
 #'       given), while `sd` stays the input stratum SD.}
 #'     \item{`n`}{Allocated sample size (continuous).}
-#'     \item{`n_int`}{Integer allocation. In `n` mode the requested
-#'       total is preserved (bounded largest-remainder rounding), except
-#'       under a fixed cluster take, where the take is held and the total
-#'       moves to the nearest whole multiple of it instead. In
-#'       `cv` mode each stratum is rounded up so the integer design
-#'       meets the target. In `budget` mode units are added by variance
-#'       reduction per unit cost so the integer design stays within
-#'       budget. Always inside the integerized bounds
-#'       (`ceiling(.lower)`, `floor(.upper)`). An error is raised when
-#'       no integer allocation can satisfy them.}
-#'     \item{`weight`}{Design weight `N / n`.}
+#'     \item{`n_int`}{Integer allocation. In `n` mode an element design
+#'       keeps the requested total (bounded largest-remainder rounding). A
+#'       cluster design fields whole PSUs at one whole take per stratum,
+#'       near its cost-optimal value, so its total can miss `n` by at most
+#'       half the largest take. The allocation is re-solved within what each
+#'       stratum can field at its take, and each rounded PSU count then moves
+#'       by at most one PSU, jointly across strata, toward `n`. A take is
+#'       raised above that value only when the strata at their `N_psu`
+#'       limits would otherwise fall more than half a take short. In `cv`
+#'       mode each stratum is rounded up so the integer design meets the
+#'       target. In `budget` mode units are added by variance reduction per
+#'       unit cost so the integer design stays within budget. Always inside
+#'       the integerized bounds (`ceiling(.lower)`, `floor(.upper)`), except
+#'       that an `N_psu` cap bounds the whole PSU count rather than the
+#'       element count, since the whole take can round up. An error is
+#'       raised when no integer allocation satisfies them, and when no
+#'       whole-unit cluster design comes within half a take of `n`, above or
+#'       below. That error gives the nearest total the design can field, the
+#'       smallest when lower bounds and one PSU per stratum force more, the
+#'       largest when `N` and `N_psu` allow less.}
+#'     \item{`weight`}{Base weight `N / n` of the issued sample, before
+#'       nonresponse or calibration adjustment.}
 #'     \item{`n_eff`}{Effective sample size `n * resp_rate / deff`.}
 #'     \item{`.lower`, `.upper`}{Bounds applied to the stratum
 #'       (from `min_n_stratum`, `max_weight`, `take_all`, `N_psu`, or
@@ -345,7 +367,7 @@
 #' `N_psu` is a feasibility constraint and nothing more. It caps the
 #' allocation at `N_psu * n_per_psu` ultimate units and caps the whole-unit
 #' design at `N_psu` clusters, matching the bound the fixed-take path
-#' already applies. Leaving it out preserves the unbounded behaviour, in
+#' already applies. Leaving it out preserves the unbounded behavior, in
 #' which the allocation may ask for more PSUs than a stratum contains.
 #'
 #' On its own it does **not** activate a first-stage finite population
@@ -367,6 +389,12 @@
 #' Because taking every PSU leaves the within-PSU take in force, it does not
 #' enumerate a stratum, and `take_all` is refused in cluster mode for the
 #' same reason the fixed-take path refuses it.
+#'
+#' The whole-unit design keeps its PSU count within `N_psu` as well. When the
+#' strata at their `N_psu` limits cannot hold `n` at their cost-optimal
+#' whole takes, a take is raised above its continuous value. When no whole
+#' take brings the design within half a take of `n`, `n_alloc()` stops with
+#' an error giving the largest total it can field.
 #'
 #' ## Which correction the variance carries
 #'
@@ -442,6 +470,16 @@
 #' anticipated design effect. `psu$certainty` can add a PSU to the certainty
 #' part. It cannot remove a PSU above the threshold.
 #'
+#' This uses an aggregate planning approximation. The noncertainty part
+#' uses a with-replacement clustering approximation, a standard approach
+#' in PPS sample-size planning. The design effect uses
+#' `ceiling(f_h * N_certain)` for the certainty part and the remaining
+#' stratum allocation for the noncertainty part. A common stratum-level
+#' finite population correction is then applied. Precision therefore uses
+#' aggregate counts rather than each PSU's individually rounded take and
+#' stage-specific sampling fractions. Check sensitivity to this aggregation
+#' when rounding or sampling fractions are substantial.
+#'
 #' The threshold and allocation determine each other, so the solver iterates.
 #' `$optimization$certainty` records whether it converged, cycled, or reached
 #' its iteration limit. `$detail` gives the split and threshold by stratum,
@@ -458,7 +496,8 @@
 #' The operational design is fieldable: certainty PSUs use their whole take
 #' at the stratum rate and the remainder uses whole PSUs at `n_per_psu`. Thus
 #' `n_int = n_certain_int + n_psu_draw * n_per_psu` in every stratum.
-#' `$operational` reports the count, cost, and precision of that same design.
+#' `$operational` reports its count and cost, with precision evaluated under
+#' the aggregate planning approximation described above.
 #' Use `cost_psu` and `cost_ssu` together to price PSU visits and interviews.
 #' [predict.svyplan] can compare fixed values of `n_per_psu`.
 #'
@@ -481,16 +520,25 @@
 #' - **proportional**: \eqn{n_h \propto N_h / r_h}{n_h proportional to N_h / r_h}
 #' - **neyman**: \eqn{n_h \propto N_h S_h \sqrt{d_h / r_h}}{n_h proportional to N_h S_h sqrt(d_h / r_h)}
 #' - **optimal**: \eqn{n_h \propto N_h S_h \sqrt{d_h / r_h} / \sqrt{c_h}}{n_h proportional to N_h S_h sqrt(d_h / r_h) / sqrt(c_h)}
-#' - **power**: Bankier (1988), \eqn{n_h \propto S_h N_h^{q}\sqrt{d_h/r_h}}{n_h ~ S_h * N_h^alloc_q * sqrt(deff_h / resp_rate_h)},
-#'   with exponent `alloc_q`
+#' - **power**: Bankier (1988) allocation,
+#'   \eqn{n_h \propto (S_h/|\mu_h|) X_h^q\sqrt{d_h/r_h}}{n_h ~ (S_h / abs(mean_h)) * alloc_measure_h^alloc_q * sqrt(deff_h / resp_rate_h)},
+#'   where \eqn{X_h} is `frame$alloc_measure`, defaulting to
+#'   \eqn{N_h|\mu_h|}. Every stratum needs a finite nonzero `mean` or `p`.
+#'   The population CV \eqn{S_h/|\mu_h|} is distinct from the target `cv`,
+#'   which describes the relative standard error of an estimate.
+#'   Zero-variance strata have zero allocation weight and remain subject to
+#'   the allocation bounds. If all variances are zero, the existing fallback
+#'   allocates in proportion to population size, with a warning.
+#'   Use explicit domain targets when comparable domain precision is required.
 #'
 #' The design effect \eqn{d_h} and response rate \eqn{r_h} enter only when
 #' they vary by stratum. A value shared by every stratum is a constant
 #' factor and cancels out of a proportional weighting, leaving the classical
-#' rules above it. The three variance-based rules carry
-#' \eqn{\sqrt{d_h/r_h}}{sqrt(d_h/r_h)} because they minimize
-#' \eqn{\sum W_h^2S_h^2d_h/(r_hn_h)} against a constraint on the units
-#' *drawn*, which is what a budget pays for. Proportional carries
+#' rules above it. Neyman and optimal allocation carry
+#' \eqn{\sqrt{d_h/r_h}}{sqrt(d_h/r_h)} from minimizing
+#' \eqn{\sum W_h^2S_h^2d_h/(r_hn_h)} under a constraint on issued count
+#' or cost, respectively. The power rule retains that adjustment while
+#' weighting population CVs by `alloc_measure^alloc_q`. Proportional carries
 #' \eqn{1/r_h} instead, and no \eqn{d_h} at all, because it is a count rule, not a
 #' variance optimum, and its purpose is a self-weighting sample, so it is
 #' the responding sample it holds proportional to \eqn{N_h}.
@@ -740,6 +788,12 @@ n_alloc.default <- function(
         call. = FALSE
       )
     }
+    if ("alloc_measure" %in% names(frame)) {
+      stop(
+        "'alloc_measure' is not used for joint constrained allocation, it belongs to alloc = \"power\"",
+        call. = FALSE
+      )
+    }
     if (!is.null(psu)) {
       # A register is not the equal-size, equal-take design the stage
       # correction is derived for.
@@ -776,7 +830,8 @@ n_alloc.default <- function(
       objective = objective,
       budget = budget,
       df = df,
-      fpc = fpc
+      fpc = fpc,
+      .finite_prop_var = TRUE
     ))
   }
   if (!is.null(psu)) {
@@ -787,6 +842,18 @@ n_alloc.default <- function(
   }
   alloc <- match.arg(alloc)
   check_alpha(alpha)
+  alloc_measure <- if ("alloc_measure" %in% names(frame)) {
+    frame[["alloc_measure"]]
+  }
+  if (!is.null(alloc_measure) && alloc != "power") {
+    stop(
+      sprintf(
+        "'alloc_measure' is used only by alloc = \"power\", not alloc = \"%s\". Drop the column or set alloc = \"power\"",
+        alloc
+      ),
+      call. = FALSE
+    )
+  }
 
   if (!is.null(min_n_stratum)) {
     check_scalar(min_n_stratum, "min_n_stratum")
@@ -853,7 +920,8 @@ n_alloc.default <- function(
   hi <- sum(M_h)
   tol <- 1e-8
 
-  a_h <- .alloc_weights(alloc, alloc_q, N_h, S_h, cost_h, deff, resp_rate)
+  a_h <- .alloc_weights(alloc, alloc_q, N_h, S_h, cost_h, deff, resp_rate,
+                         mean_h = mean_h, alloc_measure = alloc_measure)
   if (!is.finite(sum(a_h)) || sum(a_h) <= 0) {
     a_h <- N_h
   }
@@ -1072,7 +1140,8 @@ n_alloc.default <- function(
       deff = deff,
       resp_rate = resp_rate,
       target_cv = if (mode == "cv") cv else NULL,
-      df = df
+      df = df,
+      alloc_weights = a_h
     )
     detail <- opc$detail
     operational <- opc$operational
@@ -1210,8 +1279,14 @@ n_alloc.svyplan_prec <- function(
 #'   with at least `N` and `sd` or `var` columns). See [n_alloc()] for
 #'   the full column reference).
 #'   For `svyplan_n` objects: an allocation result from [n_alloc()].
-#' @param ... Additional arguments passed to methods. Unused arguments are rejected.
-#' @param n Stratum sample sizes, length `nrow(frame)`. For a fitted joint
+#' @param ... Additional arguments passed to methods. Unused arguments are
+#'   rejected. For an allocation result, named arguments override the fitted
+#'   values, and `n_per_psu` sets the take per PSU of a cluster allocation,
+#'   one value or one per stratum. See "Evaluating a cluster field design".
+#' @param n Stratum sample sizes, length `nrow(frame)`. In a cluster
+#'   allocation these count ultimate units, fielded at the take in the
+#'   frame's `n_per_psu` column, or at the continuous cost-optimal take when
+#'   the frame has none. For a fitted joint
 #'   allocation, omission uses its continuous allocation. Pass `$detail$n_int`
 #'   to assess the operational recommendation. A named vector is matched to
 #'   `frame$stratum`, an unnamed vector is positional. In fixed-take
@@ -1270,6 +1345,22 @@ n_alloc.svyplan_prec <- function(
 #'   to one floor. Joint assessment only: supplying it without `measures` and
 #'   `targets` is an error.
 #' @param plan Optional [svyplan()] object providing design defaults.
+#'
+#' @details
+#' ## Evaluating a cluster field design
+#'
+#' The take is part of a cluster design. Whole-unit counts evaluated at the
+#' continuous take imply a fractional number of PSUs, which no field design
+#' has. `$operational` on an [n_alloc()] result already reports the
+#' precision of its whole-unit design. The same design, or a variation of it,
+#' is evaluated here by supplying both stage sizes:
+#'
+#' ```
+#' prec_alloc(fit, n = fit$detail$n_int, n_per_psu = fit$detail$n_per_psu_int)
+#' ```
+#'
+#' which reproduces `fit$operational$cv`. `n_per_psu` does not apply to an
+#' allocation built on a PSU register, whose takes come from the register.
 #'
 #' @return A `svyplan_prec` object with `type = "alloc"`. Top-level `se`,
 #'   `moe`, and `cv` describe the whole population. `$detail` carries the
@@ -1432,7 +1523,8 @@ prec_alloc.default <- function(
       resp_rate = resp_rate,
       min_n_stratum = min_n_stratum,
       df = df,
-      fpc = fpc
+      fpc = fpc,
+      .finite_prop_var = TRUE
     ))
   }
   if (!is.null(psu)) {
@@ -1537,6 +1629,15 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   p <- obj$params
   if (identical(obj$method, "bethel")) {
     dots <- list(...)
+    if (!is.null(p$psu) && "n_per_psu" %in% names(dots)) {
+      stop(
+        "'n_per_psu' cannot override a PSU register, whose takes come from the register itself",
+        call. = FALSE
+      )
+    }
+    take <- .alloc_take_override(p$frame, dots, isTRUE(p$stages > 1L))
+    p$frame <- take$frame
+    dots <- take$dots
     dot_names <- names(dots)
     n_explicit <- length(dots) > 0L &&
       (is.null(dot_names) || any(!nzchar(dot_names)) || "n" %in% dot_names)
@@ -1580,7 +1681,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       unit_cost = p$unit_cost,
       min_n_stratum = p$min_n_stratum,
       fpc = p$fpc %||% "unit",
-      .allow_fractional_stages = !n_explicit
+      .allow_fractional_stages = !n_explicit,
+      .finite_prop_var = TRUE
     )
     return(do.call(
       .prec_alloc_bethel,
@@ -1598,8 +1700,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     )
   }
 
+  take <- .alloc_take_override(p$frame, list(...),
+                               .alloc_is_cluster(p$frame))
   args <- list(
-    frame = p$frame,
+    frame = take$frame,
     n = n_h,
     domains = p$domain_cols,
     alpha = p$alpha,
@@ -1612,10 +1716,15 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   } else {
     args$fpc <- p$fpc %||% "unit"
   }
-  do.call(
+  out <- do.call(
     prec_alloc.default,
-    .roundtrip_args(args, list(...), prec_alloc.default)
+    .roundtrip_args(args, take$dots, prec_alloc.default)
   )
+  # Preserve the sizing rule when this precision result is used to re-plan.
+  out$params$alloc <- p$alloc
+  out$params$alloc_q <- p$alloc_q
+  out$params$min_n_stratum <- p$min_n_stratum
+  out
 }
 
 #' @keywords internal
@@ -2057,6 +2166,41 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   "icc_psu" %in% names(frame)
 }
 
+#' Apply a named `n_per_psu` override to a re-evaluated cluster allocation
+#' @keywords internal
+#' @noRd
+.alloc_take_override <- function(frame, dots, cluster) {
+  if (!"n_per_psu" %in% names(dots)) {
+    return(list(frame = frame, dots = dots))
+  }
+  if (!cluster) {
+    stop(
+      "'n_per_psu' applies to a cluster allocation, and this allocation has no PSU stage",
+      call. = FALSE
+    )
+  }
+  take <- dots[["n_per_psu"]]
+  H <- nrow(frame)
+  if (
+    !is.numeric(take) ||
+      !length(take) %in% c(1L, H) ||
+      anyNA(take) ||
+      any(!is.finite(take)) ||
+      any(take <= 0)
+  ) {
+    stop(
+      sprintf(
+        "'n_per_psu' must be positive and finite, one value or one per stratum (%d)",
+        H
+      ),
+      call. = FALSE
+    )
+  }
+  frame$n_per_psu <- rep_len(as.numeric(take), H)
+  dots[["n_per_psu"]] <- NULL
+  list(frame = frame, dots = dots)
+}
+
 #' Explain an upper-bound failure in the language of what caused it
 #'
 #' A total, budget, or CV target the allocation cannot reach may be blocked by
@@ -2364,16 +2508,57 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   )
 }
 
-#' Operational (integer) design for a stratified two-stage allocation
-#'
-#' Chooses a whole per-stratum take b_h (floor/ceiling candidate with the
-#' lowest variance-cost product when stage costs are known) and a whole
-#' PSU count a_h per stratum. In cv mode a_h matches or beats each
-#' stratum's continuous variance contribution. In budget mode PSUs are
-#' removed/added greedily so the field cost sum(a_h * (cost_psu +
-#' cost_ssu * b_h)) never exceeds the budget. In n mode a_h approximates
-#' the continuous element total. Returns the design plus recomputed
-#' metrics and updates the detail integers.
+#' Whole PSU counts, each within one PSU of its rounding, nearest the total
+#' @keywords internal
+#' @noRd
+.cluster_close_total <- function(a_h, b_h, a_min, a_max, e_target) {
+  H <- length(a_h)
+  target <- sum(e_target)
+  base <- sum(a_h * b_h)
+  if (base == target) {
+    return(a_h)
+  }
+  lo_d <- as.integer(pmax(a_min - a_h, -1L))
+  hi_d <- as.integer(pmin(a_max - a_h, 1L))
+  offset <- sum(-lo_d * b_h)
+  size <- offset + sum(hi_d * b_h) + 1L
+  cost <- rep(Inf, size)
+  cost[offset + 1L] <- 0
+  moves <- rep(0L, size)
+  back <- matrix(NA_integer_, size, H)
+  for (h in seq_len(H)) {
+    next_cost <- rep(Inf, size)
+    next_moves <- rep(0L, size)
+    arg <- rep(NA_integer_, size)
+    d_all <- seq.int(lo_d[h], hi_d[h])
+    for (d in d_all[order(abs(d_all))]) {
+      shift <- d * b_h[h]
+      from <- max(1L, 1L - shift):min(size, size - shift)
+      to <- from + shift
+      cand <- cost[from] + (b_h[h] * (a_h[h] + d) - e_target[h])^2
+      cand_moves <- moves[from] + abs(d)
+      better <- cand < next_cost[to] |
+        (cand == next_cost[to] & cand_moves < next_moves[to])
+      next_cost[to[better]] <- cand[better]
+      next_moves[to[better]] <- cand_moves[better]
+      arg[to[better]] <- d
+    }
+    cost <- next_cost
+    moves <- next_moves
+    back[, h] <- arg
+  }
+  dev <- seq_len(size) - 1L - offset
+  gap <- ifelse(is.finite(cost), abs(target - base - dev), Inf)
+  t <- order(gap, cost, moves)[1L]
+  d <- integer(H)
+  for (h in rev(seq_len(H))) {
+    d[h] <- back[t, h]
+    t <- t - d[h] * b_h[h]
+  }
+  as.integer(a_h + d)
+}
+
+#' Whole-unit field design of a stratified cluster allocation
 #' @keywords internal
 #' @noRd
 .alloc_operational_cluster <- function(
@@ -2386,7 +2571,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   deff,
   resp_rate,
   target_cv = NULL,
-  df = NULL
+  df = NULL,
+  alloc_weights = NULL
 ) {
   H <- length(n_h)
   ps <- prep$n_per_psu_h
@@ -2398,7 +2584,11 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   W <- prep$N_h / sum(prep$N_h)
   lo_i <- as.integer(ceiling(detail$.lower - 1e-9))
   hi_i <- as.integer(floor(detail$.upper + 1e-9))
-  b_h <- vapply(
+  # N_psu bounds the PSU count through a_max, not through this element cap.
+  psu_capped <- prep$M_src %in% "N_psu"
+  hi_i[psu_capped] <- as.integer(floor(prep$N_h[psu_capped] + 1e-9))
+  psu_max <- if (is.null(prep$N_psu_h)) rep(Inf, H) else prep$N_psu_h
+  take_options <- lapply(
     seq_len(H),
     function(h) {
       center <- max(1L, as.integer(round(ps[h])))
@@ -2418,7 +2608,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       feasible <- vapply(
         cand,
         function(b) {
-          ceiling(lo_i[h] / b) <= floor(hi_i[h] / b)
+          ceiling(lo_i[h] / b) <= min(floor(hi_i[h] / b), psu_max[h])
         },
         logical(1L)
       )
@@ -2440,41 +2630,53 @@ prec_alloc.svyplan_n <- function(frame, ...) {
         near <- cand[cand %in% unique(c(floor(ps[h]), ceiling(ps[h])))]
         if (length(near) > 0L) cand <- near
       }
-      if (isTRUE(prep$has_stage_costs)) {
-        score <- (var_ratio[h] * (1 + icc[h] * (cand * resp_h[h] - 1))) *
+      score <- if (isTRUE(prep$has_stage_costs)) {
+        (var_ratio[h] * (1 + icc[h] * (cand * resp_h[h] - 1))) *
           (prep$cost_psu_h[h] / cand + prep$cost_ssu_h[h])
-        cand[which.min(score)]
       } else {
-        cand[which.min(abs(cand - ps[h]))]
+        abs(cand - ps[h])
       }
-    },
+      list(take = as.integer(cand), score = score)
+    }
+  )
+  b_h <- vapply(
+    take_options,
+    function(o) o$take[which.min(o$score)],
     integer(1L)
   )
 
-  e_target <- NULL
   if (mode == "n") {
-    # A fixed n_per_psu keeps its take and moves its element count instead.
-    b_free <- b_h
-    e_target <- .round_oric_bounded(n_h, lo_i, hi_i)
-    b_h <- vapply(
-      seq_len(H),
-      function(h) {
-        if (isTRUE(prep$n_per_psu_fixed_h[h])) {
-          return(b_free[h])
+    # Raise a take only when capacity falls over half a take short of n.
+    capacity <- function(h, b) min(floor(hi_i[h] / b), psu_max[h]) * b
+    need <- round(sum(n_h))
+    repeat {
+      cap <- vapply(seq_len(H), function(h) capacity(h, b_h[h]), numeric(1L))
+      if (need - sum(cap) <= max(b_h) / 2) break
+      best <- NULL
+      for (h in seq_len(H)) {
+        o <- take_options[[h]]
+        gain <- vapply(o$take, function(b) capacity(h, b), numeric(1L)) > cap[h]
+        if (!any(gain)) next
+        cur <- o$score[match(b_h[h], o$take)]
+        pen <- o$score[gain] - cur
+        if (isTRUE(prep$has_stage_costs)) pen <- pen / cur
+        k <- which.min(pen)
+        if (is.null(best) || pen[k] < best$pen) {
+          best <- list(h = h, take = o$take[gain][k], pen = pen[k])
         }
-        e <- e_target[h]
-        root <- seq_len(max(1L, as.integer(floor(sqrt(e)))))
-        small <- root[e %% root == 0L]
-        divisors <- sort(unique(c(small, e %/% small)))
-        if (isTRUE(prep$has_stage_costs)) {
-          score <- (var_ratio[h] * (1 + icc[h] * (divisors * resp_h[h] - 1))) *
-            (prep$cost_psu_h[h] / divisors + prep$cost_ssu_h[h])
-          return(divisors[which.min(score)])
-        }
-        divisors[which.min(abs(divisors - ps[h]))]
-      },
-      integer(1L)
-    )
+      }
+      if (is.null(best)) {
+        stop(
+          sprintf(
+            "no whole-cluster design fields n = %d within half a take: whole takes within 'N' and 'N_psu' hold at most %d units. Raise 'N_psu' or lower 'n'",
+            as.integer(need),
+            as.integer(sum(cap))
+          ),
+          call. = FALSE
+        )
+      }
+      b_h[best$h] <- best$take
+    }
   }
 
   a_min <- as.integer(ceiling(lo_i / b_h))
@@ -2488,6 +2690,23 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     stop(
       "no whole-cluster design satisfies the integer allocation bounds",
       call. = FALSE
+    )
+  }
+
+  e_target <- NULL
+  if (mode == "n") {
+    # Re-solve within what each stratum can field at its whole take.
+    cap_lo <- a_min * b_h
+    cap_hi <- a_max * b_h
+    e_cont <- n_h
+    outside <- n_h < cap_lo - 1e-9 | n_h > cap_hi + 1e-9
+    if (any(outside) && !is.null(alloc_weights)) {
+      total <- min(max(sum(n_h), sum(cap_lo)), sum(cap_hi))
+      e_cont <- .rna_alloc(alloc_weights, total, cap_lo, cap_hi)
+    }
+    e_target <- .round_oric_bounded(
+      e_cont, pmax(lo_i, cap_lo), pmin(hi_i, cap_hi),
+      total = round(sum(e_cont))
     )
   }
 
@@ -2569,6 +2788,31 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   } else {
     a_h <- as.integer(round(e_target / b_h))
     a_h <- pmin(pmax(a_h, a_min), a_max)
+    # A take chosen to divide the total fields a prime total as 1-unit PSUs.
+    a_h <- .cluster_close_total(a_h, b_h, a_min, a_max, e_target)
+    field <- sum(a_h * b_h)
+    if (field - need > max(b_h) / 2) {
+      smallest <- sum(a_min * b_h)
+      stop(
+        sprintf(
+          "no whole-cluster design fields n = %d within half a take: at whole takes, with at least one PSU per stratum and the strata's lower bounds, the smallest design holds %d units. Raise 'n' to %d, or relax 'min_n_stratum', 'max_weight' or the take",
+          as.integer(need),
+          as.integer(smallest),
+          as.integer(smallest)
+        ),
+        call. = FALSE
+      )
+    }
+    if (need - field > max(b_h) / 2) {
+      stop(
+        sprintf(
+          "no whole-cluster design fields n = %d within half a take: whole takes within 'N' and 'N_psu' hold at most %d units. Raise 'N_psu' or lower 'n'",
+          as.integer(need),
+          as.integer(sum(a_max * b_h))
+        ),
+        call. = FALSE
+      )
+    }
   }
 
   e_h <- a_h * b_h

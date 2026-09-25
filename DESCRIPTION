@@ -26,7 +26,7 @@ Description: Tools for survey sample size determination, precision
     ISBN:978-0-471-16240-7), Kish (1965, ISBN:978-0-471-48900-9),
     Saerndal, Swensson, and Wretman (1992, ISBN:978-0-387-40620-6),
     Fuller (2009, ISBN:978-0-470-45460-2), and Valliant, Dever, and
-    Kreuter (2018, ISBN:978-3-319-93630-4).
+    Kreuter (2018, ISBN:978-3-319-93631-4).
 Depends: R (>= 4.1.0)
 Imports:
     graphics,

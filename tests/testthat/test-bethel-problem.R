@@ -2,7 +2,8 @@ test_that("problem builder creates correct proportion coefficients", {
   z <- .bethel_fixture()
   p <- .build_bethel_problem(z$frame, z$measures, z$targets)
   k <- match("vaccination@.overall:cv", p$constraint_ids)
-  variance <- z$measures$p[1:4] * (1 - z$measures$p[1:4])
+  variance <- z$frame$N / (z$frame$N - 1) *
+    z$measures$p[1:4] * (1 - z$measures$p[1:4])
 
   expect_equal(p$A[, k], z$frame$N^2 * variance)
   expect_equal(p$B[k], -sum(z$frame$N * variance))
@@ -25,7 +26,8 @@ test_that("proportion shorthand equals explicit mean and variance", {
   m2 <- z$measures
   prop <- !is.na(m2$p)
   m2$mean[prop] <- m2$p[prop]
-  m2$var <- ifelse(prop, m2$p * (1 - m2$p), NA)
+  N <- z$frame$N[match(m2$stratum, z$frame$stratum)]
+  m2$var <- ifelse(prop, N / (N - 1) * m2$p * (1 - m2$p), NA)
   m2$p[prop] <- NA
   p2 <- .build_bethel_problem(z$frame, m2, z$targets)
 
@@ -45,9 +47,9 @@ test_that("row-specific deff and response rates override scalar defaults", {
     deff = 1.5, resp_rate = 0.8
   )
   k <- match("vaccination@.overall:cv", p$constraint_ids)
-  variance <- 0.5 * 0.5
+  variance <- 1000 / 999 * 0.5 * 0.5
   expect_equal(p$A[1, k], 1000^2 * variance * 2 / 0.5)
-  expect_equal(p$A[2, k], 2000^2 * 0.4 * 0.6 * 1.5 / 0.8)
+  expect_equal(p$A[2, k], 2000^2 * (2000 / 1999) * 0.4 * 0.6 * 1.5 / 0.8)
 })
 
 test_that("builder rejects incomplete and ambiguous public tables", {

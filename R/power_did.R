@@ -72,7 +72,7 @@
 #' @details
 #' Positive overlap is checked within each arm across its two waves:
 #' `(2 - overlap) * n_arm * resp_rate <= N_arm`. Arm-specific populations
-#' and unequal treatment/control sizes are allowed; the allocation ratio
+#' and unequal treatment/control sizes are allowed. The allocation ratio
 #' does not constrain the within-arm overlap. Supplied sizes must fit these
 #' bounds, and sample-size searches stop at the most restrictive arm bound.
 #' Zero overlap retains the independent-wave convention.

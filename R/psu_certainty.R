@@ -252,11 +252,14 @@
 
   solve_at <- function(cls) {
     m <- deff_measures(cls)
+    # Although the inner solver receives an element-shaped frame, this is
+    # a multistage model. Retain its p(1-p) working variance on every call.
     .n_alloc_bethel(
       frame = base_frame, measures = m, targets = targets,
       unit_cost = unit_cost, alpha = alpha, deff = deff,
       resp_rate = resp_rate, min_n_stratum = min_n_stratum,
-      objective = objective, budget = budget, df = df
+      objective = objective, budget = budget, df = df,
+      .finite_prop_var = FALSE
     )
   }
 
@@ -348,7 +351,7 @@
         targets = targets, unit_cost = unit_cost, alpha = alpha, deff = deff,
         resp_rate = resp_rate, min_n_stratum = min_n_stratum,
         objective = objective, budget = budget, df = df,
-        .allow_fractional_stages = TRUE
+        .allow_fractional_stages = TRUE, .finite_prop_var = FALSE
       ),
       error = function(e) NULL
     )
@@ -689,7 +692,8 @@
     frame = base_frame, n = n_h, measures = m, targets = targets,
     unit_cost = unit_cost, alpha = alpha, deff = deff, resp_rate = resp_rate,
     min_n_stratum = min_n_stratum, objective = objective, budget = budget,
-    df = df, .allow_fractional_stages = .allow_fractional_stages
+    df = df, .allow_fractional_stages = .allow_fractional_stages,
+    .finite_prop_var = FALSE
   )
 
   n_certain <- vapply(seq_len(H), function(h) sum(certain[idx_of[[h]]]),
@@ -755,7 +759,8 @@
         frame = base_frame, n = st$n_h, measures = m, targets = targets,
         unit_cost = unit_cost, alpha = alpha, deff = deff,
         resp_rate = resp_rate, min_n_stratum = min_n_stratum,
-        objective = objective, budget = budget, df = df
+        objective = objective, budget = budget, df = df,
+        .finite_prop_var = FALSE
       ),
       error = function(e) NULL
     )

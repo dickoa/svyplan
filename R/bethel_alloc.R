@@ -921,7 +921,8 @@
   df = NULL,
   min_n_stratum = NULL,
   objective = NULL,
-  fpc = "unit"
+  fpc = "unit",
+  .finite_prop_var = TRUE
 ) {
   check_deff(deff)
   check_resp_rate(resp_rate)
@@ -1088,6 +1089,16 @@
   mean_norm <- ifelse(has_p, p, mean_value)
   var_norm <- ifelse(has_p, p * (1 - p),
                      ifelse(has_var, var_value, sd_value^2))
+  if (stage$stages == 1L && .finite_prop_var && any(has_p)) {
+    prop_N <- N[match(m_stratum[has_p], stratum)]
+    if (any(prop_N <= 1)) {
+      stop("'N' must be greater than 1 for element-level proportion measures",
+           call. = FALSE)
+    }
+    # The element-level FPC consumes population variance with denominator
+    # N - 1, as in prec_prop(). Multistage working variances retain p(1-p).
+    var_norm[has_p] <- .bernoulli_var(p[has_p], prop_N)
+  }
   row_deff <- if ("deff" %in% names(measures)) measures$deff else
     rep(NA_real_, nrow(measures))
   row_resp <- if ("resp_rate" %in% names(measures)) measures$resp_rate else
@@ -2057,7 +2068,8 @@
   objective = NULL,
   budget = NULL,
   df = NULL,
-  fpc = "unit"
+  fpc = "unit",
+  .finite_prop_var
 ) {
   control <- .bethel_control()
   problem <- .build_bethel_problem(
@@ -2071,7 +2083,8 @@
     df = df,
     min_n_stratum = min_n_stratum,
     objective = objective,
-    fpc = fpc
+    fpc = fpc,
+    .finite_prop_var = .finite_prop_var
   )
   mode <- if (is.null(objective)) "targets" else "budget_objective"
   if (mode == "targets") {
@@ -2263,7 +2276,8 @@
   budget = NULL,
   df = NULL,
   fpc = "unit",
-  .allow_fractional_stages = FALSE
+  .allow_fractional_stages = FALSE,
+  .finite_prop_var
 ) {
   if (is.null(n)) stop("'n' is required", call. = FALSE)
   problem <- .build_bethel_problem(
@@ -2277,7 +2291,8 @@
     df = df,
     min_n_stratum = min_n_stratum,
     objective = objective,
-    fpc = fpc
+    fpc = fpc,
+    .finite_prop_var = .finite_prop_var
   )
   decision <- .bethel_to_decision(
     problem,

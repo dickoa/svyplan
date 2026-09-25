@@ -49,17 +49,17 @@ Specify at most one of \code{n} or \code{cv}. Required for methods \code{"lh"} a
 
 \item{method}{Stratification method: \code{"cumrootf"} (Dalenius-Hodges),
 \code{"geo"} (geometric), \code{"lh"} (LH-inspired coordinate optimization), or
-\code{"kozak"} (Kozak-inspired random-restart local search). The short method
-names are retained for compatibility and do not claim exact
-implementations of the published algorithms. Default \code{"lh"}.}
+\code{"kozak"} (Kozak's random search). \code{"lh"} is a coordinate search in
+the spirit of the published method, not its recurrence. Default \code{"lh"}.}
 
 \item{alloc}{Allocation rule: \code{"proportional"}, \code{"neyman"},
-\code{"optimal"}, or \code{"power"} (Bankier compromise). Default \code{"neyman"}.
+\code{"optimal"}, or \code{"power"} (Bankier allocation). Default \code{"neyman"}.
 See Details.}
 
-\item{alloc_q}{Bankier power parameter, used only when \code{alloc = "power"}.
+\item{alloc_q}{Bankier allocation exponent, used only when \code{alloc = "power"}.
 Numeric scalar in \eqn{[0, 1]}. At \code{alloc_q = 1} the allocation equals
-Neyman. At \code{alloc_q = 0} it yields near-equal subnational CVs.
+Neyman. At \code{alloc_q = 0} weights are proportional to population CVs.
+This does not generally equalize stratum CVs.
 Default 0.5.}
 
 \item{unit_cost}{Per-stratum unit costs, ordered from lowest to highest
@@ -84,13 +84,16 @@ number expected to respond, matching \code{\link[=n_alloc]{n_alloc()}}.}
 error rather than a silent no-op.
 Default \code{NULL} (Freedman-Diaconis rule).}
 
-\item{max_iter}{Positive whole number of maximum iterations. Applies to
-\code{method = "lh"} and \code{"kozak"} only. Supplying it with another method is
-an error rather than a silent no-op. Default \code{NULL} (= 200).}
+\item{max_iter}{Positive whole number, the iteration cap. For
+\code{method = "lh"} it counts sweeps over the boundaries (default 200). For
+\code{"kozak"} it caps the moves in each run (default 10,000), which
+normally stops earlier on its own convergence rule. Supplying it with
+another method is an error rather than a silent no-op.}
 
-\item{n_restart}{Positive whole number of random restarts. Applies to
-\code{method = "kozak"} only. Supplying it with another method is an error
-rather than a silent no-op. Default \code{NULL} (= 10 * \code{n_strata}).}
+\item{n_restart}{Positive whole number of Kozak runs from each starting
+boundary set. Applies to \code{method = "kozak"} only. Supplying it with
+another method is an error rather than a silent no-op. Default \code{NULL}
+(= 5).}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults. It can
 supply \code{alloc}, \code{alloc_q}, \code{deff}, \code{resp_rate}, and a scalar
@@ -116,15 +119,16 @@ expects, so the table can be passed straight to it.}
 \item{method}{Algorithm used.}
 \item{alloc}{Allocation method name (character).}
 \item{params}{List of additional parameters.}
-\item{converged}{Logical (for iterative methods).}
+\item{converged}{Logical (for iterative methods). For \code{"kozak"}, whether
+the best run stopped on its no-change rule rather than at \code{max_iter},
+or the boundary sets were enumerated.}
 }
 }
 \description{
 Determine where to cut a continuous stratification variable to form
 useful strata. Supports four methods: cumulative root frequency
 (Dalenius-Hodges), geometric progression, coordinate optimization inspired
-by Lavall\enc{é}{e}e-Hidiroglou, and random-restart local search inspired
-by Kozak.
+by Lavall\enc{é}{e}e-Hidiroglou, and Kozak's random search.
 }
 \details{
 \subsection{Choosing a method}{
@@ -142,15 +146,31 @@ Lavall\enc{é}{e}e-Hidiroglou (1988). It starts from quantile boundaries
 and repeatedly performs bounded one-dimensional minimizations. Requires
 \code{n} or \code{cv}. This is a local heuristic, not the published LH recurrence
 and not a globally optimal algorithm.
-\item \strong{kozak}: random-restart adjacent-boundary local search inspired by
-Kozak (2004). Requires \code{n} or \code{cv}. It can explore more starting points
-than \code{"lh"}, but it can still finish at a local optimum and provides no
-global-optimality guarantee.
+\item \strong{kozak}: Kozak's (2004) random search, as described by Baillargeon
+and Rivest (2011, section 3.3). Each iteration moves one randomly chosen
+boundary by a random number of positions among the distinct values of
+\code{x}, and keeps the move only when it lowers the objective on a feasible
+partition. A run stops once the boundaries have not changed for a set
+number of consecutive iterations, and is then reported converged. That
+rule does not certify a local optimum, and the method returns the best
+partition found across its runs, with no global-optimality guarantee.
+Requires \code{n} or \code{cv}.
+
+The tuning defaults follow the current \pkg{stratification} package, not
+the 2011 paper, which uses a maximum step of 3, a stopping count of 100,
+three runs, and enumeration below 1,000 boundary sets. Here the maximum
+step is a tenth of the distinct values, rounded up and capped at 100,
+and the stopping count is ten times the step, between 50 and 500.
+\code{n_restart} runs start from each of the cumulative root frequency,
+geometric (when \code{x > 0}) and quantile boundaries. When there are at most
+10,000 possible boundary sets they are all evaluated instead, which gives
+the exact optimum.
 }
 
 In summary, \code{"lh"} is the faster iterative heuristic. \code{"kozak"} spends more
-computation on random restarts and may find a better local solution. Use
-\code{"cumrootf"} or \code{"geo"} when you do not yet have \code{n} or \code{cv}.
+computation on random moves from several starting points, and is exact on
+small problems. Use \code{"cumrootf"} or \code{"geo"} when you do not yet have \code{n}
+or \code{cv}.
 
 Allocation is controlled by the \code{alloc} parameter. Four methods are
 available:
@@ -160,11 +180,15 @@ available:
 Minimizes the national CV when unit costs are equal.
 \item \strong{optimal}: \eqn{n_h \propto N_h S_h / \sqrt{c_h}}{n_h ~ N_h * S_h / sqrt(c_h)}.
 Accounts for differential unit costs.
-\item \strong{power}: Bankier (1988) compromise,
-\eqn{n_h \propto S_h N_h^{q}}{n_h ~ S_h * N_h^alloc_q}.
-The parameter \code{alloc_q} controls the trade-off between national precision
-(\code{alloc_q = 1}, equivalent to Neyman) and near-equal subnational CVs
-(\code{alloc_q = 0}).
+\item \strong{power}: Bankier (1988) allocation,
+\eqn{n_h \propto (S_h/|\mu_h|)(N_h|\mu_h|)^q}{n_h ~ (S_h / abs(mean_h)) * (N_h * abs(mean_h))^alloc_q}.
+The population CV and default allocation measure \code{N * abs(mean)} are
+recomputed for each candidate partition. Stratum means must be
+nonzero, and \code{x} may not take both signs. At \code{alloc_q = 1} this gives
+Neyman allocation. At \code{alloc_q = 0} it
+allocates in proportion to population CVs. The rule does not generally
+equalize stratum CVs. For a custom measure, first construct the strata,
+then supply an \code{alloc_measure} column to \code{\link[=n_alloc]{n_alloc()}}.
 }
 
 Stratum allocations are rounded to integers using the ORIC method
@@ -228,7 +252,7 @@ strata_bound(x, n_strata = 4, method = "cumrootf", n = 100)
 # LH (default, iterative)
 strata_bound(x, n_strata = 4, n = 100)
 
-# Bankier power allocation (compromise between national and subnational CVs)
+# Bankier allocation balances population CVs and stratum totals
 strata_bound(x, n_strata = 4, n = 100, alloc = "power", alloc_q = 0.5)
 
 # With take-all stratum
@@ -257,6 +281,10 @@ populations. \emph{Survey Methodology}, 14(1), 33--43.
 
 Kozak, M. (2004). Optimal stratification using random search method in
 agricultural surveys. \emph{Statistics in Transition}, 6(5), 797--806.
+
+Baillargeon, S. and Rivest, L.-P. (2011). The construction of stratified
+designs in R with the package stratification. \emph{Survey Methodology},
+37(1), 53--65.
 
 Gunning, P. and Horgan, J. M. (2004). A new algorithm for the
 construction of stratum boundaries in skewed populations.

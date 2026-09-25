@@ -2045,7 +2045,7 @@ test_that("n_multi cluster results carry accurate operational metrics", {
   expect_equal(op$total_n, prod(op$n))
   expect_equal(op$cost, op$n[[1]] * (500 + 50 * op$n[[2]]), tolerance = 1e-10)
   expect_lte(op$cv, max(tg$cv) + 1e-10)
-  expect_identical(as.integer(x), as.integer(op$n))
+  expect_identical(as.integer(x), setNames(as.integer(op$n), names(op$n)))
 })
 
 test_that("near-miss indicator columns are rejected with the intended name", {

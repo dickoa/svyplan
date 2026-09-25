@@ -1,8 +1,13 @@
 ---
-title: "Repeated surveys, panels, and rotation"
+title: "Planning repeated surveys and panels"
+description: >
+  Relate precision for levels, changes, and pooled estimates to overlap,
+  panel retention, rotation, and fieldwork schedules.
 output: rmarkdown::html_vignette
+bibliography: ../references.bib
+link-citations: true
 vignette: >
-  %\VignetteIndexEntry{Repeated surveys, panels, and rotation}
+  %\VignetteIndexEntry{Planning repeated surveys and panels}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -17,167 +22,82 @@ knitr::opts_chunk$set(
 )
 library(svyplan)
 ```
-This article covers change, pooled estimates, panel recruitment, overlap, and rotation schedules. See [Getting started](svyplan.html) for the core sizing and precision workflow, and [power and sensitivity](power.html) for detectable changes.
 
-## Change and panel designs
+A repeated survey can target a level at one occasion, a change between
+occasions, or an average across occasions. Sharing units across occasions has
+different consequences for those estimands. This article connects those
+precision questions to panel recruitment and fieldwork schedules.
 
-The families above size one occasion. A survey that runs more than once is sized against a different quantity: the change between two occasions, and, if the same units are followed, how many to recruit so that enough of them are still responding later.
+See [Getting started](svyplan.html) for single-occasion sizing and
+[Power](power.html) for detecting a change.
 
-### Sizing a change
+## Terms used here
 
-`n_change()` and `prec_change()` are the `n_*`/`prec_*` pair for a change in a mean or a proportion. Two independent rounds cost twice a single occasion:
+| Term | Meaning |
+|:---|:---|
+| Occasion | One calendar round of the survey. |
+| Wave | A unit's interview number within its participation period. |
+| Cohort | Units entering the design together. |
+| Retention | Conditional probability of remaining from one wave to the next. |
+| Issued overlap | Share of selected units common to two occasions. |
+| Respondent overlap | Share of the first occasion's respondents measured again. |
+
+Keep issued and respondent overlap separate whenever response is incomplete.
+
+## Precision for change
+
+`n_change()` and `prec_change()` plan a change in a mean or proportion. Start
+with independent samples at the two occasions:
 
 ```{r change-independent}
 n_change(p = c(0.30, 0.36), moe = 0.02)
 ```
 
-Measuring the same units twice needs fewer of them than two independent rounds, because the change is a difference and the unit-level correlation cancels part of its variance. Two arguments describe that, and only their product buys anything: `overlap` is the share of the first occasion's responding sample measured again, and `overlap_cor` the correlation among those shared units. A full panel of uncorrelated measurements saves nothing.
+Measuring some of the same responding units at both occasions reduces the
+variance of a difference when their measurements are positively correlated:
 
 ```{r change-overlap}
-n_change(p = c(0.30, 0.36), moe = 0.02, overlap = 0.75, overlap_cor = 0.5)
-```
-
-The pair round-trips like every other:
-
-```{r change-roundtrip}
-res <- n_change(p = c(0.30, 0.36), moe = 0.02, overlap = 0.75, overlap_cor = 0.5)
-prec_change(res)$moe
-```
-
-`overlap` and `overlap_cor` come from different places, and it is worth keeping them apart. The overlap is a property of the design and is fixed once the rotation is declared. The correlation is a property of the variable and has to come from a previous round of the same survey.
-
-### Overlap from a rotation
-
-`design_rotation()` declares the design half once. Give it the occasions a unit spends in and out of sample over its whole life, as a compact spec naming the spells in order from in sample. `design_overlap()` then reports the overlap at every lag the rotation reaches:
-
-```{r overlap-cps}
-rotation <- design_rotation("4-8-4")
-cps <- design_overlap(rotation)
-cps[c(1, 12)]
-```
-
-Those are the two published CPS figures: 75 percent of the sample is shared between consecutive months, 50 percent between the same month a year apart. **A rotation is a finite life, not a repeating pattern**, and the difference is invisible in the answer. Read `"4-8-4"` as "four in, eight out, repeat" and only the group finishing its stint leaves each month, which gives 87.5 percent. The finite life loses a group at the end of each of its two spells, keeps six of eight, and gives the published 75 percent. A compact spec with an even number of spells could only mean a cycle and is refused.
-
-Each lag is a different design question, so name the one the change spans rather than passing the profile whole:
-
-```{r overlap-lags}
-c(consecutive = n_change(p = c(0.30, 0.36), moe = 0.02,
-                         overlap = cps[1], overlap_cor = 0.5)$n,
-  annual = n_change(p = c(0.30, 0.36), moe = 0.02,
-                    overlap = cps[12], overlap_cor = 0.5)$n)
-```
-
-Two notations for a rotation are in print, and both are accepted. `"4-8-4"` counts occasions per spell, which is how the CPS pattern is written. `"1-1-0-0-1-1"` carries one flag per occasion, which is how Lynn (2012) writes the same kind of design. They are told apart by the `0`, which no spell can be. A string of all 1s is a valid sentence in both and a different design in each, so it is refused rather than resolved by precedence. `"1-1-1"` is three consecutive occasions as a pattern and one in, one out, one in as spells. Their consecutive overlaps are 2/3 and 0. Write `"3"` or `"1-0-1"`.
-
-`plot()` draws the rotation as the chart these designs are published as, one row per cohort and one column per time period:
-
-```{r overlap-chart, fig.width=7, fig.height=4.5}
-plot(design_overlap(design_rotation("1-1-0-0-1-1")))
-```
-
-A cohort enters at every period drawn, so the total row climbs through the launch and settles at the sample the overlaps divide by, which is marked. Everything left of that mark is the gradual start a rotating design has: reaching the intended sample takes a full life unless the first period's sample is deliberately split into cohorts of unequal life, which one rotation does not express.
-
-One conversion is the planner's to make. `design_overlap()` counts the units the design *issues* at both occasions, while `overlap` in the sizing and power functions is the share of the first occasion's *respondents* measured again. The two are the same number at full response. Below it they are not, and converting between them needs an assumption about how response persists across occasions, which the package does not make: under response independent between occasions at rate `r`, an issued overlap `f` leaves about `f * r` among respondents, rising towards `f` as respondents become likelier to respond again.
-
-### Recruiting a panel that loses units
-
-A panel loses units at every wave, so the sample that carries the analysis is smaller than the one recruited. `n_panel()` sizes the recruitment. It does not restate the arguments of `n_prop()` or `n_mean()`. It takes one of their results and reads it as both the responding sample to reach and the estimand to report precision for.
-
-The rates below are the UK LFS: 73 percent response at recruitment, then quarterly retention of a surviving cohort.
-
-```{r panel-fixed}
-target <- n_prop(p = 0.5, moe = 0.031)
-lfs <- n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
-               resp_rate = 0.728)
-lfs
-```
-
-The printed block is the answer: what to issue, what it leaves, and the precision at each wave. `summary()` gives what the answer rests on, including the rates assumed, where the life's loss falls, the cv and expected cases at each wave, and for a rotating design the standing sample and the launch.
-
-`resp_rate` and `retention` are separate arguments because a panel's loss is concentrated at recruitment. Here 61 percent of the whole five-wave loss happens at wave 1, and an average rate spread over the waves would under-issue.
-
-```{r panel-waves}
-lfs$waves[, c("wave", "q", "loss_share", "n_resp", "moe")]
-```
-
-`target_wave` sizes for a precision reached earlier than the last wave, with the later waves still reported.
-
-The same rates can be run as a rotating panel, where an equal cohort enters every occasion and the estimate pools every cohort alive. That returns a different quantity, so it has a different name:
-
-```{r panel-rotating}
-rot <- n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
-               resp_rate = 0.728, design = "rotating")
-c(entrants = rot$n_entrants, in_sample = rot$n_in_sample)
-```
-
-`n_entrants` is what the design takes on each occasion once it is running. `n_in_sample` is what its five live cohorts hold between them, which is also the cumulative recruitment that reaching a steady state takes. On these rates they differ by a factor of five, and reading one as the other is the mistake the two names exist to prevent.
-
-Every figure so far is an expected value, which leaves about half of all panels short of the target. `assurance` reports the recruitment that clears it with a stated probability instead:
-
-```{r panel-assurance}
-n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
-        resp_rate = 0.728, assurance = 0.90)$n_assured
-```
-
-For a fixed panel that inverts one binomial tail. For a rotating one the respondents at an occasion are a sum of binomials at different cumulative probabilities, one per live cohort, which is a Poisson-binomial and is computed exactly rather than approximated.
-
-`prec_panel()` runs the pair in the other direction: given a recruitment already budgeted, it reports the responding sample and the precision left at each wave, and says so when that falls short of what the target needs.
-
-### Bringing a rotating design up
-
-The recruitment above describes the design at a steady state, which it reaches once every stage of the life is represented at one occasion. How it gets there is a design decision. `start = "gradual"` recruits one cohort an occasion, so the sample climbs over a full life. `start = "immediate"` splits the first occasion into equal panels planned for life lengths from the full life down to one occasion. Every panel begins at its first interview, and together they hold the whole sample at once.
-
-```{r panel-launch}
-n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
-        resp_rate = 0.728, design = "rotating",
-        start = "immediate")$launch[, c("period", "n_in_sample", "n_resp", "moe")]
-```
-
-`design_overlap()` gives the same mature membership-overlap profile under either launch. A gradual launch has higher realized overlap while it fills because no full set of cohorts has yet rotated through. An immediate launch is in membership equilibrium at its first occasion and **not** in response equilibrium. Every unit there is at wave 1, so the occasion holds at least as many respondents as the design ever holds again, and strictly more as soon as any wave retains less than all of the one before. Here that is 1172 against the design's 1001, temporarily more precise, converging down as the interview mix matures. The two coincide only where nothing is lost after recruitment. A gradual launch approaches the same respondent figure from below, at 234. `$launch_waves` decomposes each occasion into the interviews represented in the sample, which is where both launch paths show.
-
-Either way the early occasions rest on a different response composition from the rest of the series, and that, rather than the sample size, is what makes them hard to compare with it.
-
-`design_schedule()` turns that launch into an operational manifest without drawing a sample. The horizon policy is explicit: `"continuing"` records interviews owed after the reporting window, `"truncate_lives"` ends those lives at the window, and `"close_intake"` stops recruiting early enough for every cohort to finish. Rounding is explicit too and is applied to each panel before startup panels are summed.
-
-```{r design-schedule}
-rot_launch <- n_panel(
-  target,
-  retention = c(0.878, 0.963, 0.936, 0.956),
-  resp_rate = 0.728,
-  design = "rotating",
-  start = "immediate"
+change_plan <- n_change(
+  p = c(0.30, 0.36),
+  moe = 0.02,
+  overlap = 0.75,
+  overlap_cor = 0.50
 )
-field_plan <- design_schedule(
-  rot_launch,
-  rotation = design_rotation("5"),
-  horizon = 8,
-  horizon_policy = "continuing",
-  refreshment = "entrant_register",
-  rounding = "ceiling"
-)
-field_plan
-field_plan$components[, c("cohort", "entry_wave", "operational_issue",
-                          "panels", "frame_role")]
+change_plan
+prec_change(change_plan)
 ```
 
-A manifest's length is set by the reporting horizon rather than by the design, so `print()` states the issue profile as the runs it is made of and stays the same size whether the window is six occasions or fifty-two. `summary()` gives the occasion-by-occasion tables. The dense `$schedule` table marks every component-panel combination active or inactive at each in-horizon occasion. `$tail_commitments` contains only the promised interviews after the horizon. An entrant register means the later frames contain new eligible units. If later cohorts instead use whole frame vintages, declare `refreshment = "whole_vintage"` and construct their combined analysis weights outside this planning object.
+`overlap` is a design property. `overlap_cor` is specific to the outcome and
+should come from an earlier round or other defensible evidence. A full panel
+with zero outcome correlation provides no variance reduction for change.
 
-```{r panel-launch-chart, fig.width=7, fig.height=5}
-plot(design_overlap(design_rotation("5")), start = "immediate")
-```
+## Precision for an average across occasions
 
-### Averaging occasions, and the trade-off that makes
-
-A repeated survey rarely publishes only single occasions and changes between them. An annual average built from quarterly rounds is an estimate in its own right, and it is the one place a rotation costs rather than pays. `prec_pooled()` and `n_pooled()` size it, on the equal-weight mean of the occasion estimates.
+An annual average of quarterly estimates is a different estimand. Positive
+covariance is subtracted in a difference but added in an average:
 
 ```{r pooled-basic}
 prec_pooled(var = 100, n = 500, occasions = 4)
-prec_pooled(var = 100, n = 500, occasions = 4, overlap = 0.75, cor_decay = 0.8)
+prec_pooled(
+  var = 100,
+  n = 500,
+  occasions = 4,
+  overlap = 0.75,
+  cor_decay = 0.80
+)
 ```
 
-The second design shares three quarters of each round with the next and is markedly less precise on the annual figure. Overlap induces a positive covariance between occasions. That covariance is subtracted when you difference two occasions and added when you average them. It is positive whenever the overlap exceeds the sampling fraction `n / N`, which always holds here because there is no finite population correction. `?prec_pooled` explains the boundary below it, where occasions share fewer units than chance and the two directions reverse. The correlation is stated per lag because a panel's correlation falls away with distance. Here `cor_decay = 0.8` gives the AR(1) shape, with correlation `0.8^m` at lag `m`.
+In the second calculation, adjacent occasions share 75% of units and outcome
+correlation decays as $0.8^m$ at lag $m$. Under the ordinary case where
+overlap exceeds the sampling fraction, sharing units sharpens change estimates
+but reduces the information gained by averaging occasions. A single-occasion
+level depends on that occasion's sample size and is unchanged.
 
-Three estimands and one design lever, priced together. The overlaps come from the rotation rather than being asserted:
+The length of participation is the design lever that sets the overlap. Take
+the overlaps from
+[rotations](#derive-overlap-from-a-rotation) that keep a unit in sample for
+2, 4, 6, or 8 consecutive occasions, and compare the standard errors at the
+same occasion sample over an eight-occasion horizon:
 
 ```{r pooled-tradeoff}
 horizon <- 8
@@ -185,37 +105,260 @@ arms <- function(life) {
   rot <- design_rotation(as.character(life))
   ov <- design_overlap(rot, max_lag = horizon - 1)
   data.frame(
-    span        = attr(rot, "life"),
-    interviews  = attr(rot, "n_occasion"),
-    overlap_1   = round(as.numeric(ov)[1], 3),
-    se_level    = round(prec_mean(var = 100, n = 1000, N = 1e5)$se, 4),
-    se_change   = round(prec_change(var = 100, n = 1000, N = 1e5,
-                                    overlap = ov[1], overlap_cor = 0.8)$se, 4),
-    se_pooled   = round(prec_pooled(var = 100, n = 1000, N = 1e5,
-                                    occasions = horizon, overlap = ov,
-                                    cor_decay = 0.8)$se, 4)
+    span = attr(rot, "life"),
+    interviews = attr(rot, "n_occasion"),
+    overlap_1 = round(as.numeric(ov)[1], 3),
+    se_level = round(prec_mean(var = 100, n = 1000, N = 1e5)$se, 4),
+    se_change = round(prec_change(
+      var = 100, n = 1000, N = 1e5,
+      overlap = ov[1], overlap_cor = 0.80
+    )$se, 4),
+    se_pooled = round(prec_pooled(
+      var = 100, n = 1000, N = 1e5,
+      occasions = horizon, overlap = ov, cor_decay = 0.80
+    )$se, 4)
   )
 }
 do.call(rbind, lapply(c(2, 4, 6, 8), arms))
 ```
 
-Reading down the columns: lengthening the life sharpens the change and blunts the annual average, while the single-occasion level does not move at all. The level is a function of that occasion's size alone, so it is a horizontal reference line rather than a third position, and the trade-off is between the other two. A design serving both is sized by taking the larger of `n_change()` and `n_pooled()`, since neither dominates.
+Reading down the columns, longer participation sharpens the change
+estimate and blunts the pooled average. The single-occasion level does not
+move, because it depends only on that occasion's sample size. It is a
+reference line rather than a third position on the trade-off, which runs
+between change and the average. `span` counts the occasions from a unit's
+first interview to its last, and `interviews` counts how often it is asked.
+They coincide here because each rotation is uninterrupted.
 
-Two columns carry the burden because one cannot. `span` is the calendar distance from a unit's first interview to its last and `interviews` is how many times it is actually asked. They coincide for an uninterrupted rotation and separate for one with a rest period, where `"4-8-4"` spans sixteen occasions and asks eight.
+The table assumes full response. That is the only case in which
+`prec_pooled()` accepts a `design_overlap()` result directly. Below full
+response it refuses the issued overlap and asks for the respondent overlap
+you expect.
 
-```{r pooled-burden}
-gapped <- design_rotation("4-8-4")
-c(span = attr(gapped, "life"), interviews = attr(gapped, "n_occasion"))
+Neither estimand dominates, so a design serving both change and pooled
+estimates takes the larger of the `n_change()` and `n_pooled()` requirements:
+
+```{r pooled-requirement}
+change_required <- n_change(
+  var = 100,
+  moe = 1.5,
+  overlap = 0.75,
+  overlap_cor = 0.80
+)
+pooled_required <- n_pooled(
+  var = 100,
+  moe = 1.5,
+  occasions = 4,
+  overlap = 0.75,
+  cor_decay = 0.80
+)
+
+requirements <- c(
+  change = as.double(change_required),
+  pooled = as.double(pooled_required)
+)
+requirements
+max(requirements)
 ```
 
-The issued-versus-respondent conversion from earlier applies here too, and `prec_pooled()` enforces it rather than documenting it: a `design_overlap()` result is a statement about issued samples, so it is accepted directly at full response and refused below it, where the number you want is the respondent overlap you expect.
+`?prec_pooled` documents the finite-population boundary where overlap falls
+below the sampling fraction. The function checks the complete covariance
+matrix rather than returning a variance from an invalid combination.
 
-One refusal is worth recognising. A lag's covariance changes sign once its overlap falls below the sampling fraction, and a covariance whose sign varies across lags need not be a covariance at all. `prec_pooled()` checks the assembled matrix, not the variance read off it, because a kernel that fails can still return a positive number:
-
-```{r pooled-guard, error=TRUE}
-prec_pooled(var = 100, n = 67000, occasions = 8, N = 1e5,
-            overlap = design_overlap(design_rotation("4"), max_lag = 7),
-            cor_decay = 0.8)
+```{r pooled-diagnostic, error = TRUE}
+prec_pooled(
+  var = 100,
+  n = 67000,
+  occasions = 8,
+  N = 1e5,
+  overlap = design_overlap(design_rotation("4"), max_lag = 7),
+  cor_decay = 0.80
+)
 ```
 
-That is a municipality-scale sampling fraction, not an exotic corner, and the message names the fraction, the lag that turns, and whether the rotation would also exhaust its own population before the horizon is out.
+This diagnostic identifies the lag at which the covariance changes sign and
+whether the rotation would also exhaust the population over the horizon.
+
+## Derive overlap from a rotation
+
+`design_rotation()` records the occasions a cohort is in and out of sample.
+The string `"4-8-4"` means four occasions in sample, eight out, and four more
+in sample before leaving permanently:
+
+```{r cps-overlap}
+cps_rotation <- design_rotation("4-8-4")
+cps_overlap <- design_overlap(cps_rotation)
+cps_overlap[c(1, 12)]
+```
+
+The results are the 75% month-to-month and 50% year-to-year issued overlaps of
+the Current Population Survey design [@cps2019]. The specification describes
+one cohort's finite participation pattern. It is not an endlessly repeating
+cycle.
+
+A rotation records two measures of respondent burden. The `life` attribute is
+the span from a unit's first interview to its last, and `n_occasion` counts
+the interviews. They separate when the pattern has a rest period:
+
+```{r rotation-burden}
+c(
+  span = attr(cps_rotation, "life"),
+  interviews = attr(cps_rotation, "n_occasion")
+)
+```
+
+The `"4-8-4"` pattern spans sixteen occasions and asks each unit eight times.
+
+Use the overlap for the lag being estimated:
+
+```{r overlap-by-lag}
+c(
+  consecutive = n_change(
+    p = c(0.30, 0.36), moe = 0.02,
+    overlap = cps_overlap[1], overlap_cor = 0.50
+  )$n,
+  annual = n_change(
+    p = c(0.30, 0.36), moe = 0.02,
+    overlap = cps_overlap[12], overlap_cor = 0.50
+  )$n
+)
+```
+
+Two rotation notations are supported. Spell notation such as `"4-8-4"`
+counts consecutive occasions in and out. Binary notation such as
+`"1-1-0-0-1-1"` records status at every occasion. A string containing only
+ones is ambiguous, so write `"3"` for three consecutive occasions or include
+zeros in a binary pattern.
+
+Use the chart to check when cohorts return and when the design reaches its
+steady sample before calculating overlap at a particular lag:
+
+```{r rotation-chart, fig.cap="A two-in, two-out, two-in rotation reaches its steady sample at occasion six. The cohort rows show which interviews contribute to overlap between occasions.", fig.alt="Cohort rotation chart with one row per cohort and one column per occasion. Each cohort is interviewed twice, rests for two occasions, and is interviewed twice more. The total row reaches its steady sample at occasion six."}
+plot(design_overlap(design_rotation("1-1-0-0-1-1")))
+```
+
+`design_overlap()` describes issued samples. The sizing and power functions
+define `overlap` among respondents. They coincide at full response. Otherwise,
+conversion requires an assumption about response persistence. Under response
+independent across occasions at rate $r$, an issued overlap $f$ yields about
+$fr$ respondent overlap and persistent response moves it closer to $f$.
+
+## Recruit a panel under attrition
+
+`n_panel()` takes a scalar target from `n_prop()` or `n_mean()` and calculates
+how many units to recruit so enough respondents remain at a target wave. The
+rates below are illustrative: 72.8% response at recruitment followed by four
+wave-to-wave retention rates.
+
+```{r fixed-panel}
+target <- n_prop(p = 0.50, moe = 0.031)
+panel <- n_panel(
+  target,
+  retention = c(0.878, 0.963, 0.936, 0.956),
+  resp_rate = 0.728
+)
+panel
+panel$waves[, c("wave", "q", "loss_share", "n_resp", "moe")]
+```
+
+The output reports the units to recruit, expected respondents at each wave,
+and their expected precision. Initial response and later retention are
+separate because spreading one average rate across waves changes the required
+recruitment. The model treats loss as permanent. A study that allows units to
+return after a missed wave needs a different retention model.
+
+`assurance` requests a probability of retaining the required responding
+sample rather than planning only at its expectation:
+
+```{r panel-assurance}
+n_panel(
+  target,
+  retention = c(0.878, 0.963, 0.936, 0.956),
+  resp_rate = 0.728,
+  assurance = 0.90
+)$n_assured
+```
+
+`prec_panel()` runs the calculation in the other direction for a recruitment
+already fixed by budget or operations.
+
+## Rotating panels and startup
+
+For a rotating panel, an equal cohort enters each occasion and the estimate
+combines the live cohorts:
+
+```{r rotating-panel}
+rotating_panel <- n_panel(
+  target,
+  retention = c(0.878, 0.963, 0.936, 0.956),
+  resp_rate = 0.728,
+  design = "rotating"
+)
+c(
+  entrants_per_occasion = rotating_panel$n_entrants,
+  standing_issue = rotating_panel$n_in_sample
+)
+```
+
+`n_entrants` is the new cohort issued at each mature occasion.
+`n_in_sample` is the standing issued sample across all live cohorts. Do not use
+one as a substitute for the other.
+
+The mature design can start gradually or immediately. A gradual start recruits
+one cohort per occasion. An immediate start fills the sample on the first
+occasion with cohorts assigned different remaining participation lengths:
+
+```{r panel-startup}
+immediate_panel <- n_panel(
+  target,
+  retention = c(0.878, 0.963, 0.936, 0.956),
+  resp_rate = 0.728,
+  design = "rotating",
+  start = "immediate"
+)
+immediate_panel$launch[, c("period", "n_in_sample", "n_resp", "moe")]
+```
+
+Membership is at its mature level immediately, but response composition is
+not, because every unit starts at wave 1. `$launch_waves` shows the wave
+composition as the design settles.
+
+## Build a fieldwork schedule
+
+`design_schedule()` turns the panel and rotation into an operational manifest
+without selecting records:
+
+```{r fieldwork-schedule}
+field_plan <- design_schedule(
+  immediate_panel,
+  rotation = design_rotation("5"),
+  horizon = 8,
+  horizon_policy = "continuing",
+  refreshment = "entrant_register",
+  rounding = "ceiling"
+)
+field_plan
+field_plan$components[, c(
+  "cohort", "entry_wave", "operational_issue", "panels", "frame_role"
+)]
+```
+
+The horizon policy states whether interviews promised after the reporting
+window continue, cohort participation is truncated, or intake closes early.
+An entrant register assumes later frames contain newly eligible units. A
+whole-vintage refreshment can also be declared, but the planning object does
+not infer analysis weights across frame vintages.
+
+The immediate-start chart helps schedule replacement cohorts. It describes
+issued membership. Use the launch table above for the response composition
+and precision during startup:
+
+```{r startup-chart, fig.cap="An immediate start fills the issued sample from the first occasion using cohorts with different remaining participation lengths. New cohorts replace departing cohorts over time.", fig.alt="Immediate-start panel chart showing cohorts with different remaining participation lengths in the first occasion and subsequent cohorts entering as earlier cohorts leave."}
+plot(design_overlap(design_rotation("5")), start = "immediate")
+```
+
+`design_rotation()` records a rotation already chosen. It does not optimize a
+pattern for target overlap and respondent burden. Compare candidate patterns
+by passing their lag-specific overlaps to the precision functions above.
+
+## References

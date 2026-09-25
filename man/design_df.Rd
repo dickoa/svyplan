@@ -45,10 +45,9 @@ was formed from. Use it directly wherever a \code{df} argument is expected,
 \verb{$domains} for the per-stratum and per-domain tables.
 }
 \description{
-Count the degrees of freedom the variance estimator of a planned design
-will have, before any data are collected. The planning analogue of
-\code{survey::degf()}, which reports the same quantity for a design that has
-already been fielded.
+Count nominal degrees of freedom from a planned design's issued units.
+This is a planning counterpart to \code{survey::degf()}. Realized degrees of
+freedom depend on the responding sample and the analysis variance estimator.
 }
 \details{
 The degrees of freedom of a design-based variance estimator are the
@@ -58,10 +57,11 @@ minus strata. In a clustered design the units are the PSUs, not the
 ultimate units, which is why a survey of 12,000 households in 300
 clusters across 20 strata has 280 degrees of freedom rather than 11,999.
 
-That number is what a \code{t} quantile needs, what a Korn-Graubard interval
-widens on, and what decides whether a domain estimate can be published
-at all. Nothing reports it for a design that has only been planned, and
-the plan is the only place it can be known before fielding.
+Pass the count as \code{df} to use a \code{t} quantile in place of the normal one,
+and to the Korn-Graubard interval, which widens as the count falls. It is
+the nominal first-stage count. The degrees of freedom of a particular
+estimator, such as a Satterthwaite approximation combining several
+variance components, differ from it.
 \subsection{What is counted, per design shape}{\tabular{lll}{
    Design \tab Counted \tab df \cr
    Unstratified element \tab units \tab \eqn{n - 1} \cr
@@ -73,12 +73,14 @@ the plan is the only place it can be known before fielding.
 
 
 The counts are read from the whole-unit columns a plan reports
-(\code{n_int}, \code{n_psu_int}, \code{operational$n}), never from the continuous
+(\code{n_int}, \code{n_psu_int}, \code{n_psu_draw}, \code{operational$n}), never from the continuous
 optimum, since a degree of freedom is a unit that will be fielded. They
-are the planned counts and are not netted down for element nonresponse:
-a response rate is already priced into the size the plan reports, and
-element nonresponse does not reduce the number of PSUs, which is what
-the df of a clustered design counts.
+are issued counts and are not adjusted for nonresponse. For an element
+design, fewer respondents generally mean fewer degrees of freedom. For
+a cluster design, element nonresponse need not change the PSU count,
+but lost PSUs or PSUs with no responding domain members can reduce it.
+The two-phase count is a phase-2 planning convention, not a derivation of
+the degrees of freedom of the combined two-phase variance estimator.
 
 A stratum that carries no sampling variance drops out of both terms. In
 element mode a \code{take_all} stratum is a census and contributes nothing.
@@ -91,7 +93,7 @@ stratum does not remove the phase-1 sampling variance.
 
 \subsection{Per-domain degrees of freedom}{
 
-\verb{$domains} is exact rather than an approximation. The allocation API
+\verb{$domains} applies the same nominal counting rule by domain. The allocation API
 expresses a domain as a set of whole strata, so a domain's df is that
 union's own contribution, \eqn{\sum_{h \in d} m_h - H_d}{sum_(h in d) m_h - H_d}, and the
 per-domain values sum to the overall df whenever the domains partition
@@ -108,11 +110,13 @@ fielding, not an omission.
 \subsection{What the count cannot see}{
 
 Certainty, or self-representing, PSUs contribute no between-PSU variance
-and should not count toward df. The API expresses certainty through
-\code{take_all} and \code{\link[=strata_bound]{strata_bound()}}\verb{(take_all_above = )} at the stratum
-level rather than as a PSU-level flag, so sampled PSUs are counted as
-they stand. A design with a material number of certainty PSUs has fewer
-degrees of freedom than reported here.
+and should not count toward first-stage df. For a PSU register supplied
+through \code{\link[=n_alloc]{n_alloc()}} with no certainty PSUs, this helper counts the
+operational PSUs (\code{n_psu_draw}) minus strata. Allocations containing
+certainty PSUs remain unsupported: combining their within-PSU variance
+contributions with other strata requires an explicit degrees-of-freedom
+convention that this helper does not yet implement. In other inputs,
+unrecorded certainty PSUs can make the nominal first-stage count too large.
 
 A stratum holding a single PSU supports no within-stratum variance
 estimate at all, and warns, naming the stratum. Its own contribution is

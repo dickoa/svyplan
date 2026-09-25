@@ -1444,10 +1444,8 @@ as.double.svyplan_n <- function(x, ...) {
 #' @export
 as.integer.svyplan_cluster <- function(x, ...) {
   .check_unused_dots(...)
-  if (!is.null(x$operational)) {
-    return(as.integer(x$operational$n))
-  }
-  as.integer(ceiling(x$n))
+  n <- if (!is.null(x$operational)) x$operational$n else ceiling(x$n)
+  setNames(as.integer(n), names(n))
 }
 
 #' @rdname print.svyplan
@@ -1930,7 +1928,7 @@ print.svyplan_strata <- function(x, ...) {
     cumrootf = "Dalenius-Hodges",
     geo = "Geometric",
     lh = "LH-inspired coordinate search",
-    kozak = "Kozak-inspired local search",
+    kozak = "Kozak random search",
     x$method
   )
   # Part of the method's name, and NA stays silent rather than reading as a
