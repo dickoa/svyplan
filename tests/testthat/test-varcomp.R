@@ -675,6 +675,13 @@ test_that("single-PSU data is rejected with a clear message", {
   )
   expect_error(varcomp(y ~ psu, data = d, strata = ~region),
                "stratum 'Solo': at least two PSUs")
+  expect_error(varcomp(y ~ psu, data = d, strata = ~region),
+               "n_alloc\\(psu =\\), leave its icc_psu NA")
+  # The register hint is for strata only. An unstratified call has no
+  # stratum to leave out.
+  err <- tryCatch(varcomp(y, stage_id = list(rep(1, 20))),
+                  error = conditionMessage)
+  expect_false(grepl("n_alloc", err))
 })
 
 test_that("varcomp validates outcomes, stage ids, and probabilities", {

@@ -409,6 +409,31 @@ test_that("a plan with no fixed point says so on the block", {
   expect_false(any(grepl("no self-consistent", capture.output(print(ok)))))
 })
 
+test_that("supplied certainty does not count against the fixed point", {
+  z <- .psu_fixture()
+  bare <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                  psu = z$psu)
+  expect_identical(bare$optimization$certainty$verdict, "converged")
+
+  flagged <- z$psu
+  ratio <- bare$psu$N / bare$psu$.threshold
+  flagged$certainty <- ratio > 0.5 & ratio < 0.9
+  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                 psu = flagged)
+  n_supplied <- sum(fit$psu$.certainty_source %in% "supplied")
+  expect_gt(n_supplied, 0)
+  expect_false("orbit" %in% fit$psu$.certainty_source)
+  expect_true(fit$optimization$certainty$fixed_point)
+
+  old <- options(width = 80)
+  on.exit(options(old), add = TRUE)
+  out <- capture.output(print(fit))
+  expect_false(any(grepl("no self-consistent", out)))
+  expect_true(any(grepl(sprintf("certainty \\(%d supplied\\),", n_supplied),
+                        out)))
+  expect_false(any(grepl("supplied", capture.output(print(bare)))))
+})
+
 test_that("an allocation with no register prints exactly as before", {
   z <- .bethel_fixture()
   out <- capture.output(print(
@@ -442,6 +467,23 @@ test_that("summary carries the split by stratum and how the loop resolved", {
   expect_true(any(grepl("variance model: two_part_certainty_wald", out)))
 })
 
+
+test_that("summary reports the two stages of the plan, not the solve", {
+  z <- .psu_fixture()
+  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                 psu = z$psu)
+  expect_identical(summary(fit)$stages, 2L)
+  expect_identical(summary(fit)$assumptions$stages, 2L)
+  expect_identical(summary(prec_alloc(fit))$stages, 2L)
+  expect_true(any(grepl("^Stages: 2$", capture.output(print(summary(fit))))))
+
+  plain <- n_alloc(
+    z$frame[, c("stratum", "N")],
+    measures = z$measures[, setdiff(names(z$measures), "icc_psu")],
+    targets = z$targets
+  )
+  expect_identical(summary(plain)$stages, 1L)
+})
 
 ## The fielded design is a whole-PSU design
 
@@ -635,4 +677,134 @@ test_that("prec_alloc requires one allocation per stratum", {
                targets = z$targets, psu = z$psu),
     "svyplan_prec"
   )
+})
+
+test_that("the precision a register fit claims is the one it achieves", {
+  # Registers on which the allocation once failed to settle and the fit
+  # reported precision computed at the previous allocation's design effect.
+  for (k in c(4, 25, 53, 60, 74, 89, 99, 115, 119)) {
+    z <- .psu_random_register(k)
+    fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                   psu = z$psu)
+    expect_equal(prec_alloc(fit)$detail$.achieved, fit$constraints$.achieved,
+                 tolerance = 1e-10, label = sprintf("register %d", k))
+    expect_true(all(prec_alloc(fit)$detail$.pass),
+                label = sprintf("register %d passes", k))
+    cc <- fit$optimization$certainty
+    expect_lte(cc$settle_iterations, 2L * (cc$absorbed + 1L))
+  }
+})
+
+## The ICC the register model expects
+
+.psu_population <- function(seed = 11L) {
+  set.seed(seed)
+  do.call(rbind, lapply(c("A", "B"), function(h) {
+    size <- pmax(round(rlnorm(30, log(60), 1)), 2)
+    psu <- rep(sprintf("%s%02d", h, seq_along(size)), size)
+    effect <- rep(rnorm(length(size), 0, 4), size)
+    data.frame(
+      stratum = h, psu = psu,
+      share = rep(size / sum(size), size),
+      y = 100 + effect + rnorm(sum(size), 0, 20)
+    )
+  }))
+}
+
+.between_share <- function(y, psu) {
+  ss_between <- sum((ave(y, psu) - mean(y))^2)
+  # var() divides by N_i - 1, so the within sum of squares carries
+  # N_i / (N_i - 1). That factor is the whole gap to the plain
+  # between-to-total share.
+  size <- tapply(y, psu, length)
+  ss_within <- tapply(y, psu, function(v) sum((v - mean(v))^2))
+  ss_between / (ss_between + sum(size / (size - 1) * ss_within))
+}
+
+test_that("a PPS varcomp() returns the size-weighted between-PSU share", {
+  pop <- .psu_population()
+  one <- pop[pop$stratum == "A", ]
+  expect_equal(
+    varcomp(y ~ psu, data = one, prob = ~share)$icc,
+    .between_share(one$y, one$psu),
+    tolerance = 1e-12
+  )
+
+  by_stratum <- varcomp(y ~ psu, strata = ~stratum, data = pop, prob = ~share)
+  expected <- vapply(split(pop, pop$stratum), function(d) {
+    .between_share(d$y, d$psu)
+  }, numeric(1))
+  expect_equal(
+    by_stratum$strata$icc_psu,
+    unname(expected[by_stratum$strata$stratum]),
+    tolerance = 1e-12
+  )
+})
+
+test_that("an SRS varcomp() overstates it when PSU sizes are unequal", {
+  pop <- .psu_population()
+  srs <- varcomp(y ~ psu, strata = ~stratum, data = pop)$strata$icc_psu
+  pps <- varcomp(y ~ psu, strata = ~stratum, data = pop,
+                 prob = ~share)$strata$icc_psu
+  expect_true(all(srs > 2 * pps))
+})
+
+.single_psu_case <- function(icc_single) {
+  list(
+    frame = data.frame(stratum = c("A", "B"), N = c(50000, 2000),
+                       n_per_psu = 25),
+    psu = rbind(
+      data.frame(stratum = "A", N = rep(250, 200)),
+      data.frame(stratum = "B", N = 2000)
+    ),
+    measures = data.frame(stratum = c("A", "B"), name = "y", p = 0.3,
+                          icc_psu = c(0.05, icc_single)),
+    targets = data.frame(name = "y", cv = 0.12)
+  )
+}
+
+test_that("a single-PSU stratum carries no between-PSU variance", {
+  # At this target stratum B's allocation is below the take, so its PSU sits
+  # in the remainder, where a supplied ICC would be charged.
+  fits <- lapply(c(NA, 0, 0.2, 0.8), function(icc) {
+    z <- .single_psu_case(icc)
+    n_alloc(z$frame, measures = z$measures, targets = z$targets, psu = z$psu)
+  })
+  expect_false(fits[[2]]$psu$certainty[fits[[2]]$psu$stratum == "B"])
+  for (fit in fits[-1]) {
+    expect_equal(fit$detail$n, fits[[1]]$detail$n, tolerance = 1e-12)
+    expect_identical(fit$optimization$certainty$verdict, "converged")
+  }
+
+  cvs <- vapply(c(NA, 0, 0.8), function(icc) {
+    z <- .single_psu_case(icc)
+    prec_alloc(z$frame, n = c(330, 15), measures = z$measures,
+               targets = z$targets, psu = z$psu)$detail$.achieved
+  }, numeric(1))
+  expect_equal(cvs, rep(cvs[1], 3), tolerance = 1e-12)
+})
+
+test_that("a missing ICC is refused where it would be read", {
+  z <- .single_psu_case(0.1)
+  z$measures$icc_psu[1] <- NA
+  expect_error(
+    n_alloc(z$frame, measures = z$measures, targets = z$targets, psu = z$psu),
+    "missing in stratum .A."
+  )
+  expect_error(
+    prec_alloc(z$frame, n = c(330, 15), measures = z$measures,
+               targets = z$targets, psu = z$psu),
+    "missing in stratum .A."
+  )
+})
+
+test_that("a fit with a missing single-PSU ICC re-solves and re-assesses", {
+  z <- .single_psu_case(NA)
+  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                 psu = z$psu)
+  expect_true(is.na(fit$params$measures$icc_psu[2]))
+  expect_equal(prec_alloc(fit)$detail$.achieved, fit$constraints$.achieved,
+               tolerance = 1e-10)
+  swept <- predict(fit, data.frame(n_per_psu = c(15, 25)))
+  expect_equal(nrow(swept), 2L)
 })

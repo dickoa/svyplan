@@ -180,10 +180,57 @@ psu_register <- do.call(rbind, lapply(seq_len(nrow(certainty_frame)), function(i
 }))
 ```
 
+The remainder's PSUs are selected with probability proportional to size, so
+its `icc_psu` is the size-weighted share of the stratum variance that lies
+between PSUs. `varcomp()` returns it when `prob` is each PSU's share of its
+stratum's units. Use every PSU of the stratum, since which ones end up
+certainty depends on the allocation. Here `census` stands for a census or
+pilot with one row per unit:
+
+```{r certainty-icc}
+set.seed(2)
+psu_register$psu_id <- seq_len(nrow(psu_register))
+census <- data.frame(
+  stratum = rep(psu_register$stratum, psu_register$N),
+  psu_id = rep(psu_register$psu_id, psu_register$N)
+)
+psu_effect <- rnorm(nrow(psu_register))
+census$vaccination <- rbinom(
+  nrow(census), 1, plogis(-0.2 + 0.5 * psu_effect[census$psu_id])
+)
+census$income <- 50 + 3 * psu_effect[census$psu_id] +
+  rnorm(nrow(census), 0, 11)
+census$share <- ave(census$psu_id, census$psu_id, FUN = length) /
+  ave(census$psu_id, census$stratum, FUN = length)
+
+icc_of <- function(name) {
+  vc <- varcomp(reformulate("psu_id", name), strata = ~stratum,
+                prob = ~share, data = census)
+  data.frame(stratum = vc$strata$stratum, name = name,
+             icc_psu = vc$strata$icc_psu)
+}
+certainty_measures <- merge(
+  joint_measures, rbind(icc_of("vaccination"), icc_of("income"))
+)
+certainty_measures
+```
+
+Without `prob`, `varcomp()` assumes PSUs of equal chance and measures the
+spread of PSU totals, which carries the spread of PSU sizes. On a register
+as unequal as this one that is not the homogeneity the model needs:
+
+```{r certainty-icc-srs}
+varcomp(income ~ psu_id, strata = ~stratum, data = census)$strata$icc_psu
+```
+
+`varcomp()` needs at least two PSUs in a stratum. A stratum with a single PSU
+has no variance between PSUs, so leave its `icc_psu` as `NA` and `n_alloc()`
+uses 0.
+
 ```{r certainty-fit}
 certainty_fit <- n_alloc(
   certainty_frame,
-  measures = cluster_measures,
+  measures = certainty_measures,
   targets = joint_targets,
   psu = psu_register,
   min_n_stratum = 20
@@ -194,16 +241,20 @@ certainty_fit$detail[, c(
 )]
 ```
 
-`$psu` records each PSU's classification, threshold, and source. The
-operational allocation uses whole takes within certainty PSUs and whole PSUs
-in the remainder. `prec_alloc(certainty_fit)` reproduces the planned precision
-of that fieldwork design.
+`n_psu_certain` counts the certainty PSUs and `n_psu_draw` the remainder PSUs
+the operational design draws, so
+`n_int = n_certain_int + n_psu_draw * n_per_psu`. `$psu` records each PSU's classification, threshold, and source.
+`prec_alloc(certainty_fit)` reproduces the planned precision of that fieldwork
+design.
 
-The allocation uses an anticipated variance model. Homogeneity components
-estimated under probability-proportional-to-size selection are an
-approximation when reused in this model, and the approximation becomes more
-sensitive as PSU sizes become more unequal. Record that modeling choice when
-using pilot estimates.
+Some planning tools also move small groups of remainder PSUs into the
+certainty part, so that each group yields at least two PSUs for variance
+estimation. That grouping is a selection decision, and `n_alloc()` does not
+make it. To plan with it, form the groups from the PSU sizes and
+`$psu$.threshold`, set `certainty = TRUE` in the register for the PSUs to
+promote, and solve again. Those PSUs report `.certainty_source` as
+`"supplied"`, and the printed plan counts them. Expect the certainty count to
+differ from such a tool's until you do.
 
 ## Explore controls that remain movable
 

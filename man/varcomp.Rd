@@ -193,6 +193,14 @@ path, contributing no between-PSU variance and needing to be treated
 as separate strata, with \code{prob} renormalized over the remaining
 PSUs.
 
+Planning from a complete PSU register, as \code{\link[=n_alloc]{n_alloc()}} does with \code{psu}, is
+the exception. The certainty PSUs are not known until the allocation is,
+so use every PSU of the stratum, with \code{prob} equal to each PSU's share of
+the stratum's units. The \code{icc} returned is then the size-weighted
+homogeneity that the allocation's remainder model assumes. The SRS value
+measures the spread of PSU totals, which carries the spread of PSU sizes,
+so with unequal sizes it is not the homogeneity that model needs.
+
 For two-stage designs, \code{icc} represents the measure of homogeneity
 \eqn{\delta = V_b / (V_b + V_w)}{icc = Vb / (Vb + Vw)}, written
 \eqn{\delta} in Valliant, Dever, and Kreuter (2018, Ch. 9), in the

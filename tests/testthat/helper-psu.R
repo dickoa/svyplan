@@ -29,3 +29,29 @@
   targets <- data.frame(name = c("literacy", "income"), cv = c(0.04, 0.05))
   list(frame = frame, psu = psu, measures = measures, targets = targets)
 }
+
+.psu_random_register <- function(k) {
+  set.seed(99)
+  for (i in seq_len(k)) {
+    H <- sample(2:6, 1)
+    take <- sample(c(5, 10, 20, 30), 1)
+    psu <- do.call(rbind, lapply(seq_len(H), function(h) {
+      m <- sample(c(1, 2, 5, 20, 60), 1, prob = c(0.1, 0.1, 0.2, 0.3, 0.3))
+      data.frame(
+        stratum = LETTERS[h],
+        N = pmax(round(rlnorm(m, log(400), runif(1, 0.2, 1.5))), 5)
+      )
+    }))
+    frame <- data.frame(
+      stratum = LETTERS[seq_len(H)],
+      N = as.numeric(tapply(psu$N, psu$stratum, sum)[LETTERS[seq_len(H)]]),
+      n_per_psu = take
+    )
+    measures <- data.frame(
+      stratum = frame$stratum, name = "y", p = runif(H, 0.1, 0.6),
+      icc_psu = runif(H, 0, 0.15)
+    )
+    targets <- data.frame(name = "y", cv = runif(1, 0.02, 0.12))
+  }
+  list(frame = frame, psu = psu, measures = measures, targets = targets)
+}

@@ -139,6 +139,9 @@ cost under the supplied allocation. When the fitted object carries an
 objective, \verb{$objective} and \verb{$objective_value} report its components and
 weighted value under the assessed allocation.
 
+With \code{psu}, \verb{$psu} carries the per-PSU table described in \code{\link[=n_alloc]{n_alloc()}},
+classified at the supplied allocation.
+
 Passing a joint precision result back to \code{\link[=n_alloc]{n_alloc()}} round trips the
 design. Minimum-cost results invert through precision, pinning the
 achieved values as the requirement. Budget-objective results invert

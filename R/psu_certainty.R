@@ -133,11 +133,17 @@
 #' no first-stage sampling. The form is deliberately with-replacement: the
 #' finite population correction is applied in the solver's own `B` term, so a
 #' design effect carrying one would count it twice.
+#'
+#' The certainty part gets its proportional share of the allocation, which
+#' reduces the design effect to
+#' `(size_certain + size_rest * (1 + icc * (take - 1))) / N_h`, free of the
+#' allocation. Rounding the share up made the settle step a discontinuous
+#' map that could alternate without converging.
 #' @keywords internal
 #' @noRd
 .psu_deff <- function(n_h, N_h, size_certain, size_rest, icc, take) {
   f <- n_h / N_h
-  n_certain <- ceiling(f * size_certain)
+  n_certain <- f * size_certain
   n_rest <- n_h - n_certain
   term_certain <- if (size_certain > 0 && n_certain > 0) {
     size_certain^2 / n_certain
@@ -152,13 +158,47 @@
   max((n_h / N_h^2) * (term_certain + term_rest), 1)
 }
 
+#' Noncertainty ICC per measures row, zero for a single-PSU stratum
+#'
+#' A stratum with one PSU has no between-PSU variance, so its ICC is zero by
+#' definition. The supplied value is replaced rather than honoured and may be
+#' missing.
+#' @keywords internal
+#' @noRd
+.psu_icc <- function(measures, stratum, idx_of) {
+  icc <- measures$icc_psu
+  if (is.logical(icc) && all(is.na(icc))) icc <- as.numeric(icc)
+  if (!is.numeric(icc)) {
+    stop("'measures$icc_psu' must contain values in [0, 1]", call. = FALSE)
+  }
+  row_h <- match(as.character(measures$stratum), stratum)
+  single <- !is.na(row_h) & lengths(idx_of)[row_h] == 1L
+  icc[single] <- 0
+  missing <- is.na(icc)
+  if (any(missing)) {
+    stop(
+      sprintf(
+        "'measures$icc_psu' is missing in stratum %s. Only a stratum with a single PSU may leave it missing",
+        paste(sQuote(unique(as.character(measures$stratum[missing]))),
+              collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  if (any(icc < 0 | icc > 1)) {
+    stop("'measures$icc_psu' must contain values in [0, 1]", call. = FALSE)
+  }
+  icc
+}
+
 #' Certainty-aware joint allocation from a PSU register
 #'
 #' The classification and the allocation each determine the other, so the
 #' solve is a loop. It iterates until the classification orbit repeats, takes
 #' the feasible member of that orbit, then holds the classification and settles
-#' the allocation under it. The last step is not optional, the design effect
-#' depending on the allocation as well as the classification.
+#' the allocation under it. The design effect depends on the classification
+#' only, so settling takes one confirming solve unless the settled allocation
+#' puts a PSU above the threshold and the classification grows.
 #' @keywords internal
 #' @noRd
 .n_alloc_psu <- function(
@@ -218,10 +258,7 @@
     , setdiff(names(frame), c("n_per_psu", "cost_psu", "cost_ssu")),
     drop = FALSE
   ]
-  icc_row <- measures$icc_psu
-  if (!is.numeric(icc_row) || anyNA(icc_row) || any(icc_row < 0 | icc_row > 1)) {
-    stop("'measures$icc_psu' must contain values in [0, 1]", call. = FALSE)
-  }
+  icc_row <- .psu_icc(measures, stratum, idx_of)
   base_measures <- measures[
     , setdiff(names(measures), c("icc_psu", "var_ratio_psu")), drop = FALSE
   ]
@@ -276,8 +313,8 @@
     list(n_h = n_h, certain = certain, source = source, threshold = threshold)
   }
 
-  # A first pass with no clustering charged supplies the allocation the first
-  # threshold is read from.
+  # A first pass with every PSU in the remainder, so full clustering is
+  # charged, supplies the allocation the first threshold is read from.
   flat <- list(n_h = N_h, certain = rep(FALSE, nrow(psu)))
   state <- classify_at(solve_at(flat)$detail$n)
 
@@ -315,11 +352,23 @@
   settle_used <- 0L
   absorbed <- 0L
   repeat {
+    settled_ok <- FALSE
     for (i in seq_len(settle_iter)) {
       fit <- solve_at(settled)
       settle_used <- settle_used + 1L
-      if (max(abs(fit$detail$n - settled$n_h)) < tolerance) break
+      if (max(abs(fit$detail$n - settled$n_h)) < tolerance) {
+        settled_ok <- TRUE
+        break
+      }
       settled$n_h <- fit$detail$n
+    }
+    # The returned constraints would describe the previous allocation's
+    # design effect, so an unsettled plan is refused rather than returned.
+    if (!settled_ok) {
+      stop(
+        "internal error: the allocation did not settle under the held classification",
+        call. = FALSE
+      )
     }
     settled$n_h <- fit$detail$n
     implied <- classify_at(fit$detail$n)
@@ -557,6 +606,10 @@
     )
   }
 
+  # A supplied flag is the caller's design, so only a PSU held by the cycle
+  # rule keeps the plan from being a fixed point.
+  wanted <- x$implied
+  if (!is.null(x$psu$certainty)) wanted <- wanted | x$psu$certainty
   fit$optimization$certainty <- list(
     verdict = x$verdict,
     orbit = x$orbit,
@@ -564,7 +617,7 @@
     settle_iterations = x$settle_iterations,
     absorbed = x$absorbed,
     feasible_member = x$feasible_member,
-    fixed_point = identical(as.logical(x$implied), as.logical(x$certainty))
+    fixed_point = identical(as.logical(wanted), as.logical(x$certainty))
   )
   # The caller's frame and measures, not the solver's stripped copies, which
   # would lose the take and the ICC.
@@ -626,10 +679,7 @@
   idx_of <- split(seq_len(nrow(psu)), factor(psu$stratum, levels = stratum))
   forced <- if ("certainty" %in% names(psu)) psu$certainty else NULL
 
-  icc_row <- measures$icc_psu
-  if (!is.numeric(icc_row) || anyNA(icc_row) || any(icc_row < 0 | icc_row > 1)) {
-    stop("'measures$icc_psu' must contain values in [0, 1]", call. = FALSE)
-  }
+  icc_row <- .psu_icc(measures, stratum, idx_of)
   # Kept as supplied, so the object records the caller's input.
   unit_cost_in <- unit_cost
   stage_cost <- c("cost_psu", "cost_ssu") %in% names(frame)

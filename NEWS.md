@@ -61,6 +61,8 @@ that recommendation when available, or rounds the continuous size up.
   `n_prop()`. Multistage designs use the working variance `p * (1 - p)`.
 * `psu` gives `n_alloc()` a PSU register, which separates the PSUs a PPS design
   would select with certainty and reports the take each fielded PSU carries.
+  A stratum with a single PSU carries no between-PSU variance, so its
+  `icc_psu` may be `NA`.
 * `n_multi()` sizes a table of indicators, with optional per-domain sizing and
   a `min_n_domain` floor. `n_cluster(indicators = )` and
   `prec_cluster(indicators = )` take the same table for a multistage design, so

@@ -2212,9 +2212,11 @@ print.svyplan_strata <- function(x, ...) {
     # Counts are PSUs available in each part. How many of the remainder are
     # drawn is a selection decision this plan does not make.
     n_certain <- sum(x$psu$certainty)
+    n_supplied <- sum(x$psu$.certainty_source %in% "supplied")
     cat(sprintf(
-      "PSUs: %d certainty, %d to draw from %d in the remainder\n",
+      "PSUs: %d certainty%s, %d to draw from %d in the remainder\n",
       n_certain,
+      if (n_supplied > 0L) sprintf(" (%d supplied)", n_supplied) else "",
       op$n_psu_draw,
       nrow(x$psu) - n_certain
     ))
@@ -2446,6 +2448,16 @@ summary.svyplan_prec <- function(object, ...) {
   base::summary.default(object, ...)
 }
 
+#' Stages of the planned design, not of the solve
+#'
+#' A register fit is solved as one stage, its clustering handed over as a
+#' design effect, but the plan it describes has two.
+#' @keywords internal
+#' @noRd
+.bethel_plan_stages <- function(object, problem) {
+  if (is.null(object$params$psu)) problem$stages else 2L
+}
+
 #' Build a structured diagnostic summary for a generalized allocation
 #' @keywords internal
 #' @noRd
@@ -2522,7 +2534,7 @@ summary.svyplan_prec <- function(object, ...) {
     kind = kind,
     question = .bethel_summary_question(mode, kind, budget),
     mode = mode,
-    stages = problem$stages,
+    stages = .bethel_plan_stages(object, problem),
     status = if (design) object$optimization$classification else "assessed",
     overall = overall,
     continuous = continuous,
@@ -2855,7 +2867,7 @@ summary.svyplan_prec <- function(object, ...) {
   list(
     alpha = p$alpha,
     df = problem$df,
-    stages = problem$stages,
+    stages = .bethel_plan_stages(object, problem),
     # The solver saw a one-stage problem because the certainty loop hands it
     # the clustering as a design effect, so the model it recorded describes
     # the solve rather than the plan.

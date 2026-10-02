@@ -107,6 +107,14 @@
 #' as separate strata, with `prob` renormalized over the remaining
 #' PSUs.
 #'
+#' Planning from a complete PSU register, as [n_alloc()] does with `psu`, is
+#' the exception. The certainty PSUs are not known until the allocation is,
+#' so use every PSU of the stratum, with `prob` equal to each PSU's share of
+#' the stratum's units. The `icc` returned is then the size-weighted
+#' homogeneity that the allocation's remainder model assumes. The SRS value
+#' measures the spread of PSU totals, which carries the spread of PSU sizes,
+#' so with unequal sizes it is not the homogeneity that model needs.
+#'
 #' For two-stage designs, `icc` represents the measure of homogeneity
 #' \eqn{\delta = V_b / (V_b + V_w)}{icc = Vb / (Vb + Vw)}, written
 #' \eqn{\delta} in Valliant, Dever, and Kreuter (2018, Ch. 9), in the
@@ -935,7 +943,14 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
         if (!is.null(w)) w[idx]
       ),
       error = function(e) {
-        stop(sprintf("stratum '%s': %s", s, conditionMessage(e)),
+        # A register plan needs no estimate here, and collapsing would merge
+        # a stratum the allocation keeps apart.
+        hint <- if (inherits(e, "svyplan_single_psu")) {
+          ". To plan from a PSU register with n_alloc(psu =), leave its icc_psu NA instead, since a single PSU has no between-PSU variance"
+        } else {
+          ""
+        }
+        stop(sprintf("stratum '%s': %s%s", s, conditionMessage(e), hint),
              call. = FALSE)
       }
     )
@@ -1028,10 +1043,10 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' @noRd
 .check_min_psu <- function(psu_count) {
   if (psu_count < 2L) {
-    stop(
+    stop(errorCondition(
       "at least two PSUs are required to estimate between-PSU variance. Collapse single-PSU strata with a neighbor",
-      call. = FALSE
-    )
+      class = "svyplan_single_psu"
+    ))
   }
   invisible(TRUE)
 }

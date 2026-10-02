@@ -141,9 +141,10 @@
 #'   Optional `psu_id` is carried through and optional `certainty` forces a
 #'   PSU into the certainty part whatever its size. It is an alternative to
 #'   the frame column `N_psu`, which says only how many PSUs a stratum has,
-#'   and requires the frame column `n_per_psu` and `measures$icc_psu`. Joint
-#'   constrained allocation only, and two stages only. See the certainty
-#'   section under Details.
+#'   and requires the frame column `n_per_psu` and `measures$icc_psu`. A
+#'   stratum with a single PSU has no between-PSU variance, so its `icc_psu`
+#'   is taken as 0 and may be `NA`. Joint constrained allocation only, and two
+#'   stages only. See the certainty section under Details.
 #' @param objective Optional estimates whose priority-weighted relative
 #'   variance is minimized among the allocations that meet `targets` and the
 #'   budget. Either a character vector of indicator names (overall domain,
@@ -255,6 +256,14 @@
 #'       `n = n_psu * n_per_psu` for two stages and
 #'       `n = n_psu * n_per_psu * n_per_ssu` for three stages. The same exact
 #'       identities hold for `n_int` and `n_psu_int`.}
+#'     \item{`n_psu_certain`, `n_psu_rest`, `threshold`}{With `psu` only: the
+#'       number of certainty PSUs, the number of PSUs left in the remainder,
+#'       and the certainty threshold `n_per_psu / (n / N)` at the returned
+#'       allocation.}
+#'     \item{`n_certain_int`, `n_psu_draw`}{With `psu` only: the units the
+#'       operational design fields in the certainty PSUs, and the number of
+#'       remainder PSUs it draws. Here
+#'       `n_int = n_certain_int + n_psu_draw * n_per_psu`.}
 #'   }
 #'
 #'   The result also carries an `$operational` list describing the integer
@@ -263,6 +272,45 @@
 #'   integer-repair additions. In legacy modes it also reports the applicable
 #'   aggregate `se`, `moe`, and `cv`. Top-level quantities describe the
 #'   continuous design, while `as.integer()` returns the operational total.
+#'
+#'   With `psu`, the result adds `$psu`, one row per PSU of the register:
+#'   \describe{
+#'     \item{`psu_id`, `stratum`, `N`}{Carried over from the register.
+#'       `psu_id` is present when the register has it.}
+#'     \item{`certainty`}{Whether the PSU is in the certainty part.}
+#'     \item{`n_take`}{The take the operational design fields in the PSU. A
+#'       certainty PSU carries its own whole take at the stratum rate, capped
+#'       at its size, and a remainder PSU carries `n_per_psu`.}
+#'     \item{`.certainty_source`}{Why a certainty PSU is certainty.
+#'       `"threshold"` when its size reaches the threshold, `"supplied"` when
+#'       `psu$certainty` flagged it below the threshold, and `"orbit"` when the
+#'       resolution of a cycle holds it below the threshold. `NA` for a
+#'       remainder PSU.}
+#'     \item{`.threshold`, `.distance`}{The stratum's threshold, and the
+#'       relative distance `N / .threshold - 1`. A PSU with a small
+#'       `.distance` is the one whose classification the allocation can tip.}
+#'   }
+#'
+#'   `$optimization$certainty` reports how the classification was resolved:
+#'   \describe{
+#'     \item{`verdict`}{`"converged"` when the classification repeated itself,
+#'       `"cycle"` when it alternated between classifications, and
+#'       `"limit_reached"` when the iteration limit came first.}
+#'     \item{`orbit`, `iterations`}{The number of classifications in the
+#'       repeating orbit (1 when converged), and the passes made before it
+#'       repeated.}
+#'     \item{`settle_iterations`}{The solves used to settle the allocation
+#'       under the held classification.}
+#'     \item{`absorbed`}{PSUs added to the held classification because the
+#'       settled allocation put them above the threshold.}
+#'     \item{`feasible_member`}{Whether the held member of the orbit met
+#'       every target before settling. When none did, the most certain member
+#'       is held and the settle step closes the gap.}
+#'     \item{`fixed_point`}{Whether the returned classification is exactly
+#'       the one the returned allocation implies, with any `psu$certainty`
+#'       flags. It is `FALSE` only when PSUs have `.certainty_source` equal
+#'       to `"orbit"`, and the printed plan says so.}
+#'   }
 #'
 #'   In fixed-budget objective mode the result adds `$objective`, one row per
 #'   component with its `priority`, relative variance `.relvar`, equivalent
@@ -348,7 +396,8 @@
 #'
 #' Cluster-mode columns:
 #' - `icc_psu` (required): within-PSU homogeneity per stratum,
-#'   e.g. from [varcomp()] with `strata`.
+#'   e.g. from [varcomp()] with `strata`. When PSUs are selected with
+#'   probability proportional to size, pass `prob` to [varcomp()] as well.
 #' - `var_ratio_psu` (optional, default 1): variance ratio per stratum.
 #' - `n_per_psu` (optional): fixes the per-stratum take, in the
 #'   operational whole-unit design as much as in the continuous one. Any
@@ -460,6 +509,13 @@
 #' sizes must sum to `frame$N` in every stratum. This two-stage joint-allocation
 #' mode requires `n_per_psu` in `frame` and `icc_psu` in `measures`.
 #'
+#' `icc_psu` describes the remainder, whose PSUs are selected with probability
+#' proportional to size. It is the size-weighted share of the stratum variance
+#' that lies between PSUs, which [varcomp()] returns when `prob` is each PSU's
+#' share of its stratum's units, as in the last example. A stratum with a single
+#' PSU has no variance between PSUs, so its `icc_psu` is taken as 0 whatever is
+#' supplied and may be `NA`. Every other stratum needs a value in \eqn{[0, 1]}.
+#'
 #' With take \eqn{b_h} and sampling fraction \eqn{f_h = n_h / N_h}, a PSU is
 #' certain when its size reaches
 #'
@@ -472,13 +528,18 @@
 #'
 #' This uses an aggregate planning approximation. The noncertainty part
 #' uses a with-replacement clustering approximation, a standard approach
-#' in PPS sample-size planning. The design effect uses
-#' `ceiling(f_h * N_certain)` for the certainty part and the remaining
-#' stratum allocation for the noncertainty part. A common stratum-level
-#' finite population correction is then applied. Precision therefore uses
-#' aggregate counts rather than each PSU's individually rounded take and
-#' stage-specific sampling fractions. Check sensitivity to this aggregation
-#' when rounding or sampling fractions are substantial.
+#' in PPS sample-size planning. Each part receives its proportional share of
+#' the stratum allocation, so with \eqn{N_h^C} units in certainty PSUs,
+#' \eqn{N_h^R} in the remainder and \eqn{\delta_h} for `icc_psu`, the design
+#' effect is
+#'
+#' \deqn{d_h = \frac{N_h^C + N_h^R \{1 + \delta_h (b_h - 1)\}}{N_h}.}{d_h = (N_h^C + N_h^R * (1 + delta_h * (b_h - 1))) / N_h.}
+#'
+#' It depends on which PSUs are certainty, not on the allocation. A common
+#' stratum-level finite population correction is then applied. Precision
+#' therefore uses aggregate shares rather than each PSU's individually rounded
+#' take and stage-specific sampling fractions. Check sensitivity to this
+#' aggregation when rounding or sampling fractions are substantial.
 #'
 #' The threshold and allocation determine each other, so the solver iterates.
 #' `$optimization$certainty` records whether it converged, cycled, or reached
@@ -691,6 +752,42 @@
 #' )
 #'
 #' n_alloc(frame_cluster, cv = 0.05)
+#'
+#' # Certainty PSUs from a register that lists every PSU with its size.
+#' # The "City" stratum is a single PSU.
+#' set.seed(1)
+#' size <- c(round(rlnorm(60, log(150), 0.8)), 4000)
+#' register <- data.frame(
+#'   psu_id = seq_along(size),
+#'   stratum = rep(c("North", "South", "City"), c(30, 30, 1)),
+#'   N = size
+#' )
+#' pop <- data.frame(
+#'   stratum = rep(register$stratum, size),
+#'   psu_id = rep(register$psu_id, size),
+#'   y = rbinom(sum(size), 1, rep(plogis(rnorm(61, -0.5, 0.4)), size))
+#' )
+#' # icc_psu under size-proportional selection: each PSU's share of its stratum
+#' pop$share <- ave(pop$y, pop$psu_id, FUN = length) /
+#'   ave(pop$y, pop$stratum, FUN = length)
+#' vc <- varcomp(y ~ psu_id, strata = ~stratum, prob = ~share,
+#'               data = subset(pop, stratum != "City"))
+#'
+#' reg_frame <- aggregate(N ~ stratum, register, sum)
+#' reg_frame$n_per_psu <- 10
+#' reg_measures <- aggregate(cbind(p = y) ~ stratum, pop, mean)
+#' reg_measures$name <- "y"
+#' # NA for "City": a single PSU has no between-PSU variance
+#' reg_measures$icc_psu <- vc$strata$icc_psu[
+#'   match(reg_measures$stratum, vc$strata$stratum)
+#' ]
+#' reg_measures
+#'
+#' reg_fit <- n_alloc(
+#'   reg_frame, measures = reg_measures,
+#'   targets = data.frame(name = "y", cv = 0.05), psu = register
+#' )
+#' reg_fit$detail[, c("stratum", "n_psu_certain", "n_psu_draw", "n_int")]
 #'
 #' @export
 n_alloc <- function(frame, ...) {
@@ -1380,6 +1477,9 @@ n_alloc.svyplan_prec <- function(
 #'   cost under the supplied allocation. When the fitted object carries an
 #'   objective, `$objective` and `$objective_value` report its components and
 #'   weighted value under the assessed allocation.
+#'
+#'   With `psu`, `$psu` carries the per-PSU table described in [n_alloc()],
+#'   classified at the supplied allocation.
 #'
 #'   Passing a joint precision result back to [n_alloc()] round trips the
 #'   design. Minimum-cost results invert through precision, pinning the
