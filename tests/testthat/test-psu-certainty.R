@@ -92,11 +92,13 @@ test_that("n_take is the take the operational design fields in each PSU", {
   # The remainder is fielded at the stated per-PSU take.
   expect_equal(fit$psu$n_take[!cert], take_of[!cert], ignore_attr = TRUE)
 
-  # Every certainty PSU here reached the threshold on its own, so its whole
-  # take at the stratum rate is at least the stated take, and never more
-  # than the PSU holds.
-  expect_true(all(fit$psu$.certainty_source[cert] == "threshold"))
-  expect_true(all(fit$psu$n_take[cert] >= take_of[cert]))
+  # A PSU that reached the threshold takes at least the stated take at the
+  # stratum rate. One made certain by the whole-PSU draw sits below the
+  # threshold, so its stratum-rate take can be smaller. No take exceeds
+  # the PSU.
+  thr <- cert & fit$psu$.certainty_source == "threshold"
+  expect_true(any(fit$psu$.certainty_source[cert] == "operational"))
+  expect_true(all(fit$psu$n_take[thr] >= take_of[thr]))
   expect_true(all(fit$psu$n_take[cert] <= fit$psu$N[cert]))
 
   # The takes are the operational design's own numbers, not a re-derivation:
@@ -764,13 +766,16 @@ test_that("an SRS varcomp() overstates it when PSU sizes are unequal", {
 }
 
 test_that("a single-PSU stratum carries no between-PSU variance", {
-  # At this target stratum B's allocation is below the take, so its PSU sits
-  # in the remainder, where a supplied ICC would be charged.
+  # Stratum B's allocation is below the take, so its PSU is not certainty by
+  # the threshold. Drawing one PSU from one gives it probability one, which
+  # makes it certainty by the field design. Its ICC is never charged.
   fits <- lapply(c(NA, 0, 0.2, 0.8), function(icc) {
     z <- .single_psu_case(icc)
     n_alloc(z$frame, measures = z$measures, targets = z$targets, psu = z$psu)
   })
-  expect_false(fits[[2]]$psu$certainty[fits[[2]]$psu$stratum == "B"])
+  b <- fits[[2]]$psu$stratum == "B"
+  expect_true(fits[[2]]$psu$certainty[b])
+  expect_identical(fits[[2]]$psu$.certainty_source[b], "operational")
   for (fit in fits[-1]) {
     expect_equal(fit$detail$n, fits[[1]]$detail$n, tolerance = 1e-12)
     expect_identical(fit$optimization$certainty$verdict, "converged")
@@ -807,4 +812,105 @@ test_that("a fit with a missing single-PSU ICC re-solves and re-assesses", {
                tolerance = 1e-10)
   swept <- predict(fit, data.frame(n_per_psu = c(15, 25)))
   expect_equal(nrow(swept), 2L)
+})
+
+## The fielded draw: no remainder PSU reaches probability one
+
+test_that("closing one PSU under the draw can uncover the next", {
+  # Stratum C of a random register: drawing 3 of these PSUs gives the
+  # largest a probability of 1.33. Once it is certainty the draw falls to 2
+  # and the next reaches 1.07. With both certain the draw is 1 and the
+  # largest left is at 0.56.
+  sizes <- c(1352, 911, 444, 294, 54)
+  out <- .psu_draw_closure(67.27, 3055, 30, sizes, rep(FALSE, 5))
+  expect_identical(out$certain, c(TRUE, TRUE, FALSE, FALSE, FALSE))
+  expect_identical(out$operational, out$certain)
+  # Both sit below the size threshold of 30 / (67.27 / 3055) = 1362.
+  expect_true(all(sizes[out$certain] < 30 / (67.27 / 3055)))
+
+  lone <- .psu_draw_closure(20, 2000, 25, 2000, FALSE)
+  expect_true(lone$certain)
+
+  held <- .psu_draw_closure(50, 600, 10, c(400, 200), c(TRUE, TRUE))
+  expect_identical(held$operational, c(FALSE, FALSE))
+
+  calm <- .psu_draw_closure(40, 4000, 10, rep(400, 10), rep(FALSE, 10))
+  expect_false(any(calm$certain))
+})
+
+test_that("no fitted plan leaves a remainder PSU at probability one", {
+  # samplyr refuses such a plan, so this is the contract that lets a fit go
+  # straight to draw().
+  cases <- c(
+    lapply(1:40, .psu_random_register),
+    lapply(c(1, 4, 9, 17), function(s) .psu_fixture(seed = s))
+  )
+  for (z in cases) {
+    fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                   psu = z$psu)
+    expect_false(any(.psu_remainder_crossing(fit)))
+    above <- fit$psu$N >= fit$psu$.threshold
+    expect_true(all(fit$psu$certainty[above]))
+    op <- fit$psu$.certainty_source %in% "operational"
+    expect_true(all(!above[op]))
+    expect_true(fit$operational$all_pass)
+  }
+})
+
+test_that("the classification closes under the draw, not the repair guard", {
+  # The guard alone would also remove every crossing, by absorbing after the
+  # field design is built. That leaves earlier PSUs below a threshold that
+  # moved, so the closure must do the work inside the classification.
+  z <- .psu_fixture()
+  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                 psu = z$psu)
+  expect_gt(sum(fit$psu$.certainty_source %in% "operational"), 0L)
+  expect_identical(fit$optimization$certainty$absorbed, 0L)
+  expect_true(fit$optimization$certainty$fixed_point)
+})
+
+test_that("a repair that pushes a PSU to probability one is absorbed", {
+  # On these registers the precision repair adds a remainder PSU after the
+  # classification was closed, and the larger draw reaches one. The PSU is
+  # absorbed and the plan settled again, after which no repair is needed.
+  for (seed in c(137, 1842)) {
+    z <- .psu_wide_register(seed)
+    fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                   psu = z$psu)
+    expect_gte(fit$optimization$certainty$absorbed, 1L)
+    expect_false(any(.psu_remainder_crossing(fit)))
+    expect_true(all(fit$constraints$.pass))
+  }
+})
+
+test_that("prec_alloc classifies a supplied allocation under its draw", {
+  frame <- data.frame(stratum = c("C", "D"), N = c(3055, 8000),
+                      n_per_psu = 30)
+  psu <- data.frame(
+    psu_id = 1:25,
+    stratum = c(rep("C", 5), rep("D", 20)),
+    N = c(1352, 911, 444, 294, 54, rep(400, 20))
+  )
+  measures <- data.frame(stratum = c("C", "D"), name = "y", p = 0.4,
+                         icc_psu = 0.1)
+  ev <- prec_alloc(frame, n = c(67.27, 120), measures = measures,
+                   targets = data.frame(name = "y", cv = 0.1), psu = psu)
+  expect_identical(ev$psu$certainty[1:5], c(TRUE, TRUE, FALSE, FALSE, FALSE))
+  expect_identical(ev$psu$.certainty_source[1:2],
+                   c("operational", "operational"))
+})
+
+test_that("summary counts the certainty PSUs by source", {
+  z <- .psu_fixture()
+  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                 psu = z$psu)
+  s <- summary(fit)
+  expect_named(s$certainty_sources,
+               c("threshold", "operational", "supplied", "orbit"))
+  expect_equal(sum(s$certainty_sources), sum(fit$psu$certainty))
+  expect_gt(s$certainty_sources[["operational"]], 0L)
+  out <- capture.output(print(s))
+  expect_true(any(grepl("^certainty PSUs by source: threshold \\d+, operational \\d+$", out)))
+  # The print line stays as it was: the breakdown is summary detail.
+  expect_false(any(grepl("operational", capture.output(print(fit)))))
 })

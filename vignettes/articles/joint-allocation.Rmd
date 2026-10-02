@@ -164,8 +164,10 @@ census of PSUs does not imply a census of ultimate units.
 For a two-stage design, a PSU register can replace `N_psu`. It has one row per
 PSU with its stratum and size, and its stratum totals must match `frame$N`.
 `n_alloc()` identifies PSUs whose implied probability-proportional-to-size
-inclusion probability reaches 1. A `certainty` column can mark additional
-certainty PSUs.
+inclusion probability reaches 1. That includes the whole number of PSUs the
+remainder is drawn as: rounding it up can push a PSU below the size threshold
+to probability 1, and `$psu$.certainty_source` then reads `"operational"`. A
+`certainty` column can mark additional certainty PSUs.
 
 ```{r certainty-data}
 certainty_frame <- cluster_frame

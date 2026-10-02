@@ -55,3 +55,40 @@
   }
   list(frame = frame, psu = psu, measures = measures, targets = targets)
 }
+
+.psu_wide_register <- function(seed) {
+  set.seed(seed)
+  H <- sample(2:6, 1)
+  take <- sample(c(5, 10, 20, 30), 1)
+  psu <- do.call(rbind, lapply(seq_len(H), function(h) {
+    m <- sample(c(1, 2, 3, 4, 5, 8, 20, 60), 1)
+    data.frame(
+      stratum = LETTERS[h],
+      N = pmax(round(rlnorm(m, log(400), runif(1, 0.2, 1.8))), 5)
+    )
+  }))
+  frame <- data.frame(
+    stratum = LETTERS[seq_len(H)],
+    N = as.numeric(tapply(psu$N, psu$stratum, sum)[LETTERS[seq_len(H)]]),
+    n_per_psu = take
+  )
+  measures <- data.frame(
+    stratum = frame$stratum, name = "y", p = runif(H, 0.1, 0.6),
+    icc_psu = runif(H, 0, 0.3)
+  )
+  targets <- data.frame(name = "y", cv = runif(1, 0.02, 0.15))
+  list(frame = frame, psu = psu, measures = measures, targets = targets)
+}
+
+.psu_remainder_crossing <- function(fit) {
+  out <- logical(nrow(fit$psu))
+  for (h in fit$detail$stratum) {
+    i <- which(fit$psu$stratum == h & !fit$psu$certainty)
+    k <- fit$detail$n_psu_draw[fit$detail$stratum == h]
+    if (k > 0 && length(i)) {
+      out[i] <- k * fit$psu$N[i] / sum(fit$psu$N[i]) >=
+        1 - 100 * .Machine$double.eps
+    }
+  }
+  out
+}

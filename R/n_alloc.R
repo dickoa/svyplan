@@ -283,9 +283,11 @@
 #'       at its size, and a remainder PSU carries `n_per_psu`.}
 #'     \item{`.certainty_source`}{Why a certainty PSU is certainty.
 #'       `"threshold"` when its size reaches the threshold, `"supplied"` when
-#'       `psu$certainty` flagged it below the threshold, and `"orbit"` when the
-#'       resolution of a cycle holds it below the threshold. `NA` for a
-#'       remainder PSU.}
+#'       `psu$certainty` flagged it below the threshold, `"operational"` when
+#'       it is below the threshold but the whole-PSU remainder draw of
+#'       `$operational` would give it an inclusion probability of one, and
+#'       `"orbit"` when the resolution of a cycle holds it although no rule
+#'       requires it. `NA` for a remainder PSU. `summary()` counts them.}
 #'     \item{`.threshold`, `.distance`}{The stratum's threshold, and the
 #'       relative distance `N / .threshold - 1`. A PSU with a small
 #'       `.distance` is the one whose classification the allocation can tip.}
@@ -302,14 +304,16 @@
 #'     \item{`settle_iterations`}{The solves used to settle the allocation
 #'       under the held classification.}
 #'     \item{`absorbed`}{PSUs added to the held classification because the
-#'       settled allocation put them above the threshold.}
+#'       settled allocation, or the repaired field design, made them
+#'       certainty.}
 #'     \item{`feasible_member`}{Whether the held member of the orbit met
 #'       every target before settling. When none did, the most certain member
 #'       is held and the settle step closes the gap.}
 #'     \item{`fixed_point`}{Whether the returned classification is exactly
-#'       the one the returned allocation implies, with any `psu$certainty`
-#'       flags. It is `FALSE` only when PSUs have `.certainty_source` equal
-#'       to `"orbit"`, and the printed plan says so.}
+#'       the one the returned allocation implies under the threshold and the
+#'       whole-PSU draw, with any `psu$certainty` flags. It is `FALSE` only
+#'       when PSUs have `.certainty_source` equal to `"orbit"`, and the
+#'       printed plan says so.}
 #'   }
 #'
 #'   In fixed-budget objective mode the result adds `$objective`, one row per
@@ -521,10 +525,19 @@
 #'
 #' \deqn{N_{hi} \ge b_h / f_h.}{N_hi >= b_h / f_h.}
 #'
+#' The remainder is fielded as a whole number of PSUs drawn with probability
+#' proportional to size, and rounding that number up raises every remainder
+#' PSU's inclusion probability. A PSU whose probability reaches one under
+#' that draw is certainty too, and the draw is recomputed without it until no
+#' PSU reaches one, the iterative rule for selection proportional to size. A
+#' PSU below the threshold can be certainty this way, and so can a stratum's
+#' only PSU. The operational design is therefore one any fixed-size
+#' proportional-to-size method can draw as it stands.
+#'
 #' The certainty part has no first-stage sampling variance. The remainder has
 #' the usual clustering component, and the two are combined into the
 #' anticipated design effect. `psu$certainty` can add a PSU to the certainty
-#' part. It cannot remove a PSU above the threshold.
+#' part. It cannot remove a PSU either rule makes certainty.
 #'
 #' This uses an aggregate planning approximation. The noncertainty part
 #' uses a with-replacement clustering approximation, a standard approach

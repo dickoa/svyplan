@@ -158,6 +158,63 @@
   max((n_h / N_h^2) * (term_certain + term_rest), 1)
 }
 
+#' Whole-unit counts of one stratum's field design, before any repair
+#'
+#' Shared by the classification closure and the operational design, so the
+#' draw a PSU is classified against is the draw that is fielded.
+#' @keywords internal
+#' @noRd
+.psu_stratum_counts <- function(n_h, N_h, take, sizes, certain) {
+  held <- sizes[certain]
+  per_psu <- pmin(ceiling(n_h / N_h * held), held)
+  n_certain_int <- sum(per_psu)
+  n_rest <- max(n_h - n_certain_int, 0)
+  available <- sum(!certain)
+  list(
+    per_psu = per_psu,
+    n_certain_int = n_certain_int,
+    n_rest = n_rest,
+    available = available,
+    n_psu_draw = min(ceiling(n_rest / take), available)
+  )
+}
+
+#' Remainder PSUs whose inclusion probability reaches one under a draw
+#'
+#' The tolerance is samplyr's, so a plan svyplan returns is one samplyr can
+#' field without refusing it.
+#' @keywords internal
+#' @noRd
+.psu_crossing <- function(n_psu_draw, sizes, certain) {
+  out <- logical(length(sizes))
+  rest <- !certain
+  if (n_psu_draw <= 0 || !any(rest)) return(out)
+  out[rest] <- n_psu_draw * sizes[rest] / sum(sizes[rest]) >=
+    1 - 100 * .Machine$double.eps
+  out
+}
+
+#' Close one stratum's classification under its whole-PSU remainder draw
+#'
+#' Rounding the remainder up to whole PSUs raises every remainder PSU's
+#' inclusion probability, so a PSU below the size threshold can reach one in
+#' the design that is fielded. It is certainty, and the draw is recomputed
+#' without it until no PSU reaches one, the iterative rule for selection with
+#' probability proportional to size.
+#' @keywords internal
+#' @noRd
+.psu_draw_closure <- function(n_h, N_h, take, sizes, certain) {
+  operational <- logical(length(sizes))
+  repeat {
+    k <- .psu_stratum_counts(n_h, N_h, take, sizes, certain)$n_psu_draw
+    hit <- .psu_crossing(k, sizes, certain)
+    if (!any(hit)) break
+    certain <- certain | hit
+    operational <- operational | hit
+  }
+  list(certain = certain, operational = operational)
+}
+
 #' Noncertainty ICC per measures row, zero for a single-PSU stratum
 #'
 #' A stratum with one PSU has no between-PSU variance, so its ICC is zero by
@@ -307,8 +364,11 @@
     for (h in seq_len(H)) {
       i <- idx_of[[h]]
       one <- .psu_classify(psu$N[i], threshold[h], forced[i])
-      certain[i] <- one$certain
-      source[i] <- one$source
+      closed <- .psu_draw_closure(
+        n_h[h], N_h[h], take[h], psu$N[i], one$certain
+      )
+      certain[i] <- closed$certain
+      source[i] <- ifelse(closed$operational, "operational", one$source)
     }
     list(n_h = n_h, certain = certain, source = source, threshold = threshold)
   }
@@ -351,43 +411,10 @@
   settled <- chosen
   settle_used <- 0L
   absorbed <- 0L
-  repeat {
-    settled_ok <- FALSE
-    for (i in seq_len(settle_iter)) {
-      fit <- solve_at(settled)
-      settle_used <- settle_used + 1L
-      if (max(abs(fit$detail$n - settled$n_h)) < tolerance) {
-        settled_ok <- TRUE
-        break
-      }
-      settled$n_h <- fit$detail$n
-    }
-    # The returned constraints would describe the previous allocation's
-    # design effect, so an unsettled plan is refused rather than returned.
-    if (!settled_ok) {
-      stop(
-        "internal error: the allocation did not settle under the held classification",
-        call. = FALSE
-      )
-    }
-    settled$n_h <- fit$detail$n
-    implied <- classify_at(fit$detail$n)
-    extra <- implied$certain & !settled$certain
-    if (!any(extra)) break
-    settled$certain <- settled$certain | implied$certain
-    absorbed <- absorbed + sum(extra)
-  }
-  settled$threshold <- implied$threshold
-  # Attribution reads the bare threshold test, not `implied$certain`, which
-  # has the caller's flag already folded into it and would report every
-  # flagged PSU as reaching the threshold on its own.
-  above <- psu$N >= settled$threshold[match(psu$stratum, stratum)]
-  settled$source <- ifelse(
-    above, "threshold",
-    ifelse(if (is.null(forced)) FALSE else forced, "supplied", "orbit")
-  )
-  settled$source[!settled$certain] <- NA_character_
-  settled$above <- above
+  # PSUs the repaired field design pushed to probability one after the
+  # classification was closed, held like the absorbed ones.
+  repaired <- logical(nrow(psu))
+  supplied <- if (is.null(forced)) logical(nrow(psu)) else forced
 
   # The whole-unit design. An element-level rounding of this allocation is
   # not fieldable: the remainder has to be a whole number of PSUs at the
@@ -410,9 +437,66 @@
       constraints = if (is.null(ev)) NULL else ev$detail
     )
   }
-  operational <- .psu_operational(
-    settled$n_h, N_h, take, psu, idx_of, settled$certain, assess
-  )
+
+  repeat {
+    repeat {
+      settled_ok <- FALSE
+      for (i in seq_len(settle_iter)) {
+        fit <- solve_at(settled)
+        settle_used <- settle_used + 1L
+        if (max(abs(fit$detail$n - settled$n_h)) < tolerance) {
+          settled_ok <- TRUE
+          break
+        }
+        settled$n_h <- fit$detail$n
+      }
+      # The returned constraints would describe the previous allocation's
+      # design effect, so an unsettled plan is refused rather than returned.
+      if (!settled_ok) {
+        stop(
+          "internal error: the allocation did not settle under the held classification",
+          call. = FALSE
+        )
+      }
+      settled$n_h <- fit$detail$n
+      implied <- classify_at(fit$detail$n)
+      extra <- implied$certain & !settled$certain
+      if (!any(extra)) break
+      settled$certain <- settled$certain | implied$certain
+      absorbed <- absorbed + sum(extra)
+    }
+    settled$threshold <- implied$threshold
+    # Attribution reads the bare threshold test, not `implied$certain`, which
+    # has the caller's flag already folded into it and would report every
+    # flagged PSU as reaching the threshold on its own.
+    above <- psu$N >= settled$threshold[match(psu$stratum, stratum)]
+    by_field <- (implied$source %in% "operational" & implied$certain) |
+      repaired
+    settled$source <- ifelse(
+      above, "threshold",
+      ifelse(supplied, "supplied", ifelse(by_field, "operational", "orbit"))
+    )
+    settled$source[!settled$certain] <- NA_character_
+    settled$above <- above | by_field
+
+    operational <- .psu_operational(
+      settled$n_h, N_h, take, psu, idx_of, settled$certain, assess
+    )
+    # The closure classified against the draw before repair. A repair that
+    # adds a PSU can push another to probability one, which is held and
+    # settled like any absorbed PSU.
+    crossing <- logical(nrow(psu))
+    for (h in seq_len(H)) {
+      i <- idx_of[[h]]
+      crossing[i] <- .psu_crossing(
+        operational$n_psu_draw[h], psu$N[i], settled$certain[i]
+      )
+    }
+    if (!any(crossing)) break
+    repaired <- repaired | crossing
+    settled$certain <- settled$certain | crossing
+    absorbed <- absorbed + sum(crossing)
+  }
   operational$constraints <- assess(operational$n_int)$constraints
 
   list(
@@ -459,20 +543,15 @@
 .psu_operational <- function(n_h, N_h, take, psu, idx_of, certain,
                              assess, max_repair = 200L) {
   H <- length(n_h)
-  f <- n_h / N_h
-  # A certainty PSU is above the threshold, so its own take at the stratum
-  # rate is at least `take`; it is not capped at it.
-  per_psu <- lapply(seq_len(H), function(h) {
-    i <- idx_of[[h]][certain[idx_of[[h]]]]
-    if (!length(i)) return(numeric(0))
-    pmin(ceiling(f[h] * psu$N[i]), psu$N[i])
+  counts <- lapply(seq_len(H), function(h) {
+    i <- idx_of[[h]]
+    .psu_stratum_counts(n_h[h], N_h[h], take[h], psu$N[i], certain[i])
   })
-  n_certain_int <- vapply(per_psu, sum, numeric(1))
-  n_rest <- pmax(n_h - n_certain_int, 0)
-  available <- vapply(seq_len(H), function(h) {
-    sum(!certain[idx_of[[h]]])
-  }, numeric(1))
-  n_psu_draw <- pmin(ceiling(n_rest / take), available)
+  per_psu <- lapply(counts, `[[`, "per_psu")
+  n_certain_int <- vapply(counts, `[[`, numeric(1), "n_certain_int")
+  n_rest <- vapply(counts, `[[`, numeric(1), "n_rest")
+  available <- vapply(counts, `[[`, numeric(1), "available")
+  n_psu_draw <- vapply(counts, `[[`, numeric(1), "n_psu_draw")
 
   short <- n_rest > n_psu_draw * take + 1e-8
   if (any(short)) {
@@ -726,6 +805,12 @@
     above, "threshold",
     ifelse(if (is.null(forced)) FALSE else forced, "supplied", NA_character_)
   )
+  for (h in seq_len(H)) {
+    i <- idx_of[[h]]
+    closed <- .psu_draw_closure(n_h[h], N_h[h], take[h], psu$N[i], certain[i])
+    source[i[closed$operational]] <- "operational"
+    certain[i] <- closed$certain
+  }
   source[!certain] <- NA_character_
 
   m <- base_measures

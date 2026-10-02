@@ -2554,6 +2554,12 @@ summary.svyplan_prec <- function(object, ...) {
   cert <- .bethel_summary_certainty(object)
   if (!is.null(cert)) {
     out$certainty <- cert
+    sources <- c("threshold", "operational", "supplied", "orbit")
+    out$certainty_sources <- vapply(
+      sources,
+      function(src) sum(object$psu$.certainty_source %in% src),
+      integer(1)
+    )
   }
   structure(out, class = c("summary.svyplan_bethel", "list"))
 }
@@ -3374,7 +3380,15 @@ print.summary.svyplan_bethel <- function(x, ...) {
     .print_bethel_table(takes)
   }
   if (!is.null(x$certainty)) {
-    cat("\nCertainty split by stratum\n\n")
+    cat("\nCertainty split by stratum\n")
+    by_source <- x$certainty_sources[x$certainty_sources > 0L]
+    if (length(by_source)) {
+      cat(sprintf(
+        "certainty PSUs by source: %s\n",
+        paste(names(by_source), by_source, collapse = ", ")
+      ))
+    }
+    cat("\n")
     tab <- x$certainty
     tab$threshold <- round(tab$threshold)
     .print_bethel_table(tab)
