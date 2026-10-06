@@ -15,6 +15,8 @@ prec_alloc(frame, ...)
   measures = NULL,
   targets = NULL,
   psu = NULL,
+  certainty_cutoff = NULL,
+  n_psu_per_zone = NULL,
   objective = NULL,
   budget = NULL,
   domains = NULL,
@@ -63,13 +65,22 @@ with \code{measures} in the default method and is recovered automatically from
 a fitted result.}
 
 \item{psu}{Optional PSU register for certainty-aware assessment. See the
-\code{psu} argument to \code{\link[=n_alloc]{n_alloc()}}. No loop is needed here, since the
+\code{psu} argument to \code{\link[=n_alloc]{n_alloc()}}. A \code{budget} is refused with it, and an
+\code{objective} is reported as a description of the assessed allocation. No loop is needed here, since the
 allocation is supplied, so the threshold it implies is supplied with it and the
 classification is read off the design being assessed. The \verb{$psu} table
 carries the same columns as a fitted plan's, with \code{n_take} read off the
 supplied allocation. A fitted result
 carries its own register and its held classification, so
 \code{prec_alloc(fit)} reproduces the plan's precision exactly.}
+
+\item{certainty_cutoff}{Inclusion probability at which a PSU is taken with
+certainty. See the \code{certainty_cutoff} argument to \code{\link[=n_alloc]{n_alloc()}}. A fitted
+result carries its own.}
+
+\item{n_psu_per_zone}{\code{NULL}, 1 or 2, PSUs drawn per zone of the remainder.
+See the \code{n_psu_per_zone} argument to \code{\link[=n_alloc]{n_alloc()}}. A fitted result
+carries its own.}
 
 \item{objective}{Optional objective components to report alongside the
 targets. See the \code{objective} argument to \code{\link[=n_alloc]{n_alloc()}}. Recovered
@@ -149,6 +160,12 @@ through cost instead. The targets stay as specified and the assessed
 allocation's cost becomes the budget, because pinning achieved precision
 as hard targets would over-constrain a design that already spends its
 whole budget.
+
+A result assessed with a \code{psu} register carries the register, the
+caller's \code{frame} and \code{measures}, and any \code{certainty_cutoff}, so the round
+trip plans the register design again. It derives the classification
+afresh from the register the fit was solved from, so where the fit's
+loop cycled the new plan can resolve the cycle at another member.
 }
 \description{
 Compute aggregate precision for a stratum allocation. For a joint

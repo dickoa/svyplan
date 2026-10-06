@@ -163,6 +163,8 @@ census of PSUs does not imply a census of ultimate units.
 
 For a two-stage design, a PSU register can replace `N_psu`. It has one row per
 PSU with its stratum and size, and its stratum totals must match `frame$N`.
+Every PSU must hold at least its stratum's take, so merge smaller ones with a
+neighbour before planning.
 `n_alloc()` identifies PSUs whose implied probability-proportional-to-size
 inclusion probability reaches 1. That includes the whole number of PSUs the
 remainder is drawn as: rounding it up can push a PSU below the size threshold
@@ -175,7 +177,7 @@ certainty_frame$N_psu <- NULL
 
 psu_register <- do.call(rbind, lapply(seq_len(nrow(certainty_frame)), function(i) {
   population <- certainty_frame$N[i]
-  size <- rep(10, 20)
+  size <- rep(12, 20)
   size[1] <- floor(population / 3)
   size[2] <- population - sum(size[-2])
   data.frame(stratum = certainty_frame$stratum[i], N = size)
@@ -245,9 +247,34 @@ certainty_fit$detail[, c(
 
 `n_psu_certain` counts the certainty PSUs and `n_psu_draw` the remainder PSUs
 the operational design draws, so
-`n_int = n_certain_int + n_psu_draw * n_per_psu`. `$psu` records each PSU's classification, threshold, and source.
-`prec_alloc(certainty_fit)` reproduces the planned precision of that fieldwork
-design.
+`n_int = n_certain_int + n_psu_draw * n_per_psu`. `$psu` records each PSU's
+classification, threshold, and source. The certainty takes are rounded up one
+PSU at a time, so `$operational$constraints` assesses the field design on its
+own takes, and the remainder gains whole PSUs where that falls short of a
+target. `prec_alloc(certainty_fit)` reproduces the continuous plan's
+precision. Under stage costs a certainty PSU's visit is a fixed cost, and a
+`budget` is refused with a register.
+
+Practitioners often relax the rule and take with certainty any PSU whose
+inclusion probability reaches, say, 0.80. `certainty_cutoff` sets that level,
+for every stratum or per stratum through a `frame` column, and
+`predict(certainty_fit, data.frame(certainty_cutoff = c(1, 0.9, 0.8)))`
+prices the choice. Here it changes nothing until the cutoff falls to 0.1,
+because no PSU sits between the two dominant ones and the small ones. The
+register example under `?n_alloc` shows a register where it does.
+
+Area samples often go further and cut each stratum's remainder into zones of
+about equal size, drawing two PSUs from each so that every stratum's variance
+can be estimated. `n_psu_per_zone = 2` plans that design, and an optional
+`zone_order` column in the register sets the order the zones are cut in.
+`n_psu_per_zone = 1` draws one PSU per zone, and `$psu$.pair` groups the
+zones in advance for a collapsed variance estimate. A zone holding a single
+PSU is a census, which can lower the sample, though not on this register,
+whose small PSUs are all of one size. `predict()` compares the settings:
+
+```{r zone-sweep}
+predict(certainty_fit, data.frame(n_psu_per_zone = c(NA, 1, 2)))
+```
 
 Some planning tools also move small groups of remainder PSUs into the
 certainty part, so that each group yields at least two PSUs for variance

@@ -68,6 +68,7 @@ variance components, differ from it.
    Unstratified cluster \tab PSUs \tab \eqn{m - 1} \cr
    Stratified element \tab units per stratum \tab \eqn{\sum_h n_h - H} \cr
    Stratified cluster \tab PSUs per stratum \tab \eqn{\sum_h m_h - H} \cr
+   Zoned PSU register \tab PSUs per variance group \tab \eqn{\sum_h m_h - G} \cr
    Two-phase \tab phase-2 units per stratum \tab \eqn{\sum_h n_{2h} - H}{sum_h n_2h - H} \cr
 }
 
@@ -112,11 +113,18 @@ fielding, not an omission.
 Certainty, or self-representing, PSUs contribute no between-PSU variance
 and should not count toward first-stage df. For a PSU register supplied
 through \code{\link[=n_alloc]{n_alloc()}} with no certainty PSUs, this helper counts the
-operational PSUs (\code{n_psu_draw}) minus strata. Allocations containing
-certainty PSUs remain unsupported: combining their within-PSU variance
-contributions with other strata requires an explicit degrees-of-freedom
-convention that this helper does not yet implement. In other inputs,
-unrecorded certainty PSUs can make the nominal first-stage count too large.
+operational PSUs (\code{n_psu_draw}) minus the design's variance groups. Those
+are the strata without zones, the zones at \code{n_psu_per_zone = 2}, and the
+collapsed groups \verb{$psu$.pair} at \code{n_psu_per_zone = 1}. A collapsed group
+can join strata, so a stratum whose only zone is pooled with another
+stratum's shows no df of its own and is marked \code{"pooled"} in \verb{$strata}.
+Each stratum's df is then the count on that stratum alone, and the
+per-stratum values need not sum to the overall df.
+Allocations containing certainty PSUs remain unsupported, because
+combining their within-PSU variance contributions with other strata
+requires an explicit degrees-of-freedom convention that this helper does
+not yet implement. In other inputs, unrecorded certainty PSUs can make the
+nominal first-stage count too large.
 
 A stratum holding a single PSU supports no within-stratum variance
 estimate at all, and warns, naming the stratum. Its own contribution is
@@ -165,6 +173,16 @@ n_prop(p = 0.02, moe = 0.01, method = "beta", df = design_df(alloc))
 
 # From counts, with no plan in hand
 design_df(n_psu = 300, n_strata = 20)
+
+# A PSU register cut into zones: PSUs minus zones
+register <- data.frame(stratum = "A", N = rep(1000, 100))
+zoned <- n_alloc(
+  data.frame(stratum = "A", N = 100000, n_per_psu = 10),
+  measures = data.frame(stratum = "A", name = "y", p = 0.5, icc_psu = 0.05),
+  targets = data.frame(name = "y", cv = 0.08),
+  psu = register, n_psu_per_zone = 2
+)
+design_df(zoned)
 
 }
 \references{

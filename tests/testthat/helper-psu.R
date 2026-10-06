@@ -10,7 +10,7 @@
     k <- c(300, 200, 140, 90)[h]
     size <- round(rlnorm(k, log(frame$N[h] / k), sdlog))
     if (large > 0L) size[seq_len(large)] <- size[seq_len(large)] * 25
-    size <- pmax(round(size * frame$N[h] / sum(size)), 1)
+    size <- pmax(round(size * frame$N[h] / sum(size)), take)
     size[length(size)] <- size[length(size)] + frame$N[h] - sum(size)
     data.frame(
       psu_id = sprintf("%s%03d", frame$stratum[h], seq_len(k)),
@@ -39,7 +39,7 @@
       m <- sample(c(1, 2, 5, 20, 60), 1, prob = c(0.1, 0.1, 0.2, 0.3, 0.3))
       data.frame(
         stratum = LETTERS[h],
-        N = pmax(round(rlnorm(m, log(400), runif(1, 0.2, 1.5))), 5)
+        N = pmax(round(rlnorm(m, log(400), runif(1, 0.2, 1.5))), take)
       )
     }))
     frame <- data.frame(
@@ -64,7 +64,7 @@
     m <- sample(c(1, 2, 3, 4, 5, 8, 20, 60), 1)
     data.frame(
       stratum = LETTERS[h],
-      N = pmax(round(rlnorm(m, log(400), runif(1, 0.2, 1.8))), 5)
+      N = pmax(round(rlnorm(m, log(400), runif(1, 0.2, 1.8))), take)
     )
   }))
   frame <- data.frame(
@@ -80,14 +80,16 @@
   list(frame = frame, psu = psu, measures = measures, targets = targets)
 }
 
-.psu_remainder_crossing <- function(fit) {
+.psu_remainder_crossing <- function(fit, cutoff = 1) {
+  cutoff <- rep_len(cutoff, nrow(fit$detail))
   out <- logical(nrow(fit$psu))
-  for (h in fit$detail$stratum) {
+  for (j in seq_len(nrow(fit$detail))) {
+    h <- fit$detail$stratum[j]
     i <- which(fit$psu$stratum == h & !fit$psu$certainty)
-    k <- fit$detail$n_psu_draw[fit$detail$stratum == h]
+    k <- fit$detail$n_psu_draw[j]
     if (k > 0 && length(i)) {
       out[i] <- k * fit$psu$N[i] / sum(fit$psu$N[i]) >=
-        1 - 100 * .Machine$double.eps
+        cutoff[j] - 100 * .Machine$double.eps
     }
   }
   out

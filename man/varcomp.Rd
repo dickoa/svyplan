@@ -253,9 +253,10 @@ takes. A \emph{planned} take is a constant, so \eqn{cv_b = 0} and
 \eqn{b^* = b}, so the forward direction in \code{\link[=design_effect]{design_effect()}} never meets
 the distinction. A \emph{published} design effect was achieved with takes
 that varied, and since \eqn{\delta} moves inversely with \eqn{b - 1},
-using the nominal take understates it by roughly the same relative
-amount that \eqn{b^*} exceeds the nominal figure, about 9 percent at a
-30 percent coefficient of variation. Report tables carry the nominal
+using the nominal take overstates a positive \eqn{\delta} by roughly
+the same relative amount that \eqn{b^*} exceeds the nominal figure,
+about 9 percent at a 30 percent coefficient of variation (0.0421 against
+0.0385 at a design effect of 1.8 and a take of 20). Report tables carry the nominal
 figure, which is the one a reader reaches for, so supply the realized
 takes or their coefficient of variation where they are known:
 

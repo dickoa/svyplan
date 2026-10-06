@@ -39,6 +39,7 @@
 #' | Unstratified cluster | PSUs | \eqn{m - 1} |
 #' | Stratified element | units per stratum | \eqn{\sum_h n_h - H} |
 #' | Stratified cluster | PSUs per stratum | \eqn{\sum_h m_h - H} |
+#' | Zoned PSU register | PSUs per variance group | \eqn{\sum_h m_h - G} |
 #' | Two-phase | phase-2 units per stratum | \eqn{\sum_h n_{2h} - H}{sum_h n_2h - H} |
 #'
 #' The counts are read from the whole-unit columns a plan reports
@@ -79,11 +80,18 @@
 #' Certainty, or self-representing, PSUs contribute no between-PSU variance
 #' and should not count toward first-stage df. For a PSU register supplied
 #' through [n_alloc()] with no certainty PSUs, this helper counts the
-#' operational PSUs (`n_psu_draw`) minus strata. Allocations containing
-#' certainty PSUs remain unsupported: combining their within-PSU variance
-#' contributions with other strata requires an explicit degrees-of-freedom
-#' convention that this helper does not yet implement. In other inputs,
-#' unrecorded certainty PSUs can make the nominal first-stage count too large.
+#' operational PSUs (`n_psu_draw`) minus the design's variance groups. Those
+#' are the strata without zones, the zones at `n_psu_per_zone = 2`, and the
+#' collapsed groups `$psu$.pair` at `n_psu_per_zone = 1`. A collapsed group
+#' can join strata, so a stratum whose only zone is pooled with another
+#' stratum's shows no df of its own and is marked `"pooled"` in `$strata`.
+#' Each stratum's df is then the count on that stratum alone, and the
+#' per-stratum values need not sum to the overall df.
+#' Allocations containing certainty PSUs remain unsupported, because
+#' combining their within-PSU variance contributions with other strata
+#' requires an explicit degrees-of-freedom convention that this helper does
+#' not yet implement. In other inputs, unrecorded certainty PSUs can make the
+#' nominal first-stage count too large.
 #'
 #' A stratum holding a single PSU supports no within-stratum variance
 #' estimate at all, and warns, naming the stratum. Its own contribution is
@@ -124,6 +132,16 @@
 #'
 #' # From counts, with no plan in hand
 #' design_df(n_psu = 300, n_strata = 20)
+#'
+#' # A PSU register cut into zones: PSUs minus zones
+#' register <- data.frame(stratum = "A", N = rep(1000, 100))
+#' zoned <- n_alloc(
+#'   data.frame(stratum = "A", N = 100000, n_per_psu = 10),
+#'   measures = data.frame(stratum = "A", name = "y", p = 0.5, icc_psu = 0.05),
+#'   targets = data.frame(name = "y", cv = 0.08),
+#'   psu = register, n_psu_per_zone = 2
+#' )
+#' design_df(zoned)
 #'
 #' @export
 design_df <- function(x = NULL, ...) {
@@ -210,6 +228,9 @@ design_df.svyplan_n <- function(x, ...) {
     units <- ceiling(x$n)
     return(.df_result(units - 1, units, 1L, "element"))
   }
+  if (!is.null(x$psu$.zone)) {
+    return(.df_zoned(x))
+  }
   parts <- .df_alloc_parts(x$detail)
   .df_stratified(parts, x, .df_domain_idx(x))
 }
@@ -278,6 +299,49 @@ design_df.svyplan_twophase <- function(x, ...) {
     census = census,
     stage = if (cluster) "psu" else "element"
   )
+}
+
+#' Count a zoned register plan by its variance groups
+#'
+#' The zones are the design's strata. At two PSUs per zone each zone is a
+#' variance group of its own. At one per zone the zones are collapsed into
+#' the `.pair` groups, which can join strata. A stratum gives up one degree
+#' of freedom to every group it draws from, the count `survey::degf()` makes
+#' on that subset, so a stratum whose zone is pooled with another stratum's
+#' can show none of its own.
+#' @keywords internal
+#' @noRd
+.df_zoned <- function(x) {
+  stratum <- as.character(x$detail$stratum)
+  units <- as.numeric(x$detail$n_psu_draw)
+  tab <- x$psu[!is.na(x$psu$.zone), , drop = FALSE]
+  group <- if (is.null(tab$.pair)) {
+    paste(tab$stratum, tab$.zone)
+  } else {
+    as.character(tab$.pair)
+  }
+  groups_of <- function(h) unique(group[tab$stratum %in% h])
+  n_groups <- vapply(stratum, function(h) length(groups_of(h)), numeric(1))
+  per_stratum <- pmax(units - n_groups, 0)
+  shared <- vapply(stratum, function(h) {
+    any(tab$stratum[group %in% groups_of(h)] != h)
+  }, logical(1))
+  status <- ifelse(per_stratum > 0, "ok",
+                   ifelse(shared, "pooled", "singleton"))
+  .warn_singleton_strata(stratum[status == "singleton"], "psu")
+
+  strata_tab <- data.frame(
+    stratum = stratum,
+    n_units = units,
+    n_groups = n_groups,
+    df = per_stratum,
+    .status = status,
+    stringsAsFactors = FALSE,
+    row.names = NULL
+  )
+  n_group <- length(unique(group))
+  .df_result(sum(units) - n_group, sum(units), n_group, "psu",
+             strata = strata_tab)
 }
 
 #' Take-all flags of a stratum table, absent meaning none

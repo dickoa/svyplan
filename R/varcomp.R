@@ -168,9 +168,10 @@
 #' \eqn{b^* = b}, so the forward direction in [design_effect()] never meets
 #' the distinction. A *published* design effect was achieved with takes
 #' that varied, and since \eqn{\delta} moves inversely with \eqn{b - 1},
-#' using the nominal take understates it by roughly the same relative
-#' amount that \eqn{b^*} exceeds the nominal figure, about 9 percent at a
-#' 30 percent coefficient of variation. Report tables carry the nominal
+#' using the nominal take overstates a positive \eqn{\delta} by roughly
+#' the same relative amount that \eqn{b^*} exceeds the nominal figure,
+#' about 9 percent at a 30 percent coefficient of variation (0.0421 against
+#' 0.0385 at a design effect of 1.8 and a take of 20). Report tables carry the nominal
 #' figure, which is the one a reader reaches for, so supply the realized
 #' takes or their coefficient of variation where they are known:
 #'
@@ -671,8 +672,8 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' `sum(b_i^2) / sum(b_i) = b_bar (1 + cv_b^2)`, with `cv_b` the population
 #' coefficient of variation of the takes. A planned take is a constant, so
 #' the two coincide going forward. A published design effect was achieved
-#' with takes that varied, and using their arithmetic mean understates the
-#' `icc` by about the same relative amount.
+#' with takes that varied, and using their arithmetic mean overstates a
+#' positive `icc` by about the same relative amount.
 #' @keywords internal
 #' @noRd
 .varcomp_take <- function(n_per_psu, cv_take) {

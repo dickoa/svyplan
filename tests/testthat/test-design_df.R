@@ -40,6 +40,64 @@ test_that("PSU-register counts subtract one constraint per stratum", {
   expect_identical(d$n_strata, 2L)
 })
 
+.zoned_degf <- function(fit, m) {
+  tab <- fit$psu[!is.na(fit$psu$.zone), , drop = FALSE]
+  tab$id <- seq_len(nrow(tab))
+  drawn <- do.call(rbind, lapply(
+    split(tab, paste(tab$stratum, tab$.zone)), function(z) z[seq_len(m), ]
+  ))
+  drawn$group <- if (m == 1L) drawn$.pair else paste(drawn$stratum, drawn$.zone)
+  design <- survey::svydesign(ids = ~id, strata = ~group,
+                              weights = rep(1, nrow(drawn)), data = drawn)
+  survey::degf(design)
+}
+
+test_that("a zoned register counts its variance groups", {
+  skip_if_not_installed("survey")
+  frame <- data.frame(stratum = "A", N = 100000, n_per_psu = 10)
+  psu <- data.frame(stratum = "A", N = rep(1000, 100))
+  measures <- data.frame(stratum = "A", name = "y", p = 0.5, icc_psu = 0.05)
+  targets <- data.frame(name = "y", cv = 0.08)
+  for (m in 1:2) {
+    fit <- n_alloc(frame, measures = measures, targets = targets, psu = psu,
+                   n_psu_per_zone = m)
+    expect_false(any(fit$psu$certainty))
+    d <- design_df(fit)
+    expect_equal(as.double(d), 12)
+    expect_equal(as.double(d), .zoned_degf(fit, m))
+  }
+  expect_output(print(d), "24 PSUs - 12 variance groups")
+  expect_output(print(summary(d)), "minus variance groups")
+})
+
+test_that("zones pooled across strata leave a stratum no df of its own", {
+  skip_if_not_installed("survey")
+  z <- .psu_wide_register(11)
+  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                 psu = z$psu, n_psu_per_zone = 1)
+  expect_false(any(fit$psu$certainty))
+  d <- design_df(fit)
+  expect_equal(as.double(d), .zoned_degf(fit, 1L))
+  expect_identical(d$strata$.status, c("ok", "ok", "pooled"))
+  expect_equal(d$strata$df, c(8, 2, 0))
+  expect_equal(d$n_strata, length(unique(fit$psu$.pair[!is.na(fit$psu$.pair)])))
+})
+
+test_that("two PSUs per zone give one df per zone in each stratum", {
+  frame <- data.frame(stratum = c("A", "B"), N = 1000, n_per_psu = 10)
+  psu <- data.frame(stratum = rep(c("A", "B"), each = 20), N = 50)
+  measures <- data.frame(stratum = c("A", "B"), name = "y", p = .3,
+                         icc_psu = .08)
+  targets <- data.frame(name = "y", cv = .2, domain = "stratum",
+                        level = c("A", "B"))
+  fit <- n_alloc(frame, measures = measures, targets = targets, psu = psu,
+                 n_psu_per_zone = 2)
+  d <- design_df(fit)
+  expect_equal(d$strata$df, fit$detail$n_zone)
+  expect_equal(d$strata$n_groups, fit$detail$n_zone)
+  expect_equal(as.double(d), sum(fit$detail$n_zone))
+})
+
 alloc_cluster_frame <- function() {
   data.frame(
     stratum = c("a", "b", "c"),

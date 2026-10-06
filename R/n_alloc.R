@@ -81,7 +81,8 @@
 #'       response rate, for designs whose fieldwork differs across
 #'       strata. `NA` in either column falls back to the scalar argument.
 #'       The `deff` and `resp_rate` arguments override these columns when
-#'       given as vectors.}
+#'       given as vectors. In joint allocation a non-missing `measures` row
+#'       overrides them instead.}
 #'   }
 #'
 #'   For `svyplan_prec` objects: a precision result from [prec_alloc()].
@@ -114,8 +115,10 @@
 #'   consistently with [prec_prop()]. Explicit `var` and `sd` values are used
 #'   as supplied. Multistage designs, including PSU-register designs, retain
 #'   the working proportion variance `p * (1 - p)`.
-#'   Optional row-specific `deff` and `resp_rate` values override
-#'   the scalar arguments, and `NA` uses the scalar default. In fixed-take
+#'   Optional row-specific `deff` and `resp_rate` values take precedence, and
+#'   `NA` falls back to the stratum's `frame` column of the same name, then to
+#'   the scalar argument. Indicator values (`p`, `mean`, `sd`, `var`) belong
+#'   here, and `frame` columns of those names are refused. In fixed-take
 #'   multistage mode, `icc_psu` is required and `var_ratio_psu` defaults to 1.
 #'   Three-stage mode also requires `icc_ssu` and derives `var_ratio_ssu` as
 #'   `var_ratio_psu * (1 - icc_psu)` when it is absent, which is the value the
@@ -137,14 +140,31 @@
 #'   precision requirement.
 #' @param psu Optional PSU register for certainty-aware allocation, one row
 #'   per PSU, with `stratum` and `N`, the count of ultimate units in that PSU.
-#'   The PSU sizes must sum to `frame$N` within each stratum.
+#'   The PSU sizes must sum to `frame$N` within each stratum, and every PSU
+#'   must hold at least its stratum's `n_per_psu` unless flagged certainty.
 #'   Optional `psu_id` is carried through and optional `certainty` forces a
 #'   PSU into the certainty part whatever its size. It is an alternative to
 #'   the frame column `N_psu`, which says only how many PSUs a stratum has,
 #'   and requires the frame column `n_per_psu` and `measures$icc_psu`. A
 #'   stratum with a single PSU has no between-PSU variance, so its `icc_psu`
-#'   is taken as 0 and may be `NA`. Joint constrained allocation only, and two
-#'   stages only. See the certainty section under Details.
+#'   is taken as 0 and may be `NA`. Joint constrained allocation to `targets`
+#'   only, two stages only, and without `budget`. See the certainty section
+#'   under Details.
+#' @param certainty_cutoff Inclusion probability at which a PSU of the `psu`
+#'   register is taken with certainty, in \eqn{(0, 1]}. One value applies to
+#'   every stratum, and one per stratum, as a vector or as a `frame` column
+#'   of the same name, relaxes the rule where it is set. The argument
+#'   overrides the column. `NULL` (default) uses the column where present and
+#'   1 otherwise, which is the rule without a cutoff. Requires `psu`. See the
+#'   certainty section under Details.
+#' @param n_psu_per_zone `NULL` (default), 1 or 2, the PSUs drawn from each
+#'   zone when each stratum's remainder is cut into zones of about equal
+#'   size. With 2, every stratum that draws from its remainder has an
+#'   estimable variance. With 1, the variance is estimated by collapsing
+#'   zones in the groups `$psu$.pair` fixes before selection.
+#'   An optional `psu$zone_order` column sets the order zones are cut in,
+#'   such as a geographic order, and size, largest first, is the default.
+#'   Requires `psu`. See the certainty section under Details.
 #' @param objective Optional estimates whose priority-weighted relative
 #'   variance is minimized among the allocations that meet `targets` and the
 #'   budget. Either a character vector of indicator names (overall domain,
@@ -258,12 +278,14 @@
 #'       identities hold for `n_int` and `n_psu_int`.}
 #'     \item{`n_psu_certain`, `n_psu_rest`, `threshold`}{With `psu` only: the
 #'       number of certainty PSUs, the number of PSUs left in the remainder,
-#'       and the certainty threshold `n_per_psu / (n / N)` at the returned
-#'       allocation.}
+#'       and the certainty threshold `certainty_cutoff * n_per_psu / (n / N)`
+#'       at the returned allocation.}
 #'     \item{`n_certain_int`, `n_psu_draw`}{With `psu` only: the units the
 #'       operational design fields in the certainty PSUs, and the number of
 #'       remainder PSUs it draws. Here
 #'       `n_int = n_certain_int + n_psu_draw * n_per_psu`.}
+#'     \item{`n_zone`}{With `n_psu_per_zone` only: the zones the remainder is
+#'       cut into, so `n_psu_draw = n_zone * n_psu_per_zone`.}
 #'   }
 #'
 #'   The result also carries an `$operational` list describing the integer
@@ -291,6 +313,10 @@
 #'     \item{`.threshold`, `.distance`}{The stratum's threshold, and the
 #'       relative distance `N / .threshold - 1`. A PSU with a small
 #'       `.distance` is the one whose classification the allocation can tip.}
+#'     \item{`.zone`}{With `n_psu_per_zone` only: the remainder PSU's zone
+#'       within its stratum, `NA` for a certainty PSU.}
+#'     \item{`.pair`}{With `n_psu_per_zone = 1` only: the variance group of
+#'       the PSU's zone, numbered across strata, `NA` outside any zone.}
 #'   }
 #'
 #'   `$optimization$certainty` reports how the classification was resolved:
@@ -513,6 +539,13 @@
 #' sizes must sum to `frame$N` in every stratum. This two-stage joint-allocation
 #' mode requires `n_per_psu` in `frame` and `icc_psu` in `measures`.
 #'
+#' A remainder PSU is drawn for the take, so a PSU holding fewer units than
+#' `n_per_psu` is refused, named by its `psu_id` or its row. Merge it with a
+#' neighbouring PSU before planning, as is usual when PSUs are formed
+#' (Valliant, Dever and Kreuter 2018, sec. 10.3) and as [merge_psus()] does,
+#' or flag it in `certainty`, where it is subsampled at the stratum's
+#' sampling fraction. A `psu_id` must name each PSU once.
+#'
 #' `icc_psu` describes the remainder, whose PSUs are selected with probability
 #' proportional to size. It is the size-weighted share of the stratum variance
 #' that lies between PSUs, which [varcomp()] returns when `prob` is each PSU's
@@ -520,39 +553,80 @@
 #' PSU has no variance between PSUs, so its `icc_psu` is taken as 0 whatever is
 #' supplied and may be `NA`. Every other stratum needs a value in \eqn{[0, 1]}.
 #'
-#' With take \eqn{b_h} and sampling fraction \eqn{f_h = n_h / N_h}, a PSU is
-#' certain when its size reaches
+#' With take \eqn{b_h}, sampling fraction \eqn{f_h = n_h / N_h} and
+#' `certainty_cutoff` \eqn{c_h}, a PSU is certain when its inclusion
+#' probability reaches \eqn{c_h}, that is when its size reaches
 #'
-#' \deqn{N_{hi} \ge b_h / f_h.}{N_hi >= b_h / f_h.}
+#' \deqn{N_{hi} \ge c_h b_h / f_h.}{N_hi >= c_h * b_h / f_h.}
 #'
 #' The remainder is fielded as a whole number of PSUs drawn with probability
 #' proportional to size, and rounding that number up raises every remainder
-#' PSU's inclusion probability. A PSU whose probability reaches one under
-#' that draw is certainty too, and the draw is recomputed without it until no
-#' PSU reaches one, the iterative rule for selection proportional to size. A
-#' PSU below the threshold can be certainty this way, and so can a stratum's
-#' only PSU. The operational design is therefore one any fixed-size
-#' proportional-to-size method can draw as it stands.
+#' PSU's inclusion probability. A PSU whose probability reaches \eqn{c_h}
+#' under that draw is certainty too, and the draw is recomputed without it
+#' until no PSU reaches \eqn{c_h}, the iterative rule for selection
+#' proportional to size. A PSU below the threshold can be certainty this way,
+#' and so can a stratum's only PSU. A remainder always draws at least one
+#' PSU, even when the rounded certainty takes use up the stratum's
+#' allocation, so no part of a stratum is left out of the sample. The
+#' operational design is therefore one any fixed-size proportional-to-size
+#' method can draw as it stands.
+#'
+#' The default \eqn{c_h = 1} takes with certainty only the PSUs the design
+#' cannot sample less often. A cutoff below one, such as the 0.80 Valliant,
+#' Dever and Kreuter (2018, sec. 9.6) mention, takes more PSUs with
+#' certainty and removes their clustering from the design effect, so the
+#' sample usually falls. The classification is discrete, so where the loop
+#' cycles the plan moves in steps as the cutoff changes and need not fall
+#' with it. Price the choice with [predict.svyplan] over
+#' `certainty_cutoff`.
+#'
+#' `n_psu_per_zone = 2` cuts each stratum's remainder, sorted by
+#' `psu$zone_order` or by size, into zones of about equal total size and draws
+#' two PSUs from each, the deep stratification of area samples (Valliant,
+#' Dever and Kreuter 2018, sec. 9.5 and Example 3.13). The remainder draw
+#' rounds up to a whole number of zones, which can add one PSU in a stratum.
+#' The rule above then applies inside each zone. A PSU is certain when its
+#' probability within its zone reaches \eqn{c_h}, and so is every PSU of a
+#' zone, or of a remainder, that holds no more PSUs than it draws. A stratum
+#' that draws from its remainder then draws at least two PSUs, so its
+#' variance can be estimated. The design effect does not credit the zones,
+#' so the planned precision stays conservative.
+#'
+#' `n_psu_per_zone = 1` draws one PSU from each zone, the finest
+#' stratification of the remainder. A zone holding a single PSU is a census,
+#' so more PSUs are certainty and the sample tends to be the smallest of the
+#' three settings. No zone yields two PSUs, so the variance needs zones
+#' collapsed, and `$psu$.pair` fixes the groups before selection. Zones are
+#' paired in zone order within a stratum, with three together where the
+#' count is odd. Strata whose remainder is a single zone are grouped with
+#' each other in `frame` row order, so order the rows to put similar strata
+#' next to each other. One draw per zone has the with-replacement variance,
+#' so the groups are analysed without a finite population correction. In
+#' that form the collapsed estimator overestimates the variance, by more as
+#' the zone totals in a group differ (Valliant, Dever and Kreuter 2018, sec.
+#' 15.5.3). A without-replacement correction such as Brewer's can turn it
+#' into an underestimate when the zones in a group are alike.
 #'
 #' The certainty part has no first-stage sampling variance. The remainder has
 #' the usual clustering component, and the two are combined into the
 #' anticipated design effect. `psu$certainty` can add a PSU to the certainty
 #' part. It cannot remove a PSU either rule makes certainty.
 #'
-#' This uses an aggregate planning approximation. The noncertainty part
-#' uses a with-replacement clustering approximation, a standard approach
-#' in PPS sample-size planning. Each part receives its proportional share of
-#' the stratum allocation, so with \eqn{N_h^C} units in certainty PSUs,
-#' \eqn{N_h^R} in the remainder and \eqn{\delta_h} for `icc_psu`, the design
-#' effect is
+#' The continuous allocation uses an aggregate planning approximation. The
+#' noncertainty part uses a with-replacement clustering approximation, a
+#' standard approach in PPS sample-size planning. Each part receives its
+#' proportional share of the stratum allocation, so with \eqn{N_h^C} units
+#' in certainty PSUs, \eqn{N_h^R} in the remainder, \eqn{\delta_h} for
+#' `icc_psu` and response rate \eqn{r_h}, the design effect is
 #'
-#' \deqn{d_h = \frac{N_h^C + N_h^R \{1 + \delta_h (b_h - 1)\}}{N_h}.}{d_h = (N_h^C + N_h^R * (1 + delta_h * (b_h - 1))) / N_h.}
+#' \deqn{d_h = \frac{N_h^C + N_h^R \{1 + \delta_h (b_h r_h - 1)\}}{N_h}.}{d_h = (N_h^C + N_h^R * (1 + delta_h * (b_h * r_h - 1))) / N_h.}
 #'
 #' It depends on which PSUs are certainty, not on the allocation. A common
-#' stratum-level finite population correction is then applied. Precision
-#' therefore uses aggregate shares rather than each PSU's individually rounded
-#' take and stage-specific sampling fractions. Check sensitivity to this
-#' aggregation when rounding or sampling fractions are substantial.
+#' stratum-level finite population correction is then applied. The
+#' clustering reads the responding take \eqn{b_h r_h}, as the `N_psu` form
+#' does, while the threshold and the draw read the issued take \eqn{b_h}.
+#' A PSU-level response rate and a `var_ratio_psu` other than 1 have no
+#' place in this design effect and are refused.
 #'
 #' The threshold and allocation determine each other, so the solver iterates.
 #' `$optimization$certainty` records whether it converged, cycled, or reached
@@ -570,10 +644,36 @@
 #' The operational design is fieldable: certainty PSUs use their whole take
 #' at the stratum rate and the remainder uses whole PSUs at `n_per_psu`. Thus
 #' `n_int = n_certain_int + n_psu_draw * n_per_psu` in every stratum.
-#' `$operational` reports its count and cost, with precision evaluated under
-#' the aggregate planning approximation described above.
+#' `$operational` reports its count, cost and precision. The rounded
+#' certainty takes \eqn{q_{hi}}{q_hi} run above the stratum rate and the remainder
+#' gets what is left, so the field design is assessed on its own takes and
+#' draw \eqn{a_h}, each part a stratum of its own:
+#'
+#' \deqn{V_h = S_h^2 \Big[\sum_{i \in C} N_{hi}^2 \Big(\frac{1}{r_h q_{hi}} - \frac{1}{N_{hi}}\Big) + (N_h^R)^2 \{1 + \delta_h (b_h r_h - 1)\} \Big(\frac{1}{r_h a_h b_h} - \frac{1}{N_h^R}\Big)\Big].}{V_h = S_h^2 * [sum_C N_hi^2 * (1 / (r_h * q_hi) - 1 / N_hi) + (N_h^R)^2 * (1 + delta_h * (b_h * r_h - 1)) * (1 / (r_h * a_h * b_h) - 1 / N_h^R)].}
+#'
+#' At the stratum rate the expression equals the aggregate one above. Where
+#' the field design misses a target, whole remainder PSUs (whole zones when
+#' zoned) are added one at a time, each where it most reduces the failing
+#' targets' excess variance per unit of cost, as the solver's own integer
+#' repair does. Strata outside the failing targets' domains are left alone.
+#' If the remainder feeding a failing target is used up, or no addition
+#' reduces it, `n_alloc()` stops with an error naming each failing target
+#' with its achieved and required values. That error concerns this repair
+#' under the held classification and certainty takes, not every possible
+#' field design.
+#'
 #' Use `cost_psu` and `cost_ssu` together to price PSU visits and interviews.
-#' [predict.svyplan] can compare fixed values of `n_per_psu`.
+#' A certainty PSU's visit is paid whatever its take, so the solver prices
+#' an interview at `cost_ssu + (N_h^R / N_h) * cost_psu / n_per_psu`, and
+#' `$params$achieved$cost` and `$optimization$cost` add the certainty visits
+#' as a fixed cost, as do the stratum costs `summary()` reports. The
+#' optimality certificate, its gap and its multipliers refer to the
+#' marginal-cost problem without that constant, which has the same optimum,
+#' and hold for the classification the plan settled on, not across
+#' classifications. A `budget` is refused with a register,
+#' because the field design rounds its draws up and does not hold certainty
+#' visits within a budget. [predict.svyplan] can compare fixed values of
+#' `n_per_psu`.
 #'
 #' ## Domains vs. strata
 #'
@@ -802,6 +902,12 @@
 #' )
 #' reg_fit$detail[, c("stratum", "n_psu_certain", "n_psu_draw", "n_int")]
 #'
+#' # Relaxing the certainty rule to an inclusion probability below one
+#' predict(reg_fit, data.frame(certainty_cutoff = c(1, 0.9, 0.8)))
+#'
+#' # No zones, one PSU per zone, and two PSUs per zone
+#' predict(reg_fit, data.frame(n_psu_per_zone = c(NA, 1, 2)))
+#'
 #' @export
 n_alloc <- function(frame, ...) {
   if (!missing(frame)) {
@@ -823,6 +929,8 @@ n_alloc.default <- function(
   measures = NULL,
   targets = NULL,
   psu = NULL,
+  certainty_cutoff = NULL,
+  n_psu_per_zone = NULL,
   objective = NULL,
   alloc = c("neyman", "optimal", "proportional", "power"),
   unit_cost = NULL,
@@ -840,6 +948,7 @@ n_alloc.default <- function(
     return(do.call(n_alloc.default, c(.plan, list(...))))
   }
   .check_unused_dots(...)
+  .check_register_args(certainty_cutoff, n_psu_per_zone, frame, psu)
   alloc_default <- c("neyman", "optimal", "proportional", "power")
   alloc_explicit <- !missing(alloc) && !identical(alloc, alloc_default)
   alloc_q_explicit <- !missing(alloc_q) && !identical(alloc_q, 0.5)
@@ -925,7 +1034,9 @@ n_alloc.default <- function(
         min_n_stratum = min_n_stratum,
         objective = objective,
         budget = budget,
-        df = df
+        df = df,
+        certainty_cutoff = certainty_cutoff,
+        n_psu_per_zone = n_psu_per_zone
       )))
     }
     return(.n_alloc_bethel(
@@ -1346,6 +1457,11 @@ n_alloc.svyplan_prec <- function(
       min_n_stratum = p$min_n_stratum,
       fpc = p$fpc %||% "unit"
     )
+    if (!is.null(p$psu)) {
+      args$psu <- p$psu
+      args$certainty_cutoff <- p$certainty_cutoff
+      args$n_psu_per_zone <- p$n_psu_per_zone
+    }
     return(do.call(
       n_alloc.default,
       .roundtrip_args(args, list(...), n_alloc.default)
@@ -1411,13 +1527,20 @@ n_alloc.svyplan_prec <- function(
 #'   with `measures` in the default method and is recovered automatically from
 #'   a fitted result.
 #' @param psu Optional PSU register for certainty-aware assessment. See the
-#'   `psu` argument to [n_alloc()]. No loop is needed here, since the
+#'   `psu` argument to [n_alloc()]. A `budget` is refused with it, and an
+#'   `objective` is reported as a description of the assessed allocation. No loop is needed here, since the
 #'   allocation is supplied, so the threshold it implies is supplied with it and the
 #'   classification is read off the design being assessed. The `$psu` table
 #'   carries the same columns as a fitted plan's, with `n_take` read off the
 #'   supplied allocation. A fitted result
 #'   carries its own register and its held classification, so
 #'   `prec_alloc(fit)` reproduces the plan's precision exactly.
+#' @param certainty_cutoff Inclusion probability at which a PSU is taken with
+#'   certainty. See the `certainty_cutoff` argument to [n_alloc()]. A fitted
+#'   result carries its own.
+#' @param n_psu_per_zone `NULL`, 1 or 2, PSUs drawn per zone of the remainder.
+#'   See the `n_psu_per_zone` argument to [n_alloc()]. A fitted result
+#'   carries its own.
 #' @param objective Optional objective components to report alongside the
 #'   targets. See the `objective` argument to [n_alloc()]. Recovered
 #'   automatically from a fitted budget-objective result.
@@ -1502,6 +1625,12 @@ n_alloc.svyplan_prec <- function(
 #'   as hard targets would over-constrain a design that already spends its
 #'   whole budget.
 #'
+#'   A result assessed with a `psu` register carries the register, the
+#'   caller's `frame` and `measures`, and any `certainty_cutoff`, so the round
+#'   trip plans the register design again. It derives the classification
+#'   afresh from the register the fit was solved from, so where the fit's
+#'   loop cycled the new plan can resolve the cycle at another member.
+#'
 #' @family stratified design functions
 #' @seealso [n_alloc()], and [n_alloc-generalized] for the joint mode.
 #'
@@ -1550,6 +1679,8 @@ prec_alloc.default <- function(
   measures = NULL,
   targets = NULL,
   psu = NULL,
+  certainty_cutoff = NULL,
+  n_psu_per_zone = NULL,
   objective = NULL,
   budget = NULL,
   domains = NULL,
@@ -1572,6 +1703,7 @@ prec_alloc.default <- function(
     return(do.call(prec_alloc.default, c(.plan, list(...))))
   }
   .check_unused_dots(...)
+  .check_register_args(certainty_cutoff, n_psu_per_zone, frame, psu)
   fpc <- match.arg(fpc)
   joint_any <- !is.null(measures) || !is.null(targets) || !is.null(objective)
   if (joint_any) {
@@ -1620,7 +1752,9 @@ prec_alloc.default <- function(
         deff = deff,
         resp_rate = resp_rate,
         min_n_stratum = min_n_stratum,
-        df = df
+        df = df,
+        certainty_cutoff = certainty_cutoff,
+        n_psu_per_zone = n_psu_per_zone
       ))
     }
     return(.prec_alloc_bethel(
@@ -1773,12 +1907,19 @@ prec_alloc.svyplan_n <- function(frame, ...) {
         df = p$df,
         unit_cost = p$unit_cost,
         min_n_stratum = p$min_n_stratum,
+        certainty_cutoff = p$certainty_cutoff,
+        n_psu_per_zone = p$n_psu_per_zone,
         .allow_fractional_stages = !n_explicit
       )
-      return(do.call(
+      out <- do.call(
         .prec_alloc_psu,
         .roundtrip_args(args, dots, .prec_alloc_psu)
-      ))
+      )
+      # The way back re-plans from the register the fit was solved from, so
+      # its diagnostics describe its own classification rather than report
+      # the held PSUs as supplied.
+      out$params$psu <- p$psu
+      return(out)
     }
     args <- list(
       frame = p$frame,

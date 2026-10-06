@@ -2583,6 +2583,10 @@ summary.svyplan_prec <- function(object, ...) {
     threshold = detail$threshold,
     stringsAsFactors = FALSE
   )
+  # The threshold is the cutoff's, so a relaxed rule is shown beside it.
+  cutoff <- .psu_cutoff(object$params$certainty_cutoff, object$params$frame)
+  if (any(cutoff < 1)) out$cutoff <- cutoff
+  if (!is.null(detail$n_zone)) out$zones <- detail$n_zone
   # The design effects the split produced already have a home, one row per
   # stratum and constraint in the resolved planning inputs below, so they are
   # not repeated here.
@@ -2682,6 +2686,19 @@ summary.svyplan_prec <- function(object, ...) {
   out[[if (design) "n_field" else "n_supplied"]] <- n_primary
   out$weight <- problem$population_N / n_primary
   out$cost <- problem$cost * decision
+  # A register's solver prices interviews at the marginal cost of its held
+  # classification, so its certainty visits are added here, and the field
+  # design is priced as it is drawn.
+  if (!is.null(p$psu) && all(c("cost_psu", "cost_ssu") %in% names(p$frame))) {
+    cost_psu <- rep_len(as.numeric(p$frame$cost_psu), nrow(out))
+    cost_ssu <- rep_len(as.numeric(p$frame$cost_ssu), nrow(out))
+    out$cost <- if (design) {
+      d <- object$detail
+      (d$n_psu_certain + d$n_psu_draw) * cost_psu + d$n_int * cost_ssu
+    } else {
+      p$certainty$n_psu_certain * cost_psu + out$cost
+    }
+  }
   if (problem$stages > 1L) {
     out$population_psu <- problem$stage$N_psu
     if (problem$stages == 3L) {
@@ -4511,16 +4528,21 @@ print.svyplan_df <- function(x, ...) {
   }
   n_units <- attr(x, "n_units", exact = TRUE)
   n_strata <- attr(x, "n_strata", exact = TRUE)
+  strata <- attr(x, "strata", exact = TRUE)
+  constraint_label <- if (!is.null(strata$n_groups)) {
+    if (n_strata == 1L) "variance group" else "variance groups"
+  } else {
+    if (n_strata == 1L) "stratum" else "strata"
+  }
   cat("Design degrees of freedom (planning)\n\n")
   cat(sprintf(
-    "  df = %g   (%g %s - %d strat%s)\n",
+    "  df = %g   (%g %s - %d %s)\n",
     as.double(x),
     n_units,
     unit_label,
     n_strata,
-    if (n_strata == 1L) "um" else "a"
+    constraint_label
   ))
-  strata <- attr(x, "strata", exact = TRUE)
   if (!is.null(strata)) {
     flagged <- strata$.status != "ok"
     if (any(flagged)) {
@@ -4560,7 +4582,12 @@ summary.svyplan_df <- function(object, ...) {
       stage = stage,
       strata = attr(object, "strata", exact = TRUE),
       domains = attr(object, "domains", exact = TRUE),
-      basis = sprintf("counted %s minus contributing strata", unit_label)
+      basis = if (is.null(attr(object, "strata", exact = TRUE)$n_groups)) {
+        sprintf("counted %s minus contributing strata", unit_label)
+      } else {
+        sprintf("counted %s minus variance groups (zones, or collapsed zones)",
+                unit_label)
+      }
     ),
     class = "summary.svyplan_df"
   )
@@ -4586,12 +4613,13 @@ print.summary.svyplan_df <- function(x, ...) {
     status <- x$strata$.status
     census <- status == "census"
     counted <- ifelse(census, 0, x$strata$n_units)
+    constraints <- x$strata$n_groups %||% as.integer(!census)
     tab <- if (any(census)) {
       data.frame(
         Stratum = x$strata$stratum,
         Sampled = x$strata$n_units,
         Counted = counted,
-        Constraints = as.integer(!census),
+        Constraints = constraints,
         `Design df` = x$strata$df,
         Status = status,
         check.names = FALSE
@@ -4600,7 +4628,7 @@ print.summary.svyplan_df <- function(x, ...) {
       data.frame(
         Stratum = x$strata$stratum,
         Units = counted,
-        Constraints = as.integer(!census),
+        Constraints = constraints,
         `Design df` = x$strata$df,
         Status = status,
         check.names = FALSE

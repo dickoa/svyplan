@@ -959,11 +959,12 @@ test_that("cv_take is the summary form of the same reduction", {
   )
 })
 
-test_that("varying takes raise the icc relative to the nominal one", {
+test_that("the nominal take overstates a positive icc", {
   nominal <- varcomp(deff = 1.8, n_per_psu = 20)$icc
   weighted <- varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)$icc
   expect_lt(weighted, nominal)
-  # the relative understatement tracks the relative gap in the take
+  expect_equal(c(nominal, weighted), c(0.8 / 19, 0.8 / 20.8))
+  # The relative overstatement tracks the relative gap in the take.
   expect_equal((nominal - weighted) / weighted, (20 * 1.09 - 20) / (20 - 1),
                tolerance = 0.02)
 })

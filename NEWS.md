@@ -1,4 +1,4 @@
-# svyplan 0.13.0
+# svyplan 0.15.0
 
 Initial CRAN release.
 
@@ -59,10 +59,24 @@ that recommendation when available, or rounds the continuous size up.
   An element-level proportion measure uses the population variance
   `N * p * (1 - p) / (N - 1)`, so a one-stratum joint allocation equals
   `n_prop()`. Multistage designs use the working variance `p * (1 - p)`.
+  A `frame` column `deff` or `resp_rate` is the stratum default under the
+  `measures` rows, as for the stage parameters, and indicator values in
+  `frame` are refused.
 * `psu` gives `n_alloc()` a PSU register, which separates the PSUs a PPS design
   would select with certainty and reports the take each fielded PSU carries.
   A stratum with a single PSU carries no between-PSU variance, so its
-  `icc_psu` may be `NA`.
+  `icc_psu` may be `NA`. `certainty_cutoff` takes PSUs with certainty from an
+  inclusion probability below one, for every stratum or per stratum.
+  `n_psu_per_zone` cuts each stratum's remainder into zones of about equal
+  size and draws one or two PSUs from each. With two, every stratum's
+  variance can be estimated. With one, `$psu$.pair` groups the zones for a
+  collapsed variance. The whole-unit design is assessed on its own rounded
+  takes and repaired where a target fails, or the fit stops naming it.
+  Certainty visits are priced as a fixed cost, and the clustering reads the
+  responding take. A `budget`, a `var_ratio_psu` other than 1 and
+  a PSU-level response rate are refused with a register. A register PSU
+  smaller than its take is refused, and `merge_psus()` merges small PSUs with
+  their neighbours in row order to a minimum size.
 * `n_multi()` sizes a table of indicators, with optional per-domain sizing and
   a `min_n_domain` floor. `n_cluster(indicators = )` and
   `prec_cluster(indicators = )` take the same table for a multistage design, so
@@ -152,8 +166,11 @@ that recommendation when available, or rounds the continuous size up.
 * `effective_n()` mirrors it, returning `n * resp_rate / deff`.
 * `design_df()` counts the degrees of freedom a planned design's variance
   estimator will have, the planning analogue of `survey::degf()`, with additive
-  per-stratum and non-additive per-domain detail. `df` switches the interval
-  quantile from the normal to `t` in every function that builds an interval.
+  per-stratum and non-additive per-domain detail. A zoned PSU register counts
+  its zones, or its collapsed zone groups at one PSU per zone, whose
+  per-stratum counts need not add up when a group joins strata. `df` switches
+  the interval quantile from the normal to `t` in every function that builds
+  an interval.
 * `design_rotation()` declares the occasions a unit spends in and out of
   sample over its whole life, from a compact spec in either notation the
   literature uses or from an explicit per-occasion take. It is the object

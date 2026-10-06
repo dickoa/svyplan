@@ -126,7 +126,11 @@ though the solver saw a one-stage problem, and reports \code{n_psu_certain} and
 \code{n_psu_draw} in place of the PSU counts. This is how the take is priced. It
 also sets the certainty threshold, so a larger take leaves fewer certainty
 PSUs and costs more sample, and the resulting cost curve has a minimum
-worth finding rather than assuming.
+worth finding rather than assuming. Such a fit also varies
+\code{certainty_cutoff}, one value per row applied to every stratum, to price
+a relaxed certainty rule the same way, and \code{n_psu_per_zone}, with \code{NA} for
+no zones, to compare zone settings. A grid that varies \code{n_psu_per_zone},
+or a fit with zones, adds \code{n_zone}.
 
 Precision targets stay out of reach of the grid. A one-stage minimum-cost
 fit therefore has nothing to vary. Modify \code{targets} and call \code{\link[=n_alloc]{n_alloc()}}

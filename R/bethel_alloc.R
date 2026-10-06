@@ -531,6 +531,44 @@
   out
 }
 
+#' A measure row's design effect or response rate
+#'
+#' Resolved as the stage parameters are, the measure row first, then the
+#' stratum's `frame` column, then the scalar argument.
+#' @keywords internal
+#' @noRd
+.joint_row_value <- function(name, measures, frame, scalar) {
+  rule <- if (identical(name, "deff")) {
+    list(ok = function(v) is.finite(v) & v > 0,
+         text = "positive finite values")
+  } else {
+    list(ok = function(v) is.finite(v) & v > 0 & v <= 1,
+         text = "values in (0, 1]")
+  }
+  value <- if (name %in% names(measures)) measures[[name]] else
+    rep(NA_real_, nrow(measures))
+  if (!is.numeric(value) || any(!is.na(value) & !rule$ok(value))) {
+    stop(sprintf("'measures$%s' must contain %s or NA", name, rule$text),
+         call. = FALSE)
+  }
+  if (name %in% names(frame)) {
+    stratum <- as.character(frame$stratum %||% seq_len(nrow(frame)))
+    fallback <- frame[[name]]
+    if (!is.numeric(fallback)) {
+      stop(sprintf("'frame$%s' must be numeric", name), call. = FALSE)
+    }
+    fallback <- fallback[match(as.character(measures$stratum), stratum)]
+    used <- is.na(value) & !is.na(fallback)
+    if (any(!rule$ok(fallback[used]))) {
+      stop(sprintf("'frame$%s' must contain %s or NA", name, rule$text),
+           call. = FALSE)
+    }
+    value[used] <- fallback[used]
+  }
+  value[is.na(value)] <- scalar
+  value
+}
+
 #' Normalize an indicator-specific stage parameter
 #' @keywords internal
 #' @noRd
@@ -965,6 +1003,18 @@
     stop("'max_weight' must be >= 1 and finite when provided", call. = FALSE)
   }
   take_all <- .check_take_all(frame[["take_all"]], nrow(frame))
+  # A frame row has no indicator, so an indicator's value there has nothing
+  # to attach to and would be dropped without a word.
+  indicator_cols <- intersect(c("p", "mean", "sd", "var"), names(frame))
+  if (length(indicator_cols) > 0L) {
+    stop(
+      sprintf(
+        "joint allocation reads indicator values from 'measures', one row per stratum and indicator. Move %s from 'frame' to 'measures'",
+        paste(sQuote(indicator_cols), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
 
   # Determine target relevance before validating measure values. Unused
   # indicator-stratum rows may carry incomplete planning information and must
@@ -1099,23 +1149,8 @@
     # N - 1, as in prec_prop(). Multistage working variances retain p(1-p).
     var_norm[has_p] <- .bernoulli_var(p[has_p], prop_N)
   }
-  row_deff <- if ("deff" %in% names(measures)) measures$deff else
-    rep(NA_real_, nrow(measures))
-  row_resp <- if ("resp_rate" %in% names(measures)) measures$resp_rate else
-    rep(NA_real_, nrow(measures))
-  if (!is.numeric(row_deff) ||
-      any(!is.na(row_deff) & (!is.finite(row_deff) | row_deff <= 0))) {
-    stop("'measures$deff' must contain positive finite values or NA",
-         call. = FALSE)
-  }
-  if (!is.numeric(row_resp) ||
-      any(!is.na(row_resp) &
-          (!is.finite(row_resp) | row_resp <= 0 | row_resp > 1))) {
-    stop("'measures$resp_rate' must contain values in (0, 1] or NA",
-         call. = FALSE)
-  }
-  deff_norm <- ifelse(is.na(row_deff), deff, row_deff)
-  resp_norm <- ifelse(is.na(row_resp), resp_rate, row_resp)
+  deff_norm <- .joint_row_value("deff", measures, frame, deff)
+  resp_norm <- .joint_row_value("resp_rate", measures, frame, resp_rate)
   resp_psu_norm <- rep(1, length(resp_norm))
   resp_ssu_norm <- rep(1, length(resp_norm))
   .bethel_reject_stage_rate(

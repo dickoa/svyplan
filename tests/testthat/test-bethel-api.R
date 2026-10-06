@@ -208,3 +208,105 @@ test_that("a per-target df column beats the scalar argument", {
   expect_equal(res$detail$n, per_row$detail$n)
   expect_equal(res$constraints$.moe, per_row$constraints$.moe)
 })
+
+## Frame columns in joint allocation
+
+test_that("frame deff and resp_rate are stratum defaults under the measure rows", {
+  frame <- data.frame(stratum = c("A", "B"), N = c(5000, 8000))
+  measures <- data.frame(stratum = c("A", "B"), name = "y", p = c(0.3, 0.4))
+  targets <- data.frame(name = "y", cv = 0.05)
+  for (col in c("deff", "resp_rate")) {
+    value <- if (col == "deff") 2 else 0.5
+    per_frame <- frame
+    per_frame[[col]] <- c(value, NA)
+    per_row <- measures
+    per_row[[col]] <- c(value, NA)
+    by_frame <- n_alloc(per_frame, measures = measures, targets = targets)
+    by_row <- n_alloc(frame, measures = per_row, targets = targets)
+    expect_equal(by_frame$detail$n, by_row$detail$n, label = col)
+
+    # The measure row wins where it is set, the frame fills the rest.
+    fill <- if (col == "deff") 3 else 0.9
+    other <- frame
+    other[[col]] <- fill
+    both <- measures
+    both[[col]] <- c(value, fill)
+    expect_equal(
+      n_alloc(other, measures = per_row, targets = targets)$detail$n,
+      n_alloc(frame, measures = both, targets = targets)$detail$n,
+      label = col
+    )
+
+    assessed <- prec_alloc(per_frame, n = c(300, 400), measures = measures,
+                           targets = targets)
+    expect_equal(
+      assessed$cv,
+      prec_alloc(frame, n = c(300, 400), measures = per_row,
+                 targets = targets)$cv,
+      label = col
+    )
+  }
+})
+
+test_that("a stage design and a register read the frame response rate", {
+  frame <- data.frame(stratum = "A", N = 100000, n_per_psu = 10,
+                      cost_psu = 100, cost_ssu = 10)
+  measures <- data.frame(stratum = "A", name = "y", p = 0.5, icc_psu = 0.05)
+  targets <- data.frame(name = "y", cv = 0.08)
+  psu <- data.frame(stratum = "A", N = rep(1000, 100))
+  scalar <- n_alloc(transform(frame, N_psu = 100), measures = measures,
+                    targets = targets, resp_rate = 0.5)
+  column <- n_alloc(transform(frame, N_psu = 100, resp_rate = 0.5),
+                    measures = measures, targets = targets)
+  expect_equal(column$n, scalar$n)
+  register <- n_alloc(transform(frame, resp_rate = 0.5), measures = measures,
+                      targets = targets, psu = psu)
+  expect_equal(register$n, scalar$n, tolerance = 1e-8)
+  register_deff <- n_alloc(transform(frame, deff = 1.5), measures = measures,
+                           targets = targets, psu = psu)
+  expect_equal(
+    register_deff$n,
+    n_alloc(frame, measures = measures, targets = targets, psu = psu,
+            deff = 1.5)$n
+  )
+})
+
+test_that("frame deff and resp_rate are validated where they are read", {
+  frame <- data.frame(stratum = c("A", "B"), N = c(5000, 8000))
+  measures <- data.frame(stratum = c("A", "B"), name = "y", p = c(0.3, 0.4))
+  targets <- data.frame(name = "y", cv = 0.05)
+  expect_error(
+    n_alloc(transform(frame, resp_rate = c(1.5, 1)), measures = measures,
+            targets = targets),
+    "'frame\\$resp_rate' must contain values in \\(0, 1\\] or NA"
+  )
+  expect_error(
+    n_alloc(transform(frame, deff = c(0, 1)), measures = measures,
+            targets = targets),
+    "'frame\\$deff' must contain positive finite values or NA"
+  )
+  # A measure row covering the stratum leaves its frame value unread.
+  expect_no_error(
+    n_alloc(transform(frame, deff = c(0, 1)),
+            measures = transform(measures, deff = 1), targets = targets)
+  )
+})
+
+test_that("indicator values in frame are refused in joint allocation", {
+  frame <- data.frame(stratum = c("A", "B"), N = c(5000, 8000))
+  measures <- data.frame(stratum = c("A", "B"), name = "y", p = c(0.3, 0.4))
+  targets <- data.frame(name = "y", cv = 0.05)
+  for (col in c("p", "mean", "sd", "var")) {
+    bad <- frame
+    bad[[col]] <- 0.5
+    expect_error(
+      n_alloc(bad, measures = measures, targets = targets),
+      sprintf("Move .%s. from 'frame' to 'measures'", col)
+    )
+    expect_error(
+      prec_alloc(bad, n = c(300, 400), measures = measures,
+                 targets = targets),
+      "reads indicator values from 'measures'"
+    )
+  }
+})

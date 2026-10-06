@@ -18,6 +18,8 @@ n_alloc(frame, ...)
   measures = NULL,
   targets = NULL,
   psu = NULL,
+  certainty_cutoff = NULL,
+  n_psu_per_zone = NULL,
   objective = NULL,
   alloc = c("neyman", "optimal", "proportional", "power"),
   unit_cost = NULL,
@@ -109,7 +111,8 @@ whose total population is tiny enough to enumerate.}
 response rate, for designs whose fieldwork differs across
 strata. \code{NA} in either column falls back to the scalar argument.
 The \code{deff} and \code{resp_rate} arguments override these columns when
-given as vectors.}
+given as vectors. In joint allocation a non-missing \code{measures} row
+overrides them instead.}
 }
 
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_alloc]{prec_alloc()}}.}
@@ -148,8 +151,10 @@ variance \code{N * p * (1 - p) / (N - 1)}, using its stratum's \code{N > 1},
 consistently with \code{\link[=prec_prop]{prec_prop()}}. Explicit \code{var} and \code{sd} values are used
 as supplied. Multistage designs, including PSU-register designs, retain
 the working proportion variance \code{p * (1 - p)}.
-Optional row-specific \code{deff} and \code{resp_rate} values override
-the scalar arguments, and \code{NA} uses the scalar default. In fixed-take
+Optional row-specific \code{deff} and \code{resp_rate} values take precedence, and
+\code{NA} falls back to the stratum's \code{frame} column of the same name, then to
+the scalar argument. Indicator values (\code{p}, \code{mean}, \code{sd}, \code{var}) belong
+here, and \code{frame} columns of those names are refused. In fixed-take
 multistage mode, \code{icc_psu} is required and \code{var_ratio_psu} defaults to 1.
 Three-stage mode also requires \code{icc_ssu} and derives \code{var_ratio_ssu} as
 \code{var_ratio_psu * (1 - icc_psu)} when it is absent, which is the value the
@@ -173,14 +178,33 @@ precision requirement.}
 
 \item{psu}{Optional PSU register for certainty-aware allocation, one row
 per PSU, with \code{stratum} and \code{N}, the count of ultimate units in that PSU.
-The PSU sizes must sum to \code{frame$N} within each stratum.
+The PSU sizes must sum to \code{frame$N} within each stratum, and every PSU
+must hold at least its stratum's \code{n_per_psu} unless flagged certainty.
 Optional \code{psu_id} is carried through and optional \code{certainty} forces a
 PSU into the certainty part whatever its size. It is an alternative to
 the frame column \code{N_psu}, which says only how many PSUs a stratum has,
 and requires the frame column \code{n_per_psu} and \code{measures$icc_psu}. A
 stratum with a single PSU has no between-PSU variance, so its \code{icc_psu}
-is taken as 0 and may be \code{NA}. Joint constrained allocation only, and two
-stages only. See the certainty section under Details.}
+is taken as 0 and may be \code{NA}. Joint constrained allocation to \code{targets}
+only, two stages only, and without \code{budget}. See the certainty section
+under Details.}
+
+\item{certainty_cutoff}{Inclusion probability at which a PSU of the \code{psu}
+register is taken with certainty, in \eqn{(0, 1]}. One value applies to
+every stratum, and one per stratum, as a vector or as a \code{frame} column
+of the same name, relaxes the rule where it is set. The argument
+overrides the column. \code{NULL} (default) uses the column where present and
+1 otherwise, which is the rule without a cutoff. Requires \code{psu}. See the
+certainty section under Details.}
+
+\item{n_psu_per_zone}{\code{NULL} (default), 1 or 2, the PSUs drawn from each
+zone when each stratum's remainder is cut into zones of about equal
+size. With 2, every stratum that draws from its remainder has an
+estimable variance. With 1, the variance is estimated by collapsing
+zones in the groups \verb{$psu$.pair} fixes before selection.
+An optional \code{psu$zone_order} column sets the order zones are cut in,
+such as a geographic order, and size, largest first, is the default.
+Requires \code{psu}. See the certainty section under Details.}
 
 \item{objective}{Optional estimates whose priority-weighted relative
 variance is minimized among the allocations that meet \code{targets} and the
@@ -306,12 +330,14 @@ Public \code{n} remains in ultimate-unit units, so
 identities hold for \code{n_int} and \code{n_psu_int}.}
 \item{\code{n_psu_certain}, \code{n_psu_rest}, \code{threshold}}{With \code{psu} only: the
 number of certainty PSUs, the number of PSUs left in the remainder,
-and the certainty threshold \code{n_per_psu / (n / N)} at the returned
-allocation.}
+and the certainty threshold \code{certainty_cutoff * n_per_psu / (n / N)}
+at the returned allocation.}
 \item{\code{n_certain_int}, \code{n_psu_draw}}{With \code{psu} only: the units the
 operational design fields in the certainty PSUs, and the number of
 remainder PSUs it draws. Here
 \code{n_int = n_certain_int + n_psu_draw * n_per_psu}.}
+\item{\code{n_zone}}{With \code{n_psu_per_zone} only: the zones the remainder is
+cut into, so \code{n_psu_draw = n_zone * n_psu_per_zone}.}
 }
 
 The result also carries an \verb{$operational} list describing the integer
@@ -339,6 +365,10 @@ requires it. \code{NA} for a remainder PSU. \code{summary()} counts them.}
 \item{\code{.threshold}, \code{.distance}}{The stratum's threshold, and the
 relative distance \code{N / .threshold - 1}. A PSU with a small
 \code{.distance} is the one whose classification the allocation can tip.}
+\item{\code{.zone}}{With \code{n_psu_per_zone} only: the remainder PSU's zone
+within its stratum, \code{NA} for a certainty PSU.}
+\item{\code{.pair}}{With \code{n_psu_per_zone = 1} only: the variance group of
+the PSU's zone, numbered across strata, \code{NA} outside any zone.}
 }
 
 \verb{$optimization$certainty} reports how the classification was resolved:
@@ -575,6 +605,13 @@ their sizes instead. It has one row per PSU with \code{stratum} and \code{N}, an
 sizes must sum to \code{frame$N} in every stratum. This two-stage joint-allocation
 mode requires \code{n_per_psu} in \code{frame} and \code{icc_psu} in \code{measures}.
 
+A remainder PSU is drawn for the take, so a PSU holding fewer units than
+\code{n_per_psu} is refused, named by its \code{psu_id} or its row. Merge it with a
+neighbouring PSU before planning, as is usual when PSUs are formed
+(Valliant, Dever and Kreuter 2018, sec. 10.3) and as \code{\link[=merge_psus]{merge_psus()}} does,
+or flag it in \code{certainty}, where it is subsampled at the stratum's
+sampling fraction. A \code{psu_id} must name each PSU once.
+
 \code{icc_psu} describes the remainder, whose PSUs are selected with probability
 proportional to size. It is the size-weighted share of the stratum variance
 that lies between PSUs, which \code{\link[=varcomp]{varcomp()}} returns when \code{prob} is each PSU's
@@ -582,39 +619,80 @@ share of its stratum's units, as in the last example. A stratum with a single
 PSU has no variance between PSUs, so its \code{icc_psu} is taken as 0 whatever is
 supplied and may be \code{NA}. Every other stratum needs a value in \eqn{[0, 1]}.
 
-With take \eqn{b_h} and sampling fraction \eqn{f_h = n_h / N_h}, a PSU is
-certain when its size reaches
+With take \eqn{b_h}, sampling fraction \eqn{f_h = n_h / N_h} and
+\code{certainty_cutoff} \eqn{c_h}, a PSU is certain when its inclusion
+probability reaches \eqn{c_h}, that is when its size reaches
 
-\deqn{N_{hi} \ge b_h / f_h.}{N_hi >= b_h / f_h.}
+\deqn{N_{hi} \ge c_h b_h / f_h.}{N_hi >= c_h * b_h / f_h.}
 
 The remainder is fielded as a whole number of PSUs drawn with probability
 proportional to size, and rounding that number up raises every remainder
-PSU's inclusion probability. A PSU whose probability reaches one under
-that draw is certainty too, and the draw is recomputed without it until no
-PSU reaches one, the iterative rule for selection proportional to size. A
-PSU below the threshold can be certainty this way, and so can a stratum's
-only PSU. The operational design is therefore one any fixed-size
-proportional-to-size method can draw as it stands.
+PSU's inclusion probability. A PSU whose probability reaches \eqn{c_h}
+under that draw is certainty too, and the draw is recomputed without it
+until no PSU reaches \eqn{c_h}, the iterative rule for selection
+proportional to size. A PSU below the threshold can be certainty this way,
+and so can a stratum's only PSU. A remainder always draws at least one
+PSU, even when the rounded certainty takes use up the stratum's
+allocation, so no part of a stratum is left out of the sample. The
+operational design is therefore one any fixed-size proportional-to-size
+method can draw as it stands.
+
+The default \eqn{c_h = 1} takes with certainty only the PSUs the design
+cannot sample less often. A cutoff below one, such as the 0.80 Valliant,
+Dever and Kreuter (2018, sec. 9.6) mention, takes more PSUs with
+certainty and removes their clustering from the design effect, so the
+sample usually falls. The classification is discrete, so where the loop
+cycles the plan moves in steps as the cutoff changes and need not fall
+with it. Price the choice with \link{predict.svyplan} over
+\code{certainty_cutoff}.
+
+\code{n_psu_per_zone = 2} cuts each stratum's remainder, sorted by
+\code{psu$zone_order} or by size, into zones of about equal total size and draws
+two PSUs from each, the deep stratification of area samples (Valliant,
+Dever and Kreuter 2018, sec. 9.5 and Example 3.13). The remainder draw
+rounds up to a whole number of zones, which can add one PSU in a stratum.
+The rule above then applies inside each zone. A PSU is certain when its
+probability within its zone reaches \eqn{c_h}, and so is every PSU of a
+zone, or of a remainder, that holds no more PSUs than it draws. A stratum
+that draws from its remainder then draws at least two PSUs, so its
+variance can be estimated. The design effect does not credit the zones,
+so the planned precision stays conservative.
+
+\code{n_psu_per_zone = 1} draws one PSU from each zone, the finest
+stratification of the remainder. A zone holding a single PSU is a census,
+so more PSUs are certainty and the sample tends to be the smallest of the
+three settings. No zone yields two PSUs, so the variance needs zones
+collapsed, and \verb{$psu$.pair} fixes the groups before selection. Zones are
+paired in zone order within a stratum, with three together where the
+count is odd. Strata whose remainder is a single zone are grouped with
+each other in \code{frame} row order, so order the rows to put similar strata
+next to each other. One draw per zone has the with-replacement variance,
+so the groups are analysed without a finite population correction. In
+that form the collapsed estimator overestimates the variance, by more as
+the zone totals in a group differ (Valliant, Dever and Kreuter 2018, sec.
+15.5.3). A without-replacement correction such as Brewer's can turn it
+into an underestimate when the zones in a group are alike.
 
 The certainty part has no first-stage sampling variance. The remainder has
 the usual clustering component, and the two are combined into the
 anticipated design effect. \code{psu$certainty} can add a PSU to the certainty
 part. It cannot remove a PSU either rule makes certainty.
 
-This uses an aggregate planning approximation. The noncertainty part
-uses a with-replacement clustering approximation, a standard approach
-in PPS sample-size planning. Each part receives its proportional share of
-the stratum allocation, so with \eqn{N_h^C} units in certainty PSUs,
-\eqn{N_h^R} in the remainder and \eqn{\delta_h} for \code{icc_psu}, the design
-effect is
+The continuous allocation uses an aggregate planning approximation. The
+noncertainty part uses a with-replacement clustering approximation, a
+standard approach in PPS sample-size planning. Each part receives its
+proportional share of the stratum allocation, so with \eqn{N_h^C} units
+in certainty PSUs, \eqn{N_h^R} in the remainder, \eqn{\delta_h} for
+\code{icc_psu} and response rate \eqn{r_h}, the design effect is
 
-\deqn{d_h = \frac{N_h^C + N_h^R \{1 + \delta_h (b_h - 1)\}}{N_h}.}{d_h = (N_h^C + N_h^R * (1 + delta_h * (b_h - 1))) / N_h.}
+\deqn{d_h = \frac{N_h^C + N_h^R \{1 + \delta_h (b_h r_h - 1)\}}{N_h}.}{d_h = (N_h^C + N_h^R * (1 + delta_h * (b_h * r_h - 1))) / N_h.}
 
 It depends on which PSUs are certainty, not on the allocation. A common
-stratum-level finite population correction is then applied. Precision
-therefore uses aggregate shares rather than each PSU's individually rounded
-take and stage-specific sampling fractions. Check sensitivity to this
-aggregation when rounding or sampling fractions are substantial.
+stratum-level finite population correction is then applied. The
+clustering reads the responding take \eqn{b_h r_h}, as the \code{N_psu} form
+does, while the threshold and the draw read the issued take \eqn{b_h}.
+A PSU-level response rate and a \code{var_ratio_psu} other than 1 have no
+place in this design effect and are refused.
 
 The threshold and allocation determine each other, so the solver iterates.
 \verb{$optimization$certainty} records whether it converged, cycled, or reached
@@ -632,10 +710,36 @@ rather than on \verb{$detail} column names.
 The operational design is fieldable: certainty PSUs use their whole take
 at the stratum rate and the remainder uses whole PSUs at \code{n_per_psu}. Thus
 \code{n_int = n_certain_int + n_psu_draw * n_per_psu} in every stratum.
-\verb{$operational} reports its count and cost, with precision evaluated under
-the aggregate planning approximation described above.
+\verb{$operational} reports its count, cost and precision. The rounded
+certainty takes \eqn{q_{hi}}{q_hi} run above the stratum rate and the remainder
+gets what is left, so the field design is assessed on its own takes and
+draw \eqn{a_h}, each part a stratum of its own:
+
+\deqn{V_h = S_h^2 \Big[\sum_{i \in C} N_{hi}^2 \Big(\frac{1}{r_h q_{hi}} - \frac{1}{N_{hi}}\Big) + (N_h^R)^2 \{1 + \delta_h (b_h r_h - 1)\} \Big(\frac{1}{r_h a_h b_h} - \frac{1}{N_h^R}\Big)\Big].}{V_h = S_h^2 * [sum_C N_hi^2 * (1 / (r_h * q_hi) - 1 / N_hi) + (N_h^R)^2 * (1 + delta_h * (b_h * r_h - 1)) * (1 / (r_h * a_h * b_h) - 1 / N_h^R)].}
+
+At the stratum rate the expression equals the aggregate one above. Where
+the field design misses a target, whole remainder PSUs (whole zones when
+zoned) are added one at a time, each where it most reduces the failing
+targets' excess variance per unit of cost, as the solver's own integer
+repair does. Strata outside the failing targets' domains are left alone.
+If the remainder feeding a failing target is used up, or no addition
+reduces it, \code{n_alloc()} stops with an error naming each failing target
+with its achieved and required values. That error concerns this repair
+under the held classification and certainty takes, not every possible
+field design.
+
 Use \code{cost_psu} and \code{cost_ssu} together to price PSU visits and interviews.
-\link{predict.svyplan} can compare fixed values of \code{n_per_psu}.
+A certainty PSU's visit is paid whatever its take, so the solver prices
+an interview at \code{cost_ssu + (N_h^R / N_h) * cost_psu / n_per_psu}, and
+\verb{$params$achieved$cost} and \verb{$optimization$cost} add the certainty visits
+as a fixed cost, as do the stratum costs \code{summary()} reports. The
+optimality certificate, its gap and its multipliers refer to the
+marginal-cost problem without that constant, which has the same optimum,
+and hold for the classification the plan settled on, not across
+classifications. A \code{budget} is refused with a register,
+because the field design rounds its draws up and does not hold certainty
+visits within a budget. \link{predict.svyplan} can compare fixed values of
+\code{n_per_psu}.
 }
 
 \subsection{Domains vs. strata}{
@@ -844,6 +948,12 @@ reg_fit <- n_alloc(
   targets = data.frame(name = "y", cv = 0.05), psu = register
 )
 reg_fit$detail[, c("stratum", "n_psu_certain", "n_psu_draw", "n_int")]
+
+# Relaxing the certainty rule to an inclusion probability below one
+predict(reg_fit, data.frame(certainty_cutoff = c(1, 0.9, 0.8)))
+
+# No zones, one PSU per zone, and two PSUs per zone
+predict(reg_fit, data.frame(n_psu_per_zone = c(NA, 1, 2)))
 
 }
 \references{

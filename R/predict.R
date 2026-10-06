@@ -103,7 +103,11 @@
 #' `n_psu_draw` in place of the PSU counts. This is how the take is priced. It
 #' also sets the certainty threshold, so a larger take leaves fewer certainty
 #' PSUs and costs more sample, and the resulting cost curve has a minimum
-#' worth finding rather than assuming.
+#' worth finding rather than assuming. Such a fit also varies
+#' `certainty_cutoff`, one value per row applied to every stratum, to price
+#' a relaxed certainty rule the same way, and `n_psu_per_zone`, with `NA` for
+#' no zones, to compare zone settings. A grid that varies `n_psu_per_zone`,
+#' or a fit with zones, adds `n_zone`.
 #'
 #' Precision targets stay out of reach of the grid. A one-stage minimum-cost
 #' fit therefore has nothing to vary. Modify `targets` and call [n_alloc()]
@@ -809,7 +813,10 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   } else {
     c(if (stages >= 2L) "n_per_psu", if (stages == 3L) "n_per_ssu")
   }
-  allowed <- c(if (budget_mode) "budget", take_cols)
+  allowed <- c(
+    if (budget_mode) "budget", take_cols,
+    if (certainty) c("certainty_cutoff", "n_psu_per_zone")
+  )
   if (length(allowed) == 0L) {
     stop(
       "predict() is not supported for joint constrained allocations; modify 'targets' and rerun n_alloc()",
@@ -827,10 +834,30 @@ predict.svyplan_prec <- function(object, newdata, ...) {
            call. = FALSE)
     }
   }
+  # One value per row applies to every stratum. A per-stratum cutoff is a
+  # frame column, as for any other stratum input.
+  if ("certainty_cutoff" %in% names(newdata)) {
+    value <- newdata$certainty_cutoff
+    if (!is.numeric(value) || anyNA(value) || any(!is.finite(value)) ||
+          any(value <= 0 | value > 1)) {
+      stop("newdata 'certainty_cutoff' must contain values in (0, 1]",
+           call. = FALSE)
+    }
+  }
+
+  # NA is the design without zones, which NULL means to n_alloc().
+  if ("n_psu_per_zone" %in% names(newdata)) {
+    value <- newdata$n_psu_per_zone
+    if (any(!is.na(value) & !value %in% c(1, 2))) {
+      stop("newdata 'n_psu_per_zone' must contain NA, 1 or 2", call. = FALSE)
+    }
+  }
 
   targets <- if (is.null(p$targets) || nrow(p$targets) == 0L) NULL else
     p$targets
-  cols <- .bethel_predict_cols(budget_mode, stages, certainty)
+  zoned <- certainty &&
+    ("n_psu_per_zone" %in% names(newdata) || !is.null(p$n_psu_per_zone))
+  cols <- .bethel_predict_cols(budget_mode, stages, certainty, zoned)
 
   rows <- lapply(seq_len(nrow(newdata)), function(i) {
     frame <- p$frame
@@ -842,12 +869,24 @@ predict.svyplan_prec <- function(object, newdata, ...) {
     } else {
       p$budget
     }
+    cutoff <- if ("certainty_cutoff" %in% names(newdata)) {
+      newdata$certainty_cutoff[i]
+    } else {
+      p$certainty_cutoff
+    }
+    zone_m <- if ("n_psu_per_zone" %in% names(newdata)) {
+      if (is.na(newdata$n_psu_per_zone[i])) NULL else newdata$n_psu_per_zone[i]
+    } else {
+      p$n_psu_per_zone
+    }
     fit <- tryCatch(
       n_alloc.default(
         frame = frame,
         measures = p$measures,
         targets = targets,
         psu = p$psu,
+        certainty_cutoff = cutoff,
+        n_psu_per_zone = zone_m,
         objective = p$objective,
         budget = budget,
         unit_cost = p$unit_cost,
@@ -880,10 +919,11 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 #' Result columns of a joint-allocation grid, in report order
 #' @keywords internal
 #' @noRd
-.bethel_predict_cols <- function(budget_mode, stages, certainty = FALSE) {
+.bethel_predict_cols <- function(budget_mode, stages, certainty = FALSE,
+                                 zoned = FALSE) {
   if (certainty) {
     return(c(
-      "n_psu_certain", "n_psu_draw", "n", "cost",
+      "n_psu_certain", "n_psu_draw", if (zoned) "n_zone", "n", "cost",
       if (budget_mode) c("objective_value", "cv"),
       "n_int", "cost_int", if (budget_mode) ".binding", ".feasible"
     ))
@@ -916,6 +956,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       n_psu = sum(fit$detail$n_psu),
       n_psu_certain = sum(fit$detail$n_psu_certain),
       n_psu_draw = sum(fit$detail$n_psu_draw),
+      n_zone = sum(fit$detail$n_zone %||% 0),
       n = fit$n,
       cost = fit$params$achieved$cost,
       objective_value = fit$objective_value,
@@ -924,7 +965,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       n_int = as.numeric(fit$operational$n),
       cost_int = fit$operational$cost,
       .binding = isTRUE(fit$optimization$budget_binding),
-      .feasible = TRUE
+      .feasible = isTRUE(fit$operational$all_pass)
     )
   }
   values <- lapply(cols, value_of)

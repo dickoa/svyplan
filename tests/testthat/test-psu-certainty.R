@@ -231,6 +231,56 @@ test_that("the register is refused when it cannot describe the frame", {
   )
 })
 
+test_that("a PSU smaller than its take is refused unless flagged certainty", {
+  psu <- data.frame(
+    psu_id = c(sprintf("A%02d", 1:20), sprintf("B%02d", 1:10)),
+    stratum = rep(c("A", "B"), c(20, 10)),
+    N = c(rep(10, 8), rep(300, 12), rep(200, 10))
+  )
+  frame <- data.frame(
+    stratum = c("A", "B"),
+    N = as.numeric(tapply(psu$N, psu$stratum, sum)),
+    n_per_psu = 25
+  )
+  measures <- data.frame(stratum = c("A", "B"), name = "y", p = 0.3,
+                         icc_psu = 0.05)
+  targets <- data.frame(name = "y", cv = 0.05)
+
+  expect_error(
+    n_alloc(frame, measures = measures, targets = targets, psu = psu),
+    "8 PSUs in 'psu' hold fewer units than the take 'n_per_psu' of their stratum \\(.A01., .A02., .A03., .A04., .A05. and 3 more\\)"
+  )
+  expect_error(
+    prec_alloc(frame, n = c(300, 200), measures = measures,
+               targets = targets, psu = psu),
+    "8 PSUs in 'psu' hold fewer units"
+  )
+  one <- psu[-(2:8), ]
+  one$psu_id <- NULL
+  one_frame <- frame
+  one_frame$N[1] <- sum(one$N[one$stratum == "A"])
+  expect_error(
+    n_alloc(one_frame, measures = measures, targets = targets, psu = one),
+    "1 PSU in 'psu' holds fewer units than the take 'n_per_psu' of its stratum \\(.row 1.\\)"
+  )
+
+  # The take is per stratum, and a PSU holding exactly the take can field it.
+  per_stratum <- frame
+  per_stratum$n_per_psu <- c(10, 25)
+  expect_s3_class(
+    n_alloc(per_stratum, measures = measures, targets = targets, psu = psu),
+    "svyplan_n"
+  )
+
+  flagged <- psu
+  flagged$certainty <- flagged$N < 25
+  fit <- n_alloc(frame, measures = measures, targets = targets, psu = flagged)
+  small <- fit$psu$N < 25
+  expect_true(all(fit$psu$certainty[small]))
+  expect_true(all(fit$psu$n_take[small] <= fit$psu$N[small]))
+  expect_true(all(fit$psu$N[!fit$psu$certainty] >= 25))
+})
+
 test_that("the register refuses designs this model does not describe", {
   z <- .psu_fixture()
 
@@ -540,9 +590,18 @@ test_that("stage costs price the design and move the allocation", {
   fit <- n_alloc(fr, measures = z$measures, targets = z$targets, psu = z$psu)
   d <- fit$detail
 
-  # The marginal cost of an ultimate unit is the remainder's, a unit added
-  # there bringing a share of a PSU visit with it.
-  expect_equal(fit$params$cost_h, rep(400 / 12 + 20, nrow(fr)))
+  # A certainty visit is paid whatever its take, so only the remainder's
+  # share of a stratum's interviews brings visits with it.
+  rest <- tapply(fit$psu$N * !fit$psu$certainty, fit$psu$stratum, sum)
+  share <- as.numeric(rest[fr$stratum]) / fr$N
+  expect_equal(fit$params$cost_h, 20 + share * 400 / 12)
+  expect_true(all(fit$params$cost_h <= 400 / 12 + 20))
+  expect_true(any(fit$params$cost_h < 400 / 12 + 20))
+  expect_equal(
+    fit$params$achieved$cost,
+    sum(d$n_psu_certain * 400 + fit$params$cost_h * d$n)
+  )
+  expect_equal(fit$optimization$cost, fit$params$achieved$cost)
 
   # The design is priced as it is fielded: a visit to every PSU entered,
   # certainty or drawn, plus every interview.
@@ -596,10 +655,15 @@ test_that("predict() sweeps the take on a certainty fit", {
   # The solver saw a one-stage problem, so the sweep cannot find the take
   # through `stages`; it is reachable because the fit carries a register.
   expect_identical(fit$params$stages, 1L)
-  g <- predict(fit, data.frame(n_per_psu = c(6, 12, 24, 40)))
+  expect_warning(
+    g <- predict(fit, data.frame(n_per_psu = c(6, 12, 24, 40))),
+    "n_per_psu = 40 is infeasible: 5 PSUs in 'psu' hold fewer units"
+  )
 
+  # The smallest PSU of stratum D holds 28, so a take of 40 cannot be fielded.
   expect_equal(nrow(g), 4L)
-  expect_true(all(g$.feasible))
+  expect_identical(g$.feasible, c(TRUE, TRUE, TRUE, FALSE))
+  g <- g[g$.feasible, ]
   expect_true(all(c("n_psu_certain", "n_psu_draw", "n_int", "cost_int") %in%
                     names(g)))
 
@@ -873,7 +937,7 @@ test_that("a repair that pushes a PSU to probability one is absorbed", {
   # On these registers the precision repair adds a remainder PSU after the
   # classification was closed, and the larger draw reaches one. The PSU is
   # absorbed and the plan settled again, after which no repair is needed.
-  for (seed in c(137, 1842)) {
+  for (seed in c(95, 106)) {
     z <- .psu_wide_register(seed)
     fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
                    psu = z$psu)
@@ -913,4 +977,759 @@ test_that("summary counts the certainty PSUs by source", {
   expect_true(any(grepl("^certainty PSUs by source: threshold \\d+, operational \\d+$", out)))
   # The print line stays as it was: the breakdown is summary detail.
   expect_false(any(grepl("operational", capture.output(print(fit)))))
+})
+
+## A certainty cutoff below one
+
+.fit_psu <- function(z, ...) {
+  n_alloc(z$frame, measures = z$measures, targets = z$targets, psu = z$psu,
+          ...)
+}
+
+test_that("a cutoff of one is the rule without a cutoff", {
+  for (z in c(list(.psu_fixture()), lapply(1:8, .psu_random_register))) {
+    plain <- .fit_psu(z)
+    one <- .fit_psu(z, certainty_cutoff = 1)
+    expect_identical(one$detail, plain$detail)
+    expect_identical(one$psu, plain$psu)
+  }
+})
+
+test_that("a cutoff relaxes both the threshold and the draw", {
+  cases <- c(list(.psu_fixture()), lapply(1:15, .psu_random_register))
+  for (cutoff in c(0.9, 0.8, 0.7)) {
+    for (z in cases) {
+      fit <- .fit_psu(z, certainty_cutoff = cutoff)
+      expect_false(any(.psu_remainder_crossing(fit, cutoff)))
+      above <- fit$psu$N >= fit$psu$.threshold
+      expect_true(all(fit$psu$certainty[above]))
+      f <- fit$detail$n / fit$detail$N
+      expect_equal(fit$detail$threshold, cutoff * z$frame$n_per_psu / f)
+      expect_true(fit$operational$all_pass)
+    }
+  }
+  # The closure applies the cutoff while classifying. The repair guard
+  # would otherwise absorb the same PSUs afterwards and mask its absence.
+  fit <- .fit_psu(.psu_fixture(seed = 5L), certainty_cutoff = 0.8)
+  expect_identical(fit$optimization$certainty$absorbed, 0L)
+  expect_gt(sum(fit$psu$.certainty_source %in% "operational"), 0L)
+})
+
+test_that("at a held allocation a lower cutoff makes a superset certain", {
+  # n_alloc() re-solves under each cutoff and can land on another cycle
+  # resolution, so the superset property is a property of a fixed design.
+  z <- .psu_fixture()
+  n <- .fit_psu(z)$detail$n
+  certain <- lapply(c(1, 0.9, 0.8, 0.7), function(cutoff) {
+    prec_alloc(z$frame, n = n, measures = z$measures, targets = z$targets,
+               psu = z$psu, certainty_cutoff = cutoff)$psu$certainty
+  })
+  for (j in 2:4) {
+    expect_true(all(certain[[j - 1]] <= certain[[j]]))
+  }
+  expect_gt(sum(certain[[4]]), sum(certain[[1]]))
+
+  # Each rule applies the cutoff on its own: the threshold is scaled, and no
+  # remainder PSU reaches the cutoff under the draw the design implies.
+  ev <- prec_alloc(z$frame, n = n, measures = z$measures, targets = z$targets,
+                   psu = z$psu, certainty_cutoff = 0.7)
+  f <- n / z$frame$N
+  expect_equal(unique(ev$psu$.threshold[ev$psu$stratum == "A"]),
+               0.7 * z$frame$n_per_psu[1] / f[1])
+  for (h in seq_len(nrow(z$frame))) {
+    i <- ev$psu$stratum == z$frame$stratum[h]
+    counts <- .psu_stratum_counts(n[h], z$frame$N[h], z$frame$n_per_psu[h],
+                                  ev$psu$N[i], ev$psu$certainty[i])
+    expect_false(any(.psu_crossing(counts$n_psu_draw, ev$psu$N[i],
+                                   ev$psu$certainty[i], 0.7)))
+  }
+})
+
+test_that("the cutoff travels with the fit", {
+  z <- .psu_fixture()
+  fit <- .fit_psu(z, certainty_cutoff = 0.8)
+  ev <- prec_alloc(fit)
+  expect_equal(ev$detail$.achieved, fit$constraints$.achieved,
+               tolerance = 1e-10)
+  # The held classification hides a dropped cutoff in the precision, but not
+  # in the threshold the assessment reports.
+  expect_equal(ev$psu$.threshold, fit$psu$.threshold)
+  take <- z$frame$n_per_psu[1]
+  expect_equal(predict(fit, data.frame(n_per_psu = take))$n, fit$n)
+
+  swept <- predict(.fit_psu(z), data.frame(certainty_cutoff = c(1, 0.8)))
+  expect_equal(swept$n, c(.fit_psu(z)$n, fit$n))
+
+  in_frame <- z
+  in_frame$frame$certainty_cutoff <- 0.8
+  expect_equal(.fit_psu(in_frame)$n, fit$n)
+  # The argument overrides the column, as deff and resp_rate do.
+  expect_equal(.fit_psu(in_frame, certainty_cutoff = 1)$n, .fit_psu(z)$n)
+  per_stratum <- .fit_psu(z, certainty_cutoff = rep(0.8, nrow(z$frame)))
+  expect_equal(per_stratum$n, fit$n)
+})
+
+test_that("summary shows the cutoff only where it relaxes the rule", {
+  z <- .psu_fixture()
+  cutoff <- c(0.8, 0.8, 1, 0.7)
+  s <- summary(.fit_psu(z, certainty_cutoff = cutoff))
+  expect_equal(s$certainty$cutoff, cutoff)
+  expect_false("cutoff" %in% names(summary(.fit_psu(z))$certainty))
+})
+
+test_that("a cutoff is refused outside (0, 1] and without a register", {
+  z <- .psu_fixture()
+  for (bad in list(0, 1.2, -0.5, NA_real_, c(0.8, 0.9), "0.8")) {
+    expect_error(.fit_psu(z, certainty_cutoff = bad), "certainty_cutoff")
+  }
+  plain <- z$measures[, setdiff(names(z$measures), "icc_psu")]
+  expect_error(
+    n_alloc(z$frame[, c("stratum", "N")], measures = plain,
+            targets = z$targets, certainty_cutoff = 0.8),
+    "applies to a PSU register"
+  )
+  in_frame <- z$frame[, c("stratum", "N")]
+  in_frame$certainty_cutoff <- 0.8
+  expect_error(
+    n_alloc(in_frame, measures = plain, targets = z$targets),
+    "applies to a PSU register"
+  )
+  expect_error(
+    prec_alloc(z$frame[, c("stratum", "N")], n = c(300, 200, 130, 80),
+               measures = plain, targets = z$targets, certainty_cutoff = 0.8),
+    "applies to a PSU register"
+  )
+  expect_error(
+    predict(.fit_psu(z), data.frame(certainty_cutoff = 1.5)),
+    "certainty_cutoff"
+  )
+})
+
+## A register precision result plans its way back
+
+test_that("n_alloc() of a register fit's precision re-plans the register", {
+  cases <- c(lapply(1:15, .psu_random_register),
+             lapply(c(1, 4, 9, 17, 23), function(s) .psu_fixture(seed = s)))
+  for (z in cases) {
+    fit <- .fit_psu(z)
+    back <- n_alloc(prec_alloc(fit))
+    expect_false(is.null(back$params$psu))
+    expect_true(all(c("n_psu_certain", "n_psu_draw") %in% names(back$detail)))
+    expect_identical(back$detail$n_int, fit$detail$n_int)
+    if (identical(fit$optimization$certainty$verdict, "converged")) {
+      expect_identical(back$psu$certainty, fit$psu$certainty)
+      expect_equal(back$n, fit$n, tolerance = 1e-6)
+    }
+    # The re-plan derives its own classification from the register, so it
+    # does not report the fit's held PSUs as supplied.
+    expect_false("supplied" %in% back$psu$.certainty_source)
+  }
+})
+
+test_that("the way back keeps the cutoff", {
+  fit <- .fit_psu(.psu_fixture(), certainty_cutoff = 0.8)
+  back <- n_alloc(prec_alloc(fit))
+  expect_identical(back$params$certainty_cutoff, 0.8)
+  expect_equal(back$psu$.threshold, fit$psu$.threshold, tolerance = 1e-6)
+})
+
+test_that("a supplied allocation's precision re-plans as a register design", {
+  z <- .psu_fixture()
+  ev <- prec_alloc(z$frame, n = c(300, 200, 130, 80), measures = z$measures,
+                   targets = z$targets, psu = z$psu)
+  back <- n_alloc(ev)
+  expect_false(is.null(back$params$psu))
+  expect_true(all(back$constraints$.pass))
+  expect_true(back$operational$all_pass)
+})
+
+test_that("pinned targets settle on the closed-form design effect", {
+  # Every constraint of a round trip binds at its achieved value, so the
+  # optimum is flat. A design effect computed through the allocation moved
+  # in its last bits and the settle step wandered past its limit here.
+  fit <- .fit_psu(.psu_fixture(seed = 19L))
+  back <- n_alloc(prec_alloc(fit))
+  cc <- back$optimization$certainty
+  expect_lte(cc$settle_iterations, 2L * (cc$absorbed + 1L))
+  expect_identical(back$detail$n_int, fit$detail$n_int)
+})
+
+## Zones of the remainder
+
+test_that("zones are cut on cumulative size in the key's order", {
+  sizes <- c(50, 40, 30, 20, 10)
+  # Largest first: cumulative 50, 90, 120, 140, 150 against a width of 75.
+  expect_identical(.psu_zones(4, sizes, rep(FALSE, 5), 2L),
+                   c(1L, 2L, 2L, 2L, 2L))
+  # A key reverses the order: cumulative 10, 30, 60, 100, 150.
+  expect_identical(.psu_zones(4, sizes, rep(FALSE, 5), 2L, key = 5:1),
+                   c(2L, 2L, 1L, 1L, 1L))
+  # Certainty PSUs have no zone, and no draw means no zones.
+  expect_identical(.psu_zones(2, sizes, c(TRUE, rep(FALSE, 4)), 2L),
+                   c(NA, 1L, 1L, 1L, 1L))
+  expect_true(all(is.na(.psu_zones(0, sizes, rep(FALSE, 5), 2L))))
+})
+
+test_that("certainty within zones follows the census and probability rules", {
+  # The stratum-wide draw already takes the 50 and the 40, at 4 * 50 / 150
+  # and 4 * 40 / 150, and the zones wait until they are certain.
+  expect_identical(.psu_crossing(4, c(50, 40, 30, 20, 10), rep(FALSE, 5),
+                                 m = 2L),
+                   c(TRUE, TRUE, FALSE, FALSE, FALSE))
+  # A draw that reaches the whole remainder is a census.
+  expect_true(all(.psu_crossing(4, c(100, 90, 80), rep(FALSE, 3), m = 2L)))
+  # A zone holding no more PSUs than it draws is a census. Zone 1 holds 49
+  # and 48, 97 of its width of 100, though neither reaches one stratum-wide
+  # (4 * 49 / 200 = 0.98).
+  sizes <- c(49, 48, 45, 30, 28)
+  expect_identical(.psu_zones(4, sizes, rep(FALSE, 5), 2L),
+                   c(1L, 1L, 2L, 2L, 2L))
+  expect_identical(.psu_crossing(4, sizes, rep(FALSE, 5), m = 2L),
+                   c(TRUE, TRUE, FALSE, FALSE, FALSE))
+  # Without zones the same draw takes neither.
+  expect_false(any(.psu_crossing(4, sizes, rep(FALSE, 5))))
+})
+
+test_that("no zones is the design without the argument", {
+  for (z in c(list(.psu_fixture()), lapply(1:6, .psu_random_register))) {
+    plain <- .fit_psu(z)
+    none <- .fit_psu(z, n_psu_per_zone = NULL)
+    expect_identical(none$detail, plain$detail)
+    expect_identical(none$psu, plain$psu)
+    expect_false(any(c("n_zone", ".zone") %in%
+                       c(names(plain$detail), names(plain$psu))))
+  }
+})
+
+test_that("a zoned plan draws two PSUs from every zone", {
+  cases <- c(lapply(1:30, .psu_random_register),
+             lapply(c(1, 4, 9, 17, 23), function(s) .psu_fixture(seed = s)))
+  for (z in cases) {
+    fit <- .fit_psu(z, n_psu_per_zone = 2)
+    d <- fit$detail
+    expect_true(all(d$n_psu_draw %% 2 == 0))
+    expect_identical(d$n_psu_draw, 2 * d$n_zone)
+    rest <- !fit$psu$certainty
+    drawn <- fit$psu$stratum %in% d$stratum[d$n_psu_draw > 0]
+    expect_identical(is.na(fit$psu$.zone), !(rest & drawn))
+    cell <- paste(fit$psu$stratum, fit$psu$.zone)[rest & drawn]
+    size <- fit$psu$N[rest & drawn]
+    expect_true(all(table(cell) >= 3))
+    # Zones run from 1 to n_zone in every stratum with none skipped, which
+    # samplyr checks when it fields them.
+    for (h in d$stratum[d$n_psu_draw > 0]) {
+      zone <- fit$psu$.zone[fit$psu$stratum == h & rest]
+      expect_identical(sort(unique(zone)),
+                       seq_len(d$n_zone[d$stratum == h]))
+    }
+    expect_true(all(2 * size / ave(size, cell, FUN = sum) < 1))
+    expect_true(fit$operational$all_pass)
+  }
+})
+
+test_that("the zones classify, the repair guard only backs them up", {
+  # The guard alone would absorb the same PSUs after the field design, so
+  # the zone rule must act inside the classification: here it adds
+  # operational PSUs with nothing absorbed.
+  z <- .psu_random_register(1)
+  zoned <- .fit_psu(z, n_psu_per_zone = 2)
+  plain <- .fit_psu(z)
+  expect_identical(zoned$optimization$certainty$absorbed, 0L)
+  expect_gt(sum(zoned$psu$.certainty_source %in% "operational"),
+            sum(plain$psu$.certainty_source %in% "operational"))
+})
+
+.repair_stub <- function(needed, feeds = matrix(TRUE, 1, 1), stuck = FALSE,
+                         worth = 1, added = rep(10, nrow(feeds))) {
+  function(n, per_psu, draw) {
+    short <- if (stuck) 1 else max(needed - sum(worth * draw), 0)
+    ratio <- 1 + 0.1 * short
+    list(
+      pass = short == 0,
+      constraints = data.frame(
+        constraint = "y@.overall:cv", domain = ".overall", level = NA,
+        .metric = "cv", .achieved = 0.02 * ratio, .target = 0.02,
+        .ratio = ratio, .pass = short == 0
+      ),
+      feeds = feeds,
+      added = added
+    )
+  }
+}
+
+test_that("a zoned repair adds a whole zone", {
+  # Rounding draws up to pairs leaves the field design spare precision, so
+  # no test register reaches the repair. A stub assessment does.
+  psu <- data.frame(stratum = "A", N = rep(100, 10))
+  op <- .psu_operational(40, 1000, 10, psu, list(A = 1:10), rep(FALSE, 10),
+                         .repair_stub(6), m = 2L)
+  expect_identical(op$n_psu_draw, 6)
+  expect_identical(op$repair, 1L)
+})
+
+test_that("zones carry through every route back to a plan", {
+  z <- .psu_fixture()
+  fit <- .fit_psu(z, n_psu_per_zone = 2)
+  expect_identical(prec_alloc(fit)$params$n_psu_per_zone, 2)
+  expect_equal(prec_alloc(fit)$detail$.achieved, fit$constraints$.achieved,
+               tolerance = 1e-10)
+  take <- z$frame$n_per_psu[1]
+  expect_equal(predict(fit, data.frame(n_per_psu = take))$n, fit$n)
+  back <- n_alloc(prec_alloc(fit))
+  expect_identical(back$params$n_psu_per_zone, 2)
+  expect_identical(back$detail$n_int, fit$detail$n_int)
+  expect_identical(summary(fit)$certainty$zones, fit$detail$n_zone)
+})
+
+test_that("one PSU per zone draws one PSU from every zone", {
+  cases <- c(lapply(1:30, .psu_random_register),
+             lapply(c(1, 4, 9, 17, 23), function(s) .psu_fixture(seed = s)))
+  for (z in cases) {
+    fit <- .fit_psu(z, n_psu_per_zone = 1)
+    d <- fit$detail
+    expect_identical(d$n_psu_draw, d$n_zone)
+    rest <- !fit$psu$certainty
+    drawn <- fit$psu$stratum %in% d$stratum[d$n_psu_draw > 0]
+    expect_identical(is.na(fit$psu$.zone), !(rest & drawn))
+    for (h in d$stratum[d$n_psu_draw > 0]) {
+      zone <- fit$psu$.zone[fit$psu$stratum == h & rest]
+      expect_identical(sort(unique(zone)),
+                       seq_len(d$n_zone[d$stratum == h]))
+    }
+    # A zone of one PSU is a census, so every zone left holds two or more
+    # and none of them reaches one within its zone.
+    cell <- paste(fit$psu$stratum, fit$psu$.zone)[rest & drawn]
+    size <- fit$psu$N[rest & drawn]
+    expect_true(all(table(cell) >= 2))
+    expect_true(all(size / ave(size, cell, FUN = sum) < 1))
+    expect_true(fit$operational$all_pass)
+  }
+})
+
+test_that("a zone of one PSU is a census at one PSU per zone", {
+  # A width of 100 / 3: zones 1 and 2 hold one PSU each, though neither PSU
+  # reaches one stratum-wide (3 * 30 / 100 = 0.9).
+  sizes <- c(30, 30, 20, 20)
+  expect_identical(.psu_zones(3, sizes, rep(FALSE, 4), 1L),
+                   c(1L, 2L, 3L, 3L))
+  expect_identical(.psu_crossing(3, sizes, rep(FALSE, 4), m = 1L),
+                   c(TRUE, TRUE, FALSE, FALSE))
+  expect_false(any(.psu_crossing(3, sizes, rep(FALSE, 4))))
+  # One PSU per zone does not round the draw.
+  expect_identical(.psu_round_draw(3, 1L), 3)
+})
+
+test_that("a repair adds one PSU without zones or at one per zone", {
+  psu <- data.frame(stratum = "A", N = rep(100, 10))
+  for (m in 0:1) {
+    op <- .psu_operational(40, 1000, 10, psu, list(A = 1:10),
+                           rep(FALSE, 10), .repair_stub(5), m = m)
+    expect_identical(op$n_psu_draw, 5)
+    expect_identical(op$repair, 1L)
+  }
+})
+
+test_that("a repair adds only where a failing target is fed", {
+  psu <- data.frame(stratum = rep(c("A", "B"), each = 10), N = 100)
+  feeds <- matrix(c(FALSE, TRUE), 2, 1)
+  op <- .psu_operational(c(80, 40), c(1000, 1000), c(10, 10), psu,
+                         list(A = 1:10, B = 11:20), rep(FALSE, 20),
+                         .repair_stub(15, feeds = feeds))
+  expect_identical(op$n_psu_draw, c(8, 7))
+  expect_identical(op$repair, 3L)
+})
+
+test_that("a repair adds where it buys the most per unit of cost", {
+  # Both strata feed the failing target. A has the larger sampling fraction,
+  # B the larger gain per PSU, so one PSU in B does what three in A would.
+  psu <- data.frame(stratum = rep(c("A", "B"), each = 10), N = 100)
+  op <- .psu_operational(c(80, 40), c(1000, 1000), c(10, 10), psu,
+                         list(A = 1:10, B = 11:20), rep(FALSE, 20),
+                         .repair_stub(23, feeds = matrix(TRUE, 2, 1),
+                                      worth = c(1, 3)))
+  expect_identical(op$n_psu_draw, c(8, 5))
+  expect_identical(op$repair, 1L)
+
+  # A PSU in B closes the gap at once but costs ten times as much, so two
+  # cheaper PSUs in A are bought instead.
+  op <- .psu_operational(c(80, 40), c(1000, 1000), c(10, 10), psu,
+                         list(A = 1:10, B = 11:20), rep(FALSE, 20),
+                         .repair_stub(18, feeds = matrix(TRUE, 2, 1),
+                                      worth = c(1, 2), added = c(1, 10)))
+  expect_identical(op$n_psu_draw, c(10, 4))
+})
+
+test_that("a repair that cannot meet a target stops and says why", {
+  psu <- data.frame(stratum = "A", N = rep(100, 10))
+  expect_error(
+    .psu_operational(40, 1000, 10, psu, list(A = 1:10), rep(FALSE, 10),
+                     .repair_stub(20)),
+    paste0(
+      "no whole-unit repair meets every target under the current certainty ",
+      "classification and fixed takes: every stratum feeding these targets ",
+      "already draws its whole remainder"
+    )
+  )
+  expect_error(
+    .psu_operational(40, 1000, 10, psu, list(A = 1:10), rep(FALSE, 10),
+                     .repair_stub(20)),
+    "y@.overall:cv \\(whole population\\): cv 0.04, required at most 0.02"
+  )
+  expect_error(
+    .psu_operational(40, 1000, 10, psu, list(A = 1:10), rep(FALSE, 10),
+                     .repair_stub(5, stuck = TRUE)),
+    "no remainder PSU or zone that can still be added reduces them"
+  )
+  # A target fed by no stratum with room is the used-up case too.
+  expect_error(
+    .psu_operational(40, 1000, 10, psu, list(A = 1:10), rep(FALSE, 10),
+                     .repair_stub(5, feeds = matrix(FALSE, 1, 1))),
+    "already draws its whole remainder"
+  )
+  # An assessment that fails keeps its own cause.
+  broken <- function(...) stop("precision constraints have no positive variance")
+  expect_error(
+    .psu_operational(40, 1000, 10, psu, list(A = 1:10), rep(FALSE, 10),
+                     broken),
+    "no positive variance"
+  )
+})
+
+test_that("the repair adds to the stratum whose target fails", {
+  # Stratum B passes at the larger sampling fraction, C fails on its field
+  # takes. Three PSUs in C meet it, and B is left as it was.
+  set.seed(36)
+  size <- round(rlnorm(120, log(120), 1.1)) + 15
+  frame <- data.frame(stratum = c("B", "C"), N = c(200000, sum(size)),
+                      n_per_psu = 10)
+  psu <- data.frame(stratum = c(rep("B", 10000), rep("C", length(size))),
+                    N = c(rep(20, 10000), size))
+  measures <- data.frame(stratum = c("B", "C"), name = "y", p = c(0.5, 0.3),
+                         icc_psu = c(0, 0.1))
+  targets <- data.frame(name = "y", domain = "stratum", level = c("B", "C"),
+                        cv = c(sqrt(1 / 60000 - 1 / 200000), 0.02))
+  fit <- expect_no_warning(
+    n_alloc(frame, measures = measures, targets = targets, psu = psu)
+  )
+  expect_identical(fit$detail$n_psu_draw, c(6000, 9))
+  expect_identical(fit$operational$repair_iterations, 3L)
+  expect_true(all(fit$operational$constraints$.pass))
+  expect_true(predict(fit, data.frame(n_per_psu = 10))$.feasible)
+})
+
+test_that("a grid row reads feasibility from the field design", {
+  fit <- list(operational = list(all_pass = FALSE, n = 10, cost = 10),
+              detail = data.frame(n_psu_draw = 1), params = list())
+  expect_false(.bethel_predict_row(fit, c("n_int", ".feasible"))$.feasible)
+  fit$operational$all_pass <- TRUE
+  expect_true(.bethel_predict_row(fit, c("n_int", ".feasible"))$.feasible)
+})
+
+test_that("zones are grouped in twos and threes for the variance", {
+  zone <- c(1L, 2L, 3L, 4L, 5L, 1L, 1L, 2L, 1L, 1L, NA)
+  idx <- list(1:5, 6L, 7:8, 9L, 10L, 11L)
+  # Zones pair in order and an odd count ends in a triple. Strata with a
+  # single zone are grouped together in frame order.
+  expect_identical(.psu_pairs(zone, idx),
+                   c(1L, 1L, 2L, 2L, 2L, 3L, 4L, 4L, 3L, 3L, NA))
+  # A lone single-zone stratum joins the next stratum with zones, or the
+  # previous one when it comes last, and no group exceeds three.
+  expect_identical(.psu_pairs(c(1L, 1:4), list(1L, 2:5)),
+                   c(1L, 1L, 2L, 2L, 2L))
+  expect_identical(.psu_pairs(c(1:3, 1L, NA), list(1:3, 4L, 5L)),
+                   c(1L, 1L, 2L, 2L, NA))
+  # A design with a single zone has no partner for it.
+  expect_identical(.psu_pairs(c(1L, NA), list(1L, 2L)), c(1L, NA))
+})
+
+test_that("every zone of a one-per-zone plan has a variance partner", {
+  cases <- c(lapply(1:30, .psu_random_register),
+             lapply(c(1, 4, 9, 17, 23), function(s) .psu_fixture(seed = s)))
+  for (z in cases) {
+    fit <- .fit_psu(z, n_psu_per_zone = 1)
+    p <- fit$psu
+    expect_identical(is.na(p$.pair), is.na(p$.zone))
+    zones <- unique(p[!is.na(p$.zone), c("stratum", ".zone", ".pair")])
+    if (nrow(zones) == 0L) next
+    expect_identical(sort(unique(zones$.pair)),
+                     seq_len(max(zones$.pair)))
+    size <- table(zones$.pair)
+    if (nrow(zones) == 1L) {
+      expect_identical(as.integer(size), 1L)
+    } else {
+      expect_true(all(size %in% 2:3))
+    }
+  }
+  # Two PSUs per zone need no collapsing.
+  expect_null(.fit_psu(.psu_fixture(), n_psu_per_zone = 2)$psu$.pair)
+})
+
+test_that("one PSU per zone carries through every route back to a plan", {
+  z <- .psu_fixture()
+  fit <- .fit_psu(z, n_psu_per_zone = 1)
+  assessed <- prec_alloc(fit)
+  expect_identical(assessed$params$n_psu_per_zone, 1)
+  expect_identical(assessed$psu$.zone, fit$psu$.zone)
+  expect_identical(assessed$psu$.pair, fit$psu$.pair)
+  expect_equal(assessed$detail$.achieved, fit$constraints$.achieved,
+               tolerance = 1e-10)
+  back <- n_alloc(assessed)
+  expect_identical(back$params$n_psu_per_zone, 1)
+  expect_identical(back$detail$n_int, fit$detail$n_int)
+})
+
+test_that("predict() sweeps the zone setting, NA meaning no zones", {
+  z <- .psu_fixture()
+  fit <- .fit_psu(z)
+  g <- predict(fit, data.frame(n_psu_per_zone = c(NA, 1, 2)))
+  expect_identical(g$.feasible, rep(TRUE, 3))
+  for (r in seq_len(nrow(g))) {
+    m <- g$n_psu_per_zone[r]
+    direct <- .fit_psu(z, n_psu_per_zone = if (is.na(m)) NULL else m)
+    expect_equal(g$n[r], direct$n, tolerance = 1e-8)
+    expect_identical(g$n_int[r], direct$operational$n)
+    expect_equal(g$n_psu_certain[r], sum(direct$psu$certainty))
+    expect_equal(g$n_psu_draw[r], sum(direct$detail$n_psu_draw))
+    expect_equal(g$n_zone[r], sum(direct$detail$n_zone %||% 0))
+  }
+  # A zoned fit keeps its zones when the column is absent.
+  zoned <- .fit_psu(z, n_psu_per_zone = 1)
+  kept <- predict(zoned, data.frame(n_per_psu = z$frame$n_per_psu[1]))
+  expect_equal(kept$n_zone, sum(zoned$detail$n_zone))
+  expect_null(predict(fit, data.frame(n_per_psu = 12))$n_zone)
+  for (bad in list(0, 3, 1.5)) {
+    expect_error(predict(fit, data.frame(n_psu_per_zone = bad)),
+                 "must contain NA, 1 or 2")
+  }
+})
+
+test_that("zone_order sets the cut and is refused when it cannot", {
+  z <- .psu_fixture()
+  by_size <- .fit_psu(z, n_psu_per_zone = 2)
+  ordered <- z
+  ordered$psu$zone_order <- seq_len(nrow(z$psu))
+  by_key <- .fit_psu(ordered, n_psu_per_zone = 2)
+  expect_false(identical(by_key$psu$.zone, by_size$psu$.zone))
+
+  expect_error(.fit_psu(ordered), "zone_order")
+  missing_key <- ordered
+  missing_key$psu$zone_order[3] <- NA
+  expect_error(.fit_psu(missing_key, n_psu_per_zone = 2), "missing")
+  tied <- ordered
+  tied$psu$zone_order[2] <- tied$psu$zone_order[1]
+  expect_error(.fit_psu(tied, n_psu_per_zone = 2), "without ties")
+  for (bad in list(0, 1.5, 3, NA_real_, "2", c(2, 2))) {
+    expect_error(.fit_psu(z, n_psu_per_zone = bad), "must be NULL, 1 or 2")
+  }
+  plain <- z$measures[, setdiff(names(z$measures), "icc_psu")]
+  expect_error(
+    n_alloc(z$frame[, c("stratum", "N")], measures = plain,
+            targets = z$targets, n_psu_per_zone = 2),
+    "applies to a PSU register"
+  )
+})
+
+## What the register model does not carry
+
+test_that("a budget is refused with a register, in every route", {
+  z <- .psu_fixture()
+  fr <- z$frame
+  fr$cost_psu <- 400
+  fr$cost_ssu <- 20
+  objective <- data.frame(name = "literacy", priority = 1)
+  expect_error(
+    n_alloc(fr, measures = z$measures, objective = objective,
+            budget = 1e5, psu = z$psu),
+    "'budget' is not available with a PSU register"
+  )
+  fit <- n_alloc(fr, measures = z$measures, targets = z$targets, psu = z$psu)
+  expect_error(
+    prec_alloc(fr, n = fit$detail$n, measures = z$measures,
+               objective = objective, budget = 1e5, psu = z$psu),
+    "'budget' is not available with a PSU register"
+  )
+  expect_error(predict(fit, data.frame(budget = 1e5)), "budget")
+})
+
+test_that("a variance ratio other than one is refused with a register", {
+  z <- .psu_fixture()
+  base <- .fit_psu(z)
+  for (one in list(1, NA_real_)) {
+    m <- z$measures
+    m$var_ratio_psu <- one
+    expect_equal(
+      n_alloc(z$frame, measures = m, targets = z$targets, psu = z$psu)$n,
+      base$n
+    )
+  }
+  for (bad in c(2, -1, 0.5)) {
+    m <- z$measures
+    m$var_ratio_psu <- bad
+    expect_error(
+      n_alloc(z$frame, measures = m, targets = z$targets, psu = z$psu),
+      "'var_ratio_psu' is not available with a PSU register"
+    )
+    fr <- z$frame
+    fr$var_ratio_psu <- bad
+    expect_error(
+      n_alloc(fr, measures = z$measures, targets = z$targets, psu = z$psu),
+      "'var_ratio_psu' is not available with a PSU register"
+    )
+    expect_error(
+      prec_alloc(z$frame, n = base$detail$n, measures = m,
+                 targets = z$targets, psu = z$psu),
+      "'var_ratio_psu' is not available with a PSU register"
+    )
+  }
+})
+
+test_that("PSU-level response is refused with a register by its own name", {
+  z <- .psu_fixture()
+  m <- z$measures
+  m$resp_rate_psu <- 0.9
+  expect_error(
+    n_alloc(z$frame, measures = m, targets = z$targets, psu = z$psu),
+    "'resp_rate_psu' and 'resp_rate_ssu' are not available with a PSU register"
+  )
+})
+
+## Costs, response and the field design
+
+test_that("the continuous optimum prices certainty visits as fixed", {
+  # Stratum A is all certainty, so its interviews cost cost_ssu alone, and
+  # B's bring a tenth of a visit each. The optimum of sum(a_h / n_h) under
+  # those costs is derived here independently of the solver.
+  frame <- data.frame(stratum = c("A", "B"), N = 10000, n_per_psu = 10,
+                      cost_psu = 100, cost_ssu = 1)
+  psu <- data.frame(stratum = rep(c("A", "B"), each = 100), N = 100,
+                    certainty = rep(c(TRUE, FALSE), each = 100))
+  measures <- data.frame(stratum = c("A", "B"), name = "y", p = 0.5,
+                         icc_psu = 0.05)
+  targets <- data.frame(name = "y", cv = 0.1)
+  fit <- n_alloc(frame, measures = measures, targets = targets, psu = psu)
+
+  a <- c(0.0625, 0.090625)
+  cost <- c(1, 11)
+  limit <- (0.5 * 0.1)^2 + sum(a / 10000)
+  optimum <- sqrt(a / cost) * sum(sqrt(a * cost)) / limit
+  expect_equal(fit$detail$n, optimum, tolerance = 1e-6)
+  expect_equal(fit$params$cost_h, cost)
+  expect_equal(fit$params$achieved$cost, 10000 + sum(cost * optimum),
+               tolerance = 1e-8)
+  expect_equal(prec_alloc(fit)$params$achieved$cost,
+               fit$params$achieved$cost, tolerance = 1e-8)
+})
+
+test_that("the register clusters on the responding take", {
+  frame <- data.frame(stratum = "A", N = 100000, n_per_psu = 10,
+                      cost_psu = 100, cost_ssu = 10)
+  psu <- data.frame(stratum = "A", N = rep(1000, 100))
+  measures <- data.frame(stratum = "A", name = "y", p = 0.5, icc_psu = 0.05)
+  targets <- data.frame(name = "y", cv = 0.08)
+  for (rate in c(1, 0.5)) {
+    register <- n_alloc(frame, measures = measures, targets = targets,
+                        psu = psu, resp_rate = rate)
+    ordinary <- n_alloc(transform(frame, N_psu = 100), measures = measures,
+                        targets = targets, resp_rate = rate)
+    expect_equal(register$n, ordinary$n, tolerance = 1e-8)
+    by_row <- n_alloc(frame, measures = transform(measures, resp_rate = rate),
+                      targets = targets, psu = psu)
+    expect_equal(by_row$n, register$n, tolerance = 1e-8)
+  }
+})
+
+test_that("the field design effect is the stratum one at the stratum rate", {
+  sizes <- c(400, 300, 50, 60, 70, 80, 40)
+  certain <- c(TRUE, TRUE, rep(FALSE, 5))
+  f <- 0.1
+  for (resp in c(1, 0.6)) {
+    field <- .psu_field_deff(sizes, certain, f * sizes[certain],
+                             f * sum(sizes[!certain]) / 5, 5, 0.1, resp)
+    expect_equal(
+      field,
+      .psu_deff(sum(sizes), 700, 300, 0.1, 5 * resp)
+    )
+  }
+  # A census of every certainty PSU at full response carries no variance
+  # from that part.
+  census <- .psu_field_deff(sizes, certain, sizes[certain], 6, 5, 0.1, 1)
+  rest <- 300^2 * (1 + 0.1 * 4) * (1 / 30 - 1 / 300)
+  expect_equal(census, max(rest / (1000^2 * (1 / 730 - 1 / 1000)), 1))
+})
+
+test_that("the field design is assessed on its own takes", {
+  # The certainty takes are rounded up one by one and the remainder gets
+  # what is left, far below the stratum rate on this register.
+  set.seed(36)
+  size <- round(rlnorm(120, log(120), 1.1)) + 15
+  psu <- data.frame(stratum = "A", N = size)
+  frame <- data.frame(stratum = "A", N = sum(size), n_per_psu = 10,
+                      cost_psu = 200, cost_ssu = 20)
+  measures <- data.frame(stratum = "A", name = "y", p = 0.3, icc_psu = 0.1)
+  fit <- n_alloc(frame, measures = measures,
+                 targets = data.frame(name = "y", cv = 0.02), psu = psu)
+
+  held <- fit$psu$certainty
+  size_c <- fit$psu$N[held]
+  size_r <- sum(fit$psu$N[!held])
+  draws <- fit$detail$n_psu_draw
+  v <- sum(size_c^2 * (1 / fit$psu$n_take[held] - 1 / size_c)) +
+    size_r^2 * (1 + 0.1 * 9) * (1 / (10 * draws) - 1 / size_r)
+  cv <- sqrt(0.3 * 0.7 * v) / (0.3 * sum(size))
+  expect_equal(fit$operational$constraints$.cv, cv, tolerance = 1e-10)
+  expect_lte(cv, 0.02)
+  expect_true(fit$operational$all_pass)
+  expect_gt(fit$operational$repair_iterations, 0L)
+})
+
+test_that("no remainder is left without a draw", {
+  # On this register the rounded-up certainty takes exceed the allocation
+  # in two strata, each with a remainder of one PSU.
+  for (seed in c(10, 52, 58)) {
+    z <- .psu_wide_register(seed)
+    fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                   psu = z$psu)
+    d <- fit$detail
+    expect_true(all(d$n_psu_draw >= 1 | d$n_psu_rest == 0),
+                label = sprintf("register %d", seed))
+  }
+  counts <- .psu_stratum_counts(100, 1000, 10, c(600, 300, 100),
+                                c(TRUE, TRUE, FALSE))
+  expect_identical(counts$n_rest, 10)
+  expect_identical(counts$n_psu_draw, 1)
+  over <- .psu_stratum_counts(99, 1000, 10, c(rep(95, 10), 50),
+                              c(rep(TRUE, 10), FALSE))
+  expect_identical(over$n_certain_int, 100)
+  expect_identical(over$n_rest, 0)
+  expect_identical(over$n_psu_draw, 1)
+})
+
+test_that("summary stratum costs add up to the plan's cost", {
+  frame <- data.frame(stratum = c("A", "B"), N = 10000, n_per_psu = 10,
+                      cost_psu = 100, cost_ssu = 1)
+  psu <- data.frame(stratum = rep(c("A", "B"), each = 100), N = 100,
+                    certainty = rep(c(TRUE, FALSE), each = 100))
+  measures <- data.frame(stratum = c("A", "B"), name = "y", p = 0.5,
+                         icc_psu = 0.05)
+  two <- n_alloc(frame, measures = measures,
+                 targets = data.frame(name = "y", cv = 0.1), psu = psu)
+  expect_equal(summary(two)$allocation$cost, c(100 * 100 + 200, 5 * 100 + 50))
+
+  # Strata mixing certainty and remainder PSUs, the takes rounded apart.
+  z <- .psu_fixture()
+  fr <- z$frame
+  fr$cost_psu <- 400
+  fr$cost_ssu <- 20
+  mixed <- n_alloc(fr, measures = z$measures, targets = z$targets,
+                   psu = z$psu)
+  expect_identical(mixed$detail$n_psu_certain > 0 &
+                     mixed$detail$n_psu_draw > 0, c(TRUE, TRUE, TRUE, FALSE))
+  for (fit in list(two, mixed)) {
+    s <- summary(fit)
+    expect_equal(sum(s$allocation$cost), fit$operational$cost)
+    expect_equal(sum(s$allocation$cost), s$overall$cost)
+    assessed <- summary(prec_alloc(fit))
+    expect_equal(sum(assessed$allocation$cost), fit$params$achieved$cost)
+    expect_equal(sum(assessed$allocation$cost), assessed$overall$cost)
+  }
 })
