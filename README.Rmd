@@ -87,19 +87,21 @@ predict(
 
 ## Find the right function
 
-| Planning task | Functions |
-|:---|:---|
-| Start with sample size and precision | `n_prop()`, `n_mean()`, `prec_prop()`, `prec_mean()` |
-| Choose a precision target or ratio estimand | `n_prop()`, `n_mean()`, `n_ratio()` |
-| Combine indicators or domain requirements | `n_multi()`, `prec_multi()` |
-| Construct strata and allocate a sample | `strata_bound()`, `n_alloc()`, `prec_alloc()` |
-| Meet several allocation constraints | `n_alloc()` |
-| Plan a clustered survey | `varcomp()`, `n_cluster()`, `design_effect()`, `effective_n()`, `design_df()` |
-| Plan screening or nonresponse follow-up | `n_twophase()`, `prec_twophase()` |
-| Plan changes, averages, panels, and rotations | `n_change()`, `n_pooled()`, `n_panel()`, `design_rotation()`, `design_schedule()` |
-| Plan a detectable comparison | `power_prop()`, `power_mean()`, `power_did()` |
+| Planning task | Functions | Book chapter |
+|:---|:---|:---|
+| Start with sample size and precision | `n_prop()`, `n_mean()`, `prec_prop()`, `prec_mean()` | `vignette("svyplan")` |
+| Choose a precision target or ratio estimand | `n_prop()`, `n_mean()`, `n_ratio()` | [Precision targets](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/precision.html) |
+| Combine indicators or domain requirements | `n_multi()`, `prec_multi()` | [Multiple indicators](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/multi-indicator.html) |
+| Construct strata and allocate a sample | `strata_bound()`, `n_alloc()`, `prec_alloc()` | [Stratification and allocation](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/allocation.html) |
+| Meet several allocation constraints | `n_alloc()` | [Joint allocation](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/joint-allocation.html) |
+| Plan a clustered survey | `varcomp()`, `n_cluster()`, `design_effect()`, `effective_n()`, `design_df()` | [Multistage planning](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/multistage-planning.html) |
+| Plan screening or nonresponse follow-up | `n_twophase()`, `prec_twophase()` | [Two-phase surveys](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/two-phase-planning.html) |
+| Plan changes, averages, panels, and rotations | `n_change()`, `n_pooled()`, `n_panel()`, `design_rotation()`, `design_schedule()` | [Repeated surveys](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/repeated-surveys.html) |
+| Plan a detectable comparison | `power_prop()`, `power_mean()`, `power_did()` | [Power](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/power.html) |
 
-`vignette("svyplan")` walks through a first plan.
+`vignette("svyplan")` walks through a first plan. The book
+[Survey Sampling Design with R](https://www.ahmadoudicko.com/sampling-design-r-book/) works through each
+task in a chapter and continues into sample selection with `samplyr`.
 
 Function reference pages document every argument and returned component. The
 [package website](https://dickoa.gitlab.io/svyplan) collects the reference

@@ -3,6 +3,14 @@ template:
   bootstrap: 5
   math-rendering: katex
 
+navbar:
+  structure:
+    left: [intro, reference, articles, tutorials, book, news]
+  components:
+    book:
+      text: Book
+      href: https://www.ahmadoudicko.com/sampling-design-r-book/
+
 articles:
   - title: "Getting started"
     desc: "Plan one estimate and check its expected precision."
