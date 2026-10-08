@@ -8,23 +8,6 @@ articles:
     desc: "Plan one estimate and check its expected precision."
     contents:
       - svyplan
-  - title: "Precision and survey requirements"
-    desc: "Choose precision targets and combine indicator or domain requirements."
-    contents:
-      - articles/precision
-      - articles/multi-indicator
-  - title: "Design and allocation"
-    desc: "Allocate samples across strata, clusters, and phases."
-    contents:
-      - articles/allocation
-      - articles/joint-allocation
-      - articles/multistage
-      - articles/two-phase
-  - title: "Repeated surveys and power"
-    desc: "Plan overlap, attrition, fieldwork schedules, and comparisons."
-    contents:
-      - articles/repeated-surveys
-      - articles/power
 
 reference:
 - title: Overview

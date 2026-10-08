@@ -223,28 +223,21 @@ Sizing for a regression coefficient is not implemented, and there is no
 `n_reg()`. The survey-specific part of that calculation, the variance
 inflation from a complex design, is the `deff` argument.
 
-## Choose the next guide
+## Choose the next function
 
-The package supports several estimands and design structures. The detailed
-guides below are available from the package website's
-[article index](https://dickoa.gitlab.io/svyplan/articles/index.html). Start
-from the question your plan must answer:
+The package supports several estimands and design structures. Start from the
+question your plan must answer:
 
 | Planning question | Continue with |
 |:---|:---|
-| Which precision target or interval method should I use? | [Precision targets](https://dickoa.gitlab.io/svyplan/articles/precision.html) |
-| How do several indicators or domains determine one sample? | [Multiple indicators and domains](https://dickoa.gitlab.io/svyplan/articles/multi-indicator.html) |
-| How should I construct strata or allocate a sample? | [Stratification and allocation](https://dickoa.gitlab.io/svyplan/articles/allocation.html) |
-| How do I satisfy several allocation requirements together? | [Joint allocation](https://dickoa.gitlab.io/svyplan/articles/joint-allocation.html) |
-| How many clusters and units per cluster do I need? | [Multistage surveys](https://dickoa.gitlab.io/svyplan/articles/multistage.html) |
-| How do I plan screening or nonresponse follow-up? | [Two-phase surveys](https://dickoa.gitlab.io/svyplan/articles/two-phase.html) |
-| How do overlap, attrition, and rotation affect repeated surveys? | [Repeated surveys and panels](https://dickoa.gitlab.io/svyplan/articles/repeated-surveys.html) |
-| Can the design detect a group difference or change? | [Power for comparisons and changes](https://dickoa.gitlab.io/svyplan/articles/power.html) |
-
-These advanced guides are website articles and require an internet connection
-when opened from the installed vignette. For household sampling, the
-[analysis-to-listing-unit conversion](https://dickoa.gitlab.io/svyplan/articles/multi-indicator.html#convert-analysis-units-to-listing-units)
-explains how to translate a required person count into a household issue.
+| Which precision target or interval method should I use? | `?n_prop`, `?n_mean`, `?n_ratio`, `?prec_prop` |
+| How do several indicators or domains determine one sample? | `?n_multi`, `?prec_multi` |
+| How should I construct strata or allocate a sample? | `?strata_bound`, `?n_alloc`, `?prec_alloc` |
+| How do I satisfy several allocation requirements together? | `?n_alloc` |
+| How many clusters and units per cluster do I need? | `?varcomp`, `?n_cluster`, `?design_effect` |
+| How do I plan screening or nonresponse follow-up? | `?n_twophase`, `?prec_twophase` |
+| How do overlap, attrition, and rotation affect repeated surveys? | `?n_change`, `?n_pooled`, `?n_panel`, `?design_rotation`, `?design_schedule` |
+| Can the design detect a group difference or change? | `?power_prop`, `?power_mean`, `?power_did` |
 
 Sample-size planning depends on anticipated variances and on the sample design
 [@cochran1977; @valliant2018]. Treat those inputs as documented assumptions and

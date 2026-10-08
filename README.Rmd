@@ -85,21 +85,23 @@ predict(
 )
 ```
 
-## Find the right guide
+## Find the right function
 
-| Planning task | Functions | Guide |
-|:---|:---|:---|
-| Start with sample size and precision | `n_prop()`, `n_mean()`, `prec_prop()`, `prec_mean()` | [Getting started](https://dickoa.gitlab.io/svyplan/articles/svyplan.html) |
-| Choose a precision target or ratio estimand | `n_prop()`, `n_mean()`, `n_ratio()` | [Precision targets](https://dickoa.gitlab.io/svyplan/articles/precision.html) |
-| Combine indicators or domain requirements | `n_multi()`, `prec_multi()` | [Multiple indicators and domains](https://dickoa.gitlab.io/svyplan/articles/multi-indicator.html) |
-| Construct strata and allocate a sample | `strata_bound()`, `n_alloc()`, `prec_alloc()` | [Stratification and allocation](https://dickoa.gitlab.io/svyplan/articles/allocation.html) |
-| Meet several allocation constraints | `n_alloc()` | [Joint allocation](https://dickoa.gitlab.io/svyplan/articles/joint-allocation.html) |
-| Plan a clustered survey | `varcomp()`, `n_cluster()`, `design_effect()`, `effective_n()`, `design_df()` | [Multistage surveys](https://dickoa.gitlab.io/svyplan/articles/multistage.html) |
-| Plan screening or nonresponse follow-up | `n_twophase()`, `prec_twophase()` | [Two-phase surveys](https://dickoa.gitlab.io/svyplan/articles/two-phase.html) |
-| Plan changes, averages, panels, and rotations | `n_change()`, `n_pooled()`, `n_panel()`, `design_rotation()`, `design_schedule()` | [Repeated surveys](https://dickoa.gitlab.io/svyplan/articles/repeated-surveys.html) |
-| Plan a detectable comparison | `power_prop()`, `power_mean()`, `power_did()` | [Power](https://dickoa.gitlab.io/svyplan/articles/power.html) |
+| Planning task | Functions |
+|:---|:---|
+| Start with sample size and precision | `n_prop()`, `n_mean()`, `prec_prop()`, `prec_mean()` |
+| Choose a precision target or ratio estimand | `n_prop()`, `n_mean()`, `n_ratio()` |
+| Combine indicators or domain requirements | `n_multi()`, `prec_multi()` |
+| Construct strata and allocate a sample | `strata_bound()`, `n_alloc()`, `prec_alloc()` |
+| Meet several allocation constraints | `n_alloc()` |
+| Plan a clustered survey | `varcomp()`, `n_cluster()`, `design_effect()`, `effective_n()`, `design_df()` |
+| Plan screening or nonresponse follow-up | `n_twophase()`, `prec_twophase()` |
+| Plan changes, averages, panels, and rotations | `n_change()`, `n_pooled()`, `n_panel()`, `design_rotation()`, `design_schedule()` |
+| Plan a detectable comparison | `power_prop()`, `power_mean()`, `power_did()` |
+
+`vignette("svyplan")` walks through a first plan.
 
 Function reference pages document every argument and returned component. The
-[package website](https://dickoa.gitlab.io/svyplan) collects the reference and
-the task-oriented guides. Report problems through the
+[package website](https://dickoa.gitlab.io/svyplan) collects the reference
+pages and the getting-started guide. Report problems through the
 [issue tracker](https://gitlab.com/dickoa/svyplan/-/work_items).
