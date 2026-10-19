@@ -3,9 +3,10 @@
 .alloc_weights <- function(alloc, q, N_h, S_h, cost_h,
                            deff_h = 1, resp_rate_h = 1,
                            mean_h = NULL, alloc_measure = NULL) {
+  size_only <- all(is.na(S_h))
   if (alloc == "power") {
-    if (!is.numeric(mean_h) || length(mean_h) != length(N_h) ||
-        anyNA(mean_h) || any(!is.finite(mean_h)) || any(mean_h == 0)) {
+    if (!size_only && (!is.numeric(mean_h) || length(mean_h) != length(N_h) ||
+        anyNA(mean_h) || any(!is.finite(mean_h)) || any(mean_h == 0))) {
       stop(structure(
         list(message = "Bankier allocation requires finite nonzero 'mean' (or 'p') values in every stratum"),
         class = c("svyplan_alloc_infeasible", "error", "condition")
@@ -17,6 +18,11 @@
          any(alloc_measure <= 0))) {
       stop("'alloc_measure' must contain one positive finite value per stratum",
            call. = FALSE)
+    }
+    if (size_only) {
+      measure <- if (is.null(alloc_measure)) N_h else alloc_measure
+      log_weight <- q * log(measure) + 0.5 * (log(deff_h) - log(resp_rate_h))
+      return(exp(log_weight - max(log_weight)))
     }
     # Common rescaling leaves allocation unchanged. Log weights avoid
     # overflow in the population CV and default total N * abs(mean).

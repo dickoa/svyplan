@@ -32,7 +32,11 @@
 #'   on a per-row basis.
 #' @param resp_rate Default expected response rate at the ultimate unit, in
 #'   (0, 1\]. Used for rows whose `resp_rate` column is absent or `NA`, and
-#'   a non-missing row value overrides it.
+#'   a non-missing row value overrides it. A rate of eligible units per
+#'   sampled unit at or below 1, such as
+#'   0.41 married women per household, folds in here as
+#'   `resp_rate * eligible_rate`. With a finite `N` this errs slightly
+#'   conservative.
 #' @param plan A [svyplan()] profile providing default design parameters.
 #'
 #' @return A `svyplan_prec` object with a `$detail` data frame containing
@@ -74,7 +78,7 @@
 #'   \item{`cv_num`, `cv_den`}{Coefficients of variation of a ratio row's
 #'     numerator and denominator, strictly positive.}
 #'   \item{`component_cor`}{Correlation between a ratio row's numerator and
-#'     denominator across units, in \[-1, 1\].}
+#'     denominator across units, in \eqn{[-1, 1]}.}
 #'   \item{`n`}{Sample size to evaluate (**required**), with one value per
 #'     indicator row.}
 #'   \item{`alpha`}{Significance level (default 0.05).}

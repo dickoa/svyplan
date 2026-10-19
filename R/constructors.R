@@ -62,7 +62,7 @@
   )
   cases <- .expected_cases(n, params, type)
   if (!is.null(cases)) out$expected_cases <- cases
-  # Preserve the exact legacy schema unless the optional generalized
+  # Preserve the exact classic schema unless the optional generalized
   # allocation diagnostics are actually present.
   if (!is.null(constraints)) out$constraints <- constraints
   if (!is.null(optimization)) out$optimization <- optimization
@@ -143,8 +143,10 @@
   }
 
   deff <- if (!is.null(params$deff)) params$deff else 1
-  resp_rate <- if (!is.null(params$resp_rate)) params$resp_rate else 1
-  N <- if (!is.null(params$N)) params$N else Inf
+  eligible_rate <- params[["eligible_rate"]] %||% 1
+  resp_rate <- (if (!is.null(params$resp_rate)) params$resp_rate else 1) *
+    eligible_rate
+  N <- (if (!is.null(params$N)) params$N else Inf) * eligible_rate
 
   if (type == "proportion") {
     .prec_engine_prop(params$p, n, params$alpha, N, deff, resp_rate,

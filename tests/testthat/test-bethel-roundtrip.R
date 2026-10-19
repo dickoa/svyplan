@@ -59,3 +59,22 @@ test_that("explicit default-method generalized assessment works", {
   expect_equal(assessed$detail$.achieved, fit$constraints$.achieved)
 })
 
+
+test_that("a reassessment's alpha and df reach the targets that inherited them", {
+  fr <- data.frame(stratum = c("A", "B"), N = c(1000, 2000))
+  m <- data.frame(stratum = fr$stratum, name = "y", p = c(0.3, 0.5))
+  f <- n_alloc(fr, measures = m, targets = data.frame(name = "y", cv = 0.05),
+               df = 30)
+  expect_identical(f$params$df, 30)
+  expect_true(is.na(f$params$targets$alpha) && is.na(f$params$targets$df))
+  e <- prec_alloc(f)
+  expect_equal(e$detail$.moe, qt(0.975, 30) * e$detail$.se)
+  e <- prec_alloc(f, alpha = 0.1, df = 10)
+  expect_equal(e$detail$.moe, qt(0.95, 10) * e$detail$.se)
+  # A row's own alpha keeps its precedence over the scalar.
+  own <- n_alloc(fr, measures = m,
+                 targets = data.frame(name = "y", cv = 0.05, alpha = 0.2))
+  e <- prec_alloc(own, alpha = 0.01)
+  expect_equal(e$detail$.moe, qnorm(0.9) * e$detail$.se)
+  expect_identical(own$params$targets$alpha, 0.2)
+})

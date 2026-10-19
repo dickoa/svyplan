@@ -9,7 +9,7 @@
 \alias{$<-.svyplan_schedule}
 \alias{[<-.svyplan_schedule}
 \alias{[[<-.svyplan_schedule}
-\title{Print, summarise and coerce a longitudinal design schedule}
+\title{Print, summarize and coerce a longitudinal design schedule}
 \usage{
 \method{print}{svyplan_schedule}(x, ...)
 
@@ -87,7 +87,7 @@ schedule <- design_schedule(
 )
 schedule
 
-# the occasion-by-occasion tables the print block summarises
+# the occasion-by-occasion tables the print block summarizes
 s <- summary(schedule)
 s
 

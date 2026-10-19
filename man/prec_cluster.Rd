@@ -17,6 +17,7 @@ prec_cluster(n = NULL, ...)
   resp_rate_psu = 1,
   resp_rate_ssu = 1,
   resp_rate = 1,
+  eligible_rate = 1,
   indicators = NULL,
   domains = NULL,
   stage_cost = NULL,
@@ -37,12 +38,17 @@ For \code{svyplan_cluster} objects: a cluster allocation from \code{\link[=n_clu
 \item{icc}{Numeric vector of homogeneity measures (length = stages - 1),
 or a \code{svyplan_varcomp} object.}
 
-\item{unit_relvar}{Unit relvariance (default 1).}
+\item{unit_relvar}{Unit relvariance, default 1. A proportion \code{p} has
+\code{(1 - p) / p}, so the default reports a proportion's cv as if
+\code{p = 0.5}. Required beside a \code{svyplan_varcomp} backed out of a design
+effect, which identifies none, and refused beside one estimated from
+data, which sets it. See \code{\link[=n_cluster]{n_cluster()}}.}
 
 \item{var_ratio}{Ratio of the stage components' unit variance to the
 analysis variable's, default 1. A scalar names \code{var_ratio_psu}, and for
 three stages \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)} follows from
-the decomposition. See \code{\link[=design_effect]{design_effect()}}.}
+the decomposition. See \code{\link[=design_effect]{design_effect()}}. Refused when \code{icc} is a
+\code{svyplan_varcomp}, which sets it.}
 
 \item{resp_rate_psu}{Expected \strong{PSU-level} response rate, in (0, 1].
 Default 1 (no adjustment). The effective stage-1 size is
@@ -57,6 +63,11 @@ Three-stage designs only, default 1. The effective stage-2 size is
 Default 1. It scales the final stage, so it also shrinks the realized
 cluster and therefore the clustering penalty. See \code{\link[=n_cluster]{n_cluster()}} for the
 decomposition.}
+
+\item{eligible_rate}{Eligible units per final-stage unit, a positive
+number, default 1. It multiplies \code{resp_rate} in the realized take, and
+\code{n} stays in final-stage units. Not available with \code{indicators}. See
+\code{\link[=n_cluster]{n_cluster()}}.}
 
 \item{indicators}{Optional data frame with one row per indicator, which
 switches the function to the several-indicators mode of Details. It
@@ -135,6 +146,11 @@ prec_cluster(n = c(50, 12, 8), icc = c(0.01, 0.05))
 # Round-trip from n_cluster
 res <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
 prec_cluster(res)
+
+# 600 clusters of 20 households, 0.41 married women per household, for a
+# proportion near 0.28
+prec_cluster(n = c(600, 20), icc = 0.07, unit_relvar = 0.72 / 0.28,
+             resp_rate = 0.9, eligible_rate = 0.41)
 
 # Several indicators under one allocation
 indicators <- data.frame(

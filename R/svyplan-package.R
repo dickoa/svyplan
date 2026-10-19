@@ -92,4 +92,5 @@
 #' @importFrom grDevices adjustcolor nclass.FD
 #' @importFrom stats lm.fit optim optimize plogis pnorm predict qlogis quantile qnorm sd terms uniroot var weighted.mean setNames
 #' @importFrom utils modifyList
+#' @useDynLib svyplan, .registration = TRUE
 NULL

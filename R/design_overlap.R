@@ -41,7 +41,7 @@
 #' The `min` is the count when the smaller take at the two occasions is a
 #' subset of the larger, which is what attrition and planned subsampling both
 #' give, including a design that subsamples an interim wave and returns to
-#' the whole cohort afterwards. Nesting is an assumption about the design and
+#' the whole cohort afterward. Nesting is an assumption about the design and
 #' is not identifiable from the takes. Where the two occasions measure
 #' partly disjoint subsamples of the cohort, `min` is the largest overlap
 #' the takes admit rather than the overlap the design has.

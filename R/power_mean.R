@@ -31,7 +31,7 @@
 #' @param ratio Allocation ratio n1/n2 (default 1). Only used when solving
 #'   for n (`n = NULL`). For example, `ratio = 2` means group 1 gets twice
 #'   the sample of group 2.
-#' @param overlap Panel overlap fraction in \[0, 1\], for repeated surveys.
+#' @param overlap Panel overlap fraction in \eqn{[0, 1]}, for repeated surveys.
 #'   Defined as the fraction of group 1 that also appears in group 2
 #'   (`overlap = n12 / n1`). A positive value describes a coordinated
 #'   design with that many units deliberately held in common, which with a
@@ -40,7 +40,7 @@
 #'   independent and may be different populations of different sizes. It is
 #'   not the same model as a deliberately disjoint pair, which is why the
 #'   two need not agree in the limit when `N` is small.
-#' @param overlap_cor Correlation between occasions in \[0, 1\].
+#' @param overlap_cor Correlation between occasions in \eqn{[0, 1]}.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'

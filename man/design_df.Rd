@@ -120,10 +120,10 @@ can join strata, so a stratum whose only zone is pooled with another
 stratum's shows no df of its own and is marked \code{"pooled"} in \verb{$strata}.
 Each stratum's df is then the count on that stratum alone, and the
 per-stratum values need not sum to the overall df.
-Allocations containing certainty PSUs remain unsupported, because
-combining their within-PSU variance contributions with other strata
-requires an explicit degrees-of-freedom convention that this helper does
-not yet implement. In other inputs, unrecorded certainty PSUs can make the
+Allocations containing certainty PSUs are refused, because combining
+their within-PSU variance contributions with other strata requires an
+explicit degrees-of-freedom convention that this helper does not define.
+In other inputs, unrecorded certainty PSUs can make the
 nominal first-stage count too large.
 
 A stratum holding a single PSU supports no within-stratum variance

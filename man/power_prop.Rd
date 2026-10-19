@@ -66,11 +66,11 @@ requires a smaller sample for the same power.}
 for n (\code{n = NULL}). For example, \code{ratio = 2} means group 1 gets twice
 the sample of group 2.}
 
-\item{overlap}{Panel overlap fraction in [0, 1], for repeated surveys.
+\item{overlap}{Panel overlap fraction in \eqn{[0, 1]}, for repeated surveys.
 Defined as the fraction of group 1 that also appears in group 2
 (\code{overlap = n12 / n1}). Only supported with \code{method = "wald"}.}
 
-\item{overlap_cor}{Correlation between occasions in [0, 1].}
+\item{overlap_cor}{Correlation between occasions in \eqn{[0, 1]}.}
 
 \item{method}{Variance method: \code{"wald"} (default), \code{"arcsine"}, or
 \code{"logodds"}. The arcsine square-root transform is variance-stabilizing.

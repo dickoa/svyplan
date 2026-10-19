@@ -12,3 +12,8 @@ reference/
 build/
 .~undo-tree~
 *~undo-tree~
+
+# compiled objects of src/
+src/*.o
+src/*.so
+src/*.dll

@@ -84,13 +84,14 @@ NULL
     resp_rate = p$resp_rate %||% 1
   )
   set <- rates[rates < 1]
-  if (length(set) == 0L) {
+  parts <- sprintf("%s = %.2f", names(set), set)
+  if (!is.null(p[["eligible_rate"]])) {
+    parts <- c(parts, sprintf("eligible_rate = %.4g", p[["eligible_rate"]]))
+  }
+  if (length(parts) == 0L) {
     return(invisible(NULL))
   }
-  cat(sprintf(
-    "(%s)\n",
-    paste(sprintf("%s = %.2f", names(set), set), collapse = ", ")
-  ))
+  cat(sprintf("(%s)\n", paste(parts, collapse = ", ")))
   invisible(NULL)
 }
 
@@ -351,7 +352,14 @@ print.svyplan_n <- function(x, ...) {
   cat(sprintf("Sample size for %s%s\n", type_label, method_label))
   p <- x$params
   resp_rate <- p$resp_rate
-  if (!is.null(resp_rate) && resp_rate < 1) {
+  eligible_rate <- p[["eligible_rate"]]
+  if (!is.null(eligible_rate)) {
+    cat(sprintf(
+      "n = %s gross (eligible respondents: %s)",
+      .fmt_count_n(ceiling(x$n)),
+      .fmt_count_n(ceiling(x$n * (resp_rate %||% 1) * eligible_rate))
+    ))
+  } else if (!is.null(resp_rate) && resp_rate < 1) {
     net_n <- ceiling(x$n * resp_rate)
     cat(sprintf(
       "n = %s gross (net: %s)",
@@ -388,6 +396,9 @@ print.svyplan_n <- function(x, ...) {
   parts <- c(parts, .fmt_deff(p$deff))
   if (!is.null(resp_rate) && resp_rate < 1) {
     parts <- c(parts, sprintf("resp_rate = %s", .fmt_prob(resp_rate)))
+  }
+  if (!is.null(eligible_rate)) {
+    parts <- c(parts, sprintf("eligible_rate = %.4g", eligible_rate))
   }
   if (length(parts) > 0L) {
     cat(sprintf(" (%s)", paste(parts, collapse = ", ")))
@@ -472,7 +483,7 @@ print.svyplan_n <- function(x, ...) {
       if (natural) "natural incidence" else "separate quotas",
       min_n_label
     ))
-    # Both numbers are labelled: the total is what you field, the largest
+    # Both numbers are labeled: the total is what you field, the largest
     # single domain is a different quantity and was once printed as 'n'.
     cat(sprintf(
       "n = %s (%s)\n",
@@ -542,7 +553,14 @@ print.svyplan_cluster <- function(x, ...) {
   resp_rate <- (x$params$resp_rate_psu %||% 1) *
     (x$params$resp_rate_ssu %||% 1) *
     (x$params$resp_rate %||% 1)
-  if (resp_rate < 1) {
+  eligible_rate <- x$params[["eligible_rate"]]
+  if (!is.null(eligible_rate)) {
+    cat(sprintf(
+      " -> total n = %s (eligible respondents: %s)\n",
+      .fmt_count_n(total_display),
+      .fmt_count_n(ceiling(total_display * resp_rate * eligible_rate))
+    ))
+  } else if (resp_rate < 1) {
     net_total <- ceiling(total_display * resp_rate)
     cat(sprintf(
       " -> total n = %s (net: %s)\n",
@@ -782,7 +800,15 @@ print.svyplan_prec <- function(x, ...) {
     cat(paste(stage_parts, collapse = " | "))
     cat(sprintf(" -> total n = %s", .fmt_count_n(total_display)))
     resp_rate <- p$resp_rate_psu
-    if (!is.null(resp_rate) && resp_rate < 1) {
+    if (!is.null(p[["eligible_rate"]])) {
+      all_rates <- (p$resp_rate_psu %||% 1) * (p$resp_rate_ssu %||% 1) *
+        (p$resp_rate %||% 1) * p[["eligible_rate"]]
+      cat(sprintf(
+        " (eligible respondents: %s, eligible_rate = %.4g)",
+        .fmt_count_n(ceiling(total_display * all_rates)),
+        p[["eligible_rate"]]
+      ))
+    } else if (!is.null(resp_rate) && resp_rate < 1) {
       cat(sprintf(
         " (net: %s)",
         .fmt_count_n(ceiling(total_display * resp_rate))
@@ -824,7 +850,14 @@ print.svyplan_prec <- function(x, ...) {
     } else {
       resp_rate <- p$resp_rate
     }
-    if (
+    eligible_rate <- p[["eligible_rate"]]
+    if (!identical(x$type, "alloc") && !is.null(eligible_rate)) {
+      cat(sprintf(
+        " (eligible respondents: %s, eligible_rate = %.4g)",
+        .fmt_count_n(ceiling(sum(p$n * (resp_rate %||% 1) * eligible_rate))),
+        eligible_rate
+      ))
+    } else if (
       !identical(x$type, "alloc") && !is.null(resp_rate) && all(resp_rate < 1)
     ) {
       cat(sprintf(
@@ -1334,10 +1367,10 @@ confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
   .ci_matrix(lo, hi, alpha)
 }
 
-#' The change an interval on a change is centred on
+#' The change an interval on a change is centered on
 #'
 #' A change sized from `moe` alone has no known level, and the interval
-#' would then be centred on nothing. The message names `change` rather than
+#' would then be centered on nothing. The message names `change` rather than
 #' the interval so the fix is the argument to add.
 #' @keywords internal
 #' @noRd
@@ -1351,10 +1384,10 @@ confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
   p$change
 }
 
-#' The level an interval on a pooled estimate is centred on
+#' The level an interval on a pooled estimate is centered on
 #'
 #' A size solved from `moe` alone knows the spread but not the level, and
-#' the interval would then be centred on nothing. The message names `mu`
+#' the interval would then be centered on nothing. The message names `mu`
 #' rather than the interval so the fix is the argument to add.
 #' @keywords internal
 #' @noRd
@@ -2065,6 +2098,9 @@ print.svyplan_strata <- function(x, ...) {
   if (length(parts) > 0L) {
     cat(sprintf("(%s)\n", paste(parts, collapse = ", ")))
   }
+  if (.alloc_size_only(x)) {
+    cat("precision: not assessed (no 'sd' or 'var' in frame)\n")
+  }
   .print_psu_fraction_note(detail)
   .print_design_df(x)
   .print_domains_block(x$domains)
@@ -2170,10 +2206,10 @@ print.svyplan_strata <- function(x, ...) {
   op <- x$operational
   budget_mode <- identical(x$params$mode, "budget_objective")
   status <- opt$classification %||% "unknown"
-  certainty <- opt$certainty
+  search <- opt$search
   cat(sprintf(
     "Joint constrained allocation (Bethel%s)\n",
-    if (is.null(certainty)) "" else ", PSU register"
+    if (is.null(search)) "" else ", PSU register"
   ))
   # Report exceptions, not confirmations: a line that only ever says
   # "nothing went wrong" buries the lines that do carry news.
@@ -2208,7 +2244,7 @@ print.svyplan_strata <- function(x, ...) {
       )
     }
   ))
-  if (!is.null(certainty)) {
+  if (!is.null(search)) {
     # Counts are PSUs available in each part. How many of the remainder are
     # drawn is a selection decision this plan does not make.
     n_certain <- sum(x$psu$certainty)
@@ -2220,11 +2256,14 @@ print.svyplan_strata <- function(x, ...) {
       op$n_psu_draw,
       nrow(x$psu) - n_certain
     ))
-    # A register with no self-consistent classification is a fact about the
-    # plan rather than detail, so it stays on the block, as a panel short of
-    # its target does.
-    if (!isTRUE(certainty$fixed_point)) {
-      cat("no self-consistent classification: the plan meets every target\n")
+    # A plan the node limit stopped short of proving is news, an optimal one
+    # is not.
+    if (identical(search$status, "limit")) {
+      cat(sprintf(
+        "search: stopped at the node limit, gap %.3g%% to a bound of %s\n",
+        100 * search$gap,
+        format(signif(search$bound, 6), big.mark = ",")
+      ))
     }
   }
   continuous_cost <- x$params$achieved$cost
@@ -2233,12 +2272,19 @@ print.svyplan_strata <- function(x, ...) {
   } else {
     NA_real_
   }
+  # A register's field design is planned whole, not rounded from the
+  # continuous solve, which is only its relaxation.
   cat(sprintf(
-    "continuous optimum: n = %s, cost = %.0f%s\n",
+    "continuous %s: n = %s, cost = %.0f%s\n",
+    if (is.null(search)) "optimum" else "relaxation",
     .fmt_continuous_n(x$n),
     continuous_cost,
     if (!is.na(increase) && abs(increase) >= 0.005) {
-      sprintf(" (integerizing costs %+.2f%%)", increase)
+      sprintf(
+        if (is.null(search)) " (integerizing costs %+.2f%%)" else
+          " (field design %+.2f%%)",
+        increase
+      )
     } else {
       ""
     }
@@ -2249,15 +2295,18 @@ print.svyplan_strata <- function(x, ...) {
       x$objective_value,
       op$objective_value
     ))
-    if (!isTRUE(opt$budget_binding)) {
-      cat(
-        "the budget is not binding: the allocation sits at its upper bounds\n"
-      )
-    } else if (is.finite(opt$budget_sensitivity %||% NA_real_)) {
-      cat(sprintf(
-        "one more unit of budget changes the objective by %.4g\n",
-        opt$budget_sensitivity
-      ))
+    # For a register both describe the relaxation, so summary() keeps them.
+    if (is.null(search)) {
+      if (!isTRUE(opt$budget_binding)) {
+        cat(
+          "the budget is not binding: the allocation sits at its upper bounds\n"
+        )
+      } else if (is.finite(opt$budget_sensitivity %||% NA_real_)) {
+        cat(sprintf(
+          "one more unit of budget changes the objective by %.4g\n",
+          opt$budget_sensitivity
+        ))
+      }
     }
     obj <- x$objective
     if (!is.null(obj) && nrow(obj) > 0L) {
@@ -2298,7 +2347,7 @@ print.svyplan_strata <- function(x, ...) {
   if (n_lower > 0L || n_upper > 0L) {
     cat(sprintf("active bounds: %d lower, %d upper\n", n_lower, n_upper))
   }
-  if (!is.null(certainty)) {
+  if (!is.null(search)) {
     cat("# summary() for the certainty split by stratum\n")
   }
   invisible(x)
@@ -2450,8 +2499,9 @@ summary.svyplan_prec <- function(object, ...) {
 
 #' Stages of the planned design, not of the solve
 #'
-#' A register fit is solved as one stage, its clustering handed over as a
-#' design effect, but the plan it describes has two.
+#' A register fit's continuous relaxation is solved as one stage, its
+#' clustering handed over as a design effect, but the plan it describes has
+#' two.
 #' @keywords internal
 #' @noRd
 .bethel_plan_stages <- function(object, problem) {
@@ -2554,7 +2604,7 @@ summary.svyplan_prec <- function(object, ...) {
   cert <- .bethel_summary_certainty(object)
   if (!is.null(cert)) {
     out$certainty <- cert
-    sources <- c("threshold", "operational", "supplied", "orbit")
+    sources <- c("threshold", "operational", "supplied", "planned")
     out$certainty_sources <- vapply(
       sources,
       function(src) sum(object$psu$.certainty_source %in% src),
@@ -2567,12 +2617,11 @@ summary.svyplan_prec <- function(object, ...) {
 #' The certainty split by stratum, which the printed line points at
 #'
 #' Counts are PSUs available in each part. The threshold and the design effect
-#' are read from the plan as returned, so the table describes the answer rather
-#' than any iterate on the way to it.
+#' are read from the plan as returned, so the table describes the answer.
 #' @keywords internal
 #' @noRd
 .bethel_summary_certainty <- function(object) {
-  if (is.null(object$optimization$certainty) || is.null(object$psu)) {
+  if (is.null(object$optimization$search) || is.null(object$psu)) {
     return(NULL)
   }
   detail <- object$detail
@@ -2692,11 +2741,15 @@ summary.svyplan_prec <- function(object, ...) {
   if (!is.null(p$psu) && all(c("cost_psu", "cost_ssu") %in% names(p$frame))) {
     cost_psu <- rep_len(as.numeric(p$frame$cost_psu), nrow(out))
     cost_ssu <- rep_len(as.numeric(p$frame$cost_ssu), nrow(out))
-    out$cost <- if (design) {
-      d <- object$detail
-      (d$n_psu_certain + d$n_psu_draw) * cost_psu + d$n_int * cost_ssu
+    held <- if (design) object$detail$n_psu_certain else
+      p$certainty$n_psu_certain
+    draw <- if (design) object$detail$n_psu_draw else p$certainty$n_psu_draw
+    # A supplied allocation has no draw, so only its certainty visits are
+    # added to the solver's price.
+    out$cost <- if (is.null(draw)) {
+      held * cost_psu + out$cost
     } else {
-      p$certainty$n_psu_certain * cost_psu + out$cost
+      (held + draw) * cost_psu + n_primary * cost_ssu
     }
   }
   if (problem$stages > 1L) {
@@ -2829,7 +2882,7 @@ summary.svyplan_prec <- function(object, ...) {
   list(
     classification = opt$classification,
     converged = opt$converged,
-    certainty = opt$certainty,
+    search = opt$search,
     message = opt$message,
     iterations = opt$iterations,
     convergence_code = opt$convergence_code,
@@ -2886,15 +2939,19 @@ summary.svyplan_prec <- function(object, ...) {
       response_rate = problem$resp_hk[at],
       stringsAsFactors = FALSE
     )
+    elig <- problem$elig_hk
+    if (!is.null(elig) && any(elig[at] != 1)) {
+      model$eligible_rate <- elig[at]
+    }
   }
   list(
     alpha = p$alpha,
     df = problem$df,
     stages = .bethel_plan_stages(object, problem),
-    # The solver saw a one-stage problem because the certainty loop hands it
-    # the clustering as a design effect, so the model it recorded describes
-    # the solve rather than the plan.
-    variance_model = if (is.null(object$optimization$certainty)) {
+    # The solver saw a one-stage problem because a register hands it the
+    # clustering as a design effect, so the model it recorded describes the
+    # solve rather than the plan.
+    variance_model = if (is.null(p$psu)) {
       problem$variance_model
     } else {
       "two_part_certainty_wald"
@@ -2984,7 +3041,9 @@ summary.svyplan_prec <- function(object, ...) {
         n_used,
         kind = kind
       ),
-      precision = .alloc_summary_precision(state, n_used),
+      precision = if (!.alloc_size_only(object)) {
+        .alloc_summary_precision(state, n_used)
+      },
       bounds = if (design) .alloc_summary_bounds(detail, n_used) else NULL,
       domains = domains,
       assumptions = list(
@@ -3533,31 +3592,21 @@ print.summary.svyplan_bethel <- function(x, ...) {
     length(opt$active_lower),
     length(opt$active_upper)
   ))
-  if (!is.null(opt$certainty)) {
-    cc <- opt$certainty
-    cat(sprintf("  certainty verdict: %s\n", cc$verdict))
+  if (!is.null(opt$search)) {
+    sr <- opt$search
     cat(sprintf(
-      "  classification orbit: %d, reached in %d iteration%s\n",
-      cc$orbit,
-      cc$iterations,
-      if (cc$iterations == 1L) "" else "s"
+      "  field design search: %s after %s node%s of %s, bound %s (gap %.3g%%)\n",
+      sr$status,
+      format(sr$nodes, big.mark = ","),
+      if (sr$nodes == 1) "" else "s",
+      format(sr$max_nodes, big.mark = ","),
+      format(signif(sr$bound, 6), big.mark = ","),
+      100 * sr$gap
     ))
     cat(sprintf(
-      "  allocation settled in %d iteration%s%s\n",
-      cc$settle_iterations,
-      if (cc$settle_iterations == 1L) "" else "s",
-      if (cc$absorbed > 0L) {
-        sprintf(
-          ", absorbing %d PSU(s) the settle put above a threshold",
-          cc$absorbed
-        )
-      } else {
-        ""
-      }
-    ))
-    cat(sprintf(
-      "  returned plan is a fixed point: %s\n",
-      if (isTRUE(cc$fixed_point)) "yes" else "no"
+      "  states: %s listed, %s kept by the bound\n",
+      format(sr$states, big.mark = ","),
+      format(sr$kept, big.mark = ",")
     ))
   }
   if (!is.null(opt$budget_binding)) {
@@ -3717,6 +3766,7 @@ print.summary.svyplan_bethel <- function(x, ...) {
     variance = "Variance",
     deff = "Deff",
     response_rate = "Resp.",
+    eligible_rate = "Elig.",
     n_per_psu = "Take/PSU",
     n_per_ssu = "Take/SSU",
     diagnostic = "Diagnostic",
@@ -3835,13 +3885,17 @@ print.summary.svyplan_alloc <- function(x, ...) {
     )
   }
 
-  cat("\nAchieved precision by stratum\n\n")
-  print(
-    .fmt_alloc_summary_table(x$precision),
-    row.names = FALSE,
-    quote = FALSE,
-    right = TRUE
-  )
+  if (is.null(x$precision)) {
+    cat("\nPrecision not assessed (no 'sd' or 'var' in frame)\n")
+  } else {
+    cat("\nAchieved precision by stratum\n\n")
+    print(
+      .fmt_alloc_summary_table(x$precision),
+      row.names = FALSE,
+      quote = FALSE,
+      right = TRUE
+    )
+  }
 
   if (!is.null(x$bounds)) {
     cat("\nAllocation bounds\n\n")
@@ -4324,7 +4378,7 @@ print.svyplan_twophase <- function(x, ...) {
   )
 }
 
-#' Analyse a two-phase allocation
+#' Analyze a two-phase allocation
 #'
 #' `print()` on a [n_twophase()] result gives the design as it would be
 #' fielded: the two phase sizes in whole units, the precision and cost they
@@ -4892,11 +4946,11 @@ as.data.frame.svyplan_rotation <- function(
 #'
 #' @details
 #' The values, the shared counts and the rotation describe one design, so
-#' nothing may move the values while leaving the rest: subsetting and
+#' nothing may move the values while leaving the rest. Subsetting and
 #' arithmetic return bare numerics, and replacement is an error. That also
 #' settles `pmax()` and `pmin()`, which copy the attributes of their first
 #' argument without dispatching to any method and would otherwise return
-#' something still labelled an overlap whose counts no longer follow from its
+#' something still labeled an overlap whose counts no longer follow from its
 #' values. They assign through `[<-`, so they are refused here too. Convert
 #' with `as.double(x)` and they work as usual.
 #'
@@ -5113,7 +5167,7 @@ as.data.frame.svyplan_overlap <- function(
   )
 }
 
-#' Print, summarise, format and coerce a panel recruitment
+#' Print, summarize, format and coerce a panel recruitment
 #'
 #' Display and coercion methods for the object [n_panel()] and
 #' [prec_panel()] return. `print()` gives the number to recruit, the

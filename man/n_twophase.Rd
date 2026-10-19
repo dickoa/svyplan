@@ -194,10 +194,12 @@ achieve, and never wins on cost alone.}
 the per-stratum \code{n_int}, and the \code{cost} and \code{cv} it actually
 achieves. Budget mode floors and then buys back whole units in order
 of variance reduction per unit cost, so the integer design stays
-inside the budget, while cv mode rounds up. Both are bounded by the
-phase-2 pool, so a stratum whose expected phase-1 yield rounds below
-one unit is left unsampled with a warning, and the operational \code{cv}
-is then \code{Inf}. With \code{assurance} set it also carries \code{assured},
+inside the budget. Cv mode rounds up and then adds whole units in the
+same order, phase-1 units included unless \code{n_phase1} fixes them,
+until the design meets the target, and stops with an error when no
+unit can be added. In budget mode a stratum whose expected phase-1
+yield rounds below one unit is left unsampled with a warning, and the
+operational \code{cv} is then \code{Inf}. With \code{assurance} set it also carries \code{assured},
 \code{assured_phase1}, \code{pool} and \code{assured_cost}.}
 \item{\code{params}}{Validated inputs, read back by \code{\link[=prec_twophase]{prec_twophase()}}. They
 include the design decisions a stratum table cannot express, so that

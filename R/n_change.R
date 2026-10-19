@@ -51,16 +51,16 @@
 #'   measured against the first occasion it cannot exceed `1 / ratio` once
 #'   the first occasion is the larger.
 #' @param overlap Fraction of the first occasion's **responding** sample
-#'   carried into the second, in \[0, 1\]. `0` (default) drops the covariance
-#'   entirely and reproduces the two-independent-samples size. `1` means
-#'   every responding unit of the first occasion is measured again, which is
-#'   a full panel when the occasions are the same size. A rotation pattern
-#'   determines the issued figure, `(D - 1) / D` between consecutive
+#'   carried into the second, in \eqn{[0, 1]}. `0` (default) drops the
+#'   covariance entirely and reproduces the two-independent-samples size. `1`
+#'   means every responding unit of the first occasion is measured again,
+#'   which is a full panel when the occasions are the same size. A rotation
+#'   pattern determines the issued figure, `(D - 1) / D` between consecutive
 #'   occasions of an in-for-`D` schedule, and [design_overlap()] computes it
 #'   at every lag. The two are the same number at full response only. See
 #'   [prec_change()] on what a response rate below 1 does to this reading.
 #' @param overlap_cor Correlation between the two occasions among the
-#'   overlapping units, in \[0, 1\]. Default 0, which makes overlap
+#'   overlapping units, in \eqn{[0, 1]}. Default 0, which makes overlap
 #'   worthless, since it is the product `overlap * overlap_cor` that reduces
 #'   the size, so a full panel of uncorrelated measurements saves nothing. On the
 #'   proportion scale two Bernoulli marginals bound the correlation they can
@@ -144,7 +144,7 @@
 #' size is identified and the function says so rather than returning zero.
 #'
 #' At a finite `N` with equal occasions and full response, the requirement
-#' rises towards `N` but never past it, because two censuses of one
+#' rises toward `N` but never past it, because two censuses of one
 #' population measure the change exactly. Every target is attainable there,
 #' and a demanding one simply returns a near-census. Unequal occasions or a
 #' response rate below 1 remove that guarantee, since the size released is

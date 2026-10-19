@@ -984,6 +984,39 @@ test_that("a published standard error forms the same design effect", {
   )
 })
 
+test_that("a published DEFT is squared and its weighting loss divided out", {
+  deft <- 1.582
+  published <- varcomp(deff = deft^2, n_per_psu = 12.3)
+  expect_equal(published$icc, (deft^2 - 1) / 11.3)
+  expect_equal(round(published$icc, 3), 0.133)
+  clustering <- varcomp(deff = deft^2 / 1.4, n_per_psu = 12.3)
+  expect_equal(round(clustering$icc, 3), 0.070)
+
+  carried <- varcomp(deff = deft^2, n_per_psu = 12.3, var_ratio = 1.4)
+  expect_equal(carried$icc, clustering$icc)
+  expect_equal(
+    as.double(design_effect(carried, n_per_psu = 15)),
+    1.4 * as.double(design_effect(clustering, n_per_psu = 15))
+  )
+
+  kish <- design_effect(weights = rep(c(1, 4), c(300, 100)))
+  expect_equal(as.double(kish), 76 / 49)
+  expect_equal(
+    varcomp(deff = deft^2 / kish, n_per_psu = 12.3)$icc,
+    (deft^2 * 49 / 76 - 1) / 11.3
+  )
+  restored <- design_effect(clustering, n_per_psu = 15) * kish
+  expect_equal(n_prop(p = 0.28, cv = 0.05, deff = restored)$params$deff,
+               as.double(restored))
+
+  se <- 0.021
+  formed <- se^2 / (0.30 * 0.70 / 1200)
+  expect_equal(
+    varcomp(deff = formed / kish, n_per_psu = 20)$icc,
+    varcomp(se = se, p = 0.30, n = 1200, n_per_psu = 20, var_ratio = kish)$icc
+  )
+})
+
 test_that("a design effect below var_ratio gives a negative icc and warns", {
   expect_warning(vc <- varcomp(deff = 0.8, n_per_psu = 20),
                  "beat simple random sampling")
@@ -1085,15 +1118,74 @@ test_that("a plan supplies the unit relvariance a design effect cannot", {
   )
 })
 
-test_that("an estimated varcomp still overrides a supplied unit relvariance", {
+test_that("an estimated varcomp refuses a supplied unit relvariance", {
   set.seed(77)
   frame <- data.frame(y = rnorm(200, 50, 10), psu = rep(1:20, each = 10))
   vc <- varcomp(y ~ psu, data = frame)
-  expect_equal(
-    n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5)$cv,
+  expect_error(
     n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5,
-              unit_relvar = 99)$cv
+              unit_relvar = 99),
+    "'unit_relvar' is estimated by the varcomp\\(\\) result"
   )
+  expect_error(
+    prec_cluster(n = c(40, 20), icc = vc, unit_relvar = 99),
+    "Leave it unset in prec_cluster\\(\\)"
+  )
+})
+
+test_that("a varcomp refuses a supplied variance ratio", {
+  set.seed(77)
+  frame <- data.frame(y = rnorm(200, 50, 10), psu = rep(1:20, each = 10))
+  est <- varcomp(y ~ psu, data = frame)
+  back <- varcomp(deff = 1.8, n_per_psu = 20)
+  expect_error(
+    n_cluster(stage_cost = c(500, 50), icc = est, cv = 0.05, var_ratio = 3),
+    "or pass 'icc' as numbers"
+  )
+  expect_error(
+    n_cluster(stage_cost = c(500, 50), icc = back, cv = 0.05,
+              unit_relvar = 0.6, var_ratio = 3),
+    "varcomp\\(deff = , var_ratio = \\)"
+  )
+  expect_error(
+    prec_cluster(n = c(40, 20), icc = back, unit_relvar = 0.6,
+                 var_ratio = 3),
+    "'var_ratio' is set by the varcomp\\(\\) result"
+  )
+  expect_equal(
+    n_cluster(stage_cost = c(500, 50),
+              icc = varcomp(deff = 1.8, n_per_psu = 20, var_ratio = 1.2),
+              cv = 0.05, unit_relvar = 0.6)$params$var_ratio[[1]],
+    1.2
+  )
+})
+
+test_that("a profile's components yield to a varcomp passed as icc", {
+  set.seed(77)
+  frame <- data.frame(y = rnorm(200, 50, 10), psu = rep(1:20, each = 10))
+  est <- varcomp(y ~ psu, data = frame)
+  back <- varcomp(deff = 1.8, n_per_psu = 20)
+  pl <- svyplan(stage_cost = c(500, 50), unit_relvar = 5, var_ratio = 3)
+  expect_equal(
+    n_cluster(icc = est, cv = 0.05, plan = pl)$n,
+    n_cluster(stage_cost = c(500, 50), icc = est, cv = 0.05)$n
+  )
+  expect_equal(
+    prec_cluster(n = c(40, 20), icc = est, plan = pl)$cv,
+    prec_cluster(n = c(40, 20), icc = est)$cv
+  )
+  expect_equal(
+    n_cluster(icc = back, cv = 0.05, plan = pl)$n,
+    n_cluster(stage_cost = c(500, 50), icc = back, cv = 0.05,
+              unit_relvar = 5)$n
+  )
+  in_plan <- svyplan(stage_cost = c(500, 50), icc = est, unit_relvar = 5)
+  expect_equal(
+    n_cluster(cv = 0.05, plan = in_plan)$n,
+    n_cluster(stage_cost = c(500, 50), icc = est, cv = 0.05)$n
+  )
+  expect_error(n_cluster(cv = 0.05, plan = in_plan, var_ratio = 2),
+               "'var_ratio' is set by the varcomp\\(\\) result")
 })
 
 test_that("a backed-out varcomp prints and exports its provenance", {

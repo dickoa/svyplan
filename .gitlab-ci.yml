@@ -97,6 +97,7 @@ pages:
     - Rscript -e "remotes::install_deps(dependencies = TRUE)"
   script:
     - Rscript -e "pkgdown::build_site()"
+    - Rscript .gitlab/build-llm-docs.R
     - mv docs public
   artifacts:
     paths:

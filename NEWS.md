@@ -1,4 +1,4 @@
-# svyplan 0.15.0
+# svyplan 0.16.0
 
 Initial CRAN release.
 
@@ -41,6 +41,12 @@ that recommendation when available, or rounds the continuous size up.
   `resp_rate_ssu`, and `resp_rate`, because a lost cluster and a lost ultimate
   unit move the cost-optimal take differently. Any stage size may be fixed, and
   the remaining stages solve that restricted problem.
+* `eligible_rate` sizes a sample of households for an estimate over the
+  eligible persons they hold, an average number per household that may exceed
+  one. `n_prop()`, `prec_prop()`, `n_cluster()`, `prec_cluster()` and joint
+  `n_alloc()` and `prec_alloc()` take it. Sizes, bounds and costs stay in
+  households, and the variance reads the eligible respondents out of
+  `N * eligible_rate` eligible persons.
 * `n_alloc()` allocates a stratified sample from a frame of stratum sizes and
   variabilities, in fixed-`n`, target-`cv`, or `budget` mode, by proportional,
   Neyman, optimal, or Bankier power allocation. An `icc_psu` frame column makes
@@ -51,6 +57,9 @@ that recommendation when available, or rounds the continuous size up.
   a positive `alloc_measure` frame column supplies another. With that default
   measure, `alloc_q = 1` gives Neyman allocation. In cluster mode each stratum
   fields whole PSUs at a whole take near its cost-optimal value.
+  Proportional and power allocation of a fixed `n` need only the stratum
+  sizes, and then report no precision. `$detail` carries the frame's
+  character, factor and logical columns after `stratum`.
 * Long `measures` and `targets` tables request joint constrained allocation
   across indicators and overlapping domains. Without `objective` the result is
   the cheapest design meeting every requirement, and with `objective` and
@@ -59,6 +68,8 @@ that recommendation when available, or rounds the continuous size up.
   An element-level proportion measure uses the population variance
   `N * p * (1 - p) / (N - 1)`, so a one-stratum joint allocation equals
   `n_prop()`. Multistage designs use the working variance `p * (1 - p)`.
+  A `targets` or `objective` table with a `domain` column and no `level`
+  column applies each row to every level of that domain.
   A `frame` column `deff` or `resp_rate` is the stratum default under the
   `measures` rows, as for the stage parameters, and indicator values in
   `frame` are refused.
@@ -70,13 +81,18 @@ that recommendation when available, or rounds the continuous size up.
   `n_psu_per_zone` cuts each stratum's remainder into zones of about equal
   size and draws one or two PSUs from each. With two, every stratum's
   variance can be estimated. With one, `$psu$.pair` groups the zones for a
-  collapsed variance. The whole-unit design is assessed on its own rounded
-  takes and repaired where a target fails, or the fit stops naming it.
-  Certainty visits are priced as a fixed cost, and the clustering reads the
-  responding take. A `budget`, a `var_ratio_psu` other than 1 and
-  a PSU-level response rate are refused with a register. A register PSU
-  smaller than its take is refused, and `merge_psus()` merges small PSUs with
-  their neighbours in row order to a minimum size.
+  collapsed variance. The field design is chosen whole. Each stratum's
+  designs are listed, under stage costs also those holding its largest PSUs
+  in certainty below the threshold, and a search picks the cheapest meeting
+  every target. It proves that design optimal, or stops after
+  `control$max_nodes` nodes with a gap to a lower bound. With `objective` and
+  `budget` it picks the design with the smallest weighted relative variance
+  whose field cost stays within the budget. Certainty visits are priced as a
+  fixed cost, and the clustering reads the responding take. `predict()` on a
+  register fit reports each row's search status. A `var_ratio_psu` other
+  than 1 and a PSU-level response rate are refused with a register. A register PSU smaller than its take is
+  refused, and `merge_psus()` merges small PSUs with their neighbors in row
+  order to a minimum size.
 * `n_multi()` sizes a table of indicators, with optional per-domain sizing and
   a `min_n_domain` floor. `n_cluster(indicators = )` and
   `prec_cluster(indicators = )` take the same table for a multistage design, so
@@ -157,7 +173,8 @@ that recommendation when available, or rounds the continuous size up.
   formulas, numeric vectors, and `survey::svydesign` objects. Weights are read
   as inverse inclusion probabilities, so a previous round's unequal-probability
   sample gives approximately design-unbiased components. `varcomp(deff = )`
-  backs an `icc` out of a published design effect instead.
+  backs an `icc` out of a published design effect instead. Its page explains
+  squaring a published DEFT and removing the weighting loss it carries.
 * `design_effect()` builds the design effect a planned design should produce
   from clustering, unequal weighting, and stratification components, reading
   them off a plan where one is supplied. It anticipates a design effect from
@@ -183,10 +200,10 @@ that recommendation when available, or rounds the continuous size up.
 ## Survey plan profiles
 
 * `svyplan()` captures shared design defaults such as `deff`, `N`, `resp_rate`,
-  stage-specific response rates, `df`, `alpha`, `stage_cost`, and `unit_cost`,
-  validated at construction. Pass it as `plan = plan` or pipe with
-  `plan |> n_prop(...)`. Explicit arguments override a profile, and `update()`
-  revises one.
+  `eligible_rate`, stage-specific response rates, `df`, `alpha`, `stage_cost`,
+  and `unit_cost`, validated at construction. Pass it as `plan = plan` or pipe
+  with `plan |> n_prop(...)`. Explicit arguments override a profile, and
+  `update()` revises one.
 
 ## Naming
 

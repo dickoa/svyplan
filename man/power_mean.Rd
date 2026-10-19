@@ -66,7 +66,7 @@ interest, which requires a smaller sample for the same power.}
 for n (\code{n = NULL}). For example, \code{ratio = 2} means group 1 gets twice
 the sample of group 2.}
 
-\item{overlap}{Panel overlap fraction in [0, 1], for repeated surveys.
+\item{overlap}{Panel overlap fraction in \eqn{[0, 1]}, for repeated surveys.
 Defined as the fraction of group 1 that also appears in group 2
 (\code{overlap = n12 / n1}). A positive value describes a coordinated
 design with that many units deliberately held in common, which with a
@@ -76,7 +76,7 @@ independent and may be different populations of different sizes. It is
 not the same model as a deliberately disjoint pair, which is why the
 two need not agree in the limit when \code{N} is small.}
 
-\item{overlap_cor}{Correlation between occasions in [0, 1].}
+\item{overlap_cor}{Correlation between occasions in \eqn{[0, 1]}.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }

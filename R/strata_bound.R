@@ -195,7 +195,7 @@
 #' `x`, not for the survey's own indicators, so it bounds what the design
 #' achieves only to the extent that `y` and `x` share a stratum structure.
 #' And with several study variables no single `x` is optimal for all of
-#' them: choose the `x` closest to the indicator that matters most, or
+#' them. Choose the `x` closest to the indicator that matters most, or
 #' compare the boundary sets a few candidate `x` produce before committing.
 #'
 #' ## Design effect, response rate, and the boundaries

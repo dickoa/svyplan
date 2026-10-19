@@ -1,7 +1,7 @@
 Package: svyplan
 Type: Package
 Title: Survey Sample Size Determination and Precision Analysis
-Version: 0.15.0
+Version: 0.16.0
 Authors@R: person(given = "Ahmadou",
                   family = "Dicko",
                   email = "mail@ahmadoudicko.com",
@@ -48,4 +48,4 @@ URL: https://dickoa.gitlab.io/svyplan,
 BugReports: https://gitlab.com/dickoa/svyplan/-/work_items
 Roxygen: list(markdown = TRUE)
 Config/testthat/edition: 3
-Config/roxygen2/version: 8.1.0
+Config/roxygen2/version: 8.1.1

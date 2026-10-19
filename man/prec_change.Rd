@@ -69,7 +69,7 @@ adjustment). It applies to both occasions, and nets each size down to
 response, not attrition across a panel.}
 
 \item{overlap}{Fraction of the first occasion's \strong{responding} sample
-carried into the second, in [0, 1], measured against the first
+carried into the second, in \eqn{[0, 1]}, measured against the first
 occasion as \code{n12 / n1}, so it cannot exceed \code{n[2] / n[1]}. \code{0} (default)
 drops the covariance entirely and reproduces the two-independent-samples
 result. \code{1} means every responding unit of the first occasion is
@@ -78,7 +78,7 @@ size and a subsample of the second when it is larger. See Details on
 what a response rate below 1 does to this reading.}
 
 \item{overlap_cor}{Correlation between the two occasions among the
-overlapping units, in [0, 1]. Default 0, which makes overlap
+overlapping units, in \eqn{[0, 1]}. Default 0, which makes overlap
 worthless, since it is the product \code{overlap * overlap_cor} that buys precision
 on a change, so a full panel of uncorrelated measurements buys nothing.
 On the proportion scale two Bernoulli marginals bound the correlation

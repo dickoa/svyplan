@@ -32,12 +32,14 @@
 #' @param cv_den Coefficient of variation of the denominator variable,
 #'   strictly positive.
 #' @param component_cor Correlation between numerator and denominator across
-#'   units, in \[-1, 1\].
+#'   units, in \eqn{[-1, 1]}.
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size. `Inf` (default) means no finite population
 #'   correction.
 #' @param deff Design effect of the ratio estimator (> 0). See [n_ratio()]
-#'   for what this is the design effect of.
+#'   for what this is the design effect of. A published DEFT is squared
+#'   first. See [varcomp()] for that and for removing the published
+#'   survey's weighting loss.
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1.
 #' @param df Degrees of freedom of the variance estimator, switching the
 #'   interval quantile from normal to t. `NULL` (default) applies none.

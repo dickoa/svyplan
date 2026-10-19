@@ -538,7 +538,7 @@
 #' @keywords internal
 #' @noRd
 .joint_row_value <- function(name, measures, frame, scalar) {
-  rule <- if (identical(name, "deff")) {
+  rule <- if (name %in% c("deff", "eligible_rate")) {
     list(ok = function(v) is.finite(v) & v > 0,
          text = "positive finite values")
   } else {
@@ -552,7 +552,7 @@
          call. = FALSE)
   }
   if (name %in% names(frame)) {
-    stratum <- as.character(frame$stratum %||% seq_len(nrow(frame)))
+    stratum <- as.character(frame[["stratum"]] %||% seq_len(nrow(frame)))
     fallback <- frame[[name]]
     if (!is.numeric(fallback)) {
       stop(sprintf("'frame$%s' must be numeric", name), call. = FALSE)
@@ -688,6 +688,67 @@
   list(membership = G, indices = indices)
 }
 
+#' Refuse a level on an overall row and a missing level on a domain row
+#' @keywords internal
+#' @noRd
+.bethel_check_levels <- function(domain, level, what) {
+  overall <- domain == ".overall"
+  if (any(overall & !is.na(level))) {
+    stop(sprintf("'%s' rows for '.overall' require level = NA", what),
+         call. = FALSE)
+  }
+  missing <- !overall & is.na(level)
+  if (any(missing)) {
+    stop(
+      sprintf(
+        "'%s$level' is missing for domain %s. Leave out the 'level' column to cover every level of a domain. One table cannot mix that form with named levels, so name every level in such a table",
+        what, paste(sQuote(unique(domain[missing])), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
+}
+
+#' Expand rows naming a domain but no level to every level of that domain
+#' @keywords internal
+#' @noRd
+.bethel_every_level <- function(frame, tbl, what, id_col) {
+  if (!"domain" %in% names(tbl) || "level" %in% names(tbl)) return(tbl)
+  domain <- as.character(tbl[["domain"]])
+  if (anyNA(domain) || any(!nzchar(domain))) {
+    stop(sprintf("'%s$domain' must contain non-empty values", what),
+         call. = FALSE)
+  }
+  levels_of <- lapply(domain, function(d) {
+    if (d == ".overall") return(NA_character_)
+    if (!d %in% names(frame)) {
+      stop(sprintf("domain column '%s' not found in frame", d), call. = FALSE)
+    }
+    frame_level <- frame[[d]]
+    if (anyNA(frame_level)) {
+      stop(sprintf("domain column '%s' must not contain missing values", d),
+           call. = FALSE)
+    }
+    unique(as.character(frame_level))
+  })
+  times <- lengths(levels_of)
+  if (id_col %in% names(tbl) && any(times > 1L)) {
+    stop(
+      sprintf(
+        "'%s$%s' labels one row, and a row without a level stands for every level of its domain. Drop '%s', or write the levels out in full",
+        what, id_col, id_col
+      ),
+      call. = FALSE
+    )
+  }
+  out <- tbl[rep(seq_len(nrow(tbl)), times), , drop = FALSE]
+  out$level <- unlist(levels_of, use.names = FALSE)
+  rownames(out) <- NULL
+  keep <- setdiff(names(out), "level")
+  out[, append(keep, "level", after = match("domain", keep)), drop = FALSE]
+}
+
 #' Normalize objective components and their frame-domain membership
 #'
 #' Accepts a character vector of indicator names (overall domain, equal
@@ -712,6 +773,7 @@
       call. = FALSE
     )
   }
+  objective <- .bethel_every_level(frame, objective, "objective", "component")
   o_name <- as.character(objective$name)
   if (anyNA(o_name) || any(!nzchar(o_name))) {
     stop("'objective$name' must contain non-empty values", call. = FALSE)
@@ -730,9 +792,8 @@
   }
   has_domain <- "domain" %in% names(objective)
   has_level <- "level" %in% names(objective)
-  if (xor(has_domain, has_level)) {
-    stop("'objective$domain' and 'objective$level' must be supplied together",
-         call. = FALSE)
+  if (has_level && !has_domain) {
+    stop("'objective$level' requires a 'domain' column", call. = FALSE)
   }
   if (!has_domain) {
     domain <- rep(".overall", nrow(objective))
@@ -743,11 +804,7 @@
     if (anyNA(domain) || any(!nzchar(domain))) {
       stop("'objective$domain' must contain non-empty values", call. = FALSE)
     }
-    overall <- domain == ".overall"
-    if (any(overall & !is.na(level)) || any(!overall & is.na(level))) {
-      stop("overall objective components require level = NA; other domains require a level",
-           call. = FALSE)
-    }
+    .bethel_check_levels(domain, level, "objective")
   }
   priority <- if ("priority" %in% names(objective)) objective$priority else
     rep(1, nrow(objective))
@@ -833,6 +890,7 @@
     stop("'targets' must be a non-empty data frame with a 'name' column",
          call. = FALSE)
   }
+  targets <- .bethel_every_level(frame, targets, "targets", "constraint")
   t_name <- as.character(targets$name)
   if (anyNA(t_name) || any(!nzchar(t_name))) {
     stop("'targets$name' must contain non-empty values", call. = FALSE)
@@ -861,9 +919,8 @@
   target_value <- ifelse(has_cv, t_cv, ifelse(has_moe, t_moe, t_rmoe))
   has_domain <- "domain" %in% names(targets)
   has_level <- "level" %in% names(targets)
-  if (xor(has_domain, has_level)) {
-    stop("'targets$domain' and 'targets$level' must be supplied together",
-         call. = FALSE)
+  if (has_level && !has_domain) {
+    stop("'targets$level' requires a 'domain' column", call. = FALSE)
   }
   if (!has_domain) {
     domain <- rep(".overall", nrow(targets))
@@ -874,17 +931,17 @@
     if (anyNA(domain) || any(!nzchar(domain))) {
       stop("'targets$domain' must contain non-empty values", call. = FALSE)
     }
-    overall <- domain == ".overall"
-    if (any(overall & !is.na(level)) || any(!overall & is.na(level))) {
-      stop("overall targets require level = NA; other domains require a level",
-           call. = FALSE)
-    }
+    .bethel_check_levels(domain, level, "targets")
   }
   t_alpha <- if ("alpha" %in% names(targets)) targets$alpha else
     rep(NA_real_, nrow(targets))
   if (!is.numeric(t_alpha)) {
     stop("'targets$alpha' must be numeric", call. = FALSE)
   }
+  # The stored table keeps only the caller's per-row values, so a later
+  # assessment with another scalar 'alpha' or 'df' reaches the rows that
+  # inherited it.
+  alpha_row <- as.double(t_alpha)
   t_alpha[is.na(t_alpha)] <- alpha
   if (any(!is.finite(t_alpha) | t_alpha <= 0 | t_alpha >= 1)) {
     stop("'targets$alpha' must contain values in (0, 1)", call. = FALSE)
@@ -897,6 +954,7 @@
   if (!is.numeric(t_df)) {
     stop("'targets$df' must be numeric", call. = FALSE)
   }
+  df_row <- as.double(t_df)
   if (!is.null(df)) t_df[is.na(t_df)] <- as.double(df)
   check_df(t_df[!is.na(t_df)], "targets$df")
   requirement_key <- .bethel_key(
@@ -928,8 +986,8 @@
   targets$constraint <- constraint
   targets$domain <- domain
   targets$level <- level
-  targets$alpha <- t_alpha
-  targets$df <- t_df
+  targets$alpha <- alpha_row
+  targets$df <- df_row
   list(
     name = t_name,
     metric = metric,
@@ -955,6 +1013,7 @@
   unit_cost = NULL,
   deff = 1,
   resp_rate = 1,
+  eligible_rate = 1,
   alpha = 0.05,
   df = NULL,
   min_n_stratum = NULL,
@@ -964,6 +1023,7 @@
 ) {
   check_deff(deff)
   check_resp_rate(resp_rate)
+  check_eligible_rate(eligible_rate)
   check_alpha(alpha)
   if (!is.null(df)) check_df(df)
   if (!is.null(min_n_stratum)) check_scalar(min_n_stratum, "min_n_stratum")
@@ -1019,12 +1079,7 @@
   # Determine target relevance before validating measure values. Unused
   # indicator-stratum rows may carry incomplete planning information and must
   # not change the mathematical problem.
-  if (!is.data.frame(measures) || nrow(measures) == 0L) {
-    stop("'measures' must be a non-empty data frame", call. = FALSE)
-  }
-  if (!all(c("stratum", "name") %in% names(measures))) {
-    stop("'measures' must contain 'stratum' and 'name' columns", call. = FALSE)
-  }
+  .check_measures_keys(measures)
   m_stratum_all <- as.character(measures$stratum)
   m_name_all <- as.character(measures$name)
   if (anyNA(m_stratum_all) || any(!nzchar(m_stratum_all)) ||
@@ -1139,10 +1194,13 @@
   mean_norm <- ifelse(has_p, p, mean_value)
   var_norm <- ifelse(has_p, p * (1 - p),
                      ifelse(has_var, var_value, sd_value^2))
+  # Each measure row counts its own eligible units, so every variance term
+  # below reads N * eligible_rate while bounds and weights keep N.
+  elig_norm <- .joint_row_value("eligible_rate", measures, frame, eligible_rate)
   if (stage$stages == 1L && .finite_prop_var && any(has_p)) {
-    prop_N <- N[match(m_stratum[has_p], stratum)]
+    prop_N <- N[match(m_stratum[has_p], stratum)] * elig_norm[has_p]
     if (any(prop_N <= 1)) {
-      stop("'N' must be greater than 1 for element-level proportion measures",
+      stop("'N * eligible_rate', the eligible population, must be greater than 1 for element-level proportion measures",
            call. = FALSE)
     }
     # The element-level FPC consumes population variance with denominator
@@ -1217,6 +1275,7 @@
   var_all <- matrix(NA_real_, H, R)
   deff_all <- matrix(NA_real_, H, R)
   resp_all <- matrix(NA_real_, H, R)
+  elig_all <- matrix(NA_real_, H, R)
   for (k in seq_len(R)) {
     idx <- req_indices[[k]]
     wanted <- .bethel_key(stratum[idx], rep(req_name[k], length(idx)))
@@ -1228,9 +1287,12 @@
     var_all[idx, k] <- var_norm[mi]
     deff_all[idx, k] <- deff_norm[mi]
     resp_all[idx, k] <- resp_norm[mi]
+    elig_all[idx, k] <- elig_norm[mi]
+    N_k <- N[idx] * elig_norm[mi]
+    resp_k <- resp_norm[mi] * elig_norm[mi]
     variance_factor <- rep(1, length(idx))
     decision_take <- rep(1, length(idx))
-    stage_resp <- resp_norm[mi]
+    stage_resp <- resp_k
     # The factor the finite population term reads. It equals the variance
     # factor under the ultimate-unit correction, is zero without one, and is
     # the between-PSU component alone when each stage corrects its own.
@@ -1238,18 +1300,18 @@
     staged <- identical(fpc, "stage")
     if (stage$stages == 2L) {
       m <- stage$n_per_psu[idx]
-      mr <- m * resp_norm[mi]
+      mr <- m * resp_k
       within_frac <- if (staged) {
-        pmin(1, mr / (N[idx] / frame$N_psu[idx]))
+        pmin(1, mr / (N_k / frame$N_psu[idx]))
       } else {
         rep(0, length(idx))
       }
       variance_factor <- var_ratio_psu_norm[mi] *
         (icc_psu_norm[mi] * mr + (1 - within_frac) * (1 - icc_psu_norm[mi]))
       decision_take <- m
-      stage_resp <- resp_psu_norm[mi] * resp_norm[mi]
+      stage_resp <- resp_psu_norm[mi] * resp_k
       fpc_factor <- if (staged) {
-        var_ratio_psu_norm[mi] * icc_psu_norm[mi] * N[idx] / frame$N_psu[idx]
+        var_ratio_psu_norm[mi] * icc_psu_norm[mi] * N_k / frame$N_psu[idx]
       } else {
         variance_factor
       }
@@ -1257,14 +1319,14 @@
       m <- stage$n_per_psu[idx]
       q <- stage$n_per_ssu[idx]
       mr <- m * resp_ssu_norm[mi]
-      qr <- q * resp_norm[mi]
+      qr <- q * resp_k
       ssu_frac <- if (staged) {
         pmin(1, mr / (frame$N_ssu[idx] / frame$N_psu[idx]))
       } else {
         rep(0, length(idx))
       }
       unit_frac <- if (staged) {
-        pmin(1, qr / (N[idx] / frame$N_ssu[idx]))
+        pmin(1, qr / (N_k / frame$N_ssu[idx]))
       } else {
         rep(0, length(idx))
       }
@@ -1273,9 +1335,9 @@
         (1 - ssu_frac) * var_ratio_ssu_norm[mi] * icc_ssu_norm[mi] * qr +
         (1 - unit_frac) * var_ratio_ssu_norm[mi] * (1 - icc_ssu_norm[mi])
       decision_take <- m * q
-      stage_resp <- resp_psu_norm[mi] * resp_ssu_norm[mi] * resp_norm[mi]
+      stage_resp <- resp_psu_norm[mi] * resp_ssu_norm[mi] * resp_k
       fpc_factor <- if (staged) {
-        var_ratio_psu_norm[mi] * icc_psu_norm[mi] * N[idx] / frame$N_psu[idx]
+        var_ratio_psu_norm[mi] * icc_psu_norm[mi] * N_k / frame$N_psu[idx]
       } else {
         variance_factor
       }
@@ -1284,11 +1346,11 @@
       fpc_factor <- rep(0, length(idx))
     }
     variance_inflated <- var_norm[mi] * variance_factor
-    A_all[idx, k] <- N[idx]^2 * variance_inflated * deff_norm[mi] /
+    A_all[idx, k] <- N_k^2 * variance_inflated * deff_norm[mi] /
       (stage_resp * decision_take)
-    B_all[k] <- -sum(N[idx] * var_norm[mi] * fpc_factor * deff_norm[mi])
-    total_all[k] <- sum(N[idx] * mean_norm[mi])
-    domain_N_all[k] <- sum(N[idx])
+    B_all[k] <- -sum(N_k * var_norm[mi] * fpc_factor * deff_norm[mi])
+    total_all[k] <- sum(N_k * mean_norm[mi])
+    domain_N_all[k] <- sum(N_k)
   }
   no_variance <- colSums(A_all) <= 0
   if (any(no_variance[seq_len(K)])) {
@@ -1315,6 +1377,7 @@
   var_hk <- var_all[, seq_len(K), drop = FALSE]
   deff_hk <- deff_all[, seq_len(K), drop = FALSE]
   resp_hk <- resp_all[, seq_len(K), drop = FALSE]
+  elig_hk <- elig_all[, seq_len(K), drop = FALSE]
   G <- membership[, seq_len(K), drop = FALSE]
   Vmax <- numeric(K)
   # One quantile per constraint, formed once. The ceiling below and the
@@ -1363,7 +1426,11 @@
       domain_N = domain_N_all[K + seq_len(J)],
       q_h = as.numeric(A_obj %*% scaled),
       Q0 = sum(scaled * B_obj),
-      spec = objective_spec$objective
+      spec = objective_spec$objective,
+      membership = membership[, K + seq_len(J), drop = FALSE],
+      var_hk = var_all[, K + seq_len(J), drop = FALSE],
+      deff_hk = deff_all[, K + seq_len(J), drop = FALSE],
+      resp_hk = resp_all[, K + seq_len(J), drop = FALSE]
     )
     if (sum(objective_part$q_h) <= 0) {
       stop("the objective has no positive-priority component with positive variance",
@@ -1400,11 +1467,13 @@
     variance_model = stage$variance_model
   )
   problem$objective <- objective_part
+  problem$Vmax <- Vmax
   problem$membership <- G
   problem$mean_hk <- mean_hk
   problem$var_hk <- var_hk
   problem$deff_hk <- deff_hk
   problem$resp_hk <- resp_hk
+  problem$elig_hk <- elig_hk
   problem$take_all <- take_all
   problem$population_N <- N
   problem$stage <- stage
@@ -2104,7 +2173,8 @@
   budget = NULL,
   df = NULL,
   fpc = "unit",
-  .finite_prop_var
+  .finite_prop_var,
+  eligible_rate = 1
 ) {
   control <- .bethel_control()
   problem <- .build_bethel_problem(
@@ -2114,6 +2184,7 @@
     unit_cost = unit_cost,
     deff = deff,
     resp_rate = resp_rate,
+    eligible_rate = eligible_rate,
     alpha = alpha,
     df = df,
     min_n_stratum = min_n_stratum,
@@ -2256,6 +2327,7 @@
     measures = problem$measures,
     targets = problem$targets,
     alpha = alpha,
+    df = df,
     deff = deff,
     resp_rate = resp_rate,
     unit_cost = unit_cost,
@@ -2269,12 +2341,16 @@
     problem = problem,
     achieved = list(n = sum(n), cost = continuous$cost)
   )
+  if (eligible_rate != 1) params$eligible_rate <- eligible_rate
   if (mode == "budget_objective") {
     params$objective <- problem$objective$spec
     params$budget <- budget
     params$achieved$objective_value <- continuous_objective$value
   }
   params$feasibility_tolerance <- control$tolerance
+  carried <- .alloc_carry_labels(detail, frame)
+  detail <- carried$detail
+  params$strata_keys <- carried$keys
   .new_svyplan_n(
     n = sum(n),
     type = "alloc",
@@ -2312,7 +2388,8 @@
   df = NULL,
   fpc = "unit",
   .allow_fractional_stages = FALSE,
-  .finite_prop_var
+  .finite_prop_var,
+  eligible_rate = 1
 ) {
   if (is.null(n)) stop("'n' is required", call. = FALSE)
   problem <- .build_bethel_problem(
@@ -2322,6 +2399,7 @@
     unit_cost = unit_cost,
     deff = deff,
     resp_rate = resp_rate,
+    eligible_rate = eligible_rate,
     alpha = alpha,
     df = df,
     min_n_stratum = min_n_stratum,
@@ -2354,6 +2432,7 @@
     targets = problem$targets,
     n = ultimate,
     alpha = alpha,
+    df = df,
     deff = deff,
     resp_rate = resp_rate,
     unit_cost = unit_cost,
@@ -2364,6 +2443,7 @@
     achieved = list(n = sum(ultimate), cost = evaluated$cost),
     feasibility_tolerance = .bethel_control()$tolerance
   )
+  if (eligible_rate != 1) params$eligible_rate <- eligible_rate
   if (!is.null(assessed)) {
     params$objective <- problem$objective$spec
     params$budget <- budget
@@ -2383,4 +2463,17 @@
     objective = assessed$components,
     objective_value = assessed$value
   )
+}
+
+#' Refuse a `measures` table without its key columns
+#' @keywords internal
+#' @noRd
+.check_measures_keys <- function(measures) {
+  if (!is.data.frame(measures) || nrow(measures) == 0L) {
+    stop("'measures' must be a non-empty data frame", call. = FALSE)
+  }
+  if (!all(c("stratum", "name") %in% names(measures))) {
+    stop("'measures' must contain 'stratum' and 'name' columns", call. = FALSE)
+  }
+  invisible(NULL)
 }

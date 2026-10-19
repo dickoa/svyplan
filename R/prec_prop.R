@@ -23,8 +23,13 @@
 #'   correction.
 #' @param deff Design effect multiplier (> 0). Values < 1 are valid for
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
+#'   A published DEFT is squared first. See [varcomp()] for that and for
+#'   removing the published survey's weighting loss.
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The effective sample size is `n * resp_rate`.
+#' @param eligible_rate Eligible units per sampled unit, a positive number,
+#'   default 1. `n` and `N` stay in sampled units, and a finite
+#'   `N * eligible_rate` must exceed 1. See [n_prop()].
 #' @param method One of `"wald"` (default), `"wilson"`, `"logodds"`, or
 #'   `"beta"` (Korn-Graubard). See [n_prop()] for how to choose.
 #' @param df Degrees of freedom of the variance estimator, typically sampled
@@ -124,7 +129,7 @@
 #'
 #' `$moe` is half the length of that interval, which equals `q * se` under
 #' `"wald"` alone. Only the Wald interval is symmetric about `p`, so for the
-#' other three `p - moe` and `p + moe` are not the limits: use [confint()]
+#' other three `p - moe` and `p + moe` are not the limits. Use [confint()]
 #' for those. The `"beta"` method makes this most visible, since its interval
 #' is deliberately asymmetric for a rare outcome.
 #'
@@ -192,6 +197,10 @@
 #' # How that floor moves with the sample size
 #' predict(floor, expand.grid(n = c(500, 1500, 5000)))
 #'
+#' # 6000 households and 0.41 married women per household
+#' prec_prop(p = 0.28, n = 6000, deff = 2.5, resp_rate = 0.9,
+#'           eligible_rate = 0.41)
+#'
 #' @export
 prec_prop <- function(p, ...) {
   if (!missing(p)) {
@@ -213,6 +222,7 @@ prec_prop.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligible_rate = 1,
   method = c("wald", "wilson", "logodds", "beta"),
   df = NULL,
   plan = NULL
@@ -228,23 +238,26 @@ prec_prop.default <- function(
   check_population_size(N)
   check_deff(deff)
   check_resp_rate(resp_rate)
+  check_eligible_rate(eligible_rate)
   .check_gross_n(n, N)
   method <- match.arg(method)
   if (!is.null(df)) check_df(df)
 
+  N_elig <- check_eligible_population(N, eligible_rate)
+  rate <- resp_rate * eligible_rate
   solved <- if (is.null(p)) "p" else NULL
   if (!is.null(solved)) {
     if (!is.null(cv)) {
       check_scalar(cv, "cv")
-      p <- .prec_solve_prop(cv, n, N, deff, resp_rate)
+      p <- .prec_solve_prop(cv, n, N_elig, deff, rate)
     } else {
       check_scalar(rmoe, "rmoe")
-      p <- .prec_solve_prop_rmoe(rmoe, n, alpha, N, deff, resp_rate, method, df)
+      p <- .prec_solve_prop_rmoe(rmoe, n, alpha, N_elig, deff, rate, method, df)
     }
   }
   check_proportion(p, "p")
 
-  prec <- .prec_engine_prop(p, n, alpha, N, deff, resp_rate, method, df)
+  prec <- .prec_engine_prop(p, n, alpha, N_elig, deff, rate, method, df)
   se <- prec$se
   moe <- prec$moe
   cv_val <- prec$cv
@@ -258,6 +271,9 @@ prec_prop.default <- function(
     resp_rate = resp_rate,
     df = df
   )
+  if (eligible_rate != 1) {
+    params$eligible_rate <- eligible_rate
+  }
   # Which target drove the solve, since 'cv' and 'rmoe' both report
   # solved = "p" but re-solve differently: the CV root is the same under
   # every method and the relative-margin root is not.
@@ -291,6 +307,7 @@ prec_prop.svyplan_n <- function(p, ...) {
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate %||% 1,
+    eligible_rate = par$eligible_rate %||% 1,
     method = x$method %||% "wald",
     df = par$df
   )

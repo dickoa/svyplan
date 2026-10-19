@@ -87,10 +87,10 @@
 #' stratum's shows no df of its own and is marked `"pooled"` in `$strata`.
 #' Each stratum's df is then the count on that stratum alone, and the
 #' per-stratum values need not sum to the overall df.
-#' Allocations containing certainty PSUs remain unsupported, because
-#' combining their within-PSU variance contributions with other strata
-#' requires an explicit degrees-of-freedom convention that this helper does
-#' not yet implement. In other inputs, unrecorded certainty PSUs can make the
+#' Allocations containing certainty PSUs are refused, because combining
+#' their within-PSU variance contributions with other strata requires an
+#' explicit degrees-of-freedom convention that this helper does not define.
+#' In other inputs, unrecorded certainty PSUs can make the
 #' nominal first-stage count too large.
 #'
 #' A stratum holding a single PSU supports no within-stratum variance
@@ -212,9 +212,9 @@ design_df.svyplan_n <- function(x, ...) {
   if (identical(x$type, "alloc") && !is.null(x$params$psu) &&
       any(x$psu$certainty)) {
     stop(
-      paste("design_df() does not yet support allocations containing certainty PSUs:",
-            "their within-PSU variance contributions need an explicit",
-            "degrees-of-freedom convention"),
+      paste("design_df() refuses allocations containing certainty PSUs,",
+            "whose within-PSU variance contributions need a",
+            "degrees-of-freedom convention it does not define"),
       call. = FALSE
     )
   }
@@ -228,7 +228,7 @@ design_df.svyplan_n <- function(x, ...) {
     units <- ceiling(x$n)
     return(.df_result(units - 1, units, 1L, "element"))
   }
-  if (!is.null(x$psu$.zone)) {
+  if (!is.null(x$psu[[".zone"]])) {
     return(.df_zoned(x))
   }
   parts <- .df_alloc_parts(x$detail)

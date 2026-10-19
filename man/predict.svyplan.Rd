@@ -51,7 +51,7 @@ quantities, suitable for sensitivity analysis or plotting.
 Valid parameters for \code{newdata} by object type:
 \itemize{
 \item \strong{\code{n_prop}}: \code{p}, \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
-\code{resp_rate}, \code{df}, \code{min_cases}
+\code{resp_rate}, \code{eligible_rate}, \code{df}, \code{min_cases}
 \item \strong{\code{n_mean}}: \code{var}, \code{mu}, \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
 \code{resp_rate}, \code{df}
 \item \strong{\code{n_ratio}}: \code{r}, \code{cv_num}, \code{cv_den}, \code{component_cor}, \code{moe}, \code{rmoe},
@@ -60,7 +60,7 @@ Valid parameters for \code{newdata} by object type:
 \code{ratio}, \code{overlap}, \code{overlap_cor}, and \code{change} on the mean scale only,
 since two proportions determine it. The occasion variances are held at
 the values the result was built from, so vary the design rather than the
-estimand: sweeping \code{overlap} and \code{overlap_cor} is what prices a rotation
+estimand. Sweeping \code{overlap} and \code{overlap_cor} is what prices a rotation
 against a fresh sample each round.
 \item \strong{\code{n_pooled}}: \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
 \code{mu} on the mean scale, and \code{occasions} only where the overlap and
@@ -68,7 +68,9 @@ correlation are flat across lags, a shaped profile being a statement
 about a horizon that changing the horizon would contradict. The lag
 profiles themselves cannot be varied, a grid row having nowhere to hold
 a vector.
-\item \strong{\code{n_cluster}}: \code{cv}, \code{budget}, \code{unit_relvar}, \code{resp_rate}, \code{fixed_cost},
+\item \strong{\code{n_cluster}}: \code{cv}, \code{budget}, \code{unit_relvar}, \code{resp_rate},
+\code{resp_rate_psu}, \code{resp_rate_ssu}, \code{eligible_rate}, \code{fixed_cost}, the
+fixed sizes \code{n_psu}, \code{n_per_psu} and \code{n_per_ssu},
 stage deltas (\code{icc} or \code{icc_psu}, plus \code{icc_ssu} for 3-stage),
 stage ratios (\code{var_ratio} or \code{var_ratio_psu}, plus \code{var_ratio_ssu} for 3-stage),
 and stage costs (\code{cost_psu}, \code{cost_ssu}, \code{cost_tsu}). For 2-stage
@@ -79,8 +81,14 @@ parameter). Not supported for objects with vector \code{n}.
 \item \strong{\code{power_mean}}: \code{effect}, \code{var}, \code{n}, \code{power}, \code{alpha}, \code{N},
 \code{deff}, \code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate} (excluding the
 solved-for parameter). Not supported for objects with vector \code{n}.
+\item \strong{\code{n_alloc}} (classic modes): \code{n}, \code{cv}, \code{budget}, \code{alpha}, \code{deff},
+\code{resp_rate}, \code{min_n_stratum}, \code{alloc_q}. A joint constrained allocation
+varies other controls, described below.
+\item \strong{\code{power_did}}: \code{effect}, \code{n}, \code{power}, \code{alpha}, \code{N}, \code{deff},
+\code{resp_rate}, \code{alternative}, \code{overlap}, \code{overlap_cor}, \code{ratio}
+(excluding the solved-for parameter).
 \item \strong{\code{prec_prop}}: \code{p}, \code{n}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
-\code{df}. A result that solved for \code{p} varies the
+\code{eligible_rate}, \code{df}. A result that solved for \code{p} varies the
 target it solved from, \code{cv} or \code{rmoe}, in place of \code{p}.
 \item \strong{\code{prec_mean}}: \code{var}, \code{n}, \code{mu}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
 \code{df}. A result that solved for \code{mu} varies \code{cv} in place of \code{mu}.
@@ -121,16 +129,25 @@ warning, so one infeasible point does not discard the rest of the grid. A
 take that is not a positive whole number is a malformed grid rather than an
 infeasible design point, and stops.
 
-A certainty-aware fit (\code{\link[=n_alloc]{n_alloc()}} with \code{psu}) varies \code{n_per_psu} too, even
-though the solver saw a one-stage problem, and reports \code{n_psu_certain} and
-\code{n_psu_draw} in place of the PSU counts. This is how the take is priced. It
+A certainty-aware fit (\code{\link[=n_alloc]{n_alloc()}} with \code{psu}) varies \code{n_per_psu} too,
+and reports \code{n_psu_certain} and \code{n_psu_draw} in place of the PSU counts. This is how the take is priced. It
 also sets the certainty threshold, so a larger take leaves fewer certainty
 PSUs and costs more sample, and the resulting cost curve has a minimum
 worth finding rather than assuming. Such a fit also varies
 \code{certainty_cutoff}, one value per row applied to every stratum, to price
 a relaxed certainty rule the same way, and \code{n_psu_per_zone}, with \code{NA} for
 no zones, to compare zone settings. A grid that varies \code{n_psu_per_zone},
-or a fit with zones, adds \code{n_zone}.
+or a fit with zones, adds \code{n_zone}. A register fit sized to an
+\code{objective} within a \code{budget} varies \code{budget} as well.
+
+A register grid adds \code{.status}. It reads \code{"optimal"} or \code{"limit"} for a
+row with a plan, as \verb{$operational$status} does, \code{"infeasible"} where no
+design exists, and \code{"unknown"} where the search stopped before finding
+one or the solve failed, a row whose \code{.feasible} is \code{NA}. In budget mode
+\code{objective_value} and \code{cv} are those of the field design. A row the node
+limit stopped with a worse plan than a lower budget's, or with none,
+takes that plan, which fits its budget, so the objective never worsens
+as the budget grows. Its status reads \code{"limit"}.
 
 Precision targets stay out of reach of the grid. A one-stage minimum-cost
 fit therefore has nothing to vary. Modify \code{targets} and call \code{\link[=n_alloc]{n_alloc()}}

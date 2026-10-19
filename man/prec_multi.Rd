@@ -56,7 +56,11 @@ on a per-row basis.}
 
 \item{resp_rate}{Default expected response rate at the ultimate unit, in
 (0, 1]. Used for rows whose \code{resp_rate} column is absent or \code{NA}, and
-a non-missing row value overrides it.}
+a non-missing row value overrides it. A rate of eligible units per
+sampled unit at or below 1, such as
+0.41 married women per household, folds in here as
+\code{resp_rate * eligible_rate}. With a finite \code{N} this errs slightly
+conservative.}
 
 \item{plan}{A \code{\link[=svyplan]{svyplan()}} profile providing default design parameters.}
 }
@@ -104,7 +108,7 @@ requires \code{cv_num}, \code{cv_den} and \code{component_cor} alongside it, and
 \item{\code{cv_num}, \code{cv_den}}{Coefficients of variation of a ratio row's
 numerator and denominator, strictly positive.}
 \item{\code{component_cor}}{Correlation between a ratio row's numerator and
-denominator across units, in [-1, 1].}
+denominator across units, in \eqn{[-1, 1]}.}
 \item{\code{n}}{Sample size to evaluate (\strong{required}), with one value per
 indicator row.}
 \item{\code{alpha}}{Significance level (default 0.05).}

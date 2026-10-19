@@ -93,8 +93,8 @@ test_that("objective specifications are validated", {
     "objective component domain 'region=Nowhere' is empty"
   )
   expect_error(
-    bad(data.frame(name = "income", domain = "region", priority = 1)),
-    "must be supplied together"
+    bad(data.frame(name = "income", level = "North", priority = 1)),
+    "'objective\\$level' requires a 'domain' column"
   )
   expect_error(
     bad(data.frame(name = "absent", priority = 1)),

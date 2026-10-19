@@ -61,7 +61,8 @@ rejected.}
 unless it can be derived from \code{weights}, \code{strata$n}, or \code{x}.}
 
 \item{deff}{Design effect to apply directly, instead of building one
-from components.}
+from components. A published DEFT is squared first. See \code{\link[=varcomp]{varcomp()}}
+for that and for removing the published survey's weighting loss.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1. It nets
 \code{n} down to the units the design expects to analyze before the design

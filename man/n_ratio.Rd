@@ -46,8 +46,8 @@ comes entirely from the denominator.}
 \code{sd(x) / abs(mean(x))}.}
 
 \item{component_cor}{Correlation between the numerator and denominator
-variables across units, in [-1, 1]. Distinct from \code{overlap_cor}, which
-is a correlation between occasions. What makes a ratio precise is
+variables across units, in \eqn{[-1, 1]}. Distinct from \code{overlap_cor},
+which is a correlation between occasions. What makes a ratio precise is
 \code{component_cor * sign(r)} being close to 1 while the two coefficients of
 variation are similar, so for a positive ratio that means a strongly
 positive correlation and for a negative ratio a strongly negative one.}
@@ -69,7 +69,9 @@ exactly one of \code{moe}, \code{cv}, or \code{rmoe}.}
 (default) means no finite population correction.}
 
 \item{deff}{Design effect of the ratio estimator (> 0). See the section
-above, which is the one place this differs from \code{\link[=n_mean]{n_mean()}}.}
+above, which is the one place this differs from \code{\link[=n_mean]{n_mean()}}. A
+published DEFT is squared first. See \code{\link[=varcomp]{varcomp()}} for that and for
+removing the published survey's weighting loss.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1. The rate
 is for records usable on both components, not on either alone. See the

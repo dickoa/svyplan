@@ -128,6 +128,11 @@ it shrinks the realized final-stage take and so changes the clustering
 penalty itself. Reading a gross take in that bracket would charge the
 between-PSU component a penalty only whole-cluster loss produces.
 
+An \code{eligible_rate} multiplies \code{resp_rate} wherever it appears, in the
+bracket and in the requirement, and the stratum population in the
+variance becomes \code{N * eligible_rate}. Bounds, weights and costs keep \code{N}.
+See the \code{eligible_rate} argument of \code{\link[=n_alloc]{n_alloc()}}.
+
 All three go in \code{measures}, or in \code{frame} as a stratum default. A rate
 naming a stage the design does not have is an error rather than a
 silently ignored column. This is the same decomposition \code{\link[=n_cluster]{n_cluster()}} and
@@ -195,7 +200,7 @@ continuous optimum with the same KKT certification as the minimum-cost mode.
 Solving the minimum-cost problem with the added requirement
 \eqn{Q \le Q^{*}}{Q <= Q^*} returns the same allocation at a cost equal to the budget.
 
-Infeasibility takes three distinct forms, each with its own message: the
+Infeasibility takes three distinct forms, each with its own message. The
 targets may be unattainable even at the stratum upper bounds. They may be
 attainable but unaffordable, in which case the cheapest target-feasible cost
 and the shortfall are reported. Or the continuous problem may be feasible
@@ -209,6 +214,11 @@ spending residual budget and by pairwise exchanges. It satisfies
 it is a feasible, locally improved recommendation rather than a globally
 optimal integer allocation. The greedy construction is incomplete and can
 report failure on a problem that does have a feasible integer point.
+
+With a \code{psu} register the field design is not rounded from the continuous
+optimum. A search plans it whole, in both questions, and proves it best
+within its family of designs or reports a gap at its node limit. The
+certainty section of \code{\link[=n_alloc]{n_alloc()}} describes it.
 
 \code{\link[=predict]{predict()}} on a fixed-budget result varies \code{budget} in \code{newdata} and
 returns the cost-versus-objective frontier, reusing the same solves.

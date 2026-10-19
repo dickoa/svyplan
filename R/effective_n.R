@@ -83,7 +83,8 @@ effective_n <- function(x = NULL, ...) {
 #' @param n Gross planned sample size, counted as units issued. Required
 #'   unless it can be derived from `weights`, `strata$n`, or `x`.
 #' @param deff Design effect to apply directly, instead of building one
-#'   from components.
+#'   from components. A published DEFT is squared first. See [varcomp()]
+#'   for that and for removing the published survey's weighting loss.
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1. It nets
 #'   `n` down to the units the design expects to analyze before the design
 #'   effect is applied. When `x` is a plan, its own rate is used unless you

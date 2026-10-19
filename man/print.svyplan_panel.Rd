@@ -8,7 +8,7 @@
 \alias{as.double.svyplan_panel}
 \alias{as.integer.svyplan_panel}
 \alias{as.data.frame.svyplan_panel}
-\title{Print, summarise, format and coerce a panel recruitment}
+\title{Print, summarize, format and coerce a panel recruitment}
 \usage{
 \method{print}{svyplan_panel}(x, ...)
 

@@ -87,11 +87,11 @@ sample for the same power.}
 \item{ratio}{Allocation ratio \code{n_treat / n_control} (default 1).
 Used only when solving for \code{n} (\code{n = NULL}).}
 
-\item{overlap}{Panel overlap fraction in [0, 1] within each arm
+\item{overlap}{Panel overlap fraction in \eqn{[0, 1]} within each arm
 across baseline and endline.}
 
 \item{overlap_cor}{Correlation between baseline and endline outcomes within
-overlapping units, in [0, 1].}
+overlapping units, in \eqn{[0, 1]}.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -113,7 +113,7 @@ two-group, two-period difference-in-differences (DiD) contrast.
 }
 \details{
 \code{treat} and \code{control} already determine the contrast, so \code{effect} is
-optional: leave \code{n} or \code{power} as \code{NULL} to solve for it. Leaving both
+optional. Leave \code{n} or \code{power} as \code{NULL} to solve for it. Leaving both
 \code{n} and \code{power} supplied while \code{effect} is \code{NULL} solves for the MDE
 instead. Exactly one quantity must remain unknown.
 

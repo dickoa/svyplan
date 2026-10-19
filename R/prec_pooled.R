@@ -32,14 +32,14 @@
 #'   `n * resp_rate` before the covariance is formed. It is a single round's
 #'   response, not attrition across a panel.
 #' @param overlap Fraction of one occasion's **responding** sample carried
-#'   into a later one, in \[0, 1\]. One number, meaning the same overlap at
+#'   into a later one, in \eqn{[0, 1]}. One number, meaning the same overlap at
 #'   every lag, or one per lag, so `overlap[1]` is the consecutive-occasion
 #'   figure. A [design_overlap()] result is accepted directly at
 #'   `resp_rate = 1`. See Details on why not below it. `0` (default) makes
 #'   the occasions independent, and the pooled variance is then a single
 #'   occasion's divided by `occasions`.
 #' @param overlap_cor Correlation between two occasions among the units they
-#'   share, in \[0, 1\]. One number for every lag, or one per lag. Default
+#'   share, in \eqn{[0, 1]}. One number for every lag, or one per lag. Default
 #'   0, which makes overlap irrelevant, since it is the product
 #'   `overlap * overlap_cor` that moves the variance. Supply this or
 #'   `cor_decay`, not both.
@@ -101,7 +101,7 @@
 #'
 #' A lag whose overlap is zero contributes exactly zero, which is the rule
 #' [prec_change()] applies at `overlap = 0` read lag by lag. Two boundaries
-#' fix the whole: a fresh sample each occasion pools to
+#' fix the whole. A fresh sample each occasion pools to
 #' \eqn{Var(\bar y_t)/T}, independent averaging, and a full panel measured
 #' with correlation 1 pools to \eqn{Var(\bar y_t)}, the same units every
 #' time and averaging buys nothing.
@@ -141,7 +141,7 @@
 #' **issued** ones, and the two coincide only at full response, so its
 #' result is accepted here at `resp_rate = 1` and refused below it. The
 #' conversion needs an assumption about how response at one occasion depends
-#' on response at another, which this function does not make: under
+#' on response at another, which this function does not make. Under
 #' independent response the responding overlap is about `resp_rate` times
 #' the issued one, and stating it is the planner's decision rather than this
 #' function's.

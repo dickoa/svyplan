@@ -216,7 +216,7 @@ Two consequences worth planning around. The reported \verb{$cv} is the CV for
 \code{x}, not for the survey's own indicators, so it bounds what the design
 achieves only to the extent that \code{y} and \code{x} share a stratum structure.
 And with several study variables no single \code{x} is optimal for all of
-them: choose the \code{x} closest to the indicator that matters most, or
+them. Choose the \code{x} closest to the indicator that matters most, or
 compare the boundary sets a few candidate \code{x} produce before committing.
 }
 

@@ -56,8 +56,9 @@ hard targets remain fundable. The fitted design is a filled dot. The
 curve is the same one \code{\link[=predict]{predict()}} returns as a table, so read exact
 numbers there. Its shape is the point, since the objective falls as
 \code{1 / cost}, so the marginal return on budget flattens, and the plot
-shows where. Other \code{svyplan_n} results have no frontier to draw and
-produce an error naming what is plottable.
+shows where. A fit with a \code{psu} register draws its field designs, their
+cost and objective, as its grid reports them. Other \code{svyplan_n} results
+have no frontier to draw and produce an error naming what is plottable.
 }
 \examples{
 # Sampling fraction per stratum

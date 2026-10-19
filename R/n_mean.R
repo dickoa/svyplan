@@ -37,11 +37,17 @@
 #'   matters when n/N > 5 percent).
 #' @param deff Design effect multiplier (> 0). See [n_prop()] for
 #'   guidance on estimating DEFF. Values < 1 are valid for efficient
-#'   designs (e.g., stratified sampling with Neyman allocation).
+#'   designs (e.g., stratified sampling with Neyman allocation). A
+#'   published DEFT is squared first. See [varcomp()] for that and for
+#'   removing the published survey's weighting loss.
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
 #'   adjustment). The required sample size is inflated by `1 / resp_rate`.
 #'   See the nonresponse section of [svyplan-package] for what this adjustment
-#'   does and does not claim.
+#'   does and does not claim. A rate of eligible units per sampled unit at or
+#'   below 1, such as
+#'   0.41 married women per household, folds in here as
+#'   `resp_rate * eligible_rate`. With a finite `N` this errs slightly
+#'   conservative.
 #' @param df Degrees of freedom of the variance estimator the planned design
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the interval quantile from normal to t.
@@ -82,7 +88,7 @@
 #' the variance the finite population correction is then applied to, rather
 #' than scaling a size already corrected. The two coincide only at infinite
 #' `N`. For `var = 100`, `moe = 2`, `N = 100` and `deff = 2`, inflating
-#' afterwards would give 97.98 against the correct 65.76.
+#' afterward would give 97.98 against the correct 65.76.
 #'
 #' ## Finite population correction
 #'

@@ -9,10 +9,7 @@ test_that("a PSU register refines the allocation without changing its class", {
   expect_identical(fit$type, "alloc")
   expect_identical(fit$method, "bethel")
   expect_true(all(fit$constraints$.pass))
-  # The plan meets its targets exactly, not merely within tolerance: the
-  # settle step exists to make that true.
-  expect_equal(max(fit$constraints$.achieved / fit$constraints$.target), 1,
-               tolerance = 1e-6)
+  expect_true(all(fit$operational$constraints$.pass))
 })
 
 test_that("the register in params is the stable mark of a certainty fit", {
@@ -55,15 +52,23 @@ test_that("the classification is reported per stratum and per PSU", {
   expect_true(all(!is.na(fit$psu$.certainty_source[fit$psu$certainty])))
 })
 
-test_that("the threshold is the one the returned allocation implies", {
+test_that("the threshold is read at the planned design's own fraction", {
   z <- .psu_fixture()
   fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
                  psu = z$psu)
 
-  # threshold = take / sampling fraction, read off the answer itself. R2BEAT
-  # returns a threshold from an earlier iterate than its own allocation.
-  expect_equal(fit$detail$threshold,
-               z$frame$n_per_psu / (fit$detail$n / fit$detail$N))
+  # threshold = take / f, where f is the fraction the planned design is the
+  # closure at. Under unit cost that design is the closure of the threshold
+  # classification itself, and it fields at least f N units.
+  f <- z$frame$n_per_psu / fit$detail$threshold
+  expect_true(all(fit$detail$n_int >= f * fit$detail$N * (1 - 1e-9)))
+  for (h in seq_len(nrow(z$frame))) {
+    i <- which(z$psu$stratum == z$frame$stratum[h])
+    held <- z$psu$N[i] >= fit$detail$threshold[h]
+    closed <- .psu_draw_closure(f[h] * fit$detail$N[h], fit$detail$N[h],
+                                z$frame$n_per_psu[h], z$psu$N[i], held)
+    expect_identical(closed$certain, fit$psu$certainty[i])
+  }
   expect_equal(fit$psu$.distance,
                fit$psu$N / fit$psu$.threshold - 1)
 })
@@ -112,24 +117,90 @@ test_that("n_take is the take the operational design fields in each PSU", {
   )
 })
 
-test_that("the convergence verdict is reported and never silent", {
+test_that("the search is reported with its bound and never silent", {
   z <- .psu_fixture()
+  for (stage in c(FALSE, TRUE)) {
+    if (stage) {
+      z$frame$cost_psu <- 100
+      z$frame$cost_ssu <- 10
+    }
+    fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                   psu = z$psu)
+    sr <- fit$optimization$search
+
+    expect_null(fit$optimization$certainty)
+    expect_identical(sr$family, if (stage) "voluntary" else "closure")
+    expect_identical(sr$status, "optimal")
+    expect_identical(fit$operational$status, sr$status)
+    expect_equal(sr$bound, fit$operational$cost)
+    expect_identical(sr$gap, 0)
+    expect_gte(sr$nodes, 1)
+    expect_gte(sr$states, sr$kept)
+    expect_identical(sr$max_nodes, 5000)
+  }
+})
+
+test_that("'control' is checked and kept by every rebuild of a register plan", {
+  z <- .psu_fixture(3)
+  z$frame$cost_psu <- 400
+  z$frame$cost_ssu <- 20
+  fit_with <- function(control) {
+    n_alloc(z$frame, measures = z$measures, targets = z$targets,
+            psu = z$psu, control = control)
+  }
+  plain <- z$measures[, setdiff(names(z$measures), "icc_psu")]
+  expect_error(
+    n_alloc(z$frame[, c("stratum", "N")], measures = plain,
+            targets = z$targets, control = list(max_nodes = 10)),
+    "'control' applies to a PSU register"
+  )
+  expect_error(fit_with("x"), "'control' must be a named list")
+  expect_error(fit_with(list(10)), "'control' must be a named list")
+  expect_error(fit_with(list(max_nodes = 10, nodes = 1)),
+               "unknown 'control' setting 'nodes'")
+  for (bad in list(0, 1.5, NA_real_, Inf, c(1, 2), "10")) {
+    expect_error(fit_with(list(max_nodes = bad)),
+                 "'control$max_nodes' must be one positive whole number",
+                 fixed = TRUE)
+  }
+
+  # One node leaves this register at the limit and the default proves it,
+  # so a rebuild that dropped 'control' would read "optimal".
+  fit <- fit_with(list(max_nodes = 1))
+  expect_identical(fit$params$control, list(max_nodes = 1))
+  expect_identical(fit$operational$status, "limit")
+  expect_identical(fit_with(NULL)$operational$status, "optimal")
+  again <- n_alloc(prec_alloc(fit))
+  expect_identical(again$optimization$search$max_nodes, 1)
+  expect_identical(again$operational$status, "limit")
+  over <- prec_alloc(fit, n = fit$detail$n_int)
+  expect_identical(over$params$control, list(max_nodes = 1))
+  expect_identical(n_alloc(over)$optimization$search$max_nodes, 1)
+  expect_identical(predict(fit, data.frame(n_per_psu = 12))$.status, "limit")
+})
+
+test_that("a search stopped at its node limit reports the gap", {
+  z <- .psu_fixture()
+  z$frame$cost_psu <- 100
+  z$frame$cost_ssu <- 10
   fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
-                 psu = z$psu)
-  cc <- fit$optimization$certainty
+                 psu = z$psu, control = list(max_nodes = 1))
+  sr <- fit$optimization$search
+  expect_identical(sr$max_nodes, 1)
+  expect_identical(sr$status, "limit")
+  expect_identical(fit$operational$status, "limit")
+  expect_lt(sr$bound, fit$operational$cost)
+  expect_equal(sr$gap, 1 - sr$bound / fit$operational$cost)
+  expect_true(all(fit$operational$constraints$.pass))
 
-  expect_true(cc$verdict %in% c("converged", "cycle", "limit_reached"))
-  expect_type(cc$fixed_point, "logical")
-  expect_gte(cc$orbit, 1L)
-  expect_gte(cc$settle_iterations, 1L)
-
-  # A cycling register still returns a plan, and says it is not a fixed point.
-  zc <- .psu_fixture(seed = 3L)
-  cyc <- n_alloc(zc$frame, measures = zc$measures, targets = zc$targets,
-                 psu = zc$psu)
-  expect_identical(cyc$optimization$certainty$verdict, "cycle")
-  expect_false(cyc$optimization$certainty$fixed_point)
-  expect_true(all(cyc$constraints$.pass))
+  old <- options(width = 80)
+  on.exit(options(old), add = TRUE)
+  out <- capture.output(print(fit))
+  expect_true(any(grepl("^search: stopped at the node limit, gap ", out)))
+  expect_lte(max(nchar(out)), 80L)
+  optimal <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                     psu = z$psu)
+  expect_false(any(grepl("^search:", capture.output(print(optimal)))))
 })
 
 test_that("the certainty flag adds units and never removes them", {
@@ -339,15 +410,22 @@ test_that("a supplied allocation is assessed against its own classification", {
 
 test_that("the round trip from n_alloc closes exactly", {
   z <- .psu_fixture()
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
-                 psu = z$psu)
-  ev <- prec_alloc(fit)
+  for (stage in c(FALSE, TRUE)) {
+    if (stage) {
+      z$frame$cost_psu <- 100
+      z$frame$cost_ssu <- 10
+    }
+    fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                   psu = z$psu)
+    ev <- prec_alloc(fit)
 
-  expect_equal(ev$detail$.achieved, fit$constraints$.achieved,
-               tolerance = 1e-10)
-  # The held classification travels rather than being derived again, so a
-  # PSU the loop absorbed is not silently dropped on the way back.
-  expect_identical(ev$psu$certainty, fit$psu$certainty)
+    # prec_alloc(fit) evaluates the stored field design, planned certainty
+    # and takes included, so it reports what the fit's own assessment does.
+    expect_equal(ev$detail$.achieved, fit$operational$constraints$.achieved,
+                 tolerance = 1e-12)
+    expect_identical(ev$psu, fit$psu)
+    expect_equal(ev$params$achieved$cost, fit$operational$cost)
+  }
 })
 
 test_that("the assessed allocation reports its own takes", {
@@ -369,17 +447,6 @@ test_that("the assessed allocation reports its own takes", {
     pmin(ceiling(f_of[cert] * ev$psu$N[cert]), ev$psu$N[cert]),
     ignore_attr = TRUE
   )
-})
-
-test_that("the round trip reproduces the plan's takes exactly", {
-  z <- .psu_fixture()
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
-                 psu = z$psu)
-  ev <- prec_alloc(fit)
-
-  # prec_alloc(fit) assesses the settled continuous allocation under the held
-  # classification, which is the pair the operational takes were built from.
-  expect_equal(ev$psu$n_take, fit$psu$n_take)
 })
 
 test_that("a larger allocation lowers the threshold and buys certainty", {
@@ -441,31 +508,10 @@ test_that("print reports the certainty split and stays terse", {
   )))
 })
 
-test_that("a plan with no fixed point says so on the block", {
-  z <- .psu_fixture(seed = 2L)
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
-                 psu = z$psu)
-  old <- options(width = 80)
-  on.exit(options(old), add = TRUE)
-  out <- capture.output(print(fit))
-
-  expect_false(fit$optimization$certainty$fixed_point)
-  expect_true(any(grepl("^no self-consistent classification", out)))
-  expect_lte(max(nchar(out)), 80L)
-
-  # A converged plan does not carry the line.
-  ok <- n_alloc(.psu_fixture(seed = 4L)$frame,
-                measures = z$measures, targets = z$targets,
-                psu = .psu_fixture(seed = 4L)$psu)
-  expect_true(ok$optimization$certainty$fixed_point)
-  expect_false(any(grepl("no self-consistent", capture.output(print(ok)))))
-})
-
-test_that("supplied certainty does not count against the fixed point", {
+test_that("supplied certainty is reported as supplied, never as planned", {
   z <- .psu_fixture()
   bare <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
                   psu = z$psu)
-  expect_identical(bare$optimization$certainty$verdict, "converged")
 
   flagged <- z$psu
   ratio <- bare$psu$N / bare$psu$.threshold
@@ -474,13 +520,15 @@ test_that("supplied certainty does not count against the fixed point", {
                  psu = flagged)
   n_supplied <- sum(fit$psu$.certainty_source %in% "supplied")
   expect_gt(n_supplied, 0)
-  expect_false("orbit" %in% fit$psu$.certainty_source)
-  expect_true(fit$optimization$certainty$fixed_point)
+  expect_identical(fit$psu$.certainty_source[flagged$certainty &
+                                               fit$psu$N < fit$psu$.threshold],
+                   rep("supplied", n_supplied))
+  # Under unit cost the planner chooses no certainty of its own.
+  expect_false("planned" %in% fit$psu$.certainty_source)
 
   old <- options(width = 80)
   on.exit(options(old), add = TRUE)
   out <- capture.output(print(fit))
-  expect_false(any(grepl("no self-consistent", out)))
   expect_true(any(grepl(sprintf("certainty \\(%d supplied\\),", n_supplied),
                         out)))
   expect_false(any(grepl("supplied", capture.output(print(bare)))))
@@ -495,7 +543,7 @@ test_that("an allocation with no register prints exactly as before", {
   expect_false(any(grepl("PSU register|PSUs:|certainty", out)))
 })
 
-test_that("summary carries the split by stratum and how the loop resolved", {
+test_that("summary carries the split by stratum and how the search ended", {
   z <- .psu_fixture(seed = 2L)
   fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
                  psu = z$psu)
@@ -512,8 +560,11 @@ test_that("summary carries the split by stratum and how the loop resolved", {
 
   out <- capture.output(print(s))
   expect_true(any(grepl("^Certainty split by stratum$", out)))
-  expect_true(any(grepl("certainty verdict: cycle", out)))
-  expect_true(any(grepl("returned plan is a fixed point: no", out)))
+  expect_true(any(grepl(
+    "^  field design search: optimal after \\d+ nodes? of 5,000, bound ", out
+  )))
+  expect_true(any(grepl("^  states: [0-9,]+ listed, [0-9,]+ kept by the bound$",
+                        out)))
 
   # The solver saw a one-stage problem, but the plan is not one.
   expect_true(any(grepl("variance model: two_part_certainty_wald", out)))
@@ -552,9 +603,6 @@ test_that("the whole-unit design is one a field team can draw", {
   expect_true(all(d$n_psu_draw <= d$n_psu_rest))
   expect_true(all(d$n_psu_draw == round(d$n_psu_draw)))
 
-  # Rounding both parts up can only add sample, so the fielded design is at
-  # least the continuous optimum and still meets every target.
-  expect_gte(fit$operational$n, fit$n)
   expect_true(fit$operational$all_pass)
   expect_true(all(fit$operational$constraints$.pass))
 })
@@ -609,9 +657,6 @@ test_that("stage costs price the design and move the allocation", {
     fit$operational$cost,
     sum((d$n_psu_certain + d$n_psu_draw) * 400 + d$n_int * 20)
   )
-  # Both readings on the printed block are on the same basis, so they differ
-  # by integerization rather than by what they count.
-  expect_gt(fit$operational$cost, fit$params$achieved$cost)
 
   # A stratum that is dear to enter draws less of the sample.
   dear <- fr
@@ -746,18 +791,17 @@ test_that("prec_alloc requires one allocation per stratum", {
 })
 
 test_that("the precision a register fit claims is the one it achieves", {
-  # Registers on which the allocation once failed to settle and the fit
-  # reported precision computed at the previous allocation's design effect.
+  # Registers on which an earlier planner reported precision computed at
+  # another allocation's design effect.
   for (k in c(4, 25, 53, 60, 74, 89, 99, 115, 119)) {
     z <- .psu_random_register(k)
     fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
                    psu = z$psu)
-    expect_equal(prec_alloc(fit)$detail$.achieved, fit$constraints$.achieved,
-                 tolerance = 1e-10, label = sprintf("register %d", k))
+    expect_equal(prec_alloc(fit)$detail$.achieved,
+                 fit$operational$constraints$.achieved,
+                 tolerance = 1e-12, label = sprintf("register %d", k))
     expect_true(all(prec_alloc(fit)$detail$.pass),
                 label = sprintf("register %d passes", k))
-    cc <- fit$optimization$certainty
-    expect_lte(cc$settle_iterations, 2L * (cc$absorbed + 1L))
   }
 })
 
@@ -842,7 +886,7 @@ test_that("a single-PSU stratum carries no between-PSU variance", {
   expect_identical(fits[[2]]$psu$.certainty_source[b], "operational")
   for (fit in fits[-1]) {
     expect_equal(fit$detail$n, fits[[1]]$detail$n, tolerance = 1e-12)
-    expect_identical(fit$optimization$certainty$verdict, "converged")
+    expect_identical(fit$detail$n_int, fits[[1]]$detail$n_int)
   }
 
   cvs <- vapply(c(NA, 0, 0.8), function(icc) {
@@ -872,8 +916,8 @@ test_that("a fit with a missing single-PSU ICC re-solves and re-assesses", {
   fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
                  psu = z$psu)
   expect_true(is.na(fit$params$measures$icc_psu[2]))
-  expect_equal(prec_alloc(fit)$detail$.achieved, fit$constraints$.achieved,
-               tolerance = 1e-10)
+  expect_equal(prec_alloc(fit)$detail$.achieved,
+               fit$operational$constraints$.achieved, tolerance = 1e-12)
   swept <- predict(fit, data.frame(n_per_psu = c(15, 25)))
   expect_equal(nrow(swept), 2L)
 })
@@ -921,29 +965,29 @@ test_that("no fitted plan leaves a remainder PSU at probability one", {
   }
 })
 
-test_that("the classification closes under the draw, not the repair guard", {
-  # The guard alone would also remove every crossing, by absorbing after the
-  # field design is built. That leaves earlier PSUs below a threshold that
-  # moved, so the closure must do the work inside the classification.
+test_that("the classification closes under the planned draw", {
   z <- .psu_fixture()
   fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
                  psu = z$psu)
   expect_gt(sum(fit$psu$.certainty_source %in% "operational"), 0L)
-  expect_identical(fit$optimization$certainty$absorbed, 0L)
-  expect_true(fit$optimization$certainty$fixed_point)
+  expect_false(any(.psu_remainder_crossing(fit)))
 })
 
-test_that("a repair that pushes a PSU to probability one is absorbed", {
-  # On these registers the precision repair adds a remainder PSU after the
-  # classification was closed, and the larger draw reaches one. The PSU is
-  # absorbed and the plan settled again, after which no repair is needed.
+test_that("wide registers plan no remainder PSU at probability one", {
+  # Registers where an earlier planner's repair added a remainder PSU after
+  # the classification was closed and the larger draw reached one.
   for (seed in c(95, 106)) {
     z <- .psu_wide_register(seed)
-    fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
-                   psu = z$psu)
-    expect_gte(fit$optimization$certainty$absorbed, 1L)
-    expect_false(any(.psu_remainder_crossing(fit)))
-    expect_true(all(fit$constraints$.pass))
+    for (stage in c(FALSE, TRUE)) {
+      if (stage) {
+        z$frame$cost_psu <- 150
+        z$frame$cost_ssu <- 10
+      }
+      fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                     psu = z$psu)
+      expect_false(any(.psu_remainder_crossing(fit)))
+      expect_true(all(fit$operational$constraints$.pass))
+    }
   }
 })
 
@@ -970,7 +1014,7 @@ test_that("summary counts the certainty PSUs by source", {
                  psu = z$psu)
   s <- summary(fit)
   expect_named(s$certainty_sources,
-               c("threshold", "operational", "supplied", "orbit"))
+               c("threshold", "operational", "supplied", "planned"))
   expect_equal(sum(s$certainty_sources), sum(fit$psu$certainty))
   expect_gt(s$certainty_sources[["operational"]], 0L)
   out <- capture.output(print(s))
@@ -1003,15 +1047,15 @@ test_that("a cutoff relaxes both the threshold and the draw", {
       expect_false(any(.psu_remainder_crossing(fit, cutoff)))
       above <- fit$psu$N >= fit$psu$.threshold
       expect_true(all(fit$psu$certainty[above]))
-      f <- fit$detail$n / fit$detail$N
-      expect_equal(fit$detail$threshold, cutoff * z$frame$n_per_psu / f)
+      # The threshold is the cutoff's, at the planned design's fraction,
+      # and the design fields at least that fraction.
+      f <- cutoff * rep_len(z$frame$n_per_psu, nrow(z$frame)) /
+        fit$detail$threshold
+      expect_true(all(fit$detail$n_int >= f * fit$detail$N * (1 - 1e-9)))
       expect_true(fit$operational$all_pass)
     }
   }
-  # The closure applies the cutoff while classifying. The repair guard
-  # would otherwise absorb the same PSUs afterwards and mask its absence.
   fit <- .fit_psu(.psu_fixture(seed = 5L), certainty_cutoff = 0.8)
-  expect_identical(fit$optimization$certainty$absorbed, 0L)
   expect_gt(sum(fit$psu$.certainty_source %in% "operational"), 0L)
 })
 
@@ -1049,11 +1093,10 @@ test_that("the cutoff travels with the fit", {
   z <- .psu_fixture()
   fit <- .fit_psu(z, certainty_cutoff = 0.8)
   ev <- prec_alloc(fit)
-  expect_equal(ev$detail$.achieved, fit$constraints$.achieved,
-               tolerance = 1e-10)
-  # The held classification hides a dropped cutoff in the precision, but not
-  # in the threshold the assessment reports.
+  expect_equal(ev$detail$.achieved, fit$operational$constraints$.achieved,
+               tolerance = 1e-12)
   expect_equal(ev$psu$.threshold, fit$psu$.threshold)
+  expect_identical(ev$params$certainty_cutoff, 0.8)
   take <- z$frame$n_per_psu[1]
   expect_equal(predict(fit, data.frame(n_per_psu = take))$n, fit$n)
 
@@ -1115,13 +1158,12 @@ test_that("n_alloc() of a register fit's precision re-plans the register", {
     back <- n_alloc(prec_alloc(fit))
     expect_false(is.null(back$params$psu))
     expect_true(all(c("n_psu_certain", "n_psu_draw") %in% names(back$detail)))
-    expect_identical(back$detail$n_int, fit$detail$n_int)
-    if (identical(fit$optimization$certainty$verdict, "converged")) {
-      expect_identical(back$psu$certainty, fit$psu$certainty)
-      expect_equal(back$n, fit$n, tolerance = 1e-6)
-    }
-    # The re-plan derives its own classification from the register, so it
-    # does not report the fit's held PSUs as supplied.
+    # The re-plan solves the same problem, so it proves the same optimum,
+    # though it may pick another plan of that cost.
+    expect_identical(back$operational$status, "optimal")
+    expect_equal(back$operational$cost, fit$operational$cost)
+    # It derives its own classification from the register, so it does not
+    # report the fit's certainty PSUs as supplied.
     expect_false("supplied" %in% back$psu$.certainty_source)
   }
 })
@@ -1130,7 +1172,7 @@ test_that("the way back keeps the cutoff", {
   fit <- .fit_psu(.psu_fixture(), certainty_cutoff = 0.8)
   back <- n_alloc(prec_alloc(fit))
   expect_identical(back$params$certainty_cutoff, 0.8)
-  expect_equal(back$psu$.threshold, fit$psu$.threshold, tolerance = 1e-6)
+  expect_equal(back$operational$cost, fit$operational$cost)
 })
 
 test_that("a supplied allocation's precision re-plans as a register design", {
@@ -1143,15 +1185,13 @@ test_that("a supplied allocation's precision re-plans as a register design", {
   expect_true(back$operational$all_pass)
 })
 
-test_that("pinned targets settle on the closed-form design effect", {
-  # Every constraint of a round trip binds at its achieved value, so the
-  # optimum is flat. A design effect computed through the allocation moved
-  # in its last bits and the settle step wandered past its limit here.
+test_that("pinned targets re-plan to a plan of the same cost", {
+  # Every constraint of a round trip binds at its achieved value, which an
+  # earlier planner's settle step could not close on this register.
   fit <- .fit_psu(.psu_fixture(seed = 19L))
   back <- n_alloc(prec_alloc(fit))
-  cc <- back$optimization$certainty
-  expect_lte(cc$settle_iterations, 2L * (cc$absorbed + 1L))
-  expect_identical(back$detail$n_int, fit$detail$n_int)
+  expect_true(back$operational$all_pass)
+  expect_equal(back$operational$cost, fit$operational$cost)
 })
 
 ## Zones of the remainder
@@ -1227,57 +1267,25 @@ test_that("a zoned plan draws two PSUs from every zone", {
   }
 })
 
-test_that("the zones classify, the repair guard only backs them up", {
-  # The guard alone would absorb the same PSUs after the field design, so
-  # the zone rule must act inside the classification: here it adds
-  # operational PSUs with nothing absorbed.
+test_that("the zones add certainty of their own", {
   z <- .psu_random_register(1)
   zoned <- .fit_psu(z, n_psu_per_zone = 2)
   plain <- .fit_psu(z)
-  expect_identical(zoned$optimization$certainty$absorbed, 0L)
   expect_gt(sum(zoned$psu$.certainty_source %in% "operational"),
             sum(plain$psu$.certainty_source %in% "operational"))
-})
-
-.repair_stub <- function(needed, feeds = matrix(TRUE, 1, 1), stuck = FALSE,
-                         worth = 1, added = rep(10, nrow(feeds))) {
-  function(n, per_psu, draw) {
-    short <- if (stuck) 1 else max(needed - sum(worth * draw), 0)
-    ratio <- 1 + 0.1 * short
-    list(
-      pass = short == 0,
-      constraints = data.frame(
-        constraint = "y@.overall:cv", domain = ".overall", level = NA,
-        .metric = "cv", .achieved = 0.02 * ratio, .target = 0.02,
-        .ratio = ratio, .pass = short == 0
-      ),
-      feeds = feeds,
-      added = added
-    )
-  }
-}
-
-test_that("a zoned repair adds a whole zone", {
-  # Rounding draws up to pairs leaves the field design spare precision, so
-  # no test register reaches the repair. A stub assessment does.
-  psu <- data.frame(stratum = "A", N = rep(100, 10))
-  op <- .psu_operational(40, 1000, 10, psu, list(A = 1:10), rep(FALSE, 10),
-                         .repair_stub(6), m = 2L)
-  expect_identical(op$n_psu_draw, 6)
-  expect_identical(op$repair, 1L)
 })
 
 test_that("zones carry through every route back to a plan", {
   z <- .psu_fixture()
   fit <- .fit_psu(z, n_psu_per_zone = 2)
   expect_identical(prec_alloc(fit)$params$n_psu_per_zone, 2)
-  expect_equal(prec_alloc(fit)$detail$.achieved, fit$constraints$.achieved,
-               tolerance = 1e-10)
+  expect_equal(prec_alloc(fit)$detail$.achieved,
+               fit$operational$constraints$.achieved, tolerance = 1e-12)
   take <- z$frame$n_per_psu[1]
   expect_equal(predict(fit, data.frame(n_per_psu = take))$n, fit$n)
   back <- n_alloc(prec_alloc(fit))
   expect_identical(back$params$n_psu_per_zone, 2)
-  expect_identical(back$detail$n_int, fit$detail$n_int)
+  expect_equal(back$operational$cost, fit$operational$cost)
   expect_identical(summary(fit)$certainty$zones, fit$detail$n_zone)
 })
 
@@ -1319,100 +1327,24 @@ test_that("a zone of one PSU is a census at one PSU per zone", {
   expect_identical(.psu_round_draw(3, 1L), 3)
 })
 
-test_that("a repair adds one PSU without zones or at one per zone", {
-  psu <- data.frame(stratum = "A", N = rep(100, 10))
-  for (m in 0:1) {
-    op <- .psu_operational(40, 1000, 10, psu, list(A = 1:10),
-                           rep(FALSE, 10), .repair_stub(5), m = m)
-    expect_identical(op$n_psu_draw, 5)
-    expect_identical(op$repair, 1L)
-  }
-})
-
-test_that("a repair adds only where a failing target is fed", {
-  psu <- data.frame(stratum = rep(c("A", "B"), each = 10), N = 100)
-  feeds <- matrix(c(FALSE, TRUE), 2, 1)
-  op <- .psu_operational(c(80, 40), c(1000, 1000), c(10, 10), psu,
-                         list(A = 1:10, B = 11:20), rep(FALSE, 20),
-                         .repair_stub(15, feeds = feeds))
-  expect_identical(op$n_psu_draw, c(8, 7))
-  expect_identical(op$repair, 3L)
-})
-
-test_that("a repair adds where it buys the most per unit of cost", {
-  # Both strata feed the failing target. A has the larger sampling fraction,
-  # B the larger gain per PSU, so one PSU in B does what three in A would.
-  psu <- data.frame(stratum = rep(c("A", "B"), each = 10), N = 100)
-  op <- .psu_operational(c(80, 40), c(1000, 1000), c(10, 10), psu,
-                         list(A = 1:10, B = 11:20), rep(FALSE, 20),
-                         .repair_stub(23, feeds = matrix(TRUE, 2, 1),
-                                      worth = c(1, 3)))
-  expect_identical(op$n_psu_draw, c(8, 5))
-  expect_identical(op$repair, 1L)
-
-  # A PSU in B closes the gap at once but costs ten times as much, so two
-  # cheaper PSUs in A are bought instead.
-  op <- .psu_operational(c(80, 40), c(1000, 1000), c(10, 10), psu,
-                         list(A = 1:10, B = 11:20), rep(FALSE, 20),
-                         .repair_stub(18, feeds = matrix(TRUE, 2, 1),
-                                      worth = c(1, 2), added = c(1, 10)))
-  expect_identical(op$n_psu_draw, c(10, 4))
-})
-
-test_that("a repair that cannot meet a target stops and says why", {
-  psu <- data.frame(stratum = "A", N = rep(100, 10))
-  expect_error(
-    .psu_operational(40, 1000, 10, psu, list(A = 1:10), rep(FALSE, 10),
-                     .repair_stub(20)),
-    paste0(
-      "no whole-unit repair meets every target under the current certainty ",
-      "classification and fixed takes: every stratum feeding these targets ",
-      "already draws its whole remainder"
-    )
-  )
-  expect_error(
-    .psu_operational(40, 1000, 10, psu, list(A = 1:10), rep(FALSE, 10),
-                     .repair_stub(20)),
-    "y@.overall:cv \\(whole population\\): cv 0.04, required at most 0.02"
-  )
-  expect_error(
-    .psu_operational(40, 1000, 10, psu, list(A = 1:10), rep(FALSE, 10),
-                     .repair_stub(5, stuck = TRUE)),
-    "no remainder PSU or zone that can still be added reduces them"
-  )
-  # A target fed by no stratum with room is the used-up case too.
-  expect_error(
-    .psu_operational(40, 1000, 10, psu, list(A = 1:10), rep(FALSE, 10),
-                     .repair_stub(5, feeds = matrix(FALSE, 1, 1))),
-    "already draws its whole remainder"
-  )
-  # An assessment that fails keeps its own cause.
-  broken <- function(...) stop("precision constraints have no positive variance")
-  expect_error(
-    .psu_operational(40, 1000, 10, psu, list(A = 1:10), rep(FALSE, 10),
-                     broken),
-    "no positive variance"
-  )
-})
-
-test_that("the repair adds to the stratum whose target fails", {
-  # Stratum B passes at the larger sampling fraction, C fails on its field
-  # takes. Three PSUs in C meet it, and B is left as it was.
+test_that("each stratum meets its own target on its field takes", {
+  # Stratum B needs exactly 12,000 units at its stratum rate and has no
+  # clustering. C's rounded takes leave it short at the continuous
+  # allocation, so its field design differs from that allocation.
   set.seed(36)
   size <- round(rlnorm(120, log(120), 1.1)) + 15
-  frame <- data.frame(stratum = c("B", "C"), N = c(200000, sum(size)),
+  frame <- data.frame(stratum = c("B", "C"), N = c(40000, sum(size)),
                       n_per_psu = 10)
-  psu <- data.frame(stratum = c(rep("B", 10000), rep("C", length(size))),
-                    N = c(rep(20, 10000), size))
+  psu <- data.frame(stratum = c(rep("B", 2000), rep("C", length(size))),
+                    N = c(rep(20, 2000), size))
   measures <- data.frame(stratum = c("B", "C"), name = "y", p = c(0.5, 0.3),
                          icc_psu = c(0, 0.1))
   targets <- data.frame(name = "y", domain = "stratum", level = c("B", "C"),
-                        cv = c(sqrt(1 / 60000 - 1 / 200000), 0.02))
+                        cv = c(sqrt(1 / 12000 - 1 / 40000), 0.02))
   fit <- expect_no_warning(
     n_alloc(frame, measures = measures, targets = targets, psu = psu)
   )
-  expect_identical(fit$detail$n_psu_draw, c(6000, 9))
-  expect_identical(fit$operational$repair_iterations, 3L)
+  expect_identical(fit$detail$n_psu_draw[1], 1200)
   expect_true(all(fit$operational$constraints$.pass))
   expect_true(predict(fit, data.frame(n_per_psu = 10))$.feasible)
 })
@@ -1471,11 +1403,11 @@ test_that("one PSU per zone carries through every route back to a plan", {
   expect_identical(assessed$params$n_psu_per_zone, 1)
   expect_identical(assessed$psu$.zone, fit$psu$.zone)
   expect_identical(assessed$psu$.pair, fit$psu$.pair)
-  expect_equal(assessed$detail$.achieved, fit$constraints$.achieved,
-               tolerance = 1e-10)
+  expect_equal(assessed$detail$.achieved,
+               fit$operational$constraints$.achieved, tolerance = 1e-12)
   back <- n_alloc(assessed)
   expect_identical(back$params$n_psu_per_zone, 1)
-  expect_identical(back$detail$n_int, fit$detail$n_int)
+  expect_equal(back$operational$cost, fit$operational$cost)
 })
 
 test_that("predict() sweeps the zone setting, NA meaning no zones", {
@@ -1531,24 +1463,11 @@ test_that("zone_order sets the cut and is refused when it cannot", {
 
 ## What the register model does not carry
 
-test_that("a budget is refused with a register, in every route", {
+test_that("a register fit sized to targets has no budget to vary", {
   z <- .psu_fixture()
-  fr <- z$frame
-  fr$cost_psu <- 400
-  fr$cost_ssu <- 20
-  objective <- data.frame(name = "literacy", priority = 1)
-  expect_error(
-    n_alloc(fr, measures = z$measures, objective = objective,
-            budget = 1e5, psu = z$psu),
-    "'budget' is not available with a PSU register"
-  )
-  fit <- n_alloc(fr, measures = z$measures, targets = z$targets, psu = z$psu)
-  expect_error(
-    prec_alloc(fr, n = fit$detail$n, measures = z$measures,
-               objective = objective, budget = 1e5, psu = z$psu),
-    "'budget' is not available with a PSU register"
-  )
-  expect_error(predict(fit, data.frame(budget = 1e5)), "budget")
+  fit <- .fit_psu(z)
+  expect_error(predict(fit, data.frame(budget = 1e5)),
+               "unknown parameter(s) in newdata", fixed = TRUE)
 })
 
 test_that("a variance ratio other than one is refused with a register", {
@@ -1616,25 +1535,32 @@ test_that("the continuous optimum prices certainty visits as fixed", {
   expect_equal(fit$params$cost_h, cost)
   expect_equal(fit$params$achieved$cost, 10000 + sum(cost * optimum),
                tolerance = 1e-8)
-  expect_equal(prec_alloc(fit)$params$achieved$cost,
-               fit$params$achieved$cost, tolerance = 1e-8)
+  # prec_alloc(fit) prices the field design, as the fit's own cost does.
+  expect_equal(prec_alloc(fit)$params$achieved$cost, fit$operational$cost)
 })
 
 test_that("the register clusters on the responding take", {
+  # At 300 units no PSU reaches the threshold, so the register design is
+  # the ordinary two-stage one and both cluster on take times response.
   frame <- data.frame(stratum = "A", N = 100000, n_per_psu = 10,
                       cost_psu = 100, cost_ssu = 10)
   psu <- data.frame(stratum = "A", N = rep(1000, 100))
   measures <- data.frame(stratum = "A", name = "y", p = 0.5, icc_psu = 0.05)
   targets <- data.frame(name = "y", cv = 0.08)
   for (rate in c(1, 0.5)) {
-    register <- n_alloc(frame, measures = measures, targets = targets,
-                        psu = psu, resp_rate = rate)
-    ordinary <- n_alloc(transform(frame, N_psu = 100), measures = measures,
-                        targets = targets, resp_rate = rate)
-    expect_equal(register$n, ordinary$n, tolerance = 1e-8)
-    by_row <- n_alloc(frame, measures = transform(measures, resp_rate = rate),
-                      targets = targets, psu = psu)
-    expect_equal(by_row$n, register$n, tolerance = 1e-8)
+    register <- prec_alloc(frame, n = 300, measures = measures,
+                           targets = targets, psu = psu, resp_rate = rate)
+    ordinary <- prec_alloc(transform(frame, N_psu = 100), n = 300,
+                           measures = measures, targets = targets,
+                           resp_rate = rate)
+    expect_false(any(register$psu$certainty))
+    expect_equal(register$detail$.achieved, ordinary$detail$.achieved,
+                 tolerance = 1e-12)
+    by_row <- prec_alloc(frame, n = 300,
+                         measures = transform(measures, resp_rate = rate),
+                         targets = targets, psu = psu)
+    expect_equal(by_row$detail$.achieved, register$detail$.achieved,
+                 tolerance = 1e-12)
   }
 })
 
@@ -1679,7 +1605,6 @@ test_that("the field design is assessed on its own takes", {
   expect_equal(fit$operational$constraints$.cv, cv, tolerance = 1e-10)
   expect_lte(cv, 0.02)
   expect_true(fit$operational$all_pass)
-  expect_gt(fit$operational$repair_iterations, 0L)
 })
 
 test_that("no remainder is left without a draw", {
@@ -1713,7 +1638,9 @@ test_that("summary stratum costs add up to the plan's cost", {
                          icc_psu = 0.05)
   two <- n_alloc(frame, measures = measures,
                  targets = data.frame(name = "y", cv = 0.1), psu = psu)
-  expect_equal(summary(two)$allocation$cost, c(100 * 100 + 200, 5 * 100 + 50))
+  d <- two$detail
+  expect_equal(summary(two)$allocation$cost,
+               c(100 * 100 + d$n_int[1], d$n_psu_draw[2] * 100 + d$n_int[2]))
 
   # Strata mixing certainty and remainder PSUs, the takes rounded apart.
   z <- .psu_fixture()
@@ -1722,14 +1649,14 @@ test_that("summary stratum costs add up to the plan's cost", {
   fr$cost_ssu <- 20
   mixed <- n_alloc(fr, measures = z$measures, targets = z$targets,
                    psu = z$psu)
-  expect_identical(mixed$detail$n_psu_certain > 0 &
-                     mixed$detail$n_psu_draw > 0, c(TRUE, TRUE, TRUE, FALSE))
+  expect_true(any(mixed$detail$n_psu_certain > 0 &
+                    mixed$detail$n_psu_draw > 0))
   for (fit in list(two, mixed)) {
     s <- summary(fit)
     expect_equal(sum(s$allocation$cost), fit$operational$cost)
     expect_equal(sum(s$allocation$cost), s$overall$cost)
     assessed <- summary(prec_alloc(fit))
-    expect_equal(sum(assessed$allocation$cost), fit$params$achieved$cost)
+    expect_equal(sum(assessed$allocation$cost), fit$operational$cost)
     expect_equal(sum(assessed$allocation$cost), assessed$overall$cost)
   }
 })

@@ -22,6 +22,7 @@ n_cluster(stage_cost = NULL, ...)
   resp_rate_psu = 1,
   resp_rate_ssu = 1,
   resp_rate = 1,
+  eligible_rate = 1,
   fixed_cost = 0,
   indicators = NULL,
   domains = NULL,
@@ -51,10 +52,13 @@ surveys range from 0.01 to 0.10. Higher icc means more clusters
 are needed for the same precision. Use \code{\link[=varcomp]{varcomp()}} to estimate
 icc from a previous survey or pilot data.}
 
-\item{unit_relvar}{Unit relvariance (default 1). For most applications,
-the default of 1 is appropriate. Non-unit values arise when working
-with variance components from \code{\link[=varcomp]{varcomp()}} that separate the total
-variance into stage-specific pieces.}
+\item{unit_relvar}{Unit relvariance, the unit variance of the analysis
+variable over its squared mean, default 1. The cv a design reaches
+scales with it. A proportion \code{p} has \code{(1 - p) / p}, so the default plans
+a proportion as if \code{p = 0.5}. A \code{\link[=varcomp]{varcomp()}} result estimated from data
+sets it, and an explicit value is then refused. One backed out of a
+design effect sets none, and \code{unit_relvar} must then be supplied beside
+it.}
 
 \item{var_ratio}{Ratio of the stage components' unit variance to the analysis
 variable's, default 1. A scalar names \code{var_ratio_psu} and, for a three-stage
@@ -63,7 +67,8 @@ variance decomposition imposes. Supply a length-2 vector only to
 override it, which is meaningful when the two stages' ratios come from
 different decompositions. See \code{\link[=design_effect]{design_effect()}} for the identity and
 why the design effect would not reduce to \code{var_ratio_psu} without it. The
-default of 1 is appropriate for most designs.}
+default of 1 is appropriate for most designs. A \code{\link[=varcomp]{varcomp()}} result passed
+as \code{icc} sets it, and an explicit value is then refused.}
 
 \item{cv}{Target coefficient of variation (relative standard error).
 For example, \code{cv = 0.05} means the standard error of the estimate
@@ -103,6 +108,12 @@ Default 1. It is the share of selected final-stage units, typically
 persons, that respond. This is the plain \code{resp_rate} the rest of the
 package uses. See the nonresponse section of \link{svyplan-package} for what
 this adjustment does and does not claim.}
+
+\item{eligible_rate}{Eligible units per final-stage unit, a positive
+number, default 1, such as married women per household when households
+are the final stage. It can exceed 1. It multiplies \code{resp_rate} in the
+realized take and in its cost, and sizes stay in final-stage units. Not
+available with \code{indicators}. See the nonresponse section of Details.}
 
 \item{fixed_cost}{Fixed overhead cost (C0). Default 0.
 The total cost model becomes
@@ -223,8 +234,18 @@ optimized or derived from the constraint. For 2-stage designs, at most one
 stage may be fixed. For 3-stage designs, up to two stages may be fixed.
 The remaining free stage is derived from the budget or CV constraint.
 
-If \code{icc} is a \code{svyplan_varcomp} object, \code{icc}, \code{unit_relvar}, and \code{var_ratio}
-are extracted automatically.
+If \code{icc} is a \code{svyplan_varcomp} object, \code{icc} and \code{var_ratio} are taken
+from it, and so is \code{unit_relvar} when the components were estimated from
+data. A design effect identifies no unit relvariance, so a result of
+\code{varcomp(deff = )} needs an explicit \code{unit_relvar}, such as \code{(1 - p) / p}
+for a proportion. That pair is how a published design effect sizes a
+design for a \code{cv} target.
+
+A value the result sets cannot also be passed, since the result would
+override it. To plan with other values, pass \code{icc} as numbers, or give
+\code{var_ratio} to \code{varcomp(deff = , var_ratio = )} for a back-out. A
+\code{\link[=svyplan]{svyplan()}} profile's \code{unit_relvar} and \code{var_ratio} give way to the
+result, as any explicit argument overrides a profile.
 }
 
 \subsection{Several indicators at once}{
@@ -317,6 +338,20 @@ scales cost without moving that trade-off. Sizes and costs stay \strong{gross}:
 \verb{$n} counts units to issue and \verb{$cost} pays for them, while the variance
 reads what they realize.
 
+\code{eligible_rate} enters where \code{resp_rate} does at the final stage. The
+realized take is the eligible respondents per PSU,
+\code{n_per_psu * resp_rate * eligible_rate}, and \code{r} above is that product.
+\code{icc} is then the homogeneity of eligible persons within a PSU, which a
+design effect published at the person level identifies through
+\code{\link[=varcomp]{varcomp()}}. Above 1, the persons of one household resemble each other
+more than persons of different households, and one \code{icc} averages over
+that. For an outcome the whole household shares, such as poverty counted
+per person, the clustering penalty is then understated.
+
+With households as the final stage, a survey that reports a household and
+an individual response rate passes their product as \code{resp_rate}, as in
+\code{\link[=n_prop]{n_prop()}}.
+
 This is a deterministic expected-take approximation. It substitutes the
 expected realized stage counts into the planning variance and assumes
 response is noninformative for it. Below one expected respondent per unit
@@ -349,6 +384,11 @@ n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, n_psu = 40)
 
 # 2-stage, fixed n_per_psu (MICS/DHS style: 20 households per cluster)
 n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, n_per_psu = 20)
+
+# Households per cluster for married women, 0.41 per household, for a
+# proportion near 0.28, whose unit relvariance is (1 - p) / p
+n_cluster(stage_cost = c(500, 50), icc = 0.07, unit_relvar = 0.72 / 0.28,
+          cv = 0.05, resp_rate = 0.9, eligible_rate = 0.41)
 
 # 3-stage
 n_cluster(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05), cv = 0.05)

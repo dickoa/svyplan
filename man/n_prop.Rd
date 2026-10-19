@@ -18,6 +18,7 @@ n_prop(p, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligible_rate = 1,
   method = c("wald", "wilson", "logodds", "beta"),
   df = NULL,
   min_cases = NULL,
@@ -63,13 +64,22 @@ more interviews are needed for the same precision. Estimate from a
 previous survey, use \code{\link[=design_effect]{design_effect()}} to compute it, or apply a
 rule of thumb (1.5--2.0 for typical cluster designs). Values < 1
 are valid for efficient designs (e.g., stratified sampling with
-Neyman allocation).}
+Neyman allocation). A published DEFT is squared first. See
+\code{\link[=varcomp]{varcomp()}} for that and for removing the published survey's
+weighting loss.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The required sample size is inflated by \code{1 / resp_rate}.
 Estimate from response rates observed in similar surveys in the same
 population. See the nonresponse section of \link{svyplan-package} for what
 this adjustment does and does not claim.}
+
+\item{eligible_rate}{Eligible units per sampled unit, a positive number,
+default 1. In a household survey of married women it is the average
+number of married women per household, and it can exceed 1. \code{n} and
+\code{N} stay in sampled units, while the precision is computed on the
+eligible respondents out of \code{N * eligible_rate} eligible units, which
+must exceed 1 when \code{N} is finite. See Details.}
 
 \item{method}{One of \code{"wald"} (default), \code{"wilson"}, \code{"logodds"}, or
 \code{"beta"}.}
@@ -207,7 +217,7 @@ numerically close to a boundary. Rare-outcome domain estimates in a
 clustered survey are the standard case. Near \code{p = 1}, apply the same
 reasoning to expected negative outcomes. Beta is the widest over most
 of the range, and so the most demanding to plan for, but not
-everywhere: for a very
+everywhere. For a very
 rare outcome at a small sample, log-odds is wider still. Nor is it the
 only method that answers to a variance estimated from few clusters. All
 four read \code{df} through the same t quantile and widen by it, so \code{df}
@@ -268,6 +278,34 @@ the Bernoulli finite-population variance. This differs from
 variance is already defined on \code{N-1} degrees of freedom.
 }
 
+\subsection{Eligible units per sampled unit}{
+
+A household survey samples households and measures persons, such as the
+married women or the children under five in each sampled household.
+\code{eligible_rate} is their average number per household. The sample size
+and \code{N} stay in households. The precision is computed on
+\code{n * resp_rate * eligible_rate} eligible respondents out of
+\code{N * eligible_rate} eligible persons, so the sampling fraction is the
+household one, \code{n * resp_rate / N}. \code{expected_cases} counts eligible
+respondents with the trait.
+
+With \code{N = Inf}, a rate at or below 1 gives the same \code{n} as passing
+\code{resp_rate * eligible_rate} as the response rate. With a finite \code{N} that
+folded rate understates the sampling fraction, so it asks for slightly
+more households.
+
+A survey that reports a household and an individual response rate, as DHS
+and MICS do, passes their product as \code{resp_rate}. Folding the individual
+rate into \code{eligible_rate} instead gives the same \code{n} only at \code{N = Inf}, and
+a slightly smaller one with a finite \code{N}.
+
+Above 1, several eligible persons come from each sampled household and
+resemble each other. \code{deff} then carries that correlation, as a design
+effect published at the person level does. For an outcome the whole
+household shares, such as poverty counted per person, the precision is
+closer to that of the household count than this calculation implies.
+}
+
 \subsection{Degrees of freedom}{
 
 Write \eqn{q} for the interval quantile. By default
@@ -277,7 +315,7 @@ variance as known. Supplying \code{df} instead gives
 
 Supplying \code{df} says the variance will be estimated from a design with
 that many degrees of freedom, and switches the quantile to
-\eqn{t_{1-\alpha/2}(\mathrm{df})}{t_(1-alpha/2)(df)}. It is opt-in rather than derived: in
+\eqn{t_{1-\alpha/2}(\mathrm{df})}{t_(1-alpha/2)(df)}. It is opt-in rather than derived. In
 \code{\link[=n_cluster]{n_cluster()}} the df depends on the PSU count being solved for, so an
 automatic version would need a fixed point. Read it off a plan you
 already have with \code{\link[=design_df]{design_df()}}, or pass a count directly.
@@ -344,6 +382,10 @@ rare$expected_cases
 
 # MICS-style relative margin of error, 12\% of the proportion
 n_prop(p = 0.2, rmoe = 0.12, deff = 1.5, resp_rate = 0.9)
+
+# Households to sample for married women, 0.41 per household
+n_prop(p = 0.28, cv = 0.05, deff = 2.5, resp_rate = 0.9,
+       eligible_rate = 0.41)
 
 }
 \references{

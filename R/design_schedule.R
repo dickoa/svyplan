@@ -816,7 +816,7 @@ design_schedule <- function(
   invisible(TRUE)
 }
 
-#' Print, summarise and coerce a longitudinal design schedule
+#' Print, summarize and coerce a longitudinal design schedule
 #'
 #' `print()` states the issue profile as a run of takes rather than as one
 #' row per occasion, because a schedule's occasions are mostly identical and
@@ -867,7 +867,7 @@ design_schedule <- function(
 #' )
 #' schedule
 #'
-#' # the occasion-by-occasion tables the print block summarises
+#' # the occasion-by-occasion tables the print block summarizes
 #' s <- summary(schedule)
 #' s
 #'

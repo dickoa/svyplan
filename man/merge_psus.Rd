@@ -22,13 +22,13 @@ the id of its first PSU in row order, so its type and class are those of
 }
 \description{
 \code{merge_psus()} recodes primary sampling unit (PSU) ids so that every PSU
-holds at least \code{min_size} units, merging small PSUs with their neighbours
+holds at least \code{min_size} units, merging small PSUs with their neighbors
 in the current row order. A PSU register for \code{\link[=n_alloc]{n_alloc()}} must not hold a
 PSU smaller than its stratum's take, and merging small enumeration areas
 before the register is built is the usual remedy.
 
 It is a vector function. Apply it within each stratum, after sorting the
-frame so that neighbours in row order are neighbours on the ground, and
+frame so that neighbors in row order are neighbors on the ground, and
 build the register from the merged ids, so the register and the frame
 agree.
 }
@@ -43,7 +43,7 @@ stratum below \code{min_size} in total becomes one PSU, which \code{\link[=n_all
 refuses as smaller than its take unless the register flags it as
 certainty.
 
-Merging is by order only, so neighbours in row order are neighbours on
+Merging is by order only, so neighbors in row order are neighbors on
 the ground only as far as the sort makes them so. Valliant, Dever and
 Kreuter (2018, sec. 10.3) form PSUs to a minimum size from contiguous
 areas.

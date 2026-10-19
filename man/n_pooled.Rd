@@ -81,14 +81,15 @@ nonresponse section of \link{svyplan-package} for what this adjustment does
 and does not claim.}
 
 \item{overlap}{Fraction of one occasion's \strong{responding} sample carried
-into a later one, in [0, 1]. One number, meaning the same overlap at
+into a later one, in \eqn{[0, 1]}. One number, meaning the same overlap at
 every lag, or one per lag. A \code{\link[=design_overlap]{design_overlap()}} result is accepted
 directly at \code{resp_rate = 1}. See \code{\link[=prec_pooled]{prec_pooled()}} on why not below it.
 \code{0} (default) makes the occasions independent.}
 
 \item{overlap_cor}{Correlation between two occasions among the units they
-share, in [0, 1]. One number for every lag, or one per lag. Default 0,
-which makes overlap irrelevant. Supply this or \code{cor_decay}, not both.}
+share, in \eqn{[0, 1]}. One number for every lag, or one per lag.
+Default 0, which makes overlap irrelevant. Supply this or \code{cor_decay},
+not both.}
 
 \item{cor_decay}{Correlation at lag \eqn{m} taken as \eqn{\rho^m}{rho^m},
 an alternative to stating \code{overlap_cor} lag by lag.}

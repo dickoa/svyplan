@@ -78,7 +78,11 @@ interval half-width, so those rows need \code{moe} rather than \code{cv}.}
 \item{resp_rate}{Default expected response rate at the ultimate unit, in
 (0, 1]. Used for rows whose \code{resp_rate} column is absent or \code{NA}, and
 a non-missing row value overrides it. See the nonresponse section of
-\link{svyplan-package} for what this adjustment does and does not claim.}
+\link{svyplan-package} for what this adjustment does and does not claim.
+A rate of eligible units per sampled unit at or below 1, such as
+0.41 married women per household, folds in here as
+\code{resp_rate * eligible_rate}. With a finite \code{N} this errs slightly
+conservative.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -180,7 +184,9 @@ of the estimate.}
 (default 0.05, giving a 95 percent CI).}
 \item{\code{deff}}{Design effect multiplier (default 1). Set > 1 to inflate
 the sample size for complex
-designs (e.g. 1.5 for a cluster design).}
+designs (e.g. 1.5 for a cluster design). A published DEFT is
+squared first. See \code{\link[=varcomp]{varcomp()}} for that and for removing the
+published survey's weighting loss.}
 \item{\code{N}}{Population size (default \code{Inf}).
 A finite value applies a finite population correction, reducing
 the required sample size.}
@@ -225,7 +231,7 @@ are present, sizing runs independently for each domain combination, and
 \code{domain_sampling} decides how those requirements combine into the one
 number \code{n} reports. The two readings answer different questions and give
 different sizes, so the choice belongs to the design rather than to a
-default: separate quotas need every requirement met and therefore their
+default. Separate quotas need every requirement met and therefore their
 sum, while natural domains need a sample large enough that the rarest
 demanding domain turns up often enough. Neither is the largest single
 requirement, which \code{n_domain_max} reports separately.

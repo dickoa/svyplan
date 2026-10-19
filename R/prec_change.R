@@ -36,7 +36,7 @@
 #'   `n * resp_rate` before the variance is formed. It is a single round's
 #'   response, not attrition across a panel.
 #' @param overlap Fraction of the first occasion's **responding** sample
-#'   carried into the second, in \[0, 1\], measured against the first
+#'   carried into the second, in \eqn{[0, 1]}, measured against the first
 #'   occasion as `n12 / n1`, so it cannot exceed `n[2] / n[1]`. `0` (default)
 #'   drops the covariance entirely and reproduces the two-independent-samples
 #'   result. `1` means every responding unit of the first occasion is
@@ -44,7 +44,7 @@
 #'   size and a subsample of the second when it is larger. See Details on
 #'   what a response rate below 1 does to this reading.
 #' @param overlap_cor Correlation between the two occasions among the
-#'   overlapping units, in \[0, 1\]. Default 0, which makes overlap
+#'   overlapping units, in \eqn{[0, 1]}. Default 0, which makes overlap
 #'   worthless, since it is the product `overlap * overlap_cor` that buys precision
 #'   on a change, so a full panel of uncorrelated measurements buys nothing.
 #'   On the proportion scale two Bernoulli marginals bound the correlation

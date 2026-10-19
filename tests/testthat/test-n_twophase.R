@@ -933,3 +933,27 @@ test_that("a two-phase plan carries its alpha back through prec_twophase", {
   expect_equal(prec_twophase(n_twophase(r, budget = 50000))$moe, r$moe,
                tolerance = 1e-6)
 })
+
+## The whole-unit design meets the cv target it was planned for. Rounding
+## phase 1 up and each phase-2 size down to its phase-1 pool used to leave
+## these three frames just above their target.
+
+test_that("the fielded two-phase design reaches its cv target", {
+  frames <- list(
+    list(N = c(1599, 2526, 1532), mean = c(87.0333, 34.564, 12.062),
+         sd = c(113.038, 46.6399, 5.6358), unit_cost = c(4, 1, 10),
+         phase1_cost = 1.4, cv = 0.0658363),
+    list(N = c(3696, 4846, 854, 741), mean = c(59.6229, 41.8391, 53.4869, 39.7841),
+         sd = c(33.4793, 44.8289, 64.365, 16.3392), unit_cost = c(9, 6, 4, 1),
+         phase1_cost = 1.9, cv = 0.0333584),
+    list(N = c(1429, 993, 859), mean = c(36.7885, 78.4711, 31.1814),
+         sd = c(31.6594, 87.5611, 25.0377), unit_cost = c(2, 10, 8),
+         phase1_cost = 1.3, cv = 0.0715941)
+  )
+  for (f in frames) {
+    frame <- data.frame(stratum = seq_along(f$N), N = f$N, mean = f$mean,
+                        sd = f$sd, unit_cost = f$unit_cost)
+    fit <- n_twophase(frame, phase1_cost = f$phase1_cost, cv = f$cv)
+    expect_lte(fit$operational$cv, f$cv * (1 + 1e-12))
+  }
+})

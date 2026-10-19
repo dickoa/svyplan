@@ -261,7 +261,10 @@ test_that("a stage design and a register read the frame response rate", {
   expect_equal(column$n, scalar$n)
   register <- n_alloc(transform(frame, resp_rate = 0.5), measures = measures,
                       targets = targets, psu = psu)
-  expect_equal(register$n, scalar$n, tolerance = 1e-8)
+  argument <- n_alloc(frame, measures = measures, targets = targets, psu = psu,
+                      resp_rate = 0.5)
+  expect_equal(register$n, argument$n, tolerance = 1e-12)
+  expect_identical(register$psu, argument$psu)
   register_deff <- n_alloc(transform(frame, deff = 1.5), measures = measures,
                            targets = targets, psu = psu)
   expect_equal(

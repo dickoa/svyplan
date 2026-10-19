@@ -18,6 +18,7 @@ prec_prop(p, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligible_rate = 1,
   method = c("wald", "wilson", "logodds", "beta"),
   df = NULL,
   plan = NULL
@@ -51,10 +52,16 @@ Specify exactly one of \code{p}, \code{cv}, or \code{rmoe}.}
 correction.}
 
 \item{deff}{Design effect multiplier (> 0). Values < 1 are valid for
-efficient designs (e.g., stratified sampling with Neyman allocation).}
+efficient designs (e.g., stratified sampling with Neyman allocation).
+A published DEFT is squared first. See \code{\link[=varcomp]{varcomp()}} for that and for
+removing the published survey's weighting loss.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The effective sample size is \code{n * resp_rate}.}
+
+\item{eligible_rate}{Eligible units per sampled unit, a positive number,
+default 1. \code{n} and \code{N} stay in sampled units, and a finite
+\code{N * eligible_rate} must exceed 1. See \code{\link[=n_prop]{n_prop()}}.}
 
 \item{method}{One of \code{"wald"} (default), \code{"wilson"}, \code{"logodds"}, or
 \code{"beta"} (Korn-Graubard). See \code{\link[=n_prop]{n_prop()}} for how to choose.}
@@ -162,7 +169,7 @@ reported back by both functions.
 
 \verb{$moe} is half the length of that interval, which equals \code{q * se} under
 \code{"wald"} alone. Only the Wald interval is symmetric about \code{p}, so for the
-other three \code{p - moe} and \code{p + moe} are not the limits: use \code{\link[=confint]{confint()}}
+other three \code{p - moe} and \code{p + moe} are not the limits. Use \code{\link[=confint]{confint()}}
 for those. The \code{"beta"} method makes this most visible, since its interval
 is deliberately asymmetric for a rare outcome.
 
@@ -226,6 +233,10 @@ prec_prop(n = 1500, rmoe = 0.20, method = "beta", N = 2e6)$params$p
 
 # How that floor moves with the sample size
 predict(floor, expand.grid(n = c(500, 1500, 5000)))
+
+# 6000 households and 0.41 married women per household
+prec_prop(p = 0.28, n = 6000, deff = 2.5, resp_rate = 0.9,
+          eligible_rate = 0.41)
 
 }
 \seealso{

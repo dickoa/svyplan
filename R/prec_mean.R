@@ -20,8 +20,14 @@
 #'   correction.
 #' @param deff Design effect multiplier (> 0). Values < 1 are valid for
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
+#'   A published DEFT is squared first. See [varcomp()] for that and for
+#'   removing the published survey's weighting loss.
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). The effective sample size is `n * resp_rate`.
+#'   adjustment). The effective sample size is `n * resp_rate`. A rate of
+#'   eligible units per sampled unit at or below 1, such as
+#'   0.41 married women per household, folds in here as
+#'   `resp_rate * eligible_rate`. With a finite `N` this errs slightly
+#'   conservative.
 #' @param df Degrees of freedom of the variance estimator the planned design
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the interval quantile from normal to t.

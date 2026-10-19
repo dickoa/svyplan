@@ -65,7 +65,9 @@ components.}
 Length determines the number of stage boundaries (stages - 1).}
 
 \item{deff}{A published design effect to back an \code{icc} out of, with \code{x}
-unset. Requires \code{n_per_psu}. See Details.}
+unset. Requires \code{n_per_psu}. A published DEFT is squared first, and
+the published survey's weighting loss may need dividing out. See
+Details.}
 
 \item{se}{A published standard error, an alternative to \code{deff} for the
 same back-out. Requires \code{n} and one of \code{p} or \code{var}.}
@@ -76,9 +78,11 @@ same back-out. Requires \code{n} and one of \code{p} or \code{var}.}
 
 \item{n}{Sample size the published \code{se} was computed on.}
 
-\item{n_per_psu}{Units per PSU the published design effect refers to:
-the size-weighted average take, a vector of realized takes, or a
-nominal take with \code{cv_take}. See Details.}
+\item{n_per_psu}{Take per PSU the published design effect refers to,
+counted in the units the estimate was computed on. For a person-level
+estimate it is the responding eligible persons per cluster, not the
+households per cluster. Give the size-weighted average take, a vector
+of realized takes, or a nominal take with \code{cv_take}. See Details.}
 
 \item{n_per_ssu}{Units per SSU. Not accepted on the back-out, which a
 scalar design effect does not identify.}
@@ -142,12 +146,12 @@ The formula and vector interfaces compute frame components: \code{data}
 is treated as a complete population. To estimate components from a
 sample instead, supply \code{weights} (formula and vector interfaces) or
 use the survey.design method. Weights are treated as inverse
-inclusion probabilities: cluster sizes and totals are estimated by
+inclusion probabilities. Cluster sizes and totals are estimated by
 summed weights, and the estimation variance of the weighted cluster
 totals is subtracted from the between-stage variance terms, so
 unequal-probability samples from a previous round give approximately
 design-unbiased components. Unit weights recover the frame formulas
-exactly. The weight \emph{scale} matters: within each cluster the summed
+exactly. The weight \emph{scale} matters. Within each cluster the summed
 weights should estimate the cluster population size, since the
 implied sampling fraction drives the correction. For a multi-stage
 sample this means the \emph{within-cluster} weights (the product of the
@@ -270,6 +274,49 @@ means different things at a take of 12 and of 30, and
 \code{\link[=design_effect]{design_effect()}} does not read it back. The reason to back an \code{icc}
 out at all is to re-plan at a different take, and defaulting to the old
 one would return the old design's number.
+}
+
+\subsection{A published DEFT and its weighting loss}{
+
+\code{deff} is a ratio of variances. Some survey programs publish DEFT, the
+ratio of standard errors, which is its square root. The DHS
+sampling-error appendix lists it under the heading "Design effect
+(DEFT)", so square the published value before passing it. MICS tables
+give both columns.
+
+A published design effect also carries the weighting loss of the survey
+that produced it, which the identity above attributes to \eqn{\delta}.
+With that survey's final weights \code{w}, Kish's factor from
+\code{\link[=design_effect]{design_effect()}} divides it out:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{kish <- design_effect(weights = w)
+vc <- varcomp(deff = deft^2 / kish, n_per_psu = b)
+}\if{html}{\out{</div>}}
+
+This is the decomposition Kalton, Brick and L\enc{ê}{e} (2005) use to
+carry a design effect from one survey to the planning of another, with
+the new design's weighting factor multiplied back in. Gabler, Haeder and
+Lahiri (1999) justify the product of the two factors under a model, as a
+conservative value for the design effect. The division assumes the
+weights are unrelated to the outcome, as Kish's decomposition does.
+Passing the factor as \code{var_ratio} returns the same \code{icc}, but the factor
+then stays in the result and multiplies every design effect formed from
+it.
+
+Whether to divide depends on how the new plan is built. \code{\link[=n_alloc]{n_alloc()}} over
+the strata forms the variance of a disproportionate allocation from the
+allocation itself, so the old factor is divided out, or it would count
+twice. A scalar \code{deff} in \code{\link[=n_prop]{n_prop()}} or \code{\link[=n_mean]{n_mean()}} carries no allocation.
+For a new design as disproportionate as the old one, multiply its
+expected weighting factor back in,
+\code{deff = design_effect(vc, n_per_psu = b_new) * kish_new}, or the sample
+comes out too small. Weight variation within strata, from nonresponse
+adjustment for instance, recurs in the new survey and \code{\link[=n_alloc]{n_alloc()}} does
+not model it. A \code{deff} column in its \code{frame} can carry it.
+
+A published standard error carries the same loss. To remove it, form the
+design effect and divide, \code{deff = se^2 / (p * (1 - p) / n) / kish},
+rather than passing \code{se}.
 }
 
 }
@@ -408,6 +455,20 @@ varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)
 # From a published standard error instead
 varcomp(se = 0.021, p = 0.30, n = 1200, n_per_psu = 20)
 
+# A DHS appendix publishes DEFT, the ratio of standard errors
+deft <- 1.582
+varcomp(deff = deft^2, n_per_psu = 12.3)
+
+# Divide out the weighting loss of the survey that published it
+w_old <- rep(c(1, 4), c(300, 100))
+kish <- design_effect(weights = w_old)
+vc_dhs <- varcomp(deff = deft^2 / kish, n_per_psu = 12.3)
+vc_dhs
+
+# A scalar deff for an equally disproportionate design puts it back
+n_prop(p = 0.28, cv = 0.05,
+       deff = design_effect(vc_dhs, n_per_psu = 15) * kish)
+
 }
 \references{
 Valliant, R., Dever, J. A., and Kreuter, F. (2018).
@@ -416,6 +477,15 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 
 Hansen, M. H., Hurwitz, W. N., and Madow, W. G. (1953).
 \emph{Sample Survey Methods and Theory} (Vol. I). Wiley.
+
+Kalton, G., Brick, J. M., and L\enc{ê}{e}, T. (2005). Estimating
+components of design effects for use in sample design. In
+\emph{Household Sample Surveys in Developing and Transition Countries},
+Studies in Methods, Series F No. 96, Chapter VI. United Nations.
+
+Gabler, S., Haeder, S., and Lahiri, P. (1999). A model based
+justification of Kish's formula for design effects for weighting and
+clustering. \emph{Survey Methodology}, 25(1), 105-106.
 }
 \seealso{
 \code{\link[=n_cluster]{n_cluster()}} which accepts a \code{svyplan_varcomp} as \code{icc},

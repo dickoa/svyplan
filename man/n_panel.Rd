@@ -224,7 +224,7 @@ survive into the object a script reads.
 \subsection{What the rates are, and what they are not}{
 
 This is arithmetic on declared rates. Where the rates come from is the
-planner's problem: attrition modelling, attrition weighting and any
+planner's problem: attrition modeling, attrition weighting and any
 adjustment for informative dropout are outside what the package does.
 
 Two assumptions are worth stating because they push in opposite

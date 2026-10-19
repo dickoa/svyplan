@@ -11,8 +11,8 @@ svyplan(...)
 }
 \arguments{
 \item{...}{Named defaults to reuse across calls. Allowed names:
-\code{alpha}, \code{df}, \code{N}, \code{deff}, \code{resp_rate}, \code{resp_rate_psu},
-\code{resp_rate_ssu},
+\code{alpha}, \code{df}, \code{N}, \code{deff}, \code{resp_rate}, \code{eligible_rate},
+\code{resp_rate_psu}, \code{resp_rate_ssu},
 \code{prop_method},
 \code{stage_cost}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{fixed_cost},
 \code{unit_cost},
@@ -52,7 +52,10 @@ n_prop(p = 0.3, moe = 0.05, plan = plan, deff = 2)  # deff = 2 wins
 }\if{html}{\out{</div>}}
 
 Defaults are applied only when their names match the called function's
-formals. Irrelevant defaults are silently ignored. \code{prop_method} must
+formals. Irrelevant defaults are silently ignored, except
+\code{eligible_rate}. A function without that argument would count eligible
+persons where the profile counts households, so it stops instead.
+\code{prop_method} must
 be \code{"wald"}, \code{"wilson"}, \code{"logodds"}, or \code{"beta"} (validated at
 construction)
 and also fills the \code{method} argument of \code{\link[=n_prop]{n_prop()}}, \code{\link[=prec_prop]{prec_prop()}}, and

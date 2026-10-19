@@ -1195,3 +1195,112 @@ test_that("an indicator table handed to the first slot is named", {
     "table of indicators goes to 'indicators'"
   )
 })
+
+## A budget that buys less than one PSU at the cost-optimal takes can still
+## buy one PSU at smaller takes. It is refused only when even the cheapest
+## PSU, one SSU and one unit, is past it.
+
+test_that("a budget below one PSU at the optimal take gets a one-PSU design", {
+  expect_warning(
+    two <- n_cluster(stage_cost = c(2000, 2), icc = 0.002, unit_relvar = 1,
+                     budget = 2500),
+    "single PSU"
+  )
+  expect_identical(two$operational$n[[1]], 1L)
+  expect_lte(two$operational$cost, 2500)
+
+  expect_warning(
+    three <- n_cluster(stage_cost = c(1610, 3, 5), icc = c(0.00152324, 0.288999),
+                       unit_relvar = 0.527333, budget = 2493),
+    "single PSU"
+  )
+  expect_identical(three$operational$n[[1]], 1L)
+  expect_lte(three$operational$cost, 2493)
+})
+
+test_that("a budget below the cheapest PSU is refused with that cost", {
+  expect_error(
+    n_cluster(stage_cost = c(2000, 2), icc = 0.002, unit_relvar = 1,
+              budget = 1500),
+    "cheapest design, one PSU with one unit, costs 2002"
+  )
+  expect_error(
+    n_cluster(stage_cost = c(1610, 3, 5), icc = c(0.0015, 0.29),
+              unit_relvar = 0.5, budget = 1600),
+    "cheapest design, one PSU with one SSU and one unit, costs 1618"
+  )
+})
+
+## A fixed PSU count with a free SSU take
+
+# Every take m at a fixed PSU count a, with the smallest whole q meeting
+# the target, from cv^2 a m q >= k1 delta1 m q + k2 (1 + delta2 (q - 1))
+# at unit relvariance and full response.
+three_stage_takes <- function(a, cv, icc, k, cost, m = seq_len(30000)) {
+  slope <- m * (cv^2 * a - k[1] * icc[1]) - k[2] * icc[2]
+  q <- ifelse(slope > 0, ceiling(k[2] * (1 - icc[2]) / slope - 1e-9), Inf)
+  q <- pmax(q, 1)
+  list(m = m, q = q, cost = a * (cost[1] + cost[2] * m + cost[3] * m * q))
+}
+
+test_that("a fixed PSU count finds the cheapest take, however large", {
+  # Two PSUs reach the target only above 500 SSUs each.
+  args <- list(stage_cost = c(500, 1, 1), icc = c(0.0049, 0.05), cv = 0.05,
+               n_psu = 2)
+  fit <- do.call(n_cluster, args)
+  all <- three_stage_takes(2, 0.05, args$icc, fit$params$var_ratio,
+                           args$stage_cost)
+  expect_equal(fit$operational$cost, min(all$cost))
+  expect_lte(fit$operational$cv, 0.05 + 1e-12)
+  expect_gt(fit$operational$n[["n_per_psu"]], 500)
+  multi <- n_cluster(
+    indicators = data.frame(name = "y", var = 1, mu = 1, cv = 0.05,
+                            icc_psu = 0.0049, icc_ssu = 0.05),
+    stage_cost = args$stage_cost, n_psu = 2
+  )
+  expect_identical(as.integer(multi$operational$n),
+                   as.integer(fit$operational$n))
+  expect_error(
+    n_cluster(stage_cost = c(500, 1, 1), icc = c(0.03, 0.05), cv = 0.05,
+              n_psu = 2),
+    "below the achievable floor"
+  )
+})
+
+test_that("a fixed PSU count under a budget searches every affordable take", {
+  fit <- n_cluster(stage_cost = c(500, 1, 1), icc = c(0.0049, 0.05),
+                   budget = 50000, n_psu = 2)
+  k <- fit$params$var_ratio
+  m <- seq_len(floor((50000 / 2 - 500) / 2))
+  q <- floor((50000 / 2 - 500 - m) / m)
+  cv <- sqrt(1 / (2 * m * q) *
+               (k[1] * 0.0049 * m * q + k[2] * (1 + 0.05 * (q - 1))))
+  expect_equal(fit$operational$cv, min(cv[q >= 1]), tolerance = 1e-12)
+  expect_gt(fit$operational$n[["n_per_psu"]], 400)
+})
+
+test_that("a fixed PSU count and ultimate take leave the SSU take free", {
+  icc <- c(0.0049, 0.05)
+  fit <- n_cluster(stage_cost = c(500, 1, 1), icc = icc, cv = 0.05,
+                   n_psu = 2, n_per_ssu = 19)
+  k <- fit$params$var_ratio
+  m <- seq_len(30000)
+  cv <- sqrt(1 / (2 * m * 19) * (k[1] * icc[1] * m * 19 +
+                                   k[2] * (1 + icc[2] * 18)))
+  expect_identical(fit$operational$n[["n_per_psu"]],
+                   as.integer(min(m[cv <= 0.05 + 1e-12])))
+  bud <- n_cluster(stage_cost = c(500, 1, 1), icc = icc, budget = 41000,
+                   n_psu = 2, n_per_ssu = 19)
+  expect_identical(bud$operational$n[["n_per_psu"]], 1000L)
+  expect_equal(bud$operational$cost, 41000)
+  for (args in list(list(cv = 0.05), list(budget = 41000))) {
+    multi <- do.call(n_cluster, c(list(
+      indicators = data.frame(name = "y", var = 1, mu = 1, cv = 0.05,
+                              icc_psu = icc[1], icc_ssu = icc[2]),
+      stage_cost = c(500, 1, 1), n_psu = 2, n_per_ssu = 19
+    ), if (!is.null(args$budget)) list(budget = args$budget)))
+    scalar <- if (is.null(args$budget)) fit else bud
+    expect_identical(as.integer(multi$operational$n),
+                     as.integer(scalar$operational$n))
+  }
+})

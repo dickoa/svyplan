@@ -70,12 +70,18 @@ matters when n/N > 5 percent).}
 
 \item{deff}{Design effect multiplier (> 0). See \code{\link[=n_prop]{n_prop()}} for
 guidance on estimating DEFF. Values < 1 are valid for efficient
-designs (e.g., stratified sampling with Neyman allocation).}
+designs (e.g., stratified sampling with Neyman allocation). A
+published DEFT is squared first. See \code{\link[=varcomp]{varcomp()}} for that and for
+removing the published survey's weighting loss.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
 adjustment). The required sample size is inflated by \code{1 / resp_rate}.
 See the nonresponse section of \link{svyplan-package} for what this adjustment
-does and does not claim.}
+does and does not claim. A rate of eligible units per sampled unit at or
+below 1, such as
+0.41 married women per household, folds in here as
+\code{resp_rate * eligible_rate}. With a finite \code{N} this errs slightly
+conservative.}
 
 \item{df}{Degrees of freedom of the variance estimator the planned design
 will have, typically sampled PSUs minus strata, and available from
@@ -124,7 +130,7 @@ An \code{rmoe} target enters here as \code{moe = rmoe * abs(mu)}.
 the variance the finite population correction is then applied to, rather
 than scaling a size already corrected. The two coincide only at infinite
 \code{N}. For \code{var = 100}, \code{moe = 2}, \code{N = 100} and \code{deff = 2}, inflating
-afterwards would give 97.98 against the correct 65.76.
+afterward would give 97.98 against the correct 65.76.
 \subsection{Finite population correction}{
 
 Setting \code{N} to a finite value reduces the required sample size when

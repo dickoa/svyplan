@@ -55,12 +55,12 @@
 #' is treated as a complete population. To estimate components from a
 #' sample instead, supply `weights` (formula and vector interfaces) or
 #' use the survey.design method. Weights are treated as inverse
-#' inclusion probabilities: cluster sizes and totals are estimated by
+#' inclusion probabilities. Cluster sizes and totals are estimated by
 #' summed weights, and the estimation variance of the weighted cluster
 #' totals is subtracted from the between-stage variance terms, so
 #' unequal-probability samples from a previous round give approximately
 #' design-unbiased components. Unit weights recover the frame formulas
-#' exactly. The weight *scale* matters: within each cluster the summed
+#' exactly. The weight *scale* matters. Within each cluster the summed
 #' weights should estimate the cluster population size, since the
 #' implied sampling fraction drives the correction. For a multi-stage
 #' sample this means the *within-cluster* weights (the product of the
@@ -187,6 +187,49 @@
 #' out at all is to re-plan at a different take, and defaulting to the old
 #' one would return the old design's number.
 #'
+#' ### A published DEFT and its weighting loss
+#'
+#' `deff` is a ratio of variances. Some survey programs publish DEFT, the
+#' ratio of standard errors, which is its square root. The DHS
+#' sampling-error appendix lists it under the heading "Design effect
+#' (DEFT)", so square the published value before passing it. MICS tables
+#' give both columns.
+#'
+#' A published design effect also carries the weighting loss of the survey
+#' that produced it, which the identity above attributes to \eqn{\delta}.
+#' With that survey's final weights `w`, Kish's factor from
+#' [design_effect()] divides it out:
+#'
+#' ```r
+#' kish <- design_effect(weights = w)
+#' vc <- varcomp(deff = deft^2 / kish, n_per_psu = b)
+#' ```
+#'
+#' This is the decomposition Kalton, Brick and L\enc{ê}{e} (2005) use to
+#' carry a design effect from one survey to the planning of another, with
+#' the new design's weighting factor multiplied back in. Gabler, Haeder and
+#' Lahiri (1999) justify the product of the two factors under a model, as a
+#' conservative value for the design effect. The division assumes the
+#' weights are unrelated to the outcome, as Kish's decomposition does.
+#' Passing the factor as `var_ratio` returns the same `icc`, but the factor
+#' then stays in the result and multiplies every design effect formed from
+#' it.
+#'
+#' Whether to divide depends on how the new plan is built. [n_alloc()] over
+#' the strata forms the variance of a disproportionate allocation from the
+#' allocation itself, so the old factor is divided out, or it would count
+#' twice. A scalar `deff` in [n_prop()] or [n_mean()] carries no allocation.
+#' For a new design as disproportionate as the old one, multiply its
+#' expected weighting factor back in,
+#' `deff = design_effect(vc, n_per_psu = b_new) * kish_new`, or the sample
+#' comes out too small. Weight variation within strata, from nonresponse
+#' adjustment for instance, recurs in the new survey and [n_alloc()] does
+#' not model it. A `deff` column in its `frame` can carry it.
+#'
+#' A published standard error carries the same loss. To remove it, form the
+#' design effect and divide, `deff = se^2 / (p * (1 - p) / n) / kish`,
+#' rather than passing `se`.
+#'
 #' ## Component estimands
 #'
 #' For two-stage SRS, let \eqn{M} be the number of PSUs, \eqn{N_i} the
@@ -246,6 +289,15 @@
 #'
 #' Hansen, M. H., Hurwitz, W. N., and Madow, W. G. (1953).
 #' *Sample Survey Methods and Theory* (Vol. I). Wiley.
+#'
+#' Kalton, G., Brick, J. M., and L\enc{ê}{e}, T. (2005). Estimating
+#' components of design effects for use in sample design. In
+#' *Household Sample Surveys in Developing and Transition Countries*,
+#' Studies in Methods, Series F No. 96, Chapter VI. United Nations.
+#'
+#' Gabler, S., Haeder, S., and Lahiri, P. (1999). A model based
+#' justification of Kish's formula for design effects for weighting and
+#' clustering. *Survey Methodology*, 25(1), 105-106.
 #'
 #' @family cluster design functions
 #' @seealso [n_cluster()] which accepts a `svyplan_varcomp` as `icc`,
@@ -317,6 +369,20 @@
 #'
 #' # From a published standard error instead
 #' varcomp(se = 0.021, p = 0.30, n = 1200, n_per_psu = 20)
+#'
+#' # A DHS appendix publishes DEFT, the ratio of standard errors
+#' deft <- 1.582
+#' varcomp(deff = deft^2, n_per_psu = 12.3)
+#'
+#' # Divide out the weighting loss of the survey that published it
+#' w_old <- rep(c(1, 4), c(300, 100))
+#' kish <- design_effect(weights = w_old)
+#' vc_dhs <- varcomp(deff = deft^2 / kish, n_per_psu = 12.3)
+#' vc_dhs
+#'
+#' # A scalar deff for an equally disproportionate design puts it back
+#' n_prop(p = 0.28, cv = 0.05,
+#'        deff = design_effect(vc_dhs, n_per_psu = 15) * kish)
 #'
 #' @export
 varcomp <- function(x, ...) {
@@ -394,15 +460,19 @@ varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL,
 #' @param stage_id A list of stage-ID vectors (required for vector interface).
 #'   Length determines the number of stage boundaries (stages - 1).
 #' @param deff A published design effect to back an `icc` out of, with `x`
-#'   unset. Requires `n_per_psu`. See Details.
+#'   unset. Requires `n_per_psu`. A published DEFT is squared first, and
+#'   the published survey's weighting loss may need dividing out. See
+#'   Details.
 #' @param se A published standard error, an alternative to `deff` for the
 #'   same back-out. Requires `n` and one of `p` or `var`.
 #' @param p Proportion the published `se` refers to.
 #' @param var Unit variance the published `se` refers to, for a mean.
 #' @param n Sample size the published `se` was computed on.
-#' @param n_per_psu Units per PSU the published design effect refers to:
-#'   the size-weighted average take, a vector of realized takes, or a
-#'   nominal take with `cv_take`. See Details.
+#' @param n_per_psu Take per PSU the published design effect refers to,
+#'   counted in the units the estimate was computed on. For a person-level
+#'   estimate it is the responding eligible persons per cluster, not the
+#'   households per cluster. Give the size-weighted average take, a vector
+#'   of realized takes, or a nominal take with `cv_take`. See Details.
 #' @param n_per_ssu Units per SSU. Not accepted on the back-out, which a
 #'   scalar design effect does not identify.
 #' @param cv_take Coefficient of variation of the realized takes, when

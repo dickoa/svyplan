@@ -55,6 +55,10 @@
 #'   (0, 1\]. Used for rows whose `resp_rate` column is absent or `NA`, and
 #'   a non-missing row value overrides it. See the nonresponse section of
 #'   [svyplan-package] for what this adjustment does and does not claim.
+#'   A rate of eligible units per sampled unit at or below 1, such as
+#'   0.41 married women per household, folds in here as
+#'   `resp_rate * eligible_rate`. With a finite `N` this errs slightly
+#'   conservative.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_n` object. The output class is the same with or without
@@ -148,7 +152,9 @@
 #'     (default 0.05, giving a 95 percent CI).}
 #'   \item{`deff`}{Design effect multiplier (default 1). Set > 1 to inflate
 #'     the sample size for complex
-#'     designs (e.g. 1.5 for a cluster design).}
+#'     designs (e.g. 1.5 for a cluster design). A published DEFT is
+#'     squared first. See [varcomp()] for that and for removing the
+#'     published survey's weighting loss.}
 #'   \item{`N`}{Population size (default `Inf`).
 #'     A finite value applies a finite population correction, reducing
 #'     the required sample size.}
@@ -193,7 +199,7 @@
 #' `domain_sampling` decides how those requirements combine into the one
 #' number `n` reports. The two readings answer different questions and give
 #' different sizes, so the choice belongs to the design rather than to a
-#' default: separate quotas need every requirement met and therefore their
+#' default. Separate quotas need every requirement met and therefore their
 #' sum, while natural domains need a sample large enough that the rarest
 #' demanding domain turns up often enough. Neither is the largest single
 #' requirement, which `n_domain_max` reports separately.
@@ -755,7 +761,7 @@ n_multi.default <- function(
     }
     if (has_moe && any(!is.na(indicators$moe))) {
       moe_rows <- !is.na(indicators$moe)
-      var_moe <- has_var & moe_rows & !is.na(indicators$var)
+      var_moe <- has_var & moe_rows & !is.na(indicators[["var"]])
       if (any(var_moe)) {
         if (
           !"mu" %in% names(indicators) || any(is.na(indicators$mu[var_moe]))
@@ -1444,7 +1450,8 @@ n_multi.default <- function(
     n_per_ssu,
     m_cand,
     msg_budget = "no whole-unit n_multi design fits the budget",
-    msg_cv = "target CV is not achievable with the fixed whole PSU count"
+    msg_cv = "target CV is not achievable with the fixed whole PSU count",
+    m_free = is.null(n_per_psu)
   )
   a_best <- hit[["n_psu"]]
   m_best <- hit[["n_per_psu"]]

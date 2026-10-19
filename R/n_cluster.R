@@ -18,10 +18,13 @@
 #'   surveys range from 0.01 to 0.10. Higher icc means more clusters
 #'   are needed for the same precision. Use [varcomp()] to estimate
 #'   icc from a previous survey or pilot data.
-#' @param unit_relvar Unit relvariance (default 1). For most applications,
-#'   the default of 1 is appropriate. Non-unit values arise when working
-#'   with variance components from [varcomp()] that separate the total
-#'   variance into stage-specific pieces.
+#' @param unit_relvar Unit relvariance, the unit variance of the analysis
+#'   variable over its squared mean, default 1. The cv a design reaches
+#'   scales with it. A proportion `p` has `(1 - p) / p`, so the default plans
+#'   a proportion as if `p = 0.5`. A [varcomp()] result estimated from data
+#'   sets it, and an explicit value is then refused. One backed out of a
+#'   design effect sets none, and `unit_relvar` must then be supplied beside
+#'   it.
 #' @param var_ratio Ratio of the stage components' unit variance to the analysis
 #'   variable's, default 1. A scalar names `var_ratio_psu` and, for a three-stage
 #'   design, derives `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)`, the identity the
@@ -29,7 +32,8 @@
 #'   override it, which is meaningful when the two stages' ratios come from
 #'   different decompositions. See [design_effect()] for the identity and
 #'   why the design effect would not reduce to `var_ratio_psu` without it. The
-#'   default of 1 is appropriate for most designs.
+#'   default of 1 is appropriate for most designs. A [varcomp()] result passed
+#'   as `icc` sets it, and an explicit value is then refused.
 #' @param cv Target coefficient of variation (relative standard error).
 #'   For example, `cv = 0.05` means the standard error of the estimate
 #'   should be at most 5 percent of the estimate itself. Specify exactly
@@ -61,6 +65,11 @@
 #'   persons, that respond. This is the plain `resp_rate` the rest of the
 #'   package uses. See the nonresponse section of [svyplan-package] for what
 #'   this adjustment does and does not claim.
+#' @param eligible_rate Eligible units per final-stage unit, a positive
+#'   number, default 1, such as married women per household when households
+#'   are the final stage. It can exceed 1. It multiplies `resp_rate` in the
+#'   realized take and in its cost, and sizes stay in final-stage units. Not
+#'   available with `indicators`. See the nonresponse section of Details.
 #' @param fixed_cost Fixed overhead cost (C0). Default 0.
 #'   The total cost model becomes
 #'   `C = C0 + c1*n_psu + c2*n_psu*n_per_psu [+ c3*n_psu*n_per_psu*n_per_ssu]`.
@@ -161,8 +170,18 @@
 #' stage may be fixed. For 3-stage designs, up to two stages may be fixed.
 #' The remaining free stage is derived from the budget or CV constraint.
 #'
-#' If `icc` is a `svyplan_varcomp` object, `icc`, `unit_relvar`, and `var_ratio`
-#' are extracted automatically.
+#' If `icc` is a `svyplan_varcomp` object, `icc` and `var_ratio` are taken
+#' from it, and so is `unit_relvar` when the components were estimated from
+#' data. A design effect identifies no unit relvariance, so a result of
+#' `varcomp(deff = )` needs an explicit `unit_relvar`, such as `(1 - p) / p`
+#' for a proportion. That pair is how a published design effect sizes a
+#' design for a `cv` target.
+#'
+#' A value the result sets cannot also be passed, since the result would
+#' override it. To plan with other values, pass `icc` as numbers, or give
+#' `var_ratio` to `varcomp(deff = , var_ratio = )` for a back-out. A
+#' [svyplan()] profile's `unit_relvar` and `var_ratio` give way to the
+#' result, as any explicit argument overrides a profile.
 #'
 #' ## Several indicators at once
 #'
@@ -251,6 +270,20 @@
 #' `$n` counts units to issue and `$cost` pays for them, while the variance
 #' reads what they realize.
 #'
+#' `eligible_rate` enters where `resp_rate` does at the final stage. The
+#' realized take is the eligible respondents per PSU,
+#' `n_per_psu * resp_rate * eligible_rate`, and `r` above is that product.
+#' `icc` is then the homogeneity of eligible persons within a PSU, which a
+#' design effect published at the person level identifies through
+#' [varcomp()]. Above 1, the persons of one household resemble each other
+#' more than persons of different households, and one `icc` averages over
+#' that. For an outcome the whole household shares, such as poverty counted
+#' per person, the clustering penalty is then understated.
+#'
+#' With households as the final stage, a survey that reports a household and
+#' an individual response rate passes their product as `resp_rate`, as in
+#' [n_prop()].
+#'
 #' This is a deterministic expected-take approximation. It substitutes the
 #' expected realized stage counts into the planning variance and assumes
 #' response is noninformative for it. Below one expected respondent per unit
@@ -292,6 +325,11 @@
 #'
 #' # 2-stage, fixed n_per_psu (MICS/DHS style: 20 households per cluster)
 #' n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, n_per_psu = 20)
+#'
+#' # Households per cluster for married women, 0.41 per household, for a
+#' # proportion near 0.28, whose unit relvariance is (1 - p) / p
+#' n_cluster(stage_cost = c(500, 50), icc = 0.07, unit_relvar = 0.72 / 0.28,
+#'           cv = 0.05, resp_rate = 0.9, eligible_rate = 0.41)
 #'
 #' # 3-stage
 #' n_cluster(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05), cv = 0.05)
@@ -364,6 +402,7 @@ n_cluster.default <- function(
   resp_rate_psu = 1,
   resp_rate_ssu = 1,
   resp_rate = 1,
+  eligible_rate = 1,
   fixed_cost = 0,
   indicators = NULL,
   domains = NULL,
@@ -373,6 +412,8 @@ n_cluster.default <- function(
   plan = NULL
 ) {
   plan <- .plan_for_cluster_mode(plan, !is.null(indicators))
+  plan <- .check_varcomp_components(icc, unit_relvar, var_ratio, plan,
+                                    "n_cluster()")
   # Before the merge, which is the only point at which the profile's own
   # defaults are still distinguishable from the formals.
   .check_relvar_identified(
@@ -389,6 +430,12 @@ n_cluster.default <- function(
     domains = domains, allocation = allocation,
     domain_sampling = domain_sampling, min_n_domain = min_n_domain
   )
+  if (!is.null(indicators) && !identical(eligible_rate, 1)) {
+    stop(
+      "'eligible_rate' applies to the single-indicator call. With 'indicators', fold a rate at most 1 into each row's 'resp_rate'",
+      call. = FALSE
+    )
+  }
   if (!is.null(indicators)) {
     return(.n_cluster_indicators(
       indicators,
@@ -421,6 +468,7 @@ n_cluster.default <- function(
   check_resp_rate(resp_rate_psu, "resp_rate_psu")
   check_resp_rate(resp_rate_ssu, "resp_rate_ssu")
   check_resp_rate(resp_rate, "resp_rate")
+  check_eligible_rate(eligible_rate)
 
   if (inherits(icc, "svyplan_varcomp")) {
     vc <- icc
@@ -487,6 +535,11 @@ n_cluster.default <- function(
   }
   check_fixed_cost(fixed_cost, budget)
 
+  # The engines solve in eligible respondents at the ultimate stage, so the
+  # take and its cost per respondent read the product of the two rates.
+  ultimate_rate <- resp_rate * eligible_rate
+  rate_label <- if (eligible_rate == 1) "resp_rate" else
+    "resp_rate * eligible_rate"
   res <- if (stages == 2L) {
     .n_cluster_2stage(
       stage_cost,
@@ -498,8 +551,9 @@ n_cluster.default <- function(
       n_psu,
       n_per_psu,
       resp_rate_psu,
-      resp_rate,
-      fixed_cost
+      ultimate_rate,
+      fixed_cost,
+      rate_label = rate_label
     )
   } else {
     var_ratio <- .stage_k_pair(var_ratio, icc)
@@ -515,9 +569,14 @@ n_cluster.default <- function(
       n_per_ssu,
       resp_rate_psu,
       resp_rate_ssu,
-      resp_rate,
-      fixed_cost
+      ultimate_rate,
+      fixed_cost,
+      rate_label = rate_label
     )
+  }
+  res$params$resp_rate <- resp_rate
+  if (eligible_rate != 1) {
+    res$params$eligible_rate <- eligible_rate
   }
   res
 }
@@ -555,6 +614,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     resp_rate_psu = p$resp_rate_psu %||% 1,
     resp_rate_ssu = p$resp_rate_ssu %||% 1,
     resp_rate = p$resp_rate %||% 1,
+    eligible_rate = p$eligible_rate %||% 1,
     fixed_cost = p$fixed_cost %||% 0
   )
   do.call(n_cluster.default, .roundtrip_args(args, list(...), n_cluster.default))
@@ -722,14 +782,22 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 #'
 #' `m_cand` is supplied by the caller and holds the fixed take when
 #' `n_per_psu` is pinned, so the search is exact in `a` and `q` and bounded in
-#' `m`.
+#' `m`. With the PSU count fixed and the take free (`m_free`), the search
+#' ignores `m_cand` and covers every take that can matter, with the
+#' ultimate take free or fixed at `q`. In cv mode a take reaches the target
+#' only above `beta_j / (a - alpha_j)`, or `(beta_j + gamma_j / q) /
+#' (a - alpha_j)` at a fixed `q`, for every `j`, and a design with take `m`
+#' costs at least `a (C1 + C2 m)`, so the scan runs from the smallest
+#' feasible take until that floor passes the best cost found. In budget mode
+#' it runs to the largest take the budget pays with one unit per SSU, or
+#' `q` at a fixed `q`. A target out of reach is then proved so.
 #'
 #' @return Named integer vector `c(n_psu, n_per_psu, n_per_ssu)`.
 #' @keywords internal
 #' @noRd
 .op_cluster3_search <- function(alpha, beta, gamma, stage_cost,
                                 variable_budget, n_psu, n_per_ssu, m_cand,
-                                msg_budget, msg_cv) {
+                                msg_budget, msg_cv, m_free = FALSE) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   C3 <- stage_cost[3L]
@@ -798,7 +866,49 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     }
   }
 
-  if (!is.null(q_fixed)) {
+  if (!is.null(a_fixed) && m_free) {
+    # The SSU take is the free stage, whether or not the ultimate take is
+    # fixed with the PSU count.
+    q_min <- q_fixed %||% 1
+    take_at <- function(m) {
+      if (!is.null(q_fixed)) {
+        rep(q_fixed, length(m))
+      } else if (budget_mode) {
+        floor((variable_budget / a_fixed - C1 - C2 * m) / (C3 * m) + tol)
+      } else {
+        q_needed(a_fixed, m)
+      }
+    }
+    scan_m <- function(m) {
+      consider(rep(a_fixed, length(m)), m, take_at(m))
+    }
+    if (budget_mode) {
+      m_hi <- floor((variable_budget / a_fixed - C1) / (C2 + C3 * q_min) + tol)
+      m_cur <- 1
+      while (m_cur <= m_hi) {
+        scan_m(seq.int(m_cur, min(m_hi, m_cur + 1e5 - 1)))
+        m_cur <- m_cur + 1e5
+      }
+    } else if (all(a_fixed - alpha > tol)) {
+      # The smallest take with every indicator in reach. A fixed ultimate
+      # take adds its own term to the bound.
+      m_cur <- if (is.null(q_fixed)) {
+        max(1, floor(max(beta / (a_fixed - alpha))) + 1)
+      } else {
+        max(1, ceiling(max((beta + gamma / q_fixed) / (a_fixed - alpha)) - tol))
+      }
+      m_hi <- Inf
+      while (m_cur <= m_hi) {
+        m <- seq.int(m_cur, m_cur + 1e5 - 1)
+        if (is.finite(m_hi)) m <- m[m <= m_hi]
+        scan_m(m)
+        m_cur <- m_cur + 1e5
+        if (is.finite(best$key)) {
+          m_hi <- floor((best$cost / a_fixed - C1) / C2 + 1e-9)
+        }
+      }
+    }
+  } else if (!is.null(q_fixed)) {
     q <- rep(q_fixed, nm)
     a <- if (!is.null(a_fixed)) {
       rep(a_fixed, nm)
@@ -899,7 +1009,8 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   hit <- .op_cluster3_search(
     alpha, beta, gamma, stage_cost, vb, n_psu, n_per_ssu, m_cand,
     msg_budget = "no whole-unit design fits the budget",
-    msg_cv = "target CV is not achievable with whole units at the given fixed stage-1 size"
+    msg_cv = "target CV is not achievable with whole units at the given fixed stage-1 size",
+    m_free = is.null(n_per_psu)
   )
   a_best <- hit[["n_psu"]]
   m_best <- hit[["n_per_psu"]]
@@ -926,7 +1037,8 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   n_per_psu,
   resp_rate_psu,
   resp_rate = 1,
-  fixed_cost = 0
+  fixed_cost = 0,
+  rate_label = "resp_rate"
 ) {
   C1 <- stage_cost[1L]
   # Solved in realized units per PSU, so the closed forms need no separate
@@ -1025,10 +1137,22 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   }
 
   if (!is.null(budget) && n1_opt < 1) {
+    # Less than one PSU at the cost-optimal take does not mean no design:
+    # one PSU at a smaller take may fit, so the cheapest one is priced first.
+    take_min <- n_per_psu_gross %||% 1
+    cheapest <- stage_cost[1L] + stage_cost[2L] * take_min
+    if (is.null(n_psu) && var_budget >= cheapest - 1e-8) {
+      return(.n_cluster_2stage(
+        stage_cost, icc, unit_relvar, var_ratio, cv, budget, n_psu = 1,
+        n_per_psu = n_per_psu_gross, resp_rate_psu = resp_rate_psu,
+        resp_rate = resp_rate, fixed_cost = fixed_cost, rate_label = rate_label
+      ))
+    }
     stop(
       sprintf(
-        "'budget' is too small for any realizable design: one PSU of size %.3g costs %.4g plus fixed_cost = %.4g",
-        n2_opt, C1 + C2 * n2_opt, fixed_cost
+        "'budget' is too small for any realizable design: the cheapest design, one PSU with %s, costs %.4g plus fixed_cost = %.4g",
+        if (is.null(n_per_psu_gross)) "one unit" else sprintf("n_per_psu = %.3g", take_min),
+        cheapest, fixed_cost
       ),
       call. = FALSE
     )
@@ -1037,7 +1161,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   # Back to gross units: the field team visits n2_opt / resp_rate units to
   # obtain n2_opt responses.
   n2_opt <- n2_opt / resp_rate
-  .check_expected_take(n2_opt, resp_rate, "n_per_psu", "resp_rate")
+  .check_expected_take(n2_opt, resp_rate, "n_per_psu", rate_label)
 
   operational <- .op_cluster_2stage(
     stage_cost, icc, unit_relvar, var_ratio, cv, budget, n_psu,
@@ -1097,7 +1221,8 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   resp_rate_psu,
   resp_rate_ssu = 1,
   resp_rate = 1,
-  fixed_cost = 0
+  fixed_cost = 0,
+  rate_label = "resp_rate"
 ) {
   C1 <- stage_cost[1L]
   # As two-stage, solved in realized units. Total cost is unchanged.
@@ -1273,10 +1398,27 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   }
 
   if (!is.null(budget) && n1 < 1) {
+    # As in two stages: one PSU at smaller takes may fit.
+    m_min <- n_per_psu_gross %||% 1
+    q_min <- n_per_ssu_gross %||% 1
+    cheapest <- stage_cost[1L] + stage_cost[2L] * m_min + stage_cost[3L] * m_min * q_min
+    if (is.null(n_psu) && var_budget >= cheapest - 1e-8) {
+      return(.n_cluster_3stage(
+        stage_cost, icc, unit_relvar, var_ratio, cv, budget, n_psu = 1,
+        n_per_psu = n_per_psu_gross, n_per_ssu = n_per_ssu_gross,
+        resp_rate_psu = resp_rate_psu, resp_rate_ssu = resp_rate_ssu,
+        resp_rate = resp_rate, fixed_cost = fixed_cost, rate_label = rate_label
+      ))
+    }
     stop(
       sprintf(
-        "'budget' is too small for any realizable design: one PSU with n_per_psu = %.3g and n_per_ssu = %.3g costs %.4g plus fixed_cost = %.4g",
-        n2, n3, C1 + C2 * n2 + C3 * n2 * n3, fixed_cost
+        "'budget' is too small for any realizable design: the cheapest design, one PSU with %s, costs %.4g plus fixed_cost = %.4g",
+        if (is.null(n_per_psu_gross) && is.null(n_per_ssu_gross)) {
+          "one SSU and one unit"
+        } else {
+          sprintf("n_per_psu = %.3g and n_per_ssu = %.3g", m_min, q_min)
+        },
+        cheapest, fixed_cost
       ),
       call. = FALSE
     )
@@ -1285,7 +1427,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   n2 <- n2 / resp_rate_ssu
   n3 <- n3 / resp_rate
   .check_expected_take(n2, resp_rate_ssu, "n_per_psu", "resp_rate_ssu")
-  .check_expected_take(n3, resp_rate, "n_per_ssu", "resp_rate")
+  .check_expected_take(n3, resp_rate, "n_per_ssu", rate_label)
 
   operational <- .op_cluster_3stage(
     stage_cost, icc, unit_relvar, var_ratio, cv, budget, n_psu,

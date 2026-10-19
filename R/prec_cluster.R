@@ -11,11 +11,16 @@
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param icc Numeric vector of homogeneity measures (length = stages - 1),
 #'   or a `svyplan_varcomp` object.
-#' @param unit_relvar Unit relvariance (default 1).
+#' @param unit_relvar Unit relvariance, default 1. A proportion `p` has
+#'   `(1 - p) / p`, so the default reports a proportion's cv as if
+#'   `p = 0.5`. Required beside a `svyplan_varcomp` backed out of a design
+#'   effect, which identifies none, and refused beside one estimated from
+#'   data, which sets it. See [n_cluster()].
 #' @param var_ratio Ratio of the stage components' unit variance to the
 #'   analysis variable's, default 1. A scalar names `var_ratio_psu`, and for
 #'   three stages `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)` follows from
-#'   the decomposition. See [design_effect()].
+#'   the decomposition. See [design_effect()]. Refused when `icc` is a
+#'   `svyplan_varcomp`, which sets it.
 #' @param resp_rate_psu Expected **PSU-level** response rate, in (0, 1\].
 #'   Default 1 (no adjustment). The effective stage-1 size is
 #'   `n * resp_rate_psu`. It describes clusters that cannot be worked, not
@@ -27,6 +32,10 @@
 #'   Default 1. It scales the final stage, so it also shrinks the realized
 #'   cluster and therefore the clustering penalty. See [n_cluster()] for the
 #'   decomposition.
+#' @param eligible_rate Eligible units per final-stage unit, a positive
+#'   number, default 1. It multiplies `resp_rate` in the realized take, and
+#'   `n` stays in final-stage units. Not available with `indicators`. See
+#'   [n_cluster()].
 #' @param indicators Optional data frame with one row per indicator, which
 #'   switches the function to the several-indicators mode of Details. It
 #'   carries the stage sizes per row in `n` and `n_per_psu`, plus
@@ -107,6 +116,11 @@
 #' res <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
 #' prec_cluster(res)
 #'
+#' # 600 clusters of 20 households, 0.41 married women per household, for a
+#' # proportion near 0.28
+#' prec_cluster(n = c(600, 20), icc = 0.07, unit_relvar = 0.72 / 0.28,
+#'              resp_rate = 0.9, eligible_rate = 0.41)
+#'
 #' # Several indicators under one allocation
 #' indicators <- data.frame(
 #'   name      = c("stunting", "anemia"),
@@ -139,12 +153,15 @@ prec_cluster.default <- function(
   resp_rate_psu = 1,
   resp_rate_ssu = 1,
   resp_rate = 1,
+  eligible_rate = 1,
   indicators = NULL,
   domains = NULL,
   stage_cost = NULL,
   plan = NULL
 ) {
   plan <- .plan_for_cluster_mode(plan, !is.null(indicators))
+  plan <- .check_varcomp_components(icc, unit_relvar, var_ratio, plan,
+                                    "prec_cluster()")
   # Before the merge, which is the only point at which the profile's own
   # defaults are still distinguishable from the formals.
   .check_relvar_identified(
@@ -155,6 +172,12 @@ prec_cluster.default <- function(
   .plan <- .merge_plan_args(plan, prec_cluster.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_cluster.default, c(.plan, list(...))))
   .check_unused_dots(...)
+  if (!is.null(indicators) && !identical(eligible_rate, 1)) {
+    stop(
+      "'eligible_rate' applies to the single-indicator call. With 'indicators', fold a rate at most 1 into each row's 'resp_rate'",
+      call. = FALSE
+    )
+  }
   if (!is.null(indicators)) {
     .check_prec_cluster_indicator_args(n, icc, unit_relvar, var_ratio)
     return(.prec_cluster_indicators(
@@ -209,6 +232,7 @@ prec_cluster.default <- function(
   check_resp_rate(resp_rate_psu, "resp_rate_psu")
   check_resp_rate(resp_rate_ssu, "resp_rate_ssu")
   check_resp_rate(resp_rate, "resp_rate")
+  check_eligible_rate(eligible_rate)
   if (stages == 2L && !isTRUE(all.equal(resp_rate_ssu, 1))) {
     stop(
       "'resp_rate_ssu' is not applicable for 2-stage designs: the units inside a PSU are the ultimate ones, so their nonresponse is 'resp_rate'",
@@ -244,15 +268,17 @@ prec_cluster.default <- function(
   # Each stage keeps the share of its own units that respond. The last stage
   # always carries the ultimate-unit rate, whether the design has two stages
   # or three.
+  ultimate_rate <- resp_rate * eligible_rate
   rates <- if (stages == 2L) {
-    c(resp_rate_psu, resp_rate)
+    c(resp_rate_psu, ultimate_rate)
   } else {
-    c(resp_rate_psu, resp_rate_ssu, resp_rate)
+    c(resp_rate_psu, resp_rate_ssu, ultimate_rate)
   }
   n_eff <- n * rates
-  .check_expected_take(n[[stages]], resp_rate,
+  .check_expected_take(n[[stages]], ultimate_rate,
                        if (stages == 2L) "n_per_psu" else "n_per_ssu",
-                       "resp_rate")
+                       if (eligible_rate == 1) "resp_rate" else
+                         "resp_rate * eligible_rate")
   if (stages == 3L) {
     .check_expected_take(n[[2L]], resp_rate_ssu, "n_per_psu", "resp_rate_ssu")
   }
@@ -275,6 +301,7 @@ prec_cluster.default <- function(
     resp_rate = resp_rate,
     stages = stages
   )
+  if (eligible_rate != 1) params$eligible_rate <- eligible_rate
   if (!is.null(stage_cost)) params$stage_cost <- stage_cost
   .new_svyplan_prec(
     se = NA_real_,
@@ -301,6 +328,7 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
     resp_rate_psu = p$resp_rate_psu %||% 1,
     resp_rate_ssu = p$resp_rate_ssu %||% 1,
     resp_rate = p$resp_rate %||% 1,
+    eligible_rate = p$eligible_rate %||% 1,
     stage_cost = p$stage_cost
   )
   out <- do.call(

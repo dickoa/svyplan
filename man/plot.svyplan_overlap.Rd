@@ -47,14 +47,14 @@ for the profile. The profile passes the rest to \code{\link[=barplot]{barplot()}
 }
 \description{
 Draw the rotation chart of a \code{\link[=design_overlap]{design_overlap()}} schedule, one row per
-cohort and one column per time period, with a labelled cell wherever
+cohort and one column per time period, with a labeled cell wherever
 that cohort is in sample. This is the figure rotation designs are published as,
 and it is the fastest way to see that a schedule is the one you meant.
 }
 \details{
 Each row is a cohort with an entry period, and its cell at period
 \eqn{t} is the stage of its life that period reaches, drawn when the
-schedule puts that stage in sample. Cells are labelled by wave, counting
+schedule puts that stage in sample. Cells are labeled by wave, counting
 only the occasions in sample, so a schedule with a gap numbers its waves
 consecutively across the gap, and a cohort launched part-way through a
 life still starts at W1, its waves being counted from its own first
@@ -112,7 +112,7 @@ lynn_panel <- prec_panel(
 plot(design_overlap("6"), panel = lynn_panel, n_period = 10,
      main = "1-1-1-1-1-1 rotating panel: immediate start")
 
-# Labelled in units rather than cohort shares
+# Labeled in units rather than cohort shares
 target <- n_prop(p = 0.5, moe = 0.031)
 rot <- n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
                resp_rate = 0.728, design = "rotating")

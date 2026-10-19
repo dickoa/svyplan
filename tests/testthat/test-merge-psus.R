@@ -1,4 +1,4 @@
-## merge_psus(): PSUs below a minimum size merged with their neighbours in
+## merge_psus(): PSUs below a minimum size merged with their neighbors in
 ## row order
 
 merged_sizes <- function(id, merged, size = rep(1, length(id))) {

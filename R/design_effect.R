@@ -27,7 +27,7 @@
 #'
 #' `design_effect()` is a **planning** tool. It anticipates a design effect
 #' from design parameters you choose or estimate beforehand. It does not
-#' estimate a design effect from collected data: once you have a realized
+#' estimate a design effect from collected data. Once you have a realized
 #' sample, use `survey::svymean(..., deff = TRUE)` and `survey::deff()`,
 #' which compute it from the actual weights, strata, and clusters.
 #'
@@ -77,7 +77,9 @@
 #'       n = \sum_h n_h.}{DEFF_weight = n sum_h N_h^2/n_h / (sum_h N_h)^2, n = sum_h n_h.}
 #' Equal weights give exactly 1. This is the cost of a disproportionate
 #' allocation, of weighting classes, or of an anticipated nonresponse
-#' adjustment, and it is never below 1.
+#' adjustment, and it is never below 1. The same factor, computed from a
+#' past survey's final weights, divides that survey's weighting loss out of
+#' its published design effect. See [varcomp()].
 #'
 #' **Stratification** (`N`, `sd`, and `mean` in `strata`) is the gain from
 #' stratifying, the only component that can fall below 1. With

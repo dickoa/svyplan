@@ -18,8 +18,8 @@
 #' ```
 #'
 #' @param ... Named defaults to reuse across calls. Allowed names:
-#'   `alpha`, `df`, `N`, `deff`, `resp_rate`, `resp_rate_psu`,
-#'   `resp_rate_ssu`,
+#'   `alpha`, `df`, `N`, `deff`, `resp_rate`, `eligible_rate`,
+#'   `resp_rate_psu`, `resp_rate_ssu`,
 #'   `prop_method`,
 #'   `stage_cost`, `icc`, `unit_relvar`, `var_ratio`, `fixed_cost`,
 #'   `unit_cost`,
@@ -40,7 +40,10 @@
 #' ```
 #'
 #' Defaults are applied only when their names match the called function's
-#' formals. Irrelevant defaults are silently ignored. `prop_method` must
+#' formals. Irrelevant defaults are silently ignored, except
+#' `eligible_rate`. A function without that argument would count eligible
+#' persons where the profile counts households, so it stops instead.
+#' `prop_method` must
 #' be `"wald"`, `"wilson"`, `"logodds"`, or `"beta"` (validated at
 #' construction)
 #' and also fills the `method` argument of [n_prop()], [prec_prop()], and
@@ -134,7 +137,7 @@ update.svyplan <- function(object, ...) {
 #' @noRd
 .svyplan_allowed_defaults <- function() {
   c(
-    "alpha", "N", "deff", "resp_rate", "df",
+    "alpha", "N", "deff", "resp_rate", "eligible_rate", "df",
     "prop_method",
     "stage_cost", "icc", "unit_relvar", "var_ratio", "fixed_cost",
     "resp_rate_psu", "resp_rate_ssu",
@@ -185,6 +188,7 @@ update.svyplan <- function(object, ...) {
   if ("N" %in% nms) check_population_size(defaults$N)
   if ("deff" %in% nms) check_deff(defaults$deff)
   if ("resp_rate" %in% nms) check_resp_rate(defaults$resp_rate)
+  if ("eligible_rate" %in% nms) check_eligible_rate(defaults$eligible_rate)
   if ("resp_rate_psu" %in% nms)
     check_resp_rate(defaults$resp_rate_psu, "resp_rate_psu")
   if ("resp_rate_ssu" %in% nms)

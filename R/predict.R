@@ -29,7 +29,7 @@
 #' Valid parameters for `newdata` by object type:
 #'
 #' - **`n_prop`**: `p`, `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`,
-#'   `resp_rate`, `df`, `min_cases`
+#'   `resp_rate`, `eligible_rate`, `df`, `min_cases`
 #' - **`n_mean`**: `var`, `mu`, `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`,
 #'   `resp_rate`, `df`
 #' - **`n_ratio`**: `r`, `cv_num`, `cv_den`, `component_cor`, `moe`, `rmoe`,
@@ -38,7 +38,7 @@
 #'   `ratio`, `overlap`, `overlap_cor`, and `change` on the mean scale only,
 #'   since two proportions determine it. The occasion variances are held at
 #'   the values the result was built from, so vary the design rather than the
-#'   estimand: sweeping `overlap` and `overlap_cor` is what prices a rotation
+#'   estimand. Sweeping `overlap` and `overlap_cor` is what prices a rotation
 #'   against a fresh sample each round.
 #' - **`n_pooled`**: `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`, `resp_rate`,
 #'   `mu` on the mean scale, and `occasions` only where the overlap and
@@ -46,7 +46,9 @@
 #'   about a horizon that changing the horizon would contradict. The lag
 #'   profiles themselves cannot be varied, a grid row having nowhere to hold
 #'   a vector.
-#' - **`n_cluster`**: `cv`, `budget`, `unit_relvar`, `resp_rate`, `fixed_cost`,
+#' - **`n_cluster`**: `cv`, `budget`, `unit_relvar`, `resp_rate`,
+#'   `resp_rate_psu`, `resp_rate_ssu`, `eligible_rate`, `fixed_cost`, the
+#'   fixed sizes `n_psu`, `n_per_psu` and `n_per_ssu`,
 #'   stage deltas (`icc` or `icc_psu`, plus `icc_ssu` for 3-stage),
 #'   stage ratios (`var_ratio` or `var_ratio_psu`, plus `var_ratio_ssu` for 3-stage),
 #'   and stage costs (`cost_psu`, `cost_ssu`, `cost_tsu`). For 2-stage
@@ -57,8 +59,14 @@
 #' - **`power_mean`**: `effect`, `var`, `n`, `power`, `alpha`, `N`,
 #'   `deff`, `alternative`, `overlap`, `overlap_cor`, `resp_rate` (excluding the
 #'   solved-for parameter). Not supported for objects with vector `n`.
+#' - **`n_alloc`** (classic modes): `n`, `cv`, `budget`, `alpha`, `deff`,
+#'   `resp_rate`, `min_n_stratum`, `alloc_q`. A joint constrained allocation
+#'   varies other controls, described below.
+#' - **`power_did`**: `effect`, `n`, `power`, `alpha`, `N`, `deff`,
+#'   `resp_rate`, `alternative`, `overlap`, `overlap_cor`, `ratio`
+#'   (excluding the solved-for parameter).
 #' - **`prec_prop`**: `p`, `n`, `alpha`, `N`, `deff`, `resp_rate`,
-#'   `df`. A result that solved for `p` varies the
+#'   `eligible_rate`, `df`. A result that solved for `p` varies the
 #'   target it solved from, `cv` or `rmoe`, in place of `p`.
 #' - **`prec_mean`**: `var`, `n`, `mu`, `alpha`, `N`, `deff`, `resp_rate`,
 #'   `df`. A result that solved for `mu` varies `cv` in place of `mu`.
@@ -98,16 +106,25 @@
 #' take that is not a positive whole number is a malformed grid rather than an
 #' infeasible design point, and stops.
 #'
-#' A certainty-aware fit ([n_alloc()] with `psu`) varies `n_per_psu` too, even
-#' though the solver saw a one-stage problem, and reports `n_psu_certain` and
-#' `n_psu_draw` in place of the PSU counts. This is how the take is priced. It
+#' A certainty-aware fit ([n_alloc()] with `psu`) varies `n_per_psu` too,
+#' and reports `n_psu_certain` and `n_psu_draw` in place of the PSU counts. This is how the take is priced. It
 #' also sets the certainty threshold, so a larger take leaves fewer certainty
 #' PSUs and costs more sample, and the resulting cost curve has a minimum
 #' worth finding rather than assuming. Such a fit also varies
 #' `certainty_cutoff`, one value per row applied to every stratum, to price
 #' a relaxed certainty rule the same way, and `n_psu_per_zone`, with `NA` for
 #' no zones, to compare zone settings. A grid that varies `n_psu_per_zone`,
-#' or a fit with zones, adds `n_zone`.
+#' or a fit with zones, adds `n_zone`. A register fit sized to an
+#' `objective` within a `budget` varies `budget` as well.
+#'
+#' A register grid adds `.status`. It reads `"optimal"` or `"limit"` for a
+#' row with a plan, as `$operational$status` does, `"infeasible"` where no
+#' design exists, and `"unknown"` where the search stopped before finding
+#' one or the solve failed, a row whose `.feasible` is `NA`. In budget mode
+#' `objective_value` and `cv` are those of the field design. A row the node
+#' limit stopped with a worse plan than a lower budget's, or with none,
+#' takes that plan, which fits its budget, so the objective never worsens
+#' as the budget grows. Its status reads `"limit"`.
 #'
 #' Precision targets stay out of reach of the grid. A one-stage minimum-cost
 #' fit therefore has nothing to vary. Modify `targets` and call [n_alloc()]
@@ -190,7 +207,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
 
   if (object$type == "proportion") {
     allowed <- c("p", "moe", "cv", "rmoe", "alpha", "N", "deff", "resp_rate",
-                 "df", "min_cases")
+                 "eligible_rate", "df", "min_cases")
     base <- object$params
     method <- object$method %||% "wald"
 
@@ -202,6 +219,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
         p = p$p, moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N,
         deff = p$deff, resp_rate = p$resp_rate,
+        eligible_rate = p$eligible_rate %||% 1,
         method = method, df = p$df, min_cases = p$min_cases
       )
       data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv,
@@ -416,7 +434,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
 
   allowed <- unique(c(
     "cv", "budget", "unit_relvar", "resp_rate_psu", "resp_rate_ssu",
-    "resp_rate", "fixed_cost",
+    "resp_rate", "eligible_rate", "fixed_cost",
     "n_psu", "n_per_psu", "n_per_ssu",
     icc_meta$allowed, k_meta$allowed, cost_meta$allowed
   ))
@@ -433,6 +451,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
     stage_cost = p$stage_cost, icc = p$icc, unit_relvar = p$unit_relvar,
     var_ratio = p$var_ratio, resp_rate_psu = p$resp_rate_psu %||% 1,
     resp_rate_ssu = p$resp_rate_ssu %||% 1, resp_rate = p$resp_rate %||% 1,
+    eligible_rate = p$eligible_rate %||% 1,
     n_psu = p$n_psu,
     n_per_psu = p$n_per_psu, n_per_ssu = p$n_per_ssu,
     fixed_cost = p$fixed_cost %||% 0
@@ -472,6 +491,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
       n_per_ssu = params$n_per_ssu, resp_rate_psu = params$resp_rate_psu,
       resp_rate_ssu = params$resp_rate_ssu %||% 1,
       resp_rate = params$resp_rate %||% 1,
+      eligible_rate = params$eligible_rate %||% 1,
       fixed_cost = params$fixed_cost
     )
     out <- as.list(res$n)
@@ -591,7 +611,8 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   solved <- object$solved
 
   if (object$type == "proportion") {
-    allowed <- c("p", "n", "alpha", "N", "deff", "resp_rate", "df")
+    allowed <- c("p", "n", "alpha", "N", "deff", "resp_rate",
+                 "eligible_rate", "df")
     base <- object$params
     method <- object$method %||% "wald"
     if (identical(solved, "p")) {
@@ -610,6 +631,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       res <- prec_prop.default(
         p = p$p, n = p$n, cv = p$cv, rmoe = p$rmoe, alpha = p$alpha, N = p$N,
         deff = p$deff, resp_rate = p$resp_rate,
+        eligible_rate = p$eligible_rate %||% 1,
         method = method, df = p$df
       )
       out <- data.frame(se = res$se, moe = res$moe, cv = res$cv,
@@ -807,7 +829,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   stages <- p$stages %||% 1L
   # A certainty fit is one-stage to the solver, so `stages` cannot find the
   # take, but it is still a frame column and still worth sweeping.
-  certainty <- !is.null(object$optimization$certainty)
+  certainty <- !is.null(object$optimization$search)
   take_cols <- if (certainty) {
     "n_per_psu"
   } else {
@@ -887,33 +909,100 @@ predict.svyplan_prec <- function(object, newdata, ...) {
         psu = p$psu,
         certainty_cutoff = cutoff,
         n_psu_per_zone = zone_m,
+        control = p[["control"]],
         objective = p$objective,
         budget = budget,
         unit_cost = p$unit_cost,
         alpha = p$alpha,
         deff = p$deff,
         resp_rate = p$resp_rate,
+        eligible_rate = p$eligible_rate %||% 1,
         min_n_stratum = p$min_n_stratum,
         fpc = p$fpc %||% "unit"
       ),
       error = function(e) e
     )
     if (inherits(fit, "error")) {
-      warning(
-        sprintf(
-          "%s is infeasible: %s",
-          .predict_row_label(newdata[i, , drop = FALSE]),
-          conditionMessage(fit)
-        ),
-        call. = FALSE
-      )
-      return(.bethel_predict_row(NULL, cols))
+      status <- if (certainty) .plan_error_status(fit) else "infeasible"
+      return(list(values = .bethel_predict_row(NULL, cols, status),
+                  status = status, message = conditionMessage(fit)))
     }
-    .bethel_predict_row(fit, cols)
+    list(values = .bethel_predict_row(fit, cols))
   })
-  out <- cbind(newdata, do.call(rbind, rows))
+  values <- do.call(rbind, lapply(rows, `[[`, "values"))
+  if (certainty && budget_mode) {
+    values <- .predict_budget_monotone(newdata, values)
+  }
+  for (i in seq_along(rows)) {
+    if (is.null(rows[[i]]$message) || isTRUE(values$.feasible[i])) next
+    label <- .predict_row_label(newdata[i, , drop = FALSE])
+    warning(
+      if (identical(rows[[i]]$status, "unknown")) {
+        sprintf("feasibility of %s is unknown: %s", label, rows[[i]]$message)
+      } else {
+        sprintf("%s is infeasible: %s", label, rows[[i]]$message)
+      },
+      call. = FALSE
+    )
+  }
+  out <- cbind(newdata, values)
   rownames(out) <- NULL
   out
+}
+
+#' Whether a failed grid row is proved infeasible or left unknown
+#'
+#' A node limit reached with no plan, an internal error and a solver that
+#' fails its certificate prove nothing about the design point.
+#' @keywords internal
+#' @noRd
+.plan_error_status <- function(e) {
+  unknown <- inherits(e, "svyplan_plan_unknown") ||
+    grepl("^internal error|failed certification", conditionMessage(e))
+  if (unknown) "unknown" else "infeasible"
+}
+
+#' A register budget grid whose objective never worsens with the budget
+#'
+#' Rows equal but for the budget are read in budget order. A plan fits
+#' every larger budget, so a row stopped at the node limit with a worse
+#' plan, or left without one, takes the best plan of a lower budget. Its
+#' status reads `"limit"`, as no search proved it at this budget. The
+#' continuous columns stay the row's own.
+#' @keywords internal
+#' @noRd
+.predict_budget_monotone <- function(newdata, values) {
+  if (!"budget" %in% names(newdata)) return(values)
+  other <- setdiff(names(newdata), "budget")
+  key <- if (length(other)) {
+    do.call(paste, c(lapply(newdata[other], format), sep = "\r"))
+  } else {
+    rep("", nrow(newdata))
+  }
+  field <- intersect(
+    c("n_psu_certain", "n_psu_draw", "n_zone", "objective_value", "cv",
+      "n_int", "cost_int", ".status", ".feasible"),
+    names(values)
+  )
+  planned <- function(r) values$.status[r] %in% c("optimal", "limit")
+  for (k in unique(key)) {
+    rows <- which(key == k)
+    best <- NA_integer_
+    for (r in rows[order(newdata$budget[rows])]) {
+      if (!is.na(best) && values$.status[r] %in% c("limit", "unknown") &&
+            (!planned(r) ||
+               values$objective_value[best] < values$objective_value[r])) {
+        values[r, field] <- values[best, field]
+        values$.status[r] <- "limit"
+      }
+      if (planned(r) && (is.na(best) ||
+                           values$objective_value[r] <
+                             values$objective_value[best])) {
+        best <- r
+      }
+    }
+  }
+  values
 }
 
 #' Result columns of a joint-allocation grid, in report order
@@ -925,7 +1014,8 @@ predict.svyplan_prec <- function(object, newdata, ...) {
     return(c(
       "n_psu_certain", "n_psu_draw", if (zoned) "n_zone", "n", "cost",
       if (budget_mode) c("objective_value", "cv"),
-      "n_int", "cost_int", if (budget_mode) ".binding", ".feasible"
+      "n_int", "cost_int", if (budget_mode) ".binding", ".status",
+      ".feasible"
     ))
   }
   c(
@@ -942,13 +1032,20 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 #' One grid row, or its all-NA counterpart when the solve failed
 #' @keywords internal
 #' @noRd
-.bethel_predict_row <- function(fit, cols) {
+.bethel_predict_row <- function(fit, cols, status = "infeasible") {
   if (is.null(fit)) {
     values <- as.list(rep(NA_real_, length(cols)))
     names(values) <- cols
     if (".binding" %in% cols) values$.binding <- NA
-    values$.feasible <- FALSE
+    if (".status" %in% cols) values$.status <- status
+    values$.feasible <- if (identical(status, "unknown")) NA else FALSE
     return(as.data.frame(values, stringsAsFactors = FALSE))
+  }
+  # A register fit plans its field design, so its objective is that one's.
+  objective <- if (is.null(fit$optimization$search)) {
+    fit$objective_value
+  } else {
+    fit$operational$objective_value
   }
   value_of <- function(name) {
     switch(
@@ -959,12 +1056,13 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       n_zone = sum(fit$detail$n_zone %||% 0),
       n = fit$n,
       cost = fit$params$achieved$cost,
-      objective_value = fit$objective_value,
-      cv = sqrt(fit$objective_value),
+      objective_value = objective,
+      cv = sqrt(objective),
       n_psu_int = sum(fit$detail$n_psu_int),
       n_int = as.numeric(fit$operational$n),
       cost_int = fit$operational$cost,
       .binding = isTRUE(fit$optimization$budget_binding),
+      .status = fit$operational$status,
       .feasible = isTRUE(fit$operational$all_pass)
     )
   }

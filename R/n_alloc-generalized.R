@@ -124,6 +124,11 @@
 #' penalty itself. Reading a gross take in that bracket would charge the
 #' between-PSU component a penalty only whole-cluster loss produces.
 #'
+#' An `eligible_rate` multiplies `resp_rate` wherever it appears, in the
+#' bracket and in the requirement, and the stratum population in the
+#' variance becomes `N * eligible_rate`. Bounds, weights and costs keep `N`.
+#' See the `eligible_rate` argument of [n_alloc()].
+#'
 #' All three go in `measures`, or in `frame` as a stratum default. A rate
 #' naming a stage the design does not have is an error rather than a
 #' silently ignored column. This is the same decomposition [n_cluster()] and
@@ -190,7 +195,7 @@
 #' Solving the minimum-cost problem with the added requirement
 #' \eqn{Q \le Q^{*}}{Q <= Q^*} returns the same allocation at a cost equal to the budget.
 #'
-#' Infeasibility takes three distinct forms, each with its own message: the
+#' Infeasibility takes three distinct forms, each with its own message. The
 #' targets may be unattainable even at the stratum upper bounds. They may be
 #' attainable but unaffordable, in which case the cheapest target-feasible cost
 #' and the shortfall are reported. Or the continuous problem may be feasible
@@ -204,6 +209,11 @@
 #' it is a feasible, locally improved recommendation rather than a globally
 #' optimal integer allocation. The greedy construction is incomplete and can
 #' report failure on a problem that does have a feasible integer point.
+#'
+#' With a `psu` register the field design is not rounded from the continuous
+#' optimum. A search plans it whole, in both questions, and proves it best
+#' within its family of designs or reports a gap at its node limit. The
+#' certainty section of [n_alloc()] describes it.
 #'
 #' [predict()] on a fixed-budget result varies `budget` in `newdata` and
 #' returns the cost-versus-objective frontier, reusing the same solves.

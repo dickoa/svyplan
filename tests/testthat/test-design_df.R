@@ -7,7 +7,7 @@ test_that("certainty PSU allocations cannot be counted as element samples", {
   fit <- n_alloc(frame, measures = measures,
                  targets = data.frame(name = "y", cv = .2), psu = psu)
   expect_true(any(fit$psu$certainty))
-  expect_error(design_df(fit), "does not yet support allocations containing certainty PSUs")
+  expect_error(design_df(fit), "refuses allocations containing certainty PSUs")
 })
 
 test_that("PSU registers without certainty units count operational PSUs", {
@@ -79,7 +79,13 @@ test_that("zones pooled across strata leave a stratum no df of its own", {
   d <- design_df(fit)
   expect_equal(as.double(d), .zoned_degf(fit, 1L))
   expect_identical(d$strata$.status, c("ok", "ok", "pooled"))
-  expect_equal(d$strata$df, c(8, 2, 0))
+  # Each stratum keeps its zones less the variance groups they fall in, and
+  # the stratum whose single zone joins another's group keeps none.
+  groups <- tapply(fit$psu$.pair, fit$psu$stratum,
+                   function(x) length(unique(x[!is.na(x)])))
+  expect_equal(d$strata$df,
+               fit$detail$n_zone - as.numeric(groups[fit$detail$stratum]))
+  expect_identical(d$strata$df[3], 0)
   expect_equal(d$n_strata, length(unique(fit$psu$.pair[!is.na(fit$psu$.pair)])))
 })
 

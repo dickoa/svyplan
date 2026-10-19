@@ -37,8 +37,9 @@
 #' curve is the same one [predict()] returns as a table, so read exact
 #' numbers there. Its shape is the point, since the objective falls as
 #' `1 / cost`, so the marginal return on budget flattens, and the plot
-#' shows where. Other `svyplan_n` results have no frontier to draw and
-#' produce an error naming what is plottable.
+#' shows where. A fit with a `psu` register draws its field designs, their
+#' cost and objective, as its grid reports them. Other `svyplan_n` results
+#' have no frontier to draw and produce an error naming what is plottable.
 #'
 #' @examples
 #' # Sampling fraction per stratum
@@ -202,13 +203,12 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
     main = .frontier_title(x$params$objective)
   )
   args <- modifyList(defaults, list(...))
-  do.call(plot, c(list(x = fr$cost, y = fr$cv), args))
+  xy <- .frontier_xy(x, fr)
+  do.call(plot, c(list(x = xy$cost, y = xy$cv), args))
 
-  fitted_cv <- sqrt(x$objective_value)
-  fitted_cost <- x$params$achieved$cost
-  abline(h = fitted_cv, lty = 2, col = "grey50")
-  abline(v = fitted_cost, lty = 2, col = "grey50")
-  points(fitted_cost, fitted_cv, pch = 19)
+  abline(h = xy$fitted[2], lty = 2, col = "grey50")
+  abline(v = xy$fitted[1], lty = 2, col = "grey50")
+  points(xy$fitted[1], xy$fitted[2], pch = 19)
 
   invisible(x)
 }
@@ -216,7 +216,7 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #' Chart a rotation schedule
 #'
 #' Draw the rotation chart of a [design_overlap()] schedule, one row per
-#' cohort and one column per time period, with a labelled cell wherever
+#' cohort and one column per time period, with a labeled cell wherever
 #' that cohort is in sample. This is the figure rotation designs are published as,
 #' and it is the fastest way to see that a schedule is the one you meant.
 #'
@@ -248,7 +248,7 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #' @details
 #' Each row is a cohort with an entry period, and its cell at period
 #' \eqn{t} is the stage of its life that period reaches, drawn when the
-#' schedule puts that stage in sample. Cells are labelled by wave, counting
+#' schedule puts that stage in sample. Cells are labeled by wave, counting
 #' only the occasions in sample, so a schedule with a gap numbers its waves
 #' consecutively across the gap, and a cohort launched part-way through a
 #' life still starts at W1, its waves being counted from its own first
@@ -314,7 +314,7 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #' plot(design_overlap("6"), panel = lynn_panel, n_period = 10,
 #'      main = "1-1-1-1-1-1 rotating panel: immediate start")
 #'
-#' # Labelled in units rather than cohort shares
+#' # Labeled in units rather than cohort shares
 #' target <- n_prop(p = 0.5, moe = 0.031)
 #' rot <- n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
 #'                resp_rate = 0.728, design = "rotating")
@@ -579,6 +579,22 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
   sub("^0$", "", out)
 }
 
+#' The frontier's cost and cv, and the fitted design's
+#'
+#' A register fit plans its field design, which its grid reports, so its
+#' frontier and fitted point are that design's.
+#' @keywords internal
+#' @noRd
+.frontier_xy <- function(x, fr) {
+  if (is.null(x$optimization$search)) {
+    return(list(cost = fr$cost, cv = fr$cv,
+                fitted = c(x$params$achieved$cost, sqrt(x$objective_value))))
+  }
+  list(cost = fr$cost_int, cv = fr$cv,
+       fitted = c(x$operational$cost,
+                  sqrt(x$operational$objective_value)))
+}
+
 #' Title for the frontier plot
 #'
 #' `objective` is the normalized component table, not a name, so a single
@@ -610,6 +626,8 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
     floor_fit <- tryCatch(
       n_alloc.default(
         frame = p$frame, measures = p$measures, targets = targets,
+        psu = p$psu, certainty_cutoff = p$certainty_cutoff,
+        n_psu_per_zone = p$n_psu_per_zone, control = p[["control"]],
         unit_cost = p$unit_cost, alpha = p$alpha, deff = p$deff,
         resp_rate = p$resp_rate, min_n_stratum = p$min_n_stratum,
         fpc = p$fpc %||% "unit"

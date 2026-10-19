@@ -40,16 +40,18 @@
 #'     \item{`N`}{Number of units (e.g. households, individuals) in
 #'       each stratum. These are population counts, not sample sizes.
 #'       Must be positive and finite.}
-#'     \item{`sd` **or** `var` (legacy mode)}{A measure of how spread out the variable
-#'       of interest is within each stratum. Provide **exactly one**:
+#'     \item{`sd` **or** `var` (classic modes)}{A measure of how spread out the variable
+#'       of interest is within each stratum, required except for a fixed `n`
+#'       under `alloc = "proportional"` or `"power"`. Provide **exactly one**:
 #'       \itemize{
 #'         \item `sd`: the stratum standard deviation
 #'           (\eqn{\sqrt{\text{variance}}}{sqrt(variance)}), or
 #'         \item `var`: the stratum variance.
 #'       }
-#'       Both must be non-negative and finite. When all strata have
-#'       equal variability (or variability is unknown), a constant
-#'       column (e.g. `sd = 1`) yields proportional-to-size allocation.}
+#'       Both must be non-negative and finite. Without either, those two
+#'       rules allocate a fixed `n` from the stratum sizes alone, and the
+#'       precision fields of the result are `NA` because nothing was
+#'       assessed.}
 #'   }
 #'
 #'   **Optional columns:**
@@ -57,15 +59,23 @@
 #'     \item{`stratum`}{A label identifying each stratum (e.g.
 #'       `"Urban"`, `"Rural"`). If omitted, row numbers are used. Must
 #'       be unique, or unique within each domain when `domains` is set.}
+#'     \item{Label columns}{Any other character, factor or logical column,
+#'       such as `region` and `residence`, is carried into `$detail` after
+#'       `stratum`. Numeric columns are not, so an integer code such as a
+#'       region number is carried only once converted with `factor()`. A
+#'       label column named like a column of `$detail` is an error.}
 #'     \item{`mean` **or** `p`}{The stratum population mean or
 #'       proportion of the variable of interest. **Required when solving
-#'       for `cv` or using `alloc = "power"`**, because the coefficient of variation is defined
-#'       relative to the mean. Use `mean` for continuous variables
+#'       for `cv`, and by `alloc = "power"` when `sd` or `var` is given**,
+#'       because the coefficient of variation is defined relative to the
+#'       mean. Use `mean` for continuous variables
 #'       and `p` (in \eqn{[0, 1]}) for binary (yes/no) variables.}
 #'     \item{`alloc_measure`}{Positive finite stratum measure used only by
 #'       Bankier allocation (`alloc = "power"`). Defaults to
 #'       `N * abs(mean)` (or `N * p`). Population CV is derived from
-#'       `sd / abs(mean)` and requires a nonzero mean in every stratum.}
+#'       `sd / abs(mean)` and requires a nonzero mean in every stratum.
+#'       Without `sd` or `var` the CV term drops, the weights are
+#'       `alloc_measure^alloc_q`, and `alloc_measure` defaults to `N`.}
 #'     \item{`unit_cost`}{Per-unit interviewing cost in each stratum
 #'       (positive, finite). Set higher values for strata that are more
 #'       expensive to reach. Defaults to 1 everywhere (equal cost).}
@@ -82,7 +92,8 @@
 #'       strata. `NA` in either column falls back to the scalar argument.
 #'       The `deff` and `resp_rate` arguments override these columns when
 #'       given as vectors. In joint allocation a non-missing `measures` row
-#'       overrides them instead.}
+#'       overrides them instead. A published DEFT is squared first, and the
+#'       allocation already carries its own weighting loss. See [varcomp()].}
 #'   }
 #'
 #'   For `svyplan_prec` objects: a precision result from [prec_alloc()].
@@ -101,12 +112,13 @@
 #'   of `n`, `cv`, or `budget`.
 #' @param budget Total field budget. In the classic modes, specify exactly one
 #'   of `n`, `cv`, or `budget`, and `budget` caps the affordable allocation.
-#'   In joint constrained allocation it must be accompanied by `objective`:
-#'   the allocation minimizes the priority-weighted
-#'   relative variance of the objective components subject to the budget, every
-#'   hard target in `targets`, and the stratum bounds. Supplying `budget`
-#'   without `objective` in joint mode is an error, because the two readings
-#'   are incompatible.
+#'   In joint constrained allocation it must be accompanied by `objective`.
+#'   The allocation then minimizes the priority-weighted relative variance of
+#'   the objective components subject to the budget, every hard target in
+#'   `targets`, and the stratum bounds. With `psu` the budget holds the field
+#'   design's cost, certainty visits included. Supplying `budget` without
+#'   `objective` in joint mode is an error, because the two readings are
+#'   incompatible.
 #' @param measures Optional long data frame for joint constrained allocation,
 #'   with one row per required `stratum` and indicator `name`. Each row must
 #'   contain either `p` in `[0, 1]`, or `mean` and exactly one of non-negative
@@ -115,10 +127,13 @@
 #'   consistently with [prec_prop()]. Explicit `var` and `sd` values are used
 #'   as supplied. Multistage designs, including PSU-register designs, retain
 #'   the working proportion variance `p * (1 - p)`.
-#'   Optional row-specific `deff` and `resp_rate` values take precedence, and
-#'   `NA` falls back to the stratum's `frame` column of the same name, then to
-#'   the scalar argument. Indicator values (`p`, `mean`, `sd`, `var`) belong
-#'   here, and `frame` columns of those names are refused. In fixed-take
+#'   Optional row-specific `deff`, `resp_rate` and `eligible_rate` values
+#'   take precedence, and `NA` falls back to the stratum's `frame` column of
+#'   the same name, then to the scalar argument. A published DEFT is
+#'   squared first, and the allocation already carries its own weighting
+#'   loss. See [varcomp()].
+#'   Indicator values (`p`, `mean`, `sd`, `var`) belong here, and `frame`
+#'   columns of those names are refused. In fixed-take
 #'   multistage mode, `icc_psu` is required and `var_ratio_psu` defaults to 1.
 #'   Three-stage mode also requires `icc_ssu` and derives `var_ratio_ssu` as
 #'   `var_ratio_psu * (1 - icc_psu)` when it is absent, which is the value the
@@ -135,6 +150,11 @@
 #'   Optional `domain` and `level` select a frame domain (`.overall` and
 #'   `level = NA` denote the whole population), `alpha` overrides the scalar
 #'   value for MOE, and `constraint` supplies a stable unique identifier.
+#'   Without a `level` column, a row naming a domain stands for every level
+#'   of that domain, in the order the levels first appear in `frame`, and
+#'   takes generated `constraint` identifiers. With a `level` column, every
+#'   domain row names its level, so a table that targets every region and
+#'   one named district writes the regions out in full.
 #'   Must be supplied with `measures`. Optional when `objective` and `budget`
 #'   are given, which requests the best design a budget can buy with no hard
 #'   precision requirement.
@@ -147,9 +167,9 @@
 #'   the frame column `N_psu`, which says only how many PSUs a stratum has,
 #'   and requires the frame column `n_per_psu` and `measures$icc_psu`. A
 #'   stratum with a single PSU has no between-PSU variance, so its `icc_psu`
-#'   is taken as 0 and may be `NA`. Joint constrained allocation to `targets`
-#'   only, two stages only, and without `budget`. See the certainty section
-#'   under Details.
+#'   is taken as 0 and may be `NA`. Joint constrained allocation only, to
+#'   `targets` or to an `objective` within a `budget`, and two stages only.
+#'   See the certainty section under Details.
 #' @param certainty_cutoff Inclusion probability at which a PSU of the `psu`
 #'   register is taken with certainty, in \eqn{(0, 1]}. One value applies to
 #'   every stratum, and one per stratum, as a vector or as a `frame` column
@@ -165,14 +185,23 @@
 #'   An optional `psu$zone_order` column sets the order zones are cut in,
 #'   such as a geographic order, and size, largest first, is the default.
 #'   Requires `psu`. See the certainty section under Details.
+#' @param control `NULL` (default) or a list of settings for the search that
+#'   plans a `psu` register design. `max_nodes`, one positive whole number,
+#'   5,000 by default, is the number of search nodes after which the search
+#'   stops with the best design found, the status `"limit"` and a lower
+#'   bound. It finishes the node it is expanding, so it can open a few nodes
+#'   past the limit. A larger value can prove a design the default leaves at
+#'   the limit, at the cost of time. Requires `psu`. See the certainty section
+#'   under Details.
 #' @param objective Optional estimates whose priority-weighted relative
 #'   variance is minimized among the allocations that meet `targets` and the
 #'   budget. Either a character vector of indicator names (overall domain,
 #'   equal priority) or a data frame with `name` plus optional `domain`,
 #'   `level`, non-negative `priority`, and `component` columns, using the same
-#'   indicator-domain identifiers as `targets`. At least one priority must be
-#'   positive. Priorities need not be normalized. Requires `budget` and must be
-#'   supplied with `measures`.
+#'   indicator-domain identifiers as `targets`, including the rows without a
+#'   `level` that stand for every level of a domain. At least one priority
+#'   must be positive. Priorities need not be normalized. Requires `budget`
+#'   and must be supplied with `measures`.
 #' @param alloc Allocation rule: `"neyman"` (default), `"optimal"`,
 #'   `"proportional"`, or `"power"`.
 #' @param unit_cost Optional scalar or length-`nrow(frame)` vector of
@@ -181,12 +210,23 @@
 #' @param alpha Significance level, default 0.05.
 #' @param deff Design effect multiplier (> 0). A scalar applies to every
 #'   stratum. A length-`nrow(frame)` vector gives one per stratum and
-#'   overrides a `deff` column in `frame`.
+#'   overrides a `deff` column in `frame`. A published DEFT is squared
+#'   first, and the allocation already carries its own weighting loss. See
+#'   [varcomp()].
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1. A scalar
 #'   applies to every stratum. A length-`nrow(frame)` vector gives one per
 #'   stratum and overrides a `resp_rate` column in `frame`. See the
 #'   nonresponse section of [svyplan-package] for what this adjustment does
 #'   and does not claim.
+#' @param eligible_rate Eligible units per sampled unit in joint allocation,
+#'   a positive number, default 1, such as married women per household. It
+#'   can exceed 1. A `measures` column of that name sets it per indicator
+#'   and stratum, and a `frame` column per stratum, with the precedence
+#'   `resp_rate` follows. `N`, `n`, bounds, weights and costs stay in
+#'   sampled units, while every variance term reads `N * eligible_rate`
+#'   eligible units and `resp_rate * eligible_rate` respondents per sampled
+#'   unit. Classic allocation and a `psu` register refuse it. See [n_prop()]
+#'   for the caveat above 1.
 #' @param df Degrees of freedom of the variance estimator the allocation
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the quantile used to translate a `moe`
@@ -214,7 +254,9 @@
 #'   with columns:
 #'   \describe{
 #'     \item{`stratum`, `N`, `sd`, `unit_cost`}{Stratum identifiers and inputs
-#'       carried over from the frame. In cluster mode `unit_cost` is the
+#'       carried over from the frame. The frame's label columns follow
+#'       `stratum`, and `$params$strata_keys` names them when together they
+#'       identify the strata, `NULL` otherwise. In cluster mode `unit_cost` is the
 #'       derived effective per-element cost
 #'       `cost_psu / n_per_psu + cost_ssu` (1 when no stage costs were
 #'       given), while `sd` stays the input stratum SD.}
@@ -278,8 +320,9 @@
 #'       identities hold for `n_int` and `n_psu_int`.}
 #'     \item{`n_psu_certain`, `n_psu_rest`, `threshold`}{With `psu` only: the
 #'       number of certainty PSUs, the number of PSUs left in the remainder,
-#'       and the certainty threshold `certainty_cutoff * n_per_psu / (n / N)`
-#'       at the returned allocation.}
+#'       and the certainty threshold `certainty_cutoff * n_per_psu / f`, at
+#'       the sampling fraction `f` whose classification and draw give the
+#'       planned design.}
 #'     \item{`n_certain_int`, `n_psu_draw`}{With `psu` only: the units the
 #'       operational design fields in the certainty PSUs, and the number of
 #'       remainder PSUs it draws. Here
@@ -291,7 +334,10 @@
 #'   The result also carries an `$operational` list describing the integer
 #'   field design. In joint mode it contains total `n`, variable field `cost`,
 #'   the full target table in `constraints`, `all_pass`, and the number of
-#'   integer-repair additions. In legacy modes it also reports the applicable
+#'   integer-repair additions. With `psu` it has no repair count and adds
+#'   `n_certain`, `n_psu_draw` and `status`, `"optimal"` when the search
+#'   proved the design the cheapest and `"limit"` when its node limit came
+#'   first. In the classic modes it also reports the applicable
 #'   aggregate `se`, `moe`, and `cv`. Top-level quantities describe the
 #'   continuous design, while `as.integer()` returns the operational total.
 #'
@@ -308,8 +354,9 @@
 #'       `psu$certainty` flagged it below the threshold, `"operational"` when
 #'       it is below the threshold but the whole-PSU remainder draw of
 #'       `$operational` would give it an inclusion probability of one, and
-#'       `"orbit"` when the resolution of a cycle holds it although no rule
-#'       requires it. `NA` for a remainder PSU. `summary()` counts them.}
+#'       `"planned"` when the planner holds it below the threshold to cut
+#'       clustering, which it does only under stage costs. `NA` for a
+#'       remainder PSU. `summary()` counts them.}
 #'     \item{`.threshold`, `.distance`}{The stratum's threshold, and the
 #'       relative distance `N / .threshold - 1`. A PSU with a small
 #'       `.distance` is the one whose classification the allocation can tip.}
@@ -319,27 +366,21 @@
 #'       the PSU's zone, numbered across strata, `NA` outside any zone.}
 #'   }
 #'
-#'   `$optimization$certainty` reports how the classification was resolved:
+#'   `$optimization$search` reports how the field design was chosen:
 #'   \describe{
-#'     \item{`verdict`}{`"converged"` when the classification repeated itself,
-#'       `"cycle"` when it alternated between classifications, and
-#'       `"limit_reached"` when the iteration limit came first.}
-#'     \item{`orbit`, `iterations`}{The number of classifications in the
-#'       repeating orbit (1 when converged), and the passes made before it
-#'       repeated.}
-#'     \item{`settle_iterations`}{The solves used to settle the allocation
-#'       under the held classification.}
-#'     \item{`absorbed`}{PSUs added to the held classification because the
-#'       settled allocation, or the repaired field design, made them
-#'       certainty.}
-#'     \item{`feasible_member`}{Whether the held member of the orbit met
-#'       every target before settling. When none did, the most certain member
-#'       is held and the settle step closes the gap.}
-#'     \item{`fixed_point`}{Whether the returned classification is exactly
-#'       the one the returned allocation implies under the threshold and the
-#'       whole-PSU draw, with any `psu$certainty` flags. It is `FALSE` only
-#'       when PSUs have `.certainty_source` equal to `"orbit"`, and the
-#'       printed plan says so.}
+#'     \item{`family`}{`"voluntary"` under stage costs, where a stratum's
+#'       designs include those holding its largest PSUs in certainty below
+#'       the threshold, and `"closure"` under unit cost, where they do not.}
+#'     \item{`status`}{`"optimal"` or `"limit"`, as in `$operational`.}
+#'     \item{`bound`, `gap`}{A lower bound on the cost of any design in the
+#'       family that meets every target, and the relative gap
+#'       `(cost - bound) / cost`, 0 when the design is proved the cheapest.
+#'       In budget mode the bound is on the weighted relative variance of any
+#'       design within the budget, and the gap is relative to the design's.}
+#'     \item{`nodes`, `max_nodes`}{The search nodes used and the limit,
+#'       `control$max_nodes`.}
+#'     \item{`states`, `kept`}{The stratum designs listed, and those the
+#'       bound left in the search.}
 #'   }
 #'
 #'   In fixed-budget objective mode the result adds `$objective`, one row per
@@ -350,7 +391,9 @@
 #'   `"budget_objective"` rather than `"targets"`, and `$optimization` adds the
 #'   budget, whether it binds, its residual, the local `budget_sensitivity`
 #'   (change in objective value per extra unit of budget), and the
-#'   epsilon-constraint `objective_bound` and its multiplier.
+#'   epsilon-constraint `objective_bound` and its multiplier. With `psu`
+#'   these describe the continuous relaxation, and `$operational` the field
+#'   design the search planned.
 #'
 #' @details
 #' ## Joint constrained allocation
@@ -381,7 +424,7 @@
 #' 2. **Look up `N`**: the population count per stratum.
 #' 3. **Estimate `sd`**: the standard deviation of your key variable
 #'    within each stratum (from a pilot survey, a previous census, or
-#'    expert judgement). If unknown, set `sd = 1` everywhere for
+#'    expert judgment). If unknown, set `sd = 1` everywhere for
 #'    proportional allocation.
 #' 4. **Add `mean` or `p`** if you want to solve for a target CV.
 #'
@@ -458,7 +501,7 @@
 #'
 #' So at `n_psu == N_psu` the default still carries between-PSU variance even
 #' though every PSU has been selected. That is deliberately conservative
-#' and is no longer a literal variance representation. For the same
+#' and is then not a literal variance. For the same
 #' reason, a target this path reports as unreachable at the PSU bound may
 #' be reachable under a finite-population first stage, and the error says so
 #' rather than claiming the precision is impossible. Under `fpc = "stage"`
@@ -541,7 +584,7 @@
 #'
 #' A remainder PSU is drawn for the take, so a PSU holding fewer units than
 #' `n_per_psu` is refused, named by its `psu_id` or its row. Merge it with a
-#' neighbouring PSU before planning, as is usual when PSUs are formed
+#' neighboring PSU before planning, as is usual when PSUs are formed
 #' (Valliant, Dever and Kreuter 2018, sec. 10.3) and as [merge_psus()] does,
 #' or flag it in `certainty`, where it is subsampled at the stratum's
 #' sampling fraction. A `psu_id` must name each PSU once.
@@ -575,9 +618,9 @@
 #' cannot sample less often. A cutoff below one, such as the 0.80 Valliant,
 #' Dever and Kreuter (2018, sec. 9.6) mention, takes more PSUs with
 #' certainty and removes their clustering from the design effect, so the
-#' sample usually falls. The classification is discrete, so where the loop
-#' cycles the plan moves in steps as the cutoff changes and need not fall
-#' with it. Price the choice with [predict.svyplan] over
+#' sample usually falls. The classification is discrete, so the plan moves
+#' in steps as the cutoff changes and need not fall with it. Price the
+#' choice with [predict.svyplan] over
 #' `certainty_cutoff`.
 #'
 #' `n_psu_per_zone = 2` cuts each stratum's remainder, sorted by
@@ -601,7 +644,7 @@
 #' count is odd. Strata whose remainder is a single zone are grouped with
 #' each other in `frame` row order, so order the rows to put similar strata
 #' next to each other. One draw per zone has the with-replacement variance,
-#' so the groups are analysed without a finite population correction. In
+#' so the groups are analyzed without a finite population correction. In
 #' that form the collapsed estimator overestimates the variance, by more as
 #' the zone totals in a group differ (Valliant, Dever and Kreuter 2018, sec.
 #' 15.5.3). A without-replacement correction such as Brewer's can turn it
@@ -628,20 +671,35 @@
 #' A PSU-level response rate and a `var_ratio_psu` other than 1 have no
 #' place in this design effect and are refused.
 #'
-#' The threshold and allocation determine each other, so the solver iterates.
-#' `$optimization$certainty` records whether it converged, cycled, or reached
-#' its iteration limit. `$detail` gives the split and threshold by stratum,
-#' while `$psu` gives each PSU's classification, its source, and `n_take`,
-#' the take the operational design fields in it. A certainty PSU carries its
+#' The field design is chosen whole. For each stratum the planner lists every
+#' design these rules give as the sampling fraction runs, and under stage
+#' costs also those holding the stratum's largest PSUs in certainty below the
+#' threshold, which cuts clustering at the price of their visits. Under unit
+#' cost a visit has no price, so no PSU is held below the threshold. Give
+#' `cost_psu` and `cost_ssu` where holding a large PSU in certainty may be
+#' worth its visit. A search then picks one design per stratum, the cheapest
+#' meeting every target, and proves it so, or stops after
+#' `control$max_nodes` nodes, 5,000 by default, with the best design found
+#' and a lower bound on the cheapest, which `$optimization$search` reports.
+#' With `objective` and `budget` it picks the design with the smallest
+#' weighted relative variance among those meeting every target in `targets`
+#' whose field cost, visits included, stays within the budget. A budget
+#' below the cheapest field design, or below the cheapest one meeting the
+#' targets, is an error that gives that design's cost. The continuous
+#' allocation in `$detail$n` solves the aggregate model above under the
+#' planned classification, as a relaxation of the field design.
+#' `$detail` gives the split and threshold by stratum, while `$psu` gives
+#' each PSU's classification, its source, and `n_take`, the take the
+#' operational design fields in it. A certainty PSU carries its
 #' own whole take at the stratum rate, capped at its size, and a remainder
 #' PSU carries `n_per_psu`. The takes are the operational design's own
 #' numbers, so `sum(n_take[certainty]) = n_certain_int` in every stratum.
 #'
 #' A fit solved with a register keeps it in `$params$psu`. Its presence is
-#' the stable test for a certainty-aware fit, and it's possible to key on it
-#' rather than on `$detail` column names.
+#' the stable test for a certainty-aware fit, and code can key on it rather
+#' than on `$detail` column names.
 #'
-#' The operational design is fieldable: certainty PSUs use their whole take
+#' The operational design is fieldable. Certainty PSUs use their whole take
 #' at the stratum rate and the remainder uses whole PSUs at `n_per_psu`. Thus
 #' `n_int = n_certain_int + n_psu_draw * n_per_psu` in every stratum.
 #' `$operational` reports its count, cost and precision. The rounded
@@ -651,16 +709,11 @@
 #'
 #' \deqn{V_h = S_h^2 \Big[\sum_{i \in C} N_{hi}^2 \Big(\frac{1}{r_h q_{hi}} - \frac{1}{N_{hi}}\Big) + (N_h^R)^2 \{1 + \delta_h (b_h r_h - 1)\} \Big(\frac{1}{r_h a_h b_h} - \frac{1}{N_h^R}\Big)\Big].}{V_h = S_h^2 * [sum_C N_hi^2 * (1 / (r_h * q_hi) - 1 / N_hi) + (N_h^R)^2 * (1 + delta_h * (b_h * r_h - 1)) * (1 / (r_h * a_h * b_h) - 1 / N_h^R)].}
 #'
-#' At the stratum rate the expression equals the aggregate one above. Where
-#' the field design misses a target, whole remainder PSUs (whole zones when
-#' zoned) are added one at a time, each where it most reduces the failing
-#' targets' excess variance per unit of cost, as the solver's own integer
-#' repair does. Strata outside the failing targets' domains are left alone.
-#' If the remainder feeding a failing target is used up, or no addition
-#' reduces it, `n_alloc()` stops with an error naming each failing target
-#' with its achieved and required values. That error concerns this repair
-#' under the held classification and certainty takes, not every possible
-#' field design.
+#' At the stratum rate the expression equals the aggregate one above. It is
+#' the variance the planner sizes, so every target holds on the design that
+#' is fielded. A census of every PSU gives each target its smallest
+#' variance, so when even that misses a target, `n_alloc()` stops with an
+#' error that says so.
 #'
 #' Use `cost_psu` and `cost_ssu` together to price PSU visits and interviews.
 #' A certainty PSU's visit is paid whatever its take, so the solver prices
@@ -669,11 +722,14 @@
 #' as a fixed cost, as do the stratum costs `summary()` reports. The
 #' optimality certificate, its gap and its multipliers refer to the
 #' marginal-cost problem without that constant, which has the same optimum,
-#' and hold for the classification the plan settled on, not across
-#' classifications. A `budget` is refused with a register,
-#' because the field design rounds its draws up and does not hold certainty
-#' visits within a budget. [predict.svyplan] can compare fixed values of
-#' `n_per_psu`.
+#' and hold for the planned classification, not across classifications. In
+#' budget mode the continuous solve has the budget less the certainty visits.
+#' The field design prices its visits exactly, so near the cheapest design
+#' meeting the targets the aggregate model can need more than the budget. It
+#' is then solved at the cost of its own cheapest design meeting them, and
+#' `$optimization$budget_residual` is negative. [predict.svyplan] compares
+#' values of `n_per_psu`, `certainty_cutoff`, `n_psu_per_zone` and, in
+#' budget mode, `budget`, and reports each row's search status.
 #'
 #' ## Domains vs. strata
 #'
@@ -683,8 +739,8 @@
 #' minimum total \eqn{n} such that the *worst-case* domain CV meets the
 #' target, i.e. every domain achieves the required precision.
 #'
-#' In `n` or `budget` mode, domains affect reporting only: per-domain
-#' precision metrics appear in `$domains` but the allocation itself treats
+#' In `n` or `budget` mode, domains affect reporting only. Per-domain
+#' precision metrics appear in `$domains`, but the allocation itself treats
 #' all strata globally.
 #'
 #' ## Allocation methods
@@ -779,6 +835,10 @@
 #' n_alloc(frame_domains, domains = "province",
 #'        cv = 0.04, alloc = "power", alloc_q = 0.3)
 #'
+#' # Power allocation on a size measure alone, as DHS and MICS apply it
+#' sizes <- data.frame(stratum = c("A", "B", "C"), N = c(4e5, 1e5, 2.5e4))
+#' n_alloc(sizes, n = 60, alloc = "power", alloc_q = 0.25, min_n_stratum = 15)
+#'
 #' # Joint targets for two indicators and an overlapping domain
 #' joint_frame <- data.frame(
 #'   stratum = c("North urban", "North rural", "South urban"),
@@ -823,6 +883,17 @@
 #'   objective = priorities, budget = 4000
 #' )
 #'
+#' # A domain without a level column targets every level of it
+#' every_region <- data.frame(
+#'   name = c("coverage", "income"),
+#'   domain = c(".overall", "region"),
+#'   cv = c(0.06, 0.05)
+#' )
+#' by_region <- n_alloc(
+#'   joint_frame, measures = joint_measures, targets = every_region
+#' )
+#' by_region$constraints[, c("constraint", ".target", ".achieved")]
+#'
 #' # What would other budgets buy? (cost-versus-objective frontier)
 #' predict(bought, data.frame(budget = c(3000, 4000, 5000)))
 #'
@@ -837,6 +908,10 @@
 #'   joint_frame, measures = joint_measures, targets = joint_targets
 #' )
 #' joint_cluster$detail[, c("stratum", "n_psu_int", "n_per_psu", "n_int")]
+#'
+#' # Each indicator measured on its own eligible persons per household
+#' joint_measures$eligible_rate <- rep(c(0.41, 2.6), each = 3)
+#' n_alloc(joint_frame, measures = joint_measures, targets = joint_targets)
 #'
 #' # Fixed three-stage takes: PSUs, SSUs within PSU, ultimate units within SSU
 #' joint_frame$N_ssu <- c(600, 1000, 750) # aggregate SSUs by stratum
@@ -908,6 +983,17 @@
 #' # No zones, one PSU per zone, and two PSUs per zone
 #' predict(reg_fit, data.frame(n_psu_per_zone = c(NA, 1, 2)))
 #'
+#' # The register design a field budget buys, with visits and interviews
+#' # priced and the cv of 0.05 kept as a hard target
+#' reg_frame$cost_psu <- 300
+#' reg_frame$cost_ssu <- 20
+#' reg_buy <- n_alloc(
+#'   reg_frame, measures = reg_measures,
+#'   targets = data.frame(name = "y", cv = 0.05), objective = "y",
+#'   budget = 30000, psu = register
+#' )
+#' reg_buy$operational[c("cost", "objective_value", "budget_residual")]
+#'
 #' @export
 n_alloc <- function(frame, ...) {
   if (!missing(frame)) {
@@ -931,12 +1017,14 @@ n_alloc.default <- function(
   psu = NULL,
   certainty_cutoff = NULL,
   n_psu_per_zone = NULL,
+  control = NULL,
   objective = NULL,
   alloc = c("neyman", "optimal", "proportional", "power"),
   unit_cost = NULL,
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
+  eligible_rate = 1,
   df = NULL,
   min_n_stratum = NULL,
   alloc_q = 0.5,
@@ -948,7 +1036,9 @@ n_alloc.default <- function(
     return(do.call(n_alloc.default, c(.plan, list(...))))
   }
   .check_unused_dots(...)
-  .check_register_args(certainty_cutoff, n_psu_per_zone, frame, psu)
+  .check_register_args(certainty_cutoff, n_psu_per_zone, frame, psu,
+                       control)
+  .check_eligible_scope(eligible_rate, frame, measures, psu)
   alloc_default <- c("neyman", "optimal", "proportional", "power")
   alloc_explicit <- !missing(alloc) && !identical(alloc, alloc_default)
   alloc_q_explicit <- !missing(alloc_q) && !identical(alloc_q, 0.5)
@@ -1036,7 +1126,8 @@ n_alloc.default <- function(
         budget = budget,
         df = df,
         certainty_cutoff = certainty_cutoff,
-        n_psu_per_zone = n_psu_per_zone
+        n_psu_per_zone = n_psu_per_zone,
+        control = control
       )))
     }
     return(.n_alloc_bethel(
@@ -1047,6 +1138,7 @@ n_alloc.default <- function(
       alpha = alpha,
       deff = deff,
       resp_rate = resp_rate,
+      eligible_rate = eligible_rate,
       min_n_stratum = min_n_stratum,
       objective = objective,
       budget = budget,
@@ -1096,13 +1188,31 @@ n_alloc.default <- function(
     stop("specify exactly one of 'n', 'cv', or 'budget'", call. = FALSE)
   }
 
+  if (!any(c("sd", "var") %in% names(frame))) {
+    if (!alloc %in% c("proportional", "power")) {
+      stop(
+        sprintf(
+          "alloc = \"%s\" needs 'sd' or 'var' in 'frame'. Without them, only a fixed 'n' can be allocated, by alloc = \"proportional\" or \"power\"",
+          alloc
+        ),
+        call. = FALSE
+      )
+    }
+    if (is.null(n)) {
+      stop(
+        "a 'cv' or 'budget' target needs 'sd' or 'var' in 'frame'. Without them, only a fixed 'n' can be allocated",
+        call. = FALSE
+      )
+    }
+  }
   prep <- .alloc_prepare_frame(
     frame,
     domains = domains,
     unit_cost = unit_cost,
     deff = deff,
     resp_rate = resp_rate,
-    fpc = fpc
+    fpc = fpc,
+    size_only = alloc %in% c("proportional", "power") && !is.null(n)
   )
   N_h <- prep$N_h
   S_h <- prep$S_h
@@ -1377,6 +1487,10 @@ n_alloc.default <- function(
     )
   }
 
+  carried <- .alloc_carry_labels(detail, frame)
+  detail <- carried$detail
+  params$strata_keys <- carried$keys
+
   obj <- .new_svyplan_n(
     n = sum(n_h),
     type = "alloc",
@@ -1453,6 +1567,7 @@ n_alloc.svyplan_prec <- function(
       alpha = p$alpha,
       deff = p$deff,
       resp_rate = p$resp_rate,
+      eligible_rate = p$eligible_rate %||% 1,
       df = p$df,
       min_n_stratum = p$min_n_stratum,
       fpc = p$fpc %||% "unit"
@@ -1461,6 +1576,7 @@ n_alloc.svyplan_prec <- function(
       args$psu <- p$psu
       args$certainty_cutoff <- p$certainty_cutoff
       args$n_psu_per_zone <- p$n_psu_per_zone
+      args$control <- p[["control"]]
     }
     return(do.call(
       n_alloc.default,
@@ -1527,14 +1643,15 @@ n_alloc.svyplan_prec <- function(
 #'   with `measures` in the default method and is recovered automatically from
 #'   a fitted result.
 #' @param psu Optional PSU register for certainty-aware assessment. See the
-#'   `psu` argument to [n_alloc()]. A `budget` is refused with it, and an
-#'   `objective` is reported as a description of the assessed allocation. No loop is needed here, since the
-#'   allocation is supplied, so the threshold it implies is supplied with it and the
-#'   classification is read off the design being assessed. The `$psu` table
-#'   carries the same columns as a fitted plan's, with `n_take` read off the
-#'   supplied allocation. A fitted result
-#'   carries its own register and its held classification, so
-#'   `prec_alloc(fit)` reproduces the plan's precision exactly.
+#'   `psu` argument to [n_alloc()]. An `objective` is reported as a
+#'   description of the assessed allocation, and the residual against a
+#'   `budget` counts the certainty visits. The allocation is supplied, so the
+#'   threshold it implies is supplied with it and the classification is read
+#'   off the design being assessed. The `$psu` table carries the same columns
+#'   as a fitted plan's, with `n_take` read off the supplied allocation. A
+#'   fitted result carries its own register and field design, so
+#'   `prec_alloc(fit)` reports the precision the plan was sized for, and an
+#'   override such as `n` is assessed with the fit's classification held.
 #' @param certainty_cutoff Inclusion probability at which a PSU is taken with
 #'   certainty. See the `certainty_cutoff` argument to [n_alloc()]. A fitted
 #'   result carries its own.
@@ -1551,10 +1668,15 @@ n_alloc.svyplan_prec <- function(
 #' @param alpha Significance level, default 0.05.
 #' @param deff Design effect multiplier (> 0). A scalar applies to every
 #'   stratum. A length-`nrow(frame)` vector gives one per stratum and
-#'   overrides a `deff` column in `frame`.
+#'   overrides a `deff` column in `frame`. A published DEFT is squared
+#'   first, and the allocation already carries its own weighting loss. See
+#'   [varcomp()].
 #' @param resp_rate Expected response rate, in (0, 1\]. Default 1. A scalar
 #'   applies to every stratum. A length-`nrow(frame)` vector gives one per
 #'   stratum and overrides a `resp_rate` column in `frame`.
+#' @param eligible_rate Eligible units per sampled unit in joint assessment.
+#'   See the `eligible_rate` argument to [n_alloc()]. A fitted result
+#'   carries its own.
 #' @param df Degrees of freedom of the variance estimator the allocation
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the quantile used to translate a `moe`
@@ -1594,6 +1716,10 @@ n_alloc.svyplan_prec <- function(
 #'
 #' which reproduces `fit$operational$cv`. `n_per_psu` does not apply to an
 #' allocation built on a PSU register, whose takes come from the register.
+#' A register fit's field design is evaluated by `prec_alloc(fit)` with
+#' nothing overridden, which reports what `fit$operational$constraints`
+#' reports, with the fit's `$psu` table. Supplying `n` evaluates the design
+#' built from those totals, holding the fit's certainty PSUs.
 #'
 #' @return A `svyplan_prec` object with `type = "alloc"`. Top-level `se`,
 #'   `moe`, and `cv` describe the whole population. `$detail` carries the
@@ -1615,7 +1741,8 @@ n_alloc.svyplan_prec <- function(
 #'   weighted value under the assessed allocation.
 #'
 #'   With `psu`, `$psu` carries the per-PSU table described in [n_alloc()],
-#'   classified at the supplied allocation.
+#'   classified at the supplied allocation, or the fit's own table when a
+#'   register fit is evaluated as it stands.
 #'
 #'   Passing a joint precision result back to [n_alloc()] round trips the
 #'   design. Minimum-cost results invert through precision, pinning the
@@ -1627,9 +1754,9 @@ n_alloc.svyplan_prec <- function(
 #'
 #'   A result assessed with a `psu` register carries the register, the
 #'   caller's `frame` and `measures`, and any `certainty_cutoff`, so the round
-#'   trip plans the register design again. It derives the classification
-#'   afresh from the register the fit was solved from, so where the fit's
-#'   loop cycled the new plan can resolve the cycle at another member.
+#'   trip plans the register design again. It plans from the register the
+#'   fit was solved from, so it reaches a design of the same cost, though it
+#'   may pick another where several tie.
 #'
 #' @family stratified design functions
 #' @seealso [n_alloc()], and [n_alloc-generalized] for the joint mode.
@@ -1687,6 +1814,7 @@ prec_alloc.default <- function(
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
+  eligible_rate = 1,
   df = NULL,
   unit_cost = NULL,
   min_n_stratum = NULL,
@@ -1704,6 +1832,7 @@ prec_alloc.default <- function(
   }
   .check_unused_dots(...)
   .check_register_args(certainty_cutoff, n_psu_per_zone, frame, psu)
+  .check_eligible_scope(eligible_rate, frame, measures, psu)
   fpc <- match.arg(fpc)
   joint_any <- !is.null(measures) || !is.null(targets) || !is.null(objective)
   if (joint_any) {
@@ -1768,6 +1897,7 @@ prec_alloc.default <- function(
       alpha = alpha,
       deff = deff,
       resp_rate = resp_rate,
+      eligible_rate = eligible_rate,
       min_n_stratum = min_n_stratum,
       df = df,
       fpc = fpc,
@@ -1843,6 +1973,9 @@ prec_alloc.default <- function(
     df = df
   )
 
+  carried <- .alloc_carry_labels(detail, frame)
+  detail <- carried$detail
+
   .new_svyplan_prec(
     se = metrics$se,
     moe = metrics$moe,
@@ -1859,6 +1992,7 @@ prec_alloc.default <- function(
       cost_h = prep$cost_h,
       domain_cols = prep$domain_cols,
       domain_idx = prep$domain_idx,
+      strata_keys = carried$keys,
       achieved = list(n = sum(n), cv = metrics$cv, cost = metrics$cost)
     ),
     detail = detail,
@@ -1889,8 +2023,16 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     n_explicit <- length(dots) > 0L &&
       (is.null(dot_names) || any(!nzchar(dot_names)) || "n" %in% dot_names)
     if (!is.null(p$psu)) {
-      # The fit's classification travels: a fresh derivation would drop the
-      # PSUs the absorb loop added.
+      # An override that only changes how the design is assessed keeps the
+      # stored field design. One that changes the design goes through the
+      # construction from totals below.
+      design <- c("n", "frame", "psu", "certainty_cutoff", "n_psu_per_zone")
+      if (!n_explicit && !any(dot_names %in% design)) {
+        .roundtrip_args(list(), dots, .prec_alloc_psu)
+        return(.prec_alloc_psu_design(obj, dots))
+      }
+      # An override is assessed through the construction from totals. The
+      # fit's classification travels, so the planned certainty is held.
       held <- p$psu
       held$certainty <- obj$psu$certainty
       args <- list(
@@ -1919,6 +2061,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       # its diagnostics describe its own classification rather than report
       # the held PSUs as supplied.
       out$params$psu <- p$psu
+      out$params$control <- p[["control"]]
       return(out)
     }
     args <- list(
@@ -1931,6 +2074,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       alpha = p$alpha,
       deff = p$deff,
       resp_rate = p$resp_rate,
+      eligible_rate = p$eligible_rate %||% 1,
       df = p$df,
       unit_cost = p$unit_cost,
       min_n_stratum = p$min_n_stratum,
@@ -1989,7 +2133,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   unit_cost = NULL,
   deff = 1,
   resp_rate = 1,
-  fpc = "unit"
+  fpc = "unit",
+  size_only = FALSE
 ) {
   if (!is.data.frame(frame) || nrow(frame) == 0L) {
     stop("'frame' must be a non-empty data frame", call. = FALSE)
@@ -2023,10 +2168,13 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       stop("'var' must contain non-negative finite values", call. = FALSE)
     }
     S_h <- sqrt(vv)
+  } else if (size_only) {
+    S_h <- rep(NA_real_, nrow(frame))
   } else {
     stop("'frame' must contain either 'sd' or 'var'", call. = FALSE)
   }
-  if (all(S_h == 0)) {
+  size_only <- all(is.na(S_h))
+  if (!size_only && all(S_h == 0)) {
     warning(
       "all 'sd' values are zero, allocation has no variability to distribute",
       call. = FALSE
@@ -2176,6 +2324,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 
   prep <- list(
     frame = frame,
+    size_only = size_only,
     N_h = as.numeric(N_h),
     S_h = as.numeric(S_h),
     mean_h = as.numeric(mean_h),
@@ -2190,6 +2339,48 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     domain_values = domain_values
   )
   .alloc_cluster_prep(prep, frame, unit_cost, fpc)
+}
+
+#' Carry a frame's label columns into an allocation's stratum detail
+#' @keywords internal
+#' @noRd
+.alloc_carry_labels <- function(detail, frame) {
+  is_label <- vapply(
+    frame,
+    function(v) is.character(v) || is.factor(v) || is.logical(v),
+    logical(1)
+  )
+  labels <- setdiff(names(frame)[is_label], c("stratum", "take_all"))
+  if (length(labels) == 0L) return(list(detail = detail, keys = NULL))
+  clash <- intersect(labels, names(detail))
+  if (length(clash) > 0L) {
+    stop(
+      sprintf(
+        "'frame' label column%s %s share%s a name with the allocation's own columns. Rename %s",
+        if (length(clash) == 1L) "" else "s",
+        paste(sQuote(clash), collapse = ", "),
+        if (length(clash) == 1L) "s" else "",
+        if (length(clash) == 1L) "it" else "them"
+      ),
+      call. = FALSE
+    )
+  }
+  carried <- as.data.frame(frame)[labels]
+  rownames(carried) <- NULL
+  at <- match("stratum", names(detail))
+  detail <- cbind(
+    detail[seq_len(at)], carried, detail[-seq_len(at)]
+  )
+  keys <- if (anyDuplicated(carried) == 0L) labels else NULL
+  list(detail = detail, keys = keys)
+}
+
+#' Whether a classic allocation was made from sizes alone, with no variance
+#' @keywords internal
+#' @noRd
+.alloc_size_only <- function(x) {
+  !identical(x$method, "bethel") &&
+    !any(c("sd", "var") %in% names(x$params$frame))
 }
 
 #' Two-stage-within-strata transformation
@@ -2549,6 +2740,14 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   n_net <- n_h * resp_rate
   n_eff <- n_net / deff
   W_h <- N_h / sum(N_h)
+  if (all(is.na(S_h))) {
+    na_h <- rep(NA_real_, length(n_h))
+    return(list(
+      se = NA_real_, moe = NA_real_, cv = NA_real_,
+      cost = sum(n_h * cost_h), rmoe = NA_real_, term = na_h,
+      se_h = na_h, moe_h = na_h, cv_h = na_h, rmoe_h = na_h, share_h = na_h
+    ))
+  }
 
   term <- numeric(length(n_h))
   good <- n_eff > 0
@@ -2645,8 +2844,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       budget,
       lo_i,
       hi_i,
-      prep$N_h,
-      prep$S_h
+      (prep$N_h / sum(prep$N_h))^2 * prep$S_h^2 *
+        rep_len(deff, length(n_h)) / rep_len(resp_rate, length(n_h))
     ),
     .round_oric_bounded(n_h, lo_i, hi_i)
   )
@@ -2706,19 +2905,38 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #'
 #' Floors the continuous allocation (respecting integer lower bounds),
 #' then greedily adds units where the variance reduction per unit cost
-#' is largest while the budget allows.
+#' is largest while the budget allows. `a_h` is each stratum's variance
+#' coefficient, `W_h^2 S_h^2 deff_h / resp_rate_h`, the term the reported
+#' variance divides by `n_h`.
 #' @keywords internal
 #' @noRd
-.round_within_budget <- function(n_h, cost_h, budget, lower, upper, N_h, S_h) {
+.round_within_budget <- function(n_h, cost_h, budget, lower, upper, a_h) {
   n_int <- pmin(pmax(as.integer(floor(n_h + 1e-9)), lower), upper)
-  W2S2 <- (N_h / sum(N_h))^2 * S_h^2
+  # The variance change of moving stratum h from n to n + 1. A stratum
+  # without variance gains and loses nothing, and one left empty with
+  # variance is infinitely worse, so no 0 * Inf reaches the comparison.
+  change <- function(h, n) {
+    out <- a_h[h] * (1 / n - 1 / (n + 1))
+    out[a_h[h] == 0] <- 0
+    out[a_h[h] > 0 & n == 0] <- Inf
+    out
+  }
+  # Lifting a stratum to its whole lower bound can spend more than the
+  # floors elsewhere save. The caller checked that the bounds alone fit, so
+  # trimming above them always comes back inside the budget.
+  while (sum(n_int * cost_h) > budget + 1e-9) {
+    can <- which(n_int > lower)
+    loss <- change(can, n_int[can] - 1L) / cost_h[can]
+    j <- can[which.min(loss)]
+    n_int[j] <- n_int[j] - 1L
+  }
   repeat {
     spare <- budget - sum(n_int * cost_h)
     can <- which(n_int < upper & cost_h <= spare + 1e-9)
     if (length(can) == 0L) {
       break
     }
-    gain <- W2S2[can] * (1 / n_int[can] - 1 / (n_int[can] + 1)) / cost_h[can]
+    gain <- change(can, n_int[can]) / cost_h[can]
     j <- can[which.max(gain)]
     n_int[j] <- n_int[j] + 1L
   }

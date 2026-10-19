@@ -465,9 +465,9 @@ check_icc <- function(icc, expected_length = NULL) {
 
 #' Require a unit relvariance a design effect could not supply
 #'
-#' A `varcomp()` estimated from data carries its own `unit_relvar` and
-#' overrides whatever the caller passed. One backed out of a design effect
-#' has none to give: a scalar design effect fixes the product
+#' A `varcomp()` estimated from data carries its own `unit_relvar`, and
+#' `.check_varcomp_components()` refuses another. One backed out of a design
+#' effect has none to give: a scalar design effect fixes the product
 #' `var_ratio (1 + icc (b - 1))` and says nothing about the scale of the
 #' outcome. Leaving the default in place would price a CV off a
 #' relvariance of 1 without ever saying so.
@@ -485,6 +485,49 @@ check_icc <- function(icc, expected_length = NULL) {
     )
   }
   invisible(TRUE)
+}
+
+#' Refuse a component a `varcomp()` passed as `icc` already sets
+#'
+#' Runs before the profile merge, the only point at which an explicit
+#' argument is distinguishable from a profile default. An explicit value is
+#' refused, and a profile value is dropped, since an explicit `icc` overrides
+#' the profile. A back-out sets no `unit_relvar`, so that one stays.
+#' @keywords internal
+#' @noRd
+.check_varcomp_components <- function(icc, unit_relvar, var_ratio, plan,
+                                      context) {
+  vc <- icc %||% if (inherits(plan, "svyplan")) plan$defaults$icc
+  if (!inherits(vc, "svyplan_varcomp")) return(plan)
+  backout <- identical(vc$source, "deff")
+  if (!is.null(var_ratio)) {
+    stop(
+      sprintf(
+        "'var_ratio' is set by the varcomp() result passed as 'icc'. Leave it unset in %s, %s",
+        context,
+        if (backout) {
+          "and give it to varcomp(deff = , var_ratio = ) instead"
+        } else {
+          "or pass 'icc' as numbers to use another value"
+        }
+      ),
+      call. = FALSE
+    )
+  }
+  if (!backout && !is.null(unit_relvar)) {
+    stop(
+      sprintf(
+        "'unit_relvar' is estimated by the varcomp() result passed as 'icc'. Leave it unset in %s, or pass 'icc' as numbers to use another value",
+        context
+      ),
+      call. = FALSE
+    )
+  }
+  if (inherits(plan, "svyplan")) {
+    drop <- c("var_ratio", if (!backout) "unit_relvar")
+    plan$defaults <- plan$defaults[!names(plan$defaults) %in% drop]
+  }
+  plan
 }
 
 #' Restrict a profile to the defaults the chosen cluster entry mode accepts
@@ -947,7 +990,7 @@ check_icc <- function(icc, expected_length = NULL) {
   .reorder_named_vec(x, name, c(psu_nm, ssu_nm))
 }
 
-#' Check overlap fraction in \[0, 1\]
+#' Check overlap fraction in \eqn{[0, 1]}
 #' @keywords internal
 #' @noRd
 check_overlap <- function(overlap) {
@@ -970,7 +1013,7 @@ check_overlap <- function(overlap) {
   invisible(TRUE)
 }
 
-#' Check correlation coefficient in \[0, 1\]
+#' Check correlation coefficient in \eqn{[0, 1]}
 #' @keywords internal
 #' @noRd
 check_overlap_cor <- function(overlap_cor) {
@@ -985,6 +1028,60 @@ check_overlap_cor <- function(overlap_cor) {
 #' Check response rate in (0, 1]
 #' @keywords internal
 #' @noRd
+check_eligible_rate <- function(eligible_rate, name = "eligible_rate") {
+  if (
+    !is.numeric(eligible_rate) ||
+      length(eligible_rate) != 1L ||
+      anyNA(eligible_rate) ||
+      !is.finite(eligible_rate) ||
+      eligible_rate <= 0
+  ) {
+    stop(sprintf("'%s' must be a positive finite number", name),
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+#' Check the eligible population a proportion's FPC reads
+#'
+#' The Bernoulli correction divides by `N * eligible_rate - 1`, so a finite
+#' eligible population must exceed one unit.
+#' @keywords internal
+#' @noRd
+check_eligible_population <- function(N, eligible_rate) {
+  N_elig <- N * eligible_rate
+  if (is.finite(N_elig) && N_elig <= 1) {
+    stop(
+      "'N * eligible_rate', the eligible population, must be greater than 1",
+      call. = FALSE
+    )
+  }
+  invisible(N_elig)
+}
+
+#' Refuse an eligible-units rate where the allocation cannot carry it
+#' @keywords internal
+#' @noRd
+.check_eligible_scope <- function(eligible_rate, frame, measures, psu) {
+  given <- !identical(eligible_rate, 1) ||
+    "eligible_rate" %in% c(names(frame), names(measures))
+  if (!given) return(invisible(TRUE))
+  if (!is.null(psu)) {
+    stop(
+      "'eligible_rate' is not available with a PSU register. Fold a rate at most 1 into 'resp_rate', or drop 'psu' and give 'N_psu'",
+      call. = FALSE
+    )
+  }
+  if (is.null(measures)) {
+    stop(
+      "'eligible_rate' applies to joint allocation. Give 'measures' and 'targets', one row each for a single indicator",
+      call. = FALSE
+    )
+  }
+  check_eligible_rate(eligible_rate)
+  invisible(TRUE)
+}
+
 check_resp_rate <- function(resp_rate, name = "resp_rate") {
   if (
     !is.numeric(resp_rate) ||
@@ -1718,7 +1815,7 @@ check_df <- function(df, name = "df") {
   if (!identical(type, "proportion") || is.null(params$p) || is.null(n)) {
     return(NULL)
   }
-  n * (params$resp_rate %||% 1) * params$p
+  n * (params$resp_rate %||% 1) * (params$eligible_rate %||% 1) * params$p
 }
 
 #' Sample size the minimum expected count of positive cases demands
@@ -2489,6 +2586,16 @@ check_df <- function(df, name = "df") {
     if (!has_choices || defaults$prop_method %in% choices) {
       defaults$method <- defaults$prop_method
     }
+  }
+  if (!is.null(defaults$eligible_rate) && defaults$eligible_rate != 1 &&
+      !"eligible_rate" %in% target_fmls) {
+    stop(
+      sprintf(
+        "the profile sets 'eligible_rate', which %s() does not take. Drop it from the profile for this call, or fold it into 'resp_rate' when it is at most 1",
+        sub("\\.default$", "", deparse(mc[[1L]]))
+      ),
+      call. = FALSE
+    )
   }
   applicable <- defaults[names(defaults) %in% target_fmls]
   if (length(applicable) == 0L) return(NULL)

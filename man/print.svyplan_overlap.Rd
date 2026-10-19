@@ -87,11 +87,11 @@ rotation behind them.
 }
 \details{
 The values, the shared counts and the rotation describe one design, so
-nothing may move the values while leaving the rest: subsetting and
+nothing may move the values while leaving the rest. Subsetting and
 arithmetic return bare numerics, and replacement is an error. That also
 settles \code{pmax()} and \code{pmin()}, which copy the attributes of their first
 argument without dispatching to any method and would otherwise return
-something still labelled an overlap whose counts no longer follow from its
+something still labeled an overlap whose counts no longer follow from its
 values. They assign through \verb{[<-}, so they are refused here too. Convert
 with \code{as.double(x)} and they work as usual.
 }

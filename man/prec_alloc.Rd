@@ -23,6 +23,7 @@ prec_alloc(frame, ...)
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
+  eligible_rate = 1,
   df = NULL,
   unit_cost = NULL,
   min_n_stratum = NULL,
@@ -65,14 +66,15 @@ with \code{measures} in the default method and is recovered automatically from
 a fitted result.}
 
 \item{psu}{Optional PSU register for certainty-aware assessment. See the
-\code{psu} argument to \code{\link[=n_alloc]{n_alloc()}}. A \code{budget} is refused with it, and an
-\code{objective} is reported as a description of the assessed allocation. No loop is needed here, since the
-allocation is supplied, so the threshold it implies is supplied with it and the
-classification is read off the design being assessed. The \verb{$psu} table
-carries the same columns as a fitted plan's, with \code{n_take} read off the
-supplied allocation. A fitted result
-carries its own register and its held classification, so
-\code{prec_alloc(fit)} reproduces the plan's precision exactly.}
+\code{psu} argument to \code{\link[=n_alloc]{n_alloc()}}. An \code{objective} is reported as a
+description of the assessed allocation, and the residual against a
+\code{budget} counts the certainty visits. The allocation is supplied, so the
+threshold it implies is supplied with it and the classification is read
+off the design being assessed. The \verb{$psu} table carries the same columns
+as a fitted plan's, with \code{n_take} read off the supplied allocation. A
+fitted result carries its own register and field design, so
+\code{prec_alloc(fit)} reports the precision the plan was sized for, and an
+override such as \code{n} is assessed with the fit's classification held.}
 
 \item{certainty_cutoff}{Inclusion probability at which a PSU is taken with
 certainty. See the \code{certainty_cutoff} argument to \code{\link[=n_alloc]{n_alloc()}}. A fitted
@@ -96,11 +98,17 @@ domain identifiers, or \code{NULL} (default) for no domains.}
 
 \item{deff}{Design effect multiplier (> 0). A scalar applies to every
 stratum. A length-\code{nrow(frame)} vector gives one per stratum and
-overrides a \code{deff} column in \code{frame}.}
+overrides a \code{deff} column in \code{frame}. A published DEFT is squared
+first, and the allocation already carries its own weighting loss. See
+\code{\link[=varcomp]{varcomp()}}.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1. A scalar
 applies to every stratum. A length-\code{nrow(frame)} vector gives one per
 stratum and overrides a \code{resp_rate} column in \code{frame}.}
+
+\item{eligible_rate}{Eligible units per sampled unit in joint assessment.
+See the \code{eligible_rate} argument to \code{\link[=n_alloc]{n_alloc()}}. A fitted result
+carries its own.}
 
 \item{df}{Degrees of freedom of the variance estimator the allocation
 will have, typically sampled PSUs minus strata, and available from
@@ -151,7 +159,8 @@ objective, \verb{$objective} and \verb{$objective_value} report its components a
 weighted value under the assessed allocation.
 
 With \code{psu}, \verb{$psu} carries the per-PSU table described in \code{\link[=n_alloc]{n_alloc()}},
-classified at the supplied allocation.
+classified at the supplied allocation, or the fit's own table when a
+register fit is evaluated as it stands.
 
 Passing a joint precision result back to \code{\link[=n_alloc]{n_alloc()}} round trips the
 design. Minimum-cost results invert through precision, pinning the
@@ -163,9 +172,9 @@ whole budget.
 
 A result assessed with a \code{psu} register carries the register, the
 caller's \code{frame} and \code{measures}, and any \code{certainty_cutoff}, so the round
-trip plans the register design again. It derives the classification
-afresh from the register the fit was solved from, so where the fit's
-loop cycled the new plan can resolve the cycle at another member.
+trip plans the register design again. It plans from the register the
+fit was solved from, so it reaches a design of the same cost, though it
+may pick another where several tie.
 }
 \description{
 Compute aggregate precision for a stratum allocation. For a joint
@@ -186,6 +195,10 @@ is evaluated here by supplying both stage sizes:
 
 which reproduces \code{fit$operational$cv}. \code{n_per_psu} does not apply to an
 allocation built on a PSU register, whose takes come from the register.
+A register fit's field design is evaluated by \code{prec_alloc(fit)} with
+nothing overridden, which reports what \code{fit$operational$constraints}
+reports, with the fit's \verb{$psu} table. Supplying \code{n} evaluates the design
+built from those totals, holding the fit's certainty PSUs.
 }
 }
 \examples{

@@ -162,10 +162,12 @@
 #'     the per-stratum `n_int`, and the `cost` and `cv` it actually
 #'     achieves. Budget mode floors and then buys back whole units in order
 #'     of variance reduction per unit cost, so the integer design stays
-#'     inside the budget, while cv mode rounds up. Both are bounded by the
-#'     phase-2 pool, so a stratum whose expected phase-1 yield rounds below
-#'     one unit is left unsampled with a warning, and the operational `cv`
-#'     is then `Inf`. With `assurance` set it also carries `assured`,
+#'     inside the budget. Cv mode rounds up and then adds whole units in the
+#'     same order, phase-1 units included unless `n_phase1` fixes them,
+#'     until the design meets the target, and stops with an error when no
+#'     unit can be added. In budget mode a stratum whose expected phase-1
+#'     yield rounds below one unit is left unsampled with a warning, and the
+#'     operational `cv` is then `Inf`. With `assurance` set it also carries `assured`,
 #'     `assured_phase1`, `pool` and `assured_cost`.}
 #'   \item{`params`}{Validated inputs, read back by [prec_twophase()]. They
 #'     include the design decisions a stratum table cannot express, so that
@@ -509,7 +511,8 @@ n_twophase.default <- function(
   mode <- if (is.null(budget)) "cv" else "budget"
   operational <- .twophase_integerize(
     n1, nu, spec, phase1_cost, a_eff, d2_eff, resp_rate, mode,
-    budget %||% Inf, fixed_cost, N, spec$mu, var_pop
+    budget %||% Inf, fixed_cost, N, spec$mu, var_pop,
+    target_cv = cv, n1_fixed = !is.null(n_phase1)
   )
   if (!is.null(assurance)) {
     # the design plans on r * issued respondents; assurance asks what to
@@ -729,14 +732,15 @@ n_twophase.default <- function(
 #'
 #' Budget mode floors and then buys back whole phase-2 units in order of
 #' variance reduction per unit cost, so the integer design stays inside
-#' the budget. CV mode rounds up. Both respect the phase-2 pool, which is
-#' what stops either from reaching a stratum whose expected phase-1 yield
-#' rounds to zero.
+#' the budget. CV mode rounds up, then adds whole units by the same order
+#' until the target holds, since a phase-2 size capped at its pool can leave
+#' it short. Both respect the phase-2 pool, which is what stops either from
+#' reaching a stratum whose expected phase-1 yield rounds to zero.
 #' @keywords internal
 #' @noRd
 .twophase_integerize <- function(n1, nu, spec, phase1_cost, a_eff, d2_eff,
                                  nu_max, mode, budget, fixed_cost, N, mu,
-                                 var_pop) {
+                                 var_pop, target_cv = NULL, n1_fixed = FALSE) {
   W <- spec$W
   measured <- spec$S > 0
   if (identical(mode, "budget")) {
@@ -767,6 +771,45 @@ n_twophase.default <- function(
     n1_int <- ceiling(min(n1, N))
     cap <- floor(nu_max * W * n1_int)
     n_int <- pmin(ceiling(nu * W * n1_int), cap)
+    if (!is.null(target_cv)) {
+      # Capping a phase-2 size at its pool can leave the design short of the
+      # target. Repair by the move that removes the most variance per unit
+      # cost: a phase-2 unit where the pool has room, or, unless phase 1 is
+      # fixed, a phase-1 unit, which also widens every pool.
+      term <- d2_eff * W^2 * spec$S^2
+      cv_at <- function(n1_int, n_int) {
+        contrib <- ifelse(n_int > 0, term * n1_int / n_int,
+                          ifelse(measured, Inf, 0))
+        .twophase_cv(n1_int, a_eff + sum(contrib), mu, N, var_pop)
+      }
+      repeat {
+        now <- cv_at(n1_int, n_int)
+        if (is.finite(now) && now <= target_cv) break
+        room <- measured & n_int < cap
+        gain <- ifelse(room, ifelse(n_int > 0, term * (1 / n_int - 1 / (n_int + 1)), Inf), -Inf)
+        score <- gain / pmax(spec$cost, .Machine$double.eps)
+        grow_n1 <- !n1_fixed && n1_int < N
+        n1_score <- if (grow_n1) {
+          a_eff * (1 / n1_int - 1 / (n1_int + 1)) /
+            max(phase1_cost, .Machine$double.eps)
+        } else {
+          -Inf
+        }
+        if (!any(room) && !grow_n1) {
+          stop(sprintf(
+            "the whole-unit design reaches cv = %s at most, short of the target %s",
+            formatC(now, format = "f", digits = 5), format(target_cv)),
+            call. = FALSE)
+        }
+        if (any(room) && max(score) >= n1_score) {
+          h <- which.max(score)
+          n_int[h] <- n_int[h] + 1
+        } else {
+          n1_int <- n1_int + 1
+          cap <- floor(nu_max * W * n1_int)
+        }
+      }
+    }
     spent <- fixed_cost + phase1_cost * n1_int + sum(spec$cost * n_int)
   }
   starved <- measured & nu > 0 & n_int == 0

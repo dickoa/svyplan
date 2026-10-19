@@ -42,7 +42,7 @@ strictly positive.}
 strictly positive.}
 
 \item{component_cor}{Correlation between numerator and denominator across
-units, in [-1, 1].}
+units, in \eqn{[-1, 1]}.}
 
 \item{alpha}{Significance level, default 0.05.}
 
@@ -50,7 +50,9 @@ units, in [-1, 1].}
 correction.}
 
 \item{deff}{Design effect of the ratio estimator (> 0). See \code{\link[=n_ratio]{n_ratio()}}
-for what this is the design effect of.}
+for what this is the design effect of. A published DEFT is squared
+first. See \code{\link[=varcomp]{varcomp()}} for that and for removing the published
+survey's weighting loss.}
 
 \item{resp_rate}{Expected response rate, in (0, 1]. Default 1.}
 

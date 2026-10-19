@@ -1268,3 +1268,46 @@ test_that("integerization is bounded by N_psu independently of the element bound
   expect_lte(d$n_psu_int, d$N_psu)
   expect_equal(d$n_psu_int, 10L)
 })
+
+## The whole-unit budget design stays inside the budget. Lifting a stratum to
+## its whole lower bound, here 333.67 to 334 at 10 a unit, used to overspend
+## when the other stratum's size was already whole and nothing was floored
+## away to pay for it.
+
+test_that("a budget design whose lower bound rounds up stays in budget", {
+  frame <- data.frame(stratum = 1:2, N = c(1001, 5000), sd = c(1, 50),
+                      mean = c(50, 60), unit_cost = c(10, 1),
+                      max_weight = c(3, NA))
+  budget <- 10 * 1001 / 3 + 500
+  fit <- n_alloc(frame, budget = budget, alloc = "optimal")
+  expect_lte(sum(frame$unit_cost * fit$detail$n_int), budget)
+  expect_true(all(fit$detail$n_int >= ceiling(fit$detail$.lower - 1e-9)))
+})
+
+## Budget rounding scores the variance the result reports
+
+test_that("budget rounding weighs each stratum by its design effect and response", {
+  fr <- data.frame(N = c(100, 100), sd = 1, mean = 1)
+  for (case in list(list(deff = c(1, 4), resp_rate = 1),
+                    list(deff = 1, resp_rate = c(1, 0.25)))) {
+    f <- n_alloc(fr, budget = 10, alloc = "optimal", deff = case$deff,
+                 resp_rate = case$resp_rate)
+    # Every whole allocation spending the budget, with at least one unit.
+    se2 <- vapply(1:9, function(k) {
+      prec_alloc(fr, n = c(k, 10 - k), deff = case$deff,
+                 resp_rate = case$resp_rate)$se^2
+    }, 0)
+    expect_identical(f$detail$n_int, c(3L, 7L))
+    expect_equal(f$operational$se^2, min(se2))
+  }
+  # A stratum without variance gives up its unit first, and an empty one
+  # with variance is never chosen.
+  expect_identical(
+    .round_within_budget(c(1, 2), c(1, 1), 2, c(0, 1), c(10, 10), c(0, 0.25)),
+    c(0L, 2L)
+  )
+  expect_identical(
+    .round_within_budget(c(1, 2), c(1, 1), 1, c(0, 1), c(10, 10), c(0, 0.25)),
+    c(0L, 1L)
+  )
+})

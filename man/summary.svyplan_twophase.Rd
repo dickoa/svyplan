@@ -3,7 +3,7 @@
 \name{summary.svyplan_twophase}
 \alias{summary.svyplan_twophase}
 \alias{print.summary.svyplan_twophase}
-\title{Analyse a two-phase allocation}
+\title{Analyze a two-phase allocation}
 \usage{
 \method{summary}{svyplan_twophase}(object, ...)
 

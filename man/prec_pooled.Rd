@@ -67,7 +67,7 @@ adjustment). It applies to every occasion and nets each size down to
 response, not attrition across a panel.}
 
 \item{overlap}{Fraction of one occasion's \strong{responding} sample carried
-into a later one, in [0, 1]. One number, meaning the same overlap at
+into a later one, in \eqn{[0, 1]}. One number, meaning the same overlap at
 every lag, or one per lag, so \code{overlap[1]} is the consecutive-occasion
 figure. A \code{\link[=design_overlap]{design_overlap()}} result is accepted directly at
 \code{resp_rate = 1}. See Details on why not below it. \code{0} (default) makes
@@ -75,7 +75,7 @@ the occasions independent, and the pooled variance is then a single
 occasion's divided by \code{occasions}.}
 
 \item{overlap_cor}{Correlation between two occasions among the units they
-share, in [0, 1]. One number for every lag, or one per lag. Default
+share, in \eqn{[0, 1]}. One number for every lag, or one per lag. Default
 0, which makes overlap irrelevant, since it is the product
 \code{overlap * overlap_cor} that moves the variance. Supply this or
 \code{cor_decay}, not both.}
@@ -150,7 +150,7 @@ them has
 
 A lag whose overlap is zero contributes exactly zero, which is the rule
 \code{\link[=prec_change]{prec_change()}} applies at \code{overlap = 0} read lag by lag. Two boundaries
-fix the whole: a fresh sample each occasion pools to
+fix the whole. A fresh sample each occasion pools to
 \eqn{Var(\bar y_t)/T}, independent averaging, and a full panel measured
 with correlation 1 pools to \eqn{Var(\bar y_t)}, the same units every
 time and averaging buys nothing.
@@ -190,7 +190,7 @@ A bare number is the overlap between the \strong{responding} samples, matching
 \strong{issued} ones, and the two coincide only at full response, so its
 result is accepted here at \code{resp_rate = 1} and refused below it. The
 conversion needs an assumption about how response at one occasion depends
-on response at another, which this function does not make: under
+on response at another, which this function does not make. Under
 independent response the responding overlap is about \code{resp_rate} times
 the issued one, and stating it is the planner's decision rather than this
 function's.

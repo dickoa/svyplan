@@ -4,7 +4,7 @@
 #' two-group, two-period difference-in-differences (DiD) contrast.
 #'
 #' `treat` and `control` already determine the contrast, so `effect` is
-#' optional: leave `n` or `power` as `NULL` to solve for it. Leaving both
+#' optional. Leave `n` or `power` as `NULL` to solve for it. Leaving both
 #' `n` and `power` supplied while `effect` is `NULL` solves for the MDE
 #' instead. Exactly one quantity must remain unknown.
 #'
@@ -51,10 +51,10 @@
 #'   sample for the same power.
 #' @param ratio Allocation ratio `n_treat / n_control` (default 1).
 #'   Used only when solving for `n` (`n = NULL`).
-#' @param overlap Panel overlap fraction in \[0, 1\] within each arm
+#' @param overlap Panel overlap fraction in \eqn{[0, 1]} within each arm
 #'   across baseline and endline.
 #' @param overlap_cor Correlation between baseline and endline outcomes within
-#'   overlapping units, in \[0, 1\].
+#'   overlapping units, in \eqn{[0, 1]}.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'
