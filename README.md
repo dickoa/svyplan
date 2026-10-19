@@ -32,7 +32,7 @@ analysis of the realized sample belongs to
 Install the development version from GitLab:
 
 ``` r
-install.packages("pak")
+## install.packages("pak")
 pak::pkg_install("gitlab::dickoa/svyplan")
 ```
 
