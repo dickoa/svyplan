@@ -110,7 +110,16 @@
 #'   \item{params}{List of additional parameters.}
 #'   \item{converged}{Logical (for iterative methods). For `"kozak"`, whether
 #'     the best run stopped on its no-change rule rather than at `max_iter`,
-#'     or the boundary sets were enumerated.}
+#'     or the boundary sets were enumerated. `TRUE` when a take-all stratum
+#'     leaves one sampled stratum, which has no boundary to search.}
+#'   \item{search}{In `cv` mode with `alloc = "neyman"` or `"optimal"`, how
+#'     the whole allocation in `$strata$n` was chosen, with the fields of
+#'     `$optimization$search` in [n_alloc()]: `family` (`"whole units"`),
+#'     `status` (`"optimal"` when the search proved the allocation the best,
+#'     `"limit"` when its node limit came first), a lower `bound` on the
+#'     sample (`"neyman"`) or cost (`"optimal"`) and the relative `gap` to
+#'     it, `nodes` and `max_nodes`, and the stratum sizes listed (`states`)
+#'     and kept (`kept`). `NULL` in the other modes, which round.}
 #' }
 #'
 #' @details
@@ -171,9 +180,15 @@
 #'   equalize stratum CVs. For a custom measure, first construct the strata,
 #'   then supply an `alloc_measure` column to [n_alloc()].
 #'
-#' Stratum allocations are rounded to integers using the ORIC method
-#' (Cont and Heidari, 2015), which preserves `sum(n) = n` while minimizing
-#' rounding distortion.
+#' With `n`, stratum allocations are rounded to integers using the ORIC
+#' method (Cont and Heidari, 2015), which preserves `sum(n) = n` while
+#' minimizing rounding distortion. With `cv` and `alloc = "neyman"`,
+#' `$strata$n` is the smallest whole allocation that meets the target at the
+#' chosen boundaries, and with `"optimal"` the cheapest one. Each sampled
+#' stratum keeps at least two units (one in a stratum of one unit), and a
+#' take-all stratum its census. The search that finds it is reported in
+#' `$search`. `"proportional"` and `"power"` are rules rather than optima,
+#' so with `cv` each of their strata is rounded up.
 #'
 #' ## What the boundaries are optimal for
 #'
@@ -215,9 +230,11 @@
 #' cannot express.
 #'
 #' The reported `$cv` is that of the integer allocation in `$strata$n`.
-#' Because `strata_bound()` rounds up in `cv` mode and [n_alloc()] reports a
-#' continuous optimum, the two totals differ by the rounding, not by the
-#' model.
+#' The top-level `n` of [n_alloc()] is a continuous optimum, so it differs
+#' from the total here by the passage to whole units, not by the model.
+#' Without a take-all stratum, and with `min_n_stratum = 2`, its whole
+#' allocation in `$detail$n_int` is the one found here for `"neyman"` and
+#' `"optimal"`.
 #'
 #' @family stratified design functions
 #' @seealso [predict.svyplan_strata] to assign new data to strata,
@@ -426,7 +443,10 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
 
   search_feasible <- TRUE
 
-  if (method == "cumrootf") {
+  if (L_work == 1L) {
+    bk <- numeric(0)
+    converged <- TRUE
+  } else if (method == "cumrootf") {
     bk <- .strata_cumrootf(x_sort, L_work, n_class)
   } else if (method == "geo") {
     bk <- .strata_geo(x_sort, L_work)
@@ -545,6 +565,27 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
                              take_all_strata, deff = deff,
                              resp_rate = resp_rate)
 
+  lo_i <- as.integer(pmin(2, alloc_res$N_h))
+  hi_i <- as.integer(alloc_res$N_h)
+  if (!is.null(take_all_strata)) {
+    lo_i[take_all_strata] <- hi_i[take_all_strata]
+  }
+  search <- NULL
+  n_int <- if (has_cv && alloc %in% c("neyman", "optimal")) {
+    whole <- .alloc_whole_element(
+      list(N_h = alloc_res$N_h, S_h = alloc_res$S_h,
+           mean_h = alloc_res$mean_h, cost_h = cost_h),
+      alloc, "cv", cv, NULL, deff, resp_rate, lo_i, hi_i,
+      .search_control(NULL)$max_nodes
+    )
+    search <- whole$search
+    whole$n_int
+  } else if (has_cv) {
+    as.integer(pmin(ceiling(alloc_res$n_h - 1e-9), alloc_res$N_h))
+  } else {
+    .round_oric_bounded(alloc_res$n_h, lo_i, hi_i)
+  }
+
   strata_df <- data.frame(
     stratum = seq_len(n_strata),
     lower   = alloc_res$lower,
@@ -553,16 +594,7 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
     share   = alloc_res$W_h,
     sd      = alloc_res$S_h,
     mean    = alloc_res$mean_h,
-    n       = if (has_cv) {
-      as.integer(pmin(ceiling(alloc_res$n_h - 1e-9), alloc_res$N_h))
-    } else {
-      lo_i <- as.integer(pmin(2, alloc_res$N_h))
-      hi_i <- as.integer(alloc_res$N_h)
-      if (!is.null(take_all_strata)) {
-        lo_i[take_all_strata] <- hi_i[take_all_strata]
-      }
-      .round_oric_bounded(alloc_res$n_h, lo_i, hi_i)
-    },
+    n       = n_int,
     take_all = if (!is.null(take_all_above)) {
       seq_len(n_strata) %in% take_all_strata
     } else {
@@ -572,7 +604,6 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
 
   conv <- if (method %in% c("lh", "kozak")) converged else NA
 
-  n_int <- strata_df$n
   V_int <- .strata_variance(
     alloc_res$W_h, alloc_res$S_h, n_int, alloc_res$N_h, deff, resp_rate
   )
@@ -599,7 +630,8 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
       cv_target = if (has_cv) cv else NULL,
       take_all_above = take_all_above
     ),
-    converged  = conv
+    converged  = conv,
+    search     = search
   )
 }
 

@@ -156,11 +156,14 @@ downstream package can consume.
 \subsection{Print and coercion}{
 
 Constrained designs (\code{n_cluster()}, \code{n_alloc()})
-carry two representations: the continuous mathematical
-optimum in the top-level fields (\code{n}, \code{cv}, \code{cost}, ...) and the
-whole-unit field design in \verb{$operational}, whose cost and precision
-are recomputed from the integer design. \code{print()} leads with the
-field design and shows the continuous optimum as a diagnostic.
+carry two representations: the continuous design in the top-level
+fields (\code{n}, \code{cv}, \code{cost}, ...) and the whole-unit field design in
+\verb{$operational}, whose cost and precision are recomputed from the
+integer design. \code{print()} leads with the field design and shows the
+continuous one as a diagnostic. For \code{n_cluster()} the continuous design
+is the continuous optimum. For \code{n_alloc()} it is the allocation rule's,
+which a two-stage frame with a finite population correction can improve
+on (see \code{\link[=n_alloc]{n_alloc()}}).
 
 \code{as.integer(x)} returns the operational design in the same shape as
 \code{x$n}: the named integer stage vector for \code{svyplan_cluster} objects,

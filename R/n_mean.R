@@ -209,7 +209,7 @@ n_mean.default <- function(
     n <- deff * CVpop2 / (cv^2 + deff * CVpop2 / N)
   }
 
-  n <- .apply_resp_rate(n, resp_rate)
+  n <- .census_size(.apply_resp_rate(n, resp_rate), N)
   .check_attainable(n, N, resp_rate)
 
   params <- list(

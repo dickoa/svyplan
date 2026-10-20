@@ -72,7 +72,7 @@ test_that("n_alloc summary print is sectioned and fits an ordinary console", {
 
   expect_match(out[1L], "Stratified allocation summary")
   expect_true(any(grepl("Overall field design", out, fixed = TRUE)))
-  expect_true(any(grepl("Continuous optimum", out, fixed = TRUE)))
+  expect_true(any(grepl("Continuous design", out, fixed = TRUE)))
   expect_true(any(grepl("Allocation by stratum", out, fixed = TRUE)))
   expect_true(any(grepl("Cost and weights by stratum", out, fixed = TRUE)))
   expect_true(any(grepl("Achieved precision by stratum", out, fixed = TRUE)))
@@ -108,7 +108,7 @@ test_that("prec_alloc summary evaluates the supplied allocation exactly", {
 
   out <- capture.output(print(s))
   expect_match(out[1L], "Allocation precision summary")
-  expect_false(any(grepl("Continuous optimum", out, fixed = TRUE)))
+  expect_false(any(grepl("Continuous design", out, fixed = TRUE)))
   expect_false(any(grepl("Allocation bounds", out, fixed = TRUE)))
   expect_true(any(grepl("Supplied", out, fixed = TRUE)))
   expect_true(all(nchar(out) <= 80L))

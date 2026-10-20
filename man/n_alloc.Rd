@@ -327,17 +327,20 @@ half the largest take. The allocation is re-solved within what each
 stratum can field at its take, and each rounded PSU count then moves
 by at most one PSU, jointly across strata, toward \code{n}. A take is
 raised above that value only when the strata at their \code{N_psu}
-limits would otherwise fall more than half a take short. In \code{cv}
+limits would otherwise fall more than half a take short, and a take
+risen past \code{N_psu} under \code{"optimal"} fields every PSU at its
+nearest whole value. In \code{cv}
 mode with \code{alloc = "optimal"} or \code{"neyman"} and no domains, the
 design is the cheapest whole allocation meeting the target (the
 smallest for \code{"neyman"}), and in \code{budget} mode with \code{"optimal"} the
 whole allocation with the smallest variance within the budget,
 each found by a search reported in \verb{$operational$status} and
 \verb{$optimization$search}. A cluster design searches whole PSU counts
-and, under \code{"optimal"} with stage costs, each take the frame leaves
-free, at any whole value the stratum's bounds and \code{N_psu} allow. A
-fixed take, and every take under \code{"neyman"}, stays at the whole
-take nearest its value. The other \code{cv} designs round each stratum
+and, under \code{"optimal"} with stage costs and \code{N_psu}, each take the
+frame leaves free, at any whole value up to the average PSU size
+\code{N / N_psu} that the stratum's bounds allow.
+A fixed take, every take under \code{"neyman"}, and every take without
+\code{N_psu} stays at the whole take nearest its value. The other \code{cv} designs round each stratum
 up so the integer design meets the target, and the other \code{budget}
 designs add units by variance reduction per unit cost so the
 integer design stays within budget. For an optimal design across
@@ -376,7 +379,9 @@ nothing.}
 \item{\code{take_all}, \code{mean}}{Present when take-all strata or stratum
 means were supplied.}
 \item{\code{n_per_psu}, \code{n_psu}}{Cluster mode only: the continuous
-per-stratum take and implied number of PSUs (\code{n / n_per_psu}).}
+per-stratum take and implied number of PSUs (\code{n / n_per_psu}). A
+free take above the cost-optimal one is a stratum fielding all its
+\code{N_psu} PSUs (see the \code{N_psu} section in Details).}
 \item{\code{n_psu_int}, \code{n_per_psu_int}}{Cluster mode only: the
 whole-unit field design (whole PSUs and whole takes), chosen so
 that \code{budget} designs stay within budget and \code{cv} designs meet
@@ -574,6 +579,30 @@ allocation at \code{N_psu * n_per_psu} ultimate units and caps the whole-unit
 design at \code{N_psu} clusters, matching the bound the fixed-take path
 already applies. Leaving it out preserves the unbounded behavior, in
 which the allocation may ask for more PSUs than a stratum contains.
+
+A take the frame leaves free is not capped in elements under
+\code{alloc = "optimal"} in the \code{n} mode, and in the \code{cv} and \code{budget} modes
+without domains, where the search moves the take. Once the allocation
+passes \code{N_psu} PSUs at the cost-optimal take, the stratum fields all of
+them and its take rises to \code{n / N_psu}, with variance and cost read at
+that take. The allocation rule is unchanged, since on both sides of the
+switch the variance a unit of cost buys is the same, exactly so without
+a finite population correction. \code{\link[=prec_alloc]{prec_alloc()}} assesses a free take the
+same way, so \code{n_alloc(prec_alloc(fit))} reproduces such a design.
+
+The search keeps a free take within the average PSU size \code{N / N_psu},
+since no PSU fields more units than it holds, even where the rule's
+continuous take is larger. Without \code{N_psu} the take stays at the rule's
+whole take.
+
+The continuous design takes the cost-optimal take of the model without a
+finite population correction. Under \code{fpc = "unit"} or \code{"stage"} a
+different take can buy more precision for the same cost, so the
+continuous design is the rule's design rather than the continuous
+optimum, and the whole design, which the search chooses under the
+correction, can do better than it. The difference is small under
+\code{"unit"} and can be large under \code{"stage"}, where a take near the PSU
+size removes most of the within-PSU variance.
 
 On its own it does \strong{not} activate a first-stage finite population
 correction. Under the default \code{fpc = "unit"} no factor keyed to the PSU

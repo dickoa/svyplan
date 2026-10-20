@@ -1786,6 +1786,21 @@ check_df <- function(df, name = "df") {
   invisible(TRUE)
 }
 
+#' A gross size within rounding of a finite frame is its census
+#'
+#' A closed-form size reaches `N` only as the target tends to zero, so a
+#' tiny target leaves `n` a few rounding steps below `N`. The precision
+#' functions then read `N - n` from two nearly equal numbers, lose its
+#' digits, and the size misses its own target by up to 13 percent. Within a
+#' relative 1e-7 of `N` the gap is a small fraction of a unit, and the
+#' census, which meets any target, is the size.
+#' @keywords internal
+#' @noRd
+.census_size <- function(n, N) {
+  near <- is.finite(N) & n >= N * (1 - 1e-7) & n <= N * (1 + 1e-9)
+  ifelse(near, N, n)
+}
+
 #' Error when a gross sample cannot be drawn from a finite frame
 #' @keywords internal
 #' @noRd

@@ -155,7 +155,7 @@
       if (residual(hi) <= 0) break
       hi <- hi * 10
     }
-    if (!is.finite(hi) || residual(hi) > tolerance) {
+    if (!is.finite(hi) || residual(hi) > 0) {
       out[k] <- hi
     } else {
       out[k] <- uniroot(residual, c(0, hi), tol = tolerance)$root
@@ -202,6 +202,11 @@
 }
 
 #' Solve a bounded fixed-coefficient Bethel allocation problem
+#'
+#' `accept` is each constraint's slack on the canonical scale, by default
+#' the feasibility tolerance. Callers holding the public metric pass
+#' `.bethel_canonical_tolerance()`, so the gate admits exactly what final
+#' validation accepts.
 #' @keywords internal
 #' @noRd
 .bethel_solve <- function(
@@ -211,7 +216,8 @@
   lower,
   upper,
   control = .bethel_control(),
-  constraint_ids = colnames(A) %||% as.character(seq_len(ncol(A)))
+  constraint_ids = colnames(A) %||% as.character(seq_len(ncol(A))),
+  accept = control$tolerance
 ) {
   if (!is.matrix(A) || !is.numeric(A) || nrow(A) == 0L || ncol(A) == 0L ||
       anyNA(A) || any(!is.finite(A)) || any(A < 0)) {
@@ -239,7 +245,7 @@
   }
   tolerance <- control$tolerance
   at_upper <- .bethel_constraint_value(A, upper) / bound
-  infeasible <- which(at_upper > 1 + tolerance)
+  infeasible <- which(at_upper > 1 + rep_len(accept, length(at_upper)))
   if (length(infeasible) > 0L) {
     return(list(
       allocation = NULL,
@@ -251,6 +257,9 @@
       kkt_tolerance = control$kkt_tolerance
     ))
   }
+  # A target the gate admits within tolerance of its value at the upper
+  # allocation is met there, so the bound becomes that value.
+  bound <- pmax(bound, .bethel_constraint_value(A, upper))
 
   cost_scale <- stats::median(cost)
   As <- sweep(A, 2L, bound, "/")
@@ -1751,6 +1760,21 @@
   list(value = value, components = components)
 }
 
+#' Each column's multiple of `q`, where the column is parallel to it
+#'
+#' `NA` for a column that is not a positive multiple of `q` to a relative
+#' 1e-10.
+#' @keywords internal
+#' @noRd
+.bethel_parallel_scale <- function(A, q) {
+  vapply(seq_len(ncol(A)), function(k) {
+    a <- A[, k]
+    if (!any(q > 0) || !any(a > 0)) return(NA_real_)
+    m <- sum(a) / sum(q)
+    if (max(abs(a - m * q)) <= 1e-10 * max(a)) m else NA_real_
+  }, 1)
+}
+
 #' Solve the fixed-budget objective problem by epsilon-constraint
 #'
 #' Appends the objective as one more reciprocal constraint column and root
@@ -1770,17 +1794,38 @@
   K <- ncol(A)
   ids <- c(problem$constraint_ids, ".objective")
   Q_at <- function(n) Q0 + sum(q_h / n)
+  accept <- .bethel_canonical_tolerance(problem, control$tolerance)
+  # A target row parallel to the objective's, as with one stratum or an
+  # objective on the targeted indicator, is the objective's constraint at
+  # its own bound. Where the objective bound implies it, it is held slack,
+  # since two coinciding constraints leave the multipliers undetermined and
+  # the solver fails near the floor budget. The record keeps the real bounds.
+  scale <- .bethel_parallel_scale(A, q_h)
   solve_at <- function(qb) {
-    .bethel_solve(
-      cbind(A, q_h), c(bound, qb - Q0), cost, lower, upper,
-      control = control, constraint_ids = ids
+    ob <- qb - Q0
+    held <- !is.na(scale) & scale * ob <= bound
+    b <- bound
+    b[held] <- pmax(bound[held], 2 * scale[held] * ob)
+    s <- .bethel_solve(
+      cbind(A, q_h), c(b, ob), cost, lower, upper,
+      control = control, constraint_ids = ids,
+      accept = c(accept, control$tolerance)
     )
+    if (any(held) && !is.null(s$allocation)) {
+      s$constraint_scale <- c(bound, ob)
+      s$constraint_residual <- .bethel_constraint_value(
+        sweep(cbind(A, q_h), 2L, c(bound, ob), "/"), s$allocation
+      ) - 1
+      s$active_precision <- which(abs(s$constraint_residual) <= 1e-6)
+    }
+    s
   }
 
   if (K > 0L) {
     base <- .bethel_solve(
       A, bound, cost, lower, upper,
-      control = control, constraint_ids = problem$constraint_ids
+      control = control, constraint_ids = problem$constraint_ids,
+      accept = accept
     )
     if (identical(base$classification, "infeasible")) {
       return(list(status = "infeasible_targets", infeasible = base$infeasible))
@@ -2023,7 +2068,8 @@
       problem$A, problem$bound, problem$cost,
       problem$lower, problem$upper,
       control = control,
-      constraint_ids = problem$constraint_ids
+      constraint_ids = problem$constraint_ids,
+      accept = .bethel_canonical_tolerance(problem, control$tolerance)
     )
     if (solved$classification == "infeasible") {
       stop(sprintf("precision targets are infeasible: %s",

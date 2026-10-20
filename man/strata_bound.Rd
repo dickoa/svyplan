@@ -121,7 +121,16 @@ expects, so the table can be passed straight to it.}
 \item{params}{List of additional parameters.}
 \item{converged}{Logical (for iterative methods). For \code{"kozak"}, whether
 the best run stopped on its no-change rule rather than at \code{max_iter},
-or the boundary sets were enumerated.}
+or the boundary sets were enumerated. \code{TRUE} when a take-all stratum
+leaves one sampled stratum, which has no boundary to search.}
+\item{search}{In \code{cv} mode with \code{alloc = "neyman"} or \code{"optimal"}, how
+the whole allocation in \verb{$strata$n} was chosen, with the fields of
+\verb{$optimization$search} in \code{\link[=n_alloc]{n_alloc()}}: \code{family} (\code{"whole units"}),
+\code{status} (\code{"optimal"} when the search proved the allocation the best,
+\code{"limit"} when its node limit came first), a lower \code{bound} on the
+sample (\code{"neyman"}) or cost (\code{"optimal"}) and the relative \code{gap} to
+it, \code{nodes} and \code{max_nodes}, and the stratum sizes listed (\code{states})
+and kept (\code{kept}). \code{NULL} in the other modes, which round.}
 }
 }
 \description{
@@ -191,9 +200,15 @@ equalize stratum CVs. For a custom measure, first construct the strata,
 then supply an \code{alloc_measure} column to \code{\link[=n_alloc]{n_alloc()}}.
 }
 
-Stratum allocations are rounded to integers using the ORIC method
-(Cont and Heidari, 2015), which preserves \code{sum(n) = n} while minimizing
-rounding distortion.
+With \code{n}, stratum allocations are rounded to integers using the ORIC
+method (Cont and Heidari, 2015), which preserves \code{sum(n) = n} while
+minimizing rounding distortion. With \code{cv} and \code{alloc = "neyman"},
+\verb{$strata$n} is the smallest whole allocation that meets the target at the
+chosen boundaries, and with \code{"optimal"} the cheapest one. Each sampled
+stratum keeps at least two units (one in a stratum of one unit), and a
+take-all stratum its census. The search that finds it is reported in
+\verb{$search}. \code{"proportional"} and \code{"power"} are rules rather than optima,
+so with \code{cv} each of their strata is rounded up.
 }
 
 \subsection{What the boundaries are optimal for}{
@@ -237,9 +252,11 @@ to a design effect that varied across strata, which a scalar argument
 cannot express.
 
 The reported \verb{$cv} is that of the integer allocation in \verb{$strata$n}.
-Because \code{strata_bound()} rounds up in \code{cv} mode and \code{\link[=n_alloc]{n_alloc()}} reports a
-continuous optimum, the two totals differ by the rounding, not by the
-model.
+The top-level \code{n} of \code{\link[=n_alloc]{n_alloc()}} is a continuous optimum, so it differs
+from the total here by the passage to whole units, not by the model.
+Without a take-all stratum, and with \code{min_n_stratum = 2}, its whole
+allocation in \verb{$detail$n_int} is the one found here for \code{"neyman"} and
+\code{"optimal"}.
 }
 }
 \examples{

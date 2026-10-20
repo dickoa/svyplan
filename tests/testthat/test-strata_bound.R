@@ -590,6 +590,141 @@ test_that("strata cv describes the integer allocation", {
   expect_true(all(y$strata$n >= 2))
 })
 
+## The cv mode's whole allocation against every whole allocation
+
+# Every whole allocation with at least two units a sampled stratum and the
+# census of a take-all stratum, with its cost, sample and variance,
+# sum W^2 S^2 deff (1 / (r n) - 1 / N).
+strata_plans <- function(fit, cost, deff, resp) {
+  d <- fit$strata
+  grid <- as.matrix(expand.grid(lapply(seq_len(nrow(d)), function(h) {
+    if (d$take_all[h]) d$N[h] else min(2, d$N[h]):d$N[h]
+  })))
+  a <- d$share^2 * d$sd^2 * deff
+  V <- drop((1 / grid) %*% (a / resp)) - sum(a / d$N)
+  list(cost = drop(grid %*% cost), n = rowSums(grid), V = V,
+       ybar = sum(d$share * d$mean))
+}
+
+test_that("a cv-mode allocation is the smallest whole allocation", {
+  for (seed in 1:12) {
+    set.seed(seed)
+    x <- round(stats::rlnorm(sample(40:70, 1), 3, 0.8), 1)
+    H <- if (seed %% 3 == 0) 3L else sample(2:3, 1)
+    cost <- round(stats::runif(H, 1, 10), 1)
+    deff <- stats::runif(1, 1, 2)
+    resp <- stats::runif(1, 0.6, 1)
+    take_all <- if (seed %% 3 == 0) stats::quantile(x, 0.95) else NULL
+    cv <- stats::runif(1, 0.06, 0.15)
+    for (alloc in c("neyman", "optimal")) {
+      fit <- strata_bound(x, n_strata = H, cv = cv, alloc = alloc,
+                          unit_cost = if (alloc == "optimal") cost,
+                          take_all_above = take_all, deff = deff,
+                          resp_rate = resp)
+      plans <- strata_plans(fit, cost, deff, resp)
+      ok <- sqrt(plans$V) / plans$ybar <= cv
+      label <- paste("seed", seed, alloc)
+      if (alloc == "optimal") {
+        expect_equal(sum(fit$strata$n * cost), min(plans$cost[ok]),
+                     tolerance = 1e-9, label = label)
+      } else {
+        expect_equal(fit$n, min(plans$n[ok]), label = label)
+      }
+      expect_lte(fit$cv, cv)
+      d <- fit$strata
+      V <- sum(d$share^2 * d$sd^2 * deff * (1 / (resp * d$n) - 1 / d$N))
+      expect_equal(fit$cv, sqrt(V) / plans$ybar, tolerance = 1e-9,
+                   label = label)
+      expect_true(all(fit$strata$n[!fit$strata$take_all] >= 2), label = label)
+      expect_identical(fit$strata$n[fit$strata$take_all],
+                       fit$strata$N[fit$strata$take_all])
+      expect_identical(fit$search$status, "optimal", label = label)
+      expect_identical(fit$search$family, "whole units")
+    }
+  }
+})
+
+test_that("n_alloc() at a floor of two finds the same whole allocation", {
+  for (seed in 1:10) {
+    set.seed(seed)
+    x <- round(stats::rlnorm(sample(60:400, 1), 3, 1), 1)
+    cost <- round(stats::runif(4, 1, 5), 1)
+    cv <- stats::runif(1, 0.03, 0.15)
+    for (alloc in c("neyman", "optimal")) {
+      uc <- if (alloc == "optimal") cost
+      sb <- strata_bound(x, n_strata = 4, cv = cv, alloc = alloc,
+                         unit_cost = uc, deff = 1.3, resp_rate = 0.8)
+      st <- sb$strata
+      st$unit_cost <- uc
+      fit <- n_alloc(st, cv = cv, alloc = alloc, deff = 1.3,
+                     resp_rate = 0.8, min_n_stratum = 2)
+      expect_identical(as.integer(fit$detail$n_int), st$n,
+                       label = paste("seed", seed, alloc))
+    }
+  }
+})
+
+test_that("one sampled stratum beside a take-all stratum needs no search", {
+  set.seed(3)
+  x <- round(stats::rlnorm(60, 3, 0.8), 1)
+  cut <- stats::quantile(x, 0.95)
+  for (target in list(list(n = 20), list(cv = 0.1))) {
+    fits <- lapply(c("lh", "kozak", "cumrootf", "geo"), function(m) {
+      do.call(strata_bound, c(list(x, n_strata = 2, method = m,
+                                   take_all_above = cut), target))
+    })
+    for (fit in fits) {
+      label <- paste(fit$method, names(target))
+      expect_identical(fit$boundaries, unname(cut), label = label)
+      expect_identical(fit$strata$N, c(57L, 3L), label = label)
+      expect_identical(fit$strata$n, fits[[1]]$strata$n, label = label)
+      expect_identical(fit$strata$take_all, c(FALSE, TRUE), label = label)
+    }
+    expect_true(fits[[1]]$converged)
+    expect_true(fits[[2]]$converged)
+    if (!is.null(target$n)) {
+      expect_identical(fits[[1]]$strata$n, c(17L, 3L))
+    } else {
+      expect_lte(fits[[1]]$cv, 0.1)
+    }
+  }
+})
+
+test_that("cv-mode rules and the n mode keep their rounding", {
+  set.seed(9)
+  x <- round(stats::rlnorm(60, 3, 1))
+  # Rounding each stratum up gives 4, 3 and 6 units at these boundaries,
+  # where 3, 3 and 5 meet the cv.
+  ney <- strata_bound(x, n_strata = 3, cv = 0.1)
+  expect_identical(ney$strata$N, c(41L, 13L, 6L))
+  expect_identical(ney$strata$n, c(3L, 3L, 5L))
+  for (alloc in c("proportional", "power")) {
+    fit <- strata_bound(x, n_strata = 3, cv = 0.1, alloc = alloc)
+    n_total <- .strata_n_for_cv(x, fit$boundaries, 0.1, alloc, 0.5,
+                                rep(1, 3))
+    cont <- .strata_alloc(x, fit$boundaries, n_total, alloc, 0.5,
+                          rep(1, 3))$n_h
+    expect_identical(fit$strata$n,
+                     as.integer(pmin(ceiling(cont - 1e-9), fit$strata$N)),
+                     label = alloc)
+    expect_null(fit$search)
+  }
+  fixed <- strata_bound(x, n_strata = 3, n = 20)
+  expect_null(fixed$search)
+  expect_identical(sum(fixed$strata$n), 20L)
+})
+
+test_that("a strata search at its node limit says so in print", {
+  set.seed(1)
+  fit <- strata_bound(stats::rlnorm(300, 3, 1), n_strata = 3, cv = 0.05)
+  expect_identical(fit$search$status, "optimal")
+  expect_false(any(grepl("node limit", capture.output(print(fit)))))
+  fit$search$status <- "limit"
+  fit$search$gap <- 0.01
+  expect_true(any(grepl("search: stopped at the node limit, gap 1%",
+                        capture.output(print(fit)), fixed = TRUE)))
+})
+
 test_that("kozak handles highly discrete data without NA crashes", {
   set.seed(7)
   # The tied tail admits no four sampled strata, so this must be a clean
@@ -653,8 +788,8 @@ test_that("deff and resp_rate default to the identity", {
   set.seed(3)
   x <- rlnorm(4000, 6, 1)
   base <- strata_bound(x, n_strata = 4, cv = 0.05, method = "lh")
-  expect_equal(base$n, 46)
-  expect_equal(base$cv, 0.04863648, tolerance = 1e-6)
+  expect_equal(base$n, 44)
+  expect_equal(base$cv, 0.0497897, tolerance = 1e-6)
   expect_equal(
     base$n,
     strata_bound(x, n_strata = 4, cv = 0.05, method = "lh",

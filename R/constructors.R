@@ -374,7 +374,8 @@
   method,
   alloc,
   params,
-  converged = NA
+  converged = NA,
+  search = NULL
 ) {
   stopifnot(
     is.numeric(boundaries),
@@ -402,7 +403,8 @@
       method = method,
       alloc = alloc,
       params = params,
-      converged = converged
+      converged = converged,
+      search = search
     ),
     class = c("svyplan_strata", "list")
   )

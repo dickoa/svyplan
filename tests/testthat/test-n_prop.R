@@ -455,3 +455,39 @@ test_that("proportion results print their expected cases", {
   prec <- capture.output(print(prec_prop(p = 0.02, n = 900)))
   expect_match(prec[4], "expected cases = 18.0")
 })
+
+test_that("a margin only a census meets gives the census under every method", {
+  # Korn-Graubard and log-odds search up to just below N, which this margin
+  # still misses there.
+  for (m in c("wald", "wilson", "beta", "logodds")) {
+    fit <- suppressWarnings(n_prop(p = 0.3, moe = 1e-9, N = 1000, method = m))
+    expect_equal(fit$n, 1000, label = m)
+    expect_error(n_prop(p = 0.3, moe = 1e-9, N = 1000, method = m,
+                        resp_rate = 0.8),
+                 "even a census yields about 800", label = m)
+  }
+})
+
+test_that("a tiny target gives the census rather than a size that misses it", {
+  # Closed-form sizes sit a few rounding steps below N here, and the
+  # precision read back from them missed the target by up to 13 percent.
+  for (t in 10^seq(-6, -10, by = -0.25)) {
+    for (m in c("wald", "wilson")) {
+      n <- suppressWarnings(n_prop(p = 0.3, moe = t, N = 1000, deff = 2,
+                                   method = m))$n
+      got <- suppressWarnings(prec_prop(p = 0.3, n = n, N = 1000, deff = 2,
+                                        method = m))$moe
+      expect_lte(got, t * (1 + 1e-8), label = paste(m, t))
+    }
+    n <- suppressWarnings(n_prop(p = 0.3, cv = t, N = 1000, deff = 2))$n
+    got <- suppressWarnings(prec_prop(p = 0.3, n = n, N = 1000, deff = 2))$cv
+    expect_lte(got, t * (1 + 1e-8), label = paste("cv", t))
+  }
+  expect_identical(suppressWarnings(n_prop(p = 0.3, moe = 1e-9, N = 1000))$n,
+                   1000)
+  # Away from the census the size still inverts its own precision.
+  fit <- n_prop(p = 0.3, moe = 1e-4, N = 1000, deff = 2)
+  expect_lt(fit$n, 1000)
+  expect_equal(prec_prop(p = 0.3, n = fit$n, N = 1000, deff = 2)$moe, 1e-4,
+               tolerance = 1e-8)
+})

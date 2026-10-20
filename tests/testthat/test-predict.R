@@ -405,6 +405,17 @@ test_that("predict works for cluster-mode n_alloc objects", {
   expect_equal(p$cv[1], x$cv, tolerance = 1e-10)
 })
 
+test_that("predict on a classic allocation keeps its domains", {
+  fr <- data.frame(region = rep(c("N", "S"), each = 2),
+                   area = rep(c("u", "r"), 2),
+                   N = c(5000, 3000, 4000, 2000), sd = c(2, 3, 2.5, 4),
+                   mean = 10)
+  x <- n_alloc(fr, cv = 0.02, domains = "region")
+  p <- predict(x, data.frame(cv = c(0.02, 0.03)))
+  expect_equal(p$n[1], x$n, tolerance = 1e-10)
+  expect_gt(p$n[1], n_alloc(fr, cv = 0.02)$n)
+})
+
 test_that("predict keeps the beta interval's df", {
   x <- n_prop(0.02, moe = 0.01, method = "beta", df = 25)
   # deff = 1 is what the object already has, so the size must not move

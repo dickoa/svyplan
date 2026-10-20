@@ -112,7 +112,8 @@ cluster_frame <- function(seed, fixed = FALSE) {
 cluster_states <- function(fr, fit, deff, resp, fpc, takes = NULL) {
   W <- fr$N / sum(fr$N)
   do.call(rbind, lapply(seq_len(nrow(fr)), function(h) {
-    b_set <- if (is.null(takes)) seq_len(fr$N[h]) else takes[h]
+    # A free take stays within the average PSU size.
+    b_set <- if (is.null(takes)) seq_len(max(1, floor(fr$N[h] / fr$N_psu[h]))) else takes[h]
     g <- expand.grid(a = seq_len(fr$N_psu[h]), b = b_set)
     g <- g[g$a * g$b <= fr$N[h] & g$a * g$b >= ceiling(fit$detail$.lower[h] - 1e-9), ]
     f <- if (fpc == "stage") pmin(1, g$b * resp[h] / (fr$N[h] / fr$N_psu[h])) else 0
@@ -215,4 +216,247 @@ test_that("a capped PSU count raises the take where that is cheaper", {
                      control = list(max_nodes = 1))
   expect_identical(n_alloc(prec_alloc(limited), cv = 0.02)$optimization$search$max_nodes, 1)
   expect_null(n_alloc(fr, n = 300)$optimization$search)
+})
+
+## A free take past the PSU universe
+
+test_that("a free take rises past the PSU universe to the cheapest design", {
+  for (seed in 1:12) {
+    fr <- cluster_frame(seed)
+    H <- nrow(fr)
+    set.seed(seed + 100)
+    fr$N_psu <- sample(2:4, H, TRUE)
+    fpc <- if (seed %% 3 == 0) "stage" else "unit"
+    label <- paste("seed", seed, fpc)
+    fit <- suppressWarnings(n_alloc(fr, cv = 0.08, alloc = "optimal",
+                                    fpc = fpc))
+    st <- cluster_states(fr, fit, rep(1, H), rep(1, H), fpc)
+    expect_equal(fit$operational$cost, best_plan(st, "cost", "V", 0.8^2),
+                 tolerance = 1e-9, label = label)
+    expect_true(all(fit$detail$n_psu <= fr$N_psu + 1e-9), label = label)
+    budget <- if (seed %% 2 == 0) 1500 else 3000
+    fb <- suppressWarnings(n_alloc(fr, budget = budget, alloc = "optimal",
+                                   fpc = fpc))
+    st <- cluster_states(fr, fb, rep(1, H), rep(1, H), fpc)
+    expect_equal(fb$operational$se^2, best_plan(st, "V", "cost", budget),
+                 tolerance = 1e-9, label = label)
+    expect_equal(prec_alloc(fb)$cv, fb$cv, tolerance = 1e-10, label = label)
+  }
+})
+
+test_that("the rule's continuous design fields every PSU at a risen take", {
+  fr <- data.frame(N = 1000, N_psu = 5, icc_psu = 0.05, sd = 5, mean = 10,
+                   cost_psu = 100, cost_ssu = 10)
+  fit <- n_alloc(fr, cv = 0.05, alloc = "optimal")
+  expect_equal(fit$detail$n_psu, 5)
+  expect_equal(fit$detail$n_per_psu, fit$detail$n / 5)
+  expect_equal(fit$cv, 0.05, tolerance = 1e-8)
+  expect_equal(prec_alloc(fit)$cv, fit$cv, tolerance = 1e-10)
+  expect_lt(fit$operational$cost,
+            n_alloc(transform(fr, n_per_psu = 100), cv = 0.05,
+                    alloc = "optimal")$operational$cost)
+  fb <- n_alloc(fr, budget = 2000, alloc = "optimal")
+  expect_equal(fb$operational$cost, 2000)
+  expect_equal(fb$detail$n_per_psu_int, 30L)
+  expect_equal(prec_alloc(fr, n = 400)$detail$n_psu, 5)
+  expect_error(n_alloc(fr, cv = 0.05, alloc = "neyman"),
+               "At the take 'n_per_psu' this allocation holds")
+})
+
+## Targets near zero variance
+
+test_that("a target near zero variance gets the census, not a refusal", {
+  fr <- data.frame(N = c(40, 20, 40), sd = c(11.7, 5.9, 11.7),
+                   mean = c(20.5, 50.5, 80.5))
+  for (cv in c(1e-7, 1e-12)) {
+    fit <- n_alloc(fr, cv = cv)
+    expect_identical(fit$detail$n_int, c(40L, 20L, 40L), label = cv)
+    expect_equal(fit$operational$cv, 0)
+    sb <- strata_bound(1:100, n_strata = 3, cv = cv, method = "cumrootf")
+    expect_equal(sb$n, 100)
+    expect_equal(sb$cv, 0)
+  }
+  expect_error(n_alloc(fr, cv = 1e-7, resp_rate = 0.9), "unattainable")
+  cl <- data.frame(N = c(400, 600), N_psu = c(20, 30), icc_psu = 0.05,
+                   sd = c(5, 3), mean = 10, cost_psu = 200, cost_ssu = 10)
+  fit <- n_alloc(cl, cv = 1e-7, alloc = "optimal")
+  expect_identical(fit$detail$n_psu_int, c(20L, 30L))
+  expect_identical(fit$detail$n_per_psu_int, c(20L, 20L))
+})
+
+test_that("a target just above the smallest attainable cv is met", {
+  fr <- data.frame(N = 100, N_psu = 10, n_per_psu = 10, icc_psu = 0.05,
+                   sd = 1, mean = 10, cost_psu = 1, cost_ssu = 1)
+  # Nonresponse keeps the variance of every PSU at its full take positive.
+  for (f in list(fr, fr[names(fr) != "n_per_psu"])) {
+    floor_cv <- prec_alloc(f, n = 100, resp_rate = 0.8)$cv
+    fit <- n_alloc(f, cv = floor_cv * (1 + 1e-10), alloc = "optimal",
+                   resp_rate = 0.8)
+    expect_identical(fit$detail$n_psu_int, 10L)
+    expect_identical(fit$detail$n_per_psu_int, 10L)
+    expect_lte(fit$operational$cv, floor_cv * (1 + 1e-10))
+    expect_error(n_alloc(f, cv = floor_cv * (1 - 1e-6), alloc = "optimal",
+                         resp_rate = 0.8))
+  }
+  el <- data.frame(N = c(40, 60), sd = c(3, 5), mean = 10)
+  floor_cv <- prec_alloc(el, n = c(40, 60), resp_rate = 0.8)$cv
+  fit <- n_alloc(el, cv = floor_cv * (1 + 1e-10), resp_rate = 0.8)
+  expect_identical(fit$detail$n_int, c(40L, 60L))
+})
+
+test_that("a target a rounding step past the floor is met, a larger one refused", {
+  fr <- data.frame(N = 100, N_psu = 10, n_per_psu = 10, icc_psu = 0.05,
+                   sd = 1, mean = 1, cost_psu = 1, cost_ssu = 1)
+  floor_cv <- prec_alloc(fr, n = 100, resp_rate = 0.8)$cv
+  el <- data.frame(N = c(40, 60), sd = c(3, 5), mean = 10)
+  el_cv <- prec_alloc(el, n = c(40, 60), resp_rate = 0.8)$cv
+  below <- 1 - .Machine$double.eps
+  fit <- n_alloc(fr, cv = floor_cv * below, alloc = "optimal",
+                 resp_rate = 0.8)
+  expect_identical(fit$detail$n_psu_int, 10L)
+  expect_identical(n_alloc(el, cv = el_cv * below, resp_rate = 0.8)$detail$n_int,
+                   c(40L, 60L))
+  # Past the rounding tolerance but within the continuous one, the
+  # whole-unit step refuses in its own words.
+  expect_error(n_alloc(fr, cv = floor_cv * (1 - 1e-10), alloc = "optimal",
+                       resp_rate = 0.8),
+               "no whole-cluster design found that attains target CV")
+  expect_error(n_alloc(el, cv = el_cv * (1 - 1e-10), resp_rate = 0.8),
+               "unattainable with whole units")
+  el$unit_cost <- c(1, 2)
+  census <- sum(el$N * el$unit_cost)
+  expect_identical(n_alloc(el, budget = census + 1e-9, alloc = "optimal")$detail$n_int,
+                   c(40L, 60L))
+})
+
+test_that("a target at the floor takes each stratum's cheapest state there", {
+  fr <- data.frame(N = c(100, 100), N_psu = 10, n_per_psu = 10,
+                   icc_psu = 0.05, sd = c(1, 0), mean = 1, cost_psu = 1,
+                   cost_ssu = 1)
+  floor_cv <- prec_alloc(fr, n = c(100, 100), resp_rate = 0.8)$cv
+  # A stratum without variance is at its floor at its fewest PSUs, here 2
+  # of 10 under min_n_stratum = 20.
+  for (k in c(1, 1 + 1e-10)) {
+    fit <- n_alloc(fr, cv = floor_cv * k, alloc = "optimal", resp_rate = 0.8,
+                   min_n_stratum = 20)
+    expect_identical(fit$detail$n_psu_int, c(10L, 2L), label = k)
+    expect_equal(fit$operational$cost, 132)
+    expect_equal(fit$optimization$search$bound, 132)
+    expect_equal(fit$optimization$search$gap, 0)
+    expect_identical(fit$operational$status, "optimal")
+    expect_lte(fit$operational$cv, floor_cv * k)
+  }
+})
+
+test_that("a target assessed at the floor is met despite rounding", {
+  # Each frame's floor, read by the search, sits a few rounding steps above
+  # the cv prec_alloc() assesses for the census.
+  for (seed in 6:10) {
+    set.seed(seed)
+    H <- sample(2:3, 1)
+    b <- sample(3:12, H)
+    P <- sample(4:12, H)
+    sd <- stats::runif(H, 0.5, 5)
+    sd[sample(H, 1)] <- if (seed %% 2) 0 else sd[1]
+    fr <- data.frame(N = b * P, N_psu = P, n_per_psu = b,
+                     icc_psu = stats::runif(H, 0.02, 0.2), sd = sd,
+                     mean = stats::runif(H, 1, 10),
+                     cost_psu = round(stats::runif(H, 1, 50)),
+                     cost_ssu = round(stats::runif(H, 1, 5)))
+    resp <- stats::runif(1, 0.6, 0.95)
+    fpc <- sample(c("unit", "stage"), 1)
+    mins <- sample(1:3, 1) * max(b)
+    cv <- prec_alloc(fr, n = fr$N, resp_rate = resp, fpc = fpc)$cv
+    fit <- function(k) {
+      n_alloc(fr, cv = cv * k, alloc = "optimal", resp_rate = resp,
+              fpc = fpc, min_n_stratum = mins)
+    }
+    at <- fit(1)
+    label <- paste("seed", seed)
+    expect_equal(at$operational$cost, fit(1 + 1e-10)$operational$cost,
+                 label = label)
+    expect_equal(at$optimization$search$bound, at$operational$cost,
+                 label = label)
+    expect_lte(at$operational$cv, cv * (1 + 1e-12))
+  }
+})
+
+test_that("a target just above a near-census plan finds that plan", {
+  for (seed in 1:6) {
+    fr <- classic_frame(seed)
+    fit <- n_alloc(fr, cv = 0.12, alloc = "optimal")
+    plans <- classic_plans(fit, 1, 1)
+    # The smallest variance short of zero, with every plan at or below it.
+    v <- min(plans$V[plans$V > 1e-12 * max(plans$V)])
+    cv <- sqrt(v) / plans$ybar * (1 + 1e-8)
+    fit <- n_alloc(fr, cv = cv, alloc = "optimal")
+    ok <- sqrt(pmax(plans$V, 0)) / plans$ybar <= cv
+    expect_equal(fit$operational$cost, min(plans$cost[ok]), tolerance = 1e-9,
+                 label = paste("seed", seed))
+    expect_lte(fit$operational$cv, cv)
+  }
+})
+
+## The take within the PSU size, and the n mode at a risen take
+
+test_that("a free take stays within the average PSU size", {
+  cl <- data.frame(N = c(400, 600), N_psu = c(20, 30), icc_psu = 0.05,
+                   sd = c(5, 3), mean = 10, cost_psu = 200, cost_ssu = 10)
+  # Under the unit correction one PSU of 400 units was a census.
+  fit <- suppressWarnings(n_alloc(cl, cv = 0.01, alloc = "optimal"))
+  expect_true(all(fit$detail$n_per_psu_int <= cl$N / cl$N_psu))
+  for (seed in 1:10) {
+    set.seed(seed)
+    H <- sample(2:4, 1)
+    N <- sample(200:3000, H)
+    fr <- data.frame(N = N, N_psu = pmax(2, round(N / stats::runif(H, 10, 60))),
+                     icc_psu = stats::runif(H, 0.02, 0.2), sd = stats::runif(H, 2, 8),
+                     mean = 10, cost_psu = stats::runif(H, 50, 500),
+                     cost_ssu = stats::runif(H, 2, 20))
+    fit <- tryCatch(suppressWarnings(n_alloc(fr, cv = stats::runif(1, 0.02, 0.1),
+                                             alloc = "optimal")),
+                    error = function(e) NULL)
+    if (is.null(fit)) next
+    expect_true(all(fit$detail$n_per_psu_int <= pmax(1, floor(fr$N / fr$N_psu))),
+                label = paste("seed", seed))
+  }
+  # Without N_psu no PSU size bounds the take, so it stays at the rule's.
+  cl$N_psu <- NULL
+  free <- suppressWarnings(n_alloc(cl, cv = 0.01, alloc = "optimal"))
+  take <- free$detail$n_per_psu
+  expect_true(all(free$detail$n_per_psu_int %in% c(floor(take), ceiling(take))))
+})
+
+test_that("the n mode raises a free take, so the round trip holds", {
+  fr <- data.frame(N = 1000, N_psu = 5, icc_psu = 0.05, sd = 5, mean = 10,
+                   cost_psu = 100, cost_ssu = 10)
+  for (fit in list(n_alloc(fr, cv = 0.05, alloc = "optimal"),
+                   n_alloc(fr, budget = 2000, alloc = "optimal"))) {
+    again <- n_alloc(prec_alloc(fit))
+    expect_identical(again$detail$n_psu_int, fit$detail$n_psu_int)
+    expect_identical(again$detail$n_per_psu_int, fit$detail$n_per_psu_int)
+    expect_equal(again$operational$cost, fit$operational$cost)
+  }
+  at <- n_alloc(fr, n = 400, alloc = "optimal")
+  expect_equal(at$cv, prec_alloc(fr, n = 400)$cv, tolerance = 1e-10)
+  expect_identical(at$detail$n_psu_int, 5L)
+  expect_identical(at$detail$n_per_psu_int, 80L)
+  expect_true(any(grepl("^continuous design: n = ",
+                        utils::capture.output(print(at)))))
+  out <- utils::capture.output(print(summary(at)))
+  expect_true("Continuous design" %in% out)
+  expect_false(any(grepl("optimum", out, ignore.case = TRUE)))
+})
+
+test_that("a frame without variance takes its lower bounds", {
+  z <- data.frame(N = c(100, 200), sd = 0, mean = 10)
+  for (fit in list(
+    suppressWarnings(n_alloc(z, cv = 0.05)),
+    suppressWarnings(n_alloc(z, budget = 50, alloc = "optimal"))
+  )) {
+    expect_identical(fit$detail$n_int, c(1L, 1L))
+    expect_identical(fit$operational$cv, 0)
+    expect_identical(fit$optimization$search$status, "optimal")
+    expect_identical(fit$optimization$search$nodes, 0)
+  }
 })

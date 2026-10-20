@@ -22,11 +22,14 @@
 #' ## Print and coercion
 #'
 #' Constrained designs (`n_cluster()`, `n_alloc()`)
-#' carry two representations: the continuous mathematical
-#' optimum in the top-level fields (`n`, `cv`, `cost`, ...) and the
-#' whole-unit field design in `$operational`, whose cost and precision
-#' are recomputed from the integer design. `print()` leads with the
-#' field design and shows the continuous optimum as a diagnostic.
+#' carry two representations: the continuous design in the top-level
+#' fields (`n`, `cv`, `cost`, ...) and the whole-unit field design in
+#' `$operational`, whose cost and precision are recomputed from the
+#' integer design. `print()` leads with the field design and shows the
+#' continuous one as a diagnostic. For `n_cluster()` the continuous design
+#' is the continuous optimum. For `n_alloc()` it is the allocation rule's,
+#' which a two-stage frame with a finite population correction can improve
+#' on (see [n_alloc()]).
 #'
 #' `as.integer(x)` returns the operational design in the same shape as
 #' `x$n`: the named integer stage vector for `svyplan_cluster` objects,
@@ -1332,9 +1335,9 @@ confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
       p = p$p,
       n = object$n,
       alpha = alpha,
-      N = p$N %||% Inf,
+      N = (p$N %||% Inf) * (p[["eligible_rate"]] %||% 1),
       deff = p$deff %||% 1,
-      resp_rate = p$resp_rate %||% 1,
+      resp_rate = (p$resp_rate %||% 1) * (p[["eligible_rate"]] %||% 1),
       method = object$method %||% "wald",
       df = p$df
     )
@@ -1421,9 +1424,9 @@ confint.svyplan_prec <- function(object, parm, level = 0.95, ...) {
       p = p$p,
       n = p$n,
       alpha = alpha,
-      N = p$N %||% Inf,
+      N = (p$N %||% Inf) * (p[["eligible_rate"]] %||% 1),
       deff = p$deff %||% 1,
-      resp_rate = p$resp_rate %||% 1,
+      resp_rate = (p$resp_rate %||% 1) * (p[["eligible_rate"]] %||% 1),
       method = object$method %||% "wald",
       df = p$df
     )
@@ -1992,6 +1995,7 @@ print.svyplan_strata <- function(x, ...) {
     ""
   }
   cat(sprintf("n = %d, cv = %.4f%s\n", ceiling(x$n), x$cv, alloc))
+  .print_search_limit(x$search)
   df <- x$strata
   df$lower <- .fmt_boundary(df$lower)
   df$upper <- .fmt_boundary(df$upper)
@@ -2059,7 +2063,7 @@ print.svyplan_strata <- function(x, ...) {
     }
     cat("\n")
     .print_search_limit(x$optimization$search)
-    cat(sprintf("continuous optimum: n = %s", .fmt_continuous_n(x$n)))
+    cat(sprintf("continuous design: n = %s", .fmt_continuous_n(x$n)))
     if (!is.na(x$cv)) {
       cat(sprintf(", cv = %.4f", x$cv))
     }
@@ -3832,7 +3836,7 @@ print.summary.svyplan_alloc <- function(x, ...) {
     show_response = any(x$assumptions$response_rate < 1)
   )
   if (!is.null(x$continuous)) {
-    cat("\nContinuous optimum\n")
+    cat("\nContinuous design\n")
     .print_alloc_summary_values(
       x$continuous,
       show_response = any(x$assumptions$response_rate < 1),

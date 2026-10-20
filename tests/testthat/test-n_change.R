@@ -258,3 +258,8 @@ test_that("predict varies change on the mean scale", {
   expect_equal(nrow(grid), 3L)
   expect_true(all(diff(grid$n2) < 0))
 })
+
+test_that("a tiny target gives the census rather than a size that misses it", {
+  expect_equal(suppressWarnings(n_change(var = 4, moe = 1e-9, N = 1000))$n,
+               1000)
+})

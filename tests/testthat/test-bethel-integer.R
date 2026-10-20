@@ -139,3 +139,60 @@ test_that("an unaffordable joint budget names the cheapest whole cost", {
                             base$operational$cost), fixed = TRUE)
   expect_match(err, "Raise 'budget' to at least", fixed = TRUE)
 })
+
+test_that("a target within tolerance below the census floor is met there", {
+  fr <- data.frame(stratum = c("A", "B"), N = c(40, 60), unit_cost = c(1, 2))
+  ms <- data.frame(stratum = c("A", "B"), name = "x", mean = 10, sd = c(3, 5))
+  floor_cv <- prec_alloc(data.frame(N = c(40, 60), sd = c(3, 5), mean = 10),
+                         n = c(40, 60), resp_rate = 0.8)$cv
+  # The public tolerance is 1e-6 on the cv ratio.
+  for (k in c(1e-12, 1e-9, 1e-7)) {
+    fit <- n_alloc(fr, measures = ms,
+                   targets = data.frame(name = "x", cv = floor_cv * (1 - k)),
+                   resp_rate = 0.8)
+    expect_identical(as.integer(fit$detail$n_int), c(40L, 60L), label = k)
+    expect_identical(fit$operational$status, "optimal")
+  }
+  # Past it the gate refuses, rather than the whole-unit step failing on a
+  # target the continuous solve admitted on its own scale.
+  expect_error(
+    n_alloc(fr, measures = ms,
+            targets = data.frame(name = "x", cv = floor_cv * (1 - 2e-6)),
+            resp_rate = 0.8),
+    "precision targets are infeasible"
+  )
+})
+
+test_that("the starting multipliers keep the top when the residual stays positive", {
+  # The constraint at the upper bounds exceeds its bound by less than the
+  # tolerance, so the bracket would hold two positive ends.
+  A <- matrix(0.5, 2, 1)
+  upper <- rep(1 - 2e-9, 2)
+  expect_gt(sum(A / upper) - 1, 0)
+  lambda <- .bethel_initial_lambda(A, c(1, 1), c(0.1, 0.1), upper)
+  expect_true(is.finite(lambda) && lambda > 0)
+})
+
+test_that("a budget at the floor solves cleanly when a target parallels the objective", {
+  # With one stratum, and with the objective the targeted indicator, the
+  # target row is the objective's at another bound. Near the floor budget
+  # the two coincided and the inner solve failed inside the root search.
+  fr <- data.frame(stratum = "A", N = 100000)
+  ms <- data.frame(stratum = "A", name = "y", p = 0.3)
+  tg <- data.frame(name = "y", cv = 0.05)
+  floor_cost <- n_alloc(fr, measures = ms, targets = tg,
+                        eligible_rate = 0.1)$operational$cost
+  for (b in c(floor_cost, floor_cost + 1)) {
+    fit <- expect_no_warning(
+      n_alloc(fr, measures = ms, targets = tg, objective = "y", budget = b,
+              eligible_rate = 0.1)
+    )
+    expect_identical(as.integer(fit$detail$n_int), as.integer(b))
+    expect_true(fit$operational$all_pass)
+    opt <- fit$optimization
+    expect_equal(opt$constraint_scale[1], fit$params$problem$bound[1])
+    expect_length(opt$constraint_residual, 2L)
+  }
+  expect_equal(.bethel_parallel_scale(cbind(c(2, 4), c(1, 3)), c(1, 2)),
+               c(2, NA))
+})

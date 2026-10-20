@@ -116,3 +116,15 @@ test_that("a CV target is planned on the magnitude of the mean", {
                phase1_cost = 1, budget = 5000)$cv
   )
 })
+
+test_that("a tiny target gives the census rather than a size that misses it", {
+  for (t in 10^seq(-6, -10, by = -0.25)) {
+    n <- suppressWarnings(n_mean(var = 4, moe = t, N = 1000, deff = 2))$n
+    got <- suppressWarnings(prec_mean(var = 4, n = n, N = 1000, deff = 2))$moe
+    expect_lte(got, t * (1 + 1e-8), label = t)
+  }
+  fit <- n_mean(var = 4, moe = 1e-3, N = 1000, deff = 2)
+  expect_lt(fit$n, 1000)
+  expect_equal(prec_mean(var = 4, n = fit$n, N = 1000, deff = 2)$moe, 1e-3,
+               tolerance = 1e-8)
+})

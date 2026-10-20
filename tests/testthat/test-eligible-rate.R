@@ -123,6 +123,22 @@ test_that("the print counts eligible respondents", {
                          capture.output(print(n_prop(p = 0.3, moe = 0.05))))))
 })
 
+test_that("the interval is as wide as the reported margin", {
+  for (method in c("wald", "wilson", "logodds", "beta")) {
+    for (rate in c(0.25, 2.6)) {
+      x <- n_prop(p = 0.3, moe = 0.04, eligible_rate = rate, N = 20000,
+                  deff = 1.5, resp_rate = 0.8, method = method)
+      prec <- prec_prop(p = 0.3, n = x$n, eligible_rate = rate, N = 20000,
+                        deff = 1.5, resp_rate = 0.8, method = method)
+      label <- paste(method, rate)
+      expect_equal(diff(confint(x)[1, ]) / 2, 0.04, ignore_attr = TRUE,
+                   tolerance = 1e-8, label = label)
+      expect_equal(diff(confint(prec)[1, ]) / 2, prec$moe,
+                   ignore_attr = TRUE, tolerance = 1e-8, label = label)
+    }
+  }
+})
+
 ## Eligible units per sampled unit: the cluster family
 
 test_that("cluster sizes equal folding a rate at most 1 into resp_rate", {
@@ -460,4 +476,18 @@ test_that("an eligible population of one unit or less is refused", {
             targets = data.frame(name = "y", cv = 0.05), eligible_rate = 0.05),
     "'N * eligible_rate', the eligible population", fixed = TRUE
   )
+})
+
+test_that("the default frontier starts at the eligible floor", {
+  fr <- data.frame(stratum = "A", N = 100000)
+  ms <- data.frame(stratum = "A", name = "y", p = 0.3)
+  tg <- data.frame(name = "y", cv = 0.05)
+  floor_cost <- n_alloc(fr, measures = ms, targets = tg,
+                        eligible_rate = 0.1)$operational$cost
+  fit <- n_alloc(fr, measures = ms, targets = tg, objective = "y",
+                 budget = 15000, eligible_rate = 0.1)
+  grid <- svyplan:::.budget_grid(fit, 5)
+  expect_equal(grid[1], floor_cost)
+  rows <- expect_no_warning(predict(fit, data.frame(budget = grid)))
+  expect_true(all(rows$.feasible))
 })

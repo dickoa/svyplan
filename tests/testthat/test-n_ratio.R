@@ -135,11 +135,15 @@ test_that("n_ratio refuses a target the frame cannot deliver", {
 })
 
 test_that("under full response the FPC keeps any CV target attainable", {
-  # n_net stays below N for every positive target, so only nonresponse can
-  # push the gross size past the frame.
-  res <- n_ratio(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
-                 cv = 1e-8, N = 400)
-  expect_lt(res$n, 400)
+  # The census meets every positive target, so only nonresponse can push
+  # the gross size past the frame. This target needs the census itself.
+  expect_warning(
+    res <- n_ratio(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
+                   cv = 1e-8, N = 400),
+    "census"
+  )
+  expect_equal(res$n, 400)
+  expect_lte(res$cv, 1e-8)
 })
 
 test_that("n_ratio takes design defaults from a plan, named and piped", {
@@ -312,4 +316,18 @@ test_that("predict rejects a column the estimand does not have", {
   res <- n_ratio(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
                  cv = 0.05)
   expect_error(predict(res, data.frame(var = c(1, 2))), "var")
+})
+
+test_that("a tiny target gives the census rather than a size that misses it", {
+  args <- list(r = 0.5, cv_num = 0.6, cv_den = 0.4, component_cor = 0.3,
+               N = 1000)
+  for (t in 10^seq(-6, -10, by = -0.25)) {
+    n <- suppressWarnings(do.call(n_ratio, c(args, cv = t)))$n
+    got <- suppressWarnings(do.call(prec_ratio, c(args, n = n)))$cv
+    expect_lte(got, t * (1 + 1e-8), label = t)
+  }
+  fit <- do.call(n_ratio, c(args, cv = 1e-3))
+  expect_lt(fit$n, 1000)
+  expect_equal(do.call(prec_ratio, c(args, n = fit$n))$cv, 1e-3,
+               tolerance = 1e-8)
 })

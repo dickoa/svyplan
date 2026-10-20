@@ -361,11 +361,13 @@ predict.svyplan_n <- function(object, newdata, ...) {
       }
       alloc_args <- list(
         frame = base$frame,
+        domains = base$domain_cols,
         n = p$n, cv = p$cv, budget = p$budget,
         alloc = base$alloc %||% "neyman",
         alpha = p$alpha,
         deff = p$deff,
         resp_rate = p$resp_rate,
+        df = base$df,
         min_n_stratum = p$min_n_stratum,
         alloc_q = p$alloc_q
       )
@@ -923,6 +925,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
         deff = p$deff,
         resp_rate = p$resp_rate,
         eligible_rate = p$eligible_rate %||% 1,
+        df = p$df,
         min_n_stratum = p$min_n_stratum,
         fpc = p$fpc %||% "unit"
       ),

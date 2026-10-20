@@ -57,3 +57,20 @@ test_that("predict on a ratio keeps the object's own df, both directions", {
   expect_equal(prec_grid$moe[1L], qt(0.975, 12) * prec_grid$se[1L],
                tolerance = 1e-10)
 })
+
+test_that("predict on an allocation keeps the fit's df", {
+  fr <- data.frame(N = c(5000, 3000), sd = c(2, 3), mean = 10)
+  x <- n_alloc(fr, n = 200, df = 5)
+  expect_equal(predict(x, data.frame(n = 200))$moe, x$moe, tolerance = 1e-10)
+
+  jf <- data.frame(stratum = c("A", "B"), N = c(50000, 30000))
+  ms <- data.frame(stratum = c("A", "B"), name = "y", p = c(0.3, 0.4))
+  tg <- data.frame(name = "y", moe = 0.03)
+  floor_cost <- n_alloc(jf, measures = ms, targets = tg,
+                        df = 5)$operational$cost
+  fit <- n_alloc(jf, measures = ms, targets = tg, objective = "y",
+                 budget = 3 * floor_cost, df = 5)
+  expect_equal(svyplan:::.budget_grid(fit, 3)[1], floor_cost)
+  short <- suppressWarnings(predict(fit, data.frame(budget = floor_cost - 1)))
+  expect_false(short$.feasible)
+})

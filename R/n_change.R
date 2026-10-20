@@ -268,6 +268,7 @@ n_change.default <- function(
     target_se, inputs$var_pair, N_pair, deff, resp_rate,
     ratio, overlap, overlap_cor
   )
+  n <- .census_size(n, if (length(n) == 1L) min(N_pair) else N_pair)
 
   n_vec <- if (length(n) == 1L) c(n, n) else n
   .check_attainable(n_vec[1L], N_pair[1L], resp_rate)

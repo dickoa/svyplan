@@ -236,7 +236,7 @@ check_component_cor <- function(component_cor, name = "component_cor") {
   q <- .q_alpha(alpha, df)
   target_cv <- .ratio_target_cv(r, moe, cv, rmoe, q)
   n <- deff * unit_relvar / (target_cv^2 + deff * unit_relvar / N)
-  n <- .apply_resp_rate(n, resp_rate)
+  n <- .census_size(.apply_resp_rate(n, resp_rate), N)
   .check_attainable(n, N, resp_rate)
   n
 }

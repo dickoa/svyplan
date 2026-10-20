@@ -219,6 +219,7 @@ n_pooled.default <- function(
   n <- .n_pooled_from_se(
     target_se, inputs$var, N, deff, resp_rate, occasions, ov$overlap, rho
   )
+  n <- .census_size(n, N)
   .check_attainable(n, N, resp_rate)
 
   prec <- .prec_engine_pooled(

@@ -431,6 +431,7 @@ n_prop.default <- function(
     binding <- if (n_cases > n) "min_cases" else "precision"
     n <- max(n, n_cases)
   }
+  n <- .census_size(n, N)
   .check_attainable(n, N, resp_rate)
 
   params <- list(
@@ -512,12 +513,14 @@ n_prop.default <- function(
 #' rather than by carrying a separate closed form, which keeps each `n_*`
 #' method an exact inverse of the corresponding `prec_*` method.
 #'
-#' `upper` bounds the search: the population size when it is finite,
-#' otherwise `NULL` to expand the bracket until the half-width falls below
-#' the target.
+#' `upper` bounds the search: just below the population size `N` when it
+#' is finite, otherwise `NULL` to expand the bracket until the half-width
+#' falls below the target. A margin the bracket's top still misses is met
+#' only by the census, so `N` comes back.
 #' @keywords internal
 #' @noRd
-.solve_n_from_moe <- function(half_width, moe, upper = NULL, what) {
+.solve_n_from_moe <- function(half_width, moe, upper = NULL, what,
+                              N = Inf) {
   gap <- function(n) half_width(n) - moe
   lower <- 1e-8
   if (gap(lower) <= 0) {
@@ -544,6 +547,8 @@ n_prop.default <- function(
         call. = FALSE
       )
     }
+  } else if (gap(upper) >= 0) {
+    return(N)
   }
   uniroot(gap, c(lower, upper), tol = .Machine$double.eps^0.75)$root
 }
@@ -595,7 +600,8 @@ n_prop.default <- function(
     },
     moe,
     upper = if (is.infinite(N)) NULL else N * (1 - 1e-12),
-    what = "Korn-Graubard"
+    what = "Korn-Graubard",
+    N = N
   )
 }
 
@@ -620,7 +626,8 @@ n_prop.default <- function(
     function(n) .logodds_moe(p, n, alpha, N, deff, df),
     e,
     upper = if (is.infinite(N)) NULL else N * (1 - 1e-12),
-    what = "log-odds"
+    what = "log-odds",
+    N = N
   )
 }
 

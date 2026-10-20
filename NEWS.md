@@ -64,8 +64,10 @@ that recommendation when available, or rounds the continuous size up.
   mode of optimal allocation the smallest whole variance the budget buys,
   each found by a search under `control = list(max_nodes =)`. In cluster mode
   the search sets each stratum's whole PSU count and, under optimal allocation
-  with stage costs, any take the frame leaves free. A fixed-`n` cluster design
-  fields whole PSUs at a whole take near its cost-optimal value.
+  with stage costs and `N_psu`, any take the frame leaves free, within the
+  average PSU size. A fixed-`n` cluster design fields whole PSUs at a whole
+  take near its cost-optimal value, or every PSU at a take risen past
+  `N_psu`.
 * Long `measures` and `targets` tables request joint constrained allocation
   across indicators and overlapping domains. Without `objective` the result is
   the cheapest design meeting every requirement, and with `objective` and
@@ -169,7 +171,10 @@ that recommendation when available, or rounds the continuous size up.
   variable by cumulative root frequency, geometric progression, LH coordinate
   optimization, or Kozak's random search, under the same four allocation
   methods `n_alloc()` offers. `$strata` matches the `n_alloc()` frame contract,
-  so the table can be handed straight on.
+  so the table can be handed straight on. With a `cv` target, Neyman and
+  optimal allocation give the smallest or cheapest whole allocation meeting
+  it at the chosen boundaries, at least two units a sampled stratum, which a
+  search proves and `$search` reports.
 * Bounded allocation satisfies the requested total together with minimum,
   maximum, and take-all constraints. Boundary searches reserve the census
   take correctly, including the full-population scaling of a target CV.
