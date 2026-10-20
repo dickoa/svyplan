@@ -586,7 +586,7 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
 #' @keywords internal
 #' @noRd
 .frontier_xy <- function(x, fr) {
-  if (is.null(x$optimization$search)) {
+  if (is.null(x$params$psu)) {
     return(list(cost = fr$cost, cv = fr$cv,
                 fitted = c(x$params$achieved$cost, sqrt(x$objective_value))))
   }

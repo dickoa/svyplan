@@ -328,7 +328,7 @@
 #' @keywords internal
 #' @noRd
 .check_register_args <- function(certainty_cutoff, n_psu_per_zone, frame,
-                                 psu, control = NULL) {
+                                 psu) {
   if (!is.null(psu)) return(invisible(NULL))
   if (!is.null(certainty_cutoff) ||
         (is.data.frame(frame) && "certainty_cutoff" %in% names(frame))) {
@@ -343,40 +343,7 @@
       call. = FALSE
     )
   }
-  if (!is.null(control)) {
-    stop(
-      "'control' applies to a PSU register: supply 'psu', or drop it",
-      call. = FALSE
-    )
-  }
   invisible(NULL)
-}
-
-#' The register search settings, with their defaults filled in
-#' @keywords internal
-#' @noRd
-.psu_control <- function(control) {
-  if (is.null(control)) control <- list()
-  if (!is.list(control) || is.data.frame(control) ||
-        (length(control) > 0L &&
-           (is.null(names(control)) || any(!nzchar(names(control)))))) {
-    stop("'control' must be a named list", call. = FALSE)
-  }
-  unknown <- setdiff(names(control), "max_nodes")
-  if (length(unknown) > 0L) {
-    stop(sprintf(
-      "unknown 'control' setting%s %s, the one known is 'max_nodes'",
-      if (length(unknown) == 1L) "" else "s",
-      paste0("'", unknown, "'", collapse = ", ")
-    ), call. = FALSE)
-  }
-  nodes <- control[["max_nodes"]] %||% 5000
-  if (!is.numeric(nodes) || length(nodes) != 1L || !is.finite(nodes) ||
-        nodes < 1 || abs(nodes - round(nodes)) > 1e-8) {
-    stop("'control$max_nodes' must be one positive whole number",
-         call. = FALSE)
-  }
-  list(max_nodes = round(nodes))
 }
 
 #' PSUs drawn per zone, 0 meaning no zones
@@ -613,7 +580,7 @@
     objective = objective, df = df, certainty_cutoff = certainty_cutoff,
     n_psu_per_zone = n_psu_per_zone
   )
-  max_nodes <- .psu_control(control)$max_nodes
+  max_nodes <- .search_control(control)$max_nodes
   stratum <- as.character(frame[["stratum"]] %||% seq_len(nrow(frame)))
   H <- nrow(frame)
   N_h <- frame$N
@@ -645,7 +612,7 @@
     if (is.null(cost_psu)) return(0)
     sum(certain * cost_psu[match(psu$stratum, stratum)])
   }
-  solve_at <- function(certain, budget, objective) {
+  solve_at <- function(certain, budget, objective, whole = FALSE) {
     m <- base_measures
     m$deff <- user_deff * vapply(seq_len(nrow(m)), function(r) {
       h <- row_h[r]
@@ -672,7 +639,7 @@
       unit_cost = unit, alpha = alpha, deff = deff,
       resp_rate = resp_rate, min_n_stratum = min_n_stratum,
       objective = objective, budget = budget, df = df,
-      .finite_prop_var = FALSE
+      .finite_prop_var = FALSE, .whole = whole
     )
   }
 
@@ -709,7 +676,7 @@
     # solved at the cost of its cheapest whole-unit design meeting the
     # targets, which its own rounding needs.
     fit <- tryCatch({
-      least <- solve_at(certain, NULL, NULL)$operational$cost +
+      least <- solve_at(certain, NULL, NULL, whole = TRUE)$operational$cost +
         visits_of(certain)
       solve_at(certain, least * (1 + 1e-9), objective)
     }, error = function(e) NULL)
@@ -823,11 +790,8 @@
   }
   fit$operational$constraints <- op$constraints
   fit$operational$all_pass <- op$pass
-  fit$operational$repair_iterations <- NULL
   fit$operational$status <- x$plan$status
   if (!is.null(x$budget)) {
-    fit$operational[c("start", "spend_iterations", "exchange_iterations")] <-
-      NULL
     fit$operational$objective <- op$objective
     fit$operational$objective_value <- op$objective_value
     fit$operational$budget_residual <- x$budget - fit$operational$cost

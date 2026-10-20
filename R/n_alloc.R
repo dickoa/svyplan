@@ -186,13 +186,15 @@
 #'   such as a geographic order, and size, largest first, is the default.
 #'   Requires `psu`. See the certainty section under Details.
 #' @param control `NULL` (default) or a list of settings for the search that
-#'   plans a `psu` register design. `max_nodes`, one positive whole number,
-#'   5,000 by default, is the number of search nodes after which the search
-#'   stops with the best design found, the status `"limit"` and a lower
-#'   bound. It finishes the node it is expanding, so it can open a few nodes
-#'   past the limit. A larger value can prove a design the default leaves at
-#'   the limit, at the cost of time. Requires `psu`. See the certainty section
-#'   under Details.
+#'   plans the whole design of a joint allocation, with or without `psu`,
+#'   and of the classic `cv` and `budget` modes that search (see `n_int`
+#'   under Value).
+#'   `max_nodes`, one positive whole number, 5,000 by default, is the number
+#'   of search nodes after which the search stops with the best design
+#'   found, the status `"limit"` and a lower bound. It finishes the node it
+#'   is expanding, so it can open a few nodes past the limit. A larger value
+#'   can prove a design the default leaves at the limit, at the cost of
+#'   time. A mode that does not search refuses it.
 #' @param objective Optional estimates whose priority-weighted relative
 #'   variance is minimized among the allocations that meet `targets` and the
 #'   budget. Either a character vector of indicator names (overall domain,
@@ -270,9 +272,21 @@
 #'       by at most one PSU, jointly across strata, toward `n`. A take is
 #'       raised above that value only when the strata at their `N_psu`
 #'       limits would otherwise fall more than half a take short. In `cv`
-#'       mode each stratum is rounded up so the integer design meets the
-#'       target. In `budget` mode units are added by variance reduction per
-#'       unit cost so the integer design stays within budget. Always inside
+#'       mode with `alloc = "optimal"` or `"neyman"` and no domains, the
+#'       design is the cheapest whole allocation meeting the target (the
+#'       smallest for `"neyman"`), and in `budget` mode with `"optimal"` the
+#'       whole allocation with the smallest variance within the budget,
+#'       each found by a search reported in `$operational$status` and
+#'       `$optimization$search`. A cluster design searches whole PSU counts
+#'       and, under `"optimal"` with stage costs, each take the frame leaves
+#'       free, at any whole value the stratum's bounds and `N_psu` allow. A
+#'       fixed take, and every take under `"neyman"`, stays at the whole
+#'       take nearest its value. The other `cv` designs round each stratum
+#'       up so the integer design meets the target, and the other `budget`
+#'       designs add units by variance reduction per unit cost so the
+#'       integer design stays within budget. For an optimal design across
+#'       domains, use joint allocation with `measures` and `targets`. Always
+#'       inside
 #'       the integerized bounds (`ceiling(.lower)`, `floor(.upper)`), except
 #'       that an `N_psu` cap bounds the whole PSU count rather than the
 #'       element count, since the whole take can round up. An error is
@@ -333,11 +347,10 @@
 #'
 #'   The result also carries an `$operational` list describing the integer
 #'   field design. In joint mode it contains total `n`, variable field `cost`,
-#'   the full target table in `constraints`, `all_pass`, and the number of
-#'   integer-repair additions. With `psu` it has no repair count and adds
-#'   `n_certain`, `n_psu_draw` and `status`, `"optimal"` when the search
-#'   proved the design the cheapest and `"limit"` when its node limit came
-#'   first. In the classic modes it also reports the applicable
+#'   the full target table in `constraints`, `all_pass`, and `status`,
+#'   `"optimal"` when the search proved the design the best and `"limit"`
+#'   when its node limit came first. With `psu` it adds `n_certain` and
+#'   `n_psu_draw`. In the classic modes it also reports the applicable
 #'   aggregate `se`, `moe`, and `cv`. Top-level quantities describe the
 #'   continuous design, while `as.integer()` returns the operational total.
 #'
@@ -366,11 +379,14 @@
 #'       the PSU's zone, numbered across strata, `NA` outside any zone.}
 #'   }
 #'
-#'   `$optimization$search` reports how the field design was chosen:
+#'   In joint mode, `$optimization$search` reports how the whole design was
+#'   chosen:
 #'   \describe{
-#'     \item{`family`}{`"voluntary"` under stage costs, where a stratum's
-#'       designs include those holding its largest PSUs in certainty below
-#'       the threshold, and `"closure"` under unit cost, where they do not.}
+#'     \item{`family`}{`"whole units"` without `psu`, where a stratum's
+#'       designs are its whole sizes or whole PSU counts. With `psu`,
+#'       `"voluntary"` under stage costs, where a stratum's designs include
+#'       those holding its largest PSUs in certainty below the threshold, and
+#'       `"closure"` under unit cost, where they do not.}
 #'     \item{`status`}{`"optimal"` or `"limit"`, as in `$operational`.}
 #'     \item{`bound`, `gap`}{A lower bound on the cost of any design in the
 #'       family that meets every target, and the relative gap
@@ -1036,8 +1052,7 @@ n_alloc.default <- function(
     return(do.call(n_alloc.default, c(.plan, list(...))))
   }
   .check_unused_dots(...)
-  .check_register_args(certainty_cutoff, n_psu_per_zone, frame, psu,
-                       control)
+  .check_register_args(certainty_cutoff, n_psu_per_zone, frame, psu)
   .check_eligible_scope(eligible_rate, frame, measures, psu)
   alloc_default <- c("neyman", "optimal", "proportional", "power")
   alloc_explicit <- !missing(alloc) && !identical(alloc, alloc_default)
@@ -1130,7 +1145,7 @@ n_alloc.default <- function(
         control = control
       )))
     }
-    return(.n_alloc_bethel(
+    fit <- .n_alloc_bethel(
       frame = frame,
       measures = measures,
       targets = targets,
@@ -1144,8 +1159,11 @@ n_alloc.default <- function(
       budget = budget,
       df = df,
       fpc = fpc,
-      .finite_prop_var = TRUE
-    ))
+      .finite_prop_var = TRUE,
+      max_nodes = .search_control(control)$max_nodes
+    )
+    fit$params$control <- control
+    return(fit)
   }
   if (!is.null(psu)) {
     stop(
@@ -1269,6 +1287,13 @@ n_alloc.default <- function(
   ) {
     stop(
       "'budget' mode with 'icc_psu' requires 'cost_psu' and 'cost_ssu' columns",
+      call. = FALSE
+    )
+  }
+  searched <- .classic_searched(alloc, mode, length(prep$domain_idx) > 0L)
+  if (!is.null(control) && !searched) {
+    stop(
+      "'control' applies where n_alloc() searches the whole design: joint allocation, and without domains the 'cv' mode of alloc = \"optimal\" or \"neyman\" and the 'budget' mode of alloc = \"optimal\"",
       call. = FALSE
     )
   }
@@ -1460,6 +1485,7 @@ n_alloc.default <- function(
   )
   params[[mode]] <- switch(mode, n = n, cv = cv, budget = budget)
 
+  whole <- NULL
   if (isTRUE(prep$cluster)) {
     opc <- .alloc_operational_cluster(
       prep,
@@ -1472,11 +1498,25 @@ n_alloc.default <- function(
       resp_rate = resp_rate,
       target_cv = if (mode == "cv") cv else NULL,
       df = df,
-      alloc_weights = a_h
+      alloc_weights = a_h,
+      alloc = alloc,
+      max_nodes = if (searched) .search_control(control)$max_nodes
     )
     detail <- opc$detail
     operational <- opc$operational
+    if (searched) {
+      whole <- list(search = opc$search)
+      params$control <- control
+    }
   } else {
+    if (searched) {
+      whole <- .alloc_whole_element(
+        prep, alloc, mode, cv, budget, deff, resp_rate, lo_i, hi_i,
+        max_nodes = .search_control(control)$max_nodes
+      )
+      detail$n_int <- whole$n_int
+      params$control <- control
+    }
     operational <- .alloc_operational_element(
       prep,
       detail,
@@ -1485,6 +1525,7 @@ n_alloc.default <- function(
       resp_rate = resp_rate,
       df = df
     )
+    operational$status <- whole$status
   }
 
   carried <- .alloc_carry_labels(detail, frame)
@@ -1502,7 +1543,8 @@ n_alloc.default <- function(
     detail = detail,
     binding = .alloc_binding_label(n_h, m_h, M_h),
     domains = domain_summary,
-    operational = operational
+    operational = operational,
+    optimization = if (!is.null(whole)) list(search = whole$search)
   )
 
   obj
@@ -1576,8 +1618,8 @@ n_alloc.svyplan_prec <- function(
       args$psu <- p$psu
       args$certainty_cutoff <- p$certainty_cutoff
       args$n_psu_per_zone <- p$n_psu_per_zone
-      args$control <- p[["control"]]
     }
+    args$control <- p[["control"]]
     return(do.call(
       n_alloc.default,
       .roundtrip_args(args, list(...), n_alloc.default)
@@ -1606,6 +1648,10 @@ n_alloc.svyplan_prec <- function(
     args$unit_cost <- p$cost_h
   } else {
     args$fpc <- p$fpc %||% "unit"
+  }
+  rebuilt <- if (!is.null(n)) "n" else if (!is.null(cv)) "cv" else "budget"
+  if (.classic_searched(args$alloc, rebuilt, length(p$domain_cols) > 0L)) {
+    args$control <- p[["control"]]
   }
   do.call(n_alloc.default, .roundtrip_args(args, list(...), n_alloc.default))
 }
@@ -2082,10 +2128,12 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       .allow_fractional_stages = !n_explicit,
       .finite_prop_var = TRUE
     )
-    return(do.call(
+    out <- do.call(
       .prec_alloc_bethel,
       .roundtrip_args(args, dots, .prec_alloc_bethel)
-    ))
+    )
+    out$params$control <- p[["control"]]
+    return(out)
   }
   n_h <- p$n_h
   if (is.null(n_h) && !is.null(obj$detail) && "n" %in% names(obj$detail)) {
@@ -2122,6 +2170,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   out$params$alloc <- p$alloc
   out$params$alloc_q <- p$alloc_q
   out$params$min_n_stratum <- p$min_n_stratum
+  out$params$control <- p[["control"]]
   out
 }
 
@@ -2943,6 +2992,274 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   as.integer(n_int)
 }
 
+#' Whether a classic allocation searches its whole design
+#'
+#' The cv mode of `"optimal"` and `"neyman"`, whose continuous allocation is
+#' the minimum-cost one, and the budget mode of `"optimal"`, without
+#' domains, for element and two-stage frames alike. The other modes and
+#' rules are rounded as rules.
+#' @keywords internal
+#' @noRd
+.classic_searched <- function(alloc, mode, domains) {
+  !domains &&
+    ((mode == "cv" && alloc %in% c("optimal", "neyman")) ||
+       (mode == "budget" && alloc == "optimal"))
+}
+
+#' The whole allocation of a classic cv or budget mode, by exact search
+#'
+#' A stratum's variance term is `a_h / n_h - c_h`, with
+#' `a_h = W_h^2 S_h^2 deff_h / resp_h` and `c_h = W_h^2 S_h^2 deff_h / N_h`,
+#' so a cv target is one column, `sum_h a_h / n_h <= (cv ybar)^2 + sum_h c_h`,
+#' held strictly so the reported cv never passes the target. `"optimal"`
+#' minimizes cost and `"neyman"` the sample. Under a budget `"optimal"`
+#' minimizes the variance, with cost over the budget as the column. A
+#' stratum without variance takes its lower bound. Returns the whole sizes,
+#' the search's status and its record.
+#' @keywords internal
+#' @noRd
+.alloc_whole_element <- function(prep, alloc, mode, cv, budget, deff,
+                                 resp_rate, lo_i, hi_i, max_nodes) {
+  H <- length(prep$N_h)
+  W <- prep$N_h / sum(prep$N_h)
+  S2 <- W^2 * prep$S_h^2 * rep_len(deff, H)
+  a <- S2 / rep_len(resp_rate, H)
+  c0 <- S2 / (prep$N_fpc_h %||% prep$N_h)
+  cost <- if (identical(alloc, "neyman")) rep(1, H) else prep$cost_h
+  n <- as.numeric(lo_i)
+  on <- a > 0
+  lo <- pmax(lo_i[on], 1)
+  hi <- hi_i[on]
+  if (mode == "cv") {
+    ybar <- .aggregate_mean(W, prep$mean_h)
+    bound <- (cv * abs(ybar))^2 + sum(c0)
+    q <- .whole_problem(cost[on], 0, 0, a[on] / bound * (1 + 2e-9), lo, hi)
+    r <- .whole_search(q, grain = .menu_grain(cost[on]),
+                       max_nodes = max_nodes)
+    offset <- sum(cost[!on] * n[!on])
+  } else {
+    room <- budget - sum(prep$cost_h[!on] * n[!on])
+    q <- .whole_problem(0, a[on],
+                        prep$cost_h[on] / (room + 1e-9 * max(1, budget)), 0,
+                        lo, hi)
+    r <- .whole_search(q, start = lo, max_nodes = max_nodes)
+    offset <- -sum(c0)
+  }
+  if (identical(r$status, "infeasible")) {
+    stop(sprintf(
+      "target 'cv' is unattainable with whole units under current constraints%s",
+      .alloc_psu_bound_note(prep)
+    ), call. = FALSE)
+  }
+  if (is.null(r$x)) {
+    stop(structure(
+      list(message = sprintf(
+        "no whole allocation was found in %d search node%s, so whether one exists is unknown. Raise 'control$max_nodes'",
+        as.integer(max_nodes), if (max_nodes == 1) "" else "s"
+      ), call = NULL),
+      class = c("svyplan_plan_unknown", "error", "condition")
+    ))
+  }
+  n[on] <- r$x
+  list(n_int = as.integer(n), status = r$status,
+       search = .whole_record(r, "whole units", max_nodes, offset = offset))
+}
+
+#' The whole field design of a two-stage cv or budget mode, by exact search
+#'
+#' A stratum's state is `a` whole PSUs at a whole take `b`. At take `b` its
+#' variance term is `C_b / a - D_b`, with `D_b` the finite population part,
+#' and its cost is `a` times the PSU's cost at `b`. Each take is a branch of
+#' `.whole_search()`, and `D_b` enters as `Dmax - D_b`, `Dmax` the largest
+#' over the stratum's listed takes, so no listed load is negative. Under
+#' `"optimal"` with
+#' stage costs a take the frame leaves free ranges over `1..b_max`. Every
+#' other take stays at `b_rule`, the whole take of the rule, since without
+#' a cost per PSU the smallest sample would always take one unit a PSU.
+#'
+#' Free takes are listed up to a window, first the rule's take and 50
+#' more, doubled while the lightest listed states miss a cv target. The
+#' takes above it are proven out. On each piece above the window `alpha` and `gamma` of the reduced
+#' cost `gamma + alpha a + beta / a` are linear in the take and `beta`
+#' falls, so `gamma + alpha + beta_lin / hi` and
+#' `gamma + 2 sqrt(alpha beta_end)` are concave lower bounds, with
+#' `beta_lin` the part of `beta b` linear in the take and `beta_end` the
+#' piece's last `beta`. A piece whose bound passes the stratum's `top` at
+#' both ends holds no state of a better plan. Otherwise the window grows
+#' over that piece and the search runs again.
+#' @keywords internal
+#' @noRd
+.alloc_whole_cluster <- function(prep, alloc, mode, cv, budget, deff,
+                                 resp_rate, lo_i, hi_i, b_rule, max_nodes) {
+  H <- length(prep$N_h)
+  W <- prep$N_h / sum(prep$N_h)
+  r_u <- rep_len(prep$unit_resp_rate_h %||% resp_rate, H)
+  r <- rep_len(resp_rate, H)
+  K <- W^2 * prep$S_raw_h^2 * rep_len(deff, H) * prep$var_ratio_psu_h
+  icc <- prep$icc_psu_h
+  fpc <- prep$fpc %||% "unit"
+  N_psu <- prep$N_psu_h %||% rep(Inf, H)
+  costed <- alloc == "optimal" && isTRUE(prep$has_stage_costs)
+  free <- costed & !prep$n_per_psu_fixed_h
+  b_max <- ifelse(free, hi_i, b_rule)
+
+  terms <- function(h, b) {
+    wf <- if (fpc == "stage") {
+      pmin(1, b * r_u[h] / (prep$N_h[h] / N_psu[h]))
+    } else {
+      0
+    }
+    g <- icc[h] * b * r_u[h] + (1 - wf) * (1 - icc[h])
+    list(
+      b = b,
+      lo = pmax(1, ceiling(lo_i[h] / b)),
+      hi = pmin(floor(hi_i[h] / b), N_psu[h]),
+      pc = if (costed) prep$cost_psu_h[h] + prep$cost_ssu_h[h] * b else b,
+      C = K[h] * g / (b * r[h]),
+      D = switch(fpc,
+                 unit = K[h] * g / prep$N_h[h],
+                 none = 0 * b,
+                 stage = rep(K[h] * icc[h] / N_psu[h], length(b))),
+      lin = K[h] * icc[h] * r_u[h] * b / (r[h] * hi_i[h])
+    )
+  }
+  takes <- function(h, w) if (free[h]) seq_len(w[h]) else b_rule[h]
+  # D_b grows with the take, or stays constant, so its largest listed value
+  # is at the window's end.
+  d_max <- function(w) {
+    vapply(seq_len(H), function(h) terms(h, w[h])$D, 1)
+  }
+  # Each stratum's state with the smallest load or cost, among the listed
+  # takes, and that value.
+  lightest <- function(w, value) {
+    lapply(seq_len(H), function(h) {
+      t <- terms(h, takes(h, w))
+      ok <- t$lo <= t$hi
+      v <- value(h, t)
+      i <- which(ok)[which.min(v[ok])]
+      list(b = t$b[i], v = v[i], a = if (mode == "cv") t$hi[i] else t$lo[i])
+    })
+  }
+  w <- ifelse(free, pmin(b_max, b_rule + 50), b_rule)
+
+  if (mode == "cv") {
+    ybar <- .aggregate_mean(W, prep$mean_h)
+    # The largest sample a take allows has the smallest variance. When the
+    # window's floor misses the target, a larger take may meet it.
+    repeat {
+      low <- lightest(w, function(h, t) t$C / t$hi - t$D)
+      if (sum(vapply(low, `[[`, 1, "v")) <=
+            (cv * abs(ybar))^2 / (1 + 2e-9)) break
+      if (all(w >= b_max)) {
+        stop(sprintf(
+          "no whole-cluster design found that attains target CV %.4g under the integer bounds%s",
+          cv, .alloc_psu_bound_note(prep)
+        ), call. = FALSE)
+      }
+      w <- pmin(b_max, ifelse(free, 2 * w, w))
+    }
+    grain <- if (costed) {
+      .menu_grain(c(prep$cost_psu_h, prep$cost_ssu_h))
+    } else {
+      1
+    }
+  } else {
+    room <- budget + 1e-9 * max(1, budget)
+    # Past the lower bound one PSU suffices and cost grows with the take.
+    w <- pmax(w, ifelse(free, pmin(b_max, pmax(1, lo_i)), w))
+    low <- lightest(w, function(h, t) t$lo * t$pc)
+    min_cost <- sum(vapply(low, `[[`, 1, "v"))
+    if (min_cost > budget + 1e-8) {
+      stop(sprintf(
+        "'budget' cannot fund one whole PSU per stratum while satisfying the lower bounds (minimum field cost = %.4g)",
+        min_cost
+      ), call. = FALSE)
+    }
+    grain <- 0
+  }
+  shape <- function(h, t, Dmax) {
+    if (mode == "cv") {
+      list(o0 = 0, o1 = t$pc, o2 = 0, g0 = (Dmax[h] - t$D) * m, g1 = 0,
+           g2 = t$C * m)
+    } else {
+      list(o0 = Dmax[h] - t$D, o1 = 0, o2 = t$C, g0 = 0, g1 = t$pc / room,
+           g2 = 0)
+    }
+  }
+
+  repeat {
+    Dmax <- d_max(w)
+    m <- if (mode == "cv") (1 + 2e-9) / ((cv * abs(ybar))^2 + sum(Dmax))
+    rows <- lapply(seq_len(H), function(h) {
+      t <- terms(h, takes(h, w))
+      ok <- t$lo <= t$hi
+      t <- lapply(t, function(v) v[ok])
+      c(list(h = rep(h, sum(ok))), t, shape(h, t, Dmax))
+    })
+    col <- function(name) {
+      unlist(lapply(rows, function(z) rep_len(z[[name]], length(z$h))),
+             use.names = FALSE)
+    }
+    owner <- col("h")
+    q <- .whole_problem(col("o1"), col("o2"), col("g1"), col("g2"),
+                        col("lo"), col("hi"), owner = owner,
+                        o0 = col("o0"), g0 = col("g0"))
+    first <- c(0, cumsum(lengths(lapply(rows, `[[`, "h"))))[seq_len(H)]
+    low <- lightest(w, if (mode == "cv") {
+      function(h, t) t$C / t$hi - t$D
+    } else {
+      function(h, t) t$lo * t$pc
+    })
+    at <- first + vapply(seq_len(H), function(h) {
+      match(low[[h]]$b, rows[[h]]$b)
+    }, 1L)
+    start_a <- vapply(low, `[[`, 1, "a")
+    r_s <- .whole_search(q, start = .whole_plan(q, start_a, branch = at),
+                         grain = grain, max_nodes = max_nodes)
+    if (is.null(r_s$x)) {
+      stop(structure(
+        list(message = sprintf(
+          "no whole-cluster design was found in %d search node%s, so whether one exists is unknown. Raise 'control$max_nodes'",
+          as.integer(max_nodes), if (max_nodes == 1) "" else "s"
+        ), call = NULL),
+        class = c("svyplan_plan_unknown", "error", "condition")
+      ))
+    }
+    grown <- w
+    for (h in which(free & w < b_max)) {
+      lam <- r_s$lambda
+      reduced <- function(b) {
+        t <- terms(h, b)
+        z <- shape(h, t, Dmax)
+        list(alpha = z$o1 + z$g1 * lam, beta = z$o2 + z$g2 * lam,
+             gamma = z$o0 + z$g0 * lam,
+             lin = t$lin * (if (mode == "cv") m * lam else 1))
+      }
+      from <- w[h] + 1
+      while (from <= b_max[h]) {
+        to <- min(b_max[h], 2 * from)
+        e <- reduced(c(from, to))
+        bound_a <- min(e$gamma + e$alpha + e$lin)
+        bound_b <- min(e$gamma + 2 * sqrt(e$alpha * e$beta[2]))
+        if (max(bound_a, bound_b) <= r_s$top[h]) {
+          grown[h] <- to
+          break
+        }
+        from <- to + 1
+      }
+    }
+    if (all(grown == w)) break
+    w <- grown
+  }
+  list(
+    a = as.integer(r_s$x),
+    b = as.integer(col("b")[r_s$branch]),
+    status = r_s$status,
+    search = .whole_record(r_s, "whole units", max_nodes,
+                           offset = if (mode == "cv") 0 else -sum(Dmax))
+  )
+}
+
 #' Operational (integer) design for an element allocation
 #'
 #' Recomputes cost and precision from the integer allocation so the
@@ -3044,7 +3361,9 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   resp_rate,
   target_cv = NULL,
   df = NULL,
-  alloc_weights = NULL
+  alloc_weights = NULL,
+  alloc = NULL,
+  max_nodes = NULL
 ) {
   H <- length(n_h)
   ps <- prep$n_per_psu_h
@@ -3151,6 +3470,13 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     }
   }
 
+  whole <- NULL
+  if (!is.null(max_nodes)) {
+    whole <- .alloc_whole_cluster(prep, alloc, mode, target_cv, budget, deff,
+                                  resp_rate, lo_i, hi_i, b_h, max_nodes)
+    b_h <- whole$b
+  }
+
   a_min <- as.integer(ceiling(lo_i / b_h))
   a_max <- as.integer(floor(hi_i / b_h))
   # hi_i counts ultimate units, and the integer take b_h chosen here need not
@@ -3211,7 +3537,9 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   )
   Cj <- W^2 * S_op^2 * deff / (b_h * resp_rate)
 
-  if (mode == "cv") {
+  if (!is.null(whole)) {
+    a_h <- whole$a
+  } else if (mode == "cv") {
     a_h <- as.integer(ceiling(
       n_h *
         (1 + icc * (b_h * resp_h - 1)) /
@@ -3337,20 +3665,19 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   } else {
     op_cv <- m$cv
   }
-  list(
-    operational = list(
-      n = sum(e_h),
-      cost = if (isTRUE(prep$has_stage_costs)) {
-        sum(a_h * psu_cost)
-      } else {
-        NA_real_
-      },
-      se = m$se,
-      moe = m$moe,
-      cv = op_cv
-    ),
-    detail = detail
+  operational <- list(
+    n = sum(e_h),
+    cost = if (isTRUE(prep$has_stage_costs)) {
+      sum(a_h * psu_cost)
+    } else {
+      NA_real_
+    },
+    se = m$se,
+    moe = m$moe,
+    cv = op_cv
   )
+  operational$status <- whole$status
+  list(operational = operational, detail = detail, search = whole$search)
 }
 
 #' @keywords internal

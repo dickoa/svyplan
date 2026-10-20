@@ -55,16 +55,24 @@ that recommendation when available, or rounds the continuous size up.
   Bankier allocation weights each stratum's population CV by a size measure
   raised to `alloc_q`. The measure is the stratum total `N * abs(mean)` unless
   a positive `alloc_measure` frame column supplies another. With that default
-  measure, `alloc_q = 1` gives Neyman allocation. In cluster mode each stratum
-  fields whole PSUs at a whole take near its cost-optimal value.
+  measure, `alloc_q = 1` gives Neyman allocation.
   Proportional and power allocation of a fixed `n` need only the stratum
   sizes, and then report no precision. `$detail` carries the frame's
   character, factor and logical columns after `stratum`.
+  Without domains, the target-`cv` mode of optimal and Neyman allocation
+  gives the cheapest whole allocation meeting the target, and the `budget`
+  mode of optimal allocation the smallest whole variance the budget buys,
+  each found by a search under `control = list(max_nodes =)`. In cluster mode
+  the search sets each stratum's whole PSU count and, under optimal allocation
+  with stage costs, any take the frame leaves free. A fixed-`n` cluster design
+  fields whole PSUs at a whole take near its cost-optimal value.
 * Long `measures` and `targets` tables request joint constrained allocation
   across indicators and overlapping domains. Without `objective` the result is
   the cheapest design meeting every requirement, and with `objective` and
   `budget` it is the best design that budget buys. A KKT-certified continuous
-  optimum is reported separately from the feasible whole-unit recommendation.
+  optimum is reported separately from the whole-unit design, which a search
+  proves the cheapest, or the best within the budget, under
+  `control = list(max_nodes =)`.
   An element-level proportion measure uses the population variance
   `N * p * (1 - p) / (N - 1)`, so a one-stratum joint allocation equals
   `n_prop()`. Multistage designs use the working variance `p * (1 - p)`.

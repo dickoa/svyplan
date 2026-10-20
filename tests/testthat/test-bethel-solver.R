@@ -144,7 +144,7 @@ test_that("integer cleanup leaves no feasible one-unit deletion", {
   )
   solved <- .bethel_solve(A, problem$bound, problem$cost,
                           problem$lower, problem$upper)
-  integer <- .integerize_bethel(solved$allocation, problem)
+  integer <- .bethel_whole_targets(problem)
   normalized <- sweep(A, 2, problem$bound, "/")
 
   for (h in which(integer$allocation > problem$lower_int)) {

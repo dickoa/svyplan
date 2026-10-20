@@ -5,8 +5,7 @@
   tolerance = 1e-6,
   kkt_tolerance = 1e-6,
   optimizer_tolerance = 1e-8,
-  max_iterations = 1000L,
-  integer_repair_iterations = 100000L
+  max_iterations = 1000L
 ) {
   check_scalar(tolerance, "tolerance")
   check_scalar(kkt_tolerance, "kkt_tolerance")
@@ -21,15 +20,11 @@
     )
   }
   max_iterations <- check_count(max_iterations, "max_iterations")
-  integer_repair_iterations <- check_count(
-    integer_repair_iterations, "integer_repair_iterations"
-  )
   list(
     tolerance = tolerance,
     kkt_tolerance = kkt_tolerance,
     optimizer_tolerance = optimizer_tolerance,
-    max_iterations = max_iterations,
-    integer_repair_iterations = integer_repair_iterations
+    max_iterations = max_iterations
   )
 }
 
@@ -1667,79 +1662,54 @@
   pmax(0, Vmax * ((1 + tolerance)^2 - 1) / problem$bound)
 }
 
-#' Construct a deterministic feasible integer allocation
+#' The cheapest whole allocation meeting every target
+#'
+#' Each stratum's state is a whole size, or a whole PSU count at the fixed
+#' takes, in `lower_int..upper_int`. A row's load `A_hk / x_h` is read as a
+#' share of its ceiling at the tolerance the assessment accepts, so the
+#' search accepts the plans `.precision_from_allocation()` passes, and
+#' `.whole_search()` finds the cheapest of them. The largest sizes give
+#' every row its smallest variance, so a row they miss is infeasible.
 #' @keywords internal
 #' @noRd
-.integerize_bethel <- function(
-  continuous,
-  problem,
-  control = .bethel_control()
-) {
-  tolerance <- control$tolerance
-  n <- pmin(
-    pmax(as.integer(ceiling(continuous - tolerance)), problem$lower_int),
-    problem$upper_int
-  )
-  normalized_A <- sweep(problem$A, 2L, problem$bound, "/")
-  accept <- 1 + .bethel_canonical_tolerance(problem, tolerance)
-  iterations <- 0L
-  repeat {
-    value <- .bethel_constraint_value(normalized_A, n)
-    violation <- pmax(value - 1, 0)
-    if (all(value <= accept)) break
-    can <- which(n < problem$upper_int)
-    if (length(can) == 0L) {
-      bad <- problem$constraint_ids[value > accept]
-      stop(sprintf("no feasible integer allocation meets constraints: %s",
-                   paste(bad, collapse = ", ")), call. = FALSE)
-    }
-    score <- vapply(can, function(h) {
-      gain <- normalized_A[h, ] * (1 / n[h] - 1 / (n[h] + 1))
-      sum(pmin(gain, violation)) / problem$cost[h]
-    }, numeric(1L))
-    h <- can[which.max(score)]
-    if (!is.finite(score[which.max(score)]) || score[which.max(score)] <= 0) {
-      stop("integer repair could not reduce the violated constraints",
-           call. = FALSE)
-    }
-    n[h] <- n[h] + 1L
-    iterations <- iterations + 1L
-    if (iterations > control$integer_repair_iterations) {
-      stop("integer allocation repair exceeded its iteration limit",
-           call. = FALSE)
-    }
+.bethel_whole_targets <- function(problem, control = .bethel_control(),
+                                  max_nodes = 5000) {
+  accept <- 1 + .bethel_canonical_tolerance(problem, control$tolerance)
+  H <- length(problem$cost)
+  load <- sweep(problem$A, 2L, problem$bound * accept, "/")
+  q <- .whole_problem(problem$cost, 0, matrix(0, H, ncol(load)), load,
+                      problem$lower_int, problem$upper_int)
+  r <- .whole_search(q, grain = .menu_grain(problem$cost),
+                     max_nodes = max_nodes)
+  if (identical(r$status, "infeasible")) {
+    bad <- problem$constraint_ids[
+      .whole_load(q, .whole_plan(q, q$hi)) > 1 + 1e-9
+    ]
+    stop(sprintf("no feasible integer allocation meets constraints: %s",
+                 paste(bad, collapse = ", ")), call. = FALSE)
   }
-
-  repeat {
-    can <- which(n > problem$lower_int)
-    if (length(can) == 0L) break
-    loss <- vapply(can, function(h) {
-      sum(normalized_A[h, ] * (1 / (n[h] - 1) - 1 / n[h])) /
-        problem$cost[h]
-    }, numeric(1L))
-    accepted <- FALSE
-    for (h in can[order(loss, problem$stratum_ids[can])]) {
-      candidate <- n
-      candidate[h] <- candidate[h] - 1L
-      if (all(.bethel_constraint_value(normalized_A, candidate) <= accept)) {
-        n <- candidate
-        accepted <- TRUE
-        break
-      }
-    }
-    if (!accepted) break
+  if (is.null(r$x)) {
+    stop(structure(
+      list(message = sprintf(
+        "no whole allocation meeting every target was found in %d search node%s, so whether one exists is unknown. Raise 'control$max_nodes'",
+        as.integer(max_nodes), if (max_nodes == 1) "" else "s"
+      ), call = NULL),
+      class = c("svyplan_plan_unknown", "error", "condition")
+    ))
   }
-  evaluation <- .precision_from_allocation(problem, n, tolerance = tolerance)
+  evaluation <- .precision_from_allocation(problem, r$x,
+                                           tolerance = control$tolerance)
   if (!evaluation$all_pass || !evaluation$bounds_pass) {
     stop("internal error: integer allocation failed final validation",
          call. = FALSE)
   }
   list(
-    allocation = as.integer(n),
+    allocation = as.integer(r$x),
     cost = evaluation$cost,
     constraints = evaluation$constraints,
     all_pass = evaluation$all_pass,
-    repair_iterations = iterations
+    status = r$status,
+    search = .whole_record(r, "whole units", max_nodes)
   )
 }
 
@@ -1918,221 +1888,75 @@
   )
 }
 
-#' Construct a budget-feasible integer allocation
+#' The whole allocation the budget buys best, every target held
 #'
-#' `ceiling()` is not a safe start under a budget. This starts from the floor
-#' of the continuous solution and repairs hard precision violations by greatest
-#' constraint reduction per unit cost. When the budget-optimal point saturates
-#' both the budget and a target, that repair cannot fit, so the fallback start
-#' is the cheapest target-feasible integer allocation. From whichever start is
-#' affordable, residual budget is spent by greatest objective reduction per unit
-#' cost and improving pairwise exchanges are applied. The result is a feasible,
-#' locally improved recommendation, not a globally optimal integer allocation.
+#' The cost a plan minimizes is the objective's `sum_h q_h / x_h`, and field
+#' cost over the budget is one more column, ahead of the targets, at the
+#' tolerances the assessment accepts. The search starts from the cheapest
+#' plan, the stratum lower bounds, or with targets from the cheapest whole
+#' plan meeting them. That plan's cost proves a budget too small to fund
+#' the targets, and a node limit reached before it is found leaves the
+#' answer unknown.
 #' @keywords internal
 #' @noRd
-.integerize_bethel_budget <- function(
-  continuous,
-  problem,
-  budget,
-  control = .bethel_control(),
-  base_continuous = NULL,
-  resolve = NULL
-) {
+.bethel_whole_budget <- function(problem, budget, control = .bethel_control(),
+                                 max_nodes = 5000) {
   tolerance <- control$tolerance
   cost <- problem$cost
-  lower_int <- problem$lower_int
-  upper_int <- problem$upper_int
-  q_h <- problem$objective$q_h
-  normalized_A <- sweep(problem$A, 2L, problem$bound, "/")
-  has_targets <- ncol(normalized_A) > 0L
-  accept <- 1 + .bethel_canonical_tolerance(problem, tolerance)
+  H <- length(cost)
   budget_tol <- tolerance * max(1, abs(budget))
-  max_scan <- 200L
-
-  cost_of <- function(x) sum(cost * x)
-  feasible <- function(x) {
-    !has_targets ||
-      all(.bethel_constraint_value(normalized_A, x) <= accept)
-  }
-  gain_up <- function(h, x) q_h[h] * (1 / x[h] - 1 / (x[h] + 1))
-  loss_down <- function(h, x) q_h[h] * (1 / (x[h] - 1) - 1 / x[h])
-
-  if (cost_of(lower_int) > budget + budget_tol) {
+  lowest <- sum(cost * problem$lower_int)
+  if (lowest > budget + budget_tol) {
     stop(sprintf(
       "no integer allocation fits the budget: the smallest allocation satisfying the stratum bounds costs %.6g against a budget of %.6g",
-      cost_of(lower_int), budget
+      lowest, budget
     ), call. = FALSE)
   }
-
-  # Repair upward by greatest constraint reduction per unit cost. Returns NULL
-  # when the stratum upper bounds cannot absorb the remaining violation.
-  repairs <- 0L
-  repair_targets <- function(x) {
-    repeat {
-      value <- .bethel_constraint_value(normalized_A, x)
-      if (all(value <= accept)) return(x)
-      violation <- pmax(value - 1, 0)
-      can <- which(x < upper_int)
-      if (length(can) == 0L) return(NULL)
-      score <- vapply(can, function(h) {
-        sum(pmin(normalized_A[h, ] * (1 / x[h] - 1 / (x[h] + 1)), violation)) /
-          cost[h]
-      }, numeric(1L))
-      best <- which.max(score)
-      if (!is.finite(score[best]) || score[best] <= 0) return(NULL)
-      x[can[best]] <- x[can[best]] + 1L
-      repairs <<- repairs + 1L
-      if (repairs > control$integer_repair_iterations) {
-        stop("integer allocation repair exceeded its iteration limit",
-             call. = FALSE)
+  K <- ncol(problem$A)
+  start <- problem$lower_int
+  if (K > 0L) {
+    cheapest <- .bethel_whole_targets(problem, control, max_nodes)
+    if (cheapest$cost > budget + budget_tol) {
+      if (cheapest$search$bound > budget + budget_tol) {
+        # Rounded up, so the number named is itself affordable.
+        stop(sprintf(
+          paste0(
+            "no integer allocation meets the precision targets within the ",
+            "budget: the cheapest target-feasible integer allocation costs ",
+            "%.6g against a budget of %.6g.\n",
+            "  Raise 'budget' to at least %.2f, or relax the targets.\n",
+            "  A budget carried over from a minimum-cost fit falls just short ",
+            "like this by construction: that cost is the continuous optimum, ",
+            "and whole units cost slightly more."
+          ),
+          cheapest$cost, budget, ceiling(cheapest$cost * 100) / 100
+        ), call. = FALSE)
       }
+      stop(structure(
+        list(message = sprintf(
+          "no whole allocation meeting the precision targets within 'budget' was found in %d search node%s, so whether one exists is unknown. The cheapest found costs %.6g and none costs less than %.6g. Raise 'control$max_nodes'",
+          as.integer(max_nodes), if (max_nodes == 1) "" else "s",
+          cheapest$cost, cheapest$search$bound
+        ), call = NULL),
+        class = c("svyplan_plan_unknown", "error", "condition")
+      ))
     }
+    start <- cheapest$allocation
   }
-
-  # Shed the cheapest objective loss per unit of cost saved, never breaking a
-  # target. Returns NULL when nothing further can be removed.
-  trim_to_budget <- function(x) {
-    if (is.null(x)) return(NULL)
-    guard <- 0L
-    while (cost_of(x) > budget + budget_tol) {
-      can <- which(x > lower_int)
-      if (length(can) == 0L) return(NULL)
-      penalty <- vapply(can, function(h) loss_down(h, x) / cost[h], numeric(1L))
-      accepted <- FALSE
-      for (h in can[order(penalty, problem$stratum_ids[can])]) {
-        candidate <- x
-        candidate[h] <- candidate[h] - 1L
-        if (feasible(candidate)) {
-          x <- candidate
-          accepted <- TRUE
-          break
-        }
-      }
-      if (!accepted) return(NULL)
-      guard <- guard + 1L
-      if (guard > control$integer_repair_iterations) return(NULL)
-    }
-    x
+  accept <- 1 + .bethel_canonical_tolerance(problem, tolerance)
+  load <- sweep(problem$A, 2L, problem$bound * accept, "/")
+  q <- .whole_problem(
+    0, problem$objective$q_h,
+    cbind(cost / (budget + budget_tol), matrix(0, H, K)),
+    cbind(0, load),
+    problem$lower_int, problem$upper_int
+  )
+  r <- .whole_search(q, start = start, max_nodes = max_nodes)
+  if (is.null(r$x)) {
+    stop("internal error: the budget search lost the plan it started from",
+         call. = FALSE)
   }
-
-  clip <- function(x) pmin(pmax(as.integer(x), lower_int), upper_int)
-  affordable <- function(x) {
-    if (is.null(x) || cost_of(x) > budget + budget_tol) NULL else x
-  }
-  # Neither rounding is reliable alone, so both are tried and a re-solve at a
-  # reduced budget backs them up.
-  starts <- list()
-  candidate_budget <- budget
-  point <- continuous
-  for (attempt in seq_len(4L)) {
-    up <- repair_targets(clip(ceiling(point - tolerance)))
-    down <- affordable(repair_targets(clip(floor(point + tolerance))))
-    trimmed <- trim_to_budget(up)
-    if (!is.null(down)) starts[[paste0("floor", attempt)]] <- down
-    if (!is.null(trimmed)) starts[[paste0("ceiling", attempt)]] <- trimmed
-    if (length(starts) > 0L || is.null(resolve) || is.null(up)) break
-    excess <- cost_of(up) - budget
-    if (!(excess > 0)) break
-    candidate_budget <- candidate_budget - excess
-    point <- resolve(candidate_budget)
-    if (is.null(point)) break
-  }
-  starts$cheapest <- affordable(if (!has_targets) lower_int else
-    .integerize_bethel(base_continuous %||% continuous, problem, control)$allocation)
-  starts <- starts[!vapply(starts, is.null, logical(1L))]
-  if (length(starts) == 0L) {
-    cheapest_cost <- if (has_targets) {
-      cost_of(.integerize_bethel(
-        base_continuous %||% continuous, problem, control
-      )$allocation)
-    } else cost_of(lower_int)
-    # Round the suggestion up so the printed number is itself affordable,
-    # rather than a truncation of a cost it does not actually cover.
-    suggest <- ceiling(cheapest_cost * 100) / 100
-    stop(sprintf(
-      paste0(
-        "no integer allocation meets the precision targets within the ",
-        "budget: the cheapest target-feasible integer allocation costs ",
-        "%.6g against a budget of %.6g.\n",
-        "  Raise 'budget' to at least %.2f, or relax the targets.\n",
-        "  A budget carried over from a minimum-cost fit falls just short ",
-        "like this by construction: that cost is the continuous optimum, ",
-        "and whole units cost slightly more."
-      ),
-      cheapest_cost, budget, suggest
-    ), call. = FALSE)
-  }
-
-  exchange_once <- function(x) {
-    remaining <- budget - cost_of(x)
-    donors <- which(x > lower_int)
-    receivers <- which(x < upper_int)
-    if (length(donors) == 0L || length(receivers) == 0L) return(NULL)
-    give <- vapply(donors, function(h) loss_down(h, x), numeric(1L))
-    take <- vapply(receivers, function(h) gain_up(h, x), numeric(1L))
-    gain <- outer(take, give, "-")
-    affordable <- outer(cost[receivers], cost[donors], "-") <=
-      remaining + budget_tol
-    gain[!(affordable & outer(receivers, donors, "!="))] <- -Inf
-    threshold <- 1e-10 * max(sum(q_h / x), .Machine$double.eps)
-    if (max(gain) <= threshold) return(NULL)
-    ranked <- utils::head(order(gain, decreasing = TRUE), max_scan)
-    for (idx in ranked) {
-      if (gain[idx] <= threshold) break
-      i <- (idx - 1L) %% length(receivers) + 1L
-      j <- (idx - 1L) %/% length(receivers) + 1L
-      candidate <- x
-      candidate[donors[j]] <- candidate[donors[j]] - 1L
-      candidate[receivers[i]] <- candidate[receivers[i]] + 1L
-      if (feasible(candidate)) return(candidate)
-    }
-    NULL
-  }
-
-  # Spend affordable residual budget by greatest objective reduction per unit
-  # cost (adding units can never break a target), then apply improving
-  # exchanges, until neither moves.
-  improve <- function(x) {
-    spends <- 0L
-    exchanges <- 0L
-    repeat {
-      changed <- FALSE
-      repeat {
-        remaining <- budget - cost_of(x)
-        can <- which(x < upper_int & cost <= remaining)
-        if (length(can) == 0L) break
-        score <- vapply(can, function(h) gain_up(h, x) / cost[h], numeric(1L))
-        best <- which.max(score)
-        if (!is.finite(score[best]) || score[best] <= 0) break
-        x[can[best]] <- x[can[best]] + 1L
-        spends <- spends + 1L
-        changed <- TRUE
-        if (spends > control$integer_repair_iterations) break
-      }
-      swapped <- exchange_once(x)
-      if (!is.null(swapped)) {
-        x <- swapped
-        exchanges <- exchanges + 1L
-        changed <- TRUE
-      }
-      if (!changed || exchanges > control$max_iterations) break
-    }
-    list(allocation = x, spends = spends, exchanges = exchanges,
-         objective = sum(q_h / x))
-  }
-
-  improved <- lapply(starts, improve)
-  chosen <- improved[[which.min(
-    vapply(improved, function(z) z$objective, numeric(1L))
-  )]]
-  n <- chosen$allocation
-  spends <- chosen$spends
-  exchanges <- chosen$exchanges
-  start_used <- names(starts)[which.min(
-    vapply(improved, function(z) z$objective, numeric(1L))
-  )]
-
-  evaluation <- .precision_from_allocation(problem, n, tolerance = tolerance)
+  evaluation <- .precision_from_allocation(problem, r$x, tolerance = tolerance)
   if (!evaluation$all_pass || !evaluation$bounds_pass) {
     stop("internal error: integer allocation failed final validation",
          call. = FALSE)
@@ -2141,19 +1965,18 @@
     stop("internal error: integer allocation exceeded the budget",
          call. = FALSE)
   }
-  objective <- .bethel_objective_value(problem, n)
+  objective <- .bethel_objective_value(problem, r$x)
   list(
-    allocation = as.integer(n),
+    allocation = as.integer(r$x),
     cost = evaluation$cost,
     constraints = evaluation$constraints,
     all_pass = evaluation$all_pass,
     objective = objective$components,
     objective_value = objective$value,
     budget_residual = budget - evaluation$cost,
-    repair_iterations = repairs,
-    start = start_used,
-    spend_iterations = spends,
-    exchange_iterations = exchanges
+    status = r$status,
+    search = .whole_record(r, "whole units", max_nodes,
+                           offset = problem$objective$Q0)
   )
 }
 
@@ -2174,7 +1997,9 @@
   df = NULL,
   fpc = "unit",
   .finite_prop_var,
-  eligible_rate = 1
+  eligible_rate = 1,
+  max_nodes = 5000,
+  .whole = TRUE
 ) {
   control <- .bethel_control()
   problem <- .build_bethel_problem(
@@ -2258,18 +2083,24 @@
     tolerance = control$tolerance
   )
   continuous_objective <- .bethel_objective_value(problem, allocation)
-  integer <- if (mode == "targets") {
-    .integerize_bethel(allocation, problem, control)
+  # The register planner sizes its own whole design and needs only the
+  # continuous relaxation, so it skips the search.
+  integer <- if (!.whole) {
+    rounded <- pmin(pmax(ceiling(allocation - control$tolerance),
+                         problem$lower_int), problem$upper_int)
+    list(allocation = rounded, cost = sum(problem$cost * rounded),
+         constraints = continuous$constraints, all_pass = NA, status = NA,
+         objective = continuous_objective$components,
+         objective_value = continuous_objective$value,
+         budget_residual = if (!is.null(budget)) {
+           budget - sum(problem$cost * rounded)
+         })
+  } else if (mode == "targets") {
+    .bethel_whole_targets(problem, control, max_nodes)
   } else {
-    .integerize_bethel_budget(
-      allocation, problem, budget, control,
-      base_continuous = fit$base_allocation,
-      resolve = function(b) {
-        retry <- .bethel_budget_solve(problem, b, control)
-        if (identical(retry$status, "optimal")) retry$allocation else NULL
-      }
-    )
+    .bethel_whole_budget(problem, budget, control, max_nodes)
   }
+  optimization$search <- integer$search
   decision <- allocation
   decision_int <- integer$allocation
   n <- .bethel_to_ultimate(problem, decision)
@@ -2311,15 +2142,12 @@
     cost = integer$cost,
     constraints = integer$constraints,
     all_pass = integer$all_pass,
-    repair_iterations = integer$repair_iterations
+    status = integer$status
   )
   if (mode == "budget_objective") {
     operational$objective <- integer$objective
     operational$objective_value <- integer$objective_value
     operational$budget_residual <- integer$budget_residual
-    operational$start <- integer$start
-    operational$spend_iterations <- integer$spend_iterations
-    operational$exchange_iterations <- integer$exchange_iterations
   }
   params <- list(
     frame = frame,

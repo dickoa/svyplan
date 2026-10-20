@@ -229,13 +229,15 @@ such as a geographic order, and size, largest first, is the default.
 Requires \code{psu}. See the certainty section under Details.}
 
 \item{control}{\code{NULL} (default) or a list of settings for the search that
-plans a \code{psu} register design. \code{max_nodes}, one positive whole number,
-5,000 by default, is the number of search nodes after which the search
-stops with the best design found, the status \code{"limit"} and a lower
-bound. It finishes the node it is expanding, so it can open a few nodes
-past the limit. A larger value can prove a design the default leaves at
-the limit, at the cost of time. Requires \code{psu}. See the certainty section
-under Details.}
+plans the whole design of a joint allocation, with or without \code{psu},
+and of the classic \code{cv} and \code{budget} modes that search (see \code{n_int}
+under Value).
+\code{max_nodes}, one positive whole number, 5,000 by default, is the number
+of search nodes after which the search stops with the best design
+found, the status \code{"limit"} and a lower bound. It finishes the node it
+is expanding, so it can open a few nodes past the limit. A larger value
+can prove a design the default leaves at the limit, at the cost of
+time. A mode that does not search refuses it.}
 
 \item{objective}{Optional estimates whose priority-weighted relative
 variance is minimized among the allocations that meet \code{targets} and the
@@ -326,9 +328,21 @@ stratum can field at its take, and each rounded PSU count then moves
 by at most one PSU, jointly across strata, toward \code{n}. A take is
 raised above that value only when the strata at their \code{N_psu}
 limits would otherwise fall more than half a take short. In \code{cv}
-mode each stratum is rounded up so the integer design meets the
-target. In \code{budget} mode units are added by variance reduction per
-unit cost so the integer design stays within budget. Always inside
+mode with \code{alloc = "optimal"} or \code{"neyman"} and no domains, the
+design is the cheapest whole allocation meeting the target (the
+smallest for \code{"neyman"}), and in \code{budget} mode with \code{"optimal"} the
+whole allocation with the smallest variance within the budget,
+each found by a search reported in \verb{$operational$status} and
+\verb{$optimization$search}. A cluster design searches whole PSU counts
+and, under \code{"optimal"} with stage costs, each take the frame leaves
+free, at any whole value the stratum's bounds and \code{N_psu} allow. A
+fixed take, and every take under \code{"neyman"}, stays at the whole
+take nearest its value. The other \code{cv} designs round each stratum
+up so the integer design meets the target, and the other \code{budget}
+designs add units by variance reduction per unit cost so the
+integer design stays within budget. For an optimal design across
+domains, use joint allocation with \code{measures} and \code{targets}. Always
+inside
 the integerized bounds (\code{ceiling(.lower)}, \code{floor(.upper)}), except
 that an \code{N_psu} cap bounds the whole PSU count rather than the
 element count, since the whole take can round up. An error is
@@ -389,11 +403,10 @@ cut into, so \code{n_psu_draw = n_zone * n_psu_per_zone}.}
 
 The result also carries an \verb{$operational} list describing the integer
 field design. In joint mode it contains total \code{n}, variable field \code{cost},
-the full target table in \code{constraints}, \code{all_pass}, and the number of
-integer-repair additions. With \code{psu} it has no repair count and adds
-\code{n_certain}, \code{n_psu_draw} and \code{status}, \code{"optimal"} when the search
-proved the design the cheapest and \code{"limit"} when its node limit came
-first. In the classic modes it also reports the applicable
+the full target table in \code{constraints}, \code{all_pass}, and \code{status},
+\code{"optimal"} when the search proved the design the best and \code{"limit"}
+when its node limit came first. With \code{psu} it adds \code{n_certain} and
+\code{n_psu_draw}. In the classic modes it also reports the applicable
 aggregate \code{se}, \code{moe}, and \code{cv}. Top-level quantities describe the
 continuous design, while \code{as.integer()} returns the operational total.
 
@@ -422,11 +435,14 @@ within its stratum, \code{NA} for a certainty PSU.}
 the PSU's zone, numbered across strata, \code{NA} outside any zone.}
 }
 
-\verb{$optimization$search} reports how the field design was chosen:
+In joint mode, \verb{$optimization$search} reports how the whole design was
+chosen:
 \describe{
-\item{\code{family}}{\code{"voluntary"} under stage costs, where a stratum's
-designs include those holding its largest PSUs in certainty below
-the threshold, and \code{"closure"} under unit cost, where they do not.}
+\item{\code{family}}{\code{"whole units"} without \code{psu}, where a stratum's
+designs are its whole sizes or whole PSU counts. With \code{psu},
+\code{"voluntary"} under stage costs, where a stratum's designs include
+those holding its largest PSUs in certainty below the threshold, and
+\code{"closure"} under unit cost, where they do not.}
 \item{\code{status}}{\code{"optimal"} or \code{"limit"}, as in \verb{$operational}.}
 \item{\code{bound}, \code{gap}}{A lower bound on the cost of any design in the
 family that meets every target, and the relative gap

@@ -86,7 +86,7 @@ test_that("joint result schemas are stable across one to three stages", {
 
     expect_identical(names(fit$constraints), constraint_names)
     expect_identical(names(fit$operational), c(
-      "n", "cost", "constraints", "all_pass", "repair_iterations"
+      "n", "cost", "constraints", "all_pass", "status"
     ))
     expect_identical(names(assessed$bounds), bounds_names)
     expect_identical(fit$params$stages, stages)
@@ -102,7 +102,7 @@ test_that("joint result schemas are stable across one to three stages", {
   }
 })
 
-test_that("integer repair is feasible and near the exhaustive tiny optimum", {
+test_that("the whole allocation is the exhaustive tiny optimum", {
   set.seed(919)
   for (case in seq_len(40)) {
     H <- sample(2:4, 1)
@@ -115,8 +115,10 @@ test_that("integer repair is feasible and near the exhaustive tiny optimum", {
     witness <- candidates[sample(nrow(candidates), 1), ]
     bound <- drop(crossprod(A, 1 / witness)) * runif(K, 1, 1.3)
     cost <- runif(H, 0.5, 3)
+    # The tolerance the assessment accepts, with no constant variance part.
+    accept <- 1 + (1 + 1e-6)^2 - 1
     feasible <- apply(candidates, 1, function(n) {
-      all(drop(crossprod(A, 1 / n)) <= bound * (1 + 1e-6))
+      all(drop(crossprod(A, 1 / n)) <= bound * accept)
     })
     expect_true(any(feasible), info = paste("case", case))
 
@@ -135,16 +137,12 @@ test_that("integer repair is feasible and near the exhaustive tiny optimum", {
       A, bound, cost, lower, upper, constraint_ids = ids
     )
     expect_identical(solved$classification, "optimal", info = paste("case", case))
-    integer <- .integerize_bethel(solved$allocation, problem)
+    integer <- .bethel_whole_targets(problem)
     exact_cost <- min(drop(candidates[feasible, , drop = FALSE] %*% cost))
 
     expect_true(integer$all_pass, info = paste("case", case))
-    # Integer cleanup is deliberately local rather than an exact
-    # combinatorial optimizer. This deterministic audit set caps its observed
-    # cost gap while the exact optimum remains an independent feasibility oracle.
-    expect_true(
-      integer$cost <= 1.20 * exact_cost,
-      info = paste("case", case)
-    )
+    expect_identical(integer$status, "optimal", info = paste("case", case))
+    expect_equal(integer$cost, exact_cost, tolerance = 1e-9,
+                 info = paste("case", case))
   }
 })

@@ -146,10 +146,13 @@ All stage
 populations and fixed takes must be positive whole numbers.
 
 The continuous result is a KKT-certified global optimum of the convex,
-fixed-coefficient problem. \verb{$detail$n_int} is a deterministic, feasible,
-locally cleaned operational recommendation. It is not claimed to be the
-globally optimal integer allocation. Full achieved precision is in
-\verb{$constraints} and \verb{$operational$constraints}. Use \code{\link[=prec_alloc]{prec_alloc()}} to assess
+fixed-coefficient problem. \verb{$detail$n_int} is the cheapest whole
+allocation meeting every target, in whole units or whole PSUs at the
+fixed takes. A search over each stratum's whole sizes proves it so, or
+stops after \code{control$max_nodes} nodes with the best allocation found, the
+status \code{"limit"} in \verb{$operational$status} and a lower bound in
+\verb{$optimization$search}. Full achieved precision is in \verb{$constraints} and
+\verb{$operational$constraints}. Use \code{\link[=prec_alloc]{prec_alloc()}} to assess
 the fitted, operational, or a modified allocation.
 
 A constraint table records \code{.metric}, \code{.target}, \code{.achieved}, \code{.ratio}, and
@@ -206,19 +209,17 @@ attainable but unaffordable, in which case the cheapest target-feasible cost
 and the shortfall are reported. Or the continuous problem may be feasible
 while no whole-unit allocation meets every target inside the budget.
 
-\code{ceiling()} is not a safe integer start under a budget, so the operational
-design is built from several roundings of the continuous optimum, repaired
-and trimmed to be both target-feasible and affordable, then improved by
-spending residual budget and by pairwise exchanges. It satisfies
-\verb{$operational$cost <= budget} and \verb{all($operational$constraints$.pass)}, and
-it is a feasible, locally improved recommendation rather than a globally
-optimal integer allocation. The greedy construction is incomplete and can
-report failure on a problem that does have a feasible integer point.
+The operational design is the whole allocation with the smallest
+objective among those meeting every target within the budget, found by
+the same search as the minimum-cost design. It satisfies
+\verb{$operational$cost <= budget} and \verb{all($operational$constraints$.pass)}.
+With targets, the search starts from the cheapest whole allocation
+meeting them, so a budget below that cost is refused with it.
 
-With a \code{psu} register the field design is not rounded from the continuous
-optimum. A search plans it whole, in both questions, and proves it best
-within its family of designs or reports a gap at its node limit. The
-certainty section of \code{\link[=n_alloc]{n_alloc()}} describes it.
+With a \code{psu} register the field design is planned whole as well, over
+each stratum's certainty and remainder designs rather than its sizes,
+and proved best within its family of designs or reported with a gap at
+its node limit. The certainty section of \code{\link[=n_alloc]{n_alloc()}} describes it.
 
 \code{\link[=predict]{predict()}} on a fixed-budget result varies \code{budget} in \code{newdata} and
 returns the cost-versus-objective frontier, reusing the same solves.

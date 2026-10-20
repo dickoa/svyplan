@@ -369,6 +369,12 @@ predict.svyplan_n <- function(object, newdata, ...) {
         min_n_stratum = p$min_n_stratum,
         alloc_q = p$alloc_q
       )
+      row_mode <- if (!is.null(p$n)) "n" else if (!is.null(p$cv)) "cv" else
+        "budget"
+      if (.classic_searched(alloc_args$alloc, row_mode,
+                            length(base$domain_cols) > 0L)) {
+        alloc_args$control <- base[["control"]]
+      }
       if (!.alloc_is_cluster(base$frame)) {
         alloc_args$unit_cost <- base$cost_h
       } else {
@@ -829,7 +835,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   stages <- p$stages %||% 1L
   # A certainty fit is one-stage to the solver, so `stages` cannot find the
   # take, but it is still a frame column and still worth sweeping.
-  certainty <- !is.null(object$optimization$search)
+  certainty <- !is.null(object$params$psu)
   take_cols <- if (certainty) {
     "n_per_psu"
   } else {
@@ -1042,7 +1048,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
     return(as.data.frame(values, stringsAsFactors = FALSE))
   }
   # A register fit plans its field design, so its objective is that one's.
-  objective <- if (is.null(fit$optimization$search)) {
+  objective <- if (is.null(fit$params$psu)) {
     fit$objective_value
   } else {
     fit$operational$objective_value

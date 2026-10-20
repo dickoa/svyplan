@@ -2058,6 +2058,7 @@ print.svyplan_strata <- function(x, ...) {
       cat(sprintf(", cost = %.0f", op$cost))
     }
     cat("\n")
+    .print_search_limit(x$optimization$search)
     cat(sprintf("continuous optimum: n = %s", .fmt_continuous_n(x$n)))
     if (!is.na(x$cv)) {
       cat(sprintf(", cv = %.4f", x$cv))
@@ -2198,6 +2199,21 @@ print.svyplan_strata <- function(x, ...) {
   invisible(NULL)
 }
 
+#' The search line of a print, only when the node limit stopped the search
+#'
+#' A plan the node limit stopped short of proving is news, an optimal one
+#' is not.
+#' @keywords internal
+#' @noRd
+.print_search_limit <- function(search) {
+  if (!identical(search$status, "limit")) return(invisible(NULL))
+  cat(sprintf(
+    "search: stopped at the node limit, gap %.3g%% to a bound of %s\n",
+    100 * search$gap,
+    format(signif(search$bound, 6), big.mark = ",")
+  ))
+}
+
 #' Print a joint constrained allocation
 #' @keywords internal
 #' @noRd
@@ -2207,9 +2223,10 @@ print.svyplan_strata <- function(x, ...) {
   budget_mode <- identical(x$params$mode, "budget_objective")
   status <- opt$classification %||% "unknown"
   search <- opt$search
+  register <- !is.null(x$params$psu)
   cat(sprintf(
     "Joint constrained allocation (Bethel%s)\n",
-    if (is.null(search)) "" else ", PSU register"
+    if (register) ", PSU register" else ""
   ))
   # Report exceptions, not confirmations: a line that only ever says
   # "nothing went wrong" buries the lines that do carry news.
@@ -2244,7 +2261,7 @@ print.svyplan_strata <- function(x, ...) {
       )
     }
   ))
-  if (!is.null(search)) {
+  if (register) {
     # Counts are PSUs available in each part. How many of the remainder are
     # drawn is a selection decision this plan does not make.
     n_certain <- sum(x$psu$certainty)
@@ -2256,16 +2273,8 @@ print.svyplan_strata <- function(x, ...) {
       op$n_psu_draw,
       nrow(x$psu) - n_certain
     ))
-    # A plan the node limit stopped short of proving is news, an optimal one
-    # is not.
-    if (identical(search$status, "limit")) {
-      cat(sprintf(
-        "search: stopped at the node limit, gap %.3g%% to a bound of %s\n",
-        100 * search$gap,
-        format(signif(search$bound, 6), big.mark = ",")
-      ))
-    }
   }
+  .print_search_limit(search)
   continuous_cost <- x$params$achieved$cost
   increase <- if (continuous_cost > 0) {
     100 * (op$cost / continuous_cost - 1)
@@ -2276,13 +2285,13 @@ print.svyplan_strata <- function(x, ...) {
   # continuous solve, which is only its relaxation.
   cat(sprintf(
     "continuous %s: n = %s, cost = %.0f%s\n",
-    if (is.null(search)) "optimum" else "relaxation",
+    if (register) "relaxation" else "optimum",
     .fmt_continuous_n(x$n),
     continuous_cost,
     if (!is.na(increase) && abs(increase) >= 0.005) {
       sprintf(
-        if (is.null(search)) " (integerizing costs %+.2f%%)" else
-          " (field design %+.2f%%)",
+        if (register) " (field design %+.2f%%)" else
+          " (integerizing costs %+.2f%%)",
         increase
       )
     } else {
@@ -2296,7 +2305,7 @@ print.svyplan_strata <- function(x, ...) {
       op$objective_value
     ))
     # For a register both describe the relaxation, so summary() keeps them.
-    if (is.null(search)) {
+    if (!register) {
       if (!isTRUE(opt$budget_binding)) {
         cat(
           "the budget is not binding: the allocation sits at its upper bounds\n"
@@ -2347,7 +2356,7 @@ print.svyplan_strata <- function(x, ...) {
   if (n_lower > 0L || n_upper > 0L) {
     cat(sprintf("active bounds: %d lower, %d upper\n", n_lower, n_upper))
   }
-  if (!is.null(search)) {
+  if (register) {
     cat("# summary() for the certainty split by stratum\n")
   }
   invisible(x)
@@ -2621,7 +2630,7 @@ summary.svyplan_prec <- function(object, ...) {
 #' @keywords internal
 #' @noRd
 .bethel_summary_certainty <- function(object) {
-  if (is.null(object$optimization$search) || is.null(object$psu)) {
+  if (is.null(object$params$psu) || is.null(object$psu)) {
     return(NULL)
   }
   detail <- object$detail
@@ -3595,7 +3604,9 @@ print.summary.svyplan_bethel <- function(x, ...) {
   if (!is.null(opt$search)) {
     sr <- opt$search
     cat(sprintf(
-      "  field design search: %s after %s node%s of %s, bound %s (gap %.3g%%)\n",
+      "  %s: %s after %s node%s of %s, bound %s (gap %.3g%%)\n",
+      if (identical(sr$family, "whole units")) "whole-unit search" else
+        "field design search",
       sr$status,
       format(sr$nodes, big.mark = ","),
       if (sr$nodes == 1) "" else "s",

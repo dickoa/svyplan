@@ -365,7 +365,7 @@ test_that("a register fit prints its continuous solve as a relaxation", {
                  objective = objective, budget = 33760, psu = z$psu)
   out <- utils::capture.output(print(fit))
   expect_true(any(grepl(
-    "^continuous relaxation: n = .*, cost = 33826 \\(field design -0.19%\\)$",
+    "^continuous relaxation: n = .*, cost = 33823 \\(field design -0.19%\\)$",
     out
   )))
   expect_false(any(grepl("integerizing|one more unit|not binding", out)))

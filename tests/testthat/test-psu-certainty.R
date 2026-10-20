@@ -148,12 +148,9 @@ test_that("'control' is checked and kept by every rebuild of a register plan", {
     n_alloc(z$frame, measures = z$measures, targets = z$targets,
             psu = z$psu, control = control)
   }
-  plain <- z$measures[, setdiff(names(z$measures), "icc_psu")]
-  expect_error(
-    n_alloc(z$frame[, c("stratum", "N")], measures = plain,
-            targets = z$targets, control = list(max_nodes = 10)),
-    "'control' applies to a PSU register"
-  )
+  frame <- data.frame(stratum = c("A", "B"), N = c(100, 200), sd = 1)
+  expect_error(n_alloc(frame, n = 50, control = list(max_nodes = 10)),
+               "'control' applies where n_alloc\\(\\) searches")
   expect_error(fit_with("x"), "'control' must be a named list")
   expect_error(fit_with(list(10)), "'control' must be a named list")
   expect_error(fit_with(list(max_nodes = 10, nodes = 1)),
