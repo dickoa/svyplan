@@ -29,3 +29,4 @@
 .*~undo-tree~$
 \.Rhistory$
 ^pkgdown$
+^Rplots.pdf$

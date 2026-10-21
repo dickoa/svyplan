@@ -101,3 +101,20 @@ test_that("assessing a size-only allocation asks for the variance", {
   x <- n_alloc(.size_frame(), n = 60, alloc = "proportional")
   expect_error(prec_alloc(x), "'sd' or 'var'")
 })
+
+## Weighting loss of a size-only allocation
+
+test_that("design_effect() of a size-only allocation is Kish's loss on n_int", {
+  sizes <- data.frame(stratum = c("A", "B", "C"), N = c(4e5, 1e5, 2.5e4))
+  fit <- n_alloc(sizes, n = 60, alloc = "power", alloc_q = 0.25)
+  w <- rep(sizes$N / fit$detail$n_int, fit$detail$n_int)
+  d <- design_effect(fit)
+  expect_equal(as.double(d), as.double(design_effect(weights = w)))
+  expect_equal(d$deff_weighting, as.double(d))
+  prop <- n_alloc(sizes, n = 60, alloc = "proportional")
+  expect_equal(as.double(design_effect(prop)), 1, tolerance = 0.01)
+  expect_equal(
+    as.double(design_effect(fit, weights = c(1, 1.2, 1.4))),
+    as.double(d) * as.double(design_effect(weights = c(1, 1.2, 1.4)))
+  )
+})

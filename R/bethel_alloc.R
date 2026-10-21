@@ -1030,7 +1030,7 @@
   check_eligible_rate(eligible_rate)
   check_alpha(alpha)
   if (!is.null(df)) check_df(df)
-  if (!is.null(min_n_stratum)) check_scalar(min_n_stratum, "min_n_stratum")
+  min_n_stratum <- .resolve_min_n_stratum(min_n_stratum, frame)
   if (!is.data.frame(frame) || nrow(frame) == 0L) {
     stop("'frame' must be a non-empty data frame", call. = FALSE)
   }

@@ -116,6 +116,8 @@ expensive to reach. Defaults to 1 everywhere (equal cost).}
 Use \code{NA} for strata without a cap. It bounds the gross weight,
 the units drawn, not the response-adjusted \eqn{N_h/(n_hr_h)},
 which differs once \code{resp_rate} varies by stratum.}
+\item{\code{min_n_stratum}}{Minimum sample size of each stratum, \code{NA}
+for none. See the argument of the same name.}
 \item{\code{take_all}}{Logical (or 0/1). If \code{TRUE}, every unit in the
 stratum is included, a census stratum. Useful for small strata
 whose total population is tiny enough to enumerate.}
@@ -286,7 +288,12 @@ will have, typically sampled PSUs minus strata, and available from
 target in and to report \code{moe} out. A \code{cv} target carries no quantile
 and is unaffected. \code{NULL} (default) applies no adjustment.}
 
-\item{min_n_stratum}{Optional minimum sample size per stratum.}
+\item{min_n_stratum}{Optional minimum sample size per stratum. One value
+applies to every stratum. A vector of length \code{nrow(frame)}, or a
+\code{frame} column of the same name, gives each stratum its own floor, with
+\code{NA} for none, such as a domain that needs a set number of interviews
+whatever its share of a power allocation. The argument overrides the
+column.}
 
 \item{alloc_q}{Bankier allocation exponent, used only when \code{alloc = "power"}.
 Numeric scalar in \eqn{[0, 1]}. With the default \code{alloc_measure},
@@ -934,6 +941,11 @@ n_alloc(frame_domains, domains = "province",
 # Power allocation on a size measure alone, as DHS and MICS apply it
 sizes <- data.frame(stratum = c("A", "B", "C"), N = c(4e5, 1e5, 2.5e4))
 n_alloc(sizes, n = 60, alloc = "power", alloc_q = 0.25, min_n_stratum = 15)
+
+# A floor for one stratum only, such as the clusters a small domain needs
+# for its own estimates. The others share the rest by the power rule.
+n_alloc(sizes, n = 60, alloc = "power", alloc_q = 0.25,
+        min_n_stratum = c(NA, NA, 20))
 
 # Joint targets for two indicators and an overlapping domain
 joint_frame <- data.frame(

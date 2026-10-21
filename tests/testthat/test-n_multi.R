@@ -2320,3 +2320,199 @@ test_that("an all-NA case floor column changes nothing", {
     )$n
   )
 })
+
+## A floor cannot raise a size past the population
+
+test_that("a case floor above a finite population stops as in n_prop()", {
+  expect_error(
+    n_prop(p = 0.02, moe = 0.05, N = 100, min_cases = 10),
+    "exceeds the population"
+  )
+  expect_error(
+    n_multi(data.frame(name = "a", p = 0.02, moe = 0.05, N = 100,
+                       min_cases = 10)),
+    "exceeds the population of indicator 'a' \\(N = 100\\)"
+  )
+  expect_warning(
+    census <- n_multi(data.frame(name = "a", p = 0.02, moe = 0.05, N = 500,
+                                 min_cases = 10)),
+    "census"
+  )
+  expect_equal(census$n, 500)
+  expect_equal(census$detail$.cv_achieved, 0)
+})
+
+test_that("a common size above another row's population stops", {
+  expect_error(
+    n_multi(data.frame(name = c("a", "b"), p = 0.5, moe = c(0.01, 0.1),
+                       N = c(Inf, 50))),
+    "indicator 'b' \\(N = 50\\)"
+  )
+})
+
+test_that("min_n_domain above a domain's population stops", {
+  ind <- data.frame(name = "a", p = 0.3, moe = 0.05, N = c(100, 1000),
+                    region = c("A", "B"))
+  expect_error(
+    n_multi(ind, domains = "region", min_n_domain = 200),
+    "drawn in domain 'A'\\) exceeds the population"
+  )
+  expect_equal(
+    n_multi(ind, domains = "region", min_n_domain = 100)$domains$.n[1],
+    100
+  )
+})
+
+## Respondent floors
+
+test_that("a floor row joins the precision rows of its domain", {
+  lga <- data.frame(
+    lga = c("Banjul", "Basse"),
+    mcpr = c(0.217, 0.078), deft = c(1.016, 1.645),
+    married = c(0.59, 2.30), women = c(1.13, 2.89),
+    resp = c(0.84, 0.88)
+  )
+  long <- rbind(
+    data.frame(lga = lga$lga, name = "mcpr", p = lga$mcpr, cv = 0.1,
+               deff = lga$deft^2, resp_rate = lga$resp,
+               eligible_rate = lga$married, min_respondents = NA),
+    data.frame(lga = lga$lga, name = "women", p = NA, cv = NA, deff = NA,
+               resp_rate = lga$resp, eligible_rate = lga$women,
+               min_respondents = 800)
+  )
+  fit <- n_multi(long, domains = "lga")
+  by_hand <- pmax(
+    mapply(function(p, d, r, e) {
+      n_prop(p, cv = 0.1, deff = d^2, resp_rate = r, eligible_rate = e)$n
+    }, lga$mcpr, lga$deft, lga$resp, lga$married),
+    800 / (lga$resp * lga$women)
+  )
+  expect_equal(fit$domains$.n, by_hand)
+  expect_identical(fit$domains$.binding, c("women", "mcpr"))
+
+  one <- n_multi(long[long$lga == "Banjul", -1])
+  expect_equal(one$n, 800 / (0.84 * 1.13))
+  expect_true(is.na(one$detail$.cv_target[2]))
+  expect_true(is.na(one$detail$.cv_achieved[2]))
+  expect_lt(one$detail$.cv_achieved[1], 0.1)
+})
+
+test_that("a floor on a precision row counts that row's respondents", {
+  ind <- data.frame(name = "a", p = 0.3, moe = 0.05, resp_rate = 0.8,
+                    eligible_rate = 2, min_respondents = 2000)
+  expect_equal(n_multi(ind)$n, 2000 / (0.8 * 2))
+  ind$min_respondents <- 10
+  expect_equal(
+    n_multi(ind)$n,
+    n_prop(0.3, moe = 0.05, resp_rate = 0.8, eligible_rate = 2)$n
+  )
+})
+
+test_that("respondent floors are validated and stay out of other paths", {
+  base <- data.frame(name = c("a", "w"), p = c(0.3, NA), moe = c(0.05, NA),
+                     min_respondents = c(NA, 800))
+  expect_no_error(n_multi(base))
+  expect_error(
+    n_multi(base[2, ]),
+    "at least one row with an estimate and a target"
+  )
+  expect_error(
+    n_multi(transform(base, moe = c(0.05, 0.1))),
+    "row\\(s\\) 2 carry 'moe' but no 'p'"
+  )
+  expect_error(
+    n_multi(transform(base, min_respondents = c(NA, -1))),
+    "'min_respondents' values must be positive and finite"
+  )
+  expect_error(
+    prec_multi(data.frame(name = "a", p = 0.3, n = 500,
+                          min_respondents = 800)),
+    "'min_respondents' sizes a single-stage indicator table"
+  )
+  expect_error(
+    n_cluster(indicators = data.frame(name = "a", p = 0.3, cv = 0.1,
+                                      icc_psu = 0.05, min_respondents = 800),
+              stage_cost = c(500, 50)),
+    "'min_respondents' sizes a single-stage indicator table"
+  )
+  expect_equal(
+    n_multi(transform(base[1, ], min_respondents = NA_real_))$n,
+    n_multi(base[1, c("name", "p", "moe")])$n
+  )
+})
+
+test_that("shuffling the rows of a floor table moves no size between domains", {
+  long <- data.frame(
+    lga = rep(c("A", "B", "C"), 3),
+    name = rep(c("mcpr", "vacc", "women"), each = 3),
+    p = c(0.2, 0.08, 0.15, 0.8, 0.85, 0.9, NA, NA, NA),
+    cv = c(rep(0.1, 6), NA, NA, NA),
+    resp_rate = c(0.84, 0.88, 0.9),
+    eligible_rate = c(0.6, 2.3, 1.2, 0.1, 0.5, 0.3, 1.1, 2.9, 1.6),
+    min_respondents = c(rep(NA, 6), 800, 800, 800)
+  )
+  ref <- n_multi(long, domains = "lga")$domains
+  shuffled <- n_multi(long[c(5, 9, 1, 7, 3, 8, 2, 6, 4), ],
+                      domains = "lga")$domains
+  shuffled <- shuffled[match(ref$lga, shuffled$lga), ]
+  expect_equal(shuffled$.n, ref$.n)
+  expect_identical(shuffled$.binding, ref$.binding)
+})
+
+## Follow-up review of the floor rows
+
+test_that("a floor row's rates are validated like any other row's", {
+  base <- data.frame(name = c("p", "women"), p = c(0.5, NA),
+                     cv = c(0.1, NA), min_respondents = c(NA, 800))
+  for (rate in c(2, -1, 0, Inf)) {
+    expect_error(n_multi(transform(base, resp_rate = c(1, rate))),
+                 "'resp_rate' values must be in \\(0, 1\\]")
+  }
+  expect_error(n_multi(transform(base, deff = c(1, -2))),
+               "'deff' values must be positive")
+})
+
+test_that("every domain needs a row with an estimate and a target", {
+  bare <- data.frame(region = c("A", "B"), name = c("p", "women"),
+                     p = c(0.5, NA), cv = c(0.1, NA),
+                     min_respondents = c(NA, 800))
+  expect_error(n_multi(bare, domains = "region"),
+               "domain\\(s\\) 'B' carry only 'min_respondents'")
+  both <- rbind(bare, transform(bare, region = rev(region)))
+  fit <- n_multi(both, domains = "region")
+  expect_equal(n_multi(prec_multi(fit))$n, fit$n)
+})
+
+test_that("natural sampling checks each domain's expected yield against N", {
+  ind <- data.frame(name = "p", p = 0.5, cv = 0.1, N = c(1000, 100),
+                    region = c("A", "B"), share = c(0.01, 0.99))
+  expect_error(
+    n_multi(ind, domains = "region", domain_sampling = "natural"),
+    "expected in domain 'B'\\) exceeds the population"
+  )
+  ok <- transform(ind, N = c(1e6, 1e6), share = c(0.4, 0.6))
+  expect_no_error(n_multi(ok, domains = "region",
+                          domain_sampling = "natural"))
+})
+
+test_that("a domain column cannot take a result column's name", {
+  ind <- data.frame(name = "p", p = 0.3, cv = 0.1)[c(1, 1), ]
+  for (bad in c(".cv", ".n", "name")) {
+    tab <- ind
+    if (bad == "name") tab$label <- c("x", "y")
+    tab[[bad]] <- c("A", "B")
+    expect_error(n_multi(tab, domains = bad), "named like a result column")
+  }
+  tab <- transform(ind, .cv = c("A", "B"), n = 100)
+  expect_error(prec_multi(tab[, -3], domains = ".cv"),
+               "named like a result column")
+  expect_no_error(n_multi(transform(ind, lga = c("A", "B")), domains = "lga"))
+})
+
+test_that("the floor-only domain check reads multi-column keys exactly", {
+  ind <- data.frame(a = c("A/B", "A"), b = c("C", "B/C"),
+                    name = c("p", "women"), p = c(0.5, NA), cv = c(0.1, NA),
+                    min_respondents = c(NA, 800))
+  expect_error(n_multi(ind, domains = c("a", "b")),
+               "'a = A, b = B/C' carry only 'min_respondents'")
+})

@@ -1253,6 +1253,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     "n1"
   }
 
+  n3_clamped <- FALSE
   n3 <- if (!is.null(n_per_ssu)) {
     n_per_ssu
   } else if (solve_for != "n3") {
@@ -1271,6 +1272,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
         call. = FALSE
       )
       n3_free <- 1
+      n3_clamped <- TRUE
     }
     n3_free
   }
@@ -1278,7 +1280,8 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   n2 <- if (!is.null(n_per_psu)) {
     n_per_psu
   } else if (solve_for != "n2") {
-    n2_free <- if (!is.null(n_per_ssu)) {
+    # A clamped n3 is a fixed one for n2, so n2 takes the restricted optimum.
+    n2_free <- if (!is.null(n_per_ssu) || n3_clamped) {
       sqrt(
         k2 * (1 + delta2 * (n3 - 1)) * C1 /
           (n3 * k1 * delta1 * (C2 + C3 * n3))
@@ -1292,6 +1295,12 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
         call. = FALSE
       )
       n2_free <- 1
+      if (is.null(n_per_ssu)) {
+        # The free n3 assumed the unclamped n2, so it is re-solved at n2 = 1
+        # as the restricted optimum above solves it for a fixed n2.
+        n3 <- max(1, sqrt(k2 * (1 - delta2) * (C1 + C2) /
+                            ((k1 * delta1 + k2 * delta2) * C3)))
+      }
     }
     n2_free
   }

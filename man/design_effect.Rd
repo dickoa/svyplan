@@ -219,7 +219,10 @@ rest \code{NULL}.
 nothing about which design component it describes.
 
 \item \code{design_effect(svyplan_cluster)}: Read \code{icc}, \code{var_ratio}, and the stage takes from a
-\code{\link[=n_cluster]{n_cluster()}} or \code{\link[=prec_cluster]{prec_cluster()}} allocation.
+\code{\link[=n_cluster]{n_cluster()}} or \code{\link[=prec_cluster]{prec_cluster()}} allocation. The takes are those that
+respond, \code{n_per_psu * resp_rate * eligible_rate} at two stages, the
+ones the precision reads, so the design effect and the \code{cv} describe
+one design.
 
 \item \code{design_effect(svyplan_prec)}: Read the design features off a
 \code{\link[=prec_cluster]{prec_cluster()}} result, the same way as for \code{\link[=n_cluster]{n_cluster()}}. Other
@@ -234,7 +237,10 @@ estimate. The stage takes are your design choice, so \code{n_per_psu} (and
 \code{\link[=n_alloc]{n_alloc()}} result. This returns the allocation's own variance ratio,
 computed from the stratum sizes, takes, standard deviations, means and
 any per-stratum cluster factors, rather than a product of separate
-weighting and stratification approximations. Supply \code{weights} only for
+weighting and stratification approximations. An allocation from stratum
+sizes alone has no variance to compare, and returns Kish's weighting
+loss of its whole takes, \eqn{n \sum_h W_h^2 / n_h}{n sum(W_h^2 / n_h)},
+the ratio when every stratum has the same variance. Supply \code{weights} only for
 an \emph{additional} anticipated adjustment. See the \code{weights} argument.
 
 }}

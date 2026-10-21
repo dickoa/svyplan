@@ -986,9 +986,14 @@ test_that("the three-stage search finds the whole-unit optimum a q window misses
   expect_identical(as.integer(op$n), c(13L, 1L, 833L))
   expect_equal(op$cost, 15816.58, tolerance = 1e-6)
   expect_lte(op$cv, 0.05)
-  # The optimum sits where the PSU count is a tight ceiling, five times below
-  # the continuous take and past any window anchored on it.
-  expect_gt(x$n[["n_per_ssu"]], 4000)
+  # The continuous n_per_psu clamps to one, and n_per_ssu is then the
+  # optimum at that take. The whole-unit optimum sits where the PSU count is
+  # a tight ceiling, about half that take.
+  k <- unname(x$params$var_ratio)
+  expect_equal(
+    x$n[["n_per_ssu"]],
+    sqrt(k[2] * (1 - 0.0005) * 1200 / ((k[1] * 0.02 + k[2] * 0.0005) * 0.02))
+  )
   expect_gt(op$n[["n_per_ssu"]], 400)
 })
 
@@ -1303,4 +1308,25 @@ test_that("a fixed PSU count and ultimate take leave the SSU take free", {
     expect_identical(as.integer(multi$operational$n),
                      as.integer(scalar$operational$n))
   }
+})
+
+test_that("a clamped three-stage take leaves the other at its restricted optimum", {
+  free_psu <- suppressWarnings(n_cluster(stage_cost = c(500, 50, 5),
+    icc = c(0.8, 0.1), cv = 0.05, unit_relvar = 7 / 3))
+  fixed_psu <- n_cluster(stage_cost = c(500, 50, 5), icc = c(0.8, 0.1),
+    cv = 0.05, unit_relvar = 7 / 3, n_per_psu = 1)
+  expect_equal(free_psu$n, fixed_psu$n)
+  expect_equal(free_psu$cost, fixed_psu$cost)
+
+  free_ssu <- suppressWarnings(n_cluster(stage_cost = c(500, 50, 500),
+    icc = c(0.05, 0.8), cv = 0.05))
+  fixed_ssu <- n_cluster(stage_cost = c(500, 50, 500), icc = c(0.05, 0.8),
+    cv = 0.05, n_per_ssu = 1)
+  expect_equal(free_ssu$n, fixed_ssu$n)
+  expect_equal(free_ssu$cost, fixed_ssu$cost)
+  expect_lt(free_ssu$cost, 337910)
+
+  table <- n_cluster(indicators = data.frame(var = 1, mu = 1, cv = 0.05,
+    icc_psu = 0.05, icc_ssu = 0.8), stage_cost = c(500, 50, 500))
+  expect_equal(unname(table$n), unname(free_ssu$n), tolerance = 1e-6)
 })

@@ -26,7 +26,8 @@
 #' @param domains Character vector of column names in `indicators` to treat
 #'   as domain variables, or `NULL` (default) for no domains. All names
 #'   must exist in `indicators`. When specified, sizing runs
-#'   independently for each domain combination.
+#'   independently for each domain combination. A domain column cannot be
+#'   called `name` or start with a dot, the names of result columns.
 #' @param domain_sampling How the per-domain requirements combine into one
 #'   overall size, either `"separate"` (default) or `"natural"`. It applies
 #'   only when domains are present.
@@ -55,10 +56,11 @@
 #'   (0, 1\]. Used for rows whose `resp_rate` column is absent or `NA`, and
 #'   a non-missing row value overrides it. See the nonresponse section of
 #'   [svyplan-package] for what this adjustment does and does not claim.
-#'   A rate of eligible units per sampled unit at or below 1, such as
-#'   0.41 married women per household, folds in here as
-#'   `resp_rate * eligible_rate`. With a finite `N` this errs slightly
-#'   conservative.
+#' @param eligible_rate Default eligible units per sampled unit, a positive
+#'   number such as married women per household, which can exceed 1. Used
+#'   for rows whose `eligible_rate` column is absent or `NA`, and a
+#'   non-missing row value overrides it. Proportion rows only. See the
+#'   `eligible_rate` column under Details.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_n` object. The output class is the same with or without
@@ -122,6 +124,14 @@
 #' `p = NA`) are treated as means. You cannot have both `p` and `var` non-`NA`
 #' in the same row.
 #'
+#' A row may instead carry only a floor on the number of respondents,
+#' `min_respondents`, with no `p`, `var` or target. It stands for an
+#' estimate whose precision is not modeled, such as the fertility rates a
+#' DHS sizes by a count of interviews with women. Its `resp_rate` and
+#' `eligible_rate` turn the count into sampled units, and it raises the
+#' size the other rows set. Every domain needs at least one row with an
+#' estimate and a target.
+#'
 #' ## Column reference
 #'
 #' \describe{
@@ -181,6 +191,13 @@
 #'     largest is still the binding one, whichever constraint raised it.
 #'     Single-stage `n_multi()` only, because a multistage design sizes
 #'     stages against a cost and has no single total for a count to raise.}
+#'   \item{`min_respondents`}{Minimum expected number of eligible
+#'     respondents, `n * resp_rate * eligible_rate`, a floor on the row's
+#'     size. Unlike `min_cases`, it counts every respondent of the row's
+#'     group, not those with the attribute, and it applies to any row. A row
+#'     with this floor and no estimand is the floor-only row described
+#'     above. `NA` (the default) sets no floor. Single-stage `n_multi()`
+#'     only, as for `min_cases`.}
 #'   \item{`unit_relvar`}{Unit relvariance. If omitted, derived
 #'     automatically from `p` (as `(1 - p) / p`) or from
 #'     `var` / `mu^2`.}
@@ -192,6 +209,14 @@
 #'     that cannot be worked and `resp_rate_ssu` for second-stage units in a
 #'     three-stage design. Naming a stage the design does not have is an
 #'     error rather than a column carried along and ignored.}
+#'   \item{`eligible_rate`}{Eligible units per sampled unit for the row's
+#'     estimate, such as married women or children aged 12 to 23 months per
+#'     household. The row is sized as [n_prop()]`(eligible_rate = )` sizes
+#'     it. Sizes stay in sampled units, and the variance reads
+#'     `N * eligible_rate` eligible units and `resp_rate * eligible_rate`
+#'     respondents per sampled unit. Each row can carry its own group.
+#'     Proportion rows only, so a mean or ratio row takes 1. The
+#'     several-indicators mode of [n_cluster()] refuses the column.}
 #' }
 #'
 #' Domain columns are specified via the `domains` parameter. When domains
@@ -313,6 +338,21 @@
 #' )
 #' n_multi(targets_dom, domains = "region")
 #'
+#' # A household survey whose estimates are over persons. Each row counts
+#' # its own group per household, and a row with only 'min_respondents'
+#' # asks for 800 interviewed women whatever the targets need.
+#' dhs <- data.frame(
+#'   region = rep(c("Coast", "Inland"), 3),
+#'   name = rep(c("mcpr", "vaccination", "women"), each = 2),
+#'   p = c(0.22, 0.08, 0.77, 0.85, NA, NA),
+#'   cv = c(0.10, 0.10, 0.10, 0.10, NA, NA),
+#'   deff = c(1.03, 2.71, 1.32, 2.37, NA, NA),
+#'   resp_rate = 0.88,
+#'   eligible_rate = c(0.59, 2.30, 0.09, 0.47, 1.13, 2.89),
+#'   min_respondents = c(NA, NA, NA, NA, 800, 800)
+#' )
+#' n_multi(dhs, domains = "region")
+#'
 #' @export
 n_multi <- function(indicators, ...) {
   if (!missing(indicators)) {
@@ -332,6 +372,7 @@ n_multi.default <- function(
   min_n_domain = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
   resp_rate = 1,
+  eligible_rate = 1,
   plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, n_multi.default, match.call(), environment())
@@ -355,6 +396,7 @@ n_multi.default <- function(
     }
   }
   check_resp_rate(resp_rate)
+  check_eligible_rate(eligible_rate)
   # An unresolved default arrives either as a missing argument or, through
   # the plan-merge path, as the full choice vector itself.
   if (identical(prop_method, c("wald", "wilson", "logodds", "beta"))) {
@@ -374,13 +416,21 @@ n_multi.default <- function(
 
   indicators <- .indicators_var_from_sd(indicators, domains)
   indicators <- .indicators_moe_from_rmoe(indicators, domains)
-  info <- .validate_targets(indicators, FALSE, domains = domains)
+  floor_only <- .floor_only_rows(indicators)
+  .check_respondent_floors(indicators, floor_only, domains)
+  .validate_common_columns(indicators)
+  info <- .validate_targets(
+    indicators[!floor_only, , drop = FALSE],
+    FALSE,
+    domains = domains
+  )
   indicators <- .fill_defaults(
     indicators,
     FALSE,
     prop_method = prop_method,
     resp_rate = resp_rate
   )
+  indicators <- .fill_eligible_rate(indicators, eligible_rate)
 
   rv_final <- indicators$unit_relvar[!is.na(indicators$unit_relvar)]
   if (
@@ -597,6 +647,48 @@ n_multi.default <- function(
   v
 }
 
+#' Per-row eligible rate, materialized only when one is set
+#'
+#' A table without the column under the default of 1 is left as it is, so a
+#' default result keeps its columns. Otherwise every row carries its rate,
+#' which a round trip through [prec_multi()] reads back.
+#' @keywords internal
+#' @noRd
+.fill_eligible_rate <- function(indicators, eligible_rate) {
+  has_col <- "eligible_rate" %in% names(indicators)
+  if (!has_col && eligible_rate == 1) {
+    return(indicators)
+  }
+  e <- if (has_col) indicators$eligible_rate else rep(NA_real_, nrow(indicators))
+  if (!is.numeric(e) && !all(is.na(e))) {
+    stop("'eligible_rate' values must be positive and finite", call. = FALSE)
+  }
+  e <- as.numeric(e)
+  e[is.na(e)] <- eligible_rate
+  if (any(!is.finite(e)) || any(e <= 0)) {
+    stop("'eligible_rate' values must be positive and finite", call. = FALSE)
+  }
+  is_ratio <- .is_ratio_row(indicators)
+  is_prop <- if ("p" %in% names(indicators)) {
+    !is.na(indicators$p) & !is_ratio
+  } else {
+    rep(FALSE, nrow(indicators))
+  }
+  bad <- which(e != 1 & !is_prop & !.floor_only_rows(indicators))
+  if (length(bad) > 0L) {
+    stop(
+      sprintf(
+        "'eligible_rate' applies to proportion rows, as in n_prop(), and to rows with only 'min_respondents'. Row(s) %s carry a %s, so set their 'eligible_rate' to 1",
+        paste(bad, collapse = ", "),
+        if (any(is_ratio[bad])) "ratio" else "mean"
+      ),
+      call. = FALSE
+    )
+  }
+  indicators$eligible_rate <- e
+  indicators
+}
+
 #' Refuse the response-rate column that belongs to the other interface
 #'
 #' The two interfaces spend a response rate at different stages, so each
@@ -686,7 +778,7 @@ n_multi.default <- function(
     }
   }
 
-  .check_indicator_columns(indicators, domains)
+  .check_indicator_columns(indicators, domains, eligible = !multistage)
   .check_resp_rate_column(indicators, multistage, stages %||% 2L)
 
   has_p <- "p" %in% names(indicators)
@@ -1107,9 +1199,14 @@ n_multi.default <- function(
   if (!is.null(floor_n)) {
     n_vec <- pmax(n_vec, floor_n, na.rm = TRUE)
   }
+  resp_floor_n <- .multi_min_respondents_n(indicators)
+  if (!is.null(resp_floor_n)) {
+    n_vec <- pmax(n_vec, resp_floor_n, na.rm = TRUE)
+  }
 
   idx <- which.max(n_vec)
   n_max <- n_vec[idx]
+  .check_multi_attainable(n_max, indicators)
 
   labels <- if ("name" %in% names(indicators)) {
     indicators$name
@@ -1121,45 +1218,48 @@ n_multi.default <- function(
   has_p <- "p" %in% names(indicators)
   has_mu <- "mu" %in% names(indicators)
   is_ratio <- .is_ratio_row(indicators)
+  elig <- .indicator_rate(indicators, "eligible_rate", nrow(indicators))
+  floor_only <- .floor_only_rows(indicators)
   cv_achieved_vec <- vapply(
     seq_len(nrow(indicators)),
     function(i) {
-      prec <- suppressWarnings(
-        if (is_ratio[i]) {
-          .prec_engine_ratio(
-            indicators$r[i],
-            indicators$unit_relvar[i],
-            n_max,
-            indicators$alpha[i],
-            indicators$N[i],
-            indicators$deff[i],
-            indicators$resp_rate[i],
-            .row_df(indicators, i)
-          )
-        } else if (has_p && !is.na(indicators$p[i])) {
-          .prec_engine_prop(
-            indicators$p[i],
-            n_max,
-            indicators$alpha[i],
-            indicators$N[i],
-            indicators$deff[i],
-            indicators$resp_rate[i],
-            indicators$prop_method[i],
-            .row_df(indicators, i)
-          )
-        } else {
-          .prec_engine_mean(
-            indicators$var[i],
-            if (has_mu) indicators$mu[i] else NULL,
-            n_max,
-            indicators$alpha[i],
-            indicators$N[i],
-            indicators$deff[i],
-            indicators$resp_rate[i],
-            .row_df(indicators, i)
-          )
-        }
-      )
+      if (floor_only[i]) {
+        return(NA_real_)
+      }
+      prec <- if (is_ratio[i]) {
+        .prec_engine_ratio(
+          indicators$r[i],
+          indicators$unit_relvar[i],
+          n_max,
+          indicators$alpha[i],
+          indicators$N[i],
+          indicators$deff[i],
+          indicators$resp_rate[i],
+          .row_df(indicators, i)
+        )
+      } else if (has_p && !is.na(indicators$p[i])) {
+        .prec_engine_prop(
+          indicators$p[i],
+          n_max,
+          indicators$alpha[i],
+          indicators$N[i] * elig[i],
+          indicators$deff[i],
+          indicators$resp_rate[i] * elig[i],
+          indicators$prop_method[i],
+          .row_df(indicators, i)
+        )
+      } else {
+        .prec_engine_mean(
+          indicators$var[i],
+          if (has_mu) indicators$mu[i] else NULL,
+          n_max,
+          indicators$alpha[i],
+          indicators$N[i],
+          indicators$deff[i],
+          indicators$resp_rate[i],
+          .row_df(indicators, i)
+        )
+      }
       prec$cv
     },
     numeric(1L)
@@ -1203,8 +1303,15 @@ n_multi.default <- function(
   has_moe <- "moe" %in% names(indicators)
   has_mu <- "mu" %in% names(indicators)
   is_ratio <- .is_ratio_row(indicators)
+  elig <- .indicator_rate(indicators, "eligible_rate", nr)
+  floor_only <- .floor_only_rows(indicators)
 
   for (i in seq_len(nr)) {
+    if (floor_only[i]) {
+      n_vec[i] <- NA_real_
+      cv_vec[i] <- NA_real_
+      next
+    }
     is_prop <- has_p && !is.na(indicators$p[i])
     use_moe <- has_moe && !is.na(indicators$moe[i])
 
@@ -1231,6 +1338,7 @@ n_multi.default <- function(
         N = indicators$N[i],
         deff = indicators$deff[i],
         resp_rate = indicators$resp_rate[i],
+        eligible_rate = elig[i],
         method = indicators$prop_method[i],
         df = .row_df(indicators, i)
       )
@@ -1549,7 +1657,12 @@ n_multi.default <- function(
       }
       takes <- A * (1 - icc) / (ru * (n_psu - floor_psu))
       binding_idx <- which.max(takes)
-      n_per_psu_opt <- max(takes)
+      # n_cluster() raises a responding take under one to one, so every row
+      # keeps at least one expected response, and the cv falls below target.
+      n_per_psu_opt <- max(takes, 1 / ru)
+      if (n_per_psu_opt > max(takes)) {
+        binding_idx <- which.max(n1_required(n_per_psu_opt))
+      }
       n1_opt <- n_psu
       total_cost <- fixed_cost + n1_opt * (C1 + C2 * n_per_psu_opt)
     } else {
@@ -1598,6 +1711,7 @@ n_multi.default <- function(
   }
 
   n_vec <- c(n_psu = n1_opt, n_per_psu = n_per_psu_opt)
+  .check_row_takes(indicators, n_per_psu_opt)
   total_n <- prod(n_vec)
   operational <- .op_multi_2stage(
     n1_required,
@@ -2062,6 +2176,26 @@ n_multi.default <- function(
       }
     }
 
+    if (!is.null(n_psu)) {
+      # n_cluster() raises a solved take that yields under one response to
+      # one, and the achieved cv then falls below the target. A take the
+      # caller fixed is left for .check_row_takes() to refuse.
+      lifted <- FALSE
+      if (is.null(n_per_psu) && n_per_psu_opt < max(1 / rs)) {
+        n_per_psu_opt <- max(1 / rs)
+        lifted <- TRUE
+      }
+      if (is.null(n_per_ssu) && n_per_ssu_opt < max(1 / ru)) {
+        n_per_ssu_opt <- max(1 / ru)
+        lifted <- TRUE
+      }
+      if (lifted) {
+        binding_idx <- which.max(n1_required(n_per_psu_opt, n_per_ssu_opt))
+        total_cost <- fixed_cost +
+          n_psu * (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu_opt)
+      }
+    }
+
     cv_achieved <- cv_achieved_fn(n1_opt, n_per_psu_opt, n_per_ssu_opt)
   } else {
     var_budget <- budget - fixed_cost
@@ -2096,6 +2230,7 @@ n_multi.default <- function(
     n_per_psu = n_per_psu_opt,
     n_per_ssu = n_per_ssu_opt
   )
+  .check_row_takes(indicators, n_vec[["n_per_psu"]], n_vec[["n_per_ssu"]])
   total_n <- prod(n_vec)
   operational <- .op_multi_3stage(
     search_coef,
@@ -2333,6 +2468,16 @@ n_multi.default <- function(
     floored <- domains$.n < min_n_domain
     domains$.n[floored] <- min_n_domain
     domains$.binding[floored] <- "(min_n_domain)"
+    for (d in which(floored)) {
+      .check_multi_attainable(
+        domains$.n[d],
+        indicators[split_idx[[domain_levels[d]]], , drop = FALSE],
+        sprintf(
+          " in domain %s",
+          sQuote(paste(unlist(domains[d, domain_cols]), collapse = "/"))
+        )
+      )
+    }
   }
 
   n_domain_max <- max(domains$.n)
@@ -2343,6 +2488,16 @@ n_multi.default <- function(
     yields <- domains$.n / domains$.share
     n_overall <- max(yields)
     binding_label <- domains$.binding[which.max(yields)]
+    for (d in seq_along(domain_levels)) {
+      .check_multi_attainable(
+        n_overall * domains$.share[d],
+        indicators[split_idx[[domain_levels[d]]], , drop = FALSE],
+        sprintf(
+          " expected in domain %s",
+          sQuote(paste(unlist(domains[d, domain_cols]), collapse = "/"))
+        )
+      )
+    }
   } else {
     n_overall <- sum(domains$.n)
   }
@@ -2704,6 +2859,11 @@ n_multi.default <- function(
         n_per_ssu = bres$n_per_ssu
       )
     }
+    .check_row_takes(
+      indicators[split_idx[[domain_levels[d]]], , drop = FALSE],
+      bres$n_per_psu,
+      if (stages == 3L) bres$n_per_ssu
+    )
     .new_svyplan_cluster(
       n = n_vec,
       stages = stages,
@@ -3062,6 +3222,9 @@ n_multi.svyplan_prec <- function(indicators, ...) {
   }
   if ("resp_rate" %in% names(dots)) {
     tgt$resp_rate <- NA_real_
+  }
+  if ("eligible_rate" %in% names(dots) && "eligible_rate" %in% names(tgt)) {
+    tgt$eligible_rate <- NA_real_
   }
   tgt$n <- NULL
   tgt$n_per_psu <- NULL

@@ -32,6 +32,10 @@ that recommendation when available, or rounds the continuous size up.
 * `min_cases` sizes a proportion against a minimum expected number of positive
   cases, the constraint that binds for a rare outcome in a small domain. Every
   proportion result reports the `expected_cases` a design should yield.
+  In an indicator table, `min_respondents` floors the eligible respondents a
+  row needs, and a row may carry that floor alone, for an estimate whose
+  precision is not modeled, such as the interviews with women a DHS asks of
+  every domain.
 * `n_ratio()` takes the quantities a pilot yields, the anticipated ratio with
   each component's coefficient of variation and their correlation across units.
   A ratio's design effect and homogeneity belong to the linearized variable
@@ -43,8 +47,9 @@ that recommendation when available, or rounds the continuous size up.
   the remaining stages solve that restricted problem.
 * `eligible_rate` sizes a sample of households for an estimate over the
   eligible persons they hold, an average number per household that may exceed
-  one. `n_prop()`, `prec_prop()`, `n_cluster()`, `prec_cluster()` and joint
-  `n_alloc()` and `prec_alloc()` take it. Sizes, bounds and costs stay in
+  one. `n_prop()`, `prec_prop()`, `n_cluster()`, `prec_cluster()`, joint
+  `n_alloc()` and `prec_alloc()`, and the proportion rows of `n_multi()` and
+  `prec_multi()` take it, each row with its own group. Sizes, bounds and costs stay in
   households, and the variance reads the eligible respondents out of
   `N * eligible_rate` eligible persons.
 * `n_alloc()` allocates a stratified sample from a frame of stratum sizes and
@@ -57,7 +62,8 @@ that recommendation when available, or rounds the continuous size up.
   a positive `alloc_measure` frame column supplies another. With that default
   measure, `alloc_q = 1` gives Neyman allocation.
   Proportional and power allocation of a fixed `n` need only the stratum
-  sizes, and then report no precision. `$detail` carries the frame's
+  sizes, and then report no precision. `min_n_stratum` sets one floor for
+  every stratum or one per stratum, as a vector or a frame column. `$detail` carries the frame's
   character, factor and logical columns after `stratum`.
   Without domains, the target-`cv` mode of optimal and Neyman allocation
   gives the cheapest whole allocation meeting the target, and the `budget`
@@ -104,7 +110,8 @@ that recommendation when available, or rounds the continuous size up.
   refused, and `merge_psus()` merges small PSUs with their neighbors in row
   order to a minimum size.
 * `n_multi()` sizes a table of indicators, with optional per-domain sizing and
-  a `min_n_domain` floor. `n_cluster(indicators = )` and
+  a `min_n_domain` floor. `prec_multi()` reports each row's precision with
+  its domain columns. `n_cluster(indicators = )` and
   `prec_cluster(indicators = )` take the same table for a multistage design, so
   a cluster argument never changes what `n_multi()` returns.
 * `n_twophase()` allocates a two-phase sample. One allocator covers double
@@ -192,7 +199,9 @@ that recommendation when available, or rounds the continuous size up.
   from clustering, unequal weighting, and stratification components, reading
   them off a plan where one is supplied. It anticipates a design effect from
   design parameters and does not estimate a realized one from collected data,
-  which is `survey::svymean(deff = TRUE)`.
+  which is `survey::svymean(deff = TRUE)`. Read off a cluster result it
+  uses the takes that respond, as the `cv` does, and off an allocation from
+  stratum sizes alone it gives Kish's weighting loss.
 * `effective_n()` mirrors it, returning `n * resp_rate / deff`.
 * `design_df()` counts the degrees of freedom a planned design's variance
   estimator will have, the planning analogue of `survey::degf()`, with additive

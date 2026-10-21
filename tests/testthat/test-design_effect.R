@@ -644,3 +644,41 @@ test_that("a planning design effect cannot be modified in place", {
   # components the object still carries.
   expect_equal(as.double(d), prod(attr(d, "components")), tolerance = 1e-12)
 })
+
+## Cluster results read the responding take
+
+test_that("effective_n() of a cluster result equals 1 / cv^2", {
+  cases <- list(
+    list(resp_rate = 0.5),
+    list(resp_rate_psu = 0.5),
+    list(resp_rate = 0.5, eligible_rate = 0.41),
+    list(resp_rate = 0.9, eligible_rate = 2),
+    list(resp_rate_psu = 0.8, resp_rate = 0.7, eligible_rate = 1.5)
+  )
+  for (rates in cases) {
+    x <- do.call(prec_cluster, c(list(c(100, 20), icc = 0.05), rates))
+    expect_equal(effective_n(x), 1 / x$cv^2)
+    take <- 20 * (rates[["resp_rate"]] %||% 1) *
+      (rates[["eligible_rate"]] %||% 1)
+    expect_equal(as.double(design_effect(x)), 1 + 0.05 * (take - 1))
+  }
+  z <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
+                 unit_relvar = 1, resp_rate = 0.5, n_per_psu = 20)
+  expect_equal(effective_n(z), 1 / z$cv^2)
+  e <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
+                 unit_relvar = 1, resp_rate = 0.9, eligible_rate = 2.3,
+                 n_per_psu = 20)
+  expect_equal(effective_n(e), 1 / e$cv^2)
+})
+
+test_that("a three-stage result reads the SSU and ultimate responding takes", {
+  x <- prec_cluster(c(50, 6, 10), icc = c(0.05, 0.1), resp_rate_psu = 0.9,
+                    resp_rate_ssu = 0.8, resp_rate = 0.7, eligible_rate = 1.4)
+  expect_equal(effective_n(x), 1 / x$cv^2)
+  expect_equal(
+    as.double(design_effect(x)),
+    as.double(design_effect(icc = c(0.05, 0.1), n_per_psu = 6 * 0.8,
+                            n_per_ssu = 10 * 0.7 * 1.4,
+                            var_ratio = x$params$var_ratio))
+  )
+})

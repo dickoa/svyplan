@@ -76,9 +76,10 @@ carries the stage sizes per row in \code{n} and \code{n_per_psu}, plus
 
 \item{domains}{Optional character vector naming domain columns in
 \code{indicators}. Precision is computed row by row either way, so naming
-domains leaves every \verb{$detail} value unchanged. What it does is record
-the domain structure on the result, so that a round trip back to
-\code{\link[=n_cluster]{n_cluster()}} rebuilds the same design. There is no \code{domain_sampling}
+domains leaves every \verb{$detail} value unchanged. What it does is put the
+domain columns first in \verb{$detail} and record the domain structure on
+the result, so that a round trip back to \code{\link[=n_cluster]{n_cluster()}} rebuilds the
+same design. There is no \code{domain_sampling}
 argument here, because that choice governs how per-domain requirements
 combine into one size, and this direction reads the sizes you already
 have.}

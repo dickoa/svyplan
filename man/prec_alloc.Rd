@@ -123,8 +123,8 @@ multistage joint assessment instead uses the stage costs stored in
 
 \item{min_n_stratum}{Optional minimum sample size per stratum, applied as the
 lower bound the assessment reports against in \verb{$bounds}. It is the same
-argument \code{\link[=n_alloc]{n_alloc()}} takes, so a design and its assessment can be held
-to one floor. Joint assessment only: supplying it without \code{measures} and
+argument \code{\link[=n_alloc]{n_alloc()}} takes, one value or one per stratum, so a design
+and its assessment can be held to one floor. Joint assessment only: supplying it without \code{measures} and
 \code{targets} is an error.}
 
 \item{fpc}{Which finite population correction the variance carries in
@@ -227,6 +227,30 @@ jt <- data.frame(
   cv = c(0.10, NA), moe = c(NA, 2.5)
 )
 prec_alloc(jf, n = c(120, 150), measures = jm, targets = jt)
+
+# A fixed allocation of households assessed nationally and per region,
+# with each region's published design effect (a DEFT, squared) and its
+# married women per household. The national row weights each region by
+# its eligible women, N * eligible_rate.
+regions <- data.frame(
+  stratum = c("Coast", "Centre", "East"),
+  region = c("Coast", "Centre", "East"),
+  N = c(60000, 150000, 40000)
+)
+mcpr <- data.frame(
+  stratum = regions$stratum, name = "mcpr",
+  p = c(0.22, 0.19, 0.08),
+  deff = c(1.02, 1.09, 1.65)^2,
+  resp_rate = c(0.84, 0.91, 0.88),
+  eligible_rate = c(0.59, 1.23, 2.30)
+)
+every_level <- data.frame(
+  name = "mcpr", domain = c(".overall", "region"), cv = 0.10
+)
+assessed <- prec_alloc(regions, n = c(850, 1525, 975), measures = mcpr,
+                       targets = every_level)
+assessed
+assessed$detail[, c("domain", "level", ".achieved", ".pass")]
 
 }
 \seealso{

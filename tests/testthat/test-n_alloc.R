@@ -1311,3 +1311,140 @@ test_that("budget rounding weighs each stratum by its design effect and response
     c(0L, 1L)
   )
 })
+
+## Per-stratum floors
+
+test_that("min_n_stratum takes one floor per stratum, as a vector or column", {
+  sizes <- data.frame(stratum = c("small", "b", "c", "d"),
+                      N = c(6000, 150000, 90000, 40000))
+  scalar <- n_alloc(sizes, n = 200, alloc = "power", alloc_q = 0.25,
+                    min_n_stratum = 15)
+  same <- n_alloc(sizes, n = 200, alloc = "power", alloc_q = 0.25,
+                  min_n_stratum = rep(15, 4))
+  expect_equal(same$detail$n, scalar$detail$n)
+
+  plain <- n_alloc(sizes, n = 200, alloc = "power", alloc_q = 0.25)
+  expect_lt(plain$detail$n[1], 40)
+  vec <- n_alloc(sizes, n = 200, alloc = "power", alloc_q = 0.25,
+                 min_n_stratum = c(40, NA, NA, NA))
+  w <- sizes$N[-1]^0.25
+  expect_equal(vec$detail$n, c(40, 160 * w / sum(w)))
+  expect_equal(vec$detail$n_int[1], 40)
+  expect_equal(sum(vec$detail$n_int), 200)
+
+  col <- n_alloc(transform(sizes, min_n_stratum = c(40, NA, NA, NA)),
+                 n = 200, alloc = "power", alloc_q = 0.25)
+  expect_equal(col$detail$n, vec$detail$n)
+  over <- n_alloc(transform(sizes, min_n_stratum = c(40, NA, NA, NA)),
+                  n = 200, alloc = "power", alloc_q = 0.25, min_n_stratum = 5)
+  expect_equal(over$detail$n, plain$detail$n)
+
+  expect_equal(predict(vec, data.frame(n = 200))$n, 200)
+  expect_output(print(vec), "min_n_stratum per stratum")
+})
+
+test_that("per-stratum floors are validated", {
+  sizes <- data.frame(stratum = c("a", "b"), N = c(1000, 2000))
+  expect_error(
+    n_alloc(sizes, n = 100, alloc = "proportional", min_n_stratum = c(5, 5, 5)),
+    "one number, or one per 'frame' row"
+  )
+  expect_error(
+    n_alloc(sizes, n = 100, alloc = "proportional", min_n_stratum = c(5, -1)),
+    "positive and finite, or NA"
+  )
+  expect_equal(
+    n_alloc(sizes, n = 100, alloc = "proportional",
+            min_n_stratum = c(NA, NA))$detail$n,
+    n_alloc(sizes, n = 100, alloc = "proportional")$detail$n
+  )
+})
+
+test_that("joint allocation honors a floor per stratum", {
+  frame <- data.frame(stratum = c("A", "B", "C"), N = c(1000, 1800, 1200))
+  measures <- data.frame(stratum = frame$stratum, name = "coverage",
+                         p = c(0.5, 0.4, 0.6))
+  targets <- data.frame(name = "coverage", cv = 0.06)
+  base <- n_alloc(frame, measures = measures, targets = targets)
+  lift <- base$detail$n[1] + 50
+  fl <- n_alloc(frame, measures = measures, targets = targets,
+                min_n_stratum = c(lift, NA, NA))
+  expect_gte(fl$detail$n[1], lift - 1e-8)
+  expect_equal(
+    fl$detail$n,
+    n_alloc(transform(frame, min_n_stratum = c(lift, NA, NA)),
+            measures = measures, targets = targets)$detail$n
+  )
+  expect_equal(
+    prec_alloc(fl)$detail$.achieved,
+    prec_alloc(frame, n = fl$detail$n, measures = measures,
+               targets = targets)$detail$.achieved
+  )
+})
+
+## A fixed allocation assessed over the whole and its domains
+
+test_that("joint prec_alloc() sums domain variances with eligible weights", {
+  regions <- data.frame(stratum = c("Coast", "Centre", "East"),
+                        region = c("Coast", "Centre", "East"),
+                        N = c(60000, 150000, 40000))
+  mcpr <- data.frame(stratum = regions$stratum, name = "mcpr",
+                     p = c(0.22, 0.19, 0.08),
+                     deff = c(1.02, 1.09, 1.65)^2,
+                     resp_rate = c(0.84, 0.91, 0.88),
+                     eligible_rate = c(0.59, 1.23, 2.30))
+  n <- c(850, 1525, 975)
+  res <- prec_alloc(regions, n = n, measures = mcpr,
+                    targets = data.frame(name = "mcpr",
+                                         domain = c(".overall", "region"),
+                                         cv = 0.10))
+  d <- res$detail
+  se <- mapply(function(p, n, N, deff, r, e) {
+    x <- prec_prop(p, n = n, N = N, deff = deff, resp_rate = r,
+                   eligible_rate = e)
+    x$cv * p
+  }, mcpr$p, n, regions$N, mcpr$deff, mcpr$resp_rate, mcpr$eligible_rate)
+  expect_equal(d$.achieved[d$domain == "region"],
+               (se / mcpr$p)[match(d$level[d$domain == "region"],
+                                   regions$stratum)])
+  W <- regions$N * mcpr$eligible_rate / sum(regions$N * mcpr$eligible_rate)
+  expect_equal(d$.achieved[d$domain == ".overall"],
+               sqrt(sum(W^2 * se^2)) / sum(W * mcpr$p))
+  expect_identical(d$.pass[d$level %in% "East"], FALSE)
+})
+
+test_that("an all-NA min_n_stratum overrides a frame floor in joint mode", {
+  frame <- data.frame(stratum = c("A", "B"), N = c(1000, 2000),
+                      min_n_stratum = c(500, NA))
+  measures <- data.frame(stratum = frame$stratum, name = "p", p = 0.5)
+  targets <- data.frame(name = "p", cv = 0.1)
+  none <- n_alloc(frame, measures = measures, targets = targets,
+                  min_n_stratum = c(NA, NA))
+  bare <- n_alloc(frame[, 1:2], measures = measures, targets = targets)
+  expect_equal(none$detail$n, bare$detail$n)
+  floored <- n_alloc(frame, measures = measures, targets = targets)
+  expect_equal(floored$detail$n[1], 500)
+  pa <- prec_alloc(frame, n = c(100, 100), measures = measures,
+                   targets = targets, min_n_stratum = c(NA, NA))
+  expect_false(any(pa$bounds$.lower_violation))
+  expect_true(prec_alloc(frame, n = c(100, 100), measures = measures,
+                         targets = targets)$bounds$.lower_violation[1])
+})
+
+test_that("a one-stratum NA floor means no floor, classic and joint", {
+  one <- data.frame(stratum = "A", N = 1000, min_n_stratum = NA_real_)
+  classic <- n_alloc(one, n = 100, alloc = "proportional")
+  expect_equal(classic$detail$n, 100)
+  expect_output(print(classic), "continuous design")
+  m <- data.frame(stratum = "A", name = "p", p = 0.5)
+  t <- data.frame(name = "p", cv = 0.1)
+  expect_equal(n_alloc(one, measures = m, targets = t)$detail$n,
+               n_alloc(one[, 1:2], measures = m, targets = t)$detail$n)
+  expect_no_error(prec_alloc(one, n = 50, measures = m, targets = t))
+  two <- data.frame(stratum = c("A", "B"), N = c(1000, 2000))
+  expect_equal(
+    n_alloc(two, n = 100, alloc = "proportional",
+            min_n_stratum = NA_real_)$detail$n,
+    n_alloc(two, n = 100, alloc = "proportional")$detail$n
+  )
+})

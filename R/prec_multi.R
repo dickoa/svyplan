@@ -19,12 +19,17 @@
 #'
 #'   See the Details section for the full column reference.
 #'
-#'   For `svyplan_n` objects: a result from [n_multi()].
+#'   For `svyplan_n` objects: a result from [n_multi()]. Every row is
+#'   assessed at the size the result chose, the common `n`, a domain's
+#'   quota, or under natural domain sampling its expected yield
+#'   `n * share`. Rows with only a floor are dropped, since they have no
+#'   precision to report.
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param domains Character vector of column names in `indicators` to treat
 #'   as domain variables, or `NULL` (default) for no domains. All names
 #'   must exist in `indicators`. Domain columns are preserved in the result
-#'   for round-trip conversion back to [n_multi()].
+#'   for round-trip conversion back to [n_multi()], so none can be called
+#'   `name` or start with a dot.
 #' @param prop_method Proportion CI method, one of `"wald"`
 #'   (default), `"wilson"`, `"logodds"`, or `"beta"`. This is passed to
 #'   [prec_prop()] for proportion rows and ignored for mean rows.
@@ -32,18 +37,18 @@
 #'   on a per-row basis.
 #' @param resp_rate Default expected response rate at the ultimate unit, in
 #'   (0, 1\]. Used for rows whose `resp_rate` column is absent or `NA`, and
-#'   a non-missing row value overrides it. A rate of eligible units per
-#'   sampled unit at or below 1, such as
-#'   0.41 married women per household, folds in here as
-#'   `resp_rate * eligible_rate`. With a finite `N` this errs slightly
-#'   conservative.
+#'   a non-missing row value overrides it.
+#' @param eligible_rate Default eligible units per sampled unit, a positive
+#'   number that can exceed 1. Used for rows whose `eligible_rate` column is
+#'   absent or `NA`. Proportion rows only. See [n_multi()].
 #' @param plan A [svyplan()] profile providing default design parameters.
 #'
 #' @return A `svyplan_prec` object with a `$detail` data frame containing
 #'   per-indicator precision: `.se`, `.moe`, `.rmoe`, and `.cv`. `.rmoe`
 #'   is `.moe` as a fraction of the row's own estimand, `p` for a
 #'   proportion, `abs(mu)` for a mean and `abs(r)` for a ratio, and `NA` for
-#'   a row carrying none of them.
+#'   a row carrying none of them. The `domains` columns come first, so each
+#'   row can be joined back to its domain.
 #'
 #' @details
 #' ## Building the indicators data frame
@@ -94,6 +99,9 @@
 #'   \item{`resp_rate`}{Expected response rate at the ultimate unit
 #'     (default 1). A cluster design spends a rate at stage 1 too, and
 #'     [prec_cluster()] names that column `resp_rate_psu`.}
+#'   \item{`eligible_rate`}{Eligible units per sampled unit for the row's
+#'     estimate, as in [prec_prop()]. Proportion rows only. The
+#'     several-indicators mode of [prec_cluster()] refuses it.}
 #' }
 #'
 #' Domain columns are specified via the `domains` parameter.
@@ -137,6 +145,7 @@ prec_multi.default <- function(
   domains = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
   resp_rate = 1,
+  eligible_rate = 1,
   plan = NULL
 ) {
   merged <- .merge_plan_args(
@@ -167,17 +176,18 @@ prec_multi.default <- function(
     )
   }
   check_resp_rate(resp_rate)
+  check_eligible_rate(eligible_rate)
 
   if (!is.data.frame(indicators) || nrow(indicators) == 0L) {
     stop("'indicators' must be a non-empty data frame", call. = FALSE)
   }
 
   indicators <- .indicators_var_from_sd(indicators, domains)
-  .check_indicator_columns(indicators, domains)
+  .check_indicator_columns(indicators, domains, eligible = TRUE)
   .check_resp_rate_column(indicators, FALSE)
   .stop_min_cases_column(
     indicators,
-    "prec_multi() reads the sizes you already have; a case floor is a sizing constraint, so it belongs to n_multi()"
+    "prec_multi() reads the sizes you already have. A floor is a sizing constraint, so it belongs to n_multi()"
   )
 
   if (!"n" %in% names(indicators)) {
@@ -201,6 +211,7 @@ prec_multi.default <- function(
   domain_cols <- domains %||% character(0)
   .prec_multi_simple(indicators, prop_method = prop_method,
                      resp_rate = resp_rate,
+                     eligible_rate = eligible_rate,
                      domain_cols = domain_cols)
 }
 
@@ -228,7 +239,7 @@ prec_multi.default <- function(
   .check_estimand_markers(indicators)
   .stop_min_cases_column(
     indicators,
-    "prec_cluster(indicators = ) reads the sizes you already have, and a case floor is a sizing constraint, so it belongs to n_multi()"
+    "prec_cluster(indicators = ) reads the sizes you already have, and a floor is a sizing constraint, so it belongs to n_multi()"
   )
 
   if (!"n" %in% names(indicators)) {
@@ -293,10 +304,26 @@ prec_multi.default <- function(
   )
 }
 
+#' Put the domain columns of an indicator table before its precision rows
+#'
+#' Without them a row of `$detail` can be matched back to its domain only by
+#' position, which a reordered table breaks.
+#' @keywords internal
+#' @noRd
+.with_domain_keys <- function(detail, indicators, domain_cols) {
+  if (length(domain_cols) == 0L) {
+    return(detail)
+  }
+  keys <- as.data.frame(indicators)[, domain_cols, drop = FALSE]
+  rownames(keys) <- NULL
+  cbind(keys, detail)
+}
+
 #' @keywords internal
 #' @noRd
 .prec_multi_simple <- function(indicators, prop_method = "wald",
                               resp_rate = 1,
+                              eligible_rate = 1,
                               domain_cols = character(0)) {
   if (!"alpha" %in% names(indicators)) {
     indicators$alpha <- 0.05
@@ -320,6 +347,7 @@ prec_multi.default <- function(
   if (!"df" %in% names(indicators)) {
     indicators$df <- NA_real_
   }
+  indicators <- .fill_eligible_rate(indicators, eligible_rate)
 
   .validate_common_columns(indicators)
 
@@ -371,6 +399,7 @@ prec_multi.default <- function(
     paste("indicator", seq_len(nr))
   }
   .check_gross_n(indicators$n, indicators$N, label = row_labels)
+  elig <- .indicator_rate(indicators, "eligible_rate", nr)
 
   se_vec <- numeric(nr)
   moe_vec <- numeric(nr)
@@ -400,6 +429,7 @@ prec_multi.default <- function(
         N = indicators$N[i],
         deff = indicators$deff[i],
         resp_rate = indicators$resp_rate[i],
+        eligible_rate = elig[i],
         method = indicators$prop_method[i],
         df = .row_df(indicators, i)
       )
@@ -422,12 +452,16 @@ prec_multi.default <- function(
 
   labels <- if ("name" %in% names(indicators)) indicators$name else seq_len(nr)
 
-  detail <- data.frame(
-    name = labels,
-    .se = se_vec,
-    .moe = moe_vec,
-    .rmoe = .rmoe_from_moe(moe_vec, .indicator_estimand(indicators, nr)),
-    .cv = cv_vec
+  detail <- .with_domain_keys(
+    data.frame(
+      name = labels,
+      .se = se_vec,
+      .moe = moe_vec,
+      .rmoe = .rmoe_from_moe(moe_vec, .indicator_estimand(indicators, nr)),
+      .cv = cv_vec
+    ),
+    indicators,
+    domain_cols
   )
 
   .new_svyplan_prec(
@@ -567,6 +601,7 @@ prec_multi.default <- function(
   rr <- indicators$resp_rate_psu
   rs <- .indicator_rate(indicators, "resp_rate_ssu", nr)
   ru <- .indicator_rate(indicators, "resp_rate", nr)
+  .check_row_takes(indicators, n2, if (stages == 3L) n3)
   n1_eff <- n1 * rr
 
   cv_vec <- numeric(nr)
@@ -640,12 +675,16 @@ prec_multi.default <- function(
     }
   }
 
-  detail <- data.frame(
-    name = labels,
-    .se = se_vec,
-    .moe = moe_vec,
-    .rmoe = .rmoe_from_moe(moe_vec, .indicator_estimand(indicators, nr)),
-    .cv = cv_vec
+  detail <- .with_domain_keys(
+    data.frame(
+      name = labels,
+      .se = se_vec,
+      .moe = moe_vec,
+      .rmoe = .rmoe_from_moe(moe_vec, .indicator_estimand(indicators, nr)),
+      .cv = cv_vec
+    ),
+    indicators,
+    domain_cols
   )
 
   .new_svyplan_prec(
@@ -679,19 +718,29 @@ prec_multi.svyplan_n <- function(indicators, ...) {
   if ("resp_rate" %in% names(dots)) {
     tgt$resp_rate <- NA_real_
   }
+  if ("eligible_rate" %in% names(dots) && "eligible_rate" %in% names(tgt)) {
+    tgt$eligible_rate <- NA_real_
+  }
+  # The design is assessed as sized: every row at the size the fit chose,
+  # not at its own requirement, which is the target it was sized to. Floors
+  # shaped that size and have no precision of their own to report.
+  tgt <- tgt[!.floor_only_rows(tgt), , drop = FALSE]
+  tgt$min_cases <- NULL
+  tgt$min_respondents <- NULL
   tgt$n <- x$n
   tgt$moe <- NULL
   tgt$cv <- NULL
-  if (!is.null(x$detail) && ".n" %in% names(x$detail)) {
-    tgt$n <- x$detail$.n
-  }
   dom_cols <- x$params$domain_cols %||% character(0)
   if (!is.null(x$domains) && length(dom_cols) > 0L) {
     dom <- x$domains
     tgt_key <- .domain_key(tgt, dom_cols)
     dom_key <- .domain_key(dom, dom_cols)
     dom_idx <- match(tgt_key, dom_key)
-    tgt$n <- dom$.n[dom_idx]
+    tgt$n <- if (".share" %in% names(dom)) {
+      x$n * dom$.share[dom_idx]
+    } else {
+      dom$.n[dom_idx]
+    }
   }
   res <- do.call(prec_multi.default, c(
     list(indicators = tgt, domains = dom_cols), dots

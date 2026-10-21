@@ -257,7 +257,8 @@ check_precision <- function(moe, cv, rmoe = NULL) {
 #' than that the design is impossible.
 #' @keywords internal
 #' @noRd
-.check_expected_take <- function(take, rate, take_name, rate_name) {
+.check_expected_take <- function(take, rate, take_name, rate_name,
+                                 where = "") {
   if (!is.finite(take) || !is.finite(rate)) {
     return(invisible(TRUE))
   }
@@ -266,11 +267,41 @@ check_precision <- function(moe, cv, rmoe = NULL) {
   }
   stop(
     sprintf(
-      "'%s' = %.4g at '%s' = %.4g expects %.4g responses per unit, and this package's expected-take planning approximation is unsupported below one. Raise '%s', raise '%s', or plan the stage with a design that does not rely on it",
-      take_name, take, rate_name, rate, take * rate, take_name, rate_name
+      "'%s' = %.4g at '%s' = %.4g%s expects %.4g responses per unit, and this package's expected-take planning approximation is unsupported below one. Raise '%s', raise '%s', or plan the stage with a design that does not rely on it",
+      take_name, take, rate_name, rate, where, take * rate, take_name,
+      rate_name
     ),
     call. = FALSE
   )
+}
+
+#' The expected-take check on every row of a cluster indicator table
+#'
+#' The rows share the takes but each carries its own response rates, so the
+#' scalar call's refusal applies row by row, on the take precision reads.
+#' @keywords internal
+#' @noRd
+.check_row_takes <- function(indicators, n_per_psu, n_per_ssu = NULL) {
+  nr <- nrow(indicators)
+  labels <- if ("name" %in% names(indicators)) {
+    indicators$name
+  } else {
+    seq_len(nr)
+  }
+  ru <- .indicator_rate(indicators, "resp_rate", nr)
+  rs <- .indicator_rate(indicators, "resp_rate_ssu", nr)
+  n2 <- rep_len(n_per_psu, nr)
+  n3 <- if (!is.null(n_per_ssu)) rep_len(n_per_ssu, nr)
+  for (j in seq_len(nr)) {
+    where <- sprintf(" for indicator %s", sQuote(labels[j]))
+    if (is.null(n3)) {
+      .check_expected_take(n2[j], ru[j], "n_per_psu", "resp_rate", where)
+    } else {
+      .check_expected_take(n2[j], rs[j], "n_per_psu", "resp_rate_ssu", where)
+      .check_expected_take(n3[j], ru[j], "n_per_ssu", "resp_rate", where)
+    }
+  }
+  invisible(TRUE)
 }
 
 #' Check alpha in (0, 1)
@@ -1082,6 +1113,46 @@ check_eligible_population <- function(N, eligible_rate) {
   invisible(TRUE)
 }
 
+#' Stratum floors from the argument or the frame column of the same name
+#'
+#' One value applies to every stratum, and one per stratum, as a vector or
+#' as a `frame` column, sets each floor apart. The argument overrides the
+#' column. `NA` sets no floor for that stratum.
+#' @keywords internal
+#' @noRd
+.resolve_min_n_stratum <- function(min_n_stratum, frame) {
+  value <- min_n_stratum %||% if (is.data.frame(frame)) {
+    frame[["min_n_stratum"]]
+  }
+  if (is.null(value)) {
+    return(NULL)
+  }
+  if (length(value) == 1L && is.na(value) && is.data.frame(frame)) {
+    value <- rep(NA_real_, nrow(frame))
+  }
+  if (length(value) == 1L && !is.na(value) && !is.null(min_n_stratum)) {
+    check_scalar(value, "min_n_stratum")
+    return(value)
+  }
+  if (!is.numeric(value) && !all(is.na(value))) {
+    stop("'min_n_stratum' must be numeric", call. = FALSE)
+  }
+  if (!is.data.frame(frame) || length(value) != nrow(frame)) {
+    stop(
+      "'min_n_stratum' must be one number, or one per 'frame' row",
+      call. = FALSE
+    )
+  }
+  value <- as.numeric(value)
+  if (any(!is.na(value) & (!is.finite(value) | value <= 0))) {
+    stop(
+      "'min_n_stratum' values must be positive and finite, or NA for no floor",
+      call. = FALSE
+    )
+  }
+  value
+}
+
 check_resp_rate <- function(resp_rate, name = "resp_rate") {
   if (
     !is.numeric(resp_rate) ||
@@ -1815,6 +1886,34 @@ check_df <- function(df, name = "df") {
     )
   }
   invisible(TRUE)
+}
+
+#' Error when a multi-indicator size exceeds a row's finite population
+#'
+#' The single-indicator engines refuse a target a census cannot meet, but
+#' the indicator table raises sizes after them, by a floor or by another
+#' row, and a census would then read as cv 0.
+#' @keywords internal
+#' @noRd
+.check_multi_attainable <- function(n, indicators, where = "") {
+  N <- indicators$N
+  bad <- is.finite(N) & n > N * (1 + 1e-9)
+  if (!any(bad)) {
+    return(invisible(TRUE))
+  }
+  i <- which(bad)[1L]
+  label <- if ("name" %in% names(indicators)) {
+    sQuote(indicators$name[i])
+  } else {
+    i
+  }
+  stop(
+    sprintf(
+      "required sample (%s units drawn%s) exceeds the population of indicator %s (N = %s). A census cannot meet it, so lower the floor or the target",
+      round(n, 1), where, label, N[i]
+    ),
+    call. = FALSE
+  )
 }
 
 #' Expected number of positive cases a proportion design will yield
@@ -2857,7 +2956,19 @@ check_df <- function(df, name = "df") {
 #' legitimately be called `label` or `method`.
 #' @keywords internal
 #' @noRd
-.check_indicator_columns <- function(indicators, domains = NULL) {
+.check_indicator_columns <- function(indicators, domains = NULL,
+                                     eligible = FALSE) {
+  domains <- as.character(domains)
+  reserved <- domains[domains == "name" | startsWith(domains, ".")]
+  if (length(reserved) > 0L) {
+    stop(
+      sprintf(
+        "domain column(s) %s are named like a result column. Rename them, for example without the leading dot",
+        paste(sQuote(reserved), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
   nms <- setdiff(names(indicators), domains)
   aliases <- .indicator_column_aliases()
   hit <- intersect(nms, names(aliases))
@@ -2872,9 +2983,9 @@ check_df <- function(df, name = "df") {
       call. = FALSE
     )
   }
-  if ("eligible_rate" %in% nms) {
+  if (!eligible && "eligible_rate" %in% nms) {
     stop(
-      "'indicators' does not take an 'eligible_rate' column. Fold a rate at most 1 into each row's 'resp_rate'",
+      "an 'eligible_rate' column applies to n_multi() and prec_multi(). With cluster stages, fold a rate at most 1 into each row's 'resp_rate'",
       call. = FALSE
     )
   }
@@ -2928,12 +3039,13 @@ check_df <- function(df, name = "df") {
       call. = FALSE
     )
   }
+  elig <- .indicator_rate(indicators, "eligible_rate", nrow(indicators))
   out <- rep(NA_real_, nrow(indicators))
   out[set] <- vapply(
     which(set),
     function(i) {
       .n_from_min_cases(indicators$min_cases[i], indicators$p[i],
-                        indicators$resp_rate[i])
+                        indicators$resp_rate[i] * elig[i])
     },
     numeric(1L)
   )
@@ -2944,13 +3056,104 @@ check_df <- function(df, name = "df") {
 #' @keywords internal
 #' @noRd
 .stop_min_cases_column <- function(indicators, context) {
-  if ("min_cases" %in% names(indicators) && any(!is.na(indicators$min_cases))) {
+  for (col in c("min_cases", "min_respondents")) {
+    if (col %in% names(indicators) && any(!is.na(indicators[[col]]))) {
+      stop(
+        sprintf("'%s' sizes a single-stage indicator table and %s", col, context),
+        call. = FALSE
+      )
+    }
+  }
+  invisible(TRUE)
+}
+
+#' Rows that carry only a respondent floor
+#'
+#' Such a row stands for an estimate whose precision is not modeled, such as
+#' a fertility rate sized by a count of interviews, so it has no estimand
+#' and no target and is set aside by every precision step.
+#' @keywords internal
+#' @noRd
+.floor_only_rows <- function(indicators) {
+  if (!"min_respondents" %in% names(indicators)) {
+    return(rep(FALSE, nrow(indicators)))
+  }
+  set <- function(col) {
+    if (col %in% names(indicators)) !is.na(indicators[[col]]) else FALSE
+  }
+  estimand <- set("p") | set("var") | set("sd") | .is_ratio_row(indicators)
+  !is.na(indicators$min_respondents) & !estimand
+}
+
+#' Validate the respondent floors of an indicator table
+#' @keywords internal
+#' @noRd
+.check_respondent_floors <- function(indicators, floor_only, domains = NULL) {
+  if (!"min_respondents" %in% names(indicators)) {
+    return(invisible(TRUE))
+  }
+  vals <- indicators$min_respondents[!is.na(indicators$min_respondents)]
+  if (length(vals) > 0L &&
+      (!is.numeric(vals) || any(vals <= 0) || any(!is.finite(vals)))) {
+    stop("'min_respondents' values must be positive and finite", call. = FALSE)
+  }
+  if (all(floor_only)) {
     stop(
-      sprintf("'min_cases' sizes a single-stage indicator table and %s", context),
+      "'indicators' needs at least one row with an estimate and a target. A row with only 'min_respondents' raises the size those rows set",
       call. = FALSE
     )
   }
+  if (length(domains) > 0L && all(domains %in% names(indicators))) {
+    key <- .domain_key(indicators, domains)
+    bare_keys <- names(which(tapply(floor_only, key, all)))
+    bare <- vapply(bare_keys, function(k) {
+      vals <- vapply(indicators[match(k, key), domains, drop = FALSE],
+                     as.character, character(1L))
+      if (length(domains) == 1L) {
+        vals
+      } else {
+        paste(paste0(domains, " = ", vals), collapse = ", ")
+      }
+    }, character(1L))
+    if (length(bare) > 0L) {
+      stop(
+        sprintf(
+          "domain(s) %s carry only 'min_respondents'. Every domain needs a row with an estimate and a target, which the floor then raises",
+          paste(sQuote(bare), collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+  }
+  targets <- intersect(c("cv", "moe", "rmoe"), names(indicators))
+  for (col in targets) {
+    hit <- which(floor_only & !is.na(indicators[[col]]))
+    if (length(hit) > 0L) {
+      stop(
+        sprintf(
+          "row(s) %s carry '%s' but no 'p', 'var' or 'r'. A row with only 'min_respondents' has no estimate to target",
+          paste(hit, collapse = ", "), col
+        ),
+        call. = FALSE
+      )
+    }
+  }
   invisible(TRUE)
+}
+
+#' Size each row's respondent floor needs
+#'
+#' The floor counts eligible respondents, `n * resp_rate * eligible_rate`,
+#' with no proportion in it, which is what sets it apart from `min_cases`.
+#' @keywords internal
+#' @noRd
+.multi_min_respondents_n <- function(indicators) {
+  if (!"min_respondents" %in% names(indicators) ||
+      all(is.na(indicators$min_respondents))) {
+    return(NULL)
+  }
+  elig <- .indicator_rate(indicators, "eligible_rate", nrow(indicators))
+  indicators$min_respondents / (indicators$resp_rate * elig)
 }
 
 #' Validate common optional columns in a multi-indicator table

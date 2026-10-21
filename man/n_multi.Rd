@@ -16,6 +16,7 @@ n_multi(indicators, ...)
   min_n_domain = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
   resp_rate = 1,
+  eligible_rate = 1,
   plan = NULL
 )
 
@@ -46,7 +47,8 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_multi
 \item{domains}{Character vector of column names in \code{indicators} to treat
 as domain variables, or \code{NULL} (default) for no domains. All names
 must exist in \code{indicators}. When specified, sizing runs
-independently for each domain combination.}
+independently for each domain combination. A domain column cannot be
+called \code{name} or start with a dot, the names of result columns.}
 
 \item{domain_sampling}{How the per-domain requirements combine into one
 overall size, either \code{"separate"} (default) or \code{"natural"}. It applies
@@ -78,11 +80,13 @@ interval half-width, so those rows need \code{moe} rather than \code{cv}.}
 \item{resp_rate}{Default expected response rate at the ultimate unit, in
 (0, 1]. Used for rows whose \code{resp_rate} column is absent or \code{NA}, and
 a non-missing row value overrides it. See the nonresponse section of
-\link{svyplan-package} for what this adjustment does and does not claim.
-A rate of eligible units per sampled unit at or below 1, such as
-0.41 married women per household, folds in here as
-\code{resp_rate * eligible_rate}. With a finite \code{N} this errs slightly
-conservative.}
+\link{svyplan-package} for what this adjustment does and does not claim.}
+
+\item{eligible_rate}{Default eligible units per sampled unit, a positive
+number such as married women per household, which can exceed 1. Used
+for rows whose \code{eligible_rate} column is absent or \code{NA}, and a
+non-missing row value overrides it. Proportion rows only. See the
+\code{eligible_rate} column under Details.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -152,6 +156,14 @@ A minimal example for three health indicators:
 Rows with \code{p} are treated as proportions, whereas rows with \code{var} (and
 \code{p = NA}) are treated as means. You cannot have both \code{p} and \code{var} non-\code{NA}
 in the same row.
+
+A row may instead carry only a floor on the number of respondents,
+\code{min_respondents}, with no \code{p}, \code{var} or target. It stands for an
+estimate whose precision is not modeled, such as the fertility rates a
+DHS sizes by a count of interviews with women. Its \code{resp_rate} and
+\code{eligible_rate} turn the count into sampled units, and it raises the
+size the other rows set. Every domain needs at least one row with an
+estimate and a target.
 }
 
 \subsection{Column reference}{
@@ -213,6 +225,13 @@ default) sizes the row on precision alone. The row that ends up
 largest is still the binding one, whichever constraint raised it.
 Single-stage \code{n_multi()} only, because a multistage design sizes
 stages against a cost and has no single total for a count to raise.}
+\item{\code{min_respondents}}{Minimum expected number of eligible
+respondents, \code{n * resp_rate * eligible_rate}, a floor on the row's
+size. Unlike \code{min_cases}, it counts every respondent of the row's
+group, not those with the attribute, and it applies to any row. A row
+with this floor and no estimand is the floor-only row described
+above. \code{NA} (the default) sets no floor. Single-stage \code{n_multi()}
+only, as for \code{min_cases}.}
 \item{\code{unit_relvar}}{Unit relvariance. If omitted, derived
 automatically from \code{p} (as \code{(1 - p) / p}) or from
 \code{var} / \code{mu^2}.}
@@ -224,6 +243,14 @@ non-response. It means the same thing in a cluster design, where
 that cannot be worked and \code{resp_rate_ssu} for second-stage units in a
 three-stage design. Naming a stage the design does not have is an
 error rather than a column carried along and ignored.}
+\item{\code{eligible_rate}}{Eligible units per sampled unit for the row's
+estimate, such as married women or children aged 12 to 23 months per
+household. The row is sized as \code{\link[=n_prop]{n_prop()}}\verb{(eligible_rate = )} sizes
+it. Sizes stay in sampled units, and the variance reads
+\code{N * eligible_rate} eligible units and \code{resp_rate * eligible_rate}
+respondents per sampled unit. Each row can carry its own group.
+Proportion rows only, so a mean or ratio row takes 1. The
+several-indicators mode of \code{\link[=n_cluster]{n_cluster()}} refuses the column.}
 }
 
 Domain columns are specified via the \code{domains} parameter. When domains
@@ -332,6 +359,21 @@ targets_dom <- data.frame(
   region = rep(c("North", "South"), 2)
 )
 n_multi(targets_dom, domains = "region")
+
+# A household survey whose estimates are over persons. Each row counts
+# its own group per household, and a row with only 'min_respondents'
+# asks for 800 interviewed women whatever the targets need.
+dhs <- data.frame(
+  region = rep(c("Coast", "Inland"), 3),
+  name = rep(c("mcpr", "vaccination", "women"), each = 2),
+  p = c(0.22, 0.08, 0.77, 0.85, NA, NA),
+  cv = c(0.10, 0.10, 0.10, 0.10, NA, NA),
+  deff = c(1.03, 2.71, 1.32, 2.37, NA, NA),
+  resp_rate = 0.88,
+  eligible_rate = c(0.59, 2.30, 0.09, 0.47, 1.13, 2.89),
+  min_respondents = c(NA, NA, NA, NA, 800, 800)
+)
+n_multi(dhs, domains = "region")
 
 }
 \references{

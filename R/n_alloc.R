@@ -84,6 +84,8 @@
 #'       Use `NA` for strata without a cap. It bounds the gross weight,
 #'       the units drawn, not the response-adjusted \eqn{N_h/(n_hr_h)},
 #'       which differs once `resp_rate` varies by stratum.}
+#'     \item{`min_n_stratum`}{Minimum sample size of each stratum, `NA`
+#'       for none. See the argument of the same name.}
 #'     \item{`take_all`}{Logical (or 0/1). If `TRUE`, every unit in the
 #'       stratum is included, a census stratum. Useful for small strata
 #'       whose total population is tiny enough to enumerate.}
@@ -234,7 +236,12 @@
 #'   [design_df()]. It switches the quantile used to translate a `moe`
 #'   target in and to report `moe` out. A `cv` target carries no quantile
 #'   and is unaffected. `NULL` (default) applies no adjustment.
-#' @param min_n_stratum Optional minimum sample size per stratum.
+#' @param min_n_stratum Optional minimum sample size per stratum. One value
+#'   applies to every stratum. A vector of length `nrow(frame)`, or a
+#'   `frame` column of the same name, gives each stratum its own floor, with
+#'   `NA` for none, such as a domain that needs a set number of interviews
+#'   whatever its share of a power allocation. The argument overrides the
+#'   column.
 #' @param alloc_q Bankier allocation exponent, used only when `alloc = "power"`.
 #'   Numeric scalar in \eqn{[0, 1]}. With the default `alloc_measure`,
 #'   `alloc_q = 1` gives Neyman allocation. At `alloc_q = 0` weights depend
@@ -884,6 +891,11 @@
 #' sizes <- data.frame(stratum = c("A", "B", "C"), N = c(4e5, 1e5, 2.5e4))
 #' n_alloc(sizes, n = 60, alloc = "power", alloc_q = 0.25, min_n_stratum = 15)
 #'
+#' # A floor for one stratum only, such as the clusters a small domain needs
+#' # for its own estimates. The others share the rest by the power rule.
+#' n_alloc(sizes, n = 60, alloc = "power", alloc_q = 0.25,
+#'         min_n_stratum = c(NA, NA, 20))
+#'
 #' # Joint targets for two indicators and an overlapping domain
 #' joint_frame <- data.frame(
 #'   stratum = c("North urban", "North rural", "South urban"),
@@ -1083,6 +1095,7 @@ n_alloc.default <- function(
   .check_unused_dots(...)
   .check_register_args(certainty_cutoff, n_psu_per_zone, frame, psu)
   .check_eligible_scope(eligible_rate, frame, measures, psu)
+  min_n_stratum <- .resolve_min_n_stratum(min_n_stratum, frame)
   alloc_default <- c("neyman", "optimal", "proportional", "power")
   alloc_explicit <- !missing(alloc) && !identical(alloc, alloc_default)
   alloc_q_explicit <- !missing(alloc_q) && !identical(alloc_q, 0.5)
@@ -1215,9 +1228,6 @@ n_alloc.default <- function(
     )
   }
 
-  if (!is.null(min_n_stratum)) {
-    check_scalar(min_n_stratum, "min_n_stratum")
-  }
   if (alloc == "power") {
     if (
       !is.numeric(alloc_q) ||
@@ -1792,8 +1802,8 @@ n_alloc.svyplan_prec <- function(
 #'   with a `psu` register. See the correction section in Details.
 #' @param min_n_stratum Optional minimum sample size per stratum, applied as the
 #'   lower bound the assessment reports against in `$bounds`. It is the same
-#'   argument [n_alloc()] takes, so a design and its assessment can be held
-#'   to one floor. Joint assessment only: supplying it without `measures` and
+#'   argument [n_alloc()] takes, one value or one per stratum, so a design
+#'   and its assessment can be held to one floor. Joint assessment only: supplying it without `measures` and
 #'   `targets` is an error.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
@@ -1884,6 +1894,30 @@ n_alloc.svyplan_prec <- function(
 #' )
 #' prec_alloc(jf, n = c(120, 150), measures = jm, targets = jt)
 #'
+#' # A fixed allocation of households assessed nationally and per region,
+#' # with each region's published design effect (a DEFT, squared) and its
+#' # married women per household. The national row weights each region by
+#' # its eligible women, N * eligible_rate.
+#' regions <- data.frame(
+#'   stratum = c("Coast", "Centre", "East"),
+#'   region = c("Coast", "Centre", "East"),
+#'   N = c(60000, 150000, 40000)
+#' )
+#' mcpr <- data.frame(
+#'   stratum = regions$stratum, name = "mcpr",
+#'   p = c(0.22, 0.19, 0.08),
+#'   deff = c(1.02, 1.09, 1.65)^2,
+#'   resp_rate = c(0.84, 0.91, 0.88),
+#'   eligible_rate = c(0.59, 1.23, 2.30)
+#' )
+#' every_level <- data.frame(
+#'   name = "mcpr", domain = c(".overall", "region"), cv = 0.10
+#' )
+#' assessed <- prec_alloc(regions, n = c(850, 1525, 975), measures = mcpr,
+#'                        targets = every_level)
+#' assessed
+#' assessed$detail[, c("domain", "level", ".achieved", ".pass")]
+#'
 #' @export
 prec_alloc <- function(frame, ...) {
   if (!missing(frame)) {
@@ -1947,9 +1981,7 @@ prec_alloc.default <- function(
     if (!is.null(budget)) {
       check_scalar(budget, "budget")
     }
-    if (!is.null(min_n_stratum)) {
-      check_scalar(min_n_stratum, "min_n_stratum")
-    }
+    min_n_stratum <- .resolve_min_n_stratum(min_n_stratum, frame)
     if (!is.null(domains)) {
       stop(
         "use 'targets$domain' for joint constrained allocation, not 'domains'",
@@ -2818,8 +2850,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   M_src <- rep("N", H)
 
   if (!is.null(min_n_stratum)) {
-    hit <- min_n_stratum > m_h
-    m_h <- pmax(m_h, min_n_stratum)
+    floor_h <- rep_len(min_n_stratum, H)
+    floor_h[is.na(floor_h)] <- 0
+    hit <- floor_h > m_h
+    m_h <- pmax(m_h, floor_h)
     m_src[hit] <- "min_n_stratum"
   }
 

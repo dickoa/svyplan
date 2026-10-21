@@ -120,7 +120,9 @@ the actual weights, strata, and clusters.
 \code{\link[=design_effect]{design_effect()}}.
 
 \item \code{effective_n(svyplan_cluster)}: Use the total sample size and design features of
-a \code{\link[=n_cluster]{n_cluster()}} or \code{\link[=prec_cluster]{prec_cluster()}} allocation.
+a \code{\link[=n_cluster]{n_cluster()}} or \code{\link[=prec_cluster]{prec_cluster()}} allocation. The total is netted by
+every stage's response rate and by \code{eligible_rate}, so the result
+counts eligible respondents, as the \code{cv} does.
 
 \item \code{effective_n(svyplan_prec)}: Use the total and design features of a
 \code{\link[=prec_cluster]{prec_cluster()}} result. Other \code{svyplan_prec} types carry the \code{deff}

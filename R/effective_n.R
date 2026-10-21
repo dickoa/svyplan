@@ -150,7 +150,9 @@ effective_n.svyplan_deff <- function(x, ..., n = NULL, resp_rate = 1) {
 }
 
 #' @describeIn effective_n Use the total sample size and design features of
-#'   a [n_cluster()] or [prec_cluster()] allocation.
+#'   a [n_cluster()] or [prec_cluster()] allocation. The total is netted by
+#'   every stage's response rate and by `eligible_rate`, so the result
+#'   counts eligible respondents, as the `cv` does.
 #' @export
 effective_n.svyplan_cluster <- function(
   x,
@@ -165,7 +167,8 @@ effective_n.svyplan_cluster <- function(
   .effective_n(
     n %||% x$total_n,
     as.double(deff),
-    .effective_n_resp(resp_rate, x)
+    .effective_n_resp(resp_rate, x),
+    check_rate = !is.null(resp_rate)
   )
 }
 
@@ -186,7 +189,8 @@ effective_n.svyplan_prec <- function(
   .effective_n(
     n %||% prod(x$params$n),
     as.double(deff),
-    .effective_n_resp(resp_rate, x)
+    .effective_n_resp(resp_rate, x),
+    check_rate = !is.null(resp_rate)
   )
 }
 
@@ -240,9 +244,9 @@ effective_n.svyplan_n <- function(
 #' effect
 #' @keywords internal
 #' @noRd
-.effective_n <- function(n, deff, resp_rate = 1) {
+.effective_n <- function(n, deff, resp_rate = 1, check_rate = TRUE) {
   check_scalar(n, "n")
-  check_resp_rate(resp_rate)
+  if (check_rate) check_resp_rate(resp_rate)
   n * resp_rate / deff
 }
 
@@ -252,11 +256,14 @@ effective_n.svyplan_n <- function(
 .effective_n_resp <- function(resp_rate, x) {
   # A cluster plan can lose units at more than one stage, and every loss
   # removes observations from the same total, so the share of the drawn
-  # sample that responds is their product.
-  stored <- if (inherits(x, "svyplan_cluster")) {
-    (x$params$resp_rate_psu %||% 1) *
-      (x$params$resp_rate_ssu %||% 1) *
-      (x$params$resp_rate %||% 1)
+  # sample that responds is their product. An eligible rate then counts the
+  # eligible persons each responding unit holds, and can exceed 1.
+  stored <- if (inherits(x, "svyplan_cluster") || identical(x$type, "cluster")) {
+    p <- x$params
+    (p[["resp_rate_psu"]] %||% 1) *
+      (p[["resp_rate_ssu"]] %||% 1) *
+      (p[["resp_rate"]] %||% 1) *
+      (p[["eligible_rate"]] %||% 1)
   } else {
     x$params$resp_rate
   }

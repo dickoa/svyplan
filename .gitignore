@@ -12,7 +12,7 @@ reference/
 build/
 .~undo-tree~
 *~undo-tree~
-
+Rplots.pdf
 # compiled objects of src/
 src/*.o
 src/*.so

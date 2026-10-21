@@ -802,19 +802,18 @@ print.svyplan_prec <- function(x, ...) {
     )
     cat(paste(stage_parts, collapse = " | "))
     cat(sprintf(" -> total n = %s", .fmt_count_n(total_display)))
-    resp_rate <- p$resp_rate_psu
+    resp_all <- (p[["resp_rate_psu"]] %||% 1) * (p[["resp_rate_ssu"]] %||% 1) *
+      (p[["resp_rate"]] %||% 1)
     if (!is.null(p[["eligible_rate"]])) {
-      all_rates <- (p$resp_rate_psu %||% 1) * (p$resp_rate_ssu %||% 1) *
-        (p$resp_rate %||% 1) * p[["eligible_rate"]]
       cat(sprintf(
         " (eligible respondents: %s, eligible_rate = %.4g)",
-        .fmt_count_n(ceiling(total_display * all_rates)),
+        .fmt_count_n(ceiling(total_display * resp_all * p[["eligible_rate"]])),
         p[["eligible_rate"]]
       ))
-    } else if (!is.null(resp_rate) && resp_rate < 1) {
+    } else if (resp_all < 1) {
       cat(sprintf(
         " (net: %s)",
-        .fmt_count_n(ceiling(total_display * resp_rate))
+        .fmt_count_n(ceiling(total_display * resp_all))
       ))
     }
     cat("\n")
@@ -2089,8 +2088,10 @@ print.svyplan_strata <- function(x, ...) {
     cat("\n")
   }
   parts <- character(0L)
-  if (!is.null(p$min_n_stratum) && p$min_n_stratum > 0) {
+  if (length(p$min_n_stratum) == 1L && isTRUE(p$min_n_stratum > 0)) {
     parts <- c(parts, sprintf("min_n_stratum = %g", p$min_n_stratum))
+  } else if (length(p$min_n_stratum) > 1L && !all(is.na(p$min_n_stratum))) {
+    parts <- c(parts, "min_n_stratum per stratum")
   }
   resp_rate <- p$resp_rate
   if (!is.null(resp_rate) && any(resp_rate < 1)) {

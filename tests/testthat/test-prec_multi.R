@@ -448,3 +448,67 @@ test_that("a prec object carrying no mode round trips on its cv", {
   expect_equal(back$params$mode, "cv")
   expect_equal(back$detail$.cv_target, p$detail$.cv, tolerance = 1e-10)
 })
+
+## Assessing a sizing result
+
+test_that("prec_multi(fit) assesses every row at the size the fit chose", {
+  fit <- n_multi(data.frame(name = c("easy", "hard"), p = 0.5,
+                            moe = c(0.10, 0.01)))
+  pr <- prec_multi(fit)
+  expect_equal(pr$cv, fit$detail$.cv_achieved)
+  expect_equal(pr$params$indicators$n, rep(fit$n, 2))
+  expect_equal(n_multi(pr)$n, fit$n)
+})
+
+test_that("prec_multi(fit) assesses a domain at its quota or its yield", {
+  ind <- data.frame(name = "a", p = 0.5, moe = 0.05, dom = c("A", "B"),
+                    share = c(0.25, 0.75))
+  sep <- n_multi(ind, domains = "dom")
+  expect_equal(prec_multi(sep)$params$indicators$n, sep$domains$.n)
+
+  nat <- n_multi(ind, domains = "dom", domain_sampling = "natural")
+  pr <- prec_multi(nat)
+  expect_equal(pr$params$indicators$n, nat$n * c(0.25, 0.75))
+  expect_equal(pr$cv[1], prec_prop(0.5, n = nat$n * 0.25)$cv)
+  expect_lt(pr$cv[2], pr$cv[1])
+  expect_equal(n_multi(pr)$n, nat$n, tolerance = 1e-8)
+})
+
+test_that("prec_multi(fit) drops the floors that shaped the size", {
+  binding <- n_multi(data.frame(name = c("a", "b"), p = c(0.3, 0.02),
+                                moe = c(0.05, 0.01), min_cases = c(NA, 60)))
+  slack <- n_multi(data.frame(name = c("a", "b"), p = c(0.3, 0.02),
+                              moe = c(0.05, 0.01), min_cases = c(NA, 1)))
+  for (fit in list(binding, slack)) {
+    pr <- prec_multi(fit)
+    expect_equal(pr$cv, fit$detail$.cv_achieved)
+    expect_null(pr$params$indicators$min_cases)
+  }
+  doms <- n_multi(
+    data.frame(name = c("a", "w"), p = c(0.3, NA), moe = c(0.05, NA),
+               min_respondents = c(NA, 900), dom = rep(c("A", "B"), each = 2)),
+    domains = "dom"
+  )
+  pr <- prec_multi(doms)
+  expect_identical(pr$params$indicators$name, c("a", "a"))
+  expect_equal(pr$params$indicators$n, doms$domains$.n)
+  expect_equal(n_multi(pr)$n, doms$n)
+})
+
+test_that("prec_multi() keeps the domain key on every row of $detail", {
+  ind <- data.frame(lga = c("A", "B", "C"), name = "mcpr",
+                    p = c(0.2, 0.08, 0.15), n = c(800, 900, 1000),
+                    eligible_rate = c(0.6, 2.3, 1.2))
+  pr <- prec_multi(ind, domains = "lga")
+  expect_identical(names(pr$detail)[1:2], c("lga", "name"))
+  expect_identical(pr$detail$lga, ind$lga)
+  shuffled <- prec_multi(ind[c(3, 1, 2), ], domains = "lga")$detail
+  expect_equal(shuffled[match(ind$lga, shuffled$lga), ], pr$detail,
+               ignore_attr = TRUE)
+  expect_identical(names(prec_multi(ind[, -1])$detail)[1], "name")
+
+  cl <- prec_cluster(indicators = data.frame(
+    region = c("N", "S"), name = "a", p = 0.3, n = 40, n_per_psu = 10,
+    icc_psu = 0.05), domains = "region")
+  expect_identical(cl$detail$region, c("N", "S"))
+})

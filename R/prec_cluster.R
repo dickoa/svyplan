@@ -42,9 +42,10 @@
 #'   `n_per_ssu` for a three-stage design, so `n` is left `NULL`.
 #' @param domains Optional character vector naming domain columns in
 #'   `indicators`. Precision is computed row by row either way, so naming
-#'   domains leaves every `$detail` value unchanged. What it does is record
-#'   the domain structure on the result, so that a round trip back to
-#'   [n_cluster()] rebuilds the same design. There is no `domain_sampling`
+#'   domains leaves every `$detail` value unchanged. What it does is put the
+#'   domain columns first in `$detail` and record the domain structure on
+#'   the result, so that a round trip back to [n_cluster()] rebuilds the
+#'   same design. There is no `domain_sampling`
 #'   argument here, because that choice governs how per-domain requirements
 #'   combine into one size, and this direction reads the sizes you already
 #'   have.

@@ -159,3 +159,90 @@ test_that("scalar costs are recorded for the round trip", {
     "must have length 2"
   )
 })
+
+## Expected takes and printed counts
+
+test_that("the indicator table refuses a take below one response per row", {
+  expect_error(
+    prec_cluster(c(100, 2), icc = 0.05, resp_rate = 0.1),
+    "expects 0.2 responses per unit"
+  )
+  expect_error(
+    prec_cluster(indicators = data.frame(name = "a", p = 0.5, n = 100,
+      n_per_psu = 2, resp_rate = 0.1, icc_psu = 0.05)),
+    "'resp_rate' = 0.1 for indicator 'a' expects 0.2"
+  )
+  expect_error(
+    n_cluster(indicators = data.frame(name = "a", p = 0.5, cv = 0.1,
+      resp_rate = 0.1, icc_psu = 0.05), stage_cost = c(500, 50),
+      n_per_psu = 2),
+    "for indicator 'a' expects 0.2"
+  )
+  expect_error(
+    prec_cluster(indicators = data.frame(name = c("a", "b"), p = 0.5,
+      n = 100, n_per_psu = 4, n_per_ssu = 5, resp_rate_ssu = c(1, 0.2),
+      icc_psu = 0.05, icc_ssu = 0.1)),
+    "'n_per_psu' = 4 at 'resp_rate_ssu' = 0.2 for indicator 'b'"
+  )
+  expect_no_error(
+    prec_cluster(indicators = data.frame(name = "a", p = 0.5, n = 100,
+      n_per_psu = 10, resp_rate = 0.1, icc_psu = 0.05))
+  )
+})
+
+test_that("the printed net count carries every stage rate", {
+  out <- capture.output(print(prec_cluster(c(100, 20), icc = 0.05,
+                                           resp_rate_psu = 0.5,
+                                           resp_rate = 0.5)))
+  expect_match(out[2], "total n = 2,?000 \\(net: 500\\)")
+  out3 <- capture.output(print(prec_cluster(c(10, 5, 4),
+                                            icc = c(0.05, 0.1),
+                                            resp_rate_ssu = 0.5)))
+  expect_match(out3[2], "\\(net: 100\\)")
+})
+
+test_that("the table and scalar cluster paths agree where a take falls below one", {
+  cases <- list(
+    list(stage_cost = c(500, 50), icc = 0.05, ind = list(icc_psu = 0.05),
+         cv = 0.05, n_psu = 2000),
+    list(stage_cost = c(500, 50, 5), icc = c(0.05, 0.1),
+         ind = list(icc_psu = 0.05, icc_ssu = 0.1), cv = 0.1, n_psu = 80,
+         n_per_ssu = 5),
+    list(stage_cost = c(500, 50, 5), icc = c(0.05, 0.1),
+         ind = list(icc_psu = 0.05, icc_ssu = 0.1), cv = 0.1, n_psu = 80,
+         n_per_psu = 10),
+    list(stage_cost = c(500, 50, 5), icc = c(0.8, 0.1),
+         ind = list(icc_psu = 0.8, icc_ssu = 0.1), cv = 0.05)
+  )
+  for (k in cases) {
+    fixed <- k[intersect(c("n_psu", "n_per_psu", "n_per_ssu"), names(k))]
+    s <- suppressWarnings(do.call(n_cluster, c(
+      list(stage_cost = k$stage_cost, icc = k$icc, cv = k$cv,
+           unit_relvar = 7 / 3), fixed)))
+    m <- do.call(n_cluster, c(
+      list(indicators = do.call(data.frame, c(list(p = 0.3, cv = k$cv),
+                                              k$ind)),
+           stage_cost = k$stage_cost), fixed))
+    expect_equal(unname(m$n), unname(s$n), tolerance = 1e-6)
+    expect_equal(m$cv, s$cv, tolerance = 1e-6)
+    expect_equal(m$cost, s$cost, tolerance = 1e-6)
+  }
+})
+
+test_that("a supplied fractional take is refused at every stage", {
+  expect_error(
+    prec_cluster(indicators = data.frame(name = "p", p = 0.5, n = 100,
+                                         n_per_psu = 0.5, icc_psu = 0.05)),
+    "'n_per_psu' = 0.5 at 'resp_rate' = 1 for indicator 'p'"
+  )
+  expect_error(
+    prec_cluster(indicators = data.frame(name = "p", p = 0.5, n = 100,
+      n_per_psu = 4, n_per_ssu = 0.5, icc_psu = 0.05, icc_ssu = 0.1)),
+    "'n_per_ssu' = 0.5"
+  )
+  expect_error(
+    prec_cluster(indicators = data.frame(name = "p", p = 0.5, n = 100,
+      n_per_psu = 0.5, n_per_ssu = 4, icc_psu = 0.05, icc_ssu = 0.1)),
+    "'n_per_psu' = 0.5 at 'resp_rate_ssu'"
+  )
+})

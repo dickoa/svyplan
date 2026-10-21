@@ -247,12 +247,15 @@ design_effect.numeric <- function(x, ...) {
 }
 
 #' @describeIn design_effect Read `icc`, `var_ratio`, and the stage takes from a
-#'   [n_cluster()] or [prec_cluster()] allocation.
+#'   [n_cluster()] or [prec_cluster()] allocation. The takes are those that
+#'   respond, `n_per_psu * resp_rate * eligible_rate` at two stages, the
+#'   ones the precision reads, so the design effect and the `cv` describe
+#'   one design.
 #' @export
 design_effect.svyplan_cluster <- function(x, ..., weights = NULL,
                                           strata = NULL) {
   .check_unused_dots(...)
-  takes <- .deff_cluster_takes(x$n, x$stages)
+  takes <- .deff_cluster_takes(x$n, x$stages, x$params)
   .deff_compose(
     icc = x$params$icc,
     n_per_psu = takes$n_per_psu,
@@ -280,7 +283,7 @@ design_effect.svyplan_prec <- function(x, ..., weights = NULL,
       call. = FALSE
     )
   }
-  takes <- .deff_cluster_takes(x$params$n, x$params$stages)
+  takes <- .deff_cluster_takes(x$params$n, x$params$stages, x$params)
   .deff_compose(
     icc = x$params$icc,
     n_per_psu = takes$n_per_psu,
@@ -331,7 +334,10 @@ design_effect.svyplan_varcomp <- function(x, ..., n_per_psu = NULL,
 #'   [n_alloc()] result. This returns the allocation's own variance ratio,
 #'   computed from the stratum sizes, takes, standard deviations, means and
 #'   any per-stratum cluster factors, rather than a product of separate
-#'   weighting and stratification approximations. Supply `weights` only for
+#'   weighting and stratification approximations. An allocation from stratum
+#'   sizes alone has no variance to compare, and returns Kish's weighting
+#'   loss of its whole takes, \eqn{n \sum_h W_h^2 / n_h}{n sum(W_h^2 / n_h)},
+#'   the ratio when every stratum has the same variance. Supply `weights` only for
 #'   an *additional* anticipated adjustment. See the `weights` argument.
 #' @param weights For an [n_alloc()] result only: an *additional*
 #'   anticipated weighting adjustment charged on top of the allocation,
@@ -361,9 +367,19 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
       call. = FALSE
     )
   }
-  ratio <- .deff_alloc_ratio(x)
-  components <- c(allocation = ratio$value)
-  notes <- c(allocation = ratio$note)
+  if (all(is.na(x$detail[["sd"]]))) {
+    # A size-only allocation identifies no variance ratio. Its weights are
+    # all it has, and under equal stratum variances their loss is the ratio.
+    loss <- .deff_from_allocation(x$detail$N, x$detail[["n_int"]] %||% x$detail$n)
+    components <- c(weighting = loss$value)
+    notes <- c(weighting = paste0(
+      loss$note, ", whole takes, equal stratum variances assumed (Kish)"
+    ))
+  } else {
+    ratio <- .deff_alloc_ratio(x)
+    components <- c(allocation = ratio$value)
+    notes <- c(allocation = ratio$note)
+  }
   if (!is.null(weights)) {
     extra <- .deff_from_weights(weights)
     components <- c(components, weight = extra$value)
@@ -757,13 +773,21 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
   as.numeric(value)
 }
 
-#' Extract per-stage takes from a svyplan_cluster $n vector
+#' The responding takes a cluster result's precision reads
+#'
+#' Each stage keeps the share of its units that respond, and the last stage
+#' the ultimate-unit rate times `eligible_rate`, as in the precision kernel.
+#' PSU response removes whole clusters, so it does not enter a take.
 #' @keywords internal
 #' @noRd
-.deff_cluster_takes <- function(n, stages) {
+.deff_cluster_takes <- function(n, stages, params) {
+  ultimate <- (params[["resp_rate"]] %||% 1) * (params[["eligible_rate"]] %||% 1)
   if (stages == 2L) {
-    list(n_per_psu = unname(n[["n_per_psu"]]), n_per_ssu = NULL)
+    list(n_per_psu = unname(n[["n_per_psu"]]) * ultimate, n_per_ssu = NULL)
   } else {
-    list(n_per_psu = unname(n[["n_per_psu"]]), n_per_ssu = unname(n[["n_per_ssu"]]))
+    list(
+      n_per_psu = unname(n[["n_per_psu"]]) * (params[["resp_rate_ssu"]] %||% 1),
+      n_per_ssu = unname(n[["n_per_ssu"]]) * ultimate
+    )
   }
 }

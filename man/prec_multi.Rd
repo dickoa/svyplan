@@ -15,6 +15,7 @@ prec_multi(indicators, ...)
   domains = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
   resp_rate = 1,
+  eligible_rate = 1,
   plan = NULL
 )
 
@@ -39,14 +40,19 @@ Exactly one estimand per row.
 
 See the Details section for the full column reference.
 
-For \code{svyplan_n} objects: a result from \code{\link[=n_multi]{n_multi()}}.}
+For \code{svyplan_n} objects: a result from \code{\link[=n_multi]{n_multi()}}. Every row is
+assessed at the size the result chose, the common \code{n}, a domain's
+quota, or under natural domain sampling its expected yield
+\code{n * share}. Rows with only a floor are dropped, since they have no
+precision to report.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{domains}{Character vector of column names in \code{indicators} to treat
 as domain variables, or \code{NULL} (default) for no domains. All names
 must exist in \code{indicators}. Domain columns are preserved in the result
-for round-trip conversion back to \code{\link[=n_multi]{n_multi()}}.}
+for round-trip conversion back to \code{\link[=n_multi]{n_multi()}}, so none can be called
+\code{name} or start with a dot.}
 
 \item{prop_method}{Proportion CI method, one of \code{"wald"}
 (default), \code{"wilson"}, \code{"logodds"}, or \code{"beta"}. This is passed to
@@ -56,11 +62,11 @@ on a per-row basis.}
 
 \item{resp_rate}{Default expected response rate at the ultimate unit, in
 (0, 1]. Used for rows whose \code{resp_rate} column is absent or \code{NA}, and
-a non-missing row value overrides it. A rate of eligible units per
-sampled unit at or below 1, such as
-0.41 married women per household, folds in here as
-\code{resp_rate * eligible_rate}. With a finite \code{N} this errs slightly
-conservative.}
+a non-missing row value overrides it.}
+
+\item{eligible_rate}{Default eligible units per sampled unit, a positive
+number that can exceed 1. Used for rows whose \code{eligible_rate} column is
+absent or \code{NA}. Proportion rows only. See \code{\link[=n_multi]{n_multi()}}.}
 
 \item{plan}{A \code{\link[=svyplan]{svyplan()}} profile providing default design parameters.}
 }
@@ -69,7 +75,8 @@ A \code{svyplan_prec} object with a \verb{$detail} data frame containing
 per-indicator precision: \code{.se}, \code{.moe}, \code{.rmoe}, and \code{.cv}. \code{.rmoe}
 is \code{.moe} as a fraction of the row's own estimand, \code{p} for a
 proportion, \code{abs(mu)} for a mean and \code{abs(r)} for a ratio, and \code{NA} for
-a row carrying none of them.
+a row carrying none of them. The \code{domains} columns come first, so each
+row can be joined back to its domain.
 }
 \description{
 Compute the sampling error (SE, MOE, CV) for multiple survey indicators
@@ -124,6 +131,9 @@ no adjustment.}
 \item{\code{resp_rate}}{Expected response rate at the ultimate unit
 (default 1). A cluster design spends a rate at stage 1 too, and
 \code{\link[=prec_cluster]{prec_cluster()}} names that column \code{resp_rate_psu}.}
+\item{\code{eligible_rate}}{Eligible units per sampled unit for the row's
+estimate, as in \code{\link[=prec_prop]{prec_prop()}}. Proportion rows only. The
+several-indicators mode of \code{\link[=prec_cluster]{prec_cluster()}} refuses it.}
 }
 
 Domain columns are specified via the \code{domains} parameter.

@@ -90,15 +90,18 @@ test_that("a profile carries the rate and refuses a function without it", {
   )
   expect_error(n_mean(var = 4, mu = 10, cv = 0.05, plan = pl),
                "profile sets 'eligible_rate', which n_mean\\(\\) does not take")
-  expect_error(n_multi(data.frame(name = "a", p = 0.3, moe = 0.05), plan = pl),
-               "which n_multi\\(\\) does not take")
+  expect_equal(
+    n_multi(data.frame(name = "a", p = 0.3, moe = 0.05), plan = pl)$n,
+    n_prop(p = 0.3, moe = 0.05, resp_rate = 0.9, eligible_rate = 0.41)$n
+  )
   piped <- tryCatch(
-    pl |> n_multi(data.frame(name = "a", p = 0.3, moe = 0.05)),
+    pl |> n_ratio(r = 0.5, var_y = 1, var_x = 1, cov_xy = 0.5, mu_x = 2,
+                  cv = 0.05),
     error = conditionMessage
   )
   expect_identical(
     piped,
-    paste("the profile sets 'eligible_rate', which n_multi() does not take.",
+    paste("the profile sets 'eligible_rate', which n_ratio() does not take.",
           "Drop it from the profile for this call, or fold it into",
           "'resp_rate' when it is at most 1")
   )
@@ -210,17 +213,60 @@ test_that("the cluster rate survives every round trip", {
   expect_equal(by_cv$n_per_psu[1], unname(x$n["n_per_psu"]))
 })
 
-test_that("an indicators table refuses an eligible_rate column", {
-  msg <- "does not take an 'eligible_rate' column"
+test_that("an indicator table sizes each row with its own eligible_rate", {
   ind <- data.frame(name = c("a", "b"), p = c(0.3, 0.5), moe = 0.05,
-                    eligible_rate = 0.41)
-  expect_error(n_multi(ind), msg)
-  expect_error(
-    n_multi(transform(rbind(ind, ind), dom = rep(1:2, each = 2)),
-            domains = "dom"),
-    msg
+                    N = 20000, resp_rate = 0.9, eligible_rate = c(0.41, 2.3))
+  fit <- n_multi(ind)
+  expect_equal(
+    fit$detail$.n,
+    c(n_prop(0.3, moe = 0.05, N = 20000, resp_rate = 0.9,
+             eligible_rate = 0.41)$n,
+      n_prop(0.5, moe = 0.05, N = 20000, resp_rate = 0.9,
+             eligible_rate = 2.3)$n)
   )
-  expect_error(prec_multi(transform(ind, moe = NULL, n = 500)), msg)
+  expect_equal(
+    fit$detail$.cv_achieved[2],
+    prec_prop(0.5, n = fit$n, N = 20000, resp_rate = 0.9,
+              eligible_rate = 2.3)$cv
+  )
+  expect_equal(n_multi(prec_multi(fit))$n, fit$n)
+
+  scalar <- n_multi(transform(ind, eligible_rate = NULL), eligible_rate = 2.3)
+  expect_equal(scalar$detail$.n[2], fit$detail$.n[2])
+  expect_equal(
+    n_multi(transform(ind, eligible_rate = c(NA, 2.3)), eligible_rate = 0.41)$n,
+    fit$n
+  )
+
+  doms <- transform(rbind(ind, ind), dom = rep(c("A", "B"), each = 2))
+  expect_equal(
+    n_multi(doms, domains = "dom")$domains$.n,
+    rep(fit$n, 2)
+  )
+
+  pr <- prec_multi(transform(ind, moe = NULL, n = 800))
+  expect_equal(
+    pr$cv[1],
+    prec_prop(0.3, n = 800, N = 20000, resp_rate = 0.9,
+              eligible_rate = 0.41)$cv
+  )
+  expect_null(n_multi(ind[, 1:3])$indicators$eligible_rate)
+})
+
+test_that("a mean row and the cluster indicator mode refuse the rate", {
+  mixed <- data.frame(name = c("a", "m"), p = c(0.3, NA), var = c(NA, 4),
+                      mu = c(NA, 10), cv = 0.1)
+  expect_error(n_multi(mixed, eligible_rate = 2),
+               "proportion rows.*Row\\(s\\) 2 carry a mean")
+  expect_no_error(
+    n_multi(transform(mixed, eligible_rate = c(2, 1)))
+  )
+  expect_error(
+    n_multi(data.frame(name = "a", p = 0.3, cv = 0.1, eligible_rate = 0)),
+    "positive and finite"
+  )
+  msg <- "an 'eligible_rate' column applies to n_multi\\(\\) and prec_multi\\(\\)"
+  ind <- data.frame(name = "a", p = 0.3, moe = 0.05, eligible_rate = 0.41)
   expect_error(
     n_cluster(indicators = transform(ind, icc_psu = 0.05),
               stage_cost = c(500, 50)),
@@ -230,9 +276,6 @@ test_that("an indicators table refuses an eligible_rate column", {
     prec_cluster(indicators = transform(ind, moe = NULL, icc_psu = 0.05,
                                         n = 50, n_per_psu = 10)),
     msg
-  )
-  expect_no_error(
-    n_multi(transform(ind, eligible_rate = NULL, grp = "x"))
   )
 })
 
