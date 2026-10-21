@@ -2571,6 +2571,22 @@ check_df <- function(df, name = "df") {
   NULL
 }
 
+#' Name of the function a profile is merged into
+#'
+#' A profile passed first or by position reaches the method through
+#' `do.call()`, so the call carries the function object, not its name.
+#' @keywords internal
+#' @noRd
+.plan_target_name <- function(fn, mc) {
+  name <- if (is.function(mc[[1L]])) {
+    ns <- asNamespace("svyplan")
+    Find(function(nm) identical(ns[[nm]], fn), ls(ns)) %||% "this function"
+  } else {
+    deparse(mc[[1L]])
+  }
+  sub("\\.default$", "", name)
+}
+
 #' Merge plan defaults into a function call
 #'
 #' Pure function that returns a merged argument list when plan defaults
@@ -2607,7 +2623,7 @@ check_df <- function(df, name = "df") {
     stop(
       sprintf(
         "the profile sets 'eligible_rate', which %s() does not take. Drop it from the profile for this call, or fold it into 'resp_rate' when it is at most 1",
-        sub("\\.default$", "", deparse(mc[[1L]]))
+        .plan_target_name(fn, mc)
       ),
       call. = FALSE
     )
@@ -2853,6 +2869,12 @@ check_df <- function(df, name = "df") {
         paste(sQuote(hit), collapse = ", "),
         paste(sQuote(unname(aliases[hit])), collapse = ", ")
       ),
+      call. = FALSE
+    )
+  }
+  if ("eligible_rate" %in% nms) {
+    stop(
+      "'indicators' does not take an 'eligible_rate' column. Fold a rate at most 1 into each row's 'resp_rate'",
       call. = FALSE
     )
   }

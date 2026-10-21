@@ -92,6 +92,18 @@ test_that("a profile carries the rate and refuses a function without it", {
                "profile sets 'eligible_rate', which n_mean\\(\\) does not take")
   expect_error(n_multi(data.frame(name = "a", p = 0.3, moe = 0.05), plan = pl),
                "which n_multi\\(\\) does not take")
+  piped <- tryCatch(
+    pl |> n_multi(data.frame(name = "a", p = 0.3, moe = 0.05)),
+    error = conditionMessage
+  )
+  expect_identical(
+    piped,
+    paste("the profile sets 'eligible_rate', which n_multi() does not take.",
+          "Drop it from the profile for this call, or fold it into",
+          "'resp_rate' when it is at most 1")
+  )
+  expect_error(pl |> n_mean(var = 4, mu = 10, cv = 0.05),
+               "which n_mean\\(\\) does not take")
   expect_no_error(n_mean(var = 4, mu = 10, cv = 0.05,
                          plan = svyplan(eligible_rate = 1)))
   expect_error(svyplan(eligible_rate = 0), "positive finite")
@@ -196,6 +208,32 @@ test_that("the cluster rate survives every round trip", {
   expect_equal(swept$n_psu[1], unname(x$n["n_psu"]))
   by_cv <- predict(x, data.frame(cv = c(0.05, 0.04)))
   expect_equal(by_cv$n_per_psu[1], unname(x$n["n_per_psu"]))
+})
+
+test_that("an indicators table refuses an eligible_rate column", {
+  msg <- "does not take an 'eligible_rate' column"
+  ind <- data.frame(name = c("a", "b"), p = c(0.3, 0.5), moe = 0.05,
+                    eligible_rate = 0.41)
+  expect_error(n_multi(ind), msg)
+  expect_error(
+    n_multi(transform(rbind(ind, ind), dom = rep(1:2, each = 2)),
+            domains = "dom"),
+    msg
+  )
+  expect_error(prec_multi(transform(ind, moe = NULL, n = 500)), msg)
+  expect_error(
+    n_cluster(indicators = transform(ind, icc_psu = 0.05),
+              stage_cost = c(500, 50)),
+    msg
+  )
+  expect_error(
+    prec_cluster(indicators = transform(ind, moe = NULL, icc_psu = 0.05,
+                                        n = 50, n_per_psu = 10)),
+    msg
+  )
+  expect_no_error(
+    n_multi(transform(ind, eligible_rate = NULL, grp = "x"))
+  )
 })
 
 test_that("indicators mode refuses the rate and the take check names it", {
