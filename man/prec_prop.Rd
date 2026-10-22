@@ -46,7 +46,9 @@ can report at that relative half-width. Unlike the \code{cv} solve this one
 reads the interval rather than the variance and so depends on \code{method}.
 Specify exactly one of \code{p}, \code{cv}, or \code{rmoe}.}
 
-\item{alpha}{Significance level, default 0.05.}
+\item{alpha}{Significance level, default 0.05. \code{alpha = 2 * pnorm(-2)}
+gives the multiplier of 2 that the DHS and MICS manuals use in place
+of 1.96.}
 
 \item{N}{Population size. \code{Inf} (default) means no finite population
 correction.}
@@ -241,7 +243,9 @@ prec_prop(p = 0.28, n = 6000, deff = 2.5, resp_rate = 0.9,
 }
 \seealso{
 \code{\link[=n_prop]{n_prop()}} for the inverse (compute n from a precision target),
-\code{\link[=prec_mean]{prec_mean()}} for continuous variables.
+\code{\link[=prec_mean]{prec_mean()}} for continuous variables, \code{\link[=prec_multi]{prec_multi()}} for several
+indicators or for one indicator in several domains, \code{\link[=prec_alloc]{prec_alloc()}} for
+a stratified allocation as a whole and by domain.
 
 Other sample size and precision functions:
 \code{\link[=n_mean]{n_mean()}},

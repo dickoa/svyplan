@@ -275,6 +275,53 @@ check_precision <- function(moe, cv, rmoe = NULL) {
   )
 }
 
+#' The smallest whole gross take with at least one expected respondent
+#'
+#' The whole-unit counterpart of `.check_expected_take()`. Rows sharing a
+#' take need it for the lowest rate among them. A rate above one, which
+#' `eligible_rate` allows, gives one.
+#' @keywords internal
+#' @noRd
+.take_floor <- function(rate) {
+  max(1L, as.integer(ceiling(.take_bound(rate) - 1e-9)))
+}
+
+#' The smallest continuous gross take with one expected respondent
+#' @keywords internal
+#' @noRd
+.take_bound <- function(rate) {
+  max(1, 1 / min(rate))
+}
+
+#' `optimize()` over a take from its supported bound
+#'
+#' The search runs over `c(1, upper)` first, so a design the bound does not
+#' touch is found exactly as before it existed. Only an optimum below the
+#' bound is searched again from the bound. `optimize()` never evaluates the
+#' ends of its interval, so a cost still falling at the bound would return a
+#' point just inside it. The bound itself is scored and kept when it is no
+#' worse.
+#' @keywords internal
+#' @noRd
+.optimize_from <- function(f, lower, upper, ...) {
+  if (upper > 1) {
+    opt <- optimize(f, interval = c(1, upper), ...)
+    if (opt$minimum >= lower) {
+      return(opt)
+    }
+  }
+  at_lower <- list(minimum = lower, objective = f(lower))
+  if (upper <= lower) {
+    return(at_lower)
+  }
+  opt <- optimize(f, interval = c(lower, upper), ...)
+  if (is.finite(at_lower$objective) && at_lower$objective <= opt$objective) {
+    at_lower
+  } else {
+    opt
+  }
+}
+
 #' The expected-take check on every row of a cluster indicator table
 #'
 #' The rows share the takes but each carries its own response rates, so the

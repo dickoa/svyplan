@@ -193,7 +193,8 @@ It is converted to \code{moe} on ingestion, so the row needs \code{p} or
 error). For example, 0.10 means the SE should be at most 10\%
 of the estimate.}
 \item{\code{alpha}}{Significance level for the confidence interval
-(default 0.05, giving a 95 percent CI).}
+(default 0.05, giving a 95 percent CI). \code{2 * pnorm(-2)} gives the
+multiplier of 2 that the DHS and MICS manuals use in place of 1.96.}
 \item{\code{deff}}{Design effect multiplier (default 1). Set > 1 to inflate
 the sample size for complex
 designs (e.g. 1.5 for a cluster design). A published DEFT is
@@ -286,6 +287,19 @@ then takes the maximum per domain. Use \code{prop_method} or a
 \code{indicators$prop_method} column to choose \code{"wald"}, \code{"wilson"},
 \code{"logodds"} or \code{"beta"} for proportion rows.
 }
+
+\subsection{A domain that takes most of its PSUs}{
+
+A \code{deff} column carries the clustering of a design whose first stage is
+treated as drawn with replacement, and \code{N} corrects only for the units.
+Nothing here knows how many PSUs a domain holds. A small domain, such as
+an island district of 16 enumeration areas, can then be given more PSUs
+than it has, and a sample that takes most of them is assessed as if
+they were a few among many. \code{\link[=n_alloc]{n_alloc()}} and \code{\link[=prec_alloc]{prec_alloc()}} read \code{N_psu}
+in the frame and, with \code{fpc = "stage"}, apply the stage-by-stage
+correction. They size and assess such a domain, as the \code{\link[=prec_alloc]{prec_alloc()}}
+examples show.
+}
 }
 \examples{
 # Simple mode: three indicators, take the max
@@ -359,6 +373,16 @@ targets_dom <- data.frame(
   region = rep(c("North", "South"), 2)
 )
 n_multi(targets_dom, domains = "region")
+
+# One indicator in several domains, each with its own design effect. The
+# 'name' column is optional with a single indicator.
+poverty <- data.frame(
+  district = c("North", "Centre", "South"),
+  p = c(0.31, 0.45, 0.52),
+  moe = 0.10,
+  deff = c(4.4, 3.1, 2.8)
+)
+n_multi(poverty, domains = "district")
 
 # A household survey whose estimates are over persons. Each row counts
 # its own group per household, and a row with only 'min_respondents'

@@ -57,7 +57,7 @@ test_that("a size-only result reports no precision", {
 
   printed <- capture.output(print(x))
   expect_true(any(
-    printed == "precision: not assessed (no 'sd' or 'var' in frame)"
+    printed == "precision: not assessed (no 'sd', 'var' or 'p' in frame)"
   ))
   expect_false(any(grepl("cv =|se =", printed)))
   summarized <- capture.output(summary(x))
@@ -83,13 +83,13 @@ test_that("a size-only cluster allocation reports no precision either", {
 test_that("precision targets and variance rules still need a variance", {
   fr <- .size_frame()
   expect_error(n_alloc(fr, cv = 0.05, alloc = "proportional"),
-               "'cv' or 'budget' target needs 'sd' or 'var'")
+               "'cv' or 'budget' target needs 'sd', 'var' or 'p'")
   expect_error(n_alloc(fr, budget = 100, alloc = "power"),
-               "'cv' or 'budget' target needs 'sd' or 'var'")
+               "'cv' or 'budget' target needs 'sd', 'var' or 'p'")
   expect_error(n_alloc(fr, n = 60),
-               "alloc = \"neyman\" needs 'sd' or 'var'")
+               "alloc = \"neyman\" needs 'sd', 'var' or 'p'")
   expect_error(n_alloc(fr, n = 60, alloc = "optimal"),
-               "alloc = \"optimal\" needs 'sd' or 'var'")
+               "alloc = \"optimal\" needs 'sd', 'var' or 'p'")
   expect_error(
     n_alloc(transform(fr, alloc_measure = c(1, -1, 1)), n = 60,
             alloc = "power"),
@@ -99,7 +99,7 @@ test_that("precision targets and variance rules still need a variance", {
 
 test_that("assessing a size-only allocation asks for the variance", {
   x <- n_alloc(.size_frame(), n = 60, alloc = "proportional")
-  expect_error(prec_alloc(x), "'sd' or 'var'")
+  expect_error(prec_alloc(x), "'sd', 'var' or 'p'")
 })
 
 ## Weighting loss of a size-only allocation

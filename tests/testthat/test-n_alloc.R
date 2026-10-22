@@ -1448,3 +1448,81 @@ test_that("a one-stratum NA floor means no floor, classic and joint", {
     n_alloc(two, n = 100, alloc = "proportional")$detail$n
   )
 })
+
+## A proportion frame supplies its own variance
+
+.p_frame <- function() {
+  data.frame(stratum = c("a", "b", "c"), N = c(3800, 2500, 250),
+             p = c(0.48, 0.595, 0.158))
+}
+
+test_that("classic and joint read the same variance from p at one stage", {
+  f <- .p_frame()
+  n <- c(400, 300, 100)
+  joint <- prec_alloc(
+    f[c("stratum", "N")], n = n,
+    measures = data.frame(stratum = f$stratum, name = "p", p = f$p),
+    targets = data.frame(name = "p", cv = 0.05)
+  )
+  expect_equal(prec_alloc(f, n = n)$cv, joint$cv)
+  explicit <- transform(f, sd = sqrt(p * (1 - p) * N / (N - 1)))
+  expect_equal(prec_alloc(f, n = n)$cv, prec_alloc(explicit, n = n)$cv)
+  expect_false(isTRUE(all.equal(
+    prec_alloc(f, n = n)$cv,
+    prec_alloc(transform(f, sd = sqrt(p * (1 - p))), n = n)$cv,
+    tolerance = 1e-10
+  )))
+})
+
+test_that("classic and joint read the same variance from p at two stages", {
+  cl <- transform(.p_frame(), icc_psu = 0.1, n_per_psu = 10,
+                  N_psu = c(380, 250, 25), cost_psu = 10, cost_ssu = 1)
+  n <- c(400, 300, 100)
+  joint <- prec_alloc(
+    cl[setdiff(names(cl), "p")], n = n,
+    measures = data.frame(stratum = cl$stratum, name = "p", p = cl$p),
+    targets = data.frame(name = "p", cv = 0.05)
+  )
+  expect_equal(prec_alloc(cl, n = n)$cv, joint$cv)
+  expect_equal(prec_alloc(cl, n = n)$cv,
+               prec_alloc(transform(cl, sd = sqrt(p * (1 - p))), n = n)$cv)
+})
+
+test_that("a supplied sd or var keeps priority over p", {
+  f <- transform(.p_frame(), sd = c(0.3, 0.4, 0.2))
+  expect_equal(n_alloc(f, cv = 0.05)$detail$n,
+               n_alloc(transform(f, p = NULL, mean = p), cv = 0.05)$detail$n)
+})
+
+test_that("every rule and target accepts p alone", {
+  f <- .p_frame()
+  explicit <- transform(f, sd = sqrt(p * (1 - p) * N / (N - 1)))
+  for (alloc in c("neyman", "optimal", "power")) {
+    expect_equal(n_alloc(f, n = 600, alloc = alloc)$detail$n,
+                 n_alloc(explicit, n = 600, alloc = alloc)$detail$n)
+  }
+  expect_equal(n_alloc(f, cv = 0.05)$detail$n,
+               n_alloc(explicit, cv = 0.05)$detail$n)
+  prop <- n_alloc(f, n = 600, alloc = "proportional")
+  expect_false(is.na(prop$cv))
+  expect_output(print(prop), "cv = ")
+})
+
+test_that("p alone needs more than one unit per stratum at one stage", {
+  f <- .p_frame()
+  f$N[3] <- 1
+  expect_error(prec_alloc(f, n = c(100, 100, 1)),
+               "'N' must be greater than 1 in every stratum")
+})
+
+## The first-stage fraction note follows the correction
+
+test_that("the PSU fraction note is printed only without the stage correction", {
+  island <- data.frame(stratum = "Island", N = 2892, p = 0.314,
+                       icc_psu = 0.23, n_per_psu = 16, N_psu = 16)
+  cv <- 0.10 / (qnorm(0.975) * 0.314)
+  staged <- capture.output(print(n_alloc(island, cv = cv, fpc = "stage")))
+  expect_false(any(grepl("available PSUs", staged)))
+  unit <- capture.output(print(n_alloc(island, n = 16 * 8)))
+  expect_true(any(grepl("with-replacement first stage", unit)))
+})

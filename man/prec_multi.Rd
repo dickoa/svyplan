@@ -118,7 +118,9 @@ numerator and denominator, strictly positive.}
 denominator across units, in \eqn{[-1, 1]}.}
 \item{\code{n}}{Sample size to evaluate (\strong{required}), with one value per
 indicator row.}
-\item{\code{alpha}}{Significance level (default 0.05).}
+\item{\code{alpha}}{Significance level (default 0.05). \code{2 * pnorm(-2)}
+gives the multiplier of 2 that the DHS and MICS manuals use in place
+of 1.96.}
 \item{\code{deff}}{Design effect multiplier (default 1).}
 \item{\code{N}}{Population size (default \code{Inf}).}
 \item{\code{prop_method}}{Proportion CI method: \code{"wald"} (default),
@@ -143,6 +145,19 @@ Domain columns are specified via the \code{domains} parameter.
 \code{indicators$prop_method} column to choose \code{"wald"}, \code{"wilson"},
 \code{"logodds"} or \code{"beta"} for proportion rows. It is ignored elsewhere.
 }
+
+\subsection{A domain that takes most of its PSUs}{
+
+A \code{deff} column carries the clustering of a design whose first stage is
+treated as drawn with replacement, and \code{N} corrects only for the units.
+Nothing here knows how many PSUs a domain holds. A small domain, such as
+an island district of 16 enumeration areas, can then be given more PSUs
+than it has, and a sample that takes most of them is assessed as if
+they were a few among many. \code{\link[=n_alloc]{n_alloc()}} and \code{\link[=prec_alloc]{prec_alloc()}} read \code{N_psu}
+in the frame and, with \code{fpc = "stage"}, apply the stage-by-stage
+correction. They size and assess such a domain, as the \code{\link[=prec_alloc]{prec_alloc()}}
+examples show.
+}
 }
 \examples{
 # Simple mode: precision for three indicators at n = 400
@@ -159,8 +174,10 @@ prec_multi(data.frame(p = 0.05, n = 400), prop_method = "wilson")
 }
 \seealso{
 \code{\link[=n_multi]{n_multi()}} for the inverse, \code{\link[=prec_cluster]{prec_cluster()}} for a multistage
-cluster design over the same indicator table, and \code{\link[=prec_prop]{prec_prop()}} and
-\code{\link[=prec_mean]{prec_mean()}} for single-indicator precision.
+cluster design over the same indicator table, \code{\link[=prec_alloc]{prec_alloc()}} for a
+stratified allocation over the whole population and its domains in one
+call, and \code{\link[=prec_prop]{prec_prop()}} and \code{\link[=prec_mean]{prec_mean()}} for single-indicator
+precision.
 
 Other multi-indicator functions:
 \code{\link[=n_multi]{n_multi()}}

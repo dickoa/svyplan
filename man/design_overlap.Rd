@@ -4,7 +4,7 @@
 \alias{design_overlap}
 \title{Sample overlap a rotation produces}
 \usage{
-design_overlap(rotation, max_lag = NULL)
+design_overlap(rotation, max_lag = NULL, window = NULL)
 }
 \arguments{
 \item{rotation}{A \code{svyplan_rotation} from \code{\link[=design_rotation]{design_rotation()}}, or anything
@@ -13,6 +13,11 @@ the two notations and every refusal live on \code{\link[=design_rotation]{design
 
 \item{max_lag}{Largest lag to report. Defaults to one less than the life,
 which is the largest lag at which any overlap is possible.}
+
+\item{window}{Optional number of consecutive occasions, such as 4 for a
+year of quarterly occasions. When given, the result also carries the
+mean number of occasions a unit is in sample within such a window. See
+the section on visits in Details.}
 }
 \value{
 A \code{svyplan_overlap} object: a numeric vector of issued-sample
@@ -25,6 +30,9 @@ arguments take, and arithmetic returns bare numerics. It also carries:
 \item{\verb{$rotation}}{The \code{\link[=design_rotation]{design_rotation()}} it was computed from, which
 carries the life, the per-occasion takes and the units in sample at
 any one occasion.}
+\item{\verb{$window}, \verb{$visits}}{The window length and the mean number of
+occasions a unit is in sample within it, \code{NA} when \code{window} is not
+given.}
 }
 }
 \description{
@@ -108,6 +116,33 @@ Pass the figure you expect among respondents, and say which assumption
 produced it.
 }
 
+\subsection{Visits per unit in a window}{
+
+A window of \eqn{W} consecutive occasions holds \eqn{W \sum_s w_s}
+interviews at the steady state. The units behind them are fewer, since a
+unit in sample at several occasions of the window is counted once. A
+cohort sees a run of at most \eqn{W} consecutive stages of its life
+inside the window, and with its units nested across stages, as for the
+overlap, it contributes the largest take in that run. Summing over the
+cohorts the window touches gives the distinct units, and
+
+\deqn{\mathrm{visits}(W) = W \sum_s w_s \Big/ \sum_k
+      \max_{s \in [k, k + W - 1] \cap [1, L]} w_s,}{
+      visits(W) = W sum_s w_s / sum_k max(w_s, s in [k, k + W - 1] and
+      in [1, L]),}
+
+with \eqn{k} running over the \eqn{L + W - 1} cohorts whose life meets
+the window. Under \code{"2-2-2"} on quarterly occasions, a year holds 16
+interviews of 9 distinct rotation groups, so 16/9 = 1.78.
+
+The figure is a property of the rotation. Some labor force survey
+methodologies use it to scale the cluster size when a yearly estimate
+pools quarterly interviews, which folds the correlation between a unit's
+repeated interviews into the intraclass correlation. \code{\link[=prec_pooled]{prec_pooled()}}
+treats the average over occasions with that correlation stated
+separately, as \code{overlap_cor}.
+}
+
 \subsection{What it does not give you}{
 
 The correlation between occasions. \code{overlap} is a property of the
@@ -151,6 +186,10 @@ identical(as.double(design_overlap("2-2-2")),
 
 # An explicit take vector, halving the take at later waves
 design_overlap(c(1, 1, 0.5, 0.5))
+
+# Interviews per unit over a year of quarterly occasions
+lfs <- design_overlap("2-2-2", window = 4)
+lfs$visits
 
 # The chart of the rotation, one row per cohort
 plot(design_overlap("1-1-0-0-1-1"))

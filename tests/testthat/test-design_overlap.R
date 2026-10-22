@@ -406,3 +406,48 @@ test_that("design_overlap takes no launch argument, and does not need one", {
   # so a start argument here would be a second name for one answer.
   expect_error(design_overlap("6", start = "immediate"), "unused argument")
 })
+
+## O14. Visits per unit in a window, against a schedule built by hand
+
+.brute_visits <- function(pattern, window) {
+  active <- which(as.double(design_rotation(pattern)) > 0)
+  life <- length(as.double(design_rotation(pattern)))
+  entry <- seq(2L - life, window)
+  grid <- expand.grid(panel = seq_along(entry), wave = seq_len(window))
+  grid$in_sample <- (grid$wave - entry[grid$panel] + 1L) %in% active
+  sum(grid$in_sample) / sum(tapply(grid$in_sample, grid$panel, any))
+}
+
+test_that("visits match a hand-built schedule for equal-take lives", {
+  expect_equal(design_overlap("2-2-2", window = 4)$visits, 16 / 9)
+  for (pattern in c("2-2-2", "4-8-4", "1-1-0-0-1-1", "5", "2-10-2")) {
+    for (window in c(1, 2, 4, 12)) {
+      expect_equal(design_overlap(pattern, window = window)$visits,
+                   .brute_visits(pattern, window),
+                   info = paste(pattern, window))
+    }
+  }
+})
+
+test_that("an unequal take counts each cohort's largest take in the window", {
+  # Five cohorts meet a window of 2 with takes seen (1), (1, 1), (1, 0.5),
+  # (0.5, 0.5) and (0.5), so 6 interviews over 4 distinct units.
+  expect_equal(design_overlap(c(1, 1, 0.5, 0.5), window = 2)$visits, 1.5)
+})
+
+test_that("visits are absent without a window and printed with one", {
+  plain <- design_overlap("2-2-2")
+  expect_true(is.na(plain$visits))
+  expect_true(is.na(plain$window))
+  expect_false(any(grepl("window", capture.output(print(plain)))))
+  expect_output(print(design_overlap("2-2-2", window = 4)),
+                "1.78 occasions in sample per unit over a window of 4")
+  expect_identical(design_overlap("2-2-2", window = 4)$window, 4L)
+})
+
+test_that("window must be a whole number of occasions", {
+  for (bad in list(0, 2.5, NA, c(2, 4), "4", Inf)) {
+    expect_error(design_overlap("2-2-2", window = bad),
+                 "'window' must be a whole number >= 1")
+  }
+})

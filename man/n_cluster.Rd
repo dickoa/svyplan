@@ -356,7 +356,13 @@ This is a deterministic expected-take approximation. It substitutes the
 expected realized stage counts into the planning variance and assumes
 response is noninformative for it. Below one expected respondent per unit
 the substitution stops describing the design, and that is an error naming
-the approximation rather than the design.
+the approximation rather than the design. A take the optimum would put
+below one expected respondent is raised to one, and the continuous and
+whole-unit designs both keep it there. The smallest whole take is
+\code{ceiling(1 / rate)}, so 2 units per PSU at \code{resp_rate = 0.5}, and a fixed
+fractional take whose rounding would fall short rounds up to it. With
+\code{indicators}, the rows share the takes, so the row with the lowest rate
+sets the bound.
 
 These functions assume sampling fractions are negligible at each stage
 (equivalent to sampling with replacement). No finite population correction
@@ -370,6 +376,18 @@ otherwise, and the clustering bracket, the stage response rates and the
 cost-optimal take are shared exactly. Size a design through both at an
 appreciable sampling fraction and \code{n_alloc()} returns the smaller answer,
 by that correction and nothing else.
+}
+
+\subsection{A domain that takes most of its PSUs}{
+
+The first stage is treated as drawn with replacement, so nothing here
+knows how many PSUs a stratum or domain holds. A small domain, such as
+an island district of 16 enumeration areas, can then be given more PSUs
+than it has, and a sample that takes most of them is assessed as if
+they were a few among many. \code{\link[=n_alloc]{n_alloc()}} and \code{\link[=prec_alloc]{prec_alloc()}} read \code{N_psu}
+in the frame and, with \code{fpc = "stage"}, apply the stage-by-stage
+correction. They size and assess such a domain, as the \code{\link[=prec_alloc]{prec_alloc()}}
+examples show.
 }
 }
 \examples{

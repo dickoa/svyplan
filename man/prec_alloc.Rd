@@ -4,7 +4,7 @@
 \alias{prec_alloc}
 \alias{prec_alloc.default}
 \alias{prec_alloc.svyplan_n}
-\title{Precision for a constrained allocation}
+\title{Precision of a stratified allocation}
 \usage{
 prec_alloc(frame, ...)
 
@@ -36,8 +36,8 @@ prec_alloc(frame, ...)
 \arguments{
 \item{frame}{For the default method: a stratum-level data frame in the same
 format as the \code{frame} argument to \code{\link[=n_alloc]{n_alloc()}} (one row per stratum,
-with at least \code{N} and \code{sd} or \code{var} columns). See \code{\link[=n_alloc]{n_alloc()}} for
-the full column reference).
+with at least \code{N} and one of \code{sd}, \code{var} or \code{p}). See \code{\link[=n_alloc]{n_alloc()}} for
+the full column reference.
 For \code{svyplan_n} objects: an allocation result from \code{\link[=n_alloc]{n_alloc()}}.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are
@@ -48,7 +48,9 @@ one value or one per stratum. See "Evaluating a cluster field design".}
 \item{n}{Stratum sample sizes, length \code{nrow(frame)}. In a cluster
 allocation these count ultimate units, fielded at the take in the
 frame's \code{n_per_psu} column, or at the continuous cost-optimal take when
-the frame has none. For a fitted joint
+the frame has none. A frame \code{n_step} does not constrain \code{n} here, so
+an allocation made without steps can be assessed on the same frame.
+For a fitted joint
 allocation, omission uses its continuous allocation. Pass \verb{$detail$n_int}
 to assess the operational recommendation. A named vector is matched to
 \code{frame$stratum}, an unnamed vector is positional. In fixed-take
@@ -94,7 +96,9 @@ assessed allocation's cost. Requires \code{objective}.}
 \item{domains}{Character vector of column names in \code{frame} to treat as
 domain identifiers, or \code{NULL} (default) for no domains.}
 
-\item{alpha}{Significance level, default 0.05.}
+\item{alpha}{Significance level, default 0.05. \code{alpha = 2 * pnorm(-2)}
+gives the multiplier of 2 that the DHS and MICS manuals use in place
+of 1.96.}
 
 \item{deff}{Design effect multiplier (> 0). A scalar applies to every
 stratum. A length-\code{nrow(frame)} vector gives one per stratum and
@@ -177,9 +181,12 @@ fit was solved from, so it reaches a design of the same cost, though it
 may pick another where several tie.
 }
 \description{
-Compute aggregate precision for a stratum allocation. For a joint
-constrained allocation, return one achieved-precision row per target and
-separate stratum-bound diagnostics.
+Compute the precision of a stratum allocation, over the whole population
+and by domain. The allocation is either an \code{\link[=n_alloc]{n_alloc()}} result or any
+stratum sample sizes given as \code{n}, such as the previous round's
+published allocation. For a joint constrained allocation, return one
+achieved-precision row per target and separate stratum-bound
+diagnostics.
 }
 \details{
 \subsection{Evaluating a cluster field design}{
@@ -209,6 +216,29 @@ frame <- data.frame(
 )
 res <- n_alloc(frame, n = 600)
 prec_alloc(res)
+
+# The previous round's allocation, assessed nationally and per region
+last_round <- data.frame(
+  stratum = c("North", "Centre", "South"),
+  N = c(380000, 250000, 25000),
+  p = c(0.48, 0.60, 0.16),
+  deff = 4.4
+)
+last_round$region <- last_round$stratum
+assessed <- prec_alloc(last_round, n = c(768, 576, 192), domains = "region")
+assessed$moe
+assessed$domains[c("region", ".moe")]
+
+# An island district of 16 enumeration areas of about 180 households,
+# 16 interviewed in each. Taking 12 of the 16 removes most of the variance
+# between areas, which only the stage-by-stage correction sees.
+island <- data.frame(
+  stratum = "Island", N = 2892, p = 0.314,
+  icc_psu = 0.23, n_per_psu = 16, N_psu = 16
+)
+prec_alloc(island, n = 16 * 12, fpc = "stage")$moe
+prec_alloc(island, n = 16 * 12, fpc = "none")$moe
+n_alloc(island, cv = 0.10 / (qnorm(0.975) * 0.314), fpc = "stage")
 
 # Direct joint assessment (the allocation is in ultimate-unit units)
 jf <- data.frame(

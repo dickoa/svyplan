@@ -288,7 +288,13 @@
 #' expected realized stage counts into the planning variance and assumes
 #' response is noninformative for it. Below one expected respondent per unit
 #' the substitution stops describing the design, and that is an error naming
-#' the approximation rather than the design.
+#' the approximation rather than the design. A take the optimum would put
+#' below one expected respondent is raised to one, and the continuous and
+#' whole-unit designs both keep it there. The smallest whole take is
+#' `ceiling(1 / rate)`, so 2 units per PSU at `resp_rate = 0.5`, and a fixed
+#' fractional take whose rounding would fall short rounds up to it. With
+#' `indicators`, the rows share the takes, so the row with the lowest rate
+#' sets the bound.
 #'
 #' These functions assume sampling fractions are negligible at each stage
 #' (equivalent to sampling with replacement). No finite population correction
@@ -302,6 +308,17 @@
 #' cost-optimal take are shared exactly. Size a design through both at an
 #' appreciable sampling fraction and `n_alloc()` returns the smaller answer,
 #' by that correction and nothing else.
+#'
+#' ## A domain that takes most of its PSUs
+#'
+#' The first stage is treated as drawn with replacement, so nothing here
+#' knows how many PSUs a stratum or domain holds. A small domain, such as
+#' an island district of 16 enumeration areas, can then be given more PSUs
+#' than it has, and a sample that takes most of them is assessed as if
+#' they were a few among many. [n_alloc()] and [prec_alloc()] read `N_psu`
+#' in the frame and, with `fpc = "stage"`, apply the stage-by-stage
+#' correction. They size and assess such a domain, as the [prec_alloc()]
+#' examples show.
 #'
 #' @references
 #' Valliant, R., Dever, J. A., and Kreuter, F. (2018).
@@ -424,6 +441,14 @@ n_cluster.default <- function(
   .plan <- .merge_plan_args(plan, n_cluster.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(n_cluster.default, c(.plan, list(...))))
   .check_unused_dots(...)
+  # A name on a scalar would ride into the stage names the result is read
+  # by. Stage vectors keep theirs, which say which stage a value is for.
+  for (nm in c("cv", "budget", "n_psu", "n_per_psu", "n_per_ssu",
+               "fixed_cost", "unit_relvar", "resp_rate_psu", "resp_rate_ssu",
+               "resp_rate", "eligible_rate")) {
+    v <- get(nm)
+    if (is.numeric(v)) assign(nm, unname(v))
+  }
   .check_cluster_mode_args(
     indicators,
     icc = icc, unit_relvar = unit_relvar, var_ratio = var_ratio, cv = cv,
@@ -698,19 +723,28 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     sqrt(unit_relvar * var_ratio * (1 + icc * (mr - 1)) / (a * resp_rate_psu * mr))
   }
 
+  m_floor <- .take_floor(resp_rate)
   m_cand <- if (!is.null(n_per_psu)) {
-    max(1L, as.integer(round(n_per_psu)))
+    max(m_floor, as.integer(round(n_per_psu)))
   } else {
-    seq_len(max(100L, min(10L * as.integer(ceiling(cont_m)) + 1L, 100000L)))
+    seq.int(
+      m_floor,
+      max(m_floor + 99L, min(10L * as.integer(ceiling(cont_m)) + 1L, 100000L))
+    )
   }
 
   if (!is.null(budget)) {
     if (!is.null(n_psu)) {
       a <- max(1L, as.integer(round(n_psu)))
       m <- as.integer(floor((vb / a - C1) / C2))
-      if (m < 1L) {
-        stop("no whole-unit design fits the budget for the given fixed stage-1 size",
-             call. = FALSE)
+      if (m < m_floor) {
+        stop(
+          sprintf(
+            "no whole-unit design fits the budget for the given fixed stage-1 size with at least one expected response per PSU, which takes %d units",
+            m_floor
+          ),
+          call. = FALSE
+        )
       }
       a_cand <- a
       m_best <- m
@@ -738,7 +772,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
              call. = FALSE)
       }
       # 'need' counts responding units; the take that delivers them is gross.
-      m_best <- max(1L, as.integer(ceiling(need / resp_rate - 1e-9)))
+      m_best <- max(m_floor, as.integer(ceiling(need / resp_rate - 1e-9)))
     } else {
       a_cand <- vapply(m_cand, function(m) {
         mr <- m * resp_rate
@@ -797,17 +831,19 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 #' @noRd
 .op_cluster3_search <- function(alpha, beta, gamma, stage_cost,
                                 variable_budget, n_psu, n_per_ssu, m_cand,
-                                msg_budget, msg_cv, m_free = FALSE) {
+                                msg_budget, msg_cv, m_free = FALSE,
+                                m_floor = 1L, q_floor = 1L) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   C3 <- stage_cost[3L]
   tol <- 1e-9
   m_cand <- as.numeric(m_cand)
+  m_cand <- m_cand[m_cand >= m_floor]
   nm <- length(m_cand)
   nj <- length(alpha)
   budget_mode <- !is.null(variable_budget)
   a_fixed <- if (is.null(n_psu)) NULL else max(1, round(n_psu))
-  q_fixed <- if (is.null(n_per_ssu)) NULL else max(1, round(n_per_ssu))
+  q_fixed <- if (is.null(n_per_ssu)) NULL else max(q_floor, round(n_per_ssu))
 
   need_at <- function(m, q) {
     out <- alpha[1L] + beta[1L] / m + gamma[1L] / (m * q)
@@ -820,7 +856,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   # Smallest whole ultimate take reaching a PSU count of 'a'; Inf where the
   # PSU count is out of reach at that SSU take whatever 'q' does.
   q_needed <- function(a, m) {
-    out <- rep(1, length(m))
+    out <- rep(q_floor, length(m))
     for (j in seq_len(nj)) {
       d <- a - alpha[j] - beta[j] / m
       out <- pmax(out, ifelse(d > 0, gamma[j] / (m * d), Inf))
@@ -830,8 +866,8 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 
   best <- list(key = Inf)
   consider <- function(a, m, q) {
-    valid <- a >= 1 & is.finite(q) & q >= 1 & q <= .Machine$integer.max
-    q[!valid] <- 1
+    valid <- a >= 1 & is.finite(q) & q >= q_floor & q <= .Machine$integer.max
+    q[!valid] <- q_floor
     cost <- a * (C1 + C2 * m + C3 * m * q)
     if (budget_mode) {
       valid <- valid & cost <= variable_budget + 1e-8
@@ -869,7 +905,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   if (!is.null(a_fixed) && m_free) {
     # The SSU take is the free stage, whether or not the ultimate take is
     # fixed with the PSU count.
-    q_min <- q_fixed %||% 1
+    q_min <- q_fixed %||% q_floor
     take_at <- function(m) {
       if (!is.null(q_fixed)) {
         rep(q_fixed, length(m))
@@ -884,7 +920,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     }
     if (budget_mode) {
       m_hi <- floor((variable_budget / a_fixed - C1) / (C2 + C3 * q_min) + tol)
-      m_cur <- 1
+      m_cur <- m_floor
       while (m_cur <= m_hi) {
         scan_m(seq.int(m_cur, min(m_hi, m_cur + 1e5 - 1)))
         m_cur <- m_cur + 1e5
@@ -893,9 +929,9 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
       # The smallest take with every indicator in reach. A fixed ultimate
       # take adds its own term to the bound.
       m_cur <- if (is.null(q_fixed)) {
-        max(1, floor(max(beta / (a_fixed - alpha))) + 1)
+        max(m_floor, floor(max(beta / (a_fixed - alpha))) + 1)
       } else {
-        max(1, ceiling(max((beta + gamma / q_fixed) / (a_fixed - alpha)) - tol))
+        max(m_floor, ceiling(max((beta + gamma / q_fixed) / (a_fixed - alpha)) - tol))
       }
       m_hi <- Inf
       while (m_cur <= m_hi) {
@@ -929,7 +965,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   } else {
     # Cheapest a PSU can be, used to bound the PSU count from the cost side.
     m_lo <- min(m_cand)
-    psu_floor <- C1 + m_lo * (C2 + C3)
+    psu_floor <- C1 + m_lo * (C2 + C3 * q_floor)
     if (budget_mode) {
       a_hi <- floor((variable_budget + 1e-8) / psu_floor)
       if (a_hi < 1) stop(msg_budget, call. = FALSE)
@@ -1000,17 +1036,23 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   gamma <- unit_relvar * k2 * (1 - delta2) /
     (resp_rate_psu * resp_rate_ssu * resp_rate * scale)
 
+  m_floor <- .take_floor(resp_rate_ssu)
   m_cand <- if (!is.null(n_per_psu)) {
-    max(1L, as.integer(round(n_per_psu)))
+    max(m_floor, as.integer(round(n_per_psu)))
   } else {
-    seq_len(max(60L, min(6L * as.integer(ceiling(cont_m)) + 1L, 400L)))
+    seq.int(
+      m_floor,
+      max(m_floor + 59L, min(6L * as.integer(ceiling(cont_m)) + 1L, 400L))
+    )
   }
 
   hit <- .op_cluster3_search(
     alpha, beta, gamma, stage_cost, vb, n_psu, n_per_ssu, m_cand,
     msg_budget = "no whole-unit design fits the budget",
     msg_cv = "target CV is not achievable with whole units at the given fixed stage-1 size",
-    m_free = is.null(n_per_psu)
+    m_free = is.null(n_per_psu),
+    m_floor = m_floor,
+    q_floor = .take_floor(resp_rate)
   )
   a_best <- hit[["n_psu"]]
   m_best <- hit[["n_per_psu"]]

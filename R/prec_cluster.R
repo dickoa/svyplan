@@ -98,6 +98,17 @@
 #' Precision is computed row by row, so an allocation returned by
 #' `n_cluster(indicators = )` can be passed straight in.
 #'
+#' ## A domain that takes most of its PSUs
+#'
+#' The first stage is treated as drawn with replacement, so nothing here
+#' knows how many PSUs a stratum or domain holds. A small domain, such as
+#' an island district of 16 enumeration areas, can then be given more PSUs
+#' than it has, and a sample that takes most of them is assessed as if
+#' they were a few among many. [n_alloc()] and [prec_alloc()] read `N_psu`
+#' in the frame and, with `fpc = "stage"`, apply the stage-by-stage
+#' correction. They size and assess such a domain, as the [prec_alloc()]
+#' examples show.
+#'
 #' @references
 #' Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 #' *Practical Tools for Designing and Weighting Survey Samples*

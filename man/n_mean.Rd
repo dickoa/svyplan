@@ -191,7 +191,8 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018).
 }
 \seealso{
 \code{\link[=n_prop]{n_prop()}} for proportions, \code{\link[=n_cluster]{n_cluster()}} for multistage designs,
-\code{\link[=n_multi]{n_multi()}} for multiple indicators, \code{\link[=prec_mean]{prec_mean()}} for the inverse.
+\code{\link[=n_multi]{n_multi()}} for several indicators or for one indicator in several
+domains, \code{\link[=prec_mean]{prec_mean()}} for the inverse.
 
 Other sample size and precision functions:
 \code{\link[=n_prop]{n_prop()}},

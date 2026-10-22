@@ -161,7 +161,9 @@ p$cv        # CV is the same for mean and total
 }
 \seealso{
 \code{\link[=n_mean]{n_mean()}} for the inverse (compute n from a precision target),
-\code{\link[=prec_prop]{prec_prop()}} for proportions.
+\code{\link[=prec_prop]{prec_prop()}} for proportions, \code{\link[=prec_multi]{prec_multi()}} for several indicators
+or for one indicator in several domains, \code{\link[=prec_alloc]{prec_alloc()}} for a
+stratified allocation as a whole and by domain.
 
 Other sample size and precision functions:
 \code{\link[=n_mean]{n_mean()}},

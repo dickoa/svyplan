@@ -126,7 +126,8 @@
 #'
 #' @family sample size and precision functions
 #' @seealso [n_prop()] for proportions, [n_cluster()] for multistage designs,
-#'   [n_multi()] for multiple indicators, [prec_mean()] for the inverse.
+#'   [n_multi()] for several indicators or for one indicator in several
+#'   domains, [prec_mean()] for the inverse.
 #'
 #' @examples
 #' # MOE mode

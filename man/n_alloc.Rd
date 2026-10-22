@@ -80,8 +80,12 @@ under \code{alloc = "proportional"} or \code{"power"}. Provide \strong{exactly o
 (\eqn{\sqrt{\text{variance}}}{sqrt(variance)}), or
 \item \code{var}: the stratum variance.
 }
-Both must be non-negative and finite. Without either, those two
-rules allocate a fixed \code{n} from the stratum sizes alone, and the
+Both must be non-negative and finite. A frame with \code{p} and
+neither column takes its variance from \code{p}, as \code{measures} does in
+joint allocation, \eqn{N p (1 - p) / (N - 1)}{N p (1 - p) / (N - 1)}
+in an element design and \eqn{p (1 - p)}{p (1 - p)} in a
+multistage one. Without \code{sd}, \code{var} or \code{p}, those two rules
+allocate a fixed \code{n} from the stratum sizes alone, and the
 precision fields of the result are \code{NA} because nothing was
 assessed.}
 }
@@ -106,7 +110,7 @@ and \code{p} (in \eqn{[0, 1]}) for binary (yes/no) variables.}
 Bankier allocation (\code{alloc = "power"}). Defaults to
 \code{N * abs(mean)} (or \code{N * p}). Population CV is derived from
 \code{sd / abs(mean)} and requires a nonzero mean in every stratum.
-Without \code{sd} or \code{var} the CV term drops, the weights are
+Without \code{sd}, \code{var} or \code{p} the CV term drops, the weights are
 \code{alloc_measure^alloc_q}, and \code{alloc_measure} defaults to \code{N}.}
 \item{\code{unit_cost}}{Per-unit interviewing cost in each stratum
 (positive, finite). Set higher values for strata that are more
@@ -118,6 +122,16 @@ the units drawn, not the response-adjusted \eqn{N_h/(n_hr_h)},
 which differs once \code{resp_rate} varies by stratum.}
 \item{\code{min_n_stratum}}{Minimum sample size of each stratum, \code{NA}
 for none. See the argument of the same name.}
+\item{\code{n_step}}{Whole step of each stratum's sample size, \code{NA} or 1
+for none, so that \code{n_int} is a multiple of it. Use it when the
+sample of a stratum must divide evenly over fieldwork periods or
+rotation groups, such as 12 PSUs a year for monthly fieldwork. It
+counts the units \code{n} counts, so on a frame of households with \code{n}
+counting PSUs it is a number of PSUs. Bounds move to whole steps.
+A floor rises to the next step, the population caps a stratum at
+its last whole step, and a \code{take_all} stratum keeps its \code{N}. A
+two-stage frame and joint allocation refuse it. See the section on
+steps in Details.}
 \item{\code{take_all}}{Logical (or 0/1). If \code{TRUE}, every unit in the
 stratum is included, a census stratum. Useful for small strata
 whose total population is tiny enough to enumerate.}
@@ -258,7 +272,9 @@ and must be supplied with \code{measures}.}
 per-stratum unit costs, overriding \code{frame$unit_cost}. Not used with
 fixed-take multistage joint allocation, which requires stage costs.}
 
-\item{alpha}{Significance level, default 0.05.}
+\item{alpha}{Significance level, default 0.05. \code{alpha = 2 * pnorm(-2)}
+gives the multiplier of 2 that the DHS and MICS manuals use in place
+of 1.96.}
 
 \item{deff}{Design effect multiplier (> 0). A scalar applies to every
 stratum. A length-\code{nrow(frame)} vector gives one per stratum and
@@ -293,7 +309,12 @@ applies to every stratum. A vector of length \code{nrow(frame)}, or a
 \code{frame} column of the same name, gives each stratum its own floor, with
 \code{NA} for none, such as a domain that needs a set number of interviews
 whatever its share of a power allocation. The argument overrides the
-column.}
+column. The minimum is a lower bound and not a base to which a share
+is added. A stratum whose share already exceeds its minimum keeps that
+share, and the strata held at their minimum leave less for the others.
+To give every stratum its minimum and share the rest on top of it,
+allocate \code{n - sum(min_n_stratum)} and add the minimums, as in the
+examples.}
 
 \item{alloc_q}{Bankier allocation exponent, used only when \code{alloc = "power"}.
 Numeric scalar in \eqn{[0, 1]}. With the default \code{alloc_measure},
@@ -360,7 +381,9 @@ raised when no integer allocation satisfies them, and when no
 whole-unit cluster design comes within half a take of \code{n}, above or
 below. That error gives the nearest total the design can field, the
 smallest when lower bounds and one PSU per stratum force more, the
-largest when \code{N} and \code{N_psu} allow less.}
+largest when \code{N} and \code{N_psu} allow less. With an \code{n_step} column
+every size is a whole number of steps, as the section on steps in
+Details describes, and \verb{$detail} carries \code{n_step}.}
 \item{\code{weight}}{Base weight \code{N / n} of the issued sample, before
 nonresponse or calibration adjustment.}
 \item{\code{n_eff}}{Effective sample size \code{n * resp_rate / deff}.}
@@ -906,6 +929,22 @@ are enforced via recursive Neyman allocation (RNA, Wesolowski et al., 2021).
 When \code{budget} is specified, the algorithm finds the maximum affordable
 allocation under unit costs.
 }
+
+\subsection{Sample sizes in steps}{
+
+A frame column \code{n_step} makes each stratum's \code{n_int} a multiple of its
+step. The continuous allocation is solved within bounds moved to whole
+steps, then rounded in steps. In \code{n} mode each stratum takes the step
+nearest its share, and then moves by at most one step, jointly across
+strata, to reach \code{n} exactly. A total the steps cannot reach within
+that window is an error naming the nearest totals they do reach, so
+\code{n = 550} with steps of 4 and 8 names 548 and 552. A \code{cv} target rounds
+each stratum up to a step. A \code{budget} adds and removes whole steps. The
+searched modes search whole steps. With one step for every stratum the
+result is the allocation in sets of that size multiplied back.
+\code{\link[=prec_alloc]{prec_alloc()}} assesses any \code{n} on such a frame, so a previous round's
+allocation can be compared with one in steps.
+}
 }
 \examples{
 frame <- data.frame(
@@ -946,6 +985,27 @@ n_alloc(sizes, n = 60, alloc = "power", alloc_q = 0.25, min_n_stratum = 15)
 # for its own estimates. The others share the rest by the power rule.
 n_alloc(sizes, n = 60, alloc = "power", alloc_q = 0.25,
         min_n_stratum = c(NA, NA, 20))
+
+# The minimum is a bound. To give each stratum its minimum and share the
+# rest by size on top of it, allocate what is left and add the minimums.
+floors <- c(10, 10, 10)
+n_alloc(sizes, n = 60 - sum(floors), alloc = "proportional")$detail$n +
+  floors
+
+# PSU counts in steps: 4 rotation groups, and 8 in strata split in two
+psus <- data.frame(
+  stratum = c("North", "South", "East", "West"),
+  N = c(120000, 95000, 60000, 30000),
+  min_n_stratum = c(16, 12, 12, 13),
+  n_step = c(4, 8, 4, 4)
+)
+n_alloc(psus, n = 120, alloc = "proportional")$detail[
+  c("stratum", "n", "n_int", "n_step")]
+
+# A proportion supplies its own variance
+rates <- data.frame(stratum = c("A", "B", "C"), N = c(4e5, 1e5, 2.5e4),
+                    p = c(0.48, 0.60, 0.16))
+n_alloc(rates, cv = 0.05)
 
 # Joint targets for two indicators and an overlapping domain
 joint_frame <- data.frame(
@@ -1123,7 +1183,8 @@ Methodology}, 10(5), 1263--1275.
 }
 \seealso{
 \link{n_alloc-generalized} for the joint mode in full,
-\code{\link[=prec_alloc]{prec_alloc()}} for the inverse, \code{\link[=strata_bound]{strata_bound()}} for constructing the
+\code{\link[=prec_alloc]{prec_alloc()}} for the inverse and for the precision of any fixed
+allocation, nationally and by domain, \code{\link[=strata_bound]{strata_bound()}} for constructing the
 strata to allocate over, and \code{\link[=n_multi]{n_multi()}} for the unstratified
 multi-indicator size that joint allocation refines.
 

@@ -97,7 +97,9 @@
 #'
 #' @family sample size and precision functions
 #' @seealso [n_mean()] for the inverse (compute n from a precision target),
-#'   [prec_prop()] for proportions.
+#'   [prec_prop()] for proportions, [prec_multi()] for several indicators
+#'   or for one indicator in several domains, [prec_alloc()] for a
+#'   stratified allocation as a whole and by domain.
 #'
 #' @examples
 #' # Precision with n = 400

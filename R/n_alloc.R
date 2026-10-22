@@ -48,8 +48,12 @@
 #'           (\eqn{\sqrt{\text{variance}}}{sqrt(variance)}), or
 #'         \item `var`: the stratum variance.
 #'       }
-#'       Both must be non-negative and finite. Without either, those two
-#'       rules allocate a fixed `n` from the stratum sizes alone, and the
+#'       Both must be non-negative and finite. A frame with `p` and
+#'       neither column takes its variance from `p`, as `measures` does in
+#'       joint allocation, \eqn{N p (1 - p) / (N - 1)}{N p (1 - p) / (N - 1)}
+#'       in an element design and \eqn{p (1 - p)}{p (1 - p)} in a
+#'       multistage one. Without `sd`, `var` or `p`, those two rules
+#'       allocate a fixed `n` from the stratum sizes alone, and the
 #'       precision fields of the result are `NA` because nothing was
 #'       assessed.}
 #'   }
@@ -74,7 +78,7 @@
 #'       Bankier allocation (`alloc = "power"`). Defaults to
 #'       `N * abs(mean)` (or `N * p`). Population CV is derived from
 #'       `sd / abs(mean)` and requires a nonzero mean in every stratum.
-#'       Without `sd` or `var` the CV term drops, the weights are
+#'       Without `sd`, `var` or `p` the CV term drops, the weights are
 #'       `alloc_measure^alloc_q`, and `alloc_measure` defaults to `N`.}
 #'     \item{`unit_cost`}{Per-unit interviewing cost in each stratum
 #'       (positive, finite). Set higher values for strata that are more
@@ -86,6 +90,16 @@
 #'       which differs once `resp_rate` varies by stratum.}
 #'     \item{`min_n_stratum`}{Minimum sample size of each stratum, `NA`
 #'       for none. See the argument of the same name.}
+#'     \item{`n_step`}{Whole step of each stratum's sample size, `NA` or 1
+#'       for none, so that `n_int` is a multiple of it. Use it when the
+#'       sample of a stratum must divide evenly over fieldwork periods or
+#'       rotation groups, such as 12 PSUs a year for monthly fieldwork. It
+#'       counts the units `n` counts, so on a frame of households with `n`
+#'       counting PSUs it is a number of PSUs. Bounds move to whole steps.
+#'       A floor rises to the next step, the population caps a stratum at
+#'       its last whole step, and a `take_all` stratum keeps its `N`. A
+#'       two-stage frame and joint allocation refuse it. See the section on
+#'       steps in Details.}
 #'     \item{`take_all`}{Logical (or 0/1). If `TRUE`, every unit in the
 #'       stratum is included, a census stratum. Useful for small strata
 #'       whose total population is tiny enough to enumerate.}
@@ -211,7 +225,9 @@
 #' @param unit_cost Optional scalar or length-`nrow(frame)` vector of
 #'   per-stratum unit costs, overriding `frame$unit_cost`. Not used with
 #'   fixed-take multistage joint allocation, which requires stage costs.
-#' @param alpha Significance level, default 0.05.
+#' @param alpha Significance level, default 0.05. `alpha = 2 * pnorm(-2)`
+#'   gives the multiplier of 2 that the DHS and MICS manuals use in place
+#'   of 1.96.
 #' @param deff Design effect multiplier (> 0). A scalar applies to every
 #'   stratum. A length-`nrow(frame)` vector gives one per stratum and
 #'   overrides a `deff` column in `frame`. A published DEFT is squared
@@ -241,7 +257,12 @@
 #'   `frame` column of the same name, gives each stratum its own floor, with
 #'   `NA` for none, such as a domain that needs a set number of interviews
 #'   whatever its share of a power allocation. The argument overrides the
-#'   column.
+#'   column. The minimum is a lower bound and not a base to which a share
+#'   is added. A stratum whose share already exceeds its minimum keeps that
+#'   share, and the strata held at their minimum leave less for the others.
+#'   To give every stratum its minimum and share the rest on top of it,
+#'   allocate `n - sum(min_n_stratum)` and add the minimums, as in the
+#'   examples.
 #' @param alloc_q Bankier allocation exponent, used only when `alloc = "power"`.
 #'   Numeric scalar in \eqn{[0, 1]}. With the default `alloc_measure`,
 #'   `alloc_q = 1` gives Neyman allocation. At `alloc_q = 0` weights depend
@@ -304,7 +325,9 @@
 #'       whole-unit cluster design comes within half a take of `n`, above or
 #'       below. That error gives the nearest total the design can field, the
 #'       smallest when lower bounds and one PSU per stratum force more, the
-#'       largest when `N` and `N_psu` allow less.}
+#'       largest when `N` and `N_psu` allow less. With an `n_step` column
+#'       every size is a whole number of steps, as the section on steps in
+#'       Details describes, and `$detail` carries `n_step`.}
 #'     \item{`weight`}{Base weight `N / n` of the issued sample, before
 #'       nonresponse or calibration adjustment.}
 #'     \item{`n_eff`}{Effective sample size `n * resp_rate / deff`.}
@@ -832,6 +855,21 @@
 #' When `budget` is specified, the algorithm finds the maximum affordable
 #' allocation under unit costs.
 #'
+#' ## Sample sizes in steps
+#'
+#' A frame column `n_step` makes each stratum's `n_int` a multiple of its
+#' step. The continuous allocation is solved within bounds moved to whole
+#' steps, then rounded in steps. In `n` mode each stratum takes the step
+#' nearest its share, and then moves by at most one step, jointly across
+#' strata, to reach `n` exactly. A total the steps cannot reach within
+#' that window is an error naming the nearest totals they do reach, so
+#' `n = 550` with steps of 4 and 8 names 548 and 552. A `cv` target rounds
+#' each stratum up to a step. A `budget` adds and removes whole steps. The
+#' searched modes search whole steps. With one step for every stratum the
+#' result is the allocation in sets of that size multiplied back.
+#' [prec_alloc()] assesses any `n` on such a frame, so a previous round's
+#' allocation can be compared with one in steps.
+#'
 #' @references
 #' Valliant, R., Dever, J. A., & Kreuter, F. (2018). *Practical Tools for
 #'   Designing and Weighting Survey Samples* (2nd ed.). Springer. Chapters 5
@@ -852,7 +890,8 @@
 #'
 #' @family stratified design functions
 #' @seealso [n_alloc-generalized] for the joint mode in full,
-#'   [prec_alloc()] for the inverse, [strata_bound()] for constructing the
+#'   [prec_alloc()] for the inverse and for the precision of any fixed
+#'   allocation, nationally and by domain, [strata_bound()] for constructing the
 #'   strata to allocate over, and [n_multi()] for the unstratified
 #'   multi-indicator size that joint allocation refines.
 #'
@@ -895,6 +934,27 @@
 #' # for its own estimates. The others share the rest by the power rule.
 #' n_alloc(sizes, n = 60, alloc = "power", alloc_q = 0.25,
 #'         min_n_stratum = c(NA, NA, 20))
+#'
+#' # The minimum is a bound. To give each stratum its minimum and share the
+#' # rest by size on top of it, allocate what is left and add the minimums.
+#' floors <- c(10, 10, 10)
+#' n_alloc(sizes, n = 60 - sum(floors), alloc = "proportional")$detail$n +
+#'   floors
+#'
+#' # PSU counts in steps: 4 rotation groups, and 8 in strata split in two
+#' psus <- data.frame(
+#'   stratum = c("North", "South", "East", "West"),
+#'   N = c(120000, 95000, 60000, 30000),
+#'   min_n_stratum = c(16, 12, 12, 13),
+#'   n_step = c(4, 8, 4, 4)
+#' )
+#' n_alloc(psus, n = 120, alloc = "proportional")$detail[
+#'   c("stratum", "n", "n_int", "n_step")]
+#'
+#' # A proportion supplies its own variance
+#' rates <- data.frame(stratum = c("A", "B", "C"), N = c(4e5, 1e5, 2.5e4),
+#'                     p = c(0.48, 0.60, 0.16))
+#' n_alloc(rates, cv = 0.05)
 #'
 #' # Joint targets for two indicators and an overlapping domain
 #' joint_frame <- data.frame(
@@ -1160,6 +1220,7 @@ n_alloc.default <- function(
         call. = FALSE
       )
     }
+    .alloc_refuse_step(frame, "joint constrained allocation")
     if (!is.null(psu)) {
       # A register is not the equal-size, equal-take design the stage
       # correction is derived for.
@@ -1245,11 +1306,11 @@ n_alloc.default <- function(
     stop("specify exactly one of 'n', 'cv', or 'budget'", call. = FALSE)
   }
 
-  if (!any(c("sd", "var") %in% names(frame))) {
+  if (!any(c("sd", "var", "p") %in% names(frame))) {
     if (!alloc %in% c("proportional", "power")) {
       stop(
         sprintf(
-          "alloc = \"%s\" needs 'sd' or 'var' in 'frame'. Without them, only a fixed 'n' can be allocated, by alloc = \"proportional\" or \"power\"",
+          "alloc = \"%s\" needs 'sd', 'var' or 'p' in 'frame'. Without them, only a fixed 'n' can be allocated, by alloc = \"proportional\" or \"power\"",
           alloc
         ),
         call. = FALSE
@@ -1257,7 +1318,7 @@ n_alloc.default <- function(
     }
     if (is.null(n)) {
       stop(
-        "a 'cv' or 'budget' target needs 'sd' or 'var' in 'frame'. Without them, only a fixed 'n' can be allocated",
+        "a 'cv' or 'budget' target needs 'sd', 'var' or 'p' in 'frame'. Without them, only a fixed 'n' can be allocated",
         call. = FALSE
       )
     }
@@ -1302,7 +1363,9 @@ n_alloc.default <- function(
     max_weight = prep$max_weight,
     take_all = prep$take_all,
     min_n_stratum = min_n_stratum,
-    psu_cap = psu_cap
+    psu_cap = psu_cap,
+    step = prep$step_h,
+    stratum = prep$stratum
   )
   m_h <- bounds$m_h
   M_h <- bounds$M_h
@@ -1716,16 +1779,19 @@ n_alloc.svyplan_prec <- function(
   do.call(n_alloc.default, .roundtrip_args(args, list(...), n_alloc.default))
 }
 
-#' Precision for a constrained allocation
+#' Precision of a stratified allocation
 #'
-#' Compute aggregate precision for a stratum allocation. For a joint
-#' constrained allocation, return one achieved-precision row per target and
-#' separate stratum-bound diagnostics.
+#' Compute the precision of a stratum allocation, over the whole population
+#' and by domain. The allocation is either an [n_alloc()] result or any
+#' stratum sample sizes given as `n`, such as the previous round's
+#' published allocation. For a joint constrained allocation, return one
+#' achieved-precision row per target and separate stratum-bound
+#' diagnostics.
 #'
 #' @param frame For the default method: a stratum-level data frame in the same
 #'   format as the `frame` argument to [n_alloc()] (one row per stratum,
-#'   with at least `N` and `sd` or `var` columns). See [n_alloc()] for
-#'   the full column reference).
+#'   with at least `N` and one of `sd`, `var` or `p`). See [n_alloc()] for
+#'   the full column reference.
 #'   For `svyplan_n` objects: an allocation result from [n_alloc()].
 #' @param ... Additional arguments passed to methods. Unused arguments are
 #'   rejected. For an allocation result, named arguments override the fitted
@@ -1734,7 +1800,9 @@ n_alloc.svyplan_prec <- function(
 #' @param n Stratum sample sizes, length `nrow(frame)`. In a cluster
 #'   allocation these count ultimate units, fielded at the take in the
 #'   frame's `n_per_psu` column, or at the continuous cost-optimal take when
-#'   the frame has none. For a fitted joint
+#'   the frame has none. A frame `n_step` does not constrain `n` here, so
+#'   an allocation made without steps can be assessed on the same frame.
+#'   For a fitted joint
 #'   allocation, omission uses its continuous allocation. Pass `$detail$n_int`
 #'   to assess the operational recommendation. A named vector is matched to
 #'   `frame$stratum`, an unnamed vector is positional. In fixed-take
@@ -1771,7 +1839,9 @@ n_alloc.svyplan_prec <- function(
 #'   assessed allocation's cost. Requires `objective`.
 #' @param domains Character vector of column names in `frame` to treat as
 #'   domain identifiers, or `NULL` (default) for no domains.
-#' @param alpha Significance level, default 0.05.
+#' @param alpha Significance level, default 0.05. `alpha = 2 * pnorm(-2)`
+#'   gives the multiplier of 2 that the DHS and MICS manuals use in place
+#'   of 1.96.
 #' @param deff Design effect multiplier (> 0). A scalar applies to every
 #'   stratum. A length-`nrow(frame)` vector gives one per stratum and
 #'   overrides a `deff` column in `frame`. A published DEFT is squared
@@ -1875,6 +1945,29 @@ n_alloc.svyplan_prec <- function(
 #' )
 #' res <- n_alloc(frame, n = 600)
 #' prec_alloc(res)
+#'
+#' # The previous round's allocation, assessed nationally and per region
+#' last_round <- data.frame(
+#'   stratum = c("North", "Centre", "South"),
+#'   N = c(380000, 250000, 25000),
+#'   p = c(0.48, 0.60, 0.16),
+#'   deff = 4.4
+#' )
+#' last_round$region <- last_round$stratum
+#' assessed <- prec_alloc(last_round, n = c(768, 576, 192), domains = "region")
+#' assessed$moe
+#' assessed$domains[c("region", ".moe")]
+#'
+#' # An island district of 16 enumeration areas of about 180 households,
+#' # 16 interviewed in each. Taking 12 of the 16 removes most of the variance
+#' # between areas, which only the stage-by-stage correction sees.
+#' island <- data.frame(
+#'   stratum = "Island", N = 2892, p = 0.314,
+#'   icc_psu = 0.23, n_per_psu = 16, N_psu = 16
+#' )
+#' prec_alloc(island, n = 16 * 12, fpc = "stage")$moe
+#' prec_alloc(island, n = 16 * 12, fpc = "none")$moe
+#' n_alloc(island, cv = 0.10 / (qnorm(0.975) * 0.314), fpc = "stage")
 #'
 #' # Direct joint assessment (the allocation is in ultimate-unit units)
 #' jf <- data.frame(
@@ -1988,6 +2081,7 @@ prec_alloc.default <- function(
         call. = FALSE
       )
     }
+    .alloc_refuse_step(frame, "joint constrained allocation")
     if (!is.null(psu)) {
       # Refused for the same reason n_alloc() refuses it. See there.
       if (!identical(fpc, "unit")) {
@@ -2300,10 +2394,23 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       stop("'var' must contain non-negative finite values", call. = FALSE)
     }
     S_h <- sqrt(vv)
+  } else if ("p" %in% names(frame)) {
+    ph <- .alloc_check_p(frame$p)
+    if (.alloc_is_cluster(frame)) {
+      S_h <- sqrt(ph * (1 - ph))
+    } else {
+      if (any(N_h <= 1)) {
+        stop(
+          "'N' must be greater than 1 in every stratum when the variance is derived from 'p'",
+          call. = FALSE
+        )
+      }
+      S_h <- sqrt(.bernoulli_var(ph, N_h))
+    }
   } else if (size_only) {
     S_h <- rep(NA_real_, nrow(frame))
   } else {
-    stop("'frame' must contain either 'sd' or 'var'", call. = FALSE)
+    stop("'frame' must contain 'sd', 'var' or 'p'", call. = FALSE)
   }
   size_only <- all(is.na(S_h))
   if (!size_only && all(S_h == 0)) {
@@ -2317,14 +2424,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   if ("mean" %in% names(frame)) {
     mean_h <- frame$mean
   } else if ("p" %in% names(frame)) {
-    ph <- frame$p
-    if (!is.numeric(ph) || anyNA(ph) || any(!is.finite(ph))) {
-      stop("'p' must contain finite numeric values", call. = FALSE)
-    }
-    if (any(ph < 0 | ph > 1)) {
-      stop("'p' must contain values in [0, 1]", call. = FALSE)
-    }
-    mean_h <- ph
+    mean_h <- .alloc_check_p(frame$p)
   }
   if (any(!is.na(mean_h) & !is.finite(mean_h))) {
     stop("'mean' (or 'p') must contain finite values", call. = FALSE)
@@ -2454,9 +2554,12 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     }
   }
 
+  step_h <- .alloc_resolve_step(frame, take_all)
+
   prep <- list(
     frame = frame,
     size_only = size_only,
+    step_h = step_h,
     N_h = as.numeric(N_h),
     S_h = as.numeric(S_h),
     mean_h = as.numeric(mean_h),
@@ -2473,6 +2576,63 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   .alloc_cluster_prep(prep, frame, unit_cost, fpc)
 }
 
+#' Resolve a frame's per-stratum step
+#'
+#' `NA` and 1 mean no step. A census stratum keeps its whole population, so
+#' its step is 1 whatever the column says.
+#' @keywords internal
+#' @noRd
+.alloc_resolve_step <- function(frame, take_all) {
+  H <- nrow(frame)
+  if (!"n_step" %in% names(frame)) {
+    return(rep(1L, H))
+  }
+  if (.alloc_is_cluster(frame)) {
+    stop(
+      "'n_step' applies to element frames, where it counts the units 'n' counts. A two-stage frame does not take it yet. To allocate PSU counts in steps, allocate them on a frame without 'icc_psu', with 'n' counting PSUs",
+      call. = FALSE
+    )
+  }
+  k <- frame[["n_step"]]
+  if (is.logical(k) && all(is.na(k))) {
+    k <- rep(NA_real_, H)
+  }
+  if (!is.numeric(k) || any(!is.na(k) & (!is.finite(k) | k < 1 | k != trunc(k)))) {
+    stop("'n_step' must contain whole numbers >= 1, or NA for no step",
+         call. = FALSE)
+  }
+  k[is.na(k) | take_all] <- 1
+  as.integer(k)
+}
+
+#' Refuse a step where the allocation rounds on its own
+#' @keywords internal
+#' @noRd
+.alloc_refuse_step <- function(frame, where) {
+  if ("n_step" %in% names(frame)) {
+    stop(
+      sprintf(
+        "'n_step' is not used for %s, which builds its own whole design. It applies to the classic modes of n_alloc() on an element frame",
+        where
+      ),
+      call. = FALSE
+    )
+  }
+}
+
+#' Validate a frame's stratum proportions
+#' @keywords internal
+#' @noRd
+.alloc_check_p <- function(ph) {
+  if (!is.numeric(ph) || anyNA(ph) || any(!is.finite(ph))) {
+    stop("'p' must contain finite numeric values", call. = FALSE)
+  }
+  if (any(ph < 0 | ph > 1)) {
+    stop("'p' must contain values in [0, 1]", call. = FALSE)
+  }
+  ph
+}
+
 #' Carry a frame's label columns into an allocation's stratum detail
 #' @keywords internal
 #' @noRd
@@ -2482,7 +2642,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     function(v) is.character(v) || is.factor(v) || is.logical(v),
     logical(1)
   )
-  labels <- setdiff(names(frame)[is_label], c("stratum", "take_all"))
+  labels <- setdiff(names(frame)[is_label], c("stratum", "take_all", "n_step"))
   if (length(labels) == 0L) return(list(detail = detail, keys = NULL))
   clash <- intersect(labels, names(detail))
   if (length(clash) > 0L) {
@@ -2512,7 +2672,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #' @noRd
 .alloc_size_only <- function(x) {
   !identical(x$method, "bethel") &&
-    !any(c("sd", "var") %in% names(x$params$frame))
+    !any(c("sd", "var", "p") %in% names(x$params$frame))
 }
 
 #' Two-stage-within-strata transformation
@@ -2839,7 +2999,9 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   max_weight,
   take_all,
   min_n_stratum = NULL,
-  psu_cap = NULL
+  psu_cap = NULL,
+  step = NULL,
+  stratum = NULL
 ) {
   H <- length(N_h)
   m_h <- pmin(rep(1, H), N_h)
@@ -2875,6 +3037,24 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     M_h[take_all] <- N_h[take_all]
     m_src[take_all] <- "take_all"
     M_src[take_all] <- "take_all"
+  }
+
+  if (!is.null(step) && any(step > 1L)) {
+    fits <- m_h <= M_h + 1e-8
+    raised <- step * ceiling(m_h / step - 1e-9)
+    m_src[raised > m_h + 1e-9 & is.na(m_src)] <- "n_step"
+    m_h <- raised
+    M_h <- step * floor(M_h / step + 1e-9)
+    short <- fits & m_h > M_h + 1e-8
+    if (any(short)) {
+      stop(
+        sprintf(
+          "no whole number of steps fits the bounds of stratum %s. Its 'n_step' exceeds the room between its lower and upper bounds, so lower 'n_step' or relax the bounds",
+          paste(stratum[short] %||% which(short), collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
   }
 
   infeasible <- m_h > M_h + 1e-8
@@ -3006,9 +3186,14 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   if (is.null(hi_i)) {
     hi_i <- as.integer(floor(M_h + 1e-9))
   }
+  step <- prep$step_h %||% rep(1L, length(n_h))
+  stepped <- any(step > 1L)
   n_int <- switch(
     mode,
-    cv = pmin(pmax(as.integer(ceiling(n_h - 1e-9)), lo_i), hi_i),
+    cv = pmin(
+      pmax(as.integer(step * ceiling(n_h / step - 1e-9)), lo_i),
+      hi_i
+    ),
     budget = .round_within_budget(
       n_h,
       prep$cost_h,
@@ -3016,9 +3201,14 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       lo_i,
       hi_i,
       (prep$N_h / sum(prep$N_h))^2 * prep$S_h^2 *
-        rep_len(deff, length(n_h)) / rep_len(resp_rate, length(n_h))
+        rep_len(deff, length(n_h)) / rep_len(resp_rate, length(n_h)),
+      step = step
     ),
-    .round_oric_bounded(n_h, lo_i, hi_i)
+    if (stepped) {
+      .round_steps(n_h, step, lo_i, hi_i)
+    } else {
+      .round_oric_bounded(n_h, lo_i, hi_i)
+    }
   )
   out <- data.frame(
     stratum = prep$stratum,
@@ -3066,6 +3256,9 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   if (any(prep$take_all)) {
     out$take_all <- prep$take_all
   }
+  if (stepped) {
+    out$n_step <- step
+  }
   if (!all(is.na(prep$mean_h))) {
     out$mean <- prep$mean_h
   }
@@ -3081,37 +3274,74 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #' variance divides by `n_h`.
 #' @keywords internal
 #' @noRd
-.round_within_budget <- function(n_h, cost_h, budget, lower, upper, a_h) {
-  n_int <- pmin(pmax(as.integer(floor(n_h + 1e-9)), lower), upper)
-  # The variance change of moving stratum h from n to n + 1. A stratum
-  # without variance gains and loses nothing, and one left empty with
-  # variance is infinitely worse, so no 0 * Inf reaches the comparison.
+.round_within_budget <- function(n_h, cost_h, budget, lower, upper, a_h,
+                                step = 1L) {
+  step <- rep_len(as.integer(step), length(n_h))
+  n_int <- pmin(pmax(as.integer(step * floor(n_h / step + 1e-9)), lower),
+                upper)
+  # The variance change of moving stratum h from n to n + its step. A
+  # stratum without variance gains and loses nothing, and one left empty
+  # with variance is infinitely worse, so no 0 * Inf reaches the comparison.
   change <- function(h, n) {
-    out <- a_h[h] * (1 / n - 1 / (n + 1))
+    out <- a_h[h] * (1 / n - 1 / (n + step[h]))
     out[a_h[h] == 0] <- 0
     out[a_h[h] > 0 & n == 0] <- Inf
     out
   }
+  step_cost <- cost_h * step
   # Lifting a stratum to its whole lower bound can spend more than the
   # floors elsewhere save. The caller checked that the bounds alone fit, so
   # trimming above them always comes back inside the budget.
   while (sum(n_int * cost_h) > budget + 1e-9) {
     can <- which(n_int > lower)
-    loss <- change(can, n_int[can] - 1L) / cost_h[can]
+    loss <- change(can, n_int[can] - step[can]) / step_cost[can]
     j <- can[which.min(loss)]
-    n_int[j] <- n_int[j] - 1L
+    n_int[j] <- n_int[j] - step[j]
   }
   repeat {
     spare <- budget - sum(n_int * cost_h)
-    can <- which(n_int < upper & cost_h <= spare + 1e-9)
+    can <- which(n_int < upper & step_cost <= spare + 1e-9)
     if (length(can) == 0L) {
       break
     }
-    gain <- change(can, n_int[can]) / cost_h[can]
+    gain <- change(can, n_int[can]) / step_cost[can]
     j <- can[which.max(gain)]
-    n_int[j] <- n_int[j] + 1L
+    n_int[j] <- n_int[j] + step[j]
   }
   as.integer(n_int)
+}
+
+#' Whole sizes in steps, each within one step of its share, at the total
+#'
+#' `.cluster_close_total()` rounds counts of blocks, here steps of `step`
+#' units. A total the steps cannot reach within one step of each share is
+#' an error naming the nearest totals they do reach.
+#' @keywords internal
+#' @noRd
+.round_steps <- function(x, step, lo, hi) {
+  total <- as.integer(round(sum(x)))
+  a_min <- as.integer(lo %/% step)
+  a_max <- as.integer(hi %/% step)
+  a0 <- pmin(pmax(as.integer(round(x / step)), a_min), a_max)
+  a <- .cluster_close_total(a0, step, a_min, a_max, x)
+  n_int <- as.integer(a * step)
+  if (sum(n_int) != total) {
+    reach <- attr(a, "totals", exact = TRUE)
+    below <- reach[reach < total]
+    above <- reach[reach > total]
+    stop(
+      sprintf(
+        "no allocation in steps of 'n_step' reaches the total %d. Within one step of each stratum's share, the nearest totals are %s",
+        total,
+        paste(c(
+          if (length(below)) max(below),
+          if (length(above)) min(above)
+        ), collapse = " and ")
+      ),
+      call. = FALSE
+    )
+  }
+  n_int
 }
 
 #' Whether a classic allocation searches its whole design
@@ -3152,10 +3382,14 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   a <- S2 / rep_len(resp_rate, H)
   c0 <- S2 / (prep$N_fpc_h %||% prep$N_h)
   cost <- if (identical(alloc, "neyman")) rep(1, H) else prep$cost_h
+  # The search runs on whole steps, n = step * x. A stratum's cost per step
+  # is step * cost and its variance coefficient per step a / step.
+  step <- as.numeric(prep$step_h %||% rep(1L, H))
   n <- as.numeric(lo_i)
   on <- a > 0
-  lo <- pmax(lo_i[on], 1)
-  hi <- hi_i[on]
+  k <- step[on]
+  lo <- pmax(lo_i[on] / k, 1)
+  hi <- hi_i[on] / k
   if (!any(on)) {
     value <- if (mode == "cv") sum(cost * n) else 0
     r <- list(value = value, bound = value, status = "optimal", nodes = 0,
@@ -3165,7 +3399,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   }
   if (mode == "cv") {
     ybar <- .aggregate_mean(W, prep$mean_h)
-    room <- (cv * abs(ybar))^2 - sum(a[on] / hi - c0[on])
+    room <- (cv * abs(ybar))^2 - sum(a[on] / hi_i[on] - c0[on])
     # Within rounding of the target, the upper bounds meet it.
     if (room < -1e-12 * (cv * abs(ybar))^2) {
       stop(sprintf(
@@ -3174,7 +3408,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       ), call. = FALSE)
     }
     if (room <= 0) {
-      n[on] <- hi
+      n[on] <- hi_i[on]
       r <- list(value = sum(cost * n), bound = sum(cost * n),
                 status = "optimal", nodes = 0, states = 0, kept = 0)
       return(list(n_int = as.integer(n), status = r$status,
@@ -3182,15 +3416,16 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     }
     # Measured from the upper bounds, so a census loads exactly zero however
     # small the target.
-    g2 <- a[on] / room * (1 + 2e-9)
-    q <- .whole_problem(cost[on], 0, 0, g2, lo, hi, g0 = -(g2 / hi))
-    r <- .whole_search(q, grain = .menu_grain(cost[on]),
+    g2 <- a[on] / k / room * (1 + 2e-9)
+    q <- .whole_problem(cost[on] * k, 0, 0, g2, lo, hi, g0 = -(g2 / hi))
+    r <- .whole_search(q, grain = .menu_grain(cost[on] * k),
                        max_nodes = max_nodes)
     offset <- sum(cost[!on] * n[!on])
   } else {
     room <- budget - sum(prep$cost_h[!on] * n[!on])
-    q <- .whole_problem(0, a[on],
-                        prep$cost_h[on] / (room + 1e-9 * max(1, budget)), 0,
+    q <- .whole_problem(0, a[on] / k,
+                        prep$cost_h[on] * k /
+                          (room + 1e-9 * max(1, budget)), 0,
                         lo, hi)
     r <- .whole_search(q, start = lo, max_nodes = max_nodes)
     offset <- -sum(c0)
@@ -3210,8 +3445,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       class = c("svyplan_plan_unknown", "error", "condition")
     ))
   }
-  n[on] <- r$x
-  list(n_int = as.integer(n), status = r$status,
+  n[on] <- r$x * k
+  list(n_int = as.integer(round(n)), status = r$status,
        search = .whole_record(r, "whole units", max_nodes, offset = offset))
 }
 
@@ -3513,7 +3748,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   target <- sum(e_target)
   base <- sum(a_h * b_h)
   if (base == target) {
-    return(a_h)
+    return(structure(a_h, totals = base))
   }
   lo_d <- as.integer(pmax(a_min - a_h, -1L))
   hi_d <- as.integer(pmin(a_max - a_h, 1L))
@@ -3552,7 +3787,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     d[h] <- back[t, h]
     t <- t - d[h] * b_h[h]
   }
-  as.integer(a_h + d)
+  structure(as.integer(a_h + d), totals = base + dev[is.finite(cost)])
 }
 
 #' Whole-unit field design of a stratified cluster allocation
@@ -3804,7 +4039,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     a_h <- as.integer(round(e_target / b_h))
     a_h <- pmin(pmax(a_h, a_min), a_max)
     # A take chosen to divide the total fields a prime total as 1-unit PSUs.
-    a_h <- .cluster_close_total(a_h, b_h, a_min, a_max, e_target)
+    a_h <- as.integer(.cluster_close_total(a_h, b_h, a_min, a_max, e_target))
     field <- sum(a_h * b_h)
     if (field - need > max(b_h) / 2) {
       smallest <- sum(a_min * b_h)

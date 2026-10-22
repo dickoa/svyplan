@@ -61,8 +61,10 @@ that recommendation when available, or rounds the continuous size up.
   raised to `alloc_q`. The measure is the stratum total `N * abs(mean)` unless
   a positive `alloc_measure` frame column supplies another. With that default
   measure, `alloc_q = 1` gives Neyman allocation.
-  Proportional and power allocation of a fixed `n` need only the stratum
-  sizes, and then report no precision. `min_n_stratum` sets one floor for
+  A frame with `p` and no `sd` or `var` takes its variance from `p`, as
+  joint allocation does. An `n_step` column makes each stratum's whole size
+  a multiple of its step, such as PSUs in sets of 12 for monthly fieldwork. Proportional and power allocation of a fixed `n`
+  need only the stratum sizes, and then report no precision. `min_n_stratum` sets one floor for
   every stratum or one per stratum, as a vector or a frame column. `$detail` carries the frame's
   character, factor and logical columns after `stratum`.
   Without domains, the target-`cv` mode of optimal and Neyman allocation
@@ -216,8 +218,9 @@ that recommendation when available, or rounds the continuous size up.
   `design_overlap()` and `design_schedule()` both read, so a pattern is parsed
   in one place.
 * `design_overlap()` reports the issued-sample overlap that rotation produces
-  at every lag. `plot()` draws the rotation chart the design would be
-  published as.
+  at every lag, and with `window` the mean number of occasions a unit is in
+  sample within that many consecutive occasions. `plot()` draws the rotation
+  chart the design would be published as.
 
 ## Survey plan profiles
 

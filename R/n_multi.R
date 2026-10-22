@@ -159,7 +159,8 @@
 #'     error). For example, 0.10 means the SE should be at most 10%
 #'     of the estimate.}
 #'   \item{`alpha`}{Significance level for the confidence interval
-#'     (default 0.05, giving a 95 percent CI).}
+#'     (default 0.05, giving a 95 percent CI). `2 * pnorm(-2)` gives the
+#'     multiplier of 2 that the DHS and MICS manuals use in place of 1.96.}
 #'   \item{`deff`}{Design effect multiplier (default 1). Set > 1 to inflate
 #'     the sample size for complex
 #'     designs (e.g. 1.5 for a cluster design). A published DEFT is
@@ -252,6 +253,18 @@
 #' `indicators$prop_method` column to choose `"wald"`, `"wilson"`,
 #' `"logodds"` or `"beta"` for proportion rows.
 #'
+#' ## A domain that takes most of its PSUs
+#'
+#' A `deff` column carries the clustering of a design whose first stage is
+#' treated as drawn with replacement, and `N` corrects only for the units.
+#' Nothing here knows how many PSUs a domain holds. A small domain, such as
+#' an island district of 16 enumeration areas, can then be given more PSUs
+#' than it has, and a sample that takes most of them is assessed as if
+#' they were a few among many. [n_alloc()] and [prec_alloc()] read `N_psu`
+#' in the frame and, with `fpc = "stage"`, apply the stage-by-stage
+#' correction. They size and assess such a domain, as the [prec_alloc()]
+#' examples show.
+#'
 #' @references
 #' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
 #'
@@ -337,6 +350,16 @@
 #'   region = rep(c("North", "South"), 2)
 #' )
 #' n_multi(targets_dom, domains = "region")
+#'
+#' # One indicator in several domains, each with its own design effect. The
+#' # 'name' column is optional with a single indicator.
+#' poverty <- data.frame(
+#'   district = c("North", "Centre", "South"),
+#'   p = c(0.31, 0.45, 0.52),
+#'   moe = 0.10,
+#'   deff = c(4.4, 3.1, 2.8)
+#' )
+#' n_multi(poverty, domains = "district")
 #'
 #' # A household survey whose estimates are over persons. Each row counts
 #' # its own group per household, and a row with only 'min_respondents'
@@ -1417,19 +1440,23 @@ n_multi.default <- function(
   fixed,
   continuous,
   upper = Inf,
-  base_limit = 400L
+  base_limit = 400L,
+  floor = 1L
 ) {
   if (!is.null(fixed)) {
-    return(max(1L, as.integer(round(fixed))))
+    return(max(floor, as.integer(round(fixed))))
   }
   upper_i <- if (is.finite(upper)) {
     max(1L, as.integer(floor(upper + 1e-9)))
   } else {
     .Machine$integer.max
   }
-  base <- seq_len(min(base_limit, upper_i))
-  center <- max(1L, as.integer(round(continuous)))
-  local <- seq.int(max(1L, center - 20L), min(upper_i, center + 20L))
+  if (upper_i < floor) {
+    return(integer(0))
+  }
+  base <- seq.int(floor, min(floor + base_limit - 1L, upper_i))
+  center <- max(floor, as.integer(round(continuous)))
+  local <- seq.int(max(floor, center - 20L), max(floor, min(upper_i, center + 20L)))
   unique(c(base, local))
 }
 
@@ -1445,7 +1472,8 @@ n_multi.default <- function(
   n_psu,
   n_per_psu,
   fixed_cost,
-  cont_m
+  cont_m,
+  m_floor = 1L
 ) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
@@ -1462,7 +1490,8 @@ n_multi.default <- function(
     n_per_psu,
     cont_m,
     upper = upper_m,
-    base_limit = 100000L
+    base_limit = 100000L,
+    floor = m_floor
   )
 
   if (!is.null(budget)) {
@@ -1532,7 +1561,9 @@ n_multi.default <- function(
   n_per_psu,
   n_per_ssu,
   fixed_cost,
-  cont_m
+  cont_m,
+  m_floor = 1L,
+  q_floor = 1L
 ) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
@@ -1544,9 +1575,10 @@ n_multi.default <- function(
   upper_m <- if (is.null(variable_budget)) {
     Inf
   } else {
-    (variable_budget / a_min - C1) / (C2 + C3)
+    (variable_budget / a_min - C1) / (C2 + C3 * q_floor)
   }
-  m_cand <- .multi_stage_candidates(n_per_psu, cont_m, upper_m)
+  m_cand <- .multi_stage_candidates(n_per_psu, cont_m, upper_m,
+                                    floor = m_floor)
 
   hit <- .op_cluster3_search(
     coef$alpha,
@@ -1559,7 +1591,9 @@ n_multi.default <- function(
     m_cand,
     msg_budget = "no whole-unit n_multi design fits the budget",
     msg_cv = "target CV is not achievable with the fixed whole PSU count",
-    m_free = is.null(n_per_psu)
+    m_free = is.null(n_per_psu),
+    m_floor = m_floor,
+    q_floor = q_floor
   )
   a_best <- hit[["n_psu"]]
   m_best <- hit[["n_per_psu"]]
@@ -1674,9 +1708,10 @@ n_multi.default <- function(
       # The take grows as r falls, so the bracket is drawn at r and doubled to
       # keep the optimum interior across indicators.
       upper <- max(10, 2 * max(sqrt(C1 / C2 * (1 - icc) / (icc * ru))))
-      opt <- optimize(
+      opt <- .optimize_from(
         cost_fn,
-        interval = c(1, upper),
+        .take_bound(ru),
+        upper,
         tol = .Machine$double.eps^0.5
       )
       n_per_psu_opt <- opt$minimum
@@ -1722,7 +1757,8 @@ n_multi.default <- function(
     n_psu,
     n_per_psu,
     fixed_cost,
-    cont_m = n_per_psu_opt
+    cont_m = n_per_psu_opt,
+    m_floor = .take_floor(ru)
   )
 
   n1_per <- n1_required(n_per_psu_opt)
@@ -1892,15 +1928,16 @@ n_multi.default <- function(
         n1 * (C1 + C2 * ps + C3 * ps * ss)
       }
 
-      init_n_per_ssu <- max(2, sqrt(C2 / C3))
-      init_n_per_psu <- max(2, sqrt(C1 / C2))
+      lower <- c(.take_bound(rs), .take_bound(ru))
+      init_n_per_ssu <- max(2, sqrt(C2 / C3), lower[2L])
+      init_n_per_psu <- max(2, sqrt(C1 / C2), lower[1L])
       upper_ps <- max(1000, 10 * init_n_per_psu)
       upper_ss <- max(1000, 10 * init_n_per_ssu)
       opt <- optim(
         par = c(init_n_per_psu, init_n_per_ssu),
         fn = cost_fn,
         method = "L-BFGS-B",
-        lower = c(1, 1),
+        lower = lower,
         upper = c(upper_ps, upper_ss)
       )
       if (opt$convergence != 0L) {
@@ -1976,7 +2013,7 @@ n_multi.default <- function(
         )
         upper_n_per_ssu <- max(10, 3 * max(n_per_ssu_analytic))
 
-        opt <- optimize(cost_fn_fixed, interval = c(1, upper_n_per_ssu))
+        opt <- .optimize_from(cost_fn_fixed, .take_bound(ru), upper_n_per_ssu)
         n_per_ssu_opt <- opt$minimum
         n_per_psu_opt <- n_per_psu_required_fn(n_per_ssu_opt)
 
@@ -2013,7 +2050,7 @@ n_multi.default <- function(
           numeric(1L)
         )
         upper <- max(10, n_per_psu_analytic)
-        opt <- optimize(cost_fn_ss, interval = c(1, upper))
+        opt <- .optimize_from(cost_fn_ss, .take_bound(rs), upper)
         n_per_psu_opt <- opt$minimum
         n1_vals <- n1_required(n_per_psu_opt, n_per_ssu_opt)
         n1_opt <- max(n1_vals)
@@ -2039,7 +2076,7 @@ n_multi.default <- function(
           numeric(1L)
         )
         upper <- max(10, 3 * max(n_per_ssu_analytic))
-        opt <- optimize(cost_fn_ps, interval = c(1, upper))
+        opt <- .optimize_from(cost_fn_ps, .take_bound(ru), upper)
         n_per_ssu_opt <- opt$minimum
         n1_vals <- n1_required(n_per_psu_opt, n_per_ssu_opt)
         n1_opt <- max(n1_vals)
@@ -2242,7 +2279,9 @@ n_multi.default <- function(
     n_per_psu,
     n_per_ssu,
     fixed_cost,
-    cont_m = n_per_psu_opt
+    cont_m = n_per_psu_opt,
+    m_floor = .take_floor(rs),
+    q_floor = .take_floor(ru)
   )
 
   n1_per <- n1_required(n_per_psu_opt, n_per_ssu_opt)
@@ -2954,7 +2993,7 @@ n_multi.default <- function(
     }
 
     upper <- max(10, budget / (C1 + C2))
-    opt <- optimize(obj_fn, interval = c(1, upper))
+    opt <- .optimize_from(obj_fn, .take_bound(resp_rate), upper)
     n_per_psu_opt <- opt$minimum
     n1_opt <- budget / (C1 + C2 * n_per_psu_opt)
   } else {
@@ -3038,15 +3077,16 @@ n_multi.default <- function(
       }
       max(cv_fn(n1, ps, ss) / cv_t)
     }
-    init_ps <- max(2, sqrt(C1 / C2))
-    init_ss <- max(2, sqrt(C2 / C3))
+    lower <- c(.take_bound(resp_rate_ssu), .take_bound(resp_rate))
+    init_ps <- max(2, sqrt(C1 / C2), lower[1L])
+    init_ss <- max(2, sqrt(C2 / C3), lower[2L])
     upper_ps <- max(1000, 10 * init_ps)
     upper_ss <- max(1000, 10 * init_ss)
     opt <- optim(
       par = c(init_ps, init_ss),
       fn = obj_fn_2d,
       method = "L-BFGS-B",
-      lower = c(1, 1),
+      lower = lower,
       upper = c(upper_ps, upper_ss)
     )
     if (opt$convergence != 0L) {
@@ -3085,8 +3125,12 @@ n_multi.default <- function(
           call. = FALSE
         )
       }
-      max_ss <- (avail - C2) / C3
-      if (!is.finite(max_ss) || max_ss < 1) {
+      m_bound <- .take_bound(resp_rate_ssu)
+      q_bound <- .take_bound(resp_rate)
+      # The SSU take falls as the ultimate take rises, so its own bound caps
+      # the ultimate take.
+      max_ss <- (avail / m_bound - C2) / C3
+      if (!is.finite(max_ss) || max_ss < q_bound - 1e-10) {
         stop(
           "budget is too small for the given fixed stage sizes",
           call. = FALSE
@@ -3095,15 +3139,15 @@ n_multi.default <- function(
       ps_from_ss <- function(ss) avail / (C2 + C3 * ss)
       obj_fn_ss <- function(ss) {
         ps <- ps_from_ss(ss)
-        if (!is.finite(ps) || ps < 1) {
+        if (!is.finite(ps) || ps < m_bound - 1e-10) {
           return(Inf)
         }
         max(cv_fn(n_psu, ps, ss) / cv_t)
       }
-      if (max_ss <= 1 + 1e-10) {
-        n_per_ssu_opt <- 1
+      if (max_ss <= q_bound + 1e-10) {
+        n_per_ssu_opt <- q_bound
       } else {
-        opt <- optimize(obj_fn_ss, interval = c(1, max_ss))
+        opt <- .optimize_from(obj_fn_ss, q_bound, max_ss)
         n_per_ssu_opt <- opt$minimum
       }
       n_per_psu_opt <- ps_from_ss(n_per_ssu_opt)
@@ -3122,7 +3166,7 @@ n_multi.default <- function(
         max(cv_fn(n1, n_per_psu, ss) / cv_t)
       }
       upper <- max(10, budget / (C1 + C2 * n_per_psu + C3 * n_per_psu))
-      opt <- optimize(obj_fn_ps, interval = c(1, upper))
+      opt <- .optimize_from(obj_fn_ps, .take_bound(resp_rate), upper)
       n_per_ssu_opt <- opt$minimum
       n_per_psu_opt <- n_per_psu
       n1_opt <- budget / (C1 + C2 * n_per_psu + C3 * n_per_psu * n_per_ssu_opt)
@@ -3135,7 +3179,7 @@ n_multi.default <- function(
         max(cv_fn(n1, ps, n_per_ssu) / cv_t)
       }
       upper <- max(10, budget / (C1 + C2 + C3 * n_per_ssu))
-      opt <- optimize(obj_fn_ss2, interval = c(1, upper))
+      opt <- .optimize_from(obj_fn_ss2, .take_bound(resp_rate_ssu), upper)
       n_per_psu_opt <- opt$minimum
       n_per_ssu_opt <- n_per_ssu
       n1_opt <- budget /

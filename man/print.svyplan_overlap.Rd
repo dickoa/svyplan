@@ -60,7 +60,7 @@ the counts and the rotation describing the profile as computed and not
 whatever it was transformed into.}
 
 \item{name}{Field to extract: \code{overlap}, \code{shared}, \code{n_occasion},
-\code{rotation}, \code{lag} or \code{life}.}
+\code{rotation}, \code{lag}, \code{life}, \code{window} or \code{visits}.}
 
 \item{row.names, optional, stringsAsFactors, validRN}{Standard
 \code{as.data.frame()} arguments.}

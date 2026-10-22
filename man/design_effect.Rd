@@ -55,7 +55,9 @@ three-stage design. This is the survey-planning measure returned by
 \code{\link[=varcomp]{varcomp()}}, not a generic mixed-model ICC.}
 
 \item{n_per_psu}{Units taken per PSU in a two-stage design, or SSUs
-taken per PSU in a three-stage design. Required with \code{icc}.}
+taken per PSU in a three-stage design. Required with \code{icc}. A single
+value, since the result describes one design. The examples show one
+design effect per stratum.}
 
 \item{n_per_ssu}{Units taken per SSU. Supply only for a three-stage
 design, where \code{icc} has length 2.}
@@ -247,6 +249,10 @@ an \emph{additional} anticipated adjustment. See the \code{weights} argument.
 \examples{
 # Clustering: 25 households per cluster, homogeneity 0.05
 design_effect(icc = 0.05, n_per_psu = 25)
+
+# One design effect per stratum, from a common icc and the takes. The
+# result of each call is a scalar, so sapply() returns a plain vector.
+sapply(c(20, 25, 30), function(m) design_effect(icc = 0.03, n_per_psu = m))
 
 # Three stages: 10 SSUs per PSU, 4 units per SSU
 design_effect(icc = c(0.01, 0.05), n_per_psu = 10, n_per_ssu = 4)

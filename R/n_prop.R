@@ -22,7 +22,9 @@
 #'   while scaling with the estimate the way `cv` does. See the precision
 #'   quantities section of [prec_prop()]. Specify exactly one of `moe`,
 #'   `cv`, or `rmoe`.
-#' @param alpha Significance level, default 0.05.
+#' @param alpha Significance level, default 0.05. `alpha = 2 * pnorm(-2)`
+#'   gives the multiplier of 2 that the DHS and MICS manuals use in place
+#'   of 1.96.
 #' @param N Population size. `Inf` (default) means no finite population
 #'   correction.
 #' @param deff Design effect multiplier (> 0). Accounts for the loss of
@@ -328,8 +330,8 @@
 #'
 #' @family sample size and precision functions
 #' @seealso [n_mean()] for continuous variables, [n_cluster()] for
-#'   multistage designs, [n_multi()] for multiple indicators,
-#'   [prec_prop()] for the inverse.
+#'   multistage designs, [n_multi()] for several indicators or for one
+#'   indicator in several domains, [prec_prop()] for the inverse.
 #'
 #' @examples
 #' # Wald, absolute margin of error

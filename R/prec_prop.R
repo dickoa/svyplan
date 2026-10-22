@@ -18,7 +18,9 @@
 #'   can report at that relative half-width. Unlike the `cv` solve this one
 #'   reads the interval rather than the variance and so depends on `method`.
 #'   Specify exactly one of `p`, `cv`, or `rmoe`.
-#' @param alpha Significance level, default 0.05.
+#' @param alpha Significance level, default 0.05. `alpha = 2 * pnorm(-2)`
+#'   gives the multiplier of 2 that the DHS and MICS manuals use in place
+#'   of 1.96.
 #' @param N Population size. `Inf` (default) means no finite population
 #'   correction.
 #' @param deff Design effect multiplier (> 0). Values < 1 are valid for
@@ -173,7 +175,9 @@
 #'
 #' @family sample size and precision functions
 #' @seealso [n_prop()] for the inverse (compute n from a precision target),
-#'   [prec_mean()] for continuous variables.
+#'   [prec_mean()] for continuous variables, [prec_multi()] for several
+#'   indicators or for one indicator in several domains, [prec_alloc()] for
+#'   a stratified allocation as a whole and by domain.
 #'
 #' @examples
 #' # Precision with n = 400

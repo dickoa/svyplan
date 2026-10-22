@@ -2104,18 +2104,24 @@ print.svyplan_strata <- function(x, ...) {
   if (length(parts) > 0L) {
     cat(sprintf("(%s)\n", paste(parts, collapse = ", ")))
   }
-  if (.alloc_size_only(x)) {
-    cat("precision: not assessed (no 'sd' or 'var' in frame)\n")
+  if (!is.null(detail$n_step)) {
+    steps <- sort(unique(detail$n_step[detail$n_step > 1L]))
+    cat(sprintf("field sizes in steps of %s\n", paste(steps, collapse = ", ")))
   }
-  .print_psu_fraction_note(detail)
+  if (.alloc_size_only(x)) {
+    cat("precision: not assessed (no 'sd', 'var' or 'p' in frame)\n")
+  }
+  .print_psu_fraction_note(detail, fpc = p$fpc %||% "unit")
   .print_design_df(x)
   .print_domains_block(x$domains)
 }
 
 #' Disclose an appreciable first-stage sampling fraction
 #'
-#' `N_psu` bounds the allocation but activates no first-stage correction, so a
-#' design taking a large share of the available PSUs is planned conservatively.
+#' Under `fpc = "unit"` or `"none"`, `N_psu` bounds the allocation but
+#' activates no first-stage correction, so a design taking a large share of
+#' the available PSUs is planned conservatively. `fpc = "stage"` applies that
+#' correction, and the note is not printed.
 #' The ultimate-unit `1 - n / N` does attenuate the between-PSU component, but
 #' it is smaller than the first-stage fraction this note reports, so the
 #' between-PSU term is still overstated. That is a property of the result worth
@@ -2124,8 +2130,9 @@ print.svyplan_strata <- function(x, ...) {
 #' warning would repeat with it.
 #' @keywords internal
 #' @noRd
-.print_psu_fraction_note <- function(detail, threshold = 0.1) {
-  if (is.null(detail) || !".psu_frac" %in% names(detail)) {
+.print_psu_fraction_note <- function(detail, fpc = "unit", threshold = 0.1) {
+  if (identical(fpc, "stage") || is.null(detail) ||
+      !".psu_frac" %in% names(detail)) {
     return(invisible(NULL))
   }
   hit <- which(is.finite(detail$.psu_frac) & detail$.psu_frac >= threshold)
@@ -3902,7 +3909,7 @@ print.summary.svyplan_alloc <- function(x, ...) {
   }
 
   if (is.null(x$precision)) {
-    cat("\nPrecision not assessed (no 'sd' or 'var' in frame)\n")
+    cat("\nPrecision not assessed (no 'sd', 'var' or 'p' in frame)\n")
   } else {
     cat("\nAchieved precision by stratum\n\n")
     print(
@@ -4946,7 +4953,7 @@ as.data.frame.svyplan_rotation <- function(
 #' @param value Replacement value. Replacement is refused, an overlap being
 #'   computed from a rotation rather than assembled.
 #' @param name Field to extract: `overlap`, `shared`, `n_occasion`,
-#'   `rotation`, `lag` or `life`.
+#'   `rotation`, `lag`, `life`, `window` or `visits`.
 #' @param row.names,optional,stringsAsFactors,validRN Standard
 #'   `as.data.frame()` arguments.
 #' @param ... Additional arguments are not supported and produce an error.
@@ -5014,6 +5021,13 @@ print.svyplan_overlap <- function(x, ...) {
       "  %d further lag%s, read them with as.data.frame()\n",
       nrow(tab) - nrow(shown),
       if (nrow(tab) - nrow(shown) > 1L) "s" else ""
+    ))
+  }
+  visits <- attr(x, "visits", exact = TRUE)
+  if (!is.null(visits) && !is.na(visits)) {
+    cat(sprintf(
+      "\n  %.3g occasions in sample per unit over a window of %d\n",
+      visits, attr(x, "window", exact = TRUE)
     ))
   }
   invisible(x)
@@ -5103,7 +5117,9 @@ as.list.svyplan_overlap <- function(x, ...) {
     n_occasion = attr(rot, "n_occasion", exact = TRUE),
     rotation = rot,
     lag = as.integer(names(x)),
-    life = attr(rot, "life", exact = TRUE)
+    life = attr(rot, "life", exact = TRUE),
+    window = attr(x, "window", exact = TRUE) %||% NA_integer_,
+    visits = attr(x, "visits", exact = TRUE) %||% NA_real_
   )
 }
 

@@ -13,6 +13,10 @@
 #'   the two notations and every refusal live on [design_rotation()].
 #' @param max_lag Largest lag to report. Defaults to one less than the life,
 #'   which is the largest lag at which any overlap is possible.
+#' @param window Optional number of consecutive occasions, such as 4 for a
+#'   year of quarterly occasions. When given, the result also carries the
+#'   mean number of occasions a unit is in sample within such a window. See
+#'   the section on visits in Details.
 #'
 #' @return A `svyplan_overlap` object: a numeric vector of issued-sample
 #'   overlap fractions named by lag, so `x[1]` is the consecutive-occasion
@@ -24,6 +28,9 @@
 #'   \item{`$rotation`}{The [design_rotation()] it was computed from, which
 #'     carries the life, the per-occasion takes and the units in sample at
 #'     any one occasion.}
+#'   \item{`$window`, `$visits`}{The window length and the mean number of
+#'     occasions a unit is in sample within it, `NA` when `window` is not
+#'     given.}
 #' }
 #'
 #' @details
@@ -98,6 +105,32 @@
 #' Pass the figure you expect among respondents, and say which assumption
 #' produced it.
 #'
+#' ## Visits per unit in a window
+#'
+#' A window of \eqn{W} consecutive occasions holds \eqn{W \sum_s w_s}
+#' interviews at the steady state. The units behind them are fewer, since a
+#' unit in sample at several occasions of the window is counted once. A
+#' cohort sees a run of at most \eqn{W} consecutive stages of its life
+#' inside the window, and with its units nested across stages, as for the
+#' overlap, it contributes the largest take in that run. Summing over the
+#' cohorts the window touches gives the distinct units, and
+#'
+#' \deqn{\mathrm{visits}(W) = W \sum_s w_s \Big/ \sum_k
+#'       \max_{s \in [k, k + W - 1] \cap [1, L]} w_s,}{
+#'       visits(W) = W sum_s w_s / sum_k max(w_s, s in [k, k + W - 1] and
+#'       in [1, L]),}
+#'
+#' with \eqn{k} running over the \eqn{L + W - 1} cohorts whose life meets
+#' the window. Under `"2-2-2"` on quarterly occasions, a year holds 16
+#' interviews of 9 distinct rotation groups, so 16/9 = 1.78.
+#'
+#' The figure is a property of the rotation. Some labor force survey
+#' methodologies use it to scale the cluster size when a yearly estimate
+#' pools quarterly interviews, which folds the correlation between a unit's
+#' repeated interviews into the intraclass correlation. [prec_pooled()]
+#' treats the average over occasions with that correlation stated
+#' separately, as `overlap_cor`.
+#'
 #' ## What it does not give you
 #'
 #' The correlation between occasions. `overlap` is a property of the
@@ -158,11 +191,15 @@
 #' # An explicit take vector, halving the take at later waves
 #' design_overlap(c(1, 1, 0.5, 0.5))
 #'
+#' # Interviews per unit over a year of quarterly occasions
+#' lfs <- design_overlap("2-2-2", window = 4)
+#' lfs$visits
+#'
 #' # The chart of the rotation, one row per cohort
 #' plot(design_overlap("1-1-0-0-1-1"))
 #'
 #' @export
-design_overlap <- function(rotation, max_lag = NULL) {
+design_overlap <- function(rotation, max_lag = NULL, window = NULL) {
   rotation <- design_rotation(rotation)
   w <- as.double(rotation)
   life <- length(w)
@@ -186,11 +223,41 @@ design_overlap <- function(rotation, max_lag = NULL) {
     sum(pmin(w[s], w[s + m]))
   }, numeric(1L))
 
+  visits <- NA_real_
+  if (!is.null(window)) {
+    if (!is.numeric(window) || length(window) != 1L || anyNA(window) ||
+        !is.finite(window) || window < 1 || window != trunc(window)) {
+      stop("'window' must be a whole number >= 1", call. = FALSE)
+    }
+    window <- as.integer(window)
+    visits <- .overlap_visits(w, window)
+  } else {
+    window <- NA_integer_
+  }
+
   structure(
     shared / n_occasion,
     names = as.character(lags),
     shared = shared,
     rotation = rotation,
+    window = window,
+    visits = visits,
     class = c("svyplan_overlap", "numeric")
   )
+}
+
+#' Mean occasions in sample per distinct unit within a window
+#'
+#' Each cohort meeting the window sees a run of consecutive stages, and its
+#' units being nested across stages, it contributes the largest take in the
+#' run.
+#' @keywords internal
+#' @noRd
+.overlap_visits <- function(w, window) {
+  life <- length(w)
+  distinct <- vapply(seq(2L - window, life), function(k) {
+    s <- seq(max(k, 1L), min(k + window - 1L, life))
+    max(w[s])
+  }, numeric(1L))
+  window * sum(w) / sum(distinct)
 }

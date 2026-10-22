@@ -1330,3 +1330,58 @@ test_that("a clamped three-stage take leaves the other at its restricted optimum
     icc_psu = 0.05, icc_ssu = 0.8), stage_cost = c(500, 50, 500))
   expect_equal(unname(table$n), unname(free_ssu$n), tolerance = 1e-6)
 })
+
+## A name on a scalar argument stays out of the stage names
+
+test_that("named scalar arguments give the unnamed design", {
+  i3 <- data.frame(name = "p", p = 0.5, cv = 0.12, icc_psu = 0.2,
+                   icc_ssu = 0.7, resp_rate = 0.42, resp_rate_ssu = 0.42,
+                   resp_rate_psu = 0.8)
+  i2 <- i3[c("name", "p", "cv", "icc_psu", "resp_rate")]
+  scalar3 <- list(stage_cost = c(50, 5, 20), icc = c(0.2, 0.7),
+                  unit_relvar = 1, resp_rate = 0.42, resp_rate_ssu = 0.42,
+                  resp_rate_psu = 0.8)
+  scalar2 <- list(stage_cost = c(50, 5), icc = 0.2, unit_relvar = 1,
+                  resp_rate = 0.42)
+  calls <- list(
+    table3 = list(indicators = i3, stage_cost = c(50, 5, 20)),
+    scalar3 = scalar3,
+    table2 = list(indicators = i2, stage_cost = c(50, 5)),
+    scalar2 = scalar2
+  )
+  fixed <- list(n_psu = 60, n_per_psu = 2.6, n_per_ssu = 3)
+  for (call in names(calls)) {
+    for (arg in names(fixed)) {
+      if (arg == "n_per_ssu" && grepl("2$", call)) next
+      for (mode in c("cv", "budget")) {
+        base <- calls[[call]]
+        if (mode == "budget") base$budget <- 2e4
+        if (mode == "cv" && grepl("^scalar", call)) base$cv <- 0.12
+        info <- paste(call, arg, mode)
+        bare <- tryCatch(suppressWarnings(do.call(
+          n_cluster, c(base, setNames(list(fixed[[arg]]), arg))
+        )), error = function(e) conditionMessage(e))
+        named <- tryCatch(suppressWarnings(do.call(
+          n_cluster, c(base, setNames(list(c(take = fixed[[arg]])), arg))
+        )), error = function(e) conditionMessage(e))
+        if (is.character(bare)) {
+          expect_identical(named, bare, info = info)
+          next
+        }
+        expect_identical(named$n, bare$n, info = info)
+        expect_identical(named$operational$n, bare$operational$n,
+                         info = info)
+      }
+    }
+  }
+})
+
+test_that("a named target or budget keeps the stage names", {
+  x <- n_cluster(stage_cost = c(50, 5), icc = 0.2, cv = c(target = 0.05))
+  expect_named(x$n, c("n_psu", "n_per_psu"))
+  expect_no_error(prec_cluster(x))
+  y <- n_cluster(stage_cost = c(50, 5), icc = 0.2, budget = c(b = 2e4),
+                 n_psu = c(k = 90))
+  expect_named(y$n, c("n_psu", "n_per_psu"))
+  expect_no_error(prec_cluster(y))
+})

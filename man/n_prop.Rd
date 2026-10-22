@@ -52,7 +52,9 @@ while scaling with the estimate the way \code{cv} does. See the precision
 quantities section of \code{\link[=prec_prop]{prec_prop()}}. Specify exactly one of \code{moe},
 \code{cv}, or \code{rmoe}.}
 
-\item{alpha}{Significance level, default 0.05.}
+\item{alpha}{Significance level, default 0.05. \code{alpha = 2 * pnorm(-2)}
+gives the multiplier of 2 that the DHS and MICS manuals use in place
+of 1.96.}
 
 \item{N}{Population size. \code{Inf} (default) means no finite population
 correction.}
@@ -410,8 +412,8 @@ fiducial limits illustrated in the case of the binomial.
 }
 \seealso{
 \code{\link[=n_mean]{n_mean()}} for continuous variables, \code{\link[=n_cluster]{n_cluster()}} for
-multistage designs, \code{\link[=n_multi]{n_multi()}} for multiple indicators,
-\code{\link[=prec_prop]{prec_prop()}} for the inverse.
+multistage designs, \code{\link[=n_multi]{n_multi()}} for several indicators or for one
+indicator in several domains, \code{\link[=prec_prop]{prec_prop()}} for the inverse.
 
 Other sample size and precision functions:
 \code{\link[=n_mean]{n_mean()}},

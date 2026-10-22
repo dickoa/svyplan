@@ -138,6 +138,18 @@ where a row's own column is absent or \code{NA}, as they are in \code{\link[=n_c
 Precision is computed row by row, so an allocation returned by
 \code{n_cluster(indicators = )} can be passed straight in.
 }
+
+\subsection{A domain that takes most of its PSUs}{
+
+The first stage is treated as drawn with replacement, so nothing here
+knows how many PSUs a stratum or domain holds. A small domain, such as
+an island district of 16 enumeration areas, can then be given more PSUs
+than it has, and a sample that takes most of them is assessed as if
+they were a few among many. \code{\link[=n_alloc]{n_alloc()}} and \code{\link[=prec_alloc]{prec_alloc()}} read \code{N_psu}
+in the frame and, with \code{fpc = "stage"}, apply the stage-by-stage
+correction. They size and assess such a domain, as the \code{\link[=prec_alloc]{prec_alloc()}}
+examples show.
+}
 }
 \examples{
 # Direct usage
