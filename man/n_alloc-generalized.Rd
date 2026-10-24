@@ -159,7 +159,11 @@ A constraint table records \code{.metric}, \code{.target}, \code{.achieved}, \co
 \code{.residual = .ratio - 1}. A \code{.pass} means \code{.ratio <= 1 + .tolerance}.
 \code{.binding} identifies a numerically active target. \code{.multiplier} is the
 continuous Lagrange multiplier and \code{.sensitivity} is the local derivative
-of minimum variable cost with respect to the target. Both are \code{NA} for a
+of minimum variable cost with respect to the target. Thus
+\code{-.sensitivity * 0.1 * .target} is the cost saved, to first order, by
+relaxing that target by 10 percent, in units when every unit costs 1. It
+is read from the continuous solution, and re-solving with the relaxed
+target can save less. \code{.multiplier} and \code{.sensitivity} are \code{NA} for a
 pure precision assessment. Multipliers are also \code{NA} when duplicate
 normalized constraints make an individual split unidentified. The stored
 \code{feasibility_tolerance} and per-row \code{.tolerance} are the public numerical

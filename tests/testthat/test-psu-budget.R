@@ -68,7 +68,7 @@ best_within <- function(plans, budget, hard) {
   min(plans$objective[ok])
 }
 
-test_that("a budget plan is the best plan of the whole menus", {
+test_that("a budget plan is the best plan of the whole menus", .quiet_single_draw({
   for (seed in 1:12) {
     z <- budget_register(seed)
     plans <- budget_plans(z)
@@ -97,7 +97,7 @@ test_that("a budget plan is the best plan of the whole menus", {
                    tolerance = 1e-12)
     }
   }
-})
+}))
 
 test_that("a budget below the cheapest plan is refused with its cost", {
   for (seed in c(2, 3, 5)) {
@@ -121,7 +121,7 @@ test_that("a budget below the cheapest plan is refused with its cost", {
   }
 })
 
-test_that("the cheapest plan can hold a PSU below the threshold", {
+test_that("the cheapest plan can hold a PSU below the threshold", .quiet_single_draw({
   # With 12 units a stratum, holding the large PSU for 2 and drawing one
   # costs 2 visits and 12 units (100), drawing two costs 2 and 20 (140).
   frame <- data.frame(stratum = c("A", "B"), N = c(1360, 64), n_per_psu = 10,
@@ -142,7 +142,7 @@ test_that("the cheapest plan can hold a PSU below the threshold", {
     "'budget' is below the cheapest field design, which costs 200",
     fixed = TRUE
   )
-})
+}))
 
 test_that("a register budget fit reports the field design it plans", {
   z <- .psu_fixture()

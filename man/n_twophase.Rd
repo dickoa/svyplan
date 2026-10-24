@@ -305,6 +305,18 @@ stratification explains little, the phase-2 residual is close to the
 whole variance and the stratum \code{deff} should be close to \code{single_deff}.
 Setting it well below with a weak stratifier assumes away the cost of
 the design.
+
+In a clustered design each design effect is evaluated at a take the plan
+itself sets. Divided by the number of clusters, \code{n_phase1} is the take
+phase 1 screens in each cluster, \code{n_phase2} the take phase 2 measures,
+and \code{single_phase[["n"]]} the take of the single-phase comparator. A
+design effect measured in an earlier survey at another take has to be
+converted, for instance as \code{1 + (m - 1) * rho} at the new take \code{m} with
+intraclass correlation \code{rho}. The takes then move with the plan, so the
+plan is repeated until they settle, which takes a few iterations (see
+the examples). The correlation behind the \code{deff} column is the one left
+within a phase-2 stratum. It is lower than the overall correlation, but
+not zero.
 }
 
 \subsection{Response rates}{
@@ -348,6 +360,23 @@ frame <- data.frame(
   unit_cost = c(2, 5, 1, 9)
 )
 n_twophase(frame, phase1_cost = 1, budget = 50000)
+
+# A clustered design over 1,000 clusters, with an intraclass correlation
+# of 0.1 and of 0.03 within a phase-2 stratum. Each design effect is
+# evaluated at the take the plan returns, so the plan is repeated until
+# the takes settle.
+m1 <- m2 <- m <- 10
+for (i in 1:6) {
+  fit <- n_twophase(transform(frame, deff = 1 + (m2 - 1) * 0.03),
+                    phase1_cost = 1, budget = 50000,
+                    phase1_deff = 1 + (m1 - 1) * 0.1,
+                    single_deff = 1 + (m - 1) * 0.1)
+  m1 <- fit$n[["n_phase1"]] / 1000
+  m2 <- fit$n[["n_phase2"]] / 1000
+  m <- fit$single_phase[["n"]] / 1000
+}
+c(m1 = m1, m2 = m2, m = m)
+fit
 
 # Weak stratification pushes the fractions up, and strata that reach 1
 # are reported as take-all.

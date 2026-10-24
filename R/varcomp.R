@@ -1409,6 +1409,9 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' @noRd
 .varcomp_2stage_pps <- function(y, psu_id, pp, w = NULL) {
   levels <- sort(unique(psu_id))
+  # A lone PSU has prob 1, which the range check would report first and
+  # hide the single-PSU condition the stratum hint keys on.
+  .check_min_psu(length(levels))
   draw_prob <- .varcomp_map_pp(pp, y, psu_id, levels)
   .varcomp_2stage(y, psu_id, draw_prob, w, levels)
 }

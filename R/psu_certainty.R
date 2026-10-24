@@ -741,6 +741,31 @@
   )
 }
 
+#' Warn once, naming the strata whose remainder draw is a single PSU
+#'
+#' The register counterpart of `.warn_singleton_strata()`. Certainty PSUs
+#' carry their own within-PSU variance, so only a remainder of one drawn PSU
+#' leaves the stratum without an estimate.
+#' @keywords internal
+#' @noRd
+.warn_single_draw <- function(labels) {
+  if (length(labels) == 0L) {
+    return(invisible(NULL))
+  }
+  many <- length(labels) > 1L
+  warning(warningCondition(
+    sprintf(
+      "%s %s %s a single PSU outside certainty, so no within-stratum variance can be estimated there. Set n_psu_per_zone = 2 to draw at least two, or collapse %s with a neighbor",
+      if (many) "strata" else "stratum",
+      paste0("'", labels, "'", collapse = ", "),
+      if (many) "each draw" else "draws",
+      if (many) "them" else "it"
+    ),
+    class = "svyplan_single_draw"
+  ))
+  invisible(NULL)
+}
+
 #' Fold a planned field design into the allocation object it refines
 #'
 #' The class does not change, so `predict()`, `summary()` and `design_df()`
@@ -771,6 +796,11 @@
   fit$operational$n <- sum(op$n_int)
   fit$operational$n_certain <- sum(op$n_certain_int)
   fit$operational$n_psu_draw <- sum(op$n_psu_draw)
+  # Under n_psu_per_zone = 1 a single draw is the design, and $psu$.pair
+  # groups it for variance estimation.
+  if (x$zone_m != 1L) {
+    .warn_single_draw(fit$detail$stratum[op$n_psu_draw == 1])
+  }
   if (is.null(x$cost_psu)) {
     fit$operational$cost <- sum(op$n_int * (fit$params$cost_h %||% 1))
   } else {

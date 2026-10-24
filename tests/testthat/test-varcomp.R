@@ -684,6 +684,21 @@ test_that("single-PSU data is rejected with a clear message", {
   expect_false(grepl("n_alloc", err))
 })
 
+test_that("a single-PSU stratum gets the same message under PPS", {
+  d <- data.frame(
+    y = rnorm(60),
+    psu = c(rep(1, 20), rep(2:3, each = 20)),
+    region = c(rep("Solo", 20), rep("Duo", 40))
+  )
+  d$share <- ave(d$y, d$psu, FUN = length) / ave(d$y, d$region, FUN = length)
+  expect_error(varcomp(y ~ psu, data = d, strata = ~region, prob = ~share),
+               "stratum 'Solo': at least two PSUs")
+  expect_error(varcomp(y ~ psu, data = d, strata = ~region, prob = ~share),
+               "n_alloc\\(psu =\\), leave its icc_psu NA")
+  expect_error(varcomp(rnorm(20), stage_id = list(rep(1, 20)), prob = 1),
+               "at least two PSUs")
+})
+
 test_that("varcomp validates outcomes, stage ids, and probabilities", {
   psu <- rep(1:3, each = 2)
   expect_error(varcomp(c(1, 2, Inf, 4, 5, 6), stage_id = list(psu)),

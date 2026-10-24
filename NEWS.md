@@ -99,7 +99,9 @@ that recommendation when available, or rounds the continuous size up.
   `n_psu_per_zone` cuts each stratum's remainder into zones of about equal
   size and draws one or two PSUs from each. With two, every stratum's
   variance can be estimated. With one, `$psu$.pair` groups the zones for a
-  collapsed variance. The field design is chosen whole. Each stratum's
+  collapsed variance. Without zones, a stratum that draws a single PSU from
+  its remainder raises a warning of class `svyplan_single_draw`. The field
+  design is chosen whole. Each stratum's
   designs are listed, under stage costs also those holding its largest PSUs
   in certainty below the threshold, and a search picks the cheapest meeting
   every target. It proves that design optimal, or stops after

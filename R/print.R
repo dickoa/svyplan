@@ -2470,7 +2470,9 @@ print.svyplan_strata <- function(x, ...) {
 #' Constraint rows are simultaneous requirements, not an additive
 #' decomposition. `.ratio` is achieved divided by target, `.residual` is that
 #' ratio minus one, and `.sensitivity` is the local change in minimum cost per
-#' unit relaxation of the stated target. Objective `.contribution` and
+#' unit relaxation of the stated target, so `-.sensitivity * 0.1 * .target`
+#' is the first-order saving from relaxing it by 10 percent. Objective
+#' `.contribution` and
 #' `.share` columns are genuinely additive across components.
 #'
 #' @examples

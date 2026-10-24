@@ -223,7 +223,10 @@ PSU into the certainty part whatever its size. It is an alternative to
 the frame column \code{N_psu}, which says only how many PSUs a stratum has,
 and requires the frame column \code{n_per_psu} and \code{measures$icc_psu}. A
 stratum with a single PSU has no between-PSU variance, so its \code{icc_psu}
-is taken as 0 and may be \code{NA}. Joint constrained allocation only, to
+is taken as 0 and may be \code{NA}. A stratum that draws a single PSU from
+its remainder leaves no variance estimate there, and \code{n_alloc()} warns
+with class \code{svyplan_single_draw}. \code{n_psu_per_zone = 2} draws at least
+two. Joint constrained allocation only, to
 \code{targets} or to an \code{objective} within a \code{budget}, and two stages only.
 See the certainty section under Details.}
 

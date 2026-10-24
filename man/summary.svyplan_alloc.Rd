@@ -67,7 +67,9 @@ assessment they describe the supplied allocation exactly.
 Constraint rows are simultaneous requirements, not an additive
 decomposition. \code{.ratio} is achieved divided by target, \code{.residual} is that
 ratio minus one, and \code{.sensitivity} is the local change in minimum cost per
-unit relaxation of the stated target. Objective \code{.contribution} and
+unit relaxation of the stated target, so \code{-.sensitivity * 0.1 * .target}
+is the first-order saving from relaxing it by 10 percent. Objective
+\code{.contribution} and
 \code{.share} columns are genuinely additive across components.
 }
 \examples{

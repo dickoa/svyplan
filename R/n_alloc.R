@@ -183,7 +183,10 @@
 #'   the frame column `N_psu`, which says only how many PSUs a stratum has,
 #'   and requires the frame column `n_per_psu` and `measures$icc_psu`. A
 #'   stratum with a single PSU has no between-PSU variance, so its `icc_psu`
-#'   is taken as 0 and may be `NA`. Joint constrained allocation only, to
+#'   is taken as 0 and may be `NA`. A stratum that draws a single PSU from
+#'   its remainder leaves no variance estimate there, and `n_alloc()` warns
+#'   with class `svyplan_single_draw`. `n_psu_per_zone = 2` draws at least
+#'   two. Joint constrained allocation only, to
 #'   `targets` or to an `objective` within a `budget`, and two stages only.
 #'   See the certainty section under Details.
 #' @param certainty_cutoff Inclusion probability at which a PSU of the `psu`

@@ -787,7 +787,7 @@ test_that("prec_alloc requires one allocation per stratum", {
   )
 })
 
-test_that("the precision a register fit claims is the one it achieves", {
+test_that("the precision a register fit claims is the one it achieves", .quiet_single_draw({
   # Registers on which an earlier planner reported precision computed at
   # another allocation's design effect.
   for (k in c(4, 25, 53, 60, 74, 89, 99, 115, 119)) {
@@ -800,7 +800,7 @@ test_that("the precision a register fit claims is the one it achieves", {
     expect_true(all(prec_alloc(fit)$detail$.pass),
                 label = sprintf("register %d passes", k))
   }
-})
+}))
 
 ## The ICC the register model expects
 
@@ -943,7 +943,7 @@ test_that("closing one PSU under the draw can uncover the next", {
   expect_false(any(calm$certain))
 })
 
-test_that("no fitted plan leaves a remainder PSU at probability one", {
+test_that("no fitted plan leaves a remainder PSU at probability one", .quiet_single_draw({
   # samplyr refuses such a plan, so this is the contract that lets a fit go
   # straight to draw().
   cases <- c(
@@ -960,7 +960,7 @@ test_that("no fitted plan leaves a remainder PSU at probability one", {
     expect_true(all(!above[op]))
     expect_true(fit$operational$all_pass)
   }
-})
+}))
 
 test_that("the classification closes under the planned draw", {
   z <- .psu_fixture()
@@ -970,7 +970,7 @@ test_that("the classification closes under the planned draw", {
   expect_false(any(.psu_remainder_crossing(fit)))
 })
 
-test_that("wide registers plan no remainder PSU at probability one", {
+test_that("wide registers plan no remainder PSU at probability one", .quiet_single_draw({
   # Registers where an earlier planner's repair added a remainder PSU after
   # the classification was closed and the larger draw reached one.
   for (seed in c(95, 106)) {
@@ -986,7 +986,7 @@ test_that("wide registers plan no remainder PSU at probability one", {
       expect_true(all(fit$operational$constraints$.pass))
     }
   }
-})
+}))
 
 test_that("prec_alloc classifies a supplied allocation under its draw", {
   frame <- data.frame(stratum = c("C", "D"), N = c(3055, 8000),
@@ -1027,16 +1027,16 @@ test_that("summary counts the certainty PSUs by source", {
           ...)
 }
 
-test_that("a cutoff of one is the rule without a cutoff", {
+test_that("a cutoff of one is the rule without a cutoff", .quiet_single_draw({
   for (z in c(list(.psu_fixture()), lapply(1:8, .psu_random_register))) {
     plain <- .fit_psu(z)
     one <- .fit_psu(z, certainty_cutoff = 1)
     expect_identical(one$detail, plain$detail)
     expect_identical(one$psu, plain$psu)
   }
-})
+}))
 
-test_that("a cutoff relaxes both the threshold and the draw", {
+test_that("a cutoff relaxes both the threshold and the draw", .quiet_single_draw({
   cases <- c(list(.psu_fixture()), lapply(1:15, .psu_random_register))
   for (cutoff in c(0.9, 0.8, 0.7)) {
     for (z in cases) {
@@ -1054,7 +1054,7 @@ test_that("a cutoff relaxes both the threshold and the draw", {
   }
   fit <- .fit_psu(.psu_fixture(seed = 5L), certainty_cutoff = 0.8)
   expect_gt(sum(fit$psu$.certainty_source %in% "operational"), 0L)
-})
+}))
 
 test_that("at a held allocation a lower cutoff makes a superset certain", {
   # n_alloc() re-solves under each cutoff and can land on another cycle
@@ -1147,7 +1147,7 @@ test_that("a cutoff is refused outside (0, 1] and without a register", {
 
 ## A register precision result plans its way back
 
-test_that("n_alloc() of a register fit's precision re-plans the register", {
+test_that("n_alloc() of a register fit's precision re-plans the register", .quiet_single_draw({
   cases <- c(lapply(1:15, .psu_random_register),
              lapply(c(1, 4, 9, 17, 23), function(s) .psu_fixture(seed = s)))
   for (z in cases) {
@@ -1163,7 +1163,7 @@ test_that("n_alloc() of a register fit's precision re-plans the register", {
     # report the fit's certainty PSUs as supplied.
     expect_false("supplied" %in% back$psu$.certainty_source)
   }
-})
+}))
 
 test_that("the way back keeps the cutoff", {
   fit <- .fit_psu(.psu_fixture(), certainty_cutoff = 0.8)
@@ -1580,7 +1580,7 @@ test_that("the field design effect is the stratum one at the stratum rate", {
   expect_equal(census, max(rest / (1000^2 * (1 / 730 - 1 / 1000)), 1))
 })
 
-test_that("the field design is assessed on its own takes", {
+test_that("the field design is assessed on its own takes", .quiet_single_draw({
   # The certainty takes are rounded up one by one and the remainder gets
   # what is left, far below the stratum rate on this register.
   set.seed(36)
@@ -1602,9 +1602,9 @@ test_that("the field design is assessed on its own takes", {
   expect_equal(fit$operational$constraints$.cv, cv, tolerance = 1e-10)
   expect_lte(cv, 0.02)
   expect_true(fit$operational$all_pass)
-})
+}))
 
-test_that("no remainder is left without a draw", {
+test_that("no remainder is left without a draw", .quiet_single_draw({
   # On this register the rounded-up certainty takes exceed the allocation
   # in two strata, each with a remainder of one PSU.
   for (seed in c(10, 52, 58)) {
@@ -1624,7 +1624,7 @@ test_that("no remainder is left without a draw", {
   expect_identical(over$n_certain_int, 100)
   expect_identical(over$n_rest, 0)
   expect_identical(over$n_psu_draw, 1)
-})
+}))
 
 test_that("summary stratum costs add up to the plan's cost", {
   frame <- data.frame(stratum = c("A", "B"), N = 10000, n_per_psu = 10,
@@ -1656,4 +1656,39 @@ test_that("summary stratum costs add up to the plan's cost", {
     expect_equal(sum(assessed$allocation$cost), fit$operational$cost)
     expect_equal(sum(assessed$allocation$cost), assessed$overall$cost)
   }
+})
+
+## A remainder that draws one PSU
+
+test_that("a stratum drawing one PSU from its remainder warns by name", {
+  register <- data.frame(
+    psu_id = 1:24,
+    stratum = rep(c("Large", "Small"), c(16, 8)),
+    N = c(rep(c(3000, 4000, 5000, 6000), 4), rep(c(400, 500, 600, 700), 2))
+  )
+  frame <- data.frame(
+    stratum = c("Large", "Small"),
+    N = c(sum(register$N[1:16]), sum(register$N[17:24])),
+    n_per_psu = 10
+  )
+  measures <- data.frame(stratum = c("Large", "Small"), name = "y",
+                         p = c(0.3, 0.32), icc_psu = 0.05)
+  targets <- data.frame(name = "y", cv = 0.12)
+  plan <- function(...) {
+    n_alloc(frame, measures = measures, targets = targets, psu = register,
+            ...)
+  }
+
+  expect_warning(fit <- plan(), class = "svyplan_single_draw")
+  expect_warning(plan(), "stratum 'Small' draws a single PSU")
+  expect_warning(plan(), "n_psu_per_zone = 2")
+  expect_identical(fit$detail$n_psu_draw[fit$detail$stratum == "Small"], 1)
+  expect_gt(fit$detail$n_psu_draw[fit$detail$stratum == "Large"], 1)
+
+  # Zones of two draw at least two, and zones of one pair the single draws
+  # for variance estimation, so neither warns.
+  expect_no_warning(two <- plan(n_psu_per_zone = 2))
+  expect_true(all(two$detail$n_psu_draw != 1))
+  expect_no_warning(one <- plan(n_psu_per_zone = 1))
+  expect_true(any(one$detail$n_psu_draw == 1))
 })

@@ -94,3 +94,13 @@
   }
   out
 }
+
+# Grids over random registers meet strata that draw one PSU. The warning
+# is incidental to what they test, so it is muffled by class and every other
+# warning still surfaces.
+.quiet_single_draw <- function(code) {
+  withCallingHandlers(
+    code,
+    svyplan_single_draw = function(w) invokeRestart("muffleWarning")
+  )
+}
