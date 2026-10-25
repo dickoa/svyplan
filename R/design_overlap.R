@@ -195,6 +195,11 @@
 #' lfs <- design_overlap("2-2-2", window = 4)
 #' lfs$visits
 #'
+#' # An annual estimate that counts each unit once rests on the distinct
+#' # units of the year: four quarters of 1600 interviews, 16/9 per unit
+#' distinct <- 4 * 1600 / lfs$visits
+#' prec_prop(p = 0.3, n = distinct)
+#'
 #' # The chart of the rotation, one row per cohort
 #' plot(design_overlap("1-1-0-0-1-1"))
 #'

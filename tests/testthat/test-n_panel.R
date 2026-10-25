@@ -1001,3 +1001,134 @@ test_that("an immediate launch opens at the steady state when nothing is lost", 
   expect_equal(one$launch$n_resp[[1L]] - tail(one$launch$n_resp, 1L),
                one$n_entrants * sum(q[[1L]] - q), tolerance = 1e-12)
 })
+
+## Rotations with a gap
+
+.gap_target <- function() n_prop(p = 0.5, moe = 0.031)
+
+test_that("a gap leaves the steady state of the same visits unchanged", {
+  for (spec in c("2-2-2", "4-8-4", "2-1-3")) {
+    v <- sum(as.double(design_rotation(spec)) > 0)
+    ret <- seq(0.95, 0.85, length.out = v - 1L)
+    plain <- n_panel(.gap_target(), retention = ret, resp_rate = 0.75,
+                     design = "rotating", assurance = 0.9)
+    gap <- n_panel(.gap_target(), retention = ret, resp_rate = 0.75,
+                   design = "rotating", assurance = 0.9, rotation = spec)
+    for (f in c("n_entrants", "n_in_sample", "n_cohorts", "n_resp",
+                "n_assured", "se", "moe", "cv", "waves")) {
+      expect_identical(gap[[f]], plain[[f]], label = paste(spec, f))
+    }
+    expect_equal(gap$n_held, length(gap$rotation) * gap$n_entrants)
+    expect_gt(gap$n_held, gap$n_in_sample)
+  }
+})
+
+test_that("a rotation is checked against the visits and the design", {
+  expect_error(
+    n_panel(.gap_target(), retention = c(0.9, 0.9), design = "rotating",
+            rotation = "2-2-2"),
+    "interviews a unit 4 times over its 6-occasion life"
+  )
+  expect_error(
+    n_panel(.gap_target(), retention = c(0.9, 0.9, 0.9), design = "rotating",
+            rotation = c(1, 1, 0.5, 0.5)),
+    "subsamples a later wave"
+  )
+  expect_error(
+    n_panel(.gap_target(), retention = c(0.9, 0.9), rotation = "3"),
+    "a fixed panel follows one cohort"
+  )
+  expect_error(
+    n_panel(.gap_target(), retention = c(0.9, 0.9, 0.9), design = "rotating",
+            rotation = design_overlap("2-2-2")),
+    "an overlap is what a rotation produces"
+  )
+  plain <- n_panel(.gap_target(), retention = c(0.9, 0.9), design = "rotating")
+  expect_identical(as.double(plain$rotation), c(1, 1, 1))
+  expect_identical(plain$n_held, plain$n_in_sample)
+  expect_false("rotation" %in% names(plain$params))
+})
+
+test_that("the launch of any rotation matches an enumeration of its cohorts", {
+  specs <- c("3", "5", "2-2-2", "4-8-4", "2-1-3", "1-0-1", "1-1-0-1")
+  for (spec in specs) for (start in c("gradual", "immediate")) {
+    w <- as.double(design_rotation(spec))
+    L <- length(w)
+    v <- sum(w > 0)
+    for (ret in list(rep(1, v - 1L), seq(0.9, 0.7, length.out = v - 1L))) {
+      x <- n_panel(.gap_target(), retention = ret, resp_rate = 0.8,
+                   design = "rotating", start = start, rotation = spec)
+      lab <- paste(spec, start)
+      o <- launch_oracle(w, start, L + 1L)
+      tab <- stats::aggregate(id ~ period + visit, data = o, FUN = length)
+      tab <- tab[order(tab$period, tab$visit), ]
+      got <- x$launch_waves
+      expect_identical(got$period, tab$period, label = lab)
+      expect_identical(got$wave, tab$visit, label = lab)
+      expect_equal(got$n_issued, x$n_entrants * tab$id, tolerance = 1e-12,
+                   label = lab)
+      expect_equal(got$n_resp, x$n_entrants * tab$id * x$waves$q[tab$visit],
+                   tolerance = 1e-12, label = lab)
+      in_sample <- tabulate(o$period, L + 1L)
+      expect_equal(x$launch$n_in_sample, x$n_entrants * in_sample,
+                   tolerance = 1e-12, label = lab)
+      expect_identical(x$launch$steady_state, x$launch$period >= L,
+                       label = lab)
+      entering <- c(if (start == "immediate") L else 1, rep(1, L))
+      expect_equal(x$launch$n_entrants, x$n_entrants * entering,
+                   tolerance = 1e-12, label = lab)
+    }
+  }
+})
+
+test_that("an immediate 2-2-2 launch is full from the first occasion", {
+  x <- n_panel(.gap_target(), retention = c(0.9, 0.85, 0.9), resp_rate = 0.75,
+               design = "rotating", start = "immediate", rotation = "2-2-2")
+  expect_equal(x$launch$n_in_sample, rep(4 * x$n_entrants, 7L),
+               tolerance = 1e-12)
+  expect_identical(which(x$launch$steady_state)[[1L]], 6L)
+  grad <- n_panel(.gap_target(), retention = c(0.9, 0.85, 0.9),
+                  resp_rate = 0.75, design = "rotating", start = "gradual",
+                  rotation = "2-2-2")
+  expect_equal(grad$launch$n_in_sample / grad$n_entrants,
+               c(1, 2, 2, 2, 3, 4, 4), tolerance = 1e-12)
+
+  # the issued overlap from the first occasion is the steady profile
+  o <- launch_oracle(as.double(x$rotation), "immediate", 12L)
+  want <- as.double(design_overlap("2-2-2"))
+  for (lag in seq_along(want)) {
+    a <- o$id[o$period == 1L]
+    b <- o$id[o$period == 1L + lag]
+    expect_equal(length(intersect(a, b)) / length(a), want[[lag]],
+                 tolerance = 1e-12)
+  }
+})
+
+test_that("a finite population has to supply the cohorts held in a gap", {
+  # 4 cohorts in sample fit 1500 units, the 6 held do not
+  tgt <- n_prop(p = 0.5, moe = 0.03, N = 1500)
+  expect_error(
+    n_panel(tgt, retention = c(0.9, 0.8, 0.9), resp_rate = 0.75,
+            design = "rotating", rotation = "2-2-2"),
+    "6 cohorts held at one occasion, 4 of them in sample"
+  )
+  ok <- n_panel(tgt, retention = c(0.9, 0.8, 0.9), resp_rate = 0.75,
+                design = "rotating")
+  expect_lt(ok$n_in_sample, 1500)
+  expect_gt(6 * ok$n_entrants, 1500)
+})
+
+test_that("print names a rotation with a gap, and summary the units held", {
+  gap <- n_panel(.gap_target(), retention = c(0.9, 0.85, 0.9),
+                 resp_rate = 0.75, design = "rotating", rotation = "2-2-2")
+  plain <- n_panel(.gap_target(), retention = c(0.9, 0.85, 0.9),
+                   resp_rate = 0.75, design = "rotating")
+  out <- capture.output(print(gap))
+  expect_true(any(grepl("rotation: 2 in, 2 out, 2 in, a 6-occasion life",
+                        out, fixed = TRUE)))
+  expect_false(any(grepl("rotation:", capture.output(print(plain)))))
+  s <- capture.output(print(summary(gap)))
+  expect_true(any(grepl("held: 2388 across 6 cohorts, 2 of them out of sample",
+                        s, fixed = TRUE)))
+  expect_false(any(grepl("held:", capture.output(print(summary(plain))))))
+})

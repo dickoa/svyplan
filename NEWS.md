@@ -1,4 +1,4 @@
-# svyplan 0.16.0
+# svyplan 0.17.0
 
 Initial CRAN release.
 

@@ -17,7 +17,8 @@ prec_panel(n_recruit, ...)
   design = c("fixed", "rotating"),
   target_wave = NULL,
   assurance = NULL,
-  start = NULL
+  start = NULL,
+  rotation = NULL
 )
 
 \method{prec_panel}{svyplan_panel}(n_recruit, ...)
@@ -57,6 +58,11 @@ supplied \code{n_recruit} can then be read against.}
 stored plan this may be overridden, unlike \code{design}. It selects which
 launch is described and moves no stored quantity, the recruitment being
 fixed before any of it is computed.}
+
+\item{rotation}{\code{NULL} or the rotation a rotating design's cohorts
+follow. See \code{\link[=n_panel]{n_panel()}}. On a stored plan this may be overridden, as
+\code{start} may. It changes the launch and the units held, and moves no
+stored quantity.}
 }
 \value{
 A \code{svyplan_panel} object, the class \code{\link[=n_panel]{n_panel()}} returns, with

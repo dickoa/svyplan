@@ -6,22 +6,21 @@
 \usage{
 design_schedule(
   panel_plan,
-  rotation,
   horizon,
   horizon_policy,
   refreshment,
   frame_vintage = NULL,
-  rounding
+  rounding,
+  take = NULL,
+  tenures = 1,
+  subperiods = 1
 )
 }
 \arguments{
 \item{panel_plan}{A rotating \code{svyplan_panel} from \code{\link[=n_panel]{n_panel()}} or
-\code{\link[=prec_panel]{prec_panel()}} with \code{start = "immediate"} or \code{start = "gradual"}.}
-
-\item{rotation}{An unbroken equal-take \code{svyplan_rotation} from
-\code{\link[=design_rotation]{design_rotation()}}, such as \code{design_rotation("4")}. Its length must
-match the panel life. The overlap the manifest records is computed from
-it here, so the caller does not supply one.}
+\code{\link[=prec_panel]{prec_panel()}} with \code{start = "immediate"} or \code{start = "gradual"}. Its
+\code{rotation} is the life the schedule lays out, and the overlap the
+manifest records is computed from it, so neither is supplied here.}
 
 \item{horizon}{A positive whole number of program occasions in the finite
 planning window.}
@@ -29,7 +28,8 @@ planning window.}
 \item{horizon_policy}{One of \code{"continuing"}, \code{"truncate_lives"}, or
 \code{"close_intake"}. Under \code{"continuing"}, interviews owed after \code{horizon}
 are returned separately in \code{tail_commitments}. \code{"truncate_lives"} cuts
-those interviews at the horizon. \code{"close_intake"} stops recruitment soon
+those interviews at the horizon, and a life it cuts ends at its last
+interview inside the window. \code{"close_intake"} stops recruitment soon
 enough for every recruited cohort to finish by the horizon.}
 
 \item{refreshment}{Whether later cohorts are drawn from an
@@ -40,32 +40,64 @@ and does not establish disjointness or combine weights.}
 identifiers for any subset of the generated cohort names. Unnamed or
 unknown entries are refused rather than matched by position.}
 
-\item{rounding}{The explicit operational rounding rule. The first schema
+\item{rounding}{The explicit operational rounding rule. The schema
 supports \code{"ceiling"}, applied to each startup panel and intake cohort
 before totals are formed. Operational counts are stored as whole-valued
 numerics so plans above R's 32-bit integer range remain representable.}
+
+\item{take}{\code{NULL} (default), or a positive whole number of units a PSU
+takes per tenure. With it the assignment unit is the PSU. Each panel
+issues \code{ceiling(n_entrants / take)} PSUs, rounded at the PSU, and the
+units it stands for are that number times \code{take}. The unit quantities
+stay with the panel plan, whose target carries the clustering through
+its \code{deff}.}
+
+\item{tenures}{\code{1} (default) or \code{"open"}. With \code{1} a PSU leaves with its
+units at the end of their life. With \code{"open"} the PSUs stay through the
+horizon and only the units rotate. Each panel is then a PSU group whose
+life repeats the rotation back to back, and \code{visit} restarts at 1 at
+each tenure, where the group's new units are drawn. A finite number of
+tenures above 1 is not available.}
+
+\item{subperiods}{A positive whole number, \code{1} by default. The rotation,
+the panel plan and \code{horizon} are stated per reporting period, and the
+schedule is written in \code{horizon * subperiods} fieldwork waves. See the
+section on sub-periods.}
 }
 \value{
 An \code{svyplan_schedule} list with scalar planning metadata and four
-data frames:
+data frames. \code{schema_version} is 2. The metadata carries \code{n_entrants},
+\code{n_in_sample} and \code{n_held} from the panel plan, and \code{n_cohorts}, the
+cohorts in sample at an occasion, which is the number of visits.
+\code{life_length} is the life in occasions, gaps included. \code{take},
+\code{tenures} (\code{1}, or \code{Inf} for \code{"open"}) and \code{subperiods} record the
+arguments.
 \describe{
 \item{\code{components}}{One row per execution: startup followed by the intake
 cohorts permitted by the horizon policy. Continuous and operational
 issue remain separate.}
 \item{\code{schedule}}{The dense component-panel grid over occasions 1 through
-\code{horizon}. Inactive rows have \code{active = FALSE} and \code{life_stage = NA}.}
+\code{horizon}. \code{period} names each wave's reporting period and equals
+\code{wave}. A row is in one of three states. Before a panel's entry or
+after its life it has \code{active = FALSE} and \code{life_stage} and \code{visit}
+\code{NA}. Held out of sample, in a gap of its life, it has
+\code{active = FALSE}, a \code{life_stage} and \code{visit = NA}. Interviewed, it has
+\code{active = TRUE}, a \code{life_stage} and a \code{visit}.}
 \item{\code{tail_commitments}}{A sparse table of interviews after \code{horizon}
-owed to components entering within a \code{"continuing"} window. It has a
-fixed empty schema under the other policies.}
+owed to components entering within a \code{"continuing"} window, with the
+same \code{period}, \code{life_stage} and \code{visit}. It lists interviews only and
+has a fixed empty schema under the other policies.}
 \item{\code{issue}}{The continuous and operational recruitment issued at each
-in-horizon occasion. \code{\link[=as.data.frame]{as.data.frame()}} returns this view.}
+in-horizon occasion, in assignment units, and \code{tenure_issue}, the units
+first interviewed there, which is where a tenure's units are drawn.
+\code{\link[=as.data.frame]{as.data.frame()}} returns this view.}
 }
 
 The generated activity is checked against \code{panel_plan$launch_waves} over
 every shared period that the horizon policy has not changed. Its realized
-issued overlap is also checked against the overlap \code{rotation} produces, at
-every mature membership origin for which the destination occasion
-exists.
+issued overlap is also checked against the overlap the rotation
+produces, at every mature membership origin for which the destination
+occasion exists.
 }
 \description{
 Translate the launch and recruitment quantities in a rotating
@@ -73,6 +105,57 @@ Translate the launch and recruitment quantities in a rotating
 panel-by-occasion schedule, and any interview commitments beyond the
 planning horizon. The result is a planning object. It does not inspect
 a frame, execute a sample, or construct analysis weights.
+}
+\details{
+\code{life_stage} counts the occasions of a panel's own life and \code{visit} its
+interviews, both from 1. They are equal for a life without a break. Under
+\code{"2-2-2"} an intake cohort has \code{life_stage} 1 to 6 and \code{visit} 1, 2,
+\code{NA}, \code{NA}, 3, 4.
+
+An immediate start covers every stage of the life at the first occasion,
+one startup panel per stage, as \code{\link[=n_panel]{n_panel()}} plans it. A panel covering a
+stage out of sample is selected at the first occasion and held until the
+rest of its life returns to sample. Its first interview, where \code{visit} is
+1, comes later. Under \code{"2-2-2"} the panels covering stages 3 and 4 are
+first interviewed at occasions 3 and 2. A panel numbers its own stages
+and interviews, so every panel has a \code{visit} of 1 at its first interview.
+\subsection{PSUs and tenures}{
+
+With \code{take}, the schedule counts PSUs. Each panel is a group of
+\code{ceiling(n_entrants / take)} PSUs, and a group takes \code{take} units in each
+PSU at every tenure. The PSU allocation then reads its total from the
+schedule, as in \code{n_alloc(frame, n = schedule$components$operational_issue[1], n_step = G)} with \code{G} the number of startup panels, so that the master has
+the PSU count the schedule promises.
+
+Under \code{tenures = "open"} no PSU is replaced inside the horizon. An
+immediate start selects every group at the first occasion, each group's
+first tenure being the rest of the life from the stage it covers, and a
+gradual start brings in one group an occasion until the life is covered.
+A new tenure is a new draw of units, so the overlap of the units is still
+the one \code{\link[=design_overlap]{design_overlap()}} gives for the rotation. The horizon policies
+apply to tenures. \code{"continuing"} lists the rest of every tenure opened in
+the window, \code{"truncate_lives"} cuts tenures at the horizon, and
+\code{"close_intake"} opens no tenure that cannot finish by it.
+}
+
+\subsection{Sub-periods}{
+
+Monthly fieldwork for quarterly estimates is a schedule over months. With
+\code{subperiods = s}, each reporting panel \code{g} becomes \code{s} panels, numbered
+\code{(g - 1) * s + j} for \code{j} in 1 to \code{s}, so the group of a panel is
+\code{ceiling(panel / s)}. Panel \code{j} is interviewed at wave
+\code{(period - 1) * s + j} of every period its group is interviewed in, and is
+held in the other waves of the group's life. A unit keeps its sub-period at
+every visit and across tenures. \code{period} names the reporting period of
+each wave, and \code{life_stage}, \code{life_length} and \code{visit} count periods and
+interviews, not waves. \code{horizon}, \code{wave}, \code{entry_wave} and
+\code{steady_state_from} count waves, and a cohort entering in period \code{t}
+enters at wave \code{(t - 1) * s + 1}, every sub-period panel being selected
+then. Each sub-period panel takes \code{ceiling(n_entrants / s)} units, or that
+over \code{take} in PSUs, so a period issues up to \code{s - 1} more per group than
+the continuous plan. The launch and overlap checks run on the reporting
+grid, and \verb{$overlap} is the reporting-period profile.
+}
 }
 \examples{
 panel <- n_panel(
@@ -84,7 +167,6 @@ panel <- n_panel(
 )
 schedule <- design_schedule(
   panel,
-  design_rotation("4"),
   horizon = 6,
   horizon_policy = "continuing",
   refreshment = "entrant_register",
@@ -92,6 +174,43 @@ schedule <- design_schedule(
 )
 schedule
 schedule$components
+
+# A 2-2-2 rotation: six startup panels, four interviewed at each occasion
+quarterly <- n_panel(
+  n_prop(p = 0.5, moe = 0.03),
+  retention = c(0.9, 0.85, 0.9),
+  resp_rate = 0.75,
+  design = "rotating",
+  start = "immediate",
+  rotation = "2-2-2"
+)
+gapped <- design_schedule(
+  quarterly,
+  horizon = 8,
+  horizon_policy = "continuing",
+  refreshment = "entrant_register",
+  rounding = "ceiling"
+)
+gapped
+startup <- gapped$schedule[gapped$schedule$cohort == "startup", ]
+xtabs(visit ~ panel + wave, startup, addNA = TRUE)
+
+# Quarterly reporting on a life of five quarters, 14 units per PSU, PSUs
+# kept and monthly fieldwork: 15 panels, each in its own month
+monthly <- design_schedule(
+  n_panel(n_prop(p = 0.5, moe = 0.02, deff = 1.8),
+          retention = rep(0.9, 4), resp_rate = 0.8,
+          design = "rotating", start = "immediate"),
+  horizon = 4,
+  horizon_policy = "continuing",
+  refreshment = "entrant_register",
+  rounding = "ceiling",
+  take = 14,
+  tenures = "open",
+  subperiods = 3
+)
+monthly
+xtabs(visit ~ panel + wave, monthly$schedule, addNA = TRUE)
 
 }
 \seealso{

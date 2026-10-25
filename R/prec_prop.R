@@ -201,6 +201,11 @@
 #' # How that floor moves with the sample size
 #' predict(floor, expand.grid(n = c(500, 1500, 5000)))
 #'
+#' # A monthly estimate from a quarterly sample of 1600 fielded over three
+#' # months rests on a third of it, with the design effect of the coarser
+#' # strata a month is published for
+#' prec_prop(p = 0.3, n = 1600 / 3, deff = 2.1)
+#'
 #' # 6000 households and 0.41 married women per household
 #' prec_prop(p = 0.28, n = 6000, deff = 2.5, resp_rate = 0.9,
 #'           eligible_rate = 0.41)

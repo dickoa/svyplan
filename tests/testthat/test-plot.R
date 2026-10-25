@@ -186,7 +186,7 @@ test_that("a panel that does not describe the schedule is refused", {
   on.exit(dev.off())
   expect_error(plot(design_overlap("5"), panel = fixed), "fixed panel")
   expect_error(plot(design_overlap("4"), panel = rot),
-               "5 live cohorts and the schedule has a life of 4")
+               "follows the rotation 5 in and the chart draws 4 in")
   expect_error(plot(design_overlap("5"), panel = target),
                "must be an n_panel\\(\\) or prec_panel\\(\\) result")
 })
@@ -199,7 +199,7 @@ test_that("the chart's total row climbs to the steady state and holds", {
     x <- design_overlap(spec)
     life <- x$life
     totals <- .chart_totals(
-      .chart_cohorts(as.double(x$rotation), "gradual", life + 4L),
+      .rotation_cohorts(as.double(x$rotation), "gradual", life + 4L),
       life + 4L
     )
     expect_equal(totals[life:(life + 4L)], rep(x$n_occasion, 5L),
@@ -209,7 +209,7 @@ test_that("the chart's total row climbs to the steady state and holds", {
   }
   # a varying take counts the units, not the occasions
   expect_equal(
-    .chart_totals(.chart_cohorts(c(1, 1, 0.5, 0.5), "gradual", 6L), 6L),
+    .chart_totals(.rotation_cohorts(c(1, 1, 0.5, 0.5), "gradual", 6L), 6L),
     c(1, 2, 2.5, 3, 3, 3), tolerance = 1e-12
   )
 })
@@ -224,7 +224,7 @@ test_that("the chart draws an immediate launch, full from the first period", {
 
   # Lynn Figure 5: launch cohorts remain for one through six interviews, so
   # the sample is full from period 1 and never climbs
-  co <- .chart_cohorts(as.double(x$rotation), "immediate", 10L)
+  co <- .rotation_cohorts(as.double(x$rotation), "immediate", 10L)
   expect_length(co, x$life + 10L - 1L)
   # Lynn orders the six launch samples by remaining life: Sample 1 appears
   # once, Sample 2 twice, ..., and Sample 6 for all six waves. Sample 7 is
@@ -244,27 +244,29 @@ test_that("the chart draws an immediate launch, full from the first period", {
 
   # against the gradual launch, which reaches the same figure at the life
   grad <- .chart_totals(
-    .chart_cohorts(as.double(x$rotation), "gradual", 10L), 10L)
+    .rotation_cohorts(as.double(x$rotation), "gradual", 10L), 10L)
   expect_lt(grad[[1L]], x$n_occasion)
   expect_equal(grad[x$life:10L], rep(x$n_occasion, 10L - x$life + 1L),
                tolerance = 1e-12)
 })
 
-test_that("an immediate launch of a gapped life is refused, as in n_panel", {
+test_that("an immediate launch of a gapped life is drawn as n_panel plans it", {
   pdf(tempfile())
   on.exit(dev.off())
-  expect_error(plot(design_overlap("1-1-0-0-1-1"), start = "immediate"),
-               "selected before their first interview")
-  expect_error(plot(design_overlap("4-8-4"), start = "immediate"),
-               "selected before their first interview")
-  expect_silent(plot(design_overlap("1-1-0-0-1-1")))
+  expect_silent(plot(design_overlap("1-1-0-0-1-1"), start = "immediate"))
+  expect_silent(plot(design_overlap("4-8-4"), start = "immediate"))
+  gap <- n_panel(n_prop(p = 0.5, moe = 0.031), retention = c(0.9, 0.85, 0.9),
+                 resp_rate = 0.8, design = "rotating", start = "immediate",
+                 rotation = "2-2-2")
+  expect_silent(plot(design_overlap("2-2-2"), panel = gap))
+  w <- as.double(gap$rotation)
+  n <- length(w) + 1L
+  totals <- .chart_totals(.rotation_cohorts(w, "immediate", n), n)
+  expect_equal(totals * gap$n_entrants, gap$launch$n_in_sample,
+               tolerance = 1e-12)
 })
 
-test_that("a panel may only scale a schedule it represents", {
-  # n_panel() models equal cohorts interviewed at every wave, so its
-  # n_in_sample is n_cohorts * entrants. A gapped or subsampled schedule
-  # holds fewer at an occasion, and scaling one by the other would put two
-  # designs on one chart: 6 * 267 = 1602 against the chart's 4 * 267 = 1068.
+test_that("a panel may only scale the rotation it was planned on", {
   target <- n_prop(p = 0.5, moe = 0.031)
   six <- n_panel(target, retention = rep(0.9, 5), resp_rate = 0.8,
                  design = "rotating")
@@ -273,11 +275,11 @@ test_that("a panel may only scale a schedule it represents", {
   pdf(tempfile())
   on.exit(dev.off())
   expect_error(plot(design_overlap("1-1-0-0-1-1"), panel = six),
-               "a life with a break in it")
+               "follows the rotation 6 in and the chart draws 2 in, 2 out, 2 in")
   expect_error(plot(design_overlap(c(1, 1, 0.5, 0.5)), panel = four),
-               "subsamples a later wave")
-  # the life still has to match, and a schedule the panel does represent draws
-  expect_error(plot(design_overlap("4"), panel = six), "6 live cohorts")
+               "must describe the same design")
+  expect_error(plot(design_overlap("4"), panel = six),
+               "must describe the same design")
   expect_silent(plot(design_overlap("6"), panel = six))
   expect_silent(plot(design_overlap("4"), panel = four))
 })
@@ -291,16 +293,15 @@ test_that("the chart draws the launch its panel was planned with", {
                   design = "rotating", start = "gradual")
   plain <- n_panel(target, retention = ret, resp_rate = 0.8,
                    design = "rotating")
-  w <- as.double(design_overlap("3")$rotation)
   # inherited when not stated
-  expect_identical(.check_chart_start(NULL, w, imm), "immediate")
-  expect_identical(.check_chart_start(NULL, w, grad), "gradual")
+  expect_identical(.check_chart_start(NULL, imm), "immediate")
+  expect_identical(.check_chart_start(NULL, grad), "gradual")
   # and "gradual" where the panel carries no launch, or there is no panel
-  expect_identical(.check_chart_start(NULL, w, plain), "gradual")
-  expect_identical(.check_chart_start(NULL, w, NULL), "gradual")
+  expect_identical(.check_chart_start(NULL, plain), "gradual")
+  expect_identical(.check_chart_start(NULL, NULL), "gradual")
   # stating it wins, which is how one plan's two launches are compared
-  expect_identical(.check_chart_start("gradual", w, imm), "gradual")
-  expect_identical(.check_chart_start("immediate", w, grad), "immediate")
+  expect_identical(.check_chart_start("gradual", imm), "gradual")
+  expect_identical(.check_chart_start("immediate", grad), "immediate")
 
   pdf(tempfile())
   on.exit(dev.off())

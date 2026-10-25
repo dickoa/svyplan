@@ -88,6 +88,10 @@ design_overlap(cps, max_lag = 12)[12]
 # One flag per occasion, the other notation in use
 design_rotation("1-1-0-0-1-1")
 
+# A quarterly life of five interviews fielded monthly, written in full,
+# since the shorthand "1-2(5)" is not read
+design_rotation("1-2-1-2-1-2-1-2-1")
+
 # A take that halves at later waves
 as.data.frame(design_rotation(c(1, 1, 0.5, 0.5)))
 

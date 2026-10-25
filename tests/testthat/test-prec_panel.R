@@ -204,3 +204,19 @@ test_that("the panel applies no response rate of its own on top of attrition", {
   )
   expect_equal(plan$n_resp, target$n * 0.5, tolerance = 1e-9)
 })
+
+test_that("the round trip carries a rotation, and may change it", {
+  x <- n_panel(n_prop(p = 0.5, moe = 0.031), retention = c(0.9, 0.85, 0.9),
+               resp_rate = 0.75, design = "rotating", start = "immediate",
+               rotation = "2-2-2")
+  back <- prec_panel(x)
+  for (f in c("n_entrants", "n_held", "rotation", "launch", "launch_waves",
+              "waves", "se")) {
+    expect_identical(back[[f]], x[[f]], label = f)
+  }
+  other <- prec_panel(x, rotation = "4")
+  expect_identical(other$n_entrants, x$n_entrants)
+  expect_identical(other$n_held, other$n_in_sample)
+  expect_false(identical(other$launch, x$launch))
+  expect_identical(as.double(other$rotation), rep(1, 4))
+})

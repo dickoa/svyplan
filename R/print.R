@@ -5271,6 +5271,7 @@ print.svyplan_panel <- function(x, ...) {
   .check_unused_dots(...)
   k <- nrow(x$waves)
   cat(sprintf("Panel recruitment (%s, %d-wave life)\n", x$design, k))
+  cat(.fmt_panel_rotation(x))
   cat(.fmt_panel_headline(x))
   cat(.fmt_panel_precision(x))
   cat(.fmt_panel_assured(x))
@@ -5310,6 +5311,7 @@ print.summary.svyplan_panel <- function(x, ...) {
     plan$design,
     nrow(plan$waves)
   ))
+  cat(.fmt_panel_rotation(plan))
   cat(.fmt_panel_headline(plan))
   cat(.fmt_panel_in_sample(plan))
   cat(.fmt_panel_rates(plan))
@@ -5428,10 +5430,32 @@ print.summary.svyplan_panel <- function(x, ...) {
   if (!identical(x$design, "rotating")) {
     return("")
   }
-  sprintf(
+  out <- sprintf(
     "in sample: %s across %d live cohorts\n",
     .fmt_count_n(.panel_shown(x)$in_sample),
     x$n_cohorts
+  )
+  life <- length(x$rotation)
+  if (life > x$n_cohorts) {
+    out <- paste0(out, sprintf(
+      "held: %s across %d cohorts, %d of them out of sample\n",
+      .fmt_count_n(ceiling(.panel_recruit(x)) * life), life,
+      life - x$n_cohorts
+    ))
+  }
+  out
+}
+
+#' The rotation of a rotating design whose life has a gap
+#' @keywords internal
+#' @noRd
+.fmt_panel_rotation <- function(x) {
+  w <- as.double(x$rotation)
+  if (length(w) == 0L || all(w > 0)) {
+    return("")
+  }
+  sprintf(
+    "rotation: %s, a %d-occasion life\n", .fmt_rotation(w), length(w)
   )
 }
 

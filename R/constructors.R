@@ -490,7 +490,8 @@
 .new_svyplan_panel <- function(design, n_recruit, n_target, n_resp, n_assured,
                                assured_feasible, target_wave, waves, prec,
                                target, solved, params, start = NULL,
-                               launch = NULL, launch_waves = NULL) {
+                               launch = NULL, launch_waves = NULL,
+                               rotation = NULL) {
   stopifnot(
     is.character(design),
     length(design) == 1L,
@@ -516,7 +517,9 @@
     # one fact, so they arrive together or not at all
     is.null(start) == is.null(launch),
     is.null(start) == is.null(launch_waves),
-    is.null(start) || !identical(design, "fixed")
+    is.null(start) || !identical(design, "fixed"),
+    identical(design, "fixed") == is.null(rotation),
+    is.null(rotation) || inherits(rotation, "svyplan_rotation")
   )
   k <- nrow(waves)
 
@@ -528,7 +531,9 @@
   } else {
     out$n_entrants <- n_recruit
     out$n_in_sample <- k * n_recruit
+    out$n_held <- length(rotation) * n_recruit
     out$n_cohorts <- k
+    out$rotation <- rotation
   }
   out$n_target <- n_target
   out$n_resp <- n_resp

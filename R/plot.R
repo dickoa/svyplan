@@ -231,14 +231,13 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #'   [design_overlap()] gives the same mature overlap profile under either
 #'   launch, although realized overlap is higher early in a gradual launch.
 #'   Defaults to the launch `panel` was planned with, or to `"gradual"` when
-#'   there is none. Available for a life without a break in it, for the reason
-#'   [n_panel()]'s own `start` gives.
+#'   there is none.
 #' @param n_period Time periods to draw, with a cohort entering at each one.
 #'   Defaults to the life plus four, which reaches the steady state and shows
 #'   several periods of it.
 #' @param panel Optional [n_panel()] result with `design = "rotating"`, whose
 #'   `n_entrants` scales the sample labels and the total row from cohort
-#'   shares to units. Its cohort count must match the schedule's life.
+#'   shares to units. It must have been planned on the rotation drawn.
 #' @param ... Additional graphical parameters. `main` and `col` are honored
 #'   by both types, `col` being the cell fill for the chart and the bar fill
 #'   for the profile. The profile passes the rest to [barplot()].
@@ -270,8 +269,9 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #' set of cohorts has yet rotated through. [n_panel()] reports the response
 #' and precision path while either launch settles.
 #'
-#' An immediate launch is drawn for a life without a break in it, for the
-#' reason [n_panel()]'s own `start` gives. When `panel` is supplied and
+#' For a life with a gap, a launch panel covering a stage out of sample is
+#' selected at the first period and first drawn when the rest of its life
+#' returns to sample, as [n_panel()] plans it. When `panel` is supplied and
 #' `start` is not, the chart draws the launch that panel was planned with,
 #' rather than defaulting past it.
 #'
@@ -374,8 +374,8 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
   # instead would wind the design down again at the right-hand edge
   n_period <- .whole_arg(n_period, "n_period", life + 4L)
   take <- .chart_take(panel, w)
-  start <- .check_chart_start(start, w, panel)
-  cohorts <- .chart_cohorts(w, start, n_period)
+  start <- .check_chart_start(start, panel)
+  cohorts <- .rotation_cohorts(w, start, n_period)
   n_sample <- length(cohorts)
 
   args <- modifyList(
@@ -443,42 +443,31 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
 }
 
 #' The launch a chart draws, inherited from a panel when not stated
-#'
-#' An immediate launch has to cover every stage of the life, which for a
-#' schedule with a gap means cohorts selected before they are first
-#' interviewed. That is a longer definition than a launch label carries, and
-#' [n_panel()] refuses it for the same reason, so the two surfaces agree on
-#' what is expressible.
 #' @keywords internal
 #' @noRd
-.check_chart_start <- function(start, w, panel = NULL) {
+.check_chart_start <- function(start, panel = NULL) {
   if (is.null(start)) {
     # a panel that was planned with a launch has already answered this, and a
     # chart that ignored it would draw a design its own labels contradict
     start <- panel$start %||% "gradual"
   }
-  start <- match.arg(start, c("gradual", "immediate"))
-  if (identical(start, "immediate") && any(w <= 0)) {
-    stop(
-      "an immediate launch of a schedule with a gap needs cohorts selected before their first interview, which is not described yet; chart the gradual launch, or a schedule without a break",
-      call. = FALSE
-    )
-  }
-  start
+  match.arg(start, c("gradual", "immediate"))
 }
 
-#' The cohorts a launch puts on the chart, in drawing order
+#' The cohorts of a launch, in Lynn's Figure 5 order
 #'
-#' A gradual launch is one cohort an occasion and nothing else. An immediate
-#' launch adds, at the first occasion, one component for every possible
-#' remaining life length, each at its first displayed stage, so the design
-#' holds its whole sample at once. They are ordered like Lynn's Figure 5: the
-#' one-occasion tail first, up through the full-life cohort.
+#' The one construction the chart, [n_panel()] and [design_schedule()] read.
+#' A gradual launch is one cohort an occasion. An immediate one adds, at the
+#' first occasion, a panel covering each stage of the life with the rest of
+#' the life from it, the one-occasion tail first. A panel whose rest of life
+#' starts out of sample is held and first interviewed later.
 #' @keywords internal
 #' @noRd
-.chart_cohorts <- function(w, start, n_period) {
+.rotation_cohorts <- function(w, start, n_period) {
   life <- length(w)
-  entering <- lapply(seq_len(n_period), function(p) list(entry = p, w = w))
+  entering <- lapply(seq_len(n_period), function(p) {
+    list(entry = p, w = w)
+  })
   if (identical(start, "gradual")) {
     return(entering)
   }
@@ -509,18 +498,12 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
 
 #' Entrants per cohort for the chart labels, or NULL for cohort shares
 #'
-#' A panel may only scale a schedule it represents. [n_panel()] models equal
-#' cohorts interviewed at every wave of their life, so its `n_in_sample` is
-#' `n_cohorts` times the entrants. A schedule that leaves the sample and
-#' returns, or that subsamples a later wave, holds fewer than that at an
-#' occasion. Scaling one by the other would print two designs on one chart,
-#' the label column reading from the panel and the total row from the
-#' schedule.
+#' A panel may only scale the rotation it was planned on, or the label column
+#' and the total row would describe two designs.
 #' @keywords internal
 #' @noRd
 .chart_take <- function(panel, w) {
   if (is.null(panel)) return(NULL)
-  life <- length(w)
   if (!inherits(panel, "svyplan_panel")) {
     stop("'panel' must be an n_panel() or prec_panel() result", call. = FALSE)
   }
@@ -530,25 +513,12 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
       call. = FALSE
     )
   }
-  if (!identical(as.integer(panel$n_cohorts), as.integer(life))) {
+  rot <- as.double(panel$rotation)
+  if (!isTRUE(all.equal(rot, as.numeric(w)))) {
     stop(
       sprintf(
-        "'panel' has %d live cohorts and the schedule has a life of %d occasions; they must describe the same design",
-        as.integer(panel$n_cohorts), as.integer(life)
-      ),
-      call. = FALSE
-    )
-  }
-  if (!isTRUE(all.equal(as.numeric(w), rep(1, life)))) {
-    stop(
-      sprintf(
-        "'panel' recruits equal cohorts interviewed at every wave, so it holds %d cohorts in sample at an occasion, where this schedule holds %s; %s is not a design n_panel() describes, so its entrants cannot scale this chart",
-        as.integer(life), format(sum(w), trim = TRUE),
-        if (any(w <= 0)) {
-          "a life with a break in it"
-        } else {
-          "a life that subsamples a later wave"
-        }
+        "'panel' follows the rotation %s and the chart draws %s; they must describe the same design",
+        .fmt_rotation(rot), .fmt_rotation(as.numeric(w))
       ),
       call. = FALSE
     )

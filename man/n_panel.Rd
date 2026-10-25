@@ -12,7 +12,8 @@ n_panel(
   design = c("fixed", "rotating"),
   target_wave = NULL,
   assurance = NULL,
-  start = NULL
+  start = NULL,
+  rotation = NULL
 )
 }
 \arguments{
@@ -69,6 +70,14 @@ all beginning at wave 1, so it is full at once. Supplying either reports
 what the design delivers at each occasion until it settles. The default
 plans no launch, which is what the recruitment above describes either
 way. Not available for a fixed panel, which recruits one cohort.}
+
+\item{rotation}{The rotation a rotating design's cohorts follow, a
+\code{\link[=design_rotation]{design_rotation()}} result or anything it accepts, such as \code{"2-2-2"}.
+\code{NULL} (default) is a life without a break, one occasion per wave. A
+unit is interviewed at every in-sample occasion, so the rotation has one
+more in-sample occasion than \code{retention} has values, and its in-sample
+entries are all 1. See the section on a life with a gap. Not available
+for a fixed panel.}
 }
 \value{
 A \code{svyplan_panel} object. \code{\link[=prec_panel]{prec_panel()}} returns the same class,
@@ -82,6 +91,11 @@ The first two are different budget lines and are named separately for
 that reason: \code{n_in_sample} is also the cumulative recruitment that
 reaching a steady state takes, whether the cohorts are taken on at
 once or phased in over the first \code{n_cohorts} occasions.}
+\item{\code{n_held}, \code{rotation}}{Rotating panels only. The units selected
+and not yet past their last interview, those out of sample in a gap
+included, and the rotation they follow. \code{n_held} equals
+\code{n_in_sample} for a life without a break, and it is what a finite
+population has to supply.}
 \item{\code{n_target}}{The responding sample the target requires.}
 \item{\code{n_resp}}{The responding sample the design delivers where the
 target is stated: at \code{target_wave} for a fixed panel, pooled across
@@ -188,11 +202,25 @@ converging down as the interview mix matures. A gradual launch approaches the
 same figure from below. Either way the early occasions rest on a different
 response composition from the rest of the series, which \code{launch_waves} is
 there to expose and which is what nonresponse weighting has to carry.
+}
 
-Both are described for a life without a break in it. A schedule that
-leaves the sample and returns needs launch cohorts that are selected
-before they are first interviewed, which is a longer definition than this
-argument carries.
+\subsection{A life with a gap}{
+
+\code{waves} counts interviews, not occasions. Under \code{rotation = "2-2-2"} a
+unit is interviewed at occasions 1, 2, 5 and 6 of a six-occasion life, so
+\code{retention} takes three values. The steady state is that of an unbroken
+four-wave life, with the same entrants, the same four cohorts in sample
+and the same precision. The loss across the gap belongs in the retention
+value that crosses it, \code{retention[2]} here.
+
+The rotation changes two things. Six cohorts are held at an occasion,
+two of them out of sample, which is \code{n_held}. The launch follows the
+rotation. An immediate start covers every stage of the life at the first
+occasion, and a panel covering a stage out of sample is selected then and
+first interviewed when the rest of its life returns to sample. It numbers
+its interviews from its own first one, so a launch panel that crosses the
+gap at another visit takes that visit's retention. That difference is
+confined to the launch.
 }
 
 \subsection{Assurance}{
@@ -303,6 +331,14 @@ n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
 imm <- n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
                resp_rate = 0.728, design = "rotating", start = "immediate")
 subset(imm$launch_waves, period <= 2)
+
+# A 2-2-2 rotation, in for two occasions, out for two, in for two. The
+# steady state is the four-wave one, and six cohorts are held
+gap <- n_panel(target, retention = c(0.9, 0.85, 0.9), resp_rate = 0.75,
+               design = "rotating", start = "immediate",
+               rotation = "2-2-2")
+c(in_sample = gap$n_in_sample, held = gap$n_held)
+gap$launch[c("period", "n_entrants", "n_in_sample", "steady_state")]
 
 # Request at least a 95\% probability of reaching the respondent target
 n_panel(target, retention = c(0.9, 0.9), resp_rate = 0.8,

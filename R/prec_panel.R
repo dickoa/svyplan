@@ -28,6 +28,10 @@
 #'   stored plan this may be overridden, unlike `design`. It selects which
 #'   launch is described and moves no stored quantity, the recruitment being
 #'   fixed before any of it is computed.
+#' @param rotation `NULL` or the rotation a rotating design's cohorts
+#'   follow. See [n_panel()]. On a stored plan this may be overridden, as
+#'   `start` may. It changes the launch and the units held, and moves no
+#'   stored quantity.
 #' @param assurance Probability in (0, 1), or `NULL` (default). Reports the
 #'   recruitment the target would need at that level, which is what the
 #'   supplied `n_recruit` can then be read against.
@@ -91,7 +95,8 @@ prec_panel.default <- function(
   design = c("fixed", "rotating"),
   target_wave = NULL,
   assurance = NULL,
-  start = NULL
+  start = NULL,
+  rotation = NULL
 ) {
   .check_unused_dots(...)
   design <- .check_panel_design(design)
@@ -100,10 +105,11 @@ prec_panel.default <- function(
   target_wave <- .check_target_wave(target_wave, length(q), design)
   assurance <- .check_assurance(assurance)
   start <- .check_panel_start(start, design)
+  rot <- .check_panel_rotation(rotation, design, length(q))
 
   .panel_result(
     tgt, n_recruit, resp_rate, retention, q, design, target_wave, assurance,
-    start
+    start, rotation = rotation, rot = rot
   )
 }
 
@@ -141,7 +147,8 @@ prec_panel.svyplan_panel <- function(n_recruit, ...) {
     # unlike `design`, this may be overridden: it selects which launch is
     # described and moves no stored quantity, the recruitment being fixed
     # before any of it is computed
-    start = p$start
+    start = p$start,
+    rotation = p$rotation
   )
   do.call(
     prec_panel.default,

@@ -241,6 +241,13 @@ prec_pooled(p = 0.3, n = 1200, occasions = 12, overlap = 0.75,
 prec_pooled(var = 100, n = 500, occasions = 8,
             overlap = design_overlap("4", max_lag = 7), cor_decay = 0.8)
 
+# A year of four quarters under a 2-2-2 rotation, below full response.
+# The issued overlap is refused here, so the respondent overlap is
+# stated, under response independent between occasions
+prec_pooled(p = 0.3, n = 1600, occasions = 4, resp_rate = 0.8,
+            overlap = 0.8 * as.double(design_overlap("2-2-2"))[1:3],
+            cor_decay = 0.8)
+
 # Round-trip from n_pooled
 res <- n_pooled(var = 100, moe = 1, occasions = 4, overlap = 0.5,
                 cor_decay = 0.7)

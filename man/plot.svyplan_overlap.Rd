@@ -27,8 +27,7 @@ All panels begin at their first interview, so the design is full at once.
 \code{\link[=design_overlap]{design_overlap()}} gives the same mature overlap profile under either
 launch, although realized overlap is higher early in a gradual launch.
 Defaults to the launch \code{panel} was planned with, or to \code{"gradual"} when
-there is none. Available for a life without a break in it, for the reason
-\code{\link[=n_panel]{n_panel()}}'s own \code{start} gives.}
+there is none.}
 
 \item{n_period}{Time periods to draw, with a cohort entering at each one.
 Defaults to the life plus four, which reaches the steady state and shows
@@ -36,7 +35,7 @@ several periods of it.}
 
 \item{panel}{Optional \code{\link[=n_panel]{n_panel()}} result with \code{design = "rotating"}, whose
 \code{n_entrants} scales the sample labels and the total row from cohort
-shares to units. Its cohort count must match the schedule's life.}
+shares to units. It must have been planned on the rotation drawn.}
 
 \item{...}{Additional graphical parameters. \code{main} and \code{col} are honored
 by both types, \code{col} being the cell fill for the chart and the bar fill
@@ -76,8 +75,9 @@ reaches the marked period, its realized overlap is higher because no full
 set of cohorts has yet rotated through. \code{\link[=n_panel]{n_panel()}} reports the response
 and precision path while either launch settles.
 
-An immediate launch is drawn for a life without a break in it, for the
-reason \code{\link[=n_panel]{n_panel()}}'s own \code{start} gives. When \code{panel} is supplied and
+For a life with a gap, a launch panel covering a stage out of sample is
+selected at the first period and first drawn when the rest of its life
+returns to sample, as \code{\link[=n_panel]{n_panel()}} plans it. When \code{panel} is supplied and
 \code{start} is not, the chart draws the launch that panel was planned with,
 rather than defaulting past it.
 

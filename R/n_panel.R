@@ -54,6 +54,13 @@
 #'   what the design delivers at each occasion until it settles. The default
 #'   plans no launch, which is what the recruitment above describes either
 #'   way. Not available for a fixed panel, which recruits one cohort.
+#' @param rotation The rotation a rotating design's cohorts follow, a
+#'   [design_rotation()] result or anything it accepts, such as `"2-2-2"`.
+#'   `NULL` (default) is a life without a break, one occasion per wave. A
+#'   unit is interviewed at every in-sample occasion, so the rotation has one
+#'   more in-sample occasion than `retention` has values, and its in-sample
+#'   entries are all 1. See the section on a life with a gap. Not available
+#'   for a fixed panel.
 #'
 #' @return A `svyplan_panel` object. [prec_panel()] returns the same class,
 #'   `$solved` naming the direction it was computed in. Fields:
@@ -66,6 +73,11 @@
 #'     that reason: `n_in_sample` is also the cumulative recruitment that
 #'     reaching a steady state takes, whether the cohorts are taken on at
 #'     once or phased in over the first `n_cohorts` occasions.}
+#'   \item{`n_held`, `rotation`}{Rotating panels only. The units selected
+#'     and not yet past their last interview, those out of sample in a gap
+#'     included, and the rotation they follow. `n_held` equals
+#'     `n_in_sample` for a life without a break, and it is what a finite
+#'     population has to supply.}
 #'   \item{`n_target`}{The responding sample the target requires.}
 #'   \item{`n_resp`}{The responding sample the design delivers where the
 #'     target is stated: at `target_wave` for a fixed panel, pooled across
@@ -165,10 +177,23 @@
 #' response composition from the rest of the series, which `launch_waves` is
 #' there to expose and which is what nonresponse weighting has to carry.
 #'
-#' Both are described for a life without a break in it. A schedule that
-#' leaves the sample and returns needs launch cohorts that are selected
-#' before they are first interviewed, which is a longer definition than this
-#' argument carries.
+#' ## A life with a gap
+#'
+#' `waves` counts interviews, not occasions. Under `rotation = "2-2-2"` a
+#' unit is interviewed at occasions 1, 2, 5 and 6 of a six-occasion life, so
+#' `retention` takes three values. The steady state is that of an unbroken
+#' four-wave life, with the same entrants, the same four cohorts in sample
+#' and the same precision. The loss across the gap belongs in the retention
+#' value that crosses it, `retention[2]` here.
+#'
+#' The rotation changes two things. Six cohorts are held at an occasion,
+#' two of them out of sample, which is `n_held`. The launch follows the
+#' rotation. An immediate start covers every stage of the life at the first
+#' occasion, and a panel covering a stage out of sample is selected then and
+#' first interviewed when the rest of its life returns to sample. It numbers
+#' its interviews from its own first one, so a launch panel that crosses the
+#' gap at another visit takes that visit's retention. That difference is
+#' confined to the launch.
 #'
 #' ## Assurance
 #'
@@ -287,6 +312,14 @@
 #'                resp_rate = 0.728, design = "rotating", start = "immediate")
 #' subset(imm$launch_waves, period <= 2)
 #'
+#' # A 2-2-2 rotation, in for two occasions, out for two, in for two. The
+#' # steady state is the four-wave one, and six cohorts are held
+#' gap <- n_panel(target, retention = c(0.9, 0.85, 0.9), resp_rate = 0.75,
+#'                design = "rotating", start = "immediate",
+#'                rotation = "2-2-2")
+#' c(in_sample = gap$n_in_sample, held = gap$n_held)
+#' gap$launch[c("period", "n_entrants", "n_in_sample", "steady_state")]
+#'
 #' # Request at least a 95% probability of reaching the respondent target
 #' n_panel(target, retention = c(0.9, 0.9), resp_rate = 0.8,
 #'         assurance = 0.95)$n_assured
@@ -300,7 +333,8 @@ n_panel <- function(
   design = c("fixed", "rotating"),
   target_wave = NULL,
   assurance = NULL,
-  start = NULL
+  start = NULL,
+  rotation = NULL
 ) {
   .check_unused_dots(...)
   design <- .check_panel_design(design)
@@ -309,6 +343,7 @@ n_panel <- function(
   target_wave <- .check_target_wave(target_wave, length(q), design)
   assurance <- .check_assurance(assurance)
   start <- .check_panel_start(start, design)
+  rot <- .check_panel_rotation(rotation, design, length(q))
 
   n_recruit <- if (design == "fixed") {
     tgt$n_target / q[[target_wave]]
@@ -318,7 +353,7 @@ n_panel <- function(
 
   .panel_result(
     tgt, n_recruit, resp_rate, retention, q, design, target_wave,
-    assurance, start, solved = "n_recruit"
+    assurance, start, solved = "n_recruit", rotation = rotation, rot = rot
   )
 }
 
@@ -501,6 +536,45 @@ n_panel <- function(
   start
 }
 
+#' The rotation a rotating design's cohorts follow
+#'
+#' `NULL` is the unbroken life of one occasion per visit.
+#' @keywords internal
+#' @noRd
+.check_panel_rotation <- function(rotation, design, k) {
+  if (identical(design, "fixed")) {
+    if (!is.null(rotation)) {
+      stop(
+        "'rotation' describes how a rotating design's cohorts enter and leave the sample; a fixed panel follows one cohort over its waves, which has no rotation",
+        call. = FALSE
+      )
+    }
+    return(NULL)
+  }
+  if (is.null(rotation)) {
+    return(design_rotation(rep(1, k)))
+  }
+  rot <- design_rotation(rotation)
+  w <- as.double(rot)
+  if (!all(w[w > 0] == 1)) {
+    stop(
+      "'rotation' takes part of a cohort at some occasion; n_panel() interviews every unit of a cohort at each of its in-sample occasions, so a life that subsamples a later wave is not a design it describes",
+      call. = FALSE
+    )
+  }
+  visits <- sum(w > 0)
+  if (visits != k) {
+    stop(
+      sprintf(
+        "the rotation interviews a unit %d times over its %d-occasion life, so 'retention' takes %d values, one per interview transition; it has %d",
+        visits, length(w), visits - 1L, k - 1L
+      ),
+      call. = FALSE
+    )
+  }
+  rot
+}
+
 #' @keywords internal
 #' @noRd
 .check_assurance <- function(assurance) {
@@ -522,7 +596,7 @@ n_panel <- function(
 #' cases are named.
 #' @keywords internal
 #' @noRd
-.check_panel_frame <- function(n_units, N, design, k) {
+.check_panel_frame <- function(n_units, N, design, k, visits = k) {
   if (!is.finite(N) || n_units <= N * (1 + 1e-9)) {
     return(invisible(TRUE))
   }
@@ -531,10 +605,15 @@ n_panel <- function(
       "the cohort would have to issue %s units, more than the population of %s; the target is out of reach at that wave under this retention",
       round(n_units, 1), N
     )
-  } else {
+  } else if (visits == k) {
     sprintf(
       "the %d cohorts alive at one occasion would hold %s units, more than the population of %s",
       k, round(n_units, 1), N
+    )
+  } else {
+    sprintf(
+      "the %d cohorts held at one occasion, %d of them in sample, would hold %s units, more than the population of %s",
+      k, visits, round(n_units, 1), N
     )
   }
   stop(msg, call. = FALSE)
@@ -560,7 +639,8 @@ n_panel <- function(
 #' this function does not describe) or a smaller target.
 #' @keywords internal
 #' @noRd
-.warn_panel_whole_units <- function(n_recruit, N, design, k) {
+.warn_panel_whole_units <- function(n_recruit, N, design, k,
+                                    gapped = FALSE) {
   if (!is.finite(N)) {
     return(invisible(TRUE))
   }
@@ -570,8 +650,10 @@ n_panel <- function(
   }
   warning(
     sprintf(
-      "the whole-unit design puts %s units in sample against a population of %s, though the continuous design of %s fits; equal cohorts cannot be fielded at this size",
-      .fmt_count_n(units), .fmt_count_n(N), format(round(n_recruit, 1))
+      "the whole-unit design %s against a population of %s, though the continuous design of %s fits; equal cohorts cannot be fielded at this size",
+      sprintf(if (gapped) "holds %s units" else "puts %s units in sample",
+              .fmt_count_n(units)),
+      .fmt_count_n(N), format(round(n_recruit, 1))
     ),
     call. = FALSE
   )
@@ -587,7 +669,8 @@ n_panel <- function(
 #' contradict itself.
 #' @keywords internal
 #' @noRd
-.warn_panel_assurance <- function(n_assured, N, design, k) {
+.warn_panel_assurance <- function(n_assured, N, design, k,
+                                 gapped = FALSE) {
   if (!is.finite(N)) {
     return(invisible(TRUE))
   }
@@ -597,8 +680,9 @@ n_panel <- function(
   }
   warning(
     sprintf(
-      "the requested assurance would take %s units in sample, more than the population of %s; the level is unattainable, and no size inside the frame reaches the target that often",
-      .fmt_count_n(units), .fmt_count_n(N)
+      "the requested assurance would take %s units %s, more than the population of %s; the level is unattainable, and no size inside the frame reaches the target that often",
+      .fmt_count_n(units), if (gapped) "held" else "in sample",
+      .fmt_count_n(N)
     ),
     call. = FALSE
   )
@@ -639,16 +723,18 @@ n_panel <- function(
 #' @noRd
 .panel_result <- function(tgt, n_recruit, resp_rate, retention, q, design,
                           target_wave, assurance, start = NULL,
-                          solved = NULL) {
+                          solved = NULL, rotation = NULL, rot = NULL) {
   k <- length(q)
   if (!is.numeric(n_recruit) || length(n_recruit) != 1L ||
       !is.finite(n_recruit) || n_recruit <= 0) {
     stop("'n_recruit' must be a single positive size", call. = FALSE)
   }
-  in_sample <- if (identical(design, "fixed")) n_recruit else k * n_recruit
-  .check_panel_frame(in_sample, tgt$N, design, k)
+  life <- if (identical(design, "fixed")) k else length(rot)
+  gapped <- life > k
+  held <- if (identical(design, "fixed")) n_recruit else life * n_recruit
+  .check_panel_frame(held, tgt$N, design, life, k)
   .warn_panel_target_rate(tgt, resp_rate)
-  .warn_panel_whole_units(n_recruit, tgt$N, design, k)
+  .warn_panel_whole_units(n_recruit, tgt$N, design, life, gapped)
 
   n_wave <- n_recruit * q
   .warn_panel_empty_waves(n_wave)
@@ -691,11 +777,15 @@ n_panel <- function(
       .panel_assure_rotating(tgt$n_target, q, assurance)
     }
     # Recorded, not warned: a warning does not survive into the object.
-    assured_feasible <- .warn_panel_assurance(assured, tgt$N, design, k)
+    assured_feasible <- .warn_panel_assurance(
+      assured, tgt$N, design, life, gapped
+    )
     assured
   }
 
-  launch <- if (!is.null(start)) .panel_launch(tgt, n_recruit, q, start)
+  launch <- if (!is.null(start)) {
+    .panel_launch(tgt, n_recruit, q, start, as.double(rot))
+  }
 
   params <- list(
     resp_rate = resp_rate,
@@ -704,8 +794,9 @@ n_panel <- function(
     target_wave = target_wave,
     assurance = assurance
   )
-  # Assigning NULL removes the element, so this one line is both branches.
+  # Assigning NULL removes the element, so these lines are both branches.
   params$start <- start
+  params$rotation <- rotation
 
   .new_svyplan_panel(
     design = design,
@@ -722,39 +813,23 @@ n_panel <- function(
     start = start,
     launch = launch$launch,
     launch_waves = launch$launch_waves,
+    rotation = rot,
     params = params
   )
 }
 
-#' Cohorts alive at each occasion of a launch, by wave
-#'
-#' One row per occasion, one column per wave, counting cohorts rather than
-#' units, so the entrant count multiplies it and the continuous recruitment
-#' is never rounded on the way in.
-#'
-#' A gradual launch recruits one cohort an occasion, so occasion \eqn{t}
-#' holds waves 1 to \eqn{t}. An immediate launch splits its first occasion
-#' into equal panels planned for life lengths from the full life down to one
-#' occasion, all beginning at wave 1. Occasion \eqn{t} therefore holds the
-#' \eqn{k - t + 1} launch panels still alive, all at wave \eqn{t}, plus one
-#' intake cohort at each earlier wave. Both hold one
-#' cohort per wave from occasion \eqn{k}, which is the steady state and is
-#' where the two agree.
+#' Cohorts in sample at an occasion, by the visit each is at
 #' @keywords internal
 #' @noRd
-.panel_launch_cohorts <- function(k, start, t) {
-  out <- numeric(k)
-  if (t >= k) {
-    out[] <- 1
-    return(out)
+.launch_visits <- function(cohorts, t, k) {
+  m <- numeric(k)
+  for (co in cohorts) {
+    stage <- t - co$entry + 1L
+    if (stage < 1L || stage > length(co$w) || co$w[[stage]] <= 0) next
+    v <- sum(co$w[seq_len(stage)] > 0)
+    m[[v]] <- m[[v]] + 1
   }
-  if (identical(start, "gradual")) {
-    out[seq_len(t)] <- 1
-    return(out)
-  }
-  if (t > 1L) out[seq_len(t - 1L)] <- 1
-  out[[t]] <- out[[t]] + (k - t + 1L)
-  out
+  m
 }
 
 #' What a rotating design delivers at each occasion of its launch
@@ -765,18 +840,20 @@ n_panel <- function(
 #' the display path, which is where `print()` puts them.
 #' @keywords internal
 #' @noRd
-.panel_launch <- function(tgt, n_recruit, q, start) {
+.panel_launch <- function(tgt, n_recruit, q, start, w) {
   k <- length(q)
-  periods <- seq_len(k + 1L)
-  cohorts <- lapply(periods, function(t) .panel_launch_cohorts(k, start, t))
+  life <- length(w)
+  periods <- seq_len(life + 1L)
+  pool <- .rotation_cohorts(w, start, life + 1L)
+  cohorts <- lapply(periods, function(t) .launch_visits(pool, t, k))
 
   n_in_sample <- vapply(cohorts, function(m) n_recruit * sum(m), numeric(1L))
   n_resp <- vapply(cohorts, function(m) n_recruit * sum(m * q), numeric(1L))
   prec <- lapply(n_resp, function(m) .panel_prec_at(tgt, m))
   # an immediate launch selects the whole design at its first occasion, and
   # one cohort an occasion after that
-  entering <- rep(1, k + 1L)
-  if (identical(start, "immediate")) entering[[1L]] <- k
+  entering <- rep(1, life + 1L)
+  if (identical(start, "immediate")) entering[[1L]] <- life
 
   launch <- data.frame(
     period = periods,
@@ -799,12 +876,12 @@ n_panel <- function(
   # columns would be mostly empty and their count would follow the life.
   wide <- do.call(rbind, lapply(periods, function(t) {
     m <- cohorts[[t]]
-    w <- which(m > 0)
+    v <- which(m > 0)
     data.frame(
       period = t,
-      wave = w,
-      n_issued = n_recruit * m[w],
-      n_resp = n_recruit * m[w] * q[w]
+      wave = v,
+      n_issued = n_recruit * m[v],
+      n_resp = n_recruit * m[v] * q[v]
     )
   }))
   rownames(wide) <- NULL
