@@ -41,6 +41,13 @@ which reports the design and cost columns described under Details
 \item \code{svyplan_power}: \code{n}, \code{power}, \code{effect}
 \item \code{svyplan_prec}: \code{se}, \code{moe}, \code{cv}, \code{rmoe}
 }
+
+When \code{newdata} sets a target, \code{cv}, \code{moe}, \code{rmoe} or \code{power}, the
+achieved value is reported beside it as \code{.cv_achieved}, \code{.moe_achieved},
+\code{.rmoe_achieved} or \code{.power_achieved}. It equals the target unless a
+floor such as \code{min_cases} or \code{min_n_stratum} binds and carries the
+precision past it. A result column that repeats an input set in
+\code{newdata}, such as \code{n} or \code{n_per_psu}, is not shown twice.
 }
 \description{
 Evaluate a svyplan result at new parameter combinations.
@@ -164,6 +171,11 @@ predict(x, expand.grid(
   deff = seq(1, 3, 0.5),
   resp_rate = c(0.7, 0.8, 0.9)
 ))
+
+# A floor of 400 expected cases holds n at 1334 for any cv target above
+# 0.042, so the achieved cv stays at 0.042 there
+rare <- n_prop(p = 0.3, cv = 0.05, min_cases = 400)
+predict(rare, data.frame(cv = c(0.03, 0.05, 0.08)))
 
 # Power curve: how does power vary with sample size?
 pw <- power_prop(p1 = 0.30, p2 = 0.35, n = 500, power = NULL)

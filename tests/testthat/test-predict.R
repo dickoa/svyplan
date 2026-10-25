@@ -58,7 +58,7 @@ test_that("no duplicate columns when newdata overlaps result names", {
   nd <- data.frame(moe = c(0.03, 0.05))
   res <- predict(x, nd)
   expect_equal(sum(names(res) == "moe"), 1L)
-  expect_equal(ncol(res), 5L)
+  expect_named(res, c("moe", "n", "se", ".moe_achieved", "cv", "rmoe"))
 
   nd2 <- data.frame(cv = c(0.05, 0.10))
   res2 <- predict(x, nd2)
@@ -522,4 +522,63 @@ test_that("documented precision parameters are accepted in compatible grids", {
   expect_s3_class(predict(solved_rmoe, data.frame(rmoe = 0.25)), "data.frame")
   solved_mu <- prec_mean(var = 100, n = 400, cv = 0.05)
   expect_s3_class(predict(solved_mu, data.frame(cv = 0.04)), "data.frame")
+})
+
+test_that("a failed last row reads NA and keeps the other rows", {
+  x <- n_prop(p = 0.3, moe = 0.05)
+  expect_warning(res <- predict(x, data.frame(p = c(0.3, 2))), "row 2 failed")
+  expect_equal(nrow(res), 2L)
+  expect_equal(res$n[1], x$n, tolerance = 1e-10)
+  expect_true(all(is.na(res[2, c("n", "se", "moe", "cv", "rmoe")])))
+})
+
+test_that("failed first and last rows of a classic allocation grid read NA", {
+  fr <- data.frame(stratum = 1:3, N = c(100, 200, 50), sd = c(1, 2, 3),
+                   unit_cost = c(1, 2, 3))
+  x <- n_alloc(fr, n = 60, min_n_stratum = 20)
+  res <- suppressWarnings(predict(x, data.frame(n = c(30, 60, 400))))
+  expect_equal(nrow(res), 3L)
+  expect_equal(res$n, c(30, 60, 400))
+  expect_true(is.na(res$se[1]) && is.na(res$se[3]))
+  expect_false(is.na(res$se[2]))
+
+  x <- n_alloc(fr, budget = 100)
+  res <- suppressWarnings(predict(x, data.frame(budget = c(100, 1e5))))
+  expect_equal(nrow(res), 2L)
+  expect_equal(res$cost[1], 100, tolerance = 1e-8)
+  expect_true(is.na(res$cost[2]) && is.na(res$se[2]))
+})
+
+test_that("a swept target keeps the achieved value beside it", {
+  x <- n_prop(p = 0.3, cv = 0.05, min_cases = 400)
+  res <- predict(x, data.frame(cv = c(0.03, 0.05, 0.08)))
+  expect_equal(res$cv, c(0.03, 0.05, 0.08))
+  expect_equal(res$.cv_achieved[1], 0.03, tolerance = 1e-10)
+  expect_equal(res$.cv_achieved[2:3], rep(res$se[3] / 0.3, 2),
+               tolerance = 1e-10)
+  expect_lt(res$.cv_achieved[3], 0.045)
+
+  fr <- data.frame(stratum = 1:3, N = c(100, 200, 50), sd = c(1, 2, 3),
+                   mean = 5)
+  a <- n_alloc(fr, cv = 0.05, min_n_stratum = 20)
+  res <- predict(a, data.frame(cv = c(0.05, 0.5)))
+  expect_equal(res$cv, c(0.05, 0.5))
+  expect_lt(res$.cv_achieved[2], 0.06)
+
+  m <- predict(n_prop(p = 0.3, moe = 0.05), data.frame(moe = 0.04))
+  expect_equal(m$.moe_achieved, 0.04, tolerance = 1e-10)
+  pw <- predict(power_prop(p1 = 0.3, p2 = 0.4, power = 0.8),
+                data.frame(power = 0.9))
+  expect_equal(pw$.power_achieved, 0.9, tolerance = 1e-6)
+})
+
+test_that("a swept input is not repeated as a result column", {
+  pw <- power_prop(p1 = 0.30, p2 = 0.35, n = 500, power = NULL)
+  res <- predict(pw, data.frame(n = c(100, 200)))
+  expect_named(res, c("n", "power", "effect"))
+  cl <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
+                  n_per_psu = 10)
+  res <- predict(cl, data.frame(n_per_psu = c(5, 10)))
+  expect_equal(sum(names(res) == "n_per_psu"), 1L)
+  expect_false(any(grepl("_achieved$", names(res))))
 })

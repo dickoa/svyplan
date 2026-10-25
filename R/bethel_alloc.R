@@ -265,7 +265,7 @@
   As <- sweep(A, 2L, bound, "/")
   cs <- cost / cost_scale
   lower_value <- .bethel_constraint_value(As, lower)
-  if (all(lower_value <= 1 + tolerance)) {
+  if (all(lower_value <= 1 + rep_len(accept, length(lower_value)))) {
     lambda <- numeric(K)
     kkt <- .bethel_kkt(As, cs, lower, upper, lower, lambda)
     return(c(

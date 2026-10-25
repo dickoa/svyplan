@@ -25,6 +25,13 @@
 #'   - `svyplan_power`: `n`, `power`, `effect`
 #'   - `svyplan_prec`: `se`, `moe`, `cv`, `rmoe`
 #'
+#'   When `newdata` sets a target, `cv`, `moe`, `rmoe` or `power`, the
+#'   achieved value is reported beside it as `.cv_achieved`, `.moe_achieved`,
+#'   `.rmoe_achieved` or `.power_achieved`. It equals the target unless a
+#'   floor such as `min_cases` or `min_n_stratum` binds and carries the
+#'   precision past it. A result column that repeats an input set in
+#'   `newdata`, such as `n` or `n_per_psu`, is not shown twice.
+#'
 #' @details
 #' Valid parameters for `newdata` by object type:
 #'
@@ -141,6 +148,11 @@
 #'   deff = seq(1, 3, 0.5),
 #'   resp_rate = c(0.7, 0.8, 0.9)
 #' ))
+#'
+#' # A floor of 400 expected cases holds n at 1334 for any cv target above
+#' # 0.042, so the achieved cv stays at 0.042 there
+#' rare <- n_prop(p = 0.3, cv = 0.05, min_cases = 400)
+#' predict(rare, data.frame(cv = c(0.03, 0.05, 0.08)))
 #'
 #' # Power curve: how does power vary with sample size?
 #' pw <- power_prop(p1 = 0.30, p2 = 0.35, n = 500, power = NULL)
@@ -777,7 +789,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       params[[nm]] <- val
     }
 
-    results[[i]] <- tryCatch(
+    results[i] <- list(tryCatch(
       eval_fn(params),
       error = function(e) {
         warning(
@@ -786,7 +798,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
         )
         NULL
       }
-    )
+    ))
   }
 
   ok <- !vapply(results, is.null, logical(1))
@@ -806,9 +818,11 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   rownames(result_df) <- NULL
 
   dup_cols <- intersect(names(result_df), nd_names)
-  if (length(dup_cols) > 0L) {
-    result_df <- result_df[, !names(result_df) %in% dup_cols, drop = FALSE]
-  }
+  achieved <- intersect(dup_cols, c("cv", "moe", "rmoe", "power"))
+  result_df <- result_df[, !names(result_df) %in% setdiff(dup_cols, achieved),
+                         drop = FALSE]
+  hit <- names(result_df) %in% achieved
+  names(result_df)[hit] <- paste0(".", names(result_df)[hit], "_achieved")
 
   out <- cbind(newdata, result_df)
   rownames(out) <- NULL

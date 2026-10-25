@@ -95,3 +95,15 @@ test_that("every listed fraction lies in the part's interval", {
     expect_true(all(s$f >= lo & s$f <= hi), label = paste("part", i))
   }
 })
+
+test_that("the sweep keeps a state that two close events bound", {
+  sizes <- c(999999, rep(1, 160001))
+  N <- sum(sizes)
+  # A take event at 517240 / 999999 and a draw event at 599999 / N lie
+  # 8.6e-13 apart, which a window of 1e-11 steps over.
+  f <- 517240 / 999999
+  got <- .psu_menu_part(sizes, N, 1, f - 5e-6, f + 5e-6)$states$key
+  want <- menu_oracle(sizes, N, 1, f - 5e-6, f + 5e-6)
+  expect_setequal(got, want)
+  expect_true("1|517241|82758" %in% got)
+})

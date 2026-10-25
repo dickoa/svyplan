@@ -957,3 +957,8 @@ test_that("the fielded two-phase design reaches its cv target", {
     expect_lte(fit$operational$cv, f$cv * (1 + 1e-12))
   }
 })
+
+test_that("print() rejects arguments it does not use", {
+  fit <- n_twophase(frame4, phase1_cost = 1, budget = 50000)
+  expect_error(print(fit, bogus_arg = 1), "bogus_arg")
+})

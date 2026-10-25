@@ -296,8 +296,9 @@ SEXP C_psu_menu_part(SEXP sizes, SEXP N, SEXP take, SEXP f_lo, SEXP f_hi,
       break;
     }
     if ((++steps & 4095UL) == 0) R_CheckUserInterrupt();
-    /* Just right of f, below the smallest gap between two events. */
-    double fr = f * (1 + 1e-11);
+    /* Just right of f, past the few ulps the closure's float expressions
+       err by. An event closer to f than that is merged with it. */
+    double fr = f * (1 + 64 * DBL_EPSILON);
     closure(&p, fr);
     double e = next_event(&p, f, fr);
     if (!(e > f)) Rf_error("internal error: the menu sweep did not advance at f = %g", f);

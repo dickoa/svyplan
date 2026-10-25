@@ -313,3 +313,15 @@ test_that("indicator values in frame are refused in joint allocation", {
     )
   }
 })
+
+test_that("a lower allocation is optimal only when it passes the public rule", {
+  fit <- n_alloc(
+    data.frame(stratum = "S1", N = 1e6),
+    measures = data.frame(stratum = "S1", name = "y", p = 0.5),
+    targets = data.frame(name = "y", cv = 0.0003),
+    min_n_stratum = 917431
+  )
+  expect_identical(fit$optimization$classification, "optimal")
+  expect_true(all(fit$constraints$.pass))
+  expect_gt(fit$detail$n, 917431)
+})

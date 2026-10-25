@@ -922,3 +922,11 @@ test_that("kozak converges by its stopping rule and matches LH on a smooth frame
   expect_true(kz$converged)
   expect_lte(kz$n, lh$n)
 })
+
+test_that("the half-population default below the stratum floor is refused", {
+  expect_error(strata_bound(1:6, 3, method = "cumrootf"),
+               "half the population, 3 units, below the minimum feasible 6")
+  expect_error(strata_bound((1:9)^2, 3, method = "geo"),
+               "half the population, 4.5 units")
+  expect_s3_class(strata_bound(1:12, 3, method = "cumrootf"), "svyplan_strata")
+})

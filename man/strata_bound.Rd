@@ -39,7 +39,9 @@ sampled, so one unit is enough there.}
 Unused arguments are rejected.}
 
 \item{n}{Target total sample size, supplied as a whole number. Specify at
-most one of \code{n} or \code{cv}. Required for methods \code{"lh"} and \code{"kozak"}.}
+most one of \code{n} or \code{cv}. Required for methods \code{"lh"} and \code{"kozak"}.
+With neither, methods \code{"cumrootf"} and \code{"geo"} report the allocation at
+half the population size.}
 
 \item{cv}{Target coefficient of variation (relative standard error).
 For example, \code{cv = 0.05} means the standard error of the estimated

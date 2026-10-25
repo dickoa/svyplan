@@ -42,6 +42,8 @@
 #'   Unused arguments are rejected.
 #' @param n Target total sample size, supplied as a whole number. Specify at
 #'   most one of `n` or `cv`. Required for methods `"lh"` and `"kozak"`.
+#'   With neither, methods `"cumrootf"` and `"geo"` report the allocation at
+#'   half the population size.
 #' @param cv Target coefficient of variation (relative standard error).
 #'   For example, `cv = 0.05` means the standard error of the estimated
 #'   population total or mean should be at most 5 percent of the estimate.
@@ -437,6 +439,14 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
   if (has_n && n < min_required) {
     stop(
       "'n' is infeasible: minimum feasible is ", min_required,
+      call. = FALSE
+    )
+  }
+  if (!has_n && !has_cv && n_total < min_required) {
+    stop(
+      "with neither 'n' nor 'cv', the allocation is reported at half the ",
+      "population, ", format(n_total), " units, below the minimum feasible ",
+      min_required, "; supply 'n' or 'cv'",
       call. = FALSE
     )
   }

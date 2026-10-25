@@ -4241,7 +4241,7 @@ predict.svyplan_strata <- function(object, newdata, labels = NULL, ...) {
     )
   }
   out <- cut(newdata, breaks = breaks, include.lowest = TRUE, labels = labels)
-  take_all_above <- object$params$take_all_above %||% NULL
+  take_all_above <- object$params$take_all_above
   if (!is.null(take_all_above)) {
     # cut() uses right-closed intervals, whereas the take-all contract is
     # x >= take_all_above.  Preserve the training assignment at equality.
@@ -4253,6 +4253,7 @@ predict.svyplan_strata <- function(object, newdata, labels = NULL, ...) {
 #' @rdname print.svyplan
 #' @export
 print.svyplan_twophase <- function(x, ...) {
+  .check_unused_dots(...)
   cat("Two-phase allocation (", nrow(x$detail), " phase-2 strata)\n", sep = "")
   cat(.fmt_twophase_sizes(x))
   cat(.fmt_twophase_responding(x))

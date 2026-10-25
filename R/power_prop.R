@@ -320,13 +320,6 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   }
 }
 
-#' @keywords internal
-#' @noRd
-.prop_var <- function(p1, p2, overlap, overlap_cor) {
-  p1 * (1 - p1) + p2 * (1 - p2) -
-    2 * overlap * overlap_cor * sqrt(p1 * (1 - p1) * p2 * (1 - p2))
-}
-
 ## Wald internals
 
 .power_prop_n_wald <- function(p1, p2, power, alpha, N_pair, deff,
