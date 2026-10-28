@@ -29,7 +29,9 @@
 #' and to the Korn-Graubard interval, which widens as the count falls. It is
 #' the nominal first-stage count. The degrees of freedom of a particular
 #' estimator, such as a Satterthwaite approximation combining several
-#' variance components, differ from it.
+#' variance components, differ from it. For an allocation, `method =
+#' "satterthwaite"` gives that approximation (see "Satterthwaite degrees of
+#' freedom").
 #'
 #' ## What is counted, per design shape
 #'
@@ -74,6 +76,22 @@
 #' domain members, minus strata containing them) needs frame information
 #' that a plan does not carry. It is a limit of what is knowable before
 #' fielding, not an omission.
+#'
+#' ## Satterthwaite degrees of freedom
+#'
+#' A stratified variance is a sum of stratum variances \eqn{v_h}, each
+#' estimated on \eqn{\nu_h} degrees of freedom (units or PSUs, less one).
+#' The Satterthwaite approximation to the degrees of freedom of the sum is
+#' \deqn{\nu = \frac{(\sum_h v_h)^2}{\sum_h v_h^2/\nu_h}.}{nu = (sum_h v_h)^2 / sum_h (v_h^2 / nu_h).}
+#' It lies between the smallest \eqn{\nu_h} and their sum, which is the
+#' nominal count. It falls toward the smallest when one stratum with few
+#' units carries most of the variance, which the nominal count cannot see.
+#' With `method = "satterthwaite"` the \eqn{v_h} are the strata's shares of
+#' the planned variance (`.share` in the allocation), so the value is a
+#' planning figure and changes with the allocation. It is not rounded, and
+#' `$strata` gains the `.share` column it was formed from. Domain counts in
+#' `$domains` stay nominal. A zoned register and a several-measure
+#' allocation are refused, since neither has one share per stratum.
 #'
 #' ## What the count cannot see
 #'
@@ -129,6 +147,18 @@
 #'
 #' # Drop-in wherever a df is expected
 #' n_prop(p = 0.02, moe = 0.01, method = "beta", df = design_df(alloc))
+#'
+#' # One small stratum carrying most of the variance pulls the
+#' # Satterthwaite value toward its own count
+#' skewed <- data.frame(
+#'   stratum = c("a", "b"),
+#'   N = c(500, 50000),
+#'   sd = c(200, 5),
+#'   mean = c(1000, 20)
+#' )
+#' fit <- n_alloc(skewed, n = 400, alloc = "proportional")
+#' design_df(fit)
+#' design_df(fit, method = "satterthwaite")
 #'
 #' # From counts, with no plan in hand
 #' design_df(n_psu = 300, n_strata = 20)
@@ -206,9 +236,13 @@ design_df.svyplan_cluster <- function(x, ...) {
 #' @describeIn design_df Count a [n_alloc()] allocation, at the PSU stage
 #'   when the frame carried cluster columns and at the element stage
 #'   otherwise, or the units of a single [n_prop()] or [n_mean()] size.
+#' @param method For an allocation, `"nominal"` (default) counts units
+#'   minus strata. `"satterthwaite"` weights each stratum by its share of
+#'   the planned variance. See "Satterthwaite degrees of freedom".
 #' @export
-design_df.svyplan_n <- function(x, ...) {
+design_df.svyplan_n <- function(x, ..., method = c("nominal", "satterthwaite")) {
   .check_unused_dots(...)
+  method <- match.arg(method)
   if (identical(x$type, "alloc") && !is.null(x$params$psu) &&
       any(x$psu$certainty)) {
     stop(
@@ -225,14 +259,68 @@ design_df.svyplan_n <- function(x, ...) {
     )
   }
   if (!identical(x$type, "alloc")) {
+    if (identical(method, "satterthwaite")) {
+      stop(
+        "method = \"satterthwaite\" weights strata by their variance shares, and a single size has one stratum, where it equals the nominal count. Use the default",
+        call. = FALSE
+      )
+    }
     units <- ceiling(x$n)
     return(.df_result(units - 1, units, 1L, "element"))
   }
   if (!is.null(x$psu[[".zone"]])) {
+    if (identical(method, "satterthwaite")) {
+      stop(
+        "method = \"satterthwaite\" weights strata by their variance shares, and a zoned register's variance groups cut across strata. Use the nominal count",
+        call. = FALSE
+      )
+    }
     return(.df_zoned(x))
   }
   parts <- .df_alloc_parts(x$detail)
-  .df_stratified(parts, x, .df_domain_idx(x))
+  out <- .df_stratified(parts, x, .df_domain_idx(x))
+  if (identical(method, "satterthwaite")) {
+    out <- .df_satterthwaite(out, x$detail[[".share"]], parts$census)
+  }
+  out
+}
+
+#' Satterthwaite degrees of freedom from the strata's variance shares
+#'
+#' `nu = (sum v_h)^2 / sum(v_h^2 / nu_h)` needs the stratum variances only up
+#' to a common scale, so the shares of the planned variance serve. A stratum
+#' carrying variance on one unit has no degrees of freedom and takes the
+#' whole count to zero, as the nominal count warns.
+#' @keywords internal
+#' @noRd
+.df_satterthwaite <- function(nominal, share, census) {
+  if (is.null(share)) {
+    stop(
+      "method = \"satterthwaite\" weights strata by their shares of one variance, which a several-measure allocation does not have. Use the nominal count",
+      call. = FALSE
+    )
+  }
+  tab <- attr(nominal, "strata", exact = TRUE)
+  keep <- !census & !is.na(share) & share > 0
+  if (!any(keep)) {
+    stop(
+      "the allocation carries no sampling variance, so there are no variance shares to weight",
+      call. = FALSE
+    )
+  }
+  nu_h <- pmax(tab$n_units[keep] - 1, 0)
+  df <- 1 / sum(share[keep]^2 / nu_h)
+  tab$.share <- share
+  .new_svyplan_df(
+    df,
+    attr(nominal, "n_units", exact = TRUE),
+    attr(nominal, "n_strata", exact = TRUE),
+    attr(nominal, "stage", exact = TRUE),
+    strata = tab,
+    domains = attr(nominal, "domains", exact = TRUE),
+    method = "satterthwaite",
+    nominal = as.double(nominal)
+  )
 }
 
 #' @describeIn design_df Count a [strata_bound()] stratification, whose
@@ -487,5 +575,5 @@ design_df.svyplan_twophase <- function(x, ...) {
     )
   }
   .new_svyplan_df(df, n_units, n_strata, stage, strata = strata,
-                  domains = domains)
+                  domains = domains, method = "nominal")
 }

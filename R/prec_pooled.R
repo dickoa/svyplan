@@ -171,7 +171,10 @@
 #' As in [prec_change()], the covariance is a model form, a correlation
 #' between occasions among the units they share and simple random sampling
 #' otherwise. It is not the design-based covariance of a complex master
-#' sample, which carries its own pairwise inclusion probabilities.
+#' sample, which carries its own pairwise inclusion probabilities. The
+#' shared units are a fixed count, and a retained panel topped up by
+#' independent replacement draws differs only in the population terms, by
+#' an amount of order \eqn{1/N}.
 #'
 #' @references
 #' Kish, L. (1965). *Survey Sampling*. Wiley. Chapter 12.

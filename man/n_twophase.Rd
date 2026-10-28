@@ -82,7 +82,10 @@ or \code{budget}.}
 \item{between}{Between-stratum variance component. \code{NULL} (default)
 derives it from the \code{mean} column as \code{sum(W * (mean - ybar)^2)}, or
 uses 0 when no \code{mean} is given. Supply it directly when you know the
-stratification gain but not the stratum means.}
+stratification gain but not the stratum means. On a small finite
+population whose unit variance \code{S2} (divisor \code{N - 1}) is known,
+\code{S2 - sum(W * sd^2)} makes the variance exact, since the default
+mixes divisors and differs from it by a term of order \code{1 / N}.}
 
 \item{mu}{Population mean, used to turn the variance into a coefficient
 of variation. \code{NULL} (default) derives it from \code{mean} when present.
@@ -308,11 +311,14 @@ the design.
 
 In a clustered design each design effect is evaluated at a take the plan
 itself sets. Divided by the number of clusters, \code{n_phase1} is the take
-phase 1 screens in each cluster, \code{n_phase2} the take phase 2 measures,
-and \code{single_phase[["n"]]} the take of the single-phase comparator. A
-design effect measured in an earlier survey at another take has to be
-converted, for instance as \code{1 + (m - 1) * rho} at the new take \code{m} with
-intraclass correlation \code{rho}. The takes then move with the plan, so the
+phase 1 screens in each cluster and \code{single_phase[["n"]]} the take of
+the single-phase comparator. A phase-2 stratum is spread over the same
+clusters, so its \code{deff} belongs at its own take, its \code{n_issued} in
+\verb{$detail} divided by the number of clusters, and at the responding take
+when the stratum has nonresponse. The aggregate \code{n_phase2} is not the
+take of any stratum. A design effect measured in an earlier survey at
+another take has to be converted, for instance as \code{1 + (m - 1) * rho} at
+the new take \code{m} with intraclass correlation \code{rho}. The takes then move with the plan, so the
 plan is repeated until they settle, which takes a few iterations (see
 the examples). The correlation behind the \code{deff} column is the one left
 within a phase-2 stratum. It is lower than the overall correlation, but
@@ -363,19 +369,20 @@ n_twophase(frame, phase1_cost = 1, budget = 50000)
 
 # A clustered design over 1,000 clusters, with an intraclass correlation
 # of 0.1 and of 0.03 within a phase-2 stratum. Each design effect is
-# evaluated at the take the plan returns, so the plan is repeated until
-# the takes settle.
-m1 <- m2 <- m <- 10
+# evaluated at the take the plan returns, each stratum at its own, so the
+# plan is repeated until the takes settle.
+m1 <- m <- 10
+m2 <- rep(10, nrow(frame))
 for (i in 1:6) {
   fit <- n_twophase(transform(frame, deff = 1 + (m2 - 1) * 0.03),
                     phase1_cost = 1, budget = 50000,
                     phase1_deff = 1 + (m1 - 1) * 0.1,
                     single_deff = 1 + (m - 1) * 0.1)
   m1 <- fit$n[["n_phase1"]] / 1000
-  m2 <- fit$n[["n_phase2"]] / 1000
+  m2 <- fit$detail$n_issued / 1000
   m <- fit$single_phase[["n"]] / 1000
 }
-c(m1 = m1, m2 = m2, m = m)
+rbind(stratum_take = m2, deff = fit$detail$deff)
 fit
 
 # Weak stratification pushes the fractions up, and strata that reach 1

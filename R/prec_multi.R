@@ -244,7 +244,9 @@ prec_multi.default <- function(
   stage_cost = NULL,
   resp_rate_psu = 1,
   resp_rate_ssu = 1,
-  resp_rate = 1
+  resp_rate = 1,
+  fpc = "none",
+  pop = NULL
 ) {
   if (!is.data.frame(indicators) || nrow(indicators) == 0L) {
     stop("'indicators' must be a non-empty data frame", call. = FALSE)
@@ -316,7 +318,9 @@ prec_multi.default <- function(
     domain_cols = domains %||% character(0),
     resp_rate_psu = resp_rate_psu,
     resp_rate_ssu = resp_rate_ssu,
-    resp_rate = resp_rate
+    resp_rate = resp_rate,
+    fpc = fpc,
+    pop = pop
   )
 }
 
@@ -500,7 +504,9 @@ prec_multi.default <- function(
                                 domain_cols = character(0),
                                 resp_rate_psu = 1,
                                 resp_rate_ssu = 1,
-                                resp_rate = 1) {
+                                resp_rate = 1,
+                                fpc = "none",
+                                pop = NULL) {
   if (!"alpha" %in% names(indicators)) {
     indicators$alpha <- 0.05
   }
@@ -644,8 +650,27 @@ prec_multi.default <- function(
   # Stage sizes arrive gross; the variance reads what each stage realizes.
   n2r <- if (stages == 2L) n2 * ru else n2 * rs
   n3r <- if (stages == 3L) n3 * ru else n3
+  row_pops <- .stage_row_pops(indicators, domain_cols, fpc,
+                              .stage_eligible(pop), stages)
   for (i in seq_len(nr)) {
-    if (stages == 2L) {
+    if (!is.null(row_pops)) {
+      pop_i <- row_pops[[i]]
+      .check_stage_sizes(
+        if (stages == 2L) c(n1[i], n2[i]) else c(n1[i], n2[i], n3[i]),
+        pop_i
+      )
+      cv_vec[i] <- sqrt(max(
+        if (stages == 2L) {
+          .cv2_cluster_stage(n1_eff[i], n2r[i], delta1[i], unit_relvar[i],
+                             k1[i], pop_i$A, pop_i$M)
+        } else {
+          .cv2_cluster3_stage(n1_eff[i], n2r[i], n3r[i],
+                              c(delta1[i], delta2[i]), unit_relvar[i],
+                              c(k1[i], k2[i]), pop_i)
+        },
+        0
+      ))
+    } else if (stages == 2L) {
       cv_vec[i] <- sqrt(
         unit_relvar[i] * k1[i] / (n1_eff[i] * n2r[i]) * (1 + delta1[i] * (n2r[i] - 1))
       )
@@ -708,12 +733,16 @@ prec_multi.default <- function(
     moe = moe_vec,
     cv = cv_vec,
     type = "multi",
-    params = list(
-      indicators = indicators,
-      stage_cost = stage_cost,
-      domain_cols = domain_cols,
-      design = "cluster",
-      stages = stages
+    params = c(
+      list(
+        indicators = indicators,
+        stage_cost = stage_cost,
+        domain_cols = domain_cols,
+        design = "cluster",
+        stages = stages
+      ),
+      if (!is.null(row_pops)) list(fpc = "stage"),
+      if (!is.null(pop)) list(N = pop$N, N_psu = pop$A, N_ssu = pop$N_ssu)
     ),
     detail = detail
   )

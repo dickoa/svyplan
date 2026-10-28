@@ -252,3 +252,68 @@ test_that("the dominance pass matches a loop over the states", {
   expect_error(.menu_dominated(C, c(0L, 1L)), "index rows")
   expect_error(.menu_dominated(1:4, 1L), "double matrix")
 })
+
+## A dive before best-first search
+##
+## Where many plans cost within a grain or two, best-first can spread over
+## them without finding the cheapest, which a depth-first dive reaches and
+## which then proves itself against the bound.
+
+.dive_menu <- function(seed, H = 24, S = 60, K = 6) {
+  set.seed(seed)
+  owner <- rep(seq_len(H), each = S)
+  base <- rep(runif(H, 100, 600), each = S)
+  size <- runif(H * S, 0.2, 3)
+  cost <- round(base * size / 2)
+  C <- matrix(0, H * S, K)
+  for (k in seq_len(K)) {
+    w <- rep(runif(H, 0.5, 2), each = S) * (k %% 3 + 1)
+    C[, k] <- w / (size * H * runif(1, 0.6, 1.1)) * runif(H * S, 0.9, 1.1) / 3
+  }
+  .menu_problem(cost, C, owner)
+}
+
+test_that("the dive proves a menu best-first leaves open", {
+  p <- .dive_menu(348)
+  sg <- .menu_subgradient(p)
+  grain <- .menu_grain(p$cost)
+  tree <- .menu_tree(p, sg$lambda, sg$pick, grain, 2000, 1e4)
+  both <- .menu_component(p, sg$lambda, sg$pick, grain, 2000, 1e4)
+  expect_identical(tree$status, "limit")
+  expect_identical(both$status, "optimal")
+  expect_lte(both$value, tree$value)
+  expect_lt(both$nodes, 2000)
+  ## Too few nodes to prove it: the status says so, and a proof would
+  ## carry a bound equal to its value.
+  short <- .menu_component(p, sg$lambda, sg$pick, grain, 200, 1e4)
+  expect_false(identical(short$status, "optimal"))
+  expect_lt(short$bound, short$value)
+})
+
+test_that("the dive and the search agree with enumeration on small menus", {
+  for (seed in 1:30) {
+    set.seed(seed)
+    H <- 4
+    S <- 5
+    owner <- rep(seq_len(H), each = S)
+    cost <- round(runif(H * S, 1, 40))
+    C <- matrix(runif(H * S * 2, 0, 0.45), H * S, 2)
+    p <- .menu_problem(cost, C, owner)
+    plans <- as.matrix(expand.grid(lapply(p$groups, identity)))
+    load_ok <- apply(plans, 1, function(j) all(colSums(C[j, ]) <= 1 + 1e-9))
+    sg <- .menu_subgradient(p)
+    if (!any(load_ok)) next
+    best <- min(apply(plans[load_ok, , drop = FALSE], 1, function(j) sum(cost[j])))
+    for (max_nodes in c(5, 50, 5000)) {
+      r <- .menu_component(p, sg$lambda, sg$pick, .menu_grain(cost), max_nodes,
+                           1e4)
+      if (is.null(r$pick)) next
+      expect_lte(r$bound, best + 1e-9)
+      if (r$status == "optimal") {
+        expect_equal(r$value, best)
+        expect_equal(r$bound, r$value)
+      }
+      expect_gte(r$value, best - 1e-9)
+    }
+  }
+})

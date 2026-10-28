@@ -57,8 +57,9 @@
 #'     cohorts permitted by the horizon policy. Continuous and operational
 #'     issue remain separate.}
 #'   \item{`schedule`}{The dense component-panel grid over occasions 1 through
-#'     `horizon`. `period` names each wave's reporting period and equals
-#'     `wave`. A row is in one of three states. Before a panel's entry or
+#'     `horizon`. `period` names each wave's reporting period,
+#'     `(wave - 1) %/% subperiods + 1`, which equals `wave` when
+#'     `subperiods = 1`. A row is in one of three states. Before a panel's entry or
 #'     after its life it has `active = FALSE` and `life_stage` and `visit`
 #'     `NA`. Held out of sample, in a gap of its life, it has
 #'     `active = FALSE`, a `life_stage` and `visit = NA`. Interviewed, it has

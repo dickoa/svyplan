@@ -77,8 +77,9 @@ arguments.
 cohorts permitted by the horizon policy. Continuous and operational
 issue remain separate.}
 \item{\code{schedule}}{The dense component-panel grid over occasions 1 through
-\code{horizon}. \code{period} names each wave's reporting period and equals
-\code{wave}. A row is in one of three states. Before a panel's entry or
+\code{horizon}. \code{period} names each wave's reporting period,
+\code{(wave - 1) \%/\% subperiods + 1}, which equals \code{wave} when
+\code{subperiods = 1}. A row is in one of three states. Before a panel's entry or
 after its life it has \code{active = FALSE} and \code{life_stage} and \code{visit}
 \code{NA}. Held out of sample, in a gap of its life, it has
 \code{active = FALSE}, a \code{life_stage} and \code{visit = NA}. Interviewed, it has

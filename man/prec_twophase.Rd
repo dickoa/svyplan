@@ -69,6 +69,16 @@ frame <- data.frame(
 )
 prec_twophase(frame, n_phase1 = 2000, phase1_cost = 1)
 
+# Ten units in two strata of five, all of the phase-1 sample measured:
+# an SRS of 4, whose variance S2 * (1/4 - 1/10) needs the exact 'between'
+small <- data.frame(N = c(5, 5), sd = c(2, 2), mean = c(10, 20),
+                    nu = c(1, 1))
+S2 <- (sum(4 * small$sd^2) + sum(5 * (small$mean - 15)^2)) / 9
+prec_twophase(small, n_phase1 = 4, N = 10)$se^2
+prec_twophase(small, n_phase1 = 4, N = 10,
+              between = S2 - sum(0.5 * small$sd^2))$se^2
+S2 * (1 / 4 - 1 / 10)
+
 }
 \seealso{
 \code{\link[=n_twophase]{n_twophase()}} for the inverse.

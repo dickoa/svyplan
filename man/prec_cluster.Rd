@@ -18,6 +18,10 @@ prec_cluster(n = NULL, ...)
   resp_rate_ssu = 1,
   resp_rate = 1,
   eligible_rate = 1,
+  fpc = c("none", "stage"),
+  N = NULL,
+  N_psu = NULL,
+  N_ssu = NULL,
   indicators = NULL,
   domains = NULL,
   stage_cost = NULL,
@@ -46,8 +50,9 @@ data, which sets it. See \code{\link[=n_cluster]{n_cluster()}}.}
 
 \item{var_ratio}{Ratio of the stage components' unit variance to the
 analysis variable's, default 1. A scalar names \code{var_ratio_psu}, and for
-three stages \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)} follows from
-the decomposition. See \code{\link[=design_effect]{design_effect()}}. Refused when \code{icc} is a
+three stages derives \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)},
+the value for SSUs of equal size or drawn proportional to size. See
+\code{\link[=design_effect]{design_effect()}}. Refused when \code{icc} is a
 \code{svyplan_varcomp}, which sets it.}
 
 \item{resp_rate_psu}{Expected \strong{PSU-level} response rate, in (0, 1].
@@ -68,6 +73,23 @@ decomposition.}
 number, default 1. It multiplies \code{resp_rate} in the realized take, and
 \code{n} stays in final-stage units. Not available with \code{indicators}. See
 \code{\link[=n_cluster]{n_cluster()}}.}
+
+\item{fpc}{Which finite population correction the variance carries.
+\code{"none"} (default) drops every sampling fraction. \code{"stage"} corrects
+each component by its own stage's sampling fraction and needs \code{N} and
+\code{N_psu}, and \code{N_ssu} at three stages. See "Finite populations" in
+\code{\link[=n_cluster]{n_cluster()}}.}
+
+\item{N}{Number of final-stage units in the population, the units the
+sizes count. With \code{eligible_rate} the correction reads
+\code{N * eligible_rate} eligible units. Read only with \code{fpc = "stage"} and
+refused otherwise.}
+
+\item{N_psu}{Number of PSUs in the population. Read only with
+\code{fpc = "stage"} and refused otherwise.}
+
+\item{N_ssu}{Number of SSUs in the population, across all PSUs. Read only
+with \code{fpc = "stage"} at three stages and refused otherwise.}
 
 \item{indicators}{Optional data frame with one row per indicator, which
 switches the function to the several-indicators mode of Details. It
@@ -139,16 +161,16 @@ Precision is computed row by row, so an allocation returned by
 \code{n_cluster(indicators = )} can be passed straight in.
 }
 
-\subsection{A domain that takes most of its PSUs}{
+\subsection{Finite populations}{
 
-The first stage is treated as drawn with replacement, so nothing here
-knows how many PSUs a stratum or domain holds. A small domain, such as
-an island district of 16 enumeration areas, can then be given more PSUs
-than it has, and a sample that takes most of them is assessed as if
-they were a few among many. \code{\link[=n_alloc]{n_alloc()}} and \code{\link[=prec_alloc]{prec_alloc()}} read \code{N_psu}
-in the frame and, with \code{fpc = "stage"}, apply the stage-by-stage
-correction. They size and assess such a domain, as the \code{\link[=prec_alloc]{prec_alloc()}}
-examples show.
+These formulas drop every sampling fraction, so a sample that takes most
+of a small domain's PSUs is assessed as if they were a few among many.
+With \code{fpc = "stage"}, \code{N} and \code{N_psu}, and \code{N_ssu} at three stages, a
+design is assessed with each component corrected by its own stage, which
+is exact for PSUs and SSUs of equal size drawn with equal probability.
+With \code{indicators} the arguments give the one population every row is
+measured on, and with \code{domains} each domain's counts are \code{indicators}
+columns of the same names. See "Finite populations" in \code{\link[=n_cluster]{n_cluster()}}.
 }
 }
 \examples{
@@ -159,6 +181,15 @@ prec_cluster(n = c(50, 12, 8), icc = c(0.01, 0.05))
 # Round-trip from n_cluster
 res <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
 prec_cluster(res)
+
+# 12 of an island's 16 enumeration areas, 20 of about 150 households each
+prec_cluster(n = c(12, 20), icc = 0.05)
+prec_cluster(n = c(12, 20), icc = 0.05, fpc = "stage",
+             N = 2400, N_psu = 16)
+
+# 30 of 40 villages, 4 of 10 hamlets each, 8 of 30 households each
+prec_cluster(n = c(30, 4, 8), icc = c(0.04, 0.10), fpc = "stage",
+             N = 12000, N_psu = 40, N_ssu = 400)
 
 # 600 clusters of 20 households, 0.41 married women per household, for a
 # proportion near 0.28

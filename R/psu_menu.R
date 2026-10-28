@@ -465,7 +465,7 @@
 #' objective has no grain.
 #' @keywords internal
 #' @noRd
-.psu_plan <- function(ev, f_anchor, max_nodes, budget = NULL) {
+.psu_plan <- function(ev, f_anchor, max_nodes, budget = NULL, gap = 0) {
   H <- length(ev$N)
   K <- ncol(ev$target$w)
   f_lo <- vapply(.psu_menu_new(ev), function(mh) mh$f_end[1], 0)
@@ -510,7 +510,7 @@
       list(price = lambda[1] / budget, mu = lambda[-1], obj = 1)
     }
     grain <- 0
-    start <- .psu_budget_start(ev, rows1, f_anchor, max_nodes, budget)
+    start <- .psu_budget_start(ev, rows1, f_anchor, max_nodes, budget, gap)
     rows1 <- .psu_menu_rows(first, start)
     p1 <- problem_of(rows1)
     sg1 <- .menu_subgradient(p1, start = .psu_plan_index(
@@ -553,7 +553,7 @@
   start <- .psu_plan_index(p, rows, plan_keys)
   sg2 <- .menu_subgradient(p, sg$lambda, start = start)
   sr <- .menu_search(p, sg2$lambda, sg2$pick, grain = grain,
-                     max_nodes = max_nodes)
+                     max_nodes = max_nodes, gap = gap)
   if (is.null(sr$pick)) {
     stop("internal error: the search lost the plan it started from",
          call. = FALSE)
@@ -581,7 +581,8 @@
 #' budget too small to fund the targets.
 #' @keywords internal
 #' @noRd
-.psu_budget_start <- function(ev, rows1, f_anchor, max_nodes, budget) {
+.psu_budget_start <- function(ev, rows1, f_anchor, max_nodes, budget,
+                              gap = 0) {
   H <- length(ev$N)
   K <- ncol(ev$target$w)
   fits <- function(cost) cost <= budget * (1 + 1e-9)
@@ -608,7 +609,7 @@
   if (!is.null(sg$pick) && fits(sg$ub)) {
     return(.psu_plan_rows(p1, rows1, sg$pick))
   }
-  tp <- .psu_plan(ev, f_anchor, max_nodes)
+  tp <- .psu_plan(ev, f_anchor, max_nodes, gap = gap)
   if (fits(tp$value)) {
     return(lapply(seq_len(H), function(h) {
       s <- tp$rows[[h]]

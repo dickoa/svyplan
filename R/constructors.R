@@ -286,7 +286,9 @@
   stages,
   strata = NULL,
   source = "data",
-  params = list()
+  params = list(),
+  selection = NA_character_,
+  input = "frame"
 ) {
   stopifnot(
     is.numeric(stages),
@@ -295,7 +297,12 @@
     is.character(source),
     length(source) == 1L,
     source %in% c("data", "deff"),
-    is.list(params)
+    is.list(params),
+    is.character(selection),
+    all(is.na(selection) | selection %in% c("srs", "pps")),
+    is.character(input),
+    length(input) == 1L,
+    input %in% c("frame", "weighted", "deff", "se")
   )
   if (is.null(strata)) {
     stopifnot(
@@ -325,7 +332,9 @@
       stages = stages,
       strata = strata,
       source = source,
-      params = params
+      params = params,
+      selection = selection,
+      input = input
     ),
     class = c("svyplan_varcomp", "list")
   )
@@ -448,7 +457,8 @@
 #' @keywords internal
 #' @noRd
 .new_svyplan_df <- function(df, n_units, n_strata, stage, strata = NULL,
-                            domains = NULL) {
+                            domains = NULL, method = "nominal",
+                            nominal = NULL) {
   stopifnot(
     is.numeric(df),
     length(df) == 1L,
@@ -462,7 +472,9 @@
     length(stage) == 1L,
     stage %in% c("psu", "element"),
     is.null(strata) || is.data.frame(strata),
-    is.null(domains) || is.data.frame(domains)
+    is.null(domains) || is.data.frame(domains),
+    method %in% c("nominal", "satterthwaite"),
+    is.null(nominal) || is.numeric(nominal)
   )
 
   structure(
@@ -472,6 +484,8 @@
     stage = stage,
     strata = strata,
     domains = domains,
+    method = method,
+    nominal = nominal,
     class = c("svyplan_df", "numeric")
   )
 }

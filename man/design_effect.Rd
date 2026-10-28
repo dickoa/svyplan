@@ -64,8 +64,9 @@ design, where \code{icc} has length 2.}
 
 \item{var_ratio}{Ratio of the components' unit variance to the analysis
 variable's, default 1. A scalar names \code{var_ratio_psu} and, for a three-stage
-\code{icc}, derives \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)}. Supply a length-2
-vector only to override that identity. See Details.}
+\code{icc}, derives \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)}, the
+value for SSUs of equal size or drawn proportional to size. Supply a
+length-2 vector when SSUs are drawn otherwise. See Details.}
 
 \item{weights}{For an \code{\link[=n_alloc]{n_alloc()}} result only: an \emph{additional}
 anticipated weighting adjustment charged on top of the allocation,
@@ -125,16 +126,17 @@ Estimate \code{icc} (and \code{var_ratio}) from a previous round or pilot with
 
 In the three-stage form \eqn{k_1} rescales the components' unit variance
 to the analysis variable and \eqn{k_2} does the same for the within-PSU
-part, which is \eqn{1-\delta_1} of it. The two are therefore linked,
-\deqn{k_2 = k_1(1 - \delta_1),}
-and that identity is what makes the design effect collapse to \eqn{k_1}
-at \eqn{m=q=1}, where one unit is taken per SSU and one SSU per PSU so no
+part. When SSU size plays no part in the within-PSU estimator, as with
+SSUs of equal size or SSUs drawn proportional to size, that part is
+\eqn{1-\delta_1}{1 - delta_1} of the whole and
+\deqn{k_2 = k_1(1 - \delta_1).}{k_2 = k_1(1 - delta_1).}
+This is what makes the design effect collapse to \eqn{k_1} at
+\eqn{m=q=1}, where one unit is taken per SSU and one SSU per PSU so no
 clustering remains. A scalar \code{var_ratio} supplies \eqn{k_1} and derives
-\eqn{k_2} from it. Supplying both explicitly overrides the identity,
-which is meaningful only when the two ratios come from different
-decompositions. Note that \code{varcomp()} estimates \eqn{k_2} from its own
-SSU-level decomposition rather than imposing the identity, so its value
-can differ by several percent on small clusters.
+\eqn{k_2} this way. When SSUs of unequal size are drawn by simple random
+sampling, their expanded totals also vary with size and \eqn{k_2} is
+larger, up to three times larger on real frames. Supply both ratios then,
+for instance from \code{\link[=varcomp]{varcomp()}} run with the selection the design uses.
 
 Written on components referenced to the total unit variance,
 \eqn{\delta_1=\sigma_1^2/S^2} and \eqn{\delta_2^{tot}=\sigma_2^2/S^2}{delta_2^tot=sigma_2^2/S^2},

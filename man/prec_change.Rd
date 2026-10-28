@@ -177,6 +177,15 @@ design is rejected even when \code{overlap_cor = 0}. In particular, two
 censuses require full overlap. The special \code{overlap = 0} convention
 continues to denote independent samples.
 
+The shared units are a fixed count, \code{overlap * n1}, drawn with the rest
+of the sample, as in a rotating panel. Some designs instead keep a
+retained panel and draw the replacement units independently of it from
+the whole frame, so that a unit can enter twice on one occasion, and
+combine the two parts in proportion to their sizes. That design has the
+same per-unit variance and covariance and differs only in the population
+terms, by an amount of order \eqn{1/N}, so the two agree unless the
+occasions take a large share of the population.
+
 The covariance is a model form, a correlation \code{overlap_cor} between
 occasions among the units the two occasions share, and simple random
 sampling otherwise. It is not the design-based covariance of two waves of

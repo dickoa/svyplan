@@ -62,7 +62,10 @@
 #' @param between Between-stratum variance component. `NULL` (default)
 #'   derives it from the `mean` column as `sum(W * (mean - ybar)^2)`, or
 #'   uses 0 when no `mean` is given. Supply it directly when you know the
-#'   stratification gain but not the stratum means.
+#'   stratification gain but not the stratum means. On a small finite
+#'   population whose unit variance `S2` (divisor `N - 1`) is known,
+#'   `S2 - sum(W * sd^2)` makes the variance exact, since the default
+#'   mixes divisors and differs from it by a term of order `1 / N`.
 #' @param mu Population mean, used to turn the variance into a coefficient
 #'   of variation. `NULL` (default) derives it from `mean` when present.
 #'   Required in `cv` mode when no `mean` column is supplied.
@@ -259,11 +262,14 @@
 #'
 #' In a clustered design each design effect is evaluated at a take the plan
 #' itself sets. Divided by the number of clusters, `n_phase1` is the take
-#' phase 1 screens in each cluster, `n_phase2` the take phase 2 measures,
-#' and `single_phase[["n"]]` the take of the single-phase comparator. A
-#' design effect measured in an earlier survey at another take has to be
-#' converted, for instance as `1 + (m - 1) * rho` at the new take `m` with
-#' intraclass correlation `rho`. The takes then move with the plan, so the
+#' phase 1 screens in each cluster and `single_phase[["n"]]` the take of
+#' the single-phase comparator. A phase-2 stratum is spread over the same
+#' clusters, so its `deff` belongs at its own take, its `n_issued` in
+#' `$detail` divided by the number of clusters, and at the responding take
+#' when the stratum has nonresponse. The aggregate `n_phase2` is not the
+#' take of any stratum. A design effect measured in an earlier survey at
+#' another take has to be converted, for instance as `1 + (m - 1) * rho` at
+#' the new take `m` with intraclass correlation `rho`. The takes then move with the plan, so the
 #' plan is repeated until they settle, which takes a few iterations (see
 #' the examples). The correlation behind the `deff` column is the one left
 #' within a phase-2 stratum. It is lower than the overall correlation, but
@@ -331,19 +337,20 @@
 #'
 #' # A clustered design over 1,000 clusters, with an intraclass correlation
 #' # of 0.1 and of 0.03 within a phase-2 stratum. Each design effect is
-#' # evaluated at the take the plan returns, so the plan is repeated until
-#' # the takes settle.
-#' m1 <- m2 <- m <- 10
+#' # evaluated at the take the plan returns, each stratum at its own, so the
+#' # plan is repeated until the takes settle.
+#' m1 <- m <- 10
+#' m2 <- rep(10, nrow(frame))
 #' for (i in 1:6) {
 #'   fit <- n_twophase(transform(frame, deff = 1 + (m2 - 1) * 0.03),
 #'                     phase1_cost = 1, budget = 50000,
 #'                     phase1_deff = 1 + (m1 - 1) * 0.1,
 #'                     single_deff = 1 + (m - 1) * 0.1)
 #'   m1 <- fit$n[["n_phase1"]] / 1000
-#'   m2 <- fit$n[["n_phase2"]] / 1000
+#'   m2 <- fit$detail$n_issued / 1000
 #'   m <- fit$single_phase[["n"]] / 1000
 #' }
-#' c(m1 = m1, m2 = m2, m = m)
+#' rbind(stratum_take = m2, deff = fit$detail$deff)
 #' fit
 #'
 #' # Weak stratification pushes the fractions up, and strata that reach 1
@@ -983,6 +990,16 @@ n_twophase.default <- function(
 #'   nu        = c(0.4, 0.6)
 #' )
 #' prec_twophase(frame, n_phase1 = 2000, phase1_cost = 1)
+#'
+#' # Ten units in two strata of five, all of the phase-1 sample measured:
+#' # an SRS of 4, whose variance S2 * (1/4 - 1/10) needs the exact 'between'
+#' small <- data.frame(N = c(5, 5), sd = c(2, 2), mean = c(10, 20),
+#'                     nu = c(1, 1))
+#' S2 <- (sum(4 * small$sd^2) + sum(5 * (small$mean - 15)^2)) / 9
+#' prec_twophase(small, n_phase1 = 4, N = 10)$se^2
+#' prec_twophase(small, n_phase1 = 4, N = 10,
+#'               between = S2 - sum(0.5 * small$sd^2))$se^2
+#' S2 * (1 / 4 - 1 / 10)
 #'
 #' @export
 prec_twophase <- function(frame, ...) {

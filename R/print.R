@@ -67,6 +67,28 @@
 #' @name print.svyplan
 NULL
 
+#' Name the stage correction a cluster result carries
+#' @keywords internal
+#' @noRd
+.print_stage_fpc <- function(p) {
+  if (identical(p[["fpc"]], "stage") && is.null(p[["N_psu"]])) {
+    cat(sprintf(
+      "corrected by stage for %s in 'indicators'\n",
+      if (length(p[["domain_cols"]]) > 0L) "each domain's population" else
+        "the population"
+    ))
+  } else if (identical(p[["fpc"]], "stage")) {
+    cat(sprintf(
+      "corrected by stage for N_psu = %s PSUs%s of N = %s units\n",
+      .fmt_count_n(p[["N_psu"]]),
+      if (is.null(p[["N_ssu"]])) "" else
+        sprintf(", N_ssu = %s SSUs", .fmt_count_n(p[["N_ssu"]])),
+      .fmt_count_n(p[["N"]])
+    ))
+  }
+  invisible(NULL)
+}
+
 #' Format the design effect for printing
 #'
 #' `deff = 1` is the most consequential silent default in survey planning,
@@ -574,6 +596,7 @@ print.svyplan_cluster <- function(x, ...) {
     cat(sprintf(" -> total n = %s\n", .fmt_count_n(total_display)))
   }
   .print_stage_rates(x$params)
+  .print_stage_fpc(x$params)
   fc <- x$params$fixed_cost
   op_cv <- if (!is.null(op)) op$cv else x$cv
   op_cost <- if (!is.null(op)) op$cost else x$cost
@@ -646,6 +669,13 @@ print.svyplan_cluster <- function(x, ...) {
         unrounded
       ))
     }
+    if (!isTRUE(x$params$joint) && !is.null(x$params$budget)) {
+      cat(sprintf(
+        "budget = %.0f for each domain, total cost = %.0f\n",
+        x$params$budget, x$cost
+      ))
+    }
+    .print_stage_fpc(x$params)
     dom$.cv <- sprintf("%.4f", dom$.cv)
     dom$.cost <- sprintf("%.0f", dom$.cost)
     cat("\n")
@@ -669,6 +699,7 @@ print.svyplan_cluster <- function(x, ...) {
     cat("field design: ")
     cat(paste(stage_parts, collapse = " | "))
     cat(sprintf(" -> total n = %s\n", .fmt_count_n(total_display)))
+    .print_stage_fpc(x$params)
     op_cv <- if (!is.null(op)) op$cv else x$cv
     op_cost <- if (!is.null(op)) op$cost else x$cost
     fc <- x$params$fixed_cost
@@ -817,6 +848,7 @@ print.svyplan_prec <- function(x, ...) {
       ))
     }
     cat("\n")
+    .print_stage_fpc(p)
   } else {
     notes <- c(x$method, if (!is.null(x$solved)) paste("solved for", x$solved))
     note_label <- if (length(notes) > 0L) {
@@ -896,6 +928,7 @@ print.svyplan_prec <- function(x, ...) {
 #' @noRd
 .print_multi_prec <- function(x) {
   cat("Multi-indicator sampling precision\n")
+  .print_stage_fpc(x$params)
   if (!is.null(x$detail)) {
     cat("\n")
     print(x$detail, row.names = FALSE, right = FALSE)
@@ -908,9 +941,10 @@ print.svyplan_varcomp <- function(x, ...) {
   .check_unused_dots(...)
   if (!is.null(x$strata)) {
     cat(sprintf(
-      "Variance components (%d-stage, %d strata)\n",
+      "Variance components (%d-stage, %d strata%s)\n",
       x$stages,
-      nrow(x$strata)
+      nrow(x$strata),
+      .varcomp_design_label(x)
     ))
     tab <- x$strata
     num <- vapply(tab, is.numeric, logical(1L))
@@ -922,7 +956,11 @@ print.svyplan_varcomp <- function(x, ...) {
   if (identical(x$source, "deff")) {
     return(.print_varcomp_deff(x))
   }
-  cat(sprintf("Variance components (%d-stage)\n", x$stages))
+  cat(sprintf(
+    "Variance components (%d-stage%s)\n",
+    x$stages,
+    .varcomp_design_label(x)
+  ))
   cat(sprintf("varb = %.4f", x$varb))
   varw_names <- names(x$varw)
   for (i in seq_along(x$varw)) {
@@ -942,6 +980,26 @@ print.svyplan_varcomp <- function(x, ...) {
   cat(sprintf("Unit relvariance = %.4f\n", x$unit_relvar))
 
   invisible(x)
+}
+
+#' How the components were obtained, for the print header
+#'
+#' The stage-wise selection matters downstream: components from a
+#' size-proportional stage do not describe a design that selects that stage
+#' by simple random sampling, and the reverse.
+#' @keywords internal
+#' @noRd
+.varcomp_design_label <- function(x) {
+  sel <- x$selection
+  if (is.null(sel) || anyNA(sel)) {
+    return("")
+  }
+  stage <- c(psu = "PSUs", ssu = "SSUs")[names(sel)]
+  paste0(
+    ", ",
+    paste(toupper(sel), stage, collapse = ", "),
+    if (identical(x$input, "weighted")) ", weighted sample" else ", frame"
+  )
 }
 
 #' Report an icc backed out of a published design effect
@@ -2218,6 +2276,13 @@ print.svyplan_strata <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .print_search_limit <- function(search) {
+  if (identical(search$status, "gap")) {
+    cat(sprintf(
+      "search: within %.3g%% of a bound of %s\n",
+      100 * search$gap,
+      format(signif(search$bound, 6), big.mark = ",")
+    ))
+  }
   if (!identical(search$status, "limit")) return(invisible(NULL))
   cat(sprintf(
     "search: stopped at the node limit, gap %.3g%% to a bound of %s\n",
@@ -4615,14 +4680,26 @@ print.svyplan_df <- function(x, ...) {
     if (n_strata == 1L) "stratum" else "strata"
   }
   cat("Design degrees of freedom (planning)\n\n")
-  cat(sprintf(
-    "  df = %g   (%g %s - %d %s)\n",
-    as.double(x),
-    n_units,
-    unit_label,
-    n_strata,
-    constraint_label
-  ))
+  if (identical(attr(x, "method", exact = TRUE), "satterthwaite")) {
+    cat(sprintf(
+      "  df = %.4g   (Satterthwaite, nominal %g = %g %s - %d %s)\n",
+      as.double(x),
+      attr(x, "nominal", exact = TRUE),
+      n_units,
+      unit_label,
+      n_strata,
+      constraint_label
+    ))
+  } else {
+    cat(sprintf(
+      "  df = %g   (%g %s - %d %s)\n",
+      as.double(x),
+      n_units,
+      unit_label,
+      n_strata,
+      constraint_label
+    ))
+  }
   if (!is.null(strata)) {
     flagged <- strata$.status != "ok"
     if (any(flagged)) {
@@ -4654,6 +4731,8 @@ summary.svyplan_df <- function(object, ...) {
   .check_unused_dots(...)
   stage <- attr(object, "stage", exact = TRUE)
   unit_label <- if (identical(stage, "psu")) "PSUs" else "units"
+  method <- attr(object, "method", exact = TRUE) %||% "nominal"
+  nominal <- attr(object, "nominal", exact = TRUE)
   structure(
     list(
       df = as.double(object),
@@ -4662,12 +4741,19 @@ summary.svyplan_df <- function(object, ...) {
       stage = stage,
       strata = attr(object, "strata", exact = TRUE),
       domains = attr(object, "domains", exact = TRUE),
-      basis = if (is.null(attr(object, "strata", exact = TRUE)$n_groups)) {
+      basis = if (identical(method, "satterthwaite")) {
+        sprintf(
+          "Satterthwaite, combining the per-stratum df by each stratum's share of the variance. The per-stratum df add to the nominal %s, counted %s minus contributing strata",
+          format(nominal), unit_label
+        )
+      } else if (is.null(attr(object, "strata", exact = TRUE)$n_groups)) {
         sprintf("counted %s minus contributing strata", unit_label)
       } else {
         sprintf("counted %s minus variance groups (zones, or collapsed zones)",
                 unit_label)
-      }
+      },
+      method = method,
+      nominal = nominal
     ),
     class = "summary.svyplan_df"
   )
@@ -4714,6 +4800,9 @@ print.summary.svyplan_df <- function(x, ...) {
         check.names = FALSE
       )
     }
+    if (identical(x$method, "satterthwaite") && !is.null(x$strata$.share)) {
+      tab[["Variance share"]] <- round(x$strata$.share, 4)
+    }
     overall <- tab[1L, , drop = FALSE]
     overall[1L, ] <- NA
     overall[["Stratum"]] <- "Overall"
@@ -4726,6 +4815,9 @@ print.summary.svyplan_df <- function(x, ...) {
     overall[["Constraints"]] <- x$n_strata
     overall[["Design df"]] <- x$df
     overall[["Status"]] <- ""
+    if ("Variance share" %in% names(overall)) {
+      overall[["Variance share"]] <- sum(x$strata$.share, na.rm = TRUE)
+    }
     print(rbind(tab, overall), row.names = FALSE, quote = FALSE, right = TRUE)
   }
 

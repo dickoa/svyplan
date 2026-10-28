@@ -46,7 +46,12 @@ vector: either one value per observation (constant within each PSU)
 or one value per PSU. A one-per-PSU vector is matched by name when
 named. Unnamed values are taken in sorted order of the unique PSU
 identifiers. Values must be strictly between 0 and 1 and sum to 1
-across PSUs (tolerance 1e-3). \code{NULL} (default) assumes SRS.}
+across PSUs (tolerance 1e-3). \code{NULL} (default) assumes SRS.
+For three stages, a list of two such entries gives the PSU and the SSU
+stage, each \code{NULL} for SRS (e.g., \code{list(~psu_share, ~ssu_share)}). The
+SSU entry has one value per observation, constant within each SSU, and
+sums to 1 across the SSUs of each PSU. It is supported on a complete
+frame only, not with \code{weights}.}
 
 \item{strata}{Optional stratification: a one-sided formula (formula
 and survey.design interfaces) or a vector (default interface).
@@ -112,6 +117,12 @@ when \code{icc} was backed out of a design effect.}
 \item{\code{params}}{The take that identifies a backed-out \code{icc},
 \code{n_per_psu} alongside the nominal \code{n_per_psu_nominal}. Empty on the
 estimated path, where the take is a later design choice.}
+\item{\code{selection}}{How each sampled stage above the units is drawn,
+\code{"srs"} or \code{"pps"}, named \code{psu} and, at three stages, \code{ssu}. \code{NA}
+for a backed-out \code{icc}, where the design effect does not say.}
+\item{\code{input}}{What the components were computed from: \code{"frame"},
+\code{"weighted"} (a sample with within-cluster weights), \code{"deff"} or
+\code{"se"} (a published design effect or standard error).}
 }
 The result can be exported with \code{\link[=as.data.frame]{as.data.frame()}}. Unstratified results
 become a one-row two- or three-stage component table. Stratified results
@@ -122,7 +133,8 @@ fields a design effect does not identify.
 \description{
 Estimate variance components for multistage sampling from frame or
 sample data, or infer a measure of homogeneity from a previous round's
-published design effect. Supports SRS and PPS first-stage designs.
+published design effect. Supports SRS and PPS selection of PSUs and,
+at three stages, of SSUs.
 }
 \details{
 The interface is determined by the class of \code{x}:
@@ -163,6 +175,15 @@ Informative within-cluster sampling remains approximate. In the
 element-stage estimation noise but not SSU-stage subsampling noise,
 so when few SSUs are sampled per PSU the between-PSU component (and
 \code{icc_psu}) is conservative: biased upward, never downward.
+
+A sample passed without \code{weights} is read as the frame, and that
+overstates \code{icc}. Each sampled PSU's mean carries the noise of its own
+subsample, about \eqn{(1 - f_2) S_w^2 / m}{(1 - f2) S_w^2 / m} for a take of
+\eqn{m} from a PSU with within-PSU variance \eqn{S_w^2}, and the
+between-PSU component absorbs it, so planning with it counts the
+within-PSU variance twice. The \code{weights} correction is what removes that
+term. Neither path estimates the sampling variance of the sample's own
+estimate, whose estimator combines the two components differently.
 \subsection{What a survey.design can supply on its own}{
 
 The \code{survey.design} method needs those same within-cluster weights, and
@@ -336,22 +357,31 @@ In both cases \code{unit_relvar} is the ultimate-unit variance divided by the
 squared ultimate-unit mean, \code{icc = varb / (varb + varw)}, and
 \code{var_ratio = (varb + varw) / unit_relvar}.
 
-For three stages, \code{varb} uses the PPS between-PSU expression above.
-\code{varw_psu} applies the same PPS scaling to the variance of SSU totals
-within each PSU, and \code{varw_ssu} aggregates the within-SSU ultimate-unit
+For three stages, \code{varb} uses the between-PSU expression above that
+matches the first stage, the SRS one without \code{prob} and the PPS one with
+it. \code{varw_psu} scales the variance of SSU totals within each PSU by the
+inverse draw probability \eqn{1/p_i}, which is \eqn{M} without \code{prob}, and \code{varw_ssu} aggregates the within-SSU ultimate-unit
 variances. The returned PSU homogeneity compares the between-PSU component
 with the element-level variance aggregated within PSUs. The SSU
 homogeneity is \code{varw_psu / (varw_psu + varw_ssu)}. This distinction is why
 the first \code{icc} is not generally \code{varb / sum(c(varb, varw))} for a
 three-stage result.
 
-The two \code{var_ratio} values are estimated from their own stage decompositions
-rather than by imposing the identity \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)}
-that the planning formula uses (see \code{\link[=design_effect]{design_effect()}}). On small clusters
-the two can differ by several percent. Passing a \code{svyplan_varcomp} to a
-planning function uses the estimated pair as given, and omitting
-\code{var_ratio_ssu} there
-applies the identity instead.
+The two \code{var_ratio} values are estimated from their own stage
+decompositions, and \code{var_ratio_ssu} depends on how SSUs are drawn. By
+default SSUs are taken by simple random sampling within each PSU and
+their totals are expanded by the number of SSUs. When SSU sizes vary,
+those totals vary with size as well as with content, so \code{var_ratio_ssu}
+rises above the \code{var_ratio_psu * (1 - icc_psu)} that planning functions
+derive when it is not supplied, and the more so the smaller the unit
+relvariance. On a frame of census tracts and block groups this ranged
+from 1.2 to 3.2 against derived values near 1. A second-stage \code{prob}
+(one-draw probabilities of the SSUs within their PSU, usually their size
+share) describes selection proportional to size instead. The size effect
+then cancels, and \code{var_ratio_ssu} comes close to the derived value.
+Use the \code{prob} that matches the design being planned. Passing a
+\code{svyplan_varcomp} to a planning function uses the estimated pair as
+given.
 
 When weights are supplied, \eqn{N_i}, totals, means, and variances in these
 expressions are their weighted estimates. The code subtracts the stated
@@ -372,6 +402,23 @@ match the \code{\link[=n_alloc]{n_alloc()}} frame contract, so after adding stra
 it feeds a stratified two-stage allocation directly. When \code{prob} is
 combined with \code{strata}, supply one value per observation, summing
 to 1 within each stratum.
+}
+
+\subsection{icc and the intraclass correlation}{
+
+\code{icc} is the between-PSU share of the two components, so it is never
+negative. The intraclass correlation of single-stage cluster sampling,
+the average correlation between units of the same cluster, can be
+negative, and a cluster sample is then more efficient than a simple
+random sample of the same size. In this parameterization that case shows
+as a small positive \code{icc}, not a negative one. Under the stage-by-stage
+correction (\code{fpc = "stage"} in \code{\link[=n_cluster]{n_cluster()}}), a design whose
+\code{icc <= 1 / (M + 1)}, for \code{M} units per PSU, is most efficient taking
+whole PSUs. For PSUs of equal size drawn by simple random sampling, and
+frame components, whole PSUs beat a simple random sample of the same size
+exactly when \code{icc < 1 / (M + 1)}. A negative correlation
+published elsewhere therefore cannot be passed as \code{icc}. Estimate the
+components from the frame instead.
 }
 }
 \section{Methods (by class)}{
@@ -437,6 +484,27 @@ vc3
 # 3-stage PPS (explicit first-stage probabilities)
 frame3$pp <- rep(1 / 20, 400)
 vc3_pps <- varcomp(income ~ district/village, data = frame3, prob = ~pp)
+
+# Villages of unequal size. Drawn by SRS, their totals vary with size
+# and var_ratio_ssu is large. Drawn proportional to size (each
+# village's share of its district), it is close to the derived value.
+set.seed(42)
+sizes <- rpois(100, 8) + 2
+frame4 <- data.frame(
+  district = rep(rep(1:20, each = 5), sizes),
+  village = rep(1:100, sizes),
+  income = rnorm(sum(sizes), 50000, 10000)
+)
+n_district <- ave(frame4$income, frame4$district, FUN = length)
+frame4$district_share <- n_district / nrow(frame4)
+frame4$village_share <- ave(frame4$income, frame4$village, FUN = length) /
+  n_district
+varcomp(income ~ district/village, data = frame4,
+        prob = ~district_share)$var_ratio
+vc4 <- varcomp(income ~ district/village, data = frame4,
+               prob = list(~district_share, ~village_share))
+vc4$var_ratio
+vc4$var_ratio[[1]] * (1 - vc4$icc[[1]])
 
 # Vector (list) interface
 varcomp(frame3$income,

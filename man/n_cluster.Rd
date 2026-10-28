@@ -24,6 +24,10 @@ n_cluster(stage_cost = NULL, ...)
   resp_rate = 1,
   eligible_rate = 1,
   fixed_cost = 0,
+  fpc = c("none", "stage"),
+  N = NULL,
+  N_psu = NULL,
+  N_ssu = NULL,
   indicators = NULL,
   domains = NULL,
   allocation = c("separate", "joint"),
@@ -62,11 +66,10 @@ it.}
 
 \item{var_ratio}{Ratio of the stage components' unit variance to the analysis
 variable's, default 1. A scalar names \code{var_ratio_psu} and, for a three-stage
-design, derives \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)}, the identity the
-variance decomposition imposes. Supply a length-2 vector only to
-override it, which is meaningful when the two stages' ratios come from
-different decompositions. See \code{\link[=design_effect]{design_effect()}} for the identity and
-why the design effect would not reduce to \code{var_ratio_psu} without it. The
+design, derives \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)}, the
+value for SSUs of equal size or drawn proportional to size. Supply a
+length-2 vector when SSUs of unequal size are drawn by simple random
+sampling, where it is larger. See \code{\link[=design_effect]{design_effect()}}. The
 default of 1 is appropriate for most designs. A \code{\link[=varcomp]{varcomp()}} result passed
 as \code{icc} sets it, and an explicit value is then refused.}
 
@@ -121,6 +124,23 @@ The total cost model becomes
 In budget mode, only \code{budget - fixed_cost} is available for variable
 costs. In CV mode, \code{fixed_cost} is added to the variable cost.}
 
+\item{fpc}{Which finite population correction the variance carries.
+\code{"none"} (default) drops every sampling fraction, the usual model when
+each stage samples a small share of its units. \code{"stage"} corrects each
+component by its own stage's sampling fraction and needs \code{N} and
+\code{N_psu}, and \code{N_ssu} at three stages. See "Finite populations".}
+
+\item{N}{Number of final-stage units in the population, the units the
+takes count. With \code{eligible_rate} the correction reads
+\code{N * eligible_rate} eligible units. Read only with \code{fpc = "stage"} and
+refused otherwise.}
+
+\item{N_psu}{Number of PSUs in the population. Read only with
+\code{fpc = "stage"} and refused otherwise.}
+
+\item{N_ssu}{Number of SSUs in the population, across all PSUs. Read only
+with \code{fpc = "stage"} at three stages and refused otherwise.}
+
 \item{indicators}{Optional data frame with one row per indicator, which
 switches the function to the several-indicators mode of Details. Each
 row carries its own homogeneity and its own precision target, and the
@@ -129,7 +149,8 @@ indicator that \code{icc}, \code{unit_relvar}, \code{var_ratio} and \code{cv} de
 
 \item{domains}{Optional character vector naming domain columns in
 \code{indicators}. Each domain is solved on its own unless
-\code{allocation = "joint"} in budget mode. Domains are sized as separate
+\code{allocation = "joint"} in budget mode, so a \code{budget} then applies to
+each domain and \verb{$cost} is their sum. Domains are sized as separate
 quotas, so \verb{$total_n} is their sum and \verb{$n} carries no aggregate stage
 vector. The fieldable per-domain stage sizes are in \verb{$domains}, and
 \code{domain_sampling} covers why the quota reading is the only one offered
@@ -259,8 +280,8 @@ Each row needs \code{p}, \code{var}, or the ratio quartet (\code{r}, \code{cv_nu
 \code{component_cor}), a \code{cv}, \code{moe} or \code{rmoe} target, and \code{icc_psu}. A
 three-stage design also needs \code{icc_ssu}. Optional \code{var_ratio_psu} defaults
 to 1, and three-stage \code{var_ratio_ssu} is derived as
-\code{var_ratio_psu * (1 - icc_psu)} when absent, the value the variance
-decomposition implies (see \code{\link[=design_effect]{design_effect()}}). On a ratio row \code{icc_psu},
+\code{var_ratio_psu * (1 - icc_psu)} when absent, the value for SSUs of equal
+size or drawn proportional to size (see \code{\link[=design_effect]{design_effect()}}). On a ratio row \code{icc_psu},
 \code{icc_ssu} and the stage variance ratios describe the linearized variable
 \code{e = y - r * x}, not either component. The remaining columns follow
 \code{\link[=n_multi]{n_multi()}}.
@@ -363,31 +384,63 @@ whole-unit designs both keep it there. The smallest whole take is
 fractional take whose rounding would fall short rounds up to it. With
 \code{indicators}, the rows share the takes, so the row with the lowest rate
 sets the bound.
-
-These functions assume sampling fractions are negligible at each stage
-(equivalent to sampling with replacement). No finite population correction
-is applied. This is standard for multistage planning when cluster
-populations are large relative to the sample.
-
-\code{\link[=n_alloc]{n_alloc()}} differs here. Its cluster mode carries the ultimate-unit
-correction \code{1 - n / N}, so the two agree only where the ultimate-unit
-sampling fraction is negligible. They are the same variance model
-otherwise, and the clustering bracket, the stage response rates and the
-cost-optimal take are shared exactly. Size a design through both at an
-appreciable sampling fraction and \code{n_alloc()} returns the smaller answer,
-by that correction and nothing else.
 }
 
-\subsection{A domain that takes most of its PSUs}{
+\subsection{Finite populations}{
 
-The first stage is treated as drawn with replacement, so nothing here
-knows how many PSUs a stratum or domain holds. A small domain, such as
-an island district of 16 enumeration areas, can then be given more PSUs
-than it has, and a sample that takes most of them is assessed as if
-they were a few among many. \code{\link[=n_alloc]{n_alloc()}} and \code{\link[=prec_alloc]{prec_alloc()}} read \code{N_psu}
-in the frame and, with \code{fpc = "stage"}, apply the stage-by-stage
-correction. They size and assess such a domain, as the \code{\link[=prec_alloc]{prec_alloc()}}
-examples show.
+By default no finite population correction is applied at any stage,
+which amounts to drawing every stage with replacement. That is the usual
+planning model when each stage samples a small share of its units, as
+with a few households from enumeration areas of several hundred.
+
+With \code{fpc = "stage"} each component is corrected by its own stage. For
+PSUs drawn with equal probability and a common take,
+\deqn{CV^2 = \frac{Vk}{a}\Big[\delta\Big(1 - \frac{a}{A}\Big)
+  + \frac{1-\delta}{m}\Big(1 - \frac{m}{M}\Big)\Big],}{CV^2 = (V k / a) [delta (1 - a/A) + (1 - delta)/m (1 - m/M)],}
+with \eqn{A} = \code{N_psu}, \eqn{M} = \code{N / N_psu} units per PSU, and
+\eqn{a} and \eqn{m} the responding PSU count and take. A three-stage
+design also needs \code{N_ssu}. Its SSU component is corrected by the share
+taken of the \code{N_ssu / N_psu} SSUs per PSU, and its unit component by the
+share taken of the \code{N / N_ssu} units per SSU. This is exact for PSUs and
+SSUs of equal size drawn with equal probability, when \code{icc} and
+\code{var_ratio} are the frame components \code{\link[=varcomp]{varcomp()}} returns without \code{prob}.
+Components from a size-proportional stage describe another design and
+are refused.
+
+The correction moves the cost-optimal take to
+\deqn{m = \sqrt{\frac{c_1(1-\delta)}{c_2\,r\,\{\delta - (1-\delta)/M\}}},}{m = sqrt(c_1 (1 - delta) / (c_2 r (delta - (1 - delta)/M))),}
+and to the whole PSU when \eqn{\delta \le 1/(M+1)}{delta <= 1/(M + 1)}. A
+further unit inside a PSU then always buys more precision than a further
+PSU, so the efficient design takes whole clusters. The move matters for
+small PSUs, such as plots or clusters of a few dozen units, and is
+negligible at a few hundred units per PSU. At three stages the same
+happens one level down. The unit fraction lowers the SSU component and
+the SSU fraction lowers the PSU component, and when either reaches zero
+the efficient design takes whole SSUs, or every SSU of a PSU.
+
+A design never takes more PSUs, SSUs or units than the population holds.
+Once a budget or a target calls for more PSUs than \code{N_psu}, every PSU is
+taken and the rest goes to the takes. A fixed take that would need more
+PSUs than exist is refused, since a larger take may still reach the
+target. \code{N} counts final-stage units, as the takes do, and with
+\code{eligible_rate} the correction reads \code{N * eligible_rate} eligible units.
+
+With \code{indicators}, the arguments \code{N}, \code{N_psu} and \code{N_ssu} describe the
+one population every row is measured on, and the design meets every
+row's corrected target. With \code{domains}, each domain is a population of
+its own, and its counts are \code{indicators} columns of the same names,
+constant within the domain. That needs domains made of whole PSUs, such
+as regions or urban and rural strata. A domain that cuts across PSUs,
+such as an age group, has no PSU count of its own. The sizes in
+\verb{$domains} are continuous and the print rounds them up, so a printed take
+can pass a mean PSU size that is not a whole number by less than one
+unit.
+
+\code{\link[=n_alloc]{n_alloc()}} and \code{\link[=prec_alloc]{prec_alloc()}} apply the same correction with
+\code{fpc = "stage"}, and a one-row allocation returns the same continuous
+design. Their default \code{fpc = "unit"} applies \code{1 - n / N} to the whole
+variance instead, so without the argument the two functions agree only
+where that fraction is negligible.
 }
 }
 \examples{
@@ -419,6 +472,28 @@ n_cluster(
 
 # With fixed overhead cost
 n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, fixed_cost = 5000)
+
+# 100 plots of 49 trees: the stage correction moves the cost-optimal
+# take from about 6.3 to 7
+n_cluster(stage_cost = c(12, 3), icc = 5 / 54, unit_relvar = 0.54,
+          budget = 1000)
+n_cluster(stage_cost = c(12, 3), icc = 5 / 54, unit_relvar = 0.54,
+          budget = 1000, fpc = "stage", N = 4900, N_psu = 100)
+
+# A capital of 30 EAs and a rural domain of 900, each its own population
+rows <- data.frame(name = c("stunting", "anemia"), p = c(0.30, 0.10),
+                   cv = c(0.08, 0.12), icc_psu = c(0.03, 0.12))
+by_region <- rbind(
+  transform(rows, region = "capital", N = 4500, N_psu = 30),
+  transform(rows, region = "rural", N = 135000, N_psu = 900)
+)
+n_cluster(indicators = by_region, stage_cost = c(120, 10),
+          domains = "region", fpc = "stage")
+
+# 40 villages of 10 hamlets of 30 households, three stages
+n_cluster(stage_cost = c(300, 50, 10), icc = c(0.04, 0.10),
+          unit_relvar = 0.7 / 0.3, cv = 0.06, fpc = "stage",
+          N = 12000, N_psu = 40, N_ssu = 400)
 
 # Several indicators, CV mode
 indicators <- data.frame(

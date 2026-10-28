@@ -27,9 +27,14 @@ SEXP C_menu_group_min(SEXP x, SEXP ends) {
     R_xlen_t lo = g == 0 ? 0 : e[g - 1];
     if (e[g] <= lo || e[g] > rows) Rf_error("'ends' must increase within 'x'");
   }
-  SEXP mn = PROTECT(Rf_allocMatrix(REALSXP, G, K));
-  SEXP sec = PROTECT(Rf_allocMatrix(REALSXP, G, K));
-  SEXP arg = PROTECT(Rf_allocMatrix(INTSXP, G, K));
+  /* A vector gives vectors, which the node loop reads without a copy. */
+  int vec = Rf_isNull(dim);
+  SEXP mn = PROTECT(vec ? Rf_allocVector(REALSXP, G) :
+                          Rf_allocMatrix(REALSXP, G, K));
+  SEXP sec = PROTECT(vec ? Rf_allocVector(REALSXP, G) :
+                           Rf_allocMatrix(REALSXP, G, K));
+  SEXP arg = PROTECT(vec ? Rf_allocVector(INTSXP, G) :
+                           Rf_allocMatrix(INTSXP, G, K));
   const double *px = REAL(x);
   double *pm = REAL(mn), *ps = REAL(sec);
   int *pa = INTEGER(arg);

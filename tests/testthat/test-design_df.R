@@ -346,7 +346,8 @@ test_that("summary replaces the meaningless scalar numeric summary", {
   expect_s3_class(s, "summary.svyplan_df")
   expect_identical(
     names(s),
-    c("df", "n_units", "n_strata", "stage", "strata", "domains", "basis")
+    c("df", "n_units", "n_strata", "stage", "strata", "domains", "basis",
+      "method", "nominal")
   )
   expect_equal(s$df, 280)
   expect_equal(s$n_units, 300)
@@ -598,4 +599,79 @@ test_that("design degrees of freedom cannot be modified in place", {
   expect_error({f[1] <- 99}, "cannot be modified in place")
   expect_error({f[[1]] <- 99}, "cannot be modified in place")
   expect_equal(as.double(f), 36)
+})
+
+## Satterthwaite degrees of freedom from the variance shares
+
+.sat_frame <- data.frame(
+  stratum = c("a", "b", "c"),
+  N = c(500, 50000, 8000),
+  sd = c(200, 5, 30),
+  mean = c(1000, 20, 80)
+)
+
+test_that("satterthwaite combines the strata by their variance shares", {
+  fit <- n_alloc(.sat_frame, n = 600, alloc = "proportional")
+  got <- design_df(fit, method = "satterthwaite")
+  share <- fit$detail$.share
+  nu <- fit$detail$n_int - 1
+  expect_equal(as.double(got), 1 / sum(share^2 / nu), tolerance = 1e-12)
+  expect_equal(attr(got, "nominal"), as.double(design_df(fit)))
+  expect_gt(as.double(got), min(nu))
+  expect_lte(as.double(got), sum(nu))
+  expect_equal(got$strata$.share, share)
+})
+
+test_that("a small stratum carrying the variance pulls the value down", {
+  fit <- n_alloc(.sat_frame[1:2, ], n = 400, alloc = "proportional")
+  expect_lt(as.double(design_df(fit, method = "satterthwaite")), 10)
+  expect_equal(as.double(design_df(fit)), 398)
+})
+
+test_that("a cluster allocation counts PSUs in each stratum's df", {
+  frame <- transform(.sat_frame, icc_psu = 0.05, n_per_psu = 10)
+  fit <- n_alloc(frame, n = 3000)
+  got <- design_df(fit, method = "satterthwaite")
+  nu <- fit$detail$n_psu_int - 1
+  share <- fit$detail$.share
+  expect_equal(as.double(got), 1 / sum(share^2 / nu), tolerance = 1e-12)
+  expect_identical(attr(got, "stage"), "psu")
+})
+
+test_that("satterthwaite prints beside its nominal count", {
+  fit <- n_alloc(.sat_frame, n = 600, alloc = "proportional")
+  out <- capture.output(print(design_df(fit, method = "satterthwaite")))
+  expect_true(any(grepl("Satterthwaite, nominal 597", out, fixed = TRUE)))
+})
+
+test_that("satterthwaite is refused without one share per stratum", {
+  register <- data.frame(stratum = "A", N = rep(1000, 100))
+  zoned <- n_alloc(
+    data.frame(stratum = "A", N = 100000, n_per_psu = 10),
+    measures = data.frame(stratum = "A", name = "y", p = 0.5, icc_psu = 0.05),
+    targets = data.frame(name = "y", cv = 0.08),
+    psu = register, n_psu_per_zone = 2
+  )
+  expect_error(design_df(zoned, method = "satterthwaite"), "zoned register")
+})
+
+test_that("the summary of a Satterthwaite df names it and its nominal count", {
+  f <- data.frame(stratum = c("a", "b"), N = c(500, 50000), sd = c(200, 5),
+                  mean = c(1000, 20))
+  d <- design_df(n_alloc(f, n = 400, alloc = "proportional"),
+                 method = "satterthwaite")
+  s <- summary(d)
+  expect_identical(s$method, "satterthwaite")
+  expect_equal(s$nominal, 398)
+  expect_output(print(s), "Basis: Satterthwaite")
+  expect_output(print(s), "Variance share")
+  nominal <- summary(design_df(n_alloc(f, n = 400, alloc = "proportional")))
+  expect_output(print(nominal), "counted units minus contributing strata")
+})
+
+test_that("Satterthwaite is refused for a single size", {
+  expect_error(
+    design_df(n_prop(p = 0.5, moe = 0.1), method = "satterthwaite"),
+    "a single size has one stratum"
+  )
 })

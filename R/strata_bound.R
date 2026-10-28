@@ -118,7 +118,9 @@
 #'     the whole allocation in `$strata$n` was chosen, with the fields of
 #'     `$optimization$search` in [n_alloc()]: `family` (`"whole units"`),
 #'     `status` (`"optimal"` when the search proved the allocation the best,
-#'     `"limit"` when its node limit came first), a lower `bound` on the
+#'     `"gap"` when it stopped within 1e-6 of the bound at its node limit,
+#'     `"limit"` when its node limit came first with a larger gap), a lower
+#'     `bound` on the
 #'     sample (`"neyman"`) or cost (`"optimal"`) and the relative `gap` to
 #'     it, `nodes` and `max_nodes`, and the stratum sizes listed (`states`)
 #'     and kept (`kept`). `NULL` in the other modes, which round.}

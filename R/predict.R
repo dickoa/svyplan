@@ -124,8 +124,8 @@
 #' or a fit with zones, adds `n_zone`. A register fit sized to an
 #' `objective` within a `budget` varies `budget` as well.
 #'
-#' A register grid adds `.status`. It reads `"optimal"` or `"limit"` for a
-#' row with a plan, as `$operational$status` does, `"infeasible"` where no
+#' A register grid adds `.status`. It reads `"optimal"`, `"gap"` or
+#' `"limit"` for a row with a plan, as `$operational$status` does, `"infeasible"` where no
 #' design exists, and `"unknown"` where the search stopped before finding
 #' one or the solve failed, a row whose `.feasible` is `NA`. In budget mode
 #' `objective_value` and `cv` are those of the field design. A row the node
@@ -456,6 +456,9 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
     "cv", "budget", "unit_relvar", "resp_rate_psu", "resp_rate_ssu",
     "resp_rate", "eligible_rate", "fixed_cost",
     "n_psu", "n_per_psu", "n_per_ssu",
+    if (identical(object$params[["fpc"]], "stage")) {
+      c("N", "N_psu", if (stages == 3L) "N_ssu")
+    },
     icc_meta$allowed, k_meta$allowed, cost_meta$allowed
   ))
   .validate_newdata(newdata, allowed)
@@ -474,7 +477,8 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
     eligible_rate = p$eligible_rate %||% 1,
     n_psu = p$n_psu,
     n_per_psu = p$n_per_psu, n_per_ssu = p$n_per_ssu,
-    fixed_cost = p$fixed_cost %||% 0
+    fixed_cost = p$fixed_cost %||% 0,
+    N = p[["N"]], N_psu = p[["N_psu"]], N_ssu = p[["N_ssu"]]
   )
 
   if (has_cv_col) {
@@ -512,7 +516,9 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
       resp_rate_ssu = params$resp_rate_ssu %||% 1,
       resp_rate = params$resp_rate %||% 1,
       eligible_rate = params$eligible_rate %||% 1,
-      fixed_cost = params$fixed_cost
+      fixed_cost = params$fixed_cost,
+      fpc = p[["fpc"]] %||% "none",
+      N = params[["N"]], N_psu = params[["N_psu"]], N_ssu = params[["N_ssu"]]
     )
     out <- as.list(res$n)
     out$total_n <- res$total_n
@@ -1007,12 +1013,12 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       "n_int", "cost_int", ".status", ".feasible"),
     names(values)
   )
-  planned <- function(r) values$.status[r] %in% c("optimal", "limit")
+  planned <- function(r) values$.status[r] %in% c("optimal", "gap", "limit")
   for (k in unique(key)) {
     rows <- which(key == k)
     best <- NA_integer_
     for (r in rows[order(newdata$budget[rows])]) {
-      if (!is.na(best) && values$.status[r] %in% c("limit", "unknown") &&
+      if (!is.na(best) && values$.status[r] %in% c("gap", "limit", "unknown") &&
             (!planned(r) ||
                values$objective_value[best] < values$objective_value[r])) {
         values[r, field] <- values[best, field]

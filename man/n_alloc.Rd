@@ -190,8 +190,8 @@ Indicator values (\code{p}, \code{mean}, \code{sd}, \code{var}) belong here, and
 columns of those names are refused. In fixed-take
 multistage mode, \code{icc_psu} is required and \code{var_ratio_psu} defaults to 1.
 Three-stage mode also requires \code{icc_ssu} and derives \code{var_ratio_ssu} as
-\code{var_ratio_psu * (1 - icc_psu)} when it is absent, which is the value the
-variance decomposition implies.
+\code{var_ratio_psu * (1 - icc_psu)} when it is absent, the value for SSUs of
+equal size or drawn proportional to size (see \code{\link[=design_effect]{design_effect()}}).
 Stage parameters may instead be supplied as stratum defaults in \code{frame},
 in which case non-missing measure-row values take precedence.
 Only rows selected by a
@@ -256,7 +256,10 @@ of search nodes after which the search stops with the best design
 found, the status \code{"limit"} and a lower bound. It finishes the node it
 is expanding, so it can open a few nodes past the limit. A larger value
 can prove a design the default leaves at the limit, at the cost of
-time. A mode that does not search refuses it.}
+time. \code{gap}, a number in [0, 1), 0 by default, stops the search once
+the design is within that relative gap of the bound, with the status
+\code{"gap"}. A stop at the node limit within 1e-6 of the bound also reads
+\code{"gap"}. A mode that does not search refuses \code{control}.}
 
 \item{objective}{Optional estimates whose priority-weighted relative
 variance is minimized among the allocations that meet \code{targets} and the
@@ -331,7 +334,8 @@ cluster allocation: \code{"unit"} (default) for the ultimate-unit
 \code{1 - n / N} on the whole inflated variance, \code{"stage"} for the
 stage-by-stage correction, exact under the equal-size, equal-take
 variance-component model this path assumes, or \code{"none"} for
-\code{\link[=n_cluster]{n_cluster()}}'s with-replacement model. \code{"stage"} requires \code{N_psu}, and
+\code{\link[=n_cluster]{n_cluster()}}'s default with-replacement model. \code{"stage"} and \code{"none"}
+match \code{\link[=n_cluster]{n_cluster()}} with the same \code{fpc}. \code{"stage"} requires \code{N_psu}, and
 \code{N_ssu} as well at three stages. Refused outside cluster allocation and
 with a \code{psu} register. See the correction section in Details.}
 
@@ -442,8 +446,9 @@ cut into, so \code{n_psu_draw = n_zone * n_psu_per_zone}.}
 The result also carries an \verb{$operational} list describing the integer
 field design. In joint mode it contains total \code{n}, variable field \code{cost},
 the full target table in \code{constraints}, \code{all_pass}, and \code{status},
-\code{"optimal"} when the search proved the design the best and \code{"limit"}
-when its node limit came first. With \code{psu} it adds \code{n_certain} and
+\code{"optimal"} when the search proved the design the best, \code{"gap"} when it
+stopped within the gap of \code{control}, or within 1e-6 at the node limit,
+and \code{"limit"} when its node limit came first with a larger gap. With \code{psu} it adds \code{n_certain} and
 \code{n_psu_draw}. In the classic modes it also reports the applicable
 aggregate \code{se}, \code{moe}, and \code{cv}. Top-level quantities describe the
 continuous design, while \code{as.integer()} returns the operational total.
@@ -481,7 +486,8 @@ designs are its whole sizes or whole PSU counts. With \code{psu},
 \code{"voluntary"} under stage costs, where a stratum's designs include
 those holding its largest PSUs in certainty below the threshold, and
 \code{"closure"} under unit cost, where they do not.}
-\item{\code{status}}{\code{"optimal"} or \code{"limit"}, as in \verb{$operational}.}
+\item{\code{status}}{\code{"optimal"}, \code{"gap"} or \code{"limit"}, as in
+\verb{$operational}.}
 \item{\code{bound}, \code{gap}}{A lower bound on the cost of any design in the
 family that meets every target, and the relative gap
 \code{(cost - bound) / cost}, 0 when the design is proved the cheapest.
@@ -594,7 +600,9 @@ probability proportional to size, pass \code{prob} to \code{\link[=varcomp]{varc
 \item \code{n_per_psu} (optional): fixes the per-stratum take, in the
 operational whole-unit design as much as in the continuous one. Any
 \code{NA} entries are replaced by the cost-optimal take
-\code{sqrt(cost_psu / cost_ssu * (1 - icc_psu) / icc_psu)}. Holding the
+\code{sqrt(cost_psu / cost_ssu * (1 - icc_psu) / icc_psu)}, or its
+stage-corrected form under \code{fpc = "stage"} (see "Which correction the
+variance carries"). Holding the
 take is what \code{n} mode gives up its exact total for. The stratum is
 fielded as a whole number of clusters of that size, so its element
 count lands on the nearest multiple.
@@ -628,14 +636,13 @@ since no PSU fields more units than it holds, even where the rule's
 continuous take is larger. Without \code{N_psu} the take stays at the rule's
 whole take.
 
-The continuous design takes the cost-optimal take of the model without a
-finite population correction. Under \code{fpc = "unit"} or \code{"stage"} a
-different take can buy more precision for the same cost, so the
-continuous design is the rule's design rather than the continuous
-optimum, and the whole design, which the search chooses under the
-correction, can do better than it. The difference is small under
-\code{"unit"} and can be large under \code{"stage"}, where a take near the PSU
-size removes most of the within-PSU variance.
+Under \code{fpc = "none"} and \code{"stage"} the continuous take is the exact
+cost-optimal take of the variance the allocation reports. Under the
+default \code{"unit"} it is the take without a correction, since there the
+optimal take moves with the budget. A slightly different take can then
+buy a little more precision for the same cost, and the whole design,
+which the search chooses under the correction, can do better than the
+continuous one.
 
 On its own it does \strong{not} activate a first-stage finite population
 correction. Under the default \code{fpc = "unit"} no factor keyed to the PSU
@@ -687,7 +694,7 @@ first stage, and stochastic rather than expected nonresponse each need
 a more general variance expression, so it is refused with a \code{psu}
 register.
 \item \code{"none"} applies no correction at any stage, which is \code{\link[=n_cluster]{n_cluster()}}'s
-model exactly. Use it to compare the two interfaces at a sampling
+default model exactly. Use it to compare the two interfaces at a sampling
 fraction where the correction would otherwise separate them.
 }
 
@@ -701,6 +708,22 @@ use at all. Under unequal PSU sizes that mean is a stand-in, and planners
 usually know it less well than they know \code{icc_psu} and the take. Choose
 \code{"stage"} when the PSU sizes really are close to equal and the fractions
 are large enough to matter.
+
+Under \code{"stage"} a free take is the cost-optimal take of the corrected
+variance. With \eqn{r} the unit response rate it is
+
+\deqn{m = \sqrt{\frac{c_1(1-\delta)}{c_2\,r\,\{\delta - (1-\delta)/M\}}}.}{m = sqrt(c_1 (1 - delta) / (c_2 r (delta - (1 - delta)/M))).}
+
+The within-PSU fraction lowers the between-PSU term to
+\eqn{\delta - (1-\delta)/M}{delta - (1 - delta)/M}. When
+\eqn{\delta \le 1/(M+1)}{delta <= 1/(M + 1)} that term is not positive, a
+further unit inside a PSU always buys more precision than a further PSU,
+and the take is the whole PSU, \eqn{M}. The take moves well away from the
+uncorrected one only for small PSUs. At \eqn{M = 50} and
+\eqn{\delta = 0.02}{delta = 0.02}, keeping the uncorrected take would cost
+about a fifth of the variance at the same budget, and at a few hundred
+units per PSU the two takes give the same variance to within half a
+percent.
 
 Note that the two fractions are controlled by different quantities.
 \eqn{f_1} falls as the design takes a smaller share of the PSU universe,
@@ -1111,6 +1134,13 @@ frame_cluster <- data.frame(
 )
 
 n_alloc(frame_cluster, cv = 0.05)
+
+# Small PSUs of 49 units each: the stage correction moves the
+# cost-optimal take from about 6.3 to 7
+plots <- data.frame(N = 4900, N_psu = 100, sd = sqrt(54), mean = 10,
+                    icc_psu = 5 / 54, cost_psu = 12, cost_ssu = 3)
+n_alloc(plots, budget = 1000, fpc = "none")$detail$n_per_psu
+n_alloc(plots, budget = 1000, fpc = "stage")$detail$n_per_psu
 
 # Certainty PSUs from a register that lists every PSU with its size.
 # The "City" stratum is a single PSU.

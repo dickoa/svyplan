@@ -129,7 +129,9 @@ leaves one sampled stratum, which has no boundary to search.}
 the whole allocation in \verb{$strata$n} was chosen, with the fields of
 \verb{$optimization$search} in \code{\link[=n_alloc]{n_alloc()}}: \code{family} (\code{"whole units"}),
 \code{status} (\code{"optimal"} when the search proved the allocation the best,
-\code{"limit"} when its node limit came first), a lower \code{bound} on the
+\code{"gap"} when it stopped within 1e-6 of the bound at its node limit,
+\code{"limit"} when its node limit came first with a larger gap), a lower
+\code{bound} on the
 sample (\code{"neyman"}) or cost (\code{"optimal"}) and the relative \code{gap} to
 it, \code{nodes} and \code{max_nodes}, and the stratum sizes listed (\code{states})
 and kept (\code{kept}). \code{NULL} in the other modes, which round.}

@@ -517,7 +517,9 @@ n_multi.default <- function(
   fixed_cost = 0,
   resp_rate_psu = 1,
   resp_rate_ssu = 1,
-  resp_rate = 1
+  resp_rate = 1,
+  fpc = "none",
+  pop = NULL
 ) {
   if (!is.data.frame(indicators) || nrow(indicators) == 0L) {
     stop("'indicators' must be a non-empty data frame", call. = FALSE)
@@ -622,7 +624,14 @@ n_multi.default <- function(
     "cv"
   }
 
-  if (length(domain_cols) == 0L) {
+  row_pops <- .stage_row_pops(indicators, domain_cols, fpc,
+                              .stage_eligible(pop), stages)
+  if (!is.null(row_pops) && length(domain_cols) == 0L) {
+    .n_multi_cluster_stage(
+      indicators, stage_cost, budget, n_psu, n_per_psu, n_per_ssu,
+      fixed_cost, row_pops[[1L]], mode = mode, record_pop = !is.null(pop)
+    )
+  } else if (length(domain_cols) == 0L) {
     .n_multi_cluster(
       indicators,
       stage_cost,
@@ -648,7 +657,8 @@ n_multi.default <- function(
       min_n_domain,
       fixed_cost,
       mode = mode,
-      domain_sampling = domain_sampling
+      domain_sampling = domain_sampling,
+      row_pops = row_pops
     )
     res$params$allocation <- allocation
     res
@@ -1433,6 +1443,292 @@ n_multi.default <- function(
   }
 }
 
+#' Several-indicator cluster allocation under the stage-by-stage correction
+#'
+#' Each row has `cv_j^2 = G_j(b, c) / a - kappa_j`, with the coefficients of
+#' `.stage3_coef()`. A two-stage design is the case `c = 1`, `gamma = 0`
+#' and no third-stage cost, with `alpha = (B - W / M) / r1` and
+#' `beta = W / (r1 r)`. The continuous design is searched over the takes
+#' within the population, `a <= N_psu`, as the no-FPC engine searches,
+#' and the whole-unit design comes from the bounded searches the scalar
+#' path uses, so one row returns the scalar design. `record_pop = FALSE`
+#' leaves the population out of `$params` when the table carries it.
+#' @keywords internal
+#' @noRd
+.n_multi_cluster_stage <- function(indicators, stage_cost, budget, n_psu,
+                                   n_per_psu, n_per_ssu, fixed_cost, pop,
+                                   mode = "cv", record_pop = TRUE) {
+  .stop_min_cases_column(
+    indicators,
+    "a multistage design sizes stages against a cost, with no single total for a count to raise. Size the count-driven indicator with n_prop(min_cases = ) and set the stage takes around it"
+  )
+  st <- .stage_multi_setup(indicators, stage_cost, n_psu, n_per_psu,
+                           n_per_ssu, pop)
+  stages <- st$stages
+  vb <- if (!is.null(budget)) budget - fixed_cost else NULL
+  fit <- .stage_multi_continuous(st, vb, n_psu, fixed_cost)
+  a <- fit$a
+  b <- fit$b
+  cc <- fit$c
+  if (stages == 2L) {
+    .check_row_takes(indicators, b)
+  } else {
+    .check_row_takes(indicators, b, cc)
+  }
+
+  operational <- if (stages == 2L) {
+    n1_required <- function(m) st$G(m, 1) / st$cv2_t
+    .op_multi_2stage(
+      n1_required, function(a1, m) st$cv_rows(a1, m, 1), st$cv_t, stage_cost,
+      budget, n_psu, n_per_psu, fixed_cost, cont_m = b,
+      m_floor = .take_floor(st$ru), a_max = pop$A,
+      m_max = floor(pop$M_take + 1e-9)
+    )
+  } else {
+    scale <- if (is.null(budget)) st$cv2_t else st$cv_t^2
+    .op_multi_3stage(
+      list(alpha = st$co$alpha / scale, beta = st$co$beta / scale,
+           gamma = st$co$gamma / scale,
+           kappa = if (!is.null(budget)) st$co$kappa / scale),
+      function(a1, m, q) st$cv_rows(a1, m, q), st$cv_t, stage_cost, budget,
+      n_psu, n_per_psu, n_per_ssu, fixed_cost, cont_m = b,
+      m_floor = .take_floor(st$rs), q_floor = .take_floor(st$ru),
+      a_max = pop$A, m_max = floor(pop$Q + 1e-9),
+      q_max = floor(pop$C_take + 1e-9)
+    )
+  }
+
+  n_vec <- if (stages == 2L) {
+    c(n_psu = a, n_per_psu = b)
+  } else {
+    c(n_psu = a, n_per_psu = b, n_per_ssu = cc)
+  }
+  per_unit <- if (stages == 2L) b else b * cc
+  detail <- data.frame(
+    name = st$labels,
+    .n = st$G(b, cc) / st$cv2_t * per_unit,
+    .cv_target = st$cv_t,
+    .cv_achieved = fit$cv_achieved,
+    .binding = seq_len(nrow(indicators)) == fit$binding_idx
+  )
+  params <- list(
+    stage_cost = stage_cost,
+    domain_cols = character(0),
+    mode = mode,
+    prop_method = "wald",
+    fpc = "stage"
+  )
+  if (record_pop) {
+    params$N <- pop$N
+    params$N_psu <- pop$A
+    if (stages == 3L) params$N_ssu <- pop$N_ssu
+  }
+  if (!is.null(budget)) params$budget <- budget
+  if (!is.null(n_psu)) params$n_psu <- n_psu
+  if (!is.null(n_per_psu)) params$n_per_psu <- n_per_psu
+  if (!is.null(n_per_ssu)) params$n_per_ssu <- n_per_ssu
+  if (fixed_cost > 0) params$fixed_cost <- fixed_cost
+
+  .new_svyplan_cluster(
+    n = n_vec,
+    stages = stages,
+    total_n = prod(n_vec),
+    cv = fit$cv_achieved[fit$binding_idx],
+    cost = fixed_cost + fit$cost,
+    params = params,
+    indicators = indicators,
+    detail = detail,
+    binding = st$labels[fit$binding_idx],
+    operational = operational
+  )
+}
+
+#' The corrected coefficients and take bounds of an indicator table
+#'
+#' Shared by the single-population engine and the per-domain evaluation of
+#' a joint budget, so both read one model.
+#' @keywords internal
+#' @noRd
+.stage_multi_setup <- function(indicators, stage_cost, n_psu, n_per_psu,
+                               n_per_ssu, pop) {
+  stages <- length(stage_cost)
+  nr <- nrow(indicators)
+  labels <- if ("name" %in% names(indicators)) indicators$name else seq_len(nr)
+  cv_t <- indicators$cv
+  rr <- indicators$resp_rate_psu
+  ru <- indicators$resp_rate
+  if (stages == 2L) {
+    rs <- rep(1, nr)
+    B <- indicators$unit_relvar * indicators$var_ratio_psu * indicators$icc_psu
+    W <- indicators$unit_relvar * indicators$var_ratio_psu *
+      (1 - indicators$icc_psu)
+    co <- list(alpha = (B - W / pop$M) / rr, beta = W / (rr * ru),
+               gamma = rep(0, nr), kappa = B / pop$A)
+    costs <- c(stage_cost[1L], stage_cost[2L], 0)
+    b_box <- if (!is.null(n_per_psu)) rep(n_per_psu, 2L) else
+      c(.take_bound(ru), pop$M_take)
+    c_box <- c(1, 1)
+  } else {
+    rs <- .indicator_rate(indicators, "resp_rate_ssu", nr)
+    icc_ssu <- if ("icc_ssu" %in% names(indicators)) indicators$icc_ssu else
+      rep(0, nr)
+    co <- .stage3_coef(indicators$icc_psu, icc_ssu, indicators$unit_relvar,
+                       indicators$var_ratio_psu, indicators$var_ratio_ssu,
+                       rr, rs, ru, pop)
+    costs <- stage_cost
+    b_box <- if (!is.null(n_per_psu)) rep(n_per_psu, 2L) else
+      c(.take_bound(rs), pop$Q)
+    c_box <- if (!is.null(n_per_ssu)) rep(n_per_ssu, 2L) else
+      c(.take_bound(ru), pop$C_take)
+  }
+  if (!is.null(n_psu) && n_psu > pop$A) {
+    stop(sprintf("'n_psu' (%g) exceeds 'N_psu' (%g)", n_psu, pop$A),
+         call. = FALSE)
+  }
+  .check_stage_sizes(
+    c(n_psu %||% 1, if (stages == 2L) n_per_psu %||% 1 else
+      c(n_per_psu %||% 1, n_per_ssu %||% 1)),
+    pop
+  )
+  if (b_box[1L] > b_box[2L] || c_box[1L] > c_box[2L]) {
+    stop(
+      "a PSU of this population cannot deliver one expected response per stage at these response rates",
+      call. = FALSE
+    )
+  }
+  G <- function(b, cc) co$alpha + co$beta / b + co$gamma / (b * cc)
+  list(
+    stages = stages, labels = labels, cv_t = cv_t, cv2_t = cv_t^2 + co$kappa,
+    rr = rr, rs = rs, ru = ru, co = co, costs = costs, A = pop$A,
+    b_box = b_box, c_box = c_box, G = G,
+    H = function(b, cc) costs[1L] + costs[2L] * b + costs[3L] * b * cc,
+    cv_rows = function(a, b, cc) sqrt(pmax(G(b, cc) / a - co$kappa, 0))
+  )
+}
+
+#' The continuous design of an indicator table under the correction
+#'
+#' `vb` is the variable budget, `NULL` in cv mode. Returns the sizes, each
+#' row's cv, the binding row, the worst ratio of cv to target and the
+#' variable cost.
+#' @keywords internal
+#' @noRd
+.stage_multi_continuous <- function(st, vb, n_psu, fixed_cost = 0) {
+  A <- st$A
+  b_box <- st$b_box
+  c_box <- st$c_box
+  co <- st$co
+  G <- st$G
+  H <- st$H
+  costs <- st$costs
+  cv2_t <- st$cv2_t
+  cv_t <- st$cv_t
+
+  # The smallest take reaching every target with a PSUs at SSU take cc.
+  b_reach <- function(a, cc) {
+    room <- a * cv2_t - co$alpha
+    if (any(room <= 0)) return(Inf)
+    max((co$beta + co$gamma / cc) / room)
+  }
+  # The smallest SSU take at which a take within the box reaches every target.
+  c_reach_lo <- function(a) {
+    room <- b_box[2L] * (a * cv2_t - co$alpha) - co$beta
+    if (any(room <= 0)) return(Inf)
+    max(c_box[1L], max(co$gamma / room))
+  }
+  best_over <- function(f, lo, hi) {
+    if (hi - lo <= 1e-12 * max(1, hi)) return(list(x = lo, value = f(lo)))
+    opt <- optimize(f, c(lo, hi), tol = 1e-10 * max(1, hi))
+    vals <- c(opt$objective, f(lo), f(hi))
+    xs <- c(opt$minimum, lo, hi)
+    j <- which.min(vals)
+    list(x = xs[j], value = vals[j])
+  }
+
+  if (is.null(vb)) {
+    a_cap <- n_psu %||% A
+    c_lo <- c_reach_lo(a_cap)
+    if (!is.finite(c_lo) || c_lo > c_box[2L] * (1 + 1e-12)) {
+      stop(
+        sprintf(
+          "the targets are out of reach: %s at the largest takes allowed reach%s",
+          if (is.null(n_psu)) sprintf("all %g PSUs", A) else
+            sprintf("n_psu = %g", n_psu),
+          paste(sprintf(" %s %.4g", sQuote(st$labels),
+                        st$cv_rows(a_cap, b_box[2L], c_box[2L])),
+                collapse = ",")
+        ),
+        call. = FALSE
+      )
+    }
+    c_lo <- min(c_lo, c_box[2L])
+    if (!is.null(n_psu)) {
+      take_b <- function(cc) min(b_box[2L], max(b_box[1L], b_reach(n_psu, cc)))
+      hit <- best_over(function(cc) H(take_b(cc), cc), c_lo, c_box[2L])
+      cc <- hit$x
+      b <- take_b(cc)
+      a <- n_psu
+    } else {
+      inner <- function(cc) {
+        lo <- min(b_box[2L], max(b_box[1L], b_reach(A, cc)))
+        best_over(function(b) max(G(b, cc) / cv2_t) * H(b, cc), lo, b_box[2L])
+      }
+      hit <- best_over(function(cc) inner(cc)$value, c_lo, c_box[2L])
+      cc <- hit$x
+      b <- inner(cc)$x
+      a <- min(A, max(G(b, cc) / cv2_t))
+    }
+  } else {
+    a_set <- n_psu
+    spend <- function(cc) {
+      per <- if (is.null(a_set)) vb else vb / a_set
+      (per - costs[1L]) / (costs[2L] + costs[3L] * cc)
+    }
+    c_hi <- if (costs[3L] > 0) {
+      min(c_box[2L],
+          ((vb / (a_set %||% 1) - costs[1L]) / b_box[1L] - costs[2L]) / costs[3L])
+    } else {
+      c_box[2L]
+    }
+    if (spend(c_box[1L]) < b_box[1L] * (1 - 1e-12) || c_hi < c_box[1L]) {
+      stop(
+        sprintf(
+          "'budget' is too small for any realizable design: %s at the smallest takes costs %.4g plus fixed_cost = %.4g",
+          if (is.null(a_set)) "one PSU" else sprintf("n_psu = %g", a_set),
+          (a_set %||% 1) * H(b_box[1L], c_box[1L]), fixed_cost
+        ),
+        call. = FALSE
+      )
+    }
+    worst <- function(a, b, cc) max((G(b, cc) / a - co$kappa) / cv_t^2)
+    if (!is.null(a_set)) {
+      take_b <- function(cc) min(b_box[2L], max(b_box[1L], spend(cc)))
+      hit <- best_over(function(cc) worst(a_set, take_b(cc), cc),
+                       c_box[1L], c_hi)
+      cc <- hit$x
+      b <- take_b(cc)
+      a <- a_set
+    } else {
+      a_of <- function(b, cc) min(A, vb / H(b, cc))
+      inner <- function(cc) {
+        hi <- min(b_box[2L], max(b_box[1L], spend(cc)))
+        best_over(function(b) worst(a_of(b, cc), b, cc), b_box[1L], hi)
+      }
+      hit <- best_over(function(cc) inner(cc)$value, c_box[1L], c_hi)
+      cc <- hit$x
+      b <- inner(cc)$x
+      a <- a_of(b, cc)
+    }
+  }
+  cv_achieved <- st$cv_rows(a, b, cc)
+  ratios <- cv_achieved / cv_t
+  list(
+    a = a, b = b, c = cc, cv_achieved = cv_achieved,
+    binding_idx = which.max(ratios), ratio = max(ratios),
+    cost = a * H(b, cc)
+  )
+}
+
 #' Candidate whole stage sizes around a continuous optimum
 #' @keywords internal
 #' @noRd
@@ -1473,7 +1769,9 @@ n_multi.default <- function(
   n_per_psu,
   fixed_cost,
   cont_m,
-  m_floor = 1L
+  m_floor = 1L,
+  a_max = Inf,
+  m_max = Inf
 ) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
@@ -1486,6 +1784,8 @@ n_multi.default <- function(
   } else {
     (variable_budget - C1) / C2
   }
+  upper_m <- min(upper_m, m_max)
+  if (!is.null(n_per_psu)) n_per_psu <- min(n_per_psu, m_max)
   m_cand <- .multi_stage_candidates(
     n_per_psu,
     cont_m,
@@ -1498,7 +1798,7 @@ n_multi.default <- function(
     a <- if (!is.null(n_psu)) {
       rep(max(1L, as.integer(round(n_psu))), length(m_cand))
     } else {
-      as.integer(floor(variable_budget / (C1 + C2 * m_cand)))
+      as.integer(pmin(a_max, floor(variable_budget / (C1 + C2 * m_cand))))
     }
     cost <- a * (C1 + C2 * m_cand)
     keep <- a >= 1L & cost <= variable_budget + 1e-8
@@ -1530,7 +1830,16 @@ n_multi.default <- function(
       a <- a[keep]
       m_cand <- m_cand[keep]
     } else {
-      a <- pmax(1L, as.integer(ceiling(need - 1e-9)))
+      a <- pmax(1, ceiling(need - 1e-9))
+      keep <- a <= a_max
+      if (!any(keep)) {
+        stop(
+          "target CV is not achievable with whole units within the PSU population",
+          call. = FALSE
+        )
+      }
+      a <- as.integer(a[keep])
+      m_cand <- m_cand[keep]
     }
     cost <- a * (C1 + C2 * m_cand)
     j <- which.min(cost + 1e-9 * a * m_cand + 1e-12 * m_cand)
@@ -1563,7 +1872,10 @@ n_multi.default <- function(
   fixed_cost,
   cont_m,
   m_floor = 1L,
-  q_floor = 1L
+  q_floor = 1L,
+  a_max = Inf,
+  m_max = Inf,
+  q_max = Inf
 ) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
@@ -1577,7 +1889,9 @@ n_multi.default <- function(
   } else {
     (variable_budget / a_min - C1) / (C2 + C3 * q_floor)
   }
-  m_cand <- .multi_stage_candidates(n_per_psu, cont_m, upper_m,
+  if (!is.null(n_per_psu)) n_per_psu <- min(n_per_psu, m_max)
+  if (!is.null(n_per_ssu)) n_per_ssu <- min(n_per_ssu, q_max)
+  m_cand <- .multi_stage_candidates(n_per_psu, cont_m, min(upper_m, m_max),
                                     floor = m_floor)
 
   hit <- .op_cluster3_search(
@@ -1593,7 +1907,11 @@ n_multi.default <- function(
     msg_cv = "target CV is not achievable with the fixed whole PSU count",
     m_free = is.null(n_per_psu),
     m_floor = m_floor,
-    q_floor = q_floor
+    q_floor = q_floor,
+    a_max = a_max,
+    m_max = m_max,
+    q_max = q_max,
+    kappa = coef$kappa
   )
   a_best <- hit[["n_psu"]]
   m_best <- hit[["n_per_psu"]]
@@ -2348,7 +2666,8 @@ n_multi.default <- function(
   fixed_cost = 0,
   mode = "moe",
   prop_method = "wald",
-  domain_sampling = "separate"
+  domain_sampling = "separate",
+  row_pops = NULL
 ) {
   key <- .domain_key(indicators, domain_cols)
   domain_levels <- unique(key)
@@ -2369,7 +2688,8 @@ n_multi.default <- function(
       min_n_domain,
       fixed_cost,
       mode = mode,
-      prop_method = prop_method
+      prop_method = prop_method,
+      row_pops = row_pops
     ))
   }
 
@@ -2378,7 +2698,12 @@ n_multi.default <- function(
     sub <- indicators[rows, , drop = FALSE]
     # Drop domain columns for inner solve
     sub_inner <- sub[, !names(sub) %in% domain_cols, drop = FALSE]
-    if (multistage) {
+    if (multistage && !is.null(row_pops)) {
+      .n_multi_cluster_stage(
+        sub_inner, stage_cost, budget, n_psu, n_per_psu, n_per_ssu,
+        fixed_cost, row_pops[[rows[1L]]], record_pop = FALSE
+      )
+    } else if (multistage) {
       .n_multi_cluster(
         sub_inner,
         stage_cost,
@@ -2395,7 +2720,7 @@ n_multi.default <- function(
   names(results) <- domain_levels
 
   if (multistage) {
-    .aggregate_cluster_domains(
+    res <- .aggregate_cluster_domains(
       results,
       indicators,
       domain_cols,
@@ -2412,6 +2737,8 @@ n_multi.default <- function(
       prop_method = prop_method,
       domain_sampling = domain_sampling
     )
+    if (!is.null(row_pops)) res$params$fpc <- "stage"
+    res
   } else {
     .aggregate_simple_domains(
       results,
@@ -2691,7 +3018,8 @@ n_multi.default <- function(
   min_n_domain = NULL,
   fixed_cost = 0,
   mode = "cv",
-  prop_method = "wald"
+  prop_method = "wald",
+  row_pops = NULL
 ) {
   stages <- length(stage_cost)
   nd <- length(domain_levels)
@@ -2731,9 +3059,24 @@ n_multi.default <- function(
 
   var_budget <- budget - fixed_cost
 
+  # Under the stage correction each domain is read under its own population
+  # by the engine a single population uses.
+  stage_setups <- if (!is.null(row_pops)) {
+    lapply(domain_levels, function(lev) {
+      rows <- split_idx[[lev]]
+      .stage_multi_setup(indicators[rows, , drop = FALSE], stage_cost, n_psu,
+                         n_per_psu, n_per_ssu, row_pops[[rows[1L]]])
+    })
+  }
+
   eval_domain <- function(d, budget_d) {
     p <- domain_params[[d]]
-    if (stages == 2L) {
+    if (!is.null(stage_setups)) {
+      fit <- .stage_multi_continuous(stage_setups[[d]], budget_d, n_psu)
+      list(n1 = fit$a, n_per_psu = fit$b, n_per_ssu = fit$c,
+           cv_achieved = fit$cv_achieved, ratio = fit$ratio,
+           binding_idx = fit$binding_idx, cost = fit$cost)
+    } else if (stages == 2L) {
       .eval_2stage_budget(
         p$cv_t,
         p$icc_psu,
@@ -2824,6 +3167,29 @@ n_multi.default <- function(
   lower_bounds <- rep(1e-4, nd)
   if (!is.null(min_n_domain)) {
     lower_bounds <- pmax(lower_bounds, min_fracs)
+  }
+  # A domain is solvable only above the cost of its cheapest field design
+  # when its PSU count cannot fall below one, under the stage correction or
+  # at a fixed n_psu. Searching from these shares keeps the search off a
+  # flat penalty that can hide a narrow feasible interval.
+  if (!is.null(row_pops) || !is.null(n_psu)) {
+    floor_cost <- vapply(seq_len(nd), function(d) {
+      p <- domain_params[[d]]
+      b <- n_per_psu %||% .take_bound(if (stages == 2L) p$resp_rate else
+        p$resp_rate_ssu)
+      cc <- if (stages == 3L) n_per_ssu %||% .take_bound(p$resp_rate) else 0
+      (n_psu %||% 1) * (C1 + C2 * b + (C3 %||% 0) * b * cc)
+    }, numeric(1L))
+    if (sum(floor_cost) > var_budget * (1 + 1e-12)) {
+      stop(
+        sprintf(
+          "'budget' is too small for a joint allocation: the cheapest design of every domain together costs %.4g plus fixed_cost = %.4g",
+          sum(floor_cost), fixed_cost
+        ),
+        call. = FALSE
+      )
+    }
+    lower_bounds <- pmax(lower_bounds, floor_cost / var_budget)
   }
 
   outer_obj <- function(w) {
@@ -2934,7 +3300,12 @@ n_multi.default <- function(
     prop_method = prop_method
   )
   res$params$joint <- TRUE
-  if (fixed_cost > 0) {
+  if (!is.null(row_pops)) {
+    # A domain that reaches its whole population leaves part of its share
+    # unspent, so the cost is what the domains use.
+    res$params$fpc <- "stage"
+    res$cost <- fixed_cost + sum(res$domains$.cost)
+  } else if (fixed_cost > 0) {
     res$cost <- budget
   }
   res

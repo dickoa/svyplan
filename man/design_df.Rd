@@ -15,7 +15,7 @@ design_df(x = NULL, ...)
 
 \method{design_df}{svyplan_cluster}(x, ...)
 
-\method{design_df}{svyplan_n}(x, ...)
+\method{design_df}{svyplan_n}(x, ..., method = c("nominal", "satterthwaite"))
 
 \method{design_df}{svyplan_strata}(x, ...)
 
@@ -37,6 +37,10 @@ rejected.}
 
 \item{n}{Number of ultimate units, for an element design. Supply this or
 \code{n_psu}, not both.}
+
+\item{method}{For an allocation, \code{"nominal"} (default) counts units
+minus strata. \code{"satterthwaite"} weights each stratum by its share of
+the planned variance. See "Satterthwaite degrees of freedom".}
 }
 \value{
 A \code{svyplan_df} object: a numeric scalar carrying the counts it
@@ -61,7 +65,8 @@ Pass the count as \code{df} to use a \code{t} quantile in place of the normal on
 and to the Korn-Graubard interval, which widens as the count falls. It is
 the nominal first-stage count. The degrees of freedom of a particular
 estimator, such as a Satterthwaite approximation combining several
-variance components, differ from it.
+variance components, differ from it. For an allocation, \code{method = "satterthwaite"} gives that approximation (see "Satterthwaite degrees of
+freedom").
 \subsection{What is counted, per design shape}{\tabular{lll}{
    Design \tab Counted \tab df \cr
    Unstratified element \tab units \tab \eqn{n - 1} \cr
@@ -106,6 +111,23 @@ design df, and the Korn-Graubard counting rule for it (PSUs containing
 domain members, minus strata containing them) needs frame information
 that a plan does not carry. It is a limit of what is knowable before
 fielding, not an omission.
+}
+
+\subsection{Satterthwaite degrees of freedom}{
+
+A stratified variance is a sum of stratum variances \eqn{v_h}, each
+estimated on \eqn{\nu_h} degrees of freedom (units or PSUs, less one).
+The Satterthwaite approximation to the degrees of freedom of the sum is
+\deqn{\nu = \frac{(\sum_h v_h)^2}{\sum_h v_h^2/\nu_h}.}{nu = (sum_h v_h)^2 / sum_h (v_h^2 / nu_h).}
+It lies between the smallest \eqn{\nu_h} and their sum, which is the
+nominal count. It falls toward the smallest when one stratum with few
+units carries most of the variance, which the nominal count cannot see.
+With \code{method = "satterthwaite"} the \eqn{v_h} are the strata's shares of
+the planned variance (\code{.share} in the allocation), so the value is a
+planning figure and changes with the allocation. It is not rounded, and
+\verb{$strata} gains the \code{.share} column it was formed from. Domain counts in
+\verb{$domains} stay nominal. A zoned register and a several-measure
+allocation are refused, since neither has one share per stratum.
 }
 
 \subsection{What the count cannot see}{
@@ -170,6 +192,18 @@ design_df(alloc)$strata
 
 # Drop-in wherever a df is expected
 n_prop(p = 0.02, moe = 0.01, method = "beta", df = design_df(alloc))
+
+# One small stratum carrying most of the variance pulls the
+# Satterthwaite value toward its own count
+skewed <- data.frame(
+  stratum = c("a", "b"),
+  N = c(500, 50000),
+  sd = c(200, 5),
+  mean = c(1000, 20)
+)
+fit <- n_alloc(skewed, n = 400, alloc = "proportional")
+design_df(fit)
+design_df(fit, method = "satterthwaite")
 
 # From counts, with no plan in hand
 design_df(n_psu = 300, n_strata = 20)

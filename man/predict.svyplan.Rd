@@ -147,8 +147,8 @@ no zones, to compare zone settings. A grid that varies \code{n_psu_per_zone},
 or a fit with zones, adds \code{n_zone}. A register fit sized to an
 \code{objective} within a \code{budget} varies \code{budget} as well.
 
-A register grid adds \code{.status}. It reads \code{"optimal"} or \code{"limit"} for a
-row with a plan, as \verb{$operational$status} does, \code{"infeasible"} where no
+A register grid adds \code{.status}. It reads \code{"optimal"}, \code{"gap"} or
+\code{"limit"} for a row with a plan, as \verb{$operational$status} does, \code{"infeasible"} where no
 design exists, and \code{"unknown"} where the search stopped before finding
 one or the solve failed, a row whose \code{.feasible} is \code{NA}. In budget mode
 \code{objective_value} and \code{cv} are those of the field design. A row the node

@@ -1682,14 +1682,14 @@
 #' @keywords internal
 #' @noRd
 .bethel_whole_targets <- function(problem, control = .bethel_control(),
-                                  max_nodes = 5000) {
+                                  max_nodes = 5000, gap = 0) {
   accept <- 1 + .bethel_canonical_tolerance(problem, control$tolerance)
   H <- length(problem$cost)
   load <- sweep(problem$A, 2L, problem$bound * accept, "/")
   q <- .whole_problem(problem$cost, 0, matrix(0, H, ncol(load)), load,
                       problem$lower_int, problem$upper_int)
   r <- .whole_search(q, grain = .menu_grain(problem$cost),
-                     max_nodes = max_nodes)
+                     max_nodes = max_nodes, gap = gap)
   if (identical(r$status, "infeasible")) {
     bad <- problem$constraint_ids[
       .whole_load(q, .whole_plan(q, q$hi)) > 1 + 1e-9
@@ -1945,7 +1945,7 @@
 #' @keywords internal
 #' @noRd
 .bethel_whole_budget <- function(problem, budget, control = .bethel_control(),
-                                 max_nodes = 5000) {
+                                 max_nodes = 5000, gap = 0) {
   tolerance <- control$tolerance
   cost <- problem$cost
   H <- length(cost)
@@ -1960,7 +1960,7 @@
   K <- ncol(problem$A)
   start <- problem$lower_int
   if (K > 0L) {
-    cheapest <- .bethel_whole_targets(problem, control, max_nodes)
+    cheapest <- .bethel_whole_targets(problem, control, max_nodes, gap)
     if (cheapest$cost > budget + budget_tol) {
       if (cheapest$search$bound > budget + budget_tol) {
         # Rounded up, so the number named is itself affordable.
@@ -1996,7 +1996,7 @@
     cbind(0, load),
     problem$lower_int, problem$upper_int
   )
-  r <- .whole_search(q, start = start, max_nodes = max_nodes)
+  r <- .whole_search(q, start = start, max_nodes = max_nodes, gap = gap)
   if (is.null(r$x)) {
     stop("internal error: the budget search lost the plan it started from",
          call. = FALSE)
@@ -2044,6 +2044,7 @@
   .finite_prop_var,
   eligible_rate = 1,
   max_nodes = 5000,
+  gap = 0,
   .whole = TRUE
 ) {
   control <- .bethel_control()
@@ -2142,9 +2143,9 @@
            budget - sum(problem$cost * rounded)
          })
   } else if (mode == "targets") {
-    .bethel_whole_targets(problem, control, max_nodes)
+    .bethel_whole_targets(problem, control, max_nodes, gap)
   } else {
-    .bethel_whole_budget(problem, budget, control, max_nodes)
+    .bethel_whole_budget(problem, budget, control, max_nodes, gap)
   }
   optimization$search <- integer$search
   decision <- allocation

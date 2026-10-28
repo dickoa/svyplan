@@ -191,7 +191,8 @@
 #' that listed only some branches can prove the others out.
 #' @keywords internal
 #' @noRd
-.whole_search <- function(q, start = NULL, grain = 0, max_nodes = 5000) {
+.whole_search <- function(q, start = NULL, grain = 0, max_nodes = 5000,
+                          gap = 0) {
   if (is.numeric(start)) start <- .whole_plan(q, start)
   none <- list(x = NULL, branch = NULL, value = Inf, bound = Inf,
                status = "infeasible", nodes = 0, states = 0, kept = 0)
@@ -228,7 +229,7 @@
   }, 1L)
   sg2 <- .menu_subgradient(p, sg$lambda, start = at)
   sr <- .menu_search(p, sg2$lambda, sg2$pick, grain = grain,
-                     max_nodes = max_nodes)
+                     max_nodes = max_nodes, gap = gap)
   if (is.null(sr$pick)) {
     stop("internal error: the whole-unit search lost the plan it started from",
          call. = FALSE)
@@ -270,10 +271,10 @@
            (is.null(names(control)) || any(!nzchar(names(control)))))) {
     stop("'control' must be a named list", call. = FALSE)
   }
-  unknown <- setdiff(names(control), "max_nodes")
+  unknown <- setdiff(names(control), c("max_nodes", "gap"))
   if (length(unknown) > 0L) {
     stop(sprintf(
-      "unknown 'control' setting%s %s, the one known is 'max_nodes'",
+      "unknown 'control' setting%s %s, the known ones are 'max_nodes' and 'gap'",
       if (length(unknown) == 1L) "" else "s",
       paste0("'", unknown, "'", collapse = ", ")
     ), call. = FALSE)
@@ -284,5 +285,10 @@
     stop("'control$max_nodes' must be one positive whole number",
          call. = FALSE)
   }
-  list(max_nodes = round(nodes))
+  gap <- control[["gap"]] %||% 0
+  if (!is.numeric(gap) || length(gap) != 1L || !is.finite(gap) || gap < 0 ||
+        gap >= 1) {
+    stop("'control$gap' must be one number in [0, 1)", call. = FALSE)
+  }
+  list(max_nodes = round(nodes), gap = gap)
 }

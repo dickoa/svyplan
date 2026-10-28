@@ -18,8 +18,9 @@
 #'   data, which sets it. See [n_cluster()].
 #' @param var_ratio Ratio of the stage components' unit variance to the
 #'   analysis variable's, default 1. A scalar names `var_ratio_psu`, and for
-#'   three stages `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)` follows from
-#'   the decomposition. See [design_effect()]. Refused when `icc` is a
+#'   three stages derives `var_ratio_ssu = var_ratio_psu * (1 - icc_psu)`,
+#'   the value for SSUs of equal size or drawn proportional to size. See
+#'   [design_effect()]. Refused when `icc` is a
 #'   `svyplan_varcomp`, which sets it.
 #' @param resp_rate_psu Expected **PSU-level** response rate, in (0, 1\].
 #'   Default 1 (no adjustment). The effective stage-1 size is
@@ -36,6 +37,19 @@
 #'   number, default 1. It multiplies `resp_rate` in the realized take, and
 #'   `n` stays in final-stage units. Not available with `indicators`. See
 #'   [n_cluster()].
+#' @param fpc Which finite population correction the variance carries.
+#'   `"none"` (default) drops every sampling fraction. `"stage"` corrects
+#'   each component by its own stage's sampling fraction and needs `N` and
+#'   `N_psu`, and `N_ssu` at three stages. See "Finite populations" in
+#'   [n_cluster()].
+#' @param N Number of final-stage units in the population, the units the
+#'   sizes count. With `eligible_rate` the correction reads
+#'   `N * eligible_rate` eligible units. Read only with `fpc = "stage"` and
+#'   refused otherwise.
+#' @param N_psu Number of PSUs in the population. Read only with
+#'   `fpc = "stage"` and refused otherwise.
+#' @param N_ssu Number of SSUs in the population, across all PSUs. Read only
+#'   with `fpc = "stage"` at three stages and refused otherwise.
 #' @param indicators Optional data frame with one row per indicator, which
 #'   switches the function to the several-indicators mode of Details. It
 #'   carries the stage sizes per row in `n` and `n_per_psu`, plus
@@ -98,16 +112,16 @@
 #' Precision is computed row by row, so an allocation returned by
 #' `n_cluster(indicators = )` can be passed straight in.
 #'
-#' ## A domain that takes most of its PSUs
+#' ## Finite populations
 #'
-#' The first stage is treated as drawn with replacement, so nothing here
-#' knows how many PSUs a stratum or domain holds. A small domain, such as
-#' an island district of 16 enumeration areas, can then be given more PSUs
-#' than it has, and a sample that takes most of them is assessed as if
-#' they were a few among many. [n_alloc()] and [prec_alloc()] read `N_psu`
-#' in the frame and, with `fpc = "stage"`, apply the stage-by-stage
-#' correction. They size and assess such a domain, as the [prec_alloc()]
-#' examples show.
+#' These formulas drop every sampling fraction, so a sample that takes most
+#' of a small domain's PSUs is assessed as if they were a few among many.
+#' With `fpc = "stage"`, `N` and `N_psu`, and `N_ssu` at three stages, a
+#' design is assessed with each component corrected by its own stage, which
+#' is exact for PSUs and SSUs of equal size drawn with equal probability.
+#' With `indicators` the arguments give the one population every row is
+#' measured on, and with `domains` each domain's counts are `indicators`
+#' columns of the same names. See "Finite populations" in [n_cluster()].
 #'
 #' @references
 #' Valliant, R., Dever, J. A., and Kreuter, F. (2018).
@@ -127,6 +141,15 @@
 #' # Round-trip from n_cluster
 #' res <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
 #' prec_cluster(res)
+#'
+#' # 12 of an island's 16 enumeration areas, 20 of about 150 households each
+#' prec_cluster(n = c(12, 20), icc = 0.05)
+#' prec_cluster(n = c(12, 20), icc = 0.05, fpc = "stage",
+#'              N = 2400, N_psu = 16)
+#'
+#' # 30 of 40 villages, 4 of 10 hamlets each, 8 of 30 households each
+#' prec_cluster(n = c(30, 4, 8), icc = c(0.04, 0.10), fpc = "stage",
+#'              N = 12000, N_psu = 40, N_ssu = 400)
 #'
 #' # 600 clusters of 20 households, 0.41 married women per household, for a
 #' # proportion near 0.28
@@ -166,12 +189,17 @@ prec_cluster.default <- function(
   resp_rate_ssu = 1,
   resp_rate = 1,
   eligible_rate = 1,
+  fpc = c("none", "stage"),
+  N = NULL,
+  N_psu = NULL,
+  N_ssu = NULL,
   indicators = NULL,
   domains = NULL,
   stage_cost = NULL,
   plan = NULL
 ) {
-  plan <- .plan_for_cluster_mode(plan, !is.null(indicators))
+  fpc <- match.arg(fpc)
+  plan <- .plan_for_cluster_mode(plan, !is.null(indicators), fpc)
   plan <- .check_varcomp_components(icc, unit_relvar, var_ratio, plan,
                                     "prec_cluster()")
   # Before the merge, which is the only point at which the profile's own
@@ -184,6 +212,15 @@ prec_cluster.default <- function(
   .plan <- .merge_plan_args(plan, prec_cluster.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_cluster.default, c(.plan, list(...))))
   .check_unused_dots(...)
+  # With indicators the population can come from columns instead, which
+  # .stage_row_pops() reads.
+  pop <- if (!is.null(indicators) &&
+             all(vapply(list(N, N_psu, N_ssu), is.null, logical(1L)))) {
+    .cluster_stage_population("none", NULL, NULL, "")
+  } else {
+    .cluster_stage_population(fpc, N, N_psu, "the default fpc = \"none\"",
+                              N_ssu = N_ssu)
+  }
   if (!is.null(indicators) && !identical(eligible_rate, 1)) {
     stop(
       "'eligible_rate' applies to the single-indicator call. With 'indicators', fold a rate at most 1 into each row's 'resp_rate'",
@@ -198,7 +235,9 @@ prec_cluster.default <- function(
       stage_cost = stage_cost,
       resp_rate_psu = resp_rate_psu,
       resp_rate_ssu = resp_rate_ssu,
-      resp_rate = resp_rate
+      resp_rate = resp_rate,
+      fpc = fpc,
+      pop = pop
     ))
   }
   if (!is.null(domains)) .stop_applies_to_indicators("domains")
@@ -215,6 +254,7 @@ prec_cluster.default <- function(
         call. = FALSE
       )
     }
+    if (!is.null(pop)) .check_stage_fpc_varcomp(vc)
     icc <- vc$icc
     var_ratio <- vc$var_ratio
     if (!is.na(vc$unit_relvar)) unit_relvar <- vc$unit_relvar
@@ -238,6 +278,7 @@ prec_cluster.default <- function(
   }
 
   stages <- length(n)
+  .check_stage_population_depth(pop, stages)
   icc <- .reorder_stage_vec(icc, "icc")
   var_ratio <- .reorder_stage_vec(var_ratio, "var_ratio")
   check_icc(icc, expected_length = stages - 1L)
@@ -245,6 +286,7 @@ prec_cluster.default <- function(
   check_resp_rate(resp_rate_ssu, "resp_rate_ssu")
   check_resp_rate(resp_rate, "resp_rate")
   check_eligible_rate(eligible_rate)
+  pop <- .stage_eligible(pop, eligible_rate)
   if (stages == 2L && !isTRUE(all.equal(resp_rate_ssu, 1))) {
     stop(
       "'resp_rate_ssu' is not applicable for 2-stage designs: the units inside a PSU are the ultimate ones, so their nonresponse is 'resp_rate'",
@@ -295,9 +337,24 @@ prec_cluster.default <- function(
     .check_expected_take(n[[2L]], resp_rate_ssu, "n_per_psu", "resp_rate_ssu")
   }
 
-  if (stages == 2L) {
+  if (!is.null(pop)) .check_stage_sizes(n, pop)
+  if (stages == 2L && !is.null(pop)) {
+    var_ratio <- rep_len(var_ratio, 1L)
+    cv_val <- sqrt(max(
+      .cv2_cluster_stage(n_eff[[1L]], n_eff[[2L]], icc, unit_relvar, var_ratio,
+                         pop$A, pop$M),
+      0
+    ))
+  } else if (stages == 2L) {
     var_ratio <- rep_len(var_ratio, 1L)
     cv_val <- unname(.cv_cluster_2stage(n_eff, icc, unit_relvar, var_ratio))
+  } else if (!is.null(pop)) {
+    var_ratio <- .stage_k_pair(var_ratio, icc)
+    cv_val <- sqrt(max(
+      .cv2_cluster3_stage(n_eff[[1L]], n_eff[[2L]], n_eff[[3L]], icc,
+                          unit_relvar, var_ratio, pop),
+      0
+    ))
   } else {
     var_ratio <- .stage_k_pair(var_ratio, icc)
     cv_val <- unname(.cv_cluster_3stage(n_eff, icc, unit_relvar, var_ratio))
@@ -315,6 +372,12 @@ prec_cluster.default <- function(
   )
   if (eligible_rate != 1) params$eligible_rate <- eligible_rate
   if (!is.null(stage_cost)) params$stage_cost <- stage_cost
+  if (!is.null(pop)) {
+    params$fpc <- "stage"
+    params$N <- pop$N
+    params$N_psu <- pop$A
+    if (stages == 3L) params$N_ssu <- pop$N_ssu
+  }
   .new_svyplan_prec(
     se = NA_real_,
     moe = NA_real_,
@@ -341,7 +404,11 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
     resp_rate_ssu = p$resp_rate_ssu %||% 1,
     resp_rate = p$resp_rate %||% 1,
     eligible_rate = p$eligible_rate %||% 1,
-    stage_cost = p$stage_cost
+    stage_cost = p$stage_cost,
+    fpc = p[["fpc"]] %||% "none",
+    N = p[["N"]],
+    N_psu = p[["N_psu"]],
+    N_ssu = p[["N_ssu"]]
   )
   out <- do.call(
     prec_cluster.default,
@@ -425,7 +492,12 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
     indicators = tgt,
     stages = x$stages,
     stage_cost = stage_cost,
-    domain_cols = dom_cols
+    domain_cols = dom_cols,
+    fpc = x$params[["fpc"]] %||% "none",
+    pop = if (!is.null(x$params[["N"]])) {
+      .cluster_stage_population("stage", x$params[["N"]], x$params[["N_psu"]],
+                                "the fit", N_ssu = x$params[["N_ssu"]])
+    }
   )
   allowed <- c(
     "stage_cost", "domains",
@@ -470,6 +542,8 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
               "allocation", "fixed_cost", "min_n_domain", "mode")) {
     if (!is.null(x$params[[p]])) res$params[[p]] <- x$params[[p]]
   }
+  # The targets the fit was sized against, which a census cannot restate.
+  res$params$cv_target <- x$indicators$cv
   res
 }
 

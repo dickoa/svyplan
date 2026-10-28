@@ -70,9 +70,12 @@
 #'     Entrants per occasion once the design is running, the units the
 #'     design holds across every live cohort, and how many cohorts that is.
 #'     The first two are different budget lines and are named separately for
-#'     that reason: `n_in_sample` is also the cumulative recruitment that
-#'     reaching a steady state takes, whether the cohorts are taken on at
-#'     once or phased in over the first `n_cohorts` occasions.}
+#'     that reason. For a life without a gap, `n_in_sample` is also the
+#'     cumulative recruitment that reaching a steady state takes, whether
+#'     the cohorts are taken on at once or phased in over the first
+#'     `n_cohorts` occasions. With a gap, cohorts out of sample are held too,
+#'     so that recruitment is `n_held`, reached after `length(rotation)`
+#'     occasions.}
 #'   \item{`n_held`, `rotation`}{Rotating panels only. The units selected
 #'     and not yet past their last interview, those out of sample in a gap
 #'     included, and the rotation they follow. `n_held` equals

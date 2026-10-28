@@ -136,7 +136,8 @@ cluster allocation: \code{"unit"} (default) for the ultimate-unit
 \code{1 - n / N} on the whole inflated variance, \code{"stage"} for the
 stage-by-stage correction, exact under the equal-size, equal-take
 variance-component model this path assumes, or \code{"none"} for
-\code{\link[=n_cluster]{n_cluster()}}'s with-replacement model. \code{"stage"} requires \code{N_psu}, and
+\code{\link[=n_cluster]{n_cluster()}}'s default with-replacement model. \code{"stage"} and \code{"none"}
+match \code{\link[=n_cluster]{n_cluster()}} with the same \code{fpc}. \code{"stage"} requires \code{N_psu}, and
 \code{N_ssu} as well at three stages. Refused outside cluster allocation and
 with a \code{psu} register. See the correction section in Details.}
 

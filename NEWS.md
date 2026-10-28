@@ -44,7 +44,13 @@ that recommendation when available, or rounds the continuous size up.
   modes. Losses are named for the stage they act on, `resp_rate_psu`,
   `resp_rate_ssu`, and `resp_rate`, because a lost cluster and a lost ultimate
   unit move the cost-optimal take differently. Any stage size may be fixed, and
-  the remaining stages solve that restricted problem.
+  the remaining stages solve that restricted problem. `fpc = "stage"` with
+  `N` and `N_psu`, and `N_ssu` at three stages, corrects each component by
+  its own stage's sampling fraction, for one indicator or several. It moves
+  the cost-optimal takes when PSUs or SSUs are small and caps the design at
+  the population. With `domains`, each domain's counts are columns of
+  `indicators`, separately or under one joint budget. With domains solved
+  separately, a `budget` applies to each domain.
 * `eligible_rate` sizes a sample of households for an estimate over the
   eligible persons they hold, an average number per household that may exceed
   one. `n_prop()`, `prec_prop()`, `n_cluster()`, `prec_cluster()`, joint
@@ -70,7 +76,7 @@ that recommendation when available, or rounds the continuous size up.
   Without domains, the target-`cv` mode of optimal and Neyman allocation
   gives the cheapest whole allocation meeting the target, and the `budget`
   mode of optimal allocation the smallest whole variance the budget buys,
-  each found by a search under `control = list(max_nodes =)`. In cluster mode
+  each found by a search under `control = list(max_nodes =, gap =)`. In cluster mode
   the search sets each stratum's whole PSU count and, under optimal allocation
   with stage costs and `N_psu`, any take the frame leaves free, within the
   average PSU size. A fixed-`n` cluster design fields whole PSUs at a whole
@@ -82,7 +88,7 @@ that recommendation when available, or rounds the continuous size up.
   `budget` it is the best design that budget buys. A KKT-certified continuous
   optimum is reported separately from the whole-unit design, which a search
   proves the cheapest, or the best within the budget, under
-  `control = list(max_nodes =)`.
+  `control = list(max_nodes =, gap =)`.
   An element-level proportion measure uses the population variance
   `N * p * (1 - p) / (N - 1)`, so a one-stratum joint allocation equals
   `n_prop()`. Multistage designs use the working variance `p * (1 - p)`.
@@ -105,7 +111,9 @@ that recommendation when available, or rounds the continuous size up.
   designs are listed, under stage costs also those holding its largest PSUs
   in certainty below the threshold, and a search picks the cheapest meeting
   every target. It proves that design optimal, or stops after
-  `control$max_nodes` nodes with a gap to a lower bound. With `objective` and
+  `control$max_nodes` nodes, or within `control$gap` of a lower bound, and
+  reports the gap. A design within 1e-6 of the bound reads `"gap"` rather
+  than `"limit"`. With `objective` and
   `budget` it picks the design with the smallest weighted relative variance
   whose field cost stays within the budget. Certainty visits are priced as a
   fixed cost, and the clustering reads the responding take. `predict()` on a
@@ -193,8 +201,14 @@ that recommendation when available, or rounds the continuous size up.
 
 ## Design components
 
-* `varcomp()` estimates variance components by nested ANOVA, with methods for
-  formulas, numeric vectors, and `survey::svydesign` objects. Weights are read
+* `varcomp()` estimates the between- and within-PSU relvariance components of
+  a frame or a sample, with methods for formulas, numeric vectors, and
+  `survey::svydesign` objects. PSUs, and at three stages SSUs, may be drawn
+  by simple random sampling or proportional to size, and the result records
+  which, since `var_ratio_ssu` depends on it when SSU sizes vary. Without
+  `prob` the between-PSU term is the simple random sampling one at two and
+  three stages, so the stage-by-stage correction reproduces the variance of
+  equal-size units drawn without replacement exactly. Weights are read
   as inverse inclusion probabilities, so a previous round's unequal-probability
   sample gives approximately design-unbiased components. `varcomp(deff = )`
   backs an `icc` out of a published design effect instead. Its page explains
@@ -209,7 +223,9 @@ that recommendation when available, or rounds the continuous size up.
 * `effective_n()` mirrors it, returning `n * resp_rate / deff`.
 * `design_df()` counts the degrees of freedom a planned design's variance
   estimator will have, the planning analogue of `survey::degf()`, with additive
-  per-stratum and non-additive per-domain detail. A zoned PSU register counts
+  per-stratum and non-additive per-domain detail. For an allocation,
+  `method = "satterthwaite"` weights the strata by their shares of the
+  planned variance instead. A zoned PSU register counts
   its zones, or its collapsed zone groups at one PSU per zone, whose
   per-stratum counts need not add up when a group joins strata. `df` switches
   the interval quantile from the normal to `t` in every function that builds

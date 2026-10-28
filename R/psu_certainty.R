@@ -581,6 +581,7 @@
     n_psu_per_zone = n_psu_per_zone
   )
   max_nodes <- .search_control(control)$max_nodes
+  gap <- .search_control(control)$gap
   stratum <- as.character(frame[["stratum"]] %||% seq_len(nrow(frame)))
   H <- nrow(frame)
   N_h <- frame$N
@@ -660,7 +661,7 @@
   } else {
     ev$lower / N_h
   }
-  plan <- .psu_plan(ev, f_anchor, max_nodes, budget)
+  plan <- .psu_plan(ev, f_anchor, max_nodes, budget, gap)
   design <- lapply(seq_len(H), function(h) .psu_design(ev, h, plan$rows[[h]]))
   certain <- logical(nrow(psu))
   source <- rep(NA_character_, nrow(psu))

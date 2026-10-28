@@ -152,8 +152,8 @@
 #'   columns of those names are refused. In fixed-take
 #'   multistage mode, `icc_psu` is required and `var_ratio_psu` defaults to 1.
 #'   Three-stage mode also requires `icc_ssu` and derives `var_ratio_ssu` as
-#'   `var_ratio_psu * (1 - icc_psu)` when it is absent, which is the value the
-#'   variance decomposition implies.
+#'   `var_ratio_psu * (1 - icc_psu)` when it is absent, the value for SSUs of
+#'   equal size or drawn proportional to size (see [design_effect()]).
 #'   Stage parameters may instead be supplied as stratum defaults in `frame`,
 #'   in which case non-missing measure-row values take precedence.
 #'   Only rows selected by a
@@ -213,7 +213,10 @@
 #'   found, the status `"limit"` and a lower bound. It finishes the node it
 #'   is expanding, so it can open a few nodes past the limit. A larger value
 #'   can prove a design the default leaves at the limit, at the cost of
-#'   time. A mode that does not search refuses it.
+#'   time. `gap`, a number in \[0, 1), 0 by default, stops the search once
+#'   the design is within that relative gap of the bound, with the status
+#'   `"gap"`. A stop at the node limit within 1e-6 of the bound also reads
+#'   `"gap"`. A mode that does not search refuses `control`.
 #' @param objective Optional estimates whose priority-weighted relative
 #'   variance is minimized among the allocations that meet `targets` and the
 #'   budget. Either a character vector of indicator names (overall domain,
@@ -277,7 +280,8 @@
 #'   `1 - n / N` on the whole inflated variance, `"stage"` for the
 #'   stage-by-stage correction, exact under the equal-size, equal-take
 #'   variance-component model this path assumes, or `"none"` for
-#'   [n_cluster()]'s with-replacement model. `"stage"` requires `N_psu`, and
+#'   [n_cluster()]'s default with-replacement model. `"stage"` and `"none"`
+#'   match [n_cluster()] with the same `fpc`. `"stage"` requires `N_psu`, and
 #'   `N_ssu` as well at three stages. Refused outside cluster allocation and
 #'   with a `psu` register. See the correction section in Details.
 #' @param plan Optional [svyplan()] object providing design defaults.
@@ -386,8 +390,9 @@
 #'   The result also carries an `$operational` list describing the integer
 #'   field design. In joint mode it contains total `n`, variable field `cost`,
 #'   the full target table in `constraints`, `all_pass`, and `status`,
-#'   `"optimal"` when the search proved the design the best and `"limit"`
-#'   when its node limit came first. With `psu` it adds `n_certain` and
+#'   `"optimal"` when the search proved the design the best, `"gap"` when it
+#'   stopped within the gap of `control`, or within 1e-6 at the node limit,
+#'   and `"limit"` when its node limit came first with a larger gap. With `psu` it adds `n_certain` and
 #'   `n_psu_draw`. In the classic modes it also reports the applicable
 #'   aggregate `se`, `moe`, and `cv`. Top-level quantities describe the
 #'   continuous design, while `as.integer()` returns the operational total.
@@ -425,7 +430,8 @@
 #'       `"voluntary"` under stage costs, where a stratum's designs include
 #'       those holding its largest PSUs in certainty below the threshold, and
 #'       `"closure"` under unit cost, where they do not.}
-#'     \item{`status`}{`"optimal"` or `"limit"`, as in `$operational`.}
+#'     \item{`status`}{`"optimal"`, `"gap"` or `"limit"`, as in
+#'       `$operational`.}
 #'     \item{`bound`, `gap`}{A lower bound on the cost of any design in the
 #'       family that meets every target, and the relative gap
 #'       `(cost - bound) / cost`, 0 when the design is proved the cheapest.
@@ -529,7 +535,9 @@
 #' - `n_per_psu` (optional): fixes the per-stratum take, in the
 #'   operational whole-unit design as much as in the continuous one. Any
 #'   `NA` entries are replaced by the cost-optimal take
-#'   `sqrt(cost_psu / cost_ssu * (1 - icc_psu) / icc_psu)`. Holding the
+#'   `sqrt(cost_psu / cost_ssu * (1 - icc_psu) / icc_psu)`, or its
+#'   stage-corrected form under `fpc = "stage"` (see "Which correction the
+#'   variance carries"). Holding the
 #'   take is what `n` mode gives up its exact total for. The stratum is
 #'   fielded as a whole number of clusters of that size, so its element
 #'   count lands on the nearest multiple.
@@ -561,14 +569,13 @@
 #' continuous take is larger. Without `N_psu` the take stays at the rule's
 #' whole take.
 #'
-#' The continuous design takes the cost-optimal take of the model without a
-#' finite population correction. Under `fpc = "unit"` or `"stage"` a
-#' different take can buy more precision for the same cost, so the
-#' continuous design is the rule's design rather than the continuous
-#' optimum, and the whole design, which the search chooses under the
-#' correction, can do better than it. The difference is small under
-#' `"unit"` and can be large under `"stage"`, where a take near the PSU
-#' size removes most of the within-PSU variance.
+#' Under `fpc = "none"` and `"stage"` the continuous take is the exact
+#' cost-optimal take of the variance the allocation reports. Under the
+#' default `"unit"` it is the take without a correction, since there the
+#' optimal take moves with the budget. A slightly different take can then
+#' buy a little more precision for the same cost, and the whole design,
+#' which the search chooses under the correction, can do better than the
+#' continuous one.
 #'
 #' On its own it does **not** activate a first-stage finite population
 #' correction. Under the default `fpc = "unit"` no factor keyed to the PSU
@@ -619,7 +626,7 @@
 #'   a more general variance expression, so it is refused with a `psu`
 #'   register.
 #' - `"none"` applies no correction at any stage, which is [n_cluster()]'s
-#'   model exactly. Use it to compare the two interfaces at a sampling
+#'   default model exactly. Use it to compare the two interfaces at a sampling
 #'   fraction where the correction would otherwise separate them.
 #'
 #' So `none` \eqn{\ge} `unit` \eqn{\ge} `stage` at every sampling fraction,
@@ -632,6 +639,22 @@
 #' usually know it less well than they know `icc_psu` and the take. Choose
 #' `"stage"` when the PSU sizes really are close to equal and the fractions
 #' are large enough to matter.
+#'
+#' Under `"stage"` a free take is the cost-optimal take of the corrected
+#' variance. With \eqn{r} the unit response rate it is
+#'
+#' \deqn{m = \sqrt{\frac{c_1(1-\delta)}{c_2\,r\,\{\delta - (1-\delta)/M\}}}.}{m = sqrt(c_1 (1 - delta) / (c_2 r (delta - (1 - delta)/M))).}
+#'
+#' The within-PSU fraction lowers the between-PSU term to
+#' \eqn{\delta - (1-\delta)/M}{delta - (1 - delta)/M}. When
+#' \eqn{\delta \le 1/(M+1)}{delta <= 1/(M + 1)} that term is not positive, a
+#' further unit inside a PSU always buys more precision than a further PSU,
+#' and the take is the whole PSU, \eqn{M}. The take moves well away from the
+#' uncorrected one only for small PSUs. At \eqn{M = 50} and
+#' \eqn{\delta = 0.02}{delta = 0.02}, keeping the uncorrected take would cost
+#' about a fifth of the variance at the same budget, and at a few hundred
+#' units per PSU the two takes give the same variance to within half a
+#' percent.
 #'
 #' Note that the two fractions are controlled by different quantities.
 #' \eqn{f_1} falls as the design takes a smaller share of the PSU universe,
@@ -1061,6 +1084,13 @@
 #'
 #' n_alloc(frame_cluster, cv = 0.05)
 #'
+#' # Small PSUs of 49 units each: the stage correction moves the
+#' # cost-optimal take from about 6.3 to 7
+#' plots <- data.frame(N = 4900, N_psu = 100, sd = sqrt(54), mean = 10,
+#'                     icc_psu = 5 / 54, cost_psu = 12, cost_ssu = 3)
+#' n_alloc(plots, budget = 1000, fpc = "none")$detail$n_per_psu
+#' n_alloc(plots, budget = 1000, fpc = "stage")$detail$n_per_psu
+#'
 #' # Certainty PSUs from a register that lists every PSU with its size.
 #' # The "City" stratum is a single PSU.
 #' set.seed(1)
@@ -1266,7 +1296,8 @@ n_alloc.default <- function(
       df = df,
       fpc = fpc,
       .finite_prop_var = TRUE,
-      max_nodes = .search_control(control)$max_nodes
+      max_nodes = .search_control(control)$max_nodes,
+      gap = .search_control(control)$gap
     )
     fit$params$control <- control
     return(fit)
@@ -1626,7 +1657,8 @@ n_alloc.default <- function(
       df = df,
       alloc_weights = a_h,
       alloc = alloc,
-      max_nodes = if (searched) .search_control(control)$max_nodes
+      max_nodes = if (searched) .search_control(control)$max_nodes,
+      gap = .search_control(control)$gap
     )
     detail <- opc$detail
     operational <- opc$operational
@@ -1638,7 +1670,8 @@ n_alloc.default <- function(
     if (searched) {
       whole <- .alloc_whole_element(
         prep, alloc, mode, cv, budget, deff, resp_rate, lo_i, hi_i,
-        max_nodes = .search_control(control)$max_nodes
+        max_nodes = .search_control(control)$max_nodes,
+        gap = .search_control(control)$gap
       )
       detail$n_int <- whole$n_int
       params$control <- control
@@ -1870,7 +1903,8 @@ n_alloc.svyplan_prec <- function(
 #'   `1 - n / N` on the whole inflated variance, `"stage"` for the
 #'   stage-by-stage correction, exact under the equal-size, equal-take
 #'   variance-component model this path assumes, or `"none"` for
-#'   [n_cluster()]'s with-replacement model. `"stage"` requires `N_psu`, and
+#'   [n_cluster()]'s default with-replacement model. `"stage"` and `"none"`
+#'   match [n_cluster()] with the same `fpc`. `"stage"` requires `N_psu`, and
 #'   `N_ssu` as well at three stages. Refused outside cluster allocation and
 #'   with a `psu` register. See the correction section in Details.
 #' @param min_n_stratum Optional minimum sample size per stratum, applied as the
@@ -2775,6 +2809,38 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     n_per_psu_h <- as.numeric(ps)
   }
 
+  N_psu_h <- NULL
+  if ("N_psu" %in% names(frame)) {
+    N_psu <- frame$N_psu
+    if (
+      !is.numeric(N_psu) ||
+        anyNA(N_psu) ||
+        any(!is.finite(N_psu)) ||
+        any(N_psu < 1) ||
+        any(abs(N_psu - round(N_psu)) > 1e-8)
+    ) {
+      stop(
+        "'N_psu' must contain positive whole numbers, one per stratum",
+        call. = FALSE
+      )
+    }
+    N_psu_h <- as.numeric(round(N_psu))
+    if (any(N_psu_h > prep$N_h + 1e-8)) {
+      stop(
+        "'N_psu' must not exceed the ultimate-unit population 'N'",
+        call. = FALSE
+      )
+    }
+  }
+  prep$N_psu_h <- N_psu_h
+
+  if (identical(fpc, "stage") && is.null(N_psu_h)) {
+    stop(
+      "fpc = \"stage\" needs the PSU population: add an 'N_psu' column, or use the default fpc = \"unit\"",
+      call. = FALSE
+    )
+  }
+
   need_opt <- is.na(n_per_psu_h)
   if (any(need_opt)) {
     if (!has_costs) {
@@ -2783,13 +2849,15 @@ prec_alloc.svyplan_n <- function(frame, ...) {
         call. = FALSE
       )
     }
-    # b* = sqrt(C1 (1 - icc) / (C2 icc r)). resp_rate_psu scales cost without
-    # moving the trade-off, so it is absent.
-    n_per_psu_h[need_opt] <- sqrt(
-      frame$cost_psu[need_opt] /
-        frame$cost_ssu[need_opt] *
-        (1 - icc[need_opt]) /
-        (icc[need_opt] * prep$resp_rate_h[need_opt])
+    # resp_rate_psu scales cost without moving the trade-off, so it is absent.
+    n_per_psu_h[need_opt] <- .cluster_free_take(
+      frame$cost_psu[need_opt],
+      frame$cost_ssu[need_opt],
+      icc[need_opt],
+      prep$resp_rate_h[need_opt],
+      M = if (identical(fpc, "stage")) {
+        prep$N_h[need_opt] / N_psu_h[need_opt]
+      }
     )
   }
 
@@ -2826,38 +2894,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     .check_resp_rate_h
   )
 
-  N_psu_h <- NULL
-  if ("N_psu" %in% names(frame)) {
-    N_psu <- frame$N_psu
-    if (
-      !is.numeric(N_psu) ||
-        anyNA(N_psu) ||
-        any(!is.finite(N_psu)) ||
-        any(N_psu < 1) ||
-        any(abs(N_psu - round(N_psu)) > 1e-8)
-    ) {
-      stop(
-        "'N_psu' must contain positive whole numbers, one per stratum",
-        call. = FALSE
-      )
-    }
-    N_psu_h <- as.numeric(round(N_psu))
-    if (any(N_psu_h > prep$N_h + 1e-8)) {
-      stop(
-        "'N_psu' must not exceed the ultimate-unit population 'N'",
-        call. = FALSE
-      )
-    }
-  }
-  prep$N_psu_h <- N_psu_h
 
   prep$S_raw_h <- prep$S_h
-  if (identical(fpc, "stage") && is.null(N_psu_h)) {
-    stop(
-      "fpc = \"stage\" needs the PSU population: add an 'N_psu' column, or use the default fpc = \"unit\"",
-      call. = FALSE
-    )
-  }
   prep$fpc <- fpc
   prep$unit_resp_rate_h <- prep$resp_rate_h
   prep$resp_rate_h <- prep$resp_rate_h * resp_rate_psu_h
@@ -2871,6 +2909,35 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   prep$icc_psu_h <- icc
   prep$var_ratio_psu_h <- var_ratio
   .cluster_at_take(prep, n_per_psu_h)
+}
+
+#' The cost-optimal free take of a two-stage stratum
+#'
+#' Minimizing cost times variance gives
+#' `sqrt(cost_psu (1 - icc) / (cost_ssu r D))`, with `D = icc` when no stage
+#' correction applies. Under `fpc = "stage"` the within-PSU fraction
+#' `take * r / M` lowers the between-PSU term to `D = icc - (1 - icc) / M`.
+#' When that is not positive, a further unit inside a PSU always buys more
+#' precision than a further PSU, so the take is the whole PSU, `cap`, which
+#' is `M` unless the take counts other units than `M` does.
+#' @keywords internal
+#' @noRd
+.cluster_free_take <- function(cost_psu, cost_ssu, icc, resp_rate, M = NULL,
+                               cap = M) {
+  if (is.null(M)) {
+    return(sqrt(cost_psu / cost_ssu * (1 - icc) / (icc * resp_rate)))
+  }
+  D <- icc - (1 - icc) / M
+  take <- rep_len(cap, length(D))
+  inner <- D > 0
+  take[inner] <- pmin(
+    take[inner],
+    sqrt(
+      cost_psu[inner] / cost_ssu[inner] * (1 - icc[inner]) /
+        (D[inner] * resp_rate[inner])
+    )
+  )
+  take
 }
 
 #' A two-stage stratum's element terms at a given take
@@ -2990,6 +3057,12 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 .alloc_psu_bound_note <- function(prep) {
   if (is.null(prep$M_src) || !any(prep$M_src == "N_psu")) {
     return("")
+  }
+  if (identical(prep$fpc, "stage")) {
+    return(sprintf(
+      ". The ceiling comes from the PSU universe in %s, where every PSU is taken",
+      paste(sQuote(prep$stratum[prep$M_src == "N_psu"]), collapse = ", ")
+    ))
   }
   sprintf(
     ". The ceiling comes from the PSU universe in %s rather than from the population. At the take 'n_per_psu' this allocation holds, only 'N_psu * n_per_psu' ultimate units are available there. That is what this path's with-replacement first-stage approximation and the supplied PSU availability allow, not a statement that the target is unattainable under the real design",
@@ -3378,7 +3451,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #' @keywords internal
 #' @noRd
 .alloc_whole_element <- function(prep, alloc, mode, cv, budget, deff,
-                                 resp_rate, lo_i, hi_i, max_nodes) {
+                                 resp_rate, lo_i, hi_i, max_nodes, gap = 0) {
   H <- length(prep$N_h)
   W <- prep$N_h / sum(prep$N_h)
   S2 <- W^2 * prep$S_h^2 * rep_len(deff, H)
@@ -3422,7 +3495,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     g2 <- a[on] / k / room * (1 + 2e-9)
     q <- .whole_problem(cost[on] * k, 0, 0, g2, lo, hi, g0 = -(g2 / hi))
     r <- .whole_search(q, grain = .menu_grain(cost[on] * k),
-                       max_nodes = max_nodes)
+                       max_nodes = max_nodes, gap = gap)
     offset <- sum(cost[!on] * n[!on])
   } else {
     room <- budget - sum(prep$cost_h[!on] * n[!on])
@@ -3430,7 +3503,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
                         prep$cost_h[on] * k /
                           (room + 1e-9 * max(1, budget)), 0,
                         lo, hi)
-    r <- .whole_search(q, start = lo, max_nodes = max_nodes)
+    r <- .whole_search(q, start = lo, max_nodes = max_nodes, gap = gap)
     offset <- -sum(c0)
   }
   if (identical(r$status, "infeasible")) {
@@ -3483,7 +3556,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #' @keywords internal
 #' @noRd
 .alloc_whole_cluster <- function(prep, alloc, mode, cv, budget, deff,
-                                 resp_rate, lo_i, hi_i, b_rule, max_nodes) {
+                                 resp_rate, lo_i, hi_i, b_rule, max_nodes,
+                                 gap = 0) {
   H <- length(prep$N_h)
   W <- prep$N_h / sum(prep$N_h)
   r_u <- rep_len(prep$unit_resp_rate_h %||% resp_rate, H)
@@ -3661,7 +3735,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     }, 1L)
     start_a <- vapply(low, `[[`, 1, "a")
     r_s <- .whole_search(q, start = .whole_plan(q, start_a, branch = at),
-                         grain = grain, max_nodes = max_nodes)
+                         grain = grain, max_nodes = max_nodes, gap = gap)
     if (is.null(r_s$x)) {
       stop(structure(
         list(message = sprintf(
@@ -3809,7 +3883,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   df = NULL,
   alloc_weights = NULL,
   alloc = NULL,
-  max_nodes = NULL
+  max_nodes = NULL,
+  gap = 0
 ) {
   H <- length(n_h)
   ps <- prep$n_per_psu_h
@@ -3926,7 +4001,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   whole <- NULL
   if (!is.null(max_nodes)) {
     whole <- .alloc_whole_cluster(prep, alloc, mode, target_cv, budget, deff,
-                                  resp_rate, lo_i, hi_i, b_h, max_nodes)
+                                  resp_rate, lo_i, hi_i, b_h, max_nodes, gap)
     b_h <- whole$b
   }
 
@@ -4001,6 +4076,28 @@ prec_alloc.svyplan_n <- function(frame, ...) {
         1e-9
     ))
     a_h <- pmin(pmax(a_h, a_min), a_max)
+    # The rescaling reads the uncorrected clustering factor, and rounding the
+    # take moves both stage fractions under fpc = "stage", so it can stop
+    # short. Add the PSU that lowers the cv most per unit of cost until the
+    # target is met or every stratum is at its bound.
+    cv_at <- function(a) {
+      .alloc_op_cv(prep, a * b_h, S_op, N_fpc_op, alpha, deff, resp_rate, df)
+    }
+    per_psu <- if (all(is.finite(psu_cost))) psu_cost else rep(1, H)
+    repeat {
+      if (is.null(target_cv)) break
+      now <- cv_at(a_h)
+      if (is.finite(now) && now <= target_cv + 1e-8) break
+      cand <- which(a_h < a_max)
+      if (length(cand) == 0L) break
+      after <- vapply(cand, function(h) {
+        a_try <- a_h
+        a_try[h] <- a_try[h] + 1L
+        cv_at(a_try)
+      }, numeric(1L))
+      j <- cand[which.max((now - after) / per_psu[cand])]
+      a_h[j] <- a_h[j] + 1L
+    }
   } else if (mode == "budget") {
     min_cost <- sum(a_min * psu_cost)
     if (budget < min_cost - 1e-8) {
@@ -4097,14 +4194,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     )
   }
   if (!is.null(target_cv)) {
-    op_cv <- if (length(prep$domain_idx) == 0L) {
-      m$cv
-    } else {
-      prep_op <- prep
-      prep_op$S_h <- S_op
-      prep_op$N_fpc_h <- N_fpc_op
-      .alloc_domain_cv_max(prep_op, e_h, alpha, deff, resp_rate)
-    }
+    op_cv <- .alloc_op_cv(prep, e_h, S_op, N_fpc_op, alpha, deff, resp_rate,
+                          df)
     if (!is.finite(op_cv) || op_cv > target_cv + 1e-8) {
       stop(
         sprintf(
@@ -4131,6 +4222,24 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   )
   operational$status <- whole$status
   list(operational = operational, detail = detail, search = whole$search)
+}
+
+#' The cv of a whole-cluster design, over its domains where it has them
+#' @keywords internal
+#' @noRd
+.alloc_op_cv <- function(prep, e_h, S_op, N_fpc_op, alpha, deff, resp_rate,
+                         df) {
+  if (length(prep$domain_idx) == 0L) {
+    return(.alloc_metrics(
+      N_h = prep$N_h, S_h = S_op, mean_h = prep$mean_h, n_h = e_h,
+      alpha = alpha, deff = deff, resp_rate = resp_rate,
+      cost_h = prep$cost_h, df = df, N_fpc = N_fpc_op
+    )$cv)
+  }
+  prep_op <- prep
+  prep_op$S_h <- S_op
+  prep_op$N_fpc_h <- N_fpc_op
+  .alloc_domain_cv_max(prep_op, e_h, alpha, deff, resp_rate)
 }
 
 #' @keywords internal

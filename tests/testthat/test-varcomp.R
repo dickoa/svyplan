@@ -390,22 +390,45 @@ test_that("3-stage SRS works without prob", {
   expect_true(all(vc$icc >= 0 & vc$icc <= 1))
 })
 
-test_that("3-stage SRS matches PPS with uniform prob", {
+test_that("3-stage SRS differs from PPS with uniform prob only in the between term", {
   set.seed(99)
   M <- 20
   frame <- data.frame(
     y = rnorm(400, 50, 10),
     psu = rep(1:M, each = 20),
     ssu = rep(1:100, each = 4),
-    pp = rep(1 / M, 400)
+    pp = rep(1 / M, 400),
+    w = runif(400, 1, 3)
   )
   vc_srs <- varcomp(y ~ psu/ssu, data = frame)
   vc_pps <- varcomp(y ~ psu/ssu, data = frame, prob = ~pp)
-  expect_equal(vc_srs$icc, vc_pps$icc, tolerance = 1e-10)
-  expect_equal(vc_srs$var_ratio, vc_pps$var_ratio, tolerance = 1e-10)
-  expect_equal(vc_srs$unit_relvar, vc_pps$unit_relvar, tolerance = 1e-10)
-  expect_equal(vc_srs$varb, vc_pps$varb, tolerance = 1e-10)
+  # SRS divides the spread of PSU totals by M - 1, the PPS expression by M.
+  expect_equal(vc_srs$varb, vc_pps$varb * M / (M - 1), tolerance = 1e-10)
   expect_equal(vc_srs$varw, vc_pps$varw, tolerance = 1e-10)
+  expect_equal(vc_srs$unit_relvar, vc_pps$unit_relvar, tolerance = 1e-10)
+  expect_equal(vc_srs$icc[["icc_ssu"]], vc_pps$icc[["icc_ssu"]],
+               tolerance = 1e-10)
+  expect_equal(vc_srs$var_ratio[["var_ratio_ssu"]],
+               vc_pps$var_ratio[["var_ratio_ssu"]], tolerance = 1e-10)
+  within <- function(vc) vc$var_ratio[[1L]] * (1 - vc$icc[[1L]])
+  expect_equal(within(vc_srs), within(vc_pps), tolerance = 1e-10)
+
+  w_srs <- varcomp(y ~ psu/ssu, data = frame, weights = ~w)
+  w_pps <- varcomp(y ~ psu/ssu, data = frame, prob = ~pp, weights = ~w)
+  expect_equal(w_srs$varb, w_pps$varb * M / (M - 1), tolerance = 1e-10)
+  expect_equal(w_srs$varw, w_pps$varw, tolerance = 1e-10)
+})
+
+test_that("3-stage SRS between term matches the 2-stage one on the same PSUs", {
+  set.seed(7)
+  frame <- data.frame(
+    y = rnorm(120, 20, 4) + rep(rnorm(6, 0, 3), each = 20),
+    psu = rep(1:6, each = 20),
+    ssu = rep(1:30, each = 4)
+  )
+  vc3 <- varcomp(frame$y, stage_id = list(frame$psu, frame$ssu))
+  vc2 <- varcomp(frame$y, stage_id = list(frame$psu))
+  expect_equal(vc3$varb, vc2$varb, tolerance = 1e-12)
 })
 
 test_that("3-stage SRS works with vector interface", {
@@ -1339,4 +1362,126 @@ test_that("recovered components are near-unbiased for the frame components", {
   # Averaged over replicates, so the test does not turn on one draw.
   expect_lt(abs(bias_recovered), 0.015)
   expect_lt(abs(bias_recovered), abs(bias_full))
+})
+
+## How the components were obtained travels with them
+##
+## Components from a size-proportional stage do not describe a design that
+## draws that stage by simple random sampling, so the planning functions need
+## to know which one they were handed.
+
+.vc_unequal_frame <- function(seed = 11) {
+  set.seed(seed)
+  sizes <- rpois(60, 8) + 2
+  fr <- data.frame(
+    psu = rep(rep(1:12, each = 5), sizes),
+    ssu = rep(1:60, sizes),
+    y = rnorm(sum(sizes), 50, 8)
+  )
+  n_psu <- ave(fr$y, fr$psu, FUN = length)
+  fr$psu_share <- n_psu / nrow(fr)
+  fr$ssu_share <- ave(fr$y, fr$ssu, FUN = length) / n_psu
+  fr
+}
+
+test_that("every estimation route records its selection and input", {
+  fr <- .vc_unequal_frame()
+  srs2 <- varcomp(y ~ psu, data = fr)
+  expect_identical(srs2$selection, c(psu = "srs"))
+  expect_identical(srs2$input, "frame")
+  pps2 <- varcomp(y ~ psu, data = fr, prob = ~psu_share)
+  expect_identical(pps2$selection, c(psu = "pps"))
+  w2 <- varcomp(y ~ psu, data = fr, weights = rep(2, nrow(fr)))
+  expect_identical(w2$input, "weighted")
+  three <- varcomp(y ~ psu/ssu, data = fr)
+  expect_identical(three$selection, c(psu = "srs", ssu = "srs"))
+  both <- varcomp(y ~ psu/ssu, data = fr, prob = list(~psu_share, ~ssu_share))
+  expect_identical(both$selection, c(psu = "pps", ssu = "pps"))
+  st <- varcomp(y ~ psu, data = fr, strata = ifelse(fr$psu <= 6, "a", "b"))
+  expect_identical(st$selection, c(psu = "srs"))
+  expect_identical(varcomp(deff = 1.8, n_per_psu = 20)$input, "deff")
+  expect_true(is.na(varcomp(deff = 1.8, n_per_psu = 20)$selection))
+  expect_identical(
+    varcomp(se = 0.021, p = 0.3, n = 1200, n_per_psu = 20)$input, "se"
+  )
+})
+
+test_that("print names the selection of each stage", {
+  fr <- .vc_unequal_frame()
+  out <- capture.output(
+    print(varcomp(y ~ psu/ssu, data = fr, prob = list(NULL, ~ssu_share)))
+  )
+  expect_match(out[1], "3-stage, SRS PSUs, PPS SSUs, frame", fixed = TRUE)
+})
+
+## A second-stage prob describes SSUs drawn proportional to size
+
+test_that("the PPS second stage follows the one-draw formulas", {
+  fr <- .vc_unequal_frame()
+  vc <- varcomp(y ~ psu/ssu, data = fr, prob = list(~psu_share, ~ssu_share))
+  p_i <- tapply(fr$psu_share, fr$psu, `[`, 1)
+  t_U <- sum(fr$y)
+  W2 <- 0
+  W3 <- 0
+  for (i in unique(fr$psu)) {
+    d <- fr[fr$psu == i, ]
+    t_j <- tapply(d$y, d$ssu, sum)
+    q_j <- tapply(d$ssu_share, d$ssu, `[`, 1)
+    Q_j <- tapply(d$y, d$ssu, length)
+    S_j <- tapply(d$y, d$ssu, var)
+    W2 <- W2 + sum(q_j * (t_j / q_j - sum(d$y))^2) / p_i[[as.character(i)]]
+    W3 <- W3 + sum(Q_j^2 * S_j / q_j) / p_i[[as.character(i)]]
+  }
+  expect_equal(vc$varw[["varw_psu"]], W2 / t_U^2, tolerance = 1e-12)
+  expect_equal(vc$varw[["varw_ssu"]], W3 / t_U^2, tolerance = 1e-12)
+})
+
+test_that("drawing SSUs by size removes the size effect from var_ratio_ssu", {
+  fr <- .vc_unequal_frame()
+  srs <- varcomp(y ~ psu/ssu, data = fr, prob = ~psu_share)
+  pps <- varcomp(y ~ psu/ssu, data = fr, prob = list(~psu_share, ~ssu_share))
+  derived <- pps$var_ratio[[1]] * (1 - pps$icc[[1]])
+  expect_equal(pps$var_ratio[["var_ratio_ssu"]], derived, tolerance = 0.1)
+  expect_gt(srs$var_ratio[["var_ratio_ssu"]], 2 * derived)
+  expect_equal(srs$varb, pps$varb)
+  expect_equal(srs$icc[[1]], pps$icc[[1]])
+  expect_equal(srs$var_ratio[[1]], pps$var_ratio[[1]])
+})
+
+test_that("a stratified frame takes the second-stage prob per stratum", {
+  fr <- .vc_unequal_frame()
+  fr$region <- ifelse(fr$psu <= 6, "a", "b")
+  fr$psu_share <- ave(fr$y, fr$psu, FUN = length) /
+    ave(fr$y, fr$region, FUN = length)
+  st <- varcomp(y ~ psu/ssu, data = fr, strata = ~region,
+                prob = list(~psu_share, ~ssu_share))
+  one <- varcomp(y ~ psu/ssu, data = fr[fr$region == "a", ],
+                 prob = list(~psu_share, ~ssu_share))
+  expect_equal(st$strata$var_ratio_ssu[st$strata$stratum == "a"],
+               one$var_ratio[["var_ratio_ssu"]])
+})
+
+test_that("a second-stage prob is refused where it has no meaning", {
+  fr <- .vc_unequal_frame()
+  expect_error(
+    varcomp(y ~ psu, data = fr, prob = list(~psu_share, ~ssu_share)),
+    "needs three stages"
+  )
+  expect_error(
+    varcomp(y ~ psu/ssu, data = fr, prob = list(NULL, ~ssu_share),
+            weights = rep(2, nrow(fr))),
+    "complete frame only"
+  )
+  bad <- fr
+  bad$ssu_share[1] <- bad$ssu_share[1] / 2
+  expect_error(
+    varcomp(y ~ psu/ssu, data = bad, prob = list(NULL, ~ssu_share)),
+    "constant within each SSU"
+  )
+  bad <- fr
+  bad$ssu_share <- bad$ssu_share / 2
+  expect_error(
+    varcomp(y ~ psu/ssu, data = bad, prob = list(NULL, ~ssu_share)),
+    "sum to 1 across the SSUs"
+  )
 })

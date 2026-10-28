@@ -8,9 +8,10 @@
 ## that drifts in one of them stays green everywhere else.
 ##
 ## The comparisons run at a negligible sampling fraction. That is the regime
-## every one of these interfaces claims: n_cluster() applies no finite
-## population correction at any stage, while n_alloc() applies the
-## ultimate-unit one. Away from negligible f they are answering different
+## every one of these interfaces claims: n_cluster() by default applies no
+## finite population correction at any stage, while n_alloc() by default
+## applies the ultimate-unit one. Under fpc = "stage" both apply the same
+## correction, which the block at the very end compares. Away from negligible f they are answering different
 ## questions and are not expected to agree. The FPC block at the end pins that
 ## difference rather than hiding from it.
 
@@ -440,4 +441,107 @@ test_that("a costed indicators precision sizes the design it describes", {
   fit <- n_cluster(prec)
   expect_equal(prec_cluster(fit)$detail$.cv, prec$detail$.cv,
                tolerance = 1e-8)
+})
+
+## The stage correction is one model in both interfaces
+##
+## n_cluster(fpc = "stage") and a one-row n_alloc(fpc = "stage") correct each
+## component by its own stage's responding fraction, so their continuous
+## designs coincide at any sampling fraction, with nonresponse at both stages.
+
+.eq_stage_frame <- data.frame(
+  N = 4900, N_psu = 100, sd = sqrt(54), mean = 10, icc_psu = 5 / 54,
+  cost_psu = 12, cost_ssu = 3, resp_rate_psu = 0.9
+)
+
+.eq_stage_cluster <- function(...) {
+  n_cluster(
+    stage_cost = c(12, 3), icc = 5 / 54, unit_relvar = 54 / 100,
+    fpc = "stage", N = 4900, N_psu = 100, resp_rate = 0.8,
+    resp_rate_psu = 0.9, ...
+  )
+}
+
+test_that("n_cluster and n_alloc agree under the stage correction", {
+  for (mode in list(list(budget = 1000), list(cv = 0.06))) {
+    by_alloc <- do.call(
+      n_alloc,
+      c(list(.eq_stage_frame, resp_rate = 0.8, fpc = "stage"), mode)
+    )
+    by_cluster <- do.call(.eq_stage_cluster, mode)
+    expect_equal(by_cluster$n[["n_per_psu"]], by_alloc$detail$n_per_psu,
+                 tolerance = 1e-10)
+    expect_equal(by_cluster$n[["n_psu"]], by_alloc$detail$n_psu,
+                 tolerance = 1e-10)
+    expect_equal(by_cluster$cv, by_alloc$cv, tolerance = 1e-10)
+  }
+})
+
+test_that("prec_cluster and prec_alloc agree under the stage correction", {
+  frame <- transform(.eq_stage_frame, n_per_psu = 6)
+  by_alloc <- prec_alloc(frame, n = 6 * 40, resp_rate = 0.8, fpc = "stage")
+  by_cluster <- prec_cluster(
+    n = c(40, 6), icc = 5 / 54, unit_relvar = 54 / 100, fpc = "stage",
+    N = 4900, N_psu = 100, resp_rate = 0.8, resp_rate_psu = 0.9
+  )
+  expect_equal(by_cluster$cv, by_alloc$cv, tolerance = 1e-10)
+})
+
+test_that("three-stage n_cluster and n_alloc agree under the stage correction", {
+  p <- 0.3
+  for (rr in c(1, 0.8)) {
+    by_alloc <- n_alloc(
+      data.frame(stratum = "S", N = 6000, N_psu = 60, N_ssu = 600,
+                 n_per_psu = 5, n_per_ssu = 4, cost_psu = 300, cost_ssu = 50,
+                 cost_tsu = 25),
+      measures = data.frame(stratum = "S", name = "y", p = p,
+                            icc_psu = 0.05, icc_ssu = 0.10, var_ratio_psu = 1,
+                            resp_rate = rr),
+      targets = .eq_targets,
+      fpc = "stage"
+    )$detail$n / 20
+    by_cluster <- n_cluster(
+      icc = c(0.05, 0.10), n_per_psu = 5, n_per_ssu = 4, cv = .eq_cv,
+      resp_rate = rr, unit_relvar = (1 - p) / p, stage_cost = c(300, 50, 25),
+      fpc = "stage", N = 6000, N_psu = 60, N_ssu = 600
+    )$n[["n_psu"]]
+    expect_equal(by_alloc, by_cluster, tolerance = 1e-6)
+  }
+})
+
+## One indicator under the stage correction is one design, whichever mode
+
+.eq_stage_pair <- function(stages, mode, rr) {
+  common <- list(fpc = "stage", resp_rate = rr)
+  if (stages == 2L) {
+    common <- c(common, list(stage_cost = c(120, 10), N = 3000, N_psu = 60))
+    icc <- 0.06
+    row <- data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_psu = icc)
+  } else {
+    common <- c(common, list(stage_cost = c(300, 50, 10), N = 12000,
+                             N_psu = 40, N_ssu = 400))
+    icc <- c(0.04, 0.10)
+    row <- data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_psu = icc[1],
+                      icc_ssu = icc[2])
+  }
+  scalar <- do.call(n_cluster, c(common, mode, list(
+    icc = icc, unit_relvar = .eq_relvar,
+    cv = if (is.null(mode$budget)) .eq_cv
+  )))
+  several <- do.call(n_cluster, c(common, mode, list(indicators = row)))
+  list(scalar = scalar, several = several)
+}
+
+test_that("one indicator under the stage correction returns the scalar design", {
+  modes <- list(list(), list(budget = 9000), list(n_psu = 30))
+  for (stages in 2:3) for (mode in modes) for (rr in c(1, 0.7)) {
+    if (stages == 3L && !is.null(mode$budget)) mode$budget <- 40000
+    if (stages == 3L && !is.null(mode$n_psu)) mode$n_psu <- 35
+    got <- .eq_stage_pair(stages, mode, rr)
+    tol <- if (stages == 2L) 1e-6 else 1e-4
+    expect_equal(got$several$n, got$scalar$n, tolerance = tol)
+    expect_equal(got$several$cv, got$scalar$cv, tolerance = tol)
+    expect_equal(got$several$operational$n, got$scalar$operational$n,
+                 tolerance = 0)
+  }
 })

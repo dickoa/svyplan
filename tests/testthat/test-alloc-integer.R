@@ -460,3 +460,46 @@ test_that("a frame without variance takes its lower bounds", {
     expect_identical(fit$optimization$search$nodes, 0)
   }
 })
+
+## The search's status within a gap
+##
+## A design within 1e-6 of its bound at the node limit is reported "gap"
+## rather than "limit", and control$gap stops the search there on purpose.
+
+.gap_frame <- function() {
+  set.seed(5)
+  H <- 150
+  data.frame(stratum = paste0("s", seq_len(H)), N = sample(200:60000, H),
+             sd = runif(H, 5, 40), mean = runif(H, 20, 80),
+             unit_cost = runif(H, 1, 10))
+}
+
+test_that("a stop within 1e-6 of the bound reads gap, a wider one limit", {
+  near <- n_alloc(.gap_frame(), cv = 0.005, alloc = "optimal",
+                  control = list(max_nodes = 1000))
+  s <- near$optimization$search
+  expect_identical(s$status, "gap")
+  expect_lte(s$gap, 1e-6)
+  expect_identical(near$operational$status, "gap")
+  expect_output(print(near), "search: within")
+  far <- n_alloc(.gap_frame(), cv = 0.005, alloc = "optimal",
+                 control = list(max_nodes = 50))
+  expect_identical(far$optimization$search$status, "limit")
+  expect_gt(far$optimization$search$gap, 1e-6)
+})
+
+test_that("control$gap stops the search within the gap it sets", {
+  fit <- n_alloc(.gap_frame(), cv = 0.005, alloc = "optimal",
+                 control = list(gap = 1e-5))
+  s <- fit$optimization$search
+  expect_identical(s$status, "gap")
+  expect_lte(s$gap, 1e-5)
+  expect_lt(s$nodes, 5000)
+  expect_lte(fit$operational$cv, 0.005)
+  expect_error(n_alloc(.gap_frame(), cv = 0.005, alloc = "optimal",
+                       control = list(gap = 1)),
+               "must be one number in \\[0, 1\\)")
+  expect_error(n_alloc(.gap_frame(), cv = 0.005, alloc = "optimal",
+                       control = list(tolerance = 1)),
+               "the known ones are 'max_nodes' and 'gap'")
+})

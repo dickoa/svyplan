@@ -26,9 +26,7 @@
 #' @keywords internal
 #' @noRd
 .menu_group_min <- function(x, ends) {
-  out <- .Call(C_menu_group_min, x, ends)
-  if (is.null(dim(x))) out <- lapply(out, as.vector)
-  out
+  .Call(C_menu_group_min, x, ends)
 }
 
 #' Which states of `ord`, visited in order, no earlier kept state dominates
@@ -56,7 +54,7 @@
     .menu_group_min(r, p$ends)$arg
   }
   list(L = sum(r[best]) - sum(lambda), r = r, best = best,
-       g = colSums(p$C[best, , drop = FALSE]) - 1)
+       g = .colSums(p$C[best, , drop = FALSE], length(best), ncol(p$C)) - 1)
 }
 
 .menu_feasible <- function(p, pick) {
@@ -69,15 +67,17 @@
 #' @keywords internal
 #' @noRd
 .menu_step_down <- function(p, pick) {
-  load <- colSums(p$C[pick, , drop = FALSE])
+  K <- ncol(p$C)
+  load <- .colSums(p$C[pick, , drop = FALSE], length(pick), K)
   repeat {
     best <- NULL
     for (h in seq_len(p$H)) {
       j <- p$groups[[h]]
       j <- j[p$cost[j] < p$cost[pick[h]]]
       if (!length(j)) next
-      new <- sweep(p$C[j, , drop = FALSE], 2, load - p$C[pick[h], ], "+")
-      ok <- j[rowSums(new <= 1 + 1e-9) == ncol(p$C)]
+      new <- p$C[j, , drop = FALSE] +
+        rep(load - p$C[pick[h], ], each = length(j))
+      ok <- j[.rowSums(new <= 1 + 1e-9, length(j), K) == K]
       if (!length(ok)) next
       s <- ok[which.min(p$cost[ok])]
       save <- p$cost[pick[h]] - p$cost[s]
@@ -175,7 +175,8 @@
 #' for a continuous cost), and a state is dropped when another of its
 #' group costs no more and loads no column more.
 #'
-#' The search is best-first branch and bound. Each node fixes some groups
+#' The search is branch and bound, a short depth-first dive and then
+#' best-first (`.menu_component()`). Each node fixes some groups
 #' to one state, re-solves the Lagrangian bound on the rest by a few
 #' subgradient steps from its parent's multipliers, and drops states by
 #' the same reduced-cost test. It branches on the group whose two best
@@ -185,14 +186,19 @@
 #' `max_nodes` nodes, and the smallest bound left open is then a lower
 #' bound on the optimum.
 #'
+#' A positive `gap` stops the search once the plan is within that relative
+#' gap of the smallest open bound.
+#'
 #' Returns the plan (`pick`, one state per group), its `value`, the lower
-#' `bound`, the `status` (`"optimal"`, `"limit"` or `"infeasible"`) and
-#' the number of `nodes` and of states `kept` at the root. `pick` is
-#' `NULL` when no plan was found.
+#' `bound`, the `status` and the number of `nodes` and of states `kept` at
+#' the root. The status is `"optimal"` for a proof, `"gap"` for a stop
+#' within `gap`, or within 1e-6 at the node limit, `"limit"` for a stop at
+#' the node limit with a larger gap, or `"infeasible"`. `pick` is `NULL`
+#' when no plan was found.
 #' @keywords internal
 #' @noRd
 .menu_search <- function(p, lambda, pick = NULL, grain = 0,
-                         max_nodes = 5000, max_open = 1e4) {
+                         max_nodes = 5000, max_open = 1e4, gap = 0) {
   K <- ncol(p$C)
   if (K == 0L) {
     pick <- .menu_argmin(p$cost, p$groups)
@@ -231,7 +237,7 @@
                        match(p$owner[idx], S))
     start <- if (!is.null(pick)) match(pick[S], idx)
     r <- .menu_component(q, lambda[Kc], start, grain,
-                         max(max_nodes - out$nodes, 1), max_open)
+                         max(max_nodes - out$nodes, 1), max_open, gap)
     out$nodes <- out$nodes + r$nodes
     out$kept <- out$kept + r$kept
     if (is.null(r$pick)) {
@@ -241,15 +247,60 @@
     out$pick[S] <- idx[r$pick]
     out$value <- out$value + r$value
     out$bound <- out$bound + r$bound
-    if (r$status == "limit") out$status <- "limit"
+    if (r$status == "limit" ||
+          (r$status == "gap" && out$status == "optimal")) {
+      out$status <- r$status
+    }
   }
   out
 }
 
-#' `.menu_search()` on one component
+#' `.menu_search()` on one component, a dive and then best-first
+#'
+#' A depth-first dive of at most 500 nodes, or a tenth of `max_nodes`,
+#' comes first. Where many plans cost within a grain or two of each other,
+#' best-first spreads over them and can miss a cheaper plan that a dive
+#' reaches, and a plan one grain above the bound proves itself at once. A
+#' dive that proves or exhausts the problem is the answer. Otherwise its
+#' plan, when cheaper, starts the best-first search on the remaining
+#' nodes, and the larger of the two lower bounds is kept.
 #' @keywords internal
 #' @noRd
-.menu_component <- function(q, lambda, start, grain, max_nodes, max_open) {
+.menu_component <- function(q, lambda, start, grain, max_nodes, max_open,
+                            gap = 0) {
+  dive_nodes <- min(500, floor(max_nodes / 10))
+  if (dive_nodes < 1) {
+    return(.menu_tree(q, lambda, start, grain, max_nodes, max_open, gap))
+  }
+  d <- .menu_tree(q, lambda, start, grain, dive_nodes, 1, gap)
+  if (d$status %in% c("optimal", "infeasible")) return(d)
+  if (!is.null(d$pick) &&
+        (is.null(start) || d$value < sum(q$cost[start]))) {
+    start <- d$pick
+  }
+  r <- .menu_tree(q, lambda, start, grain, max(max_nodes - d$nodes, 1),
+                  max_open, gap)
+  r$nodes <- r$nodes + d$nodes
+  if (!is.null(r$pick) && is.finite(d$bound)) {
+    r$bound <- min(max(r$bound, d$bound), r$value)
+    if (r$bound >= r$value) {
+      r$status <- "optimal"
+    } else if (r$status == "limit" &&
+                 r$value - r$bound <= max(gap, 1e-6) * abs(r$value)) {
+      r$status <- "gap"
+    }
+  }
+  r
+}
+
+#' Best-first branch and bound on one component
+#'
+#' With `max_open = 1` every node past the root goes on the stack, so the
+#' search runs depth-first.
+#' @keywords internal
+#' @noRd
+.menu_tree <- function(q, lambda, start, grain, max_nodes, max_open,
+                       gap = 0) {
   K <- ncol(q$C)
   best <- if (is.null(start)) Inf else sum(q$cost[start])
   plan <- start
@@ -270,8 +321,8 @@
     }
   }
   fits <- function(j, cap) {
-    j[rowSums(q$C[j, , drop = FALSE] <= rep(cap, each = length(j)) + 1e-9) ==
-        K]
+    j[.rowSums(q$C[j, , drop = FALSE] <= rep(cap, each = length(j)) + 1e-9,
+               length(j), K) == K]
   }
 
   l <- .menu_lagrangian(q, lambda)
@@ -341,9 +392,12 @@
     best_L <- -Inf
     best_mu <- mu
     theta <- 1
+    # The loop every node runs. It reads the C group minima directly and
+    # the internal column sums, without the checks of their wrappers.
+    n_free <- length(free)
     for (it in seq_len(30L)) {
       r <- cj + drop(Cj %*% mu)
-      gm <- .menu_group_min(r, ends)
+      gm <- .Call(C_menu_group_min, r, ends)
       arg <- gm$arg
       L <- nd$c_fix + sum(gm$min) - sum(mu * nd$cap)
       if (L > best_L) {
@@ -352,16 +406,18 @@
       } else {
         theta <- theta * 0.7
       }
-      g <- colSums(Cj[arg, , drop = FALSE]) - nd$cap
+      g <- .colSums(Cj[arg, , drop = FALSE], n_free, K) - nd$cap
       if (all(g <= 1e-9)) {
         states <- nd$plan
         states[free] <- j_all[arg]
         improve(nd$c_fix + sum(cj[arg]), states)
       }
-      if (best_L > limit()) break
+      lim <- limit()
+      if (best_L > lim) break
       g[mu <= 0 & g < 0] <- 0
-      if (sum(g^2) == 0) break
-      mu <- pmax(0, mu + theta * (limit() - L) / sum(g^2) * g)
+      g2 <- sum(g^2)
+      if (g2 == 0) break
+      mu <- pmax.int(0, mu + theta * (lim - L) / g2 * g)
     }
     slack <- limit() - best_L
     if (slack < 0) return(NULL)
@@ -388,6 +444,10 @@
   nodes <- 1
   while (length(open) || length(stack)) {
     if (nodes >= max_nodes) break
+    if (gap > 0 && is.finite(best)) {
+      open_bound <- min(c(bounds, vapply(stack, `[[`, 0, "L")), best)
+      if (best - open_bound <= gap * abs(best)) break
+    }
     if (length(stack)) {
       nd <- stack[[length(stack)]]
       stack[[length(stack)]] <- NULL
@@ -433,11 +493,15 @@
     return(list(pick = NULL, value = Inf, bound = min(left), status = "limit",
                 nodes = nodes, kept = sum(keep)))
   }
+  bound <- if (length(left)) min(min(left), best) else best
+  # A plan within 1e-6 of its bound at the node limit is reported as such
+  # rather than as a stop that left the question open.
+  near <- best - bound <= max(gap, 1e-6) * abs(best)
   list(
     pick = plan,
     value = best,
-    bound = if (length(left)) min(min(left), best) else best,
-    status = if (length(left)) "limit" else "optimal",
+    bound = bound,
+    status = if (!length(left)) "optimal" else if (near) "gap" else "limit",
     nodes = nodes,
     kept = sum(keep)
   )

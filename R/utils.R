@@ -142,9 +142,13 @@ check_proportion <- function(x, name) {
 #' `D = var_ratio_psu icc_psu m q + var_ratio_ssu (1 + icc_ssu (q - 1))`, where
 #' `var_ratio_psu = S^2 / unit_relvar` rescales the components' unit variance to the
 #' analysis variable and `var_ratio_ssu` does the same for the within-PSU part,
-#' `S_w^2 = S^2 (1 - icc_psu)`. So `var_ratio_ssu` is not free once `var_ratio_psu` and
-#' `icc_psu` are known:
+#' `S_w^2 = S^2 (1 - icc_psu)` when SSU size plays no part in the within-PSU
+#' estimator (SSUs of equal size, or drawn proportional to size). Then
+#' `var_ratio_ssu` is not free once `var_ratio_psu` and `icc_psu` are known:
 #' \deqn{k_{ssu} = k_{psu}(1 - \delta_{psu}).}{k_ssu = k_psu(1 - delta_psu).}
+#' SRS of SSUs of unequal size gives a larger value, which only `varcomp()` or
+#' an explicit pair can supply. On a census-tract frame it reached three
+#' times this one.
 #' Equivalently `var_ratio_psu icc_psu + var_ratio_ssu = var_ratio_psu`, which is what makes
 #' `D` collapse to `var_ratio_psu` when `m = q = 1` and there is no clustering left
 #' to inflate anything. Defaulting `var_ratio_ssu` to 1 asserts that the within-PSU
@@ -613,11 +617,11 @@ check_icc <- function(icc, expected_length = NULL) {
 #' A profile describes a design, not the way a design is entered. Its scalar
 #' homogeneity is refused by the several-indicators mode, where the frame
 #' carries one value per row, and its domain floor means nothing to a single
-#' indicator. Dropping the inapplicable defaults keeps one profile usable
-#' from both modes.
+#' indicator. Its population is read only by the stage correction. Dropping
+#' the inapplicable defaults keeps one profile usable from every mode.
 #' @keywords internal
 #' @noRd
-.plan_for_cluster_mode <- function(plan, has_indicators) {
+.plan_for_cluster_mode <- function(plan, has_indicators, fpc = "none") {
   if (!inherits(plan, "svyplan") || length(plan$defaults) == 0L) {
     return(plan)
   }
@@ -626,6 +630,9 @@ check_icc <- function(icc, expected_length = NULL) {
   } else {
     "min_n_domain"
   }
+  # Without the stage correction an explicit 'N' is refused, so a profile's
+  # has to be dropped here rather than passed on.
+  if (!identical(fpc, "stage")) drop <- c(drop, "N")
   plan$defaults <- plan$defaults[!names(plan$defaults) %in% drop]
   plan
 }
