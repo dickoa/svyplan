@@ -42,6 +42,10 @@ struct part {
   const int *ord;      /* zone order of every PSU, 0-based */
   int *enter;          /* round each PSU entered certainty, INT_MAX if not */
   int K;               /* rounds of the last closure */
+  double last_Q;       /* certainty take and remainder draw of that closure */
+  double last_a;
+  double *round_Q;     /* certainty takes of every closure round */
+  int *round_avail;    /* remainder counts of every closure round */
   int *hit;
   int *zone;
   void *zacc;          /* zone totals in the accumulator's type */
@@ -52,7 +56,7 @@ struct part {
    * give the same result with: double when every size is whole and their
    * total below 2^53, where both sum exactly, long double otherwise where
    * R is built with it. */
-  double (*draw_of)(const part_t *, int, double, double *);
+  double (*draw_of)(const part_t *, int, double, double *, int *);
   int (*crossing)(part_t *, int, double);
 };
 
@@ -81,7 +85,10 @@ static void closure(part_t *p, double f) {
   }
   p->K = 0;
   for (;;) {
-    double k = p->draw_of(p, p->K, n_h, NULL);
+    double k = p->draw_of(p, p->K, n_h, &p->last_Q,
+                          &p->round_avail[p->K]);
+    p->last_a = k;
+    p->round_Q[p->K] = p->last_Q;
     if (!p->crossing(p, p->K, k)) break;
     p->K++;
     for (int i = 0; i < p->n; i++) {
@@ -107,13 +114,8 @@ static double next_event(part_t *p, double f, double fr) {
     }
   }
   for (int r = 0; r <= p->K; r++) {
-    int all = 1;
-    for (int i = 0; i < p->n && all; i++) {
-      if (!in_set(p, i, r)) all = 0;
-    }
-    if (all) continue;
-    double nc;
-    p->draw_of(p, r, n_h, &nc);
+    if (p->round_avail[r] == 0) continue;
+    double nc = p->round_Q[r];
     double rest = n_h - nc;
     if (rest < 0) rest = 0;
     double k = ceil(rest / p->b);
@@ -188,8 +190,13 @@ static int set_id(const part_t *p, out_t *o) {
 static void push(part_t *p, double f, out_t *o) {
   closure(p, f);
   double n_h = f * p->N;
-  double Q;
-  double a = p->draw_of(p, p->K, n_h, &Q);
+  double Q = p->last_Q;
+  double a = p->last_a;
+  int set = set_id(p, o) + 1;
+  if (o->len > 0) {
+    R_xlen_t last = o->len - 1;
+    if (o->set[last] == set && o->Q[last] == Q && o->a[last] == a) return;
+  }
   double A = 0, held = 0;
   int n_c = 0;
   for (int i = 0; i < p->n; i++) {
@@ -209,7 +216,7 @@ static void push(part_t *p, double f, out_t *o) {
   o->held[k] = held;
   o->n_c[k] = n_c;
   o->a[k] = a;
-  o->set[k] = set_id(p, o) + 1;
+  o->set[k] = set;
 }
 
 static void check_real(SEXP x, R_xlen_t len, const char *what) {
@@ -282,6 +289,8 @@ SEXP C_psu_menu_part(SEXP sizes, SEXP N, SEXP take, SEXP f_lo, SEXP f_hi,
   p.zacc = aligned_alloc_r((size_t) p.n, sizeof(long double), _Alignof(long double));
   p.zsum = (double *) R_alloc(p.n, sizeof(double));
   p.cur = (int *) R_alloc(p.n, sizeof(int));
+  p.round_Q = (double *) R_alloc((size_t) (p.n + 1), sizeof(double));
+  p.round_avail = (int *) R_alloc((size_t) (p.n + 1), sizeof(int));
   p.zcount = (int *) R_alloc(p.n, sizeof(int));
 
   out_t o;

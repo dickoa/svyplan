@@ -41,6 +41,11 @@
 #'   not the same model as a deliberately disjoint pair, which is why the
 #'   two need not agree in the limit when `N` is small.
 #' @param overlap_cor Correlation between occasions in \eqn{[0, 1]}.
+#' @param overlap_draw How the shared units are drawn, `"fixed"` (default)
+#'   for a fixed count drawn with the rest of each occasion's sample, or
+#'   `"independent"` for a retained panel topped up on each occasion by a
+#'   fresh sample drawn independently of it from the whole frame. It changes
+#'   only the finite population terms. See [prec_change()].
 #' @param plan Optional [svyplan()] object providing design defaults.
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'
@@ -155,6 +160,7 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
                        alternative = c("two.sided", "one.sided"),
                        ratio = 1,
                        overlap = 0, overlap_cor = 0,
+                       overlap_draw = c("fixed", "independent"),
                        plan = NULL) {
   .plan <- .merge_plan_args(plan, power_mean.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(power_mean.default, c(.plan, list(...))))
@@ -168,6 +174,7 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
   check_deff(deff)
   check_overlap(overlap)
   check_overlap_cor(overlap_cor)
+  overlap_draw <- match.arg(overlap_draw)
   .check_overlap_N(overlap, N_pair)
   check_resp_rate(resp_rate)
   ratio <- .resolve_ratio(n, ratio)
@@ -192,7 +199,8 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
 
   params <- list(var = var, alpha = alpha, N = N, deff = deff,
                  resp_rate = resp_rate, alternative = alternative,
-                 ratio = ratio, overlap = overlap, overlap_cor = overlap_cor)
+                 ratio = ratio, overlap = overlap, overlap_cor = overlap_cor,
+                 overlap_draw = overlap_draw)
 
 
   ov_term <- 2 * overlap * overlap_cor * sqrt(var_pair[1] * var_pair[2])
@@ -205,7 +213,7 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
       n_vec <- if (r == 1) c(n2, n2) else c(r * n2, n2)
       n_eff <- n_vec * resp_rate
       V_d <- .diff_var_fpc(
-        n_eff, var_pair, N_pair, deff, overlap, overlap_cor
+        n_eff, var_pair, N_pair, deff, overlap, overlap_cor, overlap_draw
       )
       V_d <- .safe_variance(V_d, "difference variance")
       .normal_power(effect, sqrt(V_d), alpha, alternative)
@@ -217,8 +225,10 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
       n2 <- (z_a + z_b)^2 * V_r * deff / effect^2 / resp_rate
       n2 <- max(n2, 2, 2 / r)
     } else {
-      n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate,
-                                 overlap = overlap)
+      n2 <- .solve_n2_from_power(
+        power, power_n2, N_pair, r, resp_rate,
+        overlap = .frame_overlap(overlap, overlap_draw)
+      )
     }
     n0 <- if (r == 1) n2 else c(r * n2, n2)
     achieved_power <- power_n2(n2)
@@ -233,7 +243,8 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
     .check_gross_n(n_vec, N_pair, label = c("group 1", "group 2"))
     n_eff <- n_vec * resp_rate
 
-    V_d <- .diff_var_fpc(n_eff, var_pair, N_pair, deff, overlap, overlap_cor)
+    V_d <- .diff_var_fpc(n_eff, var_pair, N_pair, deff, overlap, overlap_cor,
+                         overlap_draw)
     V_d <- .safe_variance(V_d, "difference variance")
     if (V_d == 0) {
       pw <- 1
@@ -255,7 +266,8 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
     .check_gross_n(n_vec, N_pair, label = c("group 1", "group 2"))
     n_eff <- n_vec * resp_rate
 
-    V_d <- .diff_var_fpc(n_eff, var_pair, N_pair, deff, overlap, overlap_cor)
+    V_d <- .diff_var_fpc(n_eff, var_pair, N_pair, deff, overlap, overlap_cor,
+                         overlap_draw)
     V_d <- .safe_variance(V_d, "difference variance")
     se <- sqrt(V_d)
     mde <- .solve_normal_mde(power, se, alpha, alternative)

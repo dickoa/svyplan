@@ -503,3 +503,20 @@ test_that("control$gap stops the search within the gap it sets", {
                        control = list(tolerance = 1)),
                "the known ones are 'max_nodes' and 'gap'")
 })
+
+test_that("a one-column search proves a 150-stratum cluster design", {
+  # Subgradient steps at each node left this design at the node limit. The
+  # exact one-multiplier bound proves it.
+  set.seed(4)
+  H <- 150
+  frame <- data.frame(
+    stratum = paste0("s", seq_len(H)), N = sample(2000:60000, H),
+    sd = stats::runif(H, 5, 40), mean = stats::runif(H, 20, 80),
+    icc_psu = stats::runif(H, 0.02, 0.15), N_psu = sample(30:400, H),
+    cost_psu = stats::runif(H, 200, 600), cost_ssu = stats::runif(H, 20, 60)
+  )
+  expect_warning(fit <- n_alloc(frame, cv = 0.01, alloc = "optimal"),
+                 "hold a single PSU")
+  expect_identical(fit$optimization$search$status, "optimal")
+  expect_lte(fit$operational$cv, 0.01)
+})

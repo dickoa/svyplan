@@ -21,6 +21,7 @@ power_prop(p1, ...)
   ratio = 1,
   overlap = 0,
   overlap_cor = 0,
+  overlap_draw = c("fixed", "independent"),
   method = c("wald", "arcsine", "logodds"),
   plan = NULL
 )
@@ -71,6 +72,12 @@ Defined as the fraction of group 1 that also appears in group 2
 (\code{overlap = n12 / n1}). Only supported with \code{method = "wald"}.}
 
 \item{overlap_cor}{Correlation between occasions in \eqn{[0, 1]}.}
+
+\item{overlap_draw}{How the shared units are drawn, \code{"fixed"} (default)
+for a fixed count drawn with the rest of each occasion's sample, or
+\code{"independent"} for a retained panel topped up on each occasion by a
+fresh sample drawn independently of it from the whole frame. It changes
+only the finite population terms. See \code{\link[=prec_change]{prec_change()}}.}
 
 \item{method}{Variance method: \code{"wald"} (default), \code{"arcsine"}, or
 \code{"logodds"}. The arcsine square-root transform is variance-stabilizing.

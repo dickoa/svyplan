@@ -25,6 +25,7 @@ n_pooled(var = NULL, ...)
   overlap = 0,
   overlap_cor = NULL,
   cor_decay = NULL,
+  overlap_draw = c("fixed", "independent"),
   df = NULL,
   plan = NULL,
   .overlap_basis = NULL
@@ -93,6 +94,13 @@ not both.}
 
 \item{cor_decay}{Correlation at lag \eqn{m} taken as \eqn{\rho^m}{rho^m},
 an alternative to stating \code{overlap_cor} lag by lag.}
+
+\item{overlap_draw}{How the shared units are drawn, \code{"fixed"} (default)
+for a fixed count drawn with the rest of each occasion's sample, or
+\code{"independent"} for a retained panel topped up on each occasion by a
+fresh sample drawn independently of it from the whole frame. The
+second is defined for two occasions, or for more when no lag overlaps.
+See \code{\link[=prec_pooled]{prec_pooled()}}.}
 
 \item{df}{Degrees of freedom of the variance estimator the planned design
 will have, available from \code{\link[=design_df]{design_df()}}. It switches the interval
@@ -195,6 +203,10 @@ n_pooled(var = 100, mu = 20, rmoe = 0.05, occasions = 4)
 # With FPC, design effect, and response
 n_pooled(var = 100, moe = 1, occasions = 4, N = 50000, deff = 1.5,
          resp_rate = 0.8)
+
+# Two occasions on a small frame, a retained panel plus independent draws
+n_pooled(var = 100, moe = 2.5, occasions = 2, N = 400, overlap = 0.5,
+         overlap_cor = 0.8, overlap_draw = "independent")
 
 }
 \references{

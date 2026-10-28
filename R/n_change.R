@@ -65,6 +65,11 @@
 #'   the size, so a full panel of uncorrelated measurements saves nothing. On the
 #'   proportion scale two Bernoulli marginals bound the correlation they can
 #'   have, and a value above that bound is rejected.
+#' @param overlap_draw How the shared units are drawn, `"fixed"` (default)
+#'   for a fixed count drawn with the rest of each occasion's sample, or
+#'   `"independent"` for a retained panel topped up on each occasion by a
+#'   fresh sample drawn independently of it from the whole frame. See
+#'   [prec_change()] for the variance under each.
 #' @param df Degrees of freedom of the variance estimator the planned design
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the interval quantile from normal to t.
@@ -91,7 +96,7 @@
 #'     a pair, and `p` is kept as well when the proportion scale was used.}
 #' }
 #'
-#' @details#'
+#' @details
 #' ## Level or change
 #'
 #' A repeated survey publishes three things, and each is sized by its own
@@ -197,6 +202,10 @@
 #' # With FPC, design effect, and response
 #' n_change(var = 100, moe = 2, N = 20000, deff = 1.5, resp_rate = 0.8)
 #'
+#' # A small frame with a retained panel and independent fresh draws
+#' n_change(var = 100, moe = 4, N = 400, overlap = 0.5, overlap_cor = 0.8,
+#'          overlap_draw = "independent")
+#'
 #' @export
 n_change <- function(var = NULL, ...) {
   if (!is.null(var)) {
@@ -224,6 +233,7 @@ n_change.default <- function(
   ratio = 1,
   overlap = 0,
   overlap_cor = 0,
+  overlap_draw = c("fixed", "independent"),
   df = NULL,
   plan = NULL
 ) {
@@ -241,6 +251,7 @@ n_change.default <- function(
   check_scalar(ratio, "ratio")
   check_overlap(overlap)
   check_overlap_cor(overlap_cor)
+  overlap_draw <- match.arg(overlap_draw)
   .check_overlap_N(overlap, N_pair)
   .check_overlap_n(overlap, ratio = ratio)
   .check_bernoulli_cor(inputs$p, overlap_cor, overlap)
@@ -266,7 +277,7 @@ n_change.default <- function(
 
   n <- .n_change_from_se(
     target_se, inputs$var_pair, N_pair, deff, resp_rate,
-    ratio, overlap, overlap_cor
+    ratio, overlap, overlap_cor, overlap_draw
   )
   n <- .census_size(n, if (length(n) == 1L) min(N_pair) else N_pair)
 
@@ -276,7 +287,7 @@ n_change.default <- function(
 
   prec <- .prec_engine_change(
     n, inputs$var_pair, inputs$change, N_pair, deff, resp_rate,
-    overlap, overlap_cor, alpha, df
+    overlap, overlap_cor, overlap_draw, alpha, df
   )
   # The inversion is closed form on n <= N, so a mismatch here means the
   # linear form and the variance it inverts have drifted apart, not that
@@ -297,6 +308,7 @@ n_change.default <- function(
     ratio = ratio,
     overlap = overlap,
     overlap_cor = overlap_cor,
+    overlap_draw = overlap_draw,
     df = df
   )
   if (!is.null(inputs$p)) params$p <- inputs$p
@@ -348,6 +360,7 @@ n_change.svyplan_prec <- function(var, ..., moe = NULL, cv = NULL,
     ratio = if (length(par$n) == 2L) par$n[1L] / par$n[2L] else 1,
     overlap = par$overlap,
     overlap_cor = par$overlap_cor,
+    overlap_draw = par$overlap_draw,
     df = par$df
   )
   do.call(n_change.default, .roundtrip_args(args, list(...), n_change.default))

@@ -48,6 +48,12 @@
 #'   lag. It is the shape most panels have, a correlation falling away with
 #'   distance, and a single number is rarely the right one over a long
 #'   horizon.
+#' @param overlap_draw How the shared units are drawn, `"fixed"` (default)
+#'   for a fixed count drawn with the rest of each occasion's sample, or
+#'   `"independent"` for a retained panel topped up on each occasion by a
+#'   fresh sample drawn independently of it from the whole frame. The
+#'   second is defined for two occasions, or for more when no lag overlaps.
+#'   See Details.
 #' @param df Degrees of freedom of the variance estimator the planned design
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the interval quantile from normal to t.
@@ -151,10 +157,12 @@
 #' Each positive-overlap lag must also satisfy
 #' `(2 - overlap[lag]) * n * resp_rate <= N`: the two responding samples
 #' cannot require more distinct units than the frame contains. This bound
-#' applies even at zero outcome correlation. Zero-overlap lags retain the
-#' independent-samples convention. These pairwise bounds and the covariance
-#' check below are necessary conditions, not a proof that an arbitrary
-#' overlap vector can be realized by a complete multi-occasion schedule.
+#' applies even at zero outcome correlation, and not at all under
+#' `overlap_draw = "independent"`, where each part fits the frame on its
+#' own. Zero-overlap lags retain the independent-samples convention. These
+#' pairwise bounds and the covariance check below are necessary conditions,
+#' not a proof that an arbitrary overlap vector can be realized by a
+#' complete multi-occasion schedule.
 #'
 #' A lag's covariance changes sign once its overlap falls below the sampling
 #' fraction `n / N`, and a covariance whose sign varies across lags need not
@@ -171,10 +179,25 @@
 #' As in [prec_change()], the covariance is a model form, a correlation
 #' between occasions among the units they share and simple random sampling
 #' otherwise. It is not the design-based covariance of a complex master
-#' sample, which carries its own pairwise inclusion probabilities. The
-#' shared units are a fixed count, and a retained panel topped up by
-#' independent replacement draws differs only in the population terms, by
-#' an amount of order \eqn{1/N}.
+#' sample, which carries its own pairwise inclusion probabilities.
+#'
+#' ## How the shared units are drawn
+#'
+#' Under `overlap_draw = "fixed"` the shared units are a fixed count drawn
+#' with the rest of the sample. Under `"independent"` a retained panel is
+#' drawn once and each occasion adds a fresh sample drawn from the whole
+#' frame independently of it, each occasion's mean pooling all its units
+#' with equal weight. With \eqn{w} the lag-1 overlap, an occasion's
+#' population term becomes \eqn{(w^2 + (1 - w)^2)/N} and the covariance's
+#' \eqn{w^2/N}, the factors [prec_change()] gives at equal sizes. Beyond two
+#' occasions those terms depend on how each occasion's sample splits into
+#' independently drawn panels, which the lag overlaps do not determine, so
+#' `"independent"` is refused there unless no lag overlaps.
+#'
+#' The average moves more than the change. At equal variances, half the
+#' units retained and `overlap_cor = 0.8`, the variance of the two-occasion
+#' average under `"independent"` is 4.2% higher than under `"fixed"` at a
+#' sampling fraction of 5% and 9.0% higher at 10%.
 #'
 #' @references
 #' Kish, L. (1965). *Survey Sampling*. Wiley. Chapter 12.
@@ -213,6 +236,10 @@
 #'                 cor_decay = 0.7)
 #' prec_pooled(res)
 #'
+#' # Two occasions on a small frame, a retained panel plus independent draws
+#' prec_pooled(var = 100, n = 40, occasions = 2, N = 400, overlap = 0.5,
+#'             overlap_cor = 0.78, overlap_draw = "independent")
+#'
 #' @export
 prec_pooled <- function(var = NULL, ...) {
   if (!is.null(var)) {
@@ -239,6 +266,7 @@ prec_pooled.default <- function(
   overlap = 0,
   overlap_cor = NULL,
   cor_decay = NULL,
+  overlap_draw = c("fixed", "independent"),
   df = NULL,
   plan = NULL,
   .overlap_basis = NULL
@@ -256,11 +284,13 @@ prec_pooled.default <- function(
   if (!is.null(df)) check_df(df)
   ov <- .resolve_lag_overlap(overlap, occasions, resp_rate, .overlap_basis)
   rho <- .resolve_lag_cor(overlap_cor, cor_decay, occasions - 1L)
+  overlap_draw <- match.arg(overlap_draw)
+  .check_pooled_draw(overlap_draw, ov$overlap, occasions)
   .check_gross_n(n, N, label = "each occasion")
 
   prec <- .prec_engine_pooled(
     n, inputs$var, inputs$mu, N, deff, resp_rate, occasions, ov$overlap, rho,
-    alpha, df
+    overlap_draw, alpha, df
   )
 
   params <- list(
@@ -274,6 +304,7 @@ prec_pooled.default <- function(
     overlap = ov$overlap,
     overlap_cor = rho,
     overlap_basis = ov$basis,
+    overlap_draw = overlap_draw,
     df = df
   )
   if (!is.null(inputs$p)) params$p <- inputs$p
@@ -308,6 +339,7 @@ prec_pooled.svyplan_n <- function(var, ...) {
     resp_rate = par$resp_rate %||% 1,
     overlap = par$overlap,
     overlap_cor = par$overlap_cor,
+    overlap_draw = par$overlap_draw,
     df = par$df,
     .overlap_basis = par$overlap_basis
   )

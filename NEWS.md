@@ -135,7 +135,11 @@ that recommendation when available, or rounds the continuous size up.
 * `n_change()` and `n_pooled()` size an occasion of a repeated survey, for a
   change between two occasions and for an estimate pooled across several.
   Precision comes from the product of `overlap` and `overlap_cor`, so a full
-  panel of uncorrelated measurements saves nothing.
+  panel of uncorrelated measurements saves nothing. `overlap_draw` says how
+  the shared units are drawn, as a fixed count with the rest of the sample,
+  the rotating-panel case, or as a retained panel topped up on each occasion
+  by a fresh sample drawn independently from the whole frame. The two differ
+  only in the finite population terms, and the second pools two occasions.
 * `n_panel()` sizes the recruitment a panel needs to still deliver a required
   responding sample after several waves of attrition. It embeds an `n_mean()`,
   `n_prop()`, `prec_mean()`, or `prec_prop()` result rather than restating its
@@ -174,10 +178,10 @@ that recommendation when available, or rounds the continuous size up.
 * `power_did()` covers difference-in-differences, parametrized by `treat` and
   `control` baseline and endline pairs, for proportion and mean outcomes.
 * All three accept panel overlap between the two occasions of a repeated
-  survey. Bernoulli outcomes use the same finite-population variance as the
-  precision family on every scale, Wald, arcsine, and log-odds alike, and
-  correlations between repeated Bernoulli outcomes are restricted to the
-  attainable Frechet-Hoeffding range.
+  survey, with the same `overlap_draw` as `n_change()`. Bernoulli outcomes
+  use the same finite-population variance as the precision family on every
+  scale, Wald, arcsine, and log-odds alike, and correlations between repeated
+  Bernoulli outcomes are restricted to the attainable Frechet-Hoeffding range.
 * Solved sample sizes are at least two units per group and report the power
   achieved at that size. A requested power used to solve a size or minimum
   detectable effect must exceed `alpha`, the power at zero effect, and

@@ -23,7 +23,7 @@
 #'   `prop_method`,
 #'   `stage_cost`, `icc`, `unit_relvar`, `var_ratio`, `fixed_cost`,
 #'   `unit_cost`,
-#'   `alternative`, `ratio`, `overlap`, `overlap_cor`,
+#'   `alternative`, `ratio`, `overlap`, `overlap_cor`, `overlap_draw`,
 #'   `alloc`, `min_n_stratum`, `min_n_domain`, `alloc_q`, `phase1_cost`.
 #'
 #' @return A `svyplan` object.
@@ -142,7 +142,7 @@ update.svyplan <- function(object, ...) {
     "stage_cost", "icc", "unit_relvar", "var_ratio", "fixed_cost",
     "resp_rate_psu", "resp_rate_ssu",
     "unit_cost",
-    "alternative", "ratio", "overlap", "overlap_cor",
+    "alternative", "ratio", "overlap", "overlap_cor", "overlap_draw",
     "alloc", "min_n_stratum", "min_n_domain", "alloc_q",
     "phase1_cost"
   )
@@ -251,6 +251,14 @@ update.svyplan <- function(object, ...) {
   if ("ratio" %in% nms) check_scalar(defaults$ratio, "ratio")
   if ("overlap" %in% nms) check_overlap(defaults$overlap)
   if ("overlap_cor" %in% nms) check_overlap_cor(defaults$overlap_cor)
+  if ("overlap_draw" %in% nms) {
+    overlap_draw <- defaults$overlap_draw
+    if (!is.character(overlap_draw) || length(overlap_draw) != 1L ||
+        is.na(overlap_draw) ||
+        !overlap_draw %in% c("fixed", "independent")) {
+      stop("'overlap_draw' must be 'fixed' or 'independent'", call. = FALSE)
+    }
+  }
 
   if ("alloc" %in% nms) {
     alloc <- defaults$alloc

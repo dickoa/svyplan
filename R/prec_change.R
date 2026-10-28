@@ -49,6 +49,12 @@
 #'   on a change, so a full panel of uncorrelated measurements buys nothing.
 #'   On the proportion scale two Bernoulli marginals bound the correlation
 #'   they can have, and a value above that bound is rejected.
+#' @param overlap_draw How the shared units are drawn. `"fixed"` (default)
+#'   draws them as a fixed count with the rest of each occasion's sample,
+#'   as a rotating panel does. `"independent"` draws a retained panel once
+#'   and, on each occasion, a fresh sample from the whole frame
+#'   independently of it. The two differ only in the finite population
+#'   terms. See Details.
 #' @param df Degrees of freedom of the variance estimator the planned design
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the interval quantile from normal to t.
@@ -75,7 +81,7 @@
 #' Nothing here is rounded, so passing a continuous `n` back from
 #' [n_change()] reproduces its `se`, `moe` and `cv` exactly.
 #'
-#' @details#'
+#' @details
 #' ## Level or change
 #'
 #' A repeated survey publishes three things, and each is read by its own
@@ -132,15 +138,6 @@
 #' censuses require full overlap. The special `overlap = 0` convention
 #' continues to denote independent samples.
 #'
-#' The shared units are a fixed count, `overlap * n1`, drawn with the rest
-#' of the sample, as in a rotating panel. Some designs instead keep a
-#' retained panel and draw the replacement units independently of it from
-#' the whole frame, so that a unit can enter twice on one occasion, and
-#' combine the two parts in proportion to their sizes. That design has the
-#' same per-unit variance and covariance and differs only in the population
-#' terms, by an amount of order \eqn{1/N}, so the two agree unless the
-#' occasions take a large share of the population.
-#'
 #' The covariance is a model form, a correlation `overlap_cor` between
 #' occasions among the units the two occasions share, and simple random
 #' sampling otherwise. It is not the design-based covariance of two waves of
@@ -161,6 +158,31 @@
 #' issued one. Supply the figure you expect among respondents.
 #' [design_overlap()] computes the issued figure a rotation schedule gives
 #' and states the conversion.
+#'
+#' ## How the shared units are drawn
+#'
+#' Under `overlap_draw = "fixed"` the shared units are a fixed count,
+#' `overlap * n1`, drawn with the rest of the sample, as in a rotating
+#' panel. Under `"independent"` a retained panel of that size is drawn once,
+#' and each occasion adds a fresh sample drawn from the whole frame
+#' independently of it. A unit can then enter twice on one occasion, and
+#' the frame check above does not apply, since each part fits the frame on
+#' its own. Each occasion's mean pools all its units with equal weight, a
+#' unit drawn twice counting twice. Writing \eqn{w_1 = \mathrm{overlap}}{w_1 = overlap}
+#' and \eqn{w_2 = k/n_2} for the retained shares, the per-unit part of
+#' \eqn{V} is unchanged and the population part becomes
+#'
+#' \deqn{-\frac{m_1v_1 + m_2v_2 - 2w_1w_2\rho\sqrt{v_1v_2}}{N}, \qquad
+#'       m_t = w_t^2 + (1 - w_t)^2.}{-(m_1 v_1 + m_2 v_2 - 2 w_1 w_2 rho sqrt(v_1v_2))/N,   m_t = w_t^2 + (1 - w_t)^2.}
+#'
+#' At `overlap = 0` this is the independent-samples result, so under
+#' `"independent"` the zero-overlap rule is a limit and not a special case.
+#' At `overlap = 1` with equal sizes both draws are the same full panel. In
+#' between, the gap is of order \eqn{1/N} and grows with the sampling
+#' fraction. At equal sizes and variances, half the units retained and
+#' `overlap_cor = 0.8`, the change variance under `"independent"` is 0.8%
+#' lower than under `"fixed"` at a sampling fraction of 5% and 1.7% lower
+#' at 10%. [prec_pooled()] shows the larger gap of an average.
 #'
 #' ## Round-trip with n_change
 #'
@@ -197,6 +219,10 @@
 #' res <- n_change(var = 100, moe = 2, overlap = 0.5, overlap_cor = 0.6)
 #' prec_change(res)
 #'
+#' # A small frame: a retained panel topped up by independent fresh draws
+#' prec_change(var = c(100, 164), n = 40, N = 400, overlap = 0.5,
+#'             overlap_cor = 0.78, overlap_draw = "independent")
+#'
 #' @export
 prec_change <- function(var = NULL, ...) {
   if (!is.null(var)) {
@@ -221,6 +247,7 @@ prec_change.default <- function(
   resp_rate = 1,
   overlap = 0,
   overlap_cor = 0,
+  overlap_draw = c("fixed", "independent"),
   df = NULL,
   plan = NULL
 ) {
@@ -235,6 +262,7 @@ prec_change.default <- function(
   check_resp_rate(resp_rate)
   check_overlap(overlap)
   check_overlap_cor(overlap_cor)
+  overlap_draw <- match.arg(overlap_draw)
   .check_overlap_N(overlap, N_pair)
   .check_overlap_n(overlap, n = n)
   .check_bernoulli_cor(inputs$p, overlap_cor, overlap)
@@ -247,7 +275,7 @@ prec_change.default <- function(
 
   prec <- .prec_engine_change(
     n, inputs$var_pair, inputs$change, N_pair, deff, resp_rate,
-    overlap, overlap_cor, alpha, df
+    overlap, overlap_cor, overlap_draw, alpha, df
   )
 
   params <- list(
@@ -259,6 +287,7 @@ prec_change.default <- function(
     resp_rate = resp_rate,
     overlap = overlap,
     overlap_cor = overlap_cor,
+    overlap_draw = overlap_draw,
     df = df
   )
   if (!is.null(inputs$p)) params$p <- inputs$p
@@ -292,6 +321,7 @@ prec_change.svyplan_n <- function(var, ...) {
     resp_rate = par$resp_rate %||% 1,
     overlap = par$overlap,
     overlap_cor = par$overlap_cor,
+    overlap_draw = par$overlap_draw,
     df = par$df
   )
   do.call(prec_change.default, .roundtrip_args(args, list(...), prec_change.default))

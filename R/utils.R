@@ -2096,6 +2096,38 @@ check_df <- function(df, name = "df") {
   }
 }
 
+#' Finite population factors of a change under each overlap draw
+#'
+#' The population terms of a change variance are
+#' \eqn{-(m_1v_1 + m_2v_2 - 2cS_{12})/N}{-(m_1 v_1 + m_2 v_2 - 2 c S_12)/N}.
+#' A fixed shared count gives \eqn{m_t = c = 1}. A retained part and fresh
+#' parts drawn independently of it from the whole frame, each occasion
+#' pooling its units with equal weight, give
+#' \eqn{m_t = w_t^2 + (1 - w_t)^2}{m_t = w_t^2 + (1 - w_t)^2} and
+#' \eqn{c = w_1w_2}{c = w_1 w_2}, where \eqn{w_t} is the retained share of
+#' occasion \eqn{t}: `overlap` on the first and `overlap * size_ratio` on
+#' the second, `size_ratio` being \eqn{n_1/n_2}. At zero overlap both reduce
+#' to two independent samples.
+#' @keywords internal
+#' @noRd
+.overlap_pop_factors <- function(overlap, size_ratio, overlap_draw) {
+  if (overlap_draw == "fixed") {
+    return(list(marginal = c(1, 1), cross = 1))
+  }
+  w <- overlap * c(1, size_ratio)
+  list(marginal = w^2 + (1 - w)^2, cross = w[1L] * w[2L])
+}
+
+#' The overlap the frame must hold distinct units for
+#'
+#' Independently drawn parts each fit the frame on their own, so only a
+#' fixed shared count makes the two occasions compete for distinct units.
+#' @keywords internal
+#' @noRd
+.frame_overlap <- function(overlap, overlap_draw) {
+  if (overlap_draw == "independent") 0 * overlap else overlap
+}
+
 #' Positive-overlap samples must fit their shared finite frame
 #'
 #' Sizes here count respondents. Zero overlap retains the public independent-
@@ -2176,10 +2208,23 @@ check_df <- function(df, name = "df") {
 #' a per-unit part less a census part. At \eqn{\rho = 1} with equal sizes
 #' and variances the census part is zero, the population terms cancel
 #' exactly, and the whole reduces to \eqn{2S^2(1 - overlap)/n}.
+#'
+#' Under `overlap_draw = "independent"` the per-unit part is the same and
+#' the census part carries the factors of `.overlap_pop_factors()`. That
+#' path is kept apart so the fixed-count result does not move by a bit.
 #' @keywords internal
 #' @noRd
-.diff_var_fpc <- function(n_eff, var_pair, N_pair, deff, overlap, overlap_cor) {
+.diff_var_fpc <- function(n_eff, var_pair, N_pair, deff, overlap, overlap_cor,
+                          overlap_draw) {
   if (length(n_eff) == 1L) n_eff <- c(n_eff, n_eff)
+  if (overlap_draw == "independent" && overlap > 0) {
+    f <- .overlap_pop_factors(overlap, n_eff[1L] / n_eff[2L], overlap_draw)
+    pop <- if (is.infinite(N_pair[1L])) 0 else 1 / N_pair[1L]
+    cross <- overlap_cor * sqrt(var_pair[1] * var_pair[2])
+    V <- sum(var_pair * (1 / n_eff - f$marginal * pop)) -
+      2 * cross * (overlap / n_eff[2L] - f$cross * pop)
+    return(deff * V)
+  }
   .check_overlap_frame(n_eff[1L], n_eff[2L], N_pair[1L], overlap)
   fpc1 <- .fpc_factor(n_eff[1], N_pair[1])
   fpc2 <- .fpc_factor(n_eff[2], N_pair[2])
@@ -2326,10 +2371,11 @@ check_df <- function(df, name = "df") {
 #' @keywords internal
 #' @noRd
 .change_var <- function(n, var_pair, N_pair, deff, resp_rate, overlap,
-                        overlap_cor) {
+                        overlap_cor, overlap_draw) {
   n_vec <- if (length(n) == 1L) c(n, n) else n
   V <- .diff_var_fpc(
-    n_vec * resp_rate, var_pair, N_pair, deff, overlap, overlap_cor
+    n_vec * resp_rate, var_pair, N_pair, deff, overlap, overlap_cor,
+    overlap_draw
   )
   .safe_variance(V, "change variance")
 }
@@ -2338,9 +2384,11 @@ check_df <- function(df, name = "df") {
 #' @keywords internal
 #' @noRd
 .prec_engine_change <- function(n, var_pair, change, N_pair, deff, resp_rate,
-                                overlap, overlap_cor, alpha, df = NULL) {
+                                overlap, overlap_cor, overlap_draw, alpha,
+                                df = NULL) {
   se <- sqrt(
-    .change_var(n, var_pair, N_pair, deff, resp_rate, overlap, overlap_cor)
+    .change_var(n, var_pair, N_pair, deff, resp_rate, overlap, overlap_cor,
+                overlap_draw)
   )
   list(
     se = se,
@@ -2358,6 +2406,9 @@ check_df <- function(df, name = "df") {
 #' division rather than a search. \eqn{B \le 0} always, since the population
 #' term it carries is \eqn{-(v_1 + v_2 - 2\rho\sqrt{v_1v_2})/N}{-(v_1 + v_2 - 2 rho sqrt(v_1v_2))/N} at the common
 #' \eqn{N} that a positive overlap requires, so the divisor cannot vanish.
+#' Independent draws keep it so, since \eqn{m_t \ge w_t^2} in the factors
+#' of `.overlap_pop_factors()`, which are constant in \eqn{n} at a fixed
+#' `ratio`.
 #'
 #' \eqn{A} can vanish. At equal sizes, equal variances, full overlap and unit
 #' correlation the two occasions share every unit and the change is measured
@@ -2366,11 +2417,13 @@ check_df <- function(df, name = "df") {
 #' @keywords internal
 #' @noRd
 .n_change_from_se <- function(target_se, var_pair, N_pair, deff, resp_rate,
-                              ratio, overlap, overlap_cor) {
+                              ratio, overlap, overlap_cor, overlap_draw) {
   cross <- if (overlap > 0) overlap_cor * sqrt(var_pair[1] * var_pair[2]) else 0
+  f <- .overlap_pop_factors(overlap, ratio, overlap_draw)
   A <- var_pair[1] / ratio + var_pair[2] - 2 * overlap * cross
-  B <- -var_pair[1] / N_pair[1] - var_pair[2] / N_pair[2] +
-    if (is.infinite(N_pair[1])) 0 else 2 * cross / N_pair[1]
+  B <- -f$marginal[1] * var_pair[1] / N_pair[1] -
+    f$marginal[2] * var_pair[2] / N_pair[2] +
+    if (is.infinite(N_pair[1])) 0 else 2 * f$cross * cross / N_pair[1]
   if (A <= sqrt(.Machine$double.eps) * sum(var_pair)) {
     stop(
       "the change carries no sampling variance at any size (overlap and overlap_cor leave nothing to sample); reduce either, or size the occasions unequally",
@@ -2513,6 +2566,41 @@ check_df <- function(df, name = "df") {
   cor
 }
 
+#' Finite population factors of a pooled estimate under each overlap draw
+#'
+#' The factors of `.overlap_pop_factors()` read lag by lag: `marginal`
+#' multiplies \eqn{1/N} in an occasion's variance and `shared[m]` in the
+#' covariance at lag `m`. Independent draws are defined at two occasions
+#' only, where the lag-1 overlap is the retained share of both, and
+#' `.check_pooled_draw()` refuses them beyond.
+#' @keywords internal
+#' @noRd
+.pooled_pop_factors <- function(ov, overlap_draw) {
+  if (overlap_draw == "fixed") {
+    return(list(marginal = 1, shared = rep(1, length(ov))))
+  }
+  f <- .overlap_pop_factors(ov[1L], 1, overlap_draw)
+  list(marginal = f$marginal[1L], shared = ov^2)
+}
+
+#' Independent draws pool over two occasions only
+#'
+#' Beyond two, an occasion's variance carries the sum of its panels'
+#' squared shares and a lag covariance the same sum over the panels it
+#' shares, which the lag overlaps do not determine. Without overlap at any
+#' lag the two draws are the same design and nothing is refused.
+#' @keywords internal
+#' @noRd
+.check_pooled_draw <- function(overlap_draw, ov, occasions) {
+  if (overlap_draw == "independent" && occasions > 2 && any(ov > 0)) {
+    stop(
+      "overlap_draw = \"independent\" pools two occasions only. Beyond two, each occasion's variance depends on how its sample splits into independently drawn panels, which the lag overlaps do not determine. Use overlap_draw = \"fixed\", or plan two occasions",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 #' Covariance between two occasion means at each lag
 #'
 #' The kernel `.diff_var_fpc()` already commits the package to, read at a
@@ -2522,9 +2610,10 @@ check_df <- function(df, name = "df") {
 #' fresh sample each round pools to `V_level / occasions` exactly.
 #' @keywords internal
 #' @noRd
-.pooled_lag_cov <- function(var, n_net, N, ov, rho) {
+.pooled_lag_cov <- function(var, n_net, N, ov, rho, overlap_draw) {
   pop <- if (is.infinite(N)) 0 else 1 / N
-  out <- rho * var * (ov / n_net - pop)
+  shared <- .pooled_pop_factors(ov, overlap_draw)$shared
+  out <- rho * var * (ov / n_net - shared * pop)
   out[ov <= 0] <- 0
   out
 }
@@ -2532,11 +2621,16 @@ check_df <- function(df, name = "df") {
 #' The occasion-by-occasion covariance a rotation implies
 #' @keywords internal
 #' @noRd
-.pooled_kernel <- function(var, n_net, N, occasions, ov, rho) {
-  c0 <- var * .fpc_factor(n_net, N) / n_net
+.pooled_kernel <- function(var, n_net, N, occasions, ov, rho, overlap_draw) {
+  c0 <- if (overlap_draw == "fixed") {
+    var * .fpc_factor(n_net, N) / n_net
+  } else {
+    pop <- if (is.infinite(N)) 0 else 1 / N
+    var * (1 / n_net - .pooled_pop_factors(ov, overlap_draw)$marginal * pop)
+  }
   lag <- abs(outer(seq_len(occasions), seq_len(occasions), "-"))
   matrix(
-    c(c0, .pooled_lag_cov(var, n_net, N, ov, rho))[lag + 1L],
+    c(c0, .pooled_lag_cov(var, n_net, N, ov, rho, overlap_draw))[lag + 1L],
     occasions, occasions
   )
 }
@@ -2554,7 +2648,8 @@ check_df <- function(df, name = "df") {
 #' of the overlap and correlation kernels alone.
 #' @keywords internal
 #' @noRd
-.check_lag_psd <- function(K, n_gross, n_net, N, ov, rho, occasions) {
+.check_lag_psd <- function(K, n_gross, n_net, N, ov, rho, occasions,
+                           overlap_draw) {
   ev <- eigen(K, symmetric = TRUE, only.values = TRUE)$values
   diag_term <- K[1L, 1L]
   # Relative to the spectrum: an absolute floor would tie the verdict to the
@@ -2563,7 +2658,7 @@ check_df <- function(df, name = "df") {
   if (min(ev) >= -sqrt(.Machine$double.eps) * scale) {
     return(invisible(NULL))
   }
-  cov_m <- .pooled_lag_cov(1, n_net, N, ov, rho)
+  cov_m <- .pooled_lag_cov(1, n_net, N, ov, rho, overlap_draw)
   neg <- which(cov_m < 0)
   msg <- sprintf(
     "the assembled between-occasion covariance is not a valid covariance (minimum eigenvalue %.3g against a diagonal of %.3g)",
@@ -2604,11 +2699,12 @@ check_df <- function(df, name = "df") {
 #' Variance of the equal-weight mean of the occasion estimates
 #' @keywords internal
 #' @noRd
-.pooled_var <- function(n, var, N, deff, resp_rate, occasions, ov, rho) {
+.pooled_var <- function(n, var, N, deff, resp_rate, occasions, ov, rho,
+                        overlap_draw) {
   n_net <- n * resp_rate
-  K <- .pooled_kernel(var, n_net, N, occasions, ov, rho)
-  .check_lag_psd(K, n, n_net, N, ov, rho, occasions)
-  .check_overlap_frame(n_net, n_net, N, ov)
+  K <- .pooled_kernel(var, n_net, N, occasions, ov, rho, overlap_draw)
+  .check_lag_psd(K, n, n_net, N, ov, rho, occasions, overlap_draw)
+  .check_overlap_frame(n_net, n_net, N, .frame_overlap(ov, overlap_draw))
   .safe_variance(deff * sum(K) / occasions^2, "pooled variance")
 }
 
@@ -2616,8 +2712,9 @@ check_df <- function(df, name = "df") {
 #' @keywords internal
 #' @noRd
 .prec_engine_pooled <- function(n, var, mu, N, deff, resp_rate, occasions,
-                                ov, rho, alpha, df = NULL) {
-  se <- sqrt(.pooled_var(n, var, N, deff, resp_rate, occasions, ov, rho))
+                                ov, rho, overlap_draw, alpha, df = NULL) {
+  se <- sqrt(.pooled_var(n, var, N, deff, resp_rate, occasions, ov, rho,
+                         overlap_draw))
   list(
     se = se,
     moe = .q_alpha(alpha, df) * se,
@@ -2630,22 +2727,25 @@ check_df <- function(df, name = "df") {
 #' The pooled variance is \eqn{deff\{A/(n r) + B\}} in the gross size, with
 #' \eqn{r} the response rate and the finite population terms collected into
 #' \eqn{B}. \eqn{B \le 0} always, since its bracket is at least
-#' `occasions` under the nonnegative correlation contract, so the divisor
+#' `occasions` under the nonnegative correlation contract, and at least
+#' half that under independent draws, so the divisor
 #' cannot vanish and no target is unattainable for want of precision. The
 #' size can still exceed \eqn{N}, which is the ordinary boundary and is
 #' checked where every other size is.
 #' @keywords internal
 #' @noRd
 .n_pooled_from_se <- function(target_se, var, N, deff, resp_rate, occasions,
-                              ov, rho) {
+                              ov, rho, overlap_draw) {
   m <- seq_len(occasions - 1L)
   w <- 2 * (occasions - m)
   pos <- ov > 0
+  f <- .pooled_pop_factors(ov, overlap_draw)
   A <- var * (occasions + sum(w[pos] * rho[pos] * ov[pos])) / occasions^2
   B <- if (is.infinite(N)) {
     0
   } else {
-    -var * (occasions + sum(w[pos] * rho[pos])) / (N * occasions^2)
+    -var * (occasions * f$marginal + sum(w[pos] * rho[pos] * f$shared[pos])) /
+      (N * occasions^2)
   }
   deff * A / (resp_rate * (target_se^2 - deff * B))
 }

@@ -55,6 +55,12 @@
 #'   across baseline and endline.
 #' @param overlap_cor Correlation between baseline and endline outcomes within
 #'   overlapping units, in \eqn{[0, 1]}.
+#' @param overlap_draw How the shared units of each arm are drawn,
+#'   `"fixed"` (default) for a fixed count drawn with the rest of each
+#'   round's sample, or `"independent"` for a retained panel topped up at
+#'   each round by a fresh sample drawn independently of it from the whole
+#'   frame. It changes only the finite population terms. See
+#'   [prec_change()].
 #' @param plan Optional [svyplan()] object providing design defaults.
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'
@@ -205,6 +211,7 @@ power_did.default <- function(
   ratio = 1,
   overlap = 0,
   overlap_cor = 0,
+  overlap_draw = c("fixed", "independent"),
   plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, power_did.default, match.call(), environment())
@@ -230,6 +237,7 @@ power_did.default <- function(
   check_resp_rate(resp_rate)
   check_overlap(overlap)
   check_overlap_cor(overlap_cor)
+  overlap_draw <- match.arg(overlap_draw)
 
   ratio <- .resolve_ratio(n, ratio)
 
@@ -266,7 +274,8 @@ power_did.default <- function(
   if (!is.null(n)) {
     n <- .check_power_n(n)
     n_pair <- rep_len(n, 2L) * resp_rate
-    .check_overlap_frame(n_pair, n_pair, N_pair, overlap)
+    .check_overlap_frame(n_pair, n_pair, N_pair,
+                         .frame_overlap(overlap, overlap_draw))
   }
   if (!is.null(power)) check_proportion(power, "power")
   if (!is.null(effect)) check_scalar(effect, "effect")
@@ -276,13 +285,15 @@ power_did.default <- function(
 
   if (outcome == "mean") {
     var_parts <- .did_var_parts(var)
-    var_terms <- .did_var_terms_mean(var_parts, overlap, overlap_cor)
+    var_terms <- .did_var_terms_mean(
+      var_parts, overlap, overlap_cor, overlap_draw
+    )
   } else {
     var_parts <- NULL
     .check_bernoulli_cor(treat, overlap_cor, overlap)
     .check_bernoulli_cor(control, overlap_cor, overlap)
     var_terms <- .did_var_terms_prop(
-      treat, control, overlap, overlap_cor, N_pair
+      treat, control, overlap, overlap_cor, overlap_draw, N_pair
     )
   }
 
@@ -299,7 +310,8 @@ power_did.default <- function(
     alternative = alternative,
     ratio = ratio,
     overlap = overlap,
-    overlap_cor = overlap_cor
+    overlap_cor = overlap_cor,
+    overlap_draw = overlap_draw
   )
 
   if (!is.null(var_parts)) params$var <- var_parts
@@ -330,8 +342,10 @@ power_did.default <- function(
       n2 <- (z_a + z_b)^2 * deff * V_r / effect^2 / resp_rate
       n2 <- max(n2, 2, 2 / r)
     } else {
-      n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate,
-                                 overlap = overlap, within_arm = TRUE)
+      n2 <- .solve_n2_from_power(
+        power, power_n2, N_pair, r, resp_rate,
+        overlap = .frame_overlap(overlap, overlap_draw), within_arm = TRUE
+      )
     }
     n0 <- if (r == 1) n2 else c(r * n2, n2)
     achieved_power <- power_n2(n2)
@@ -432,15 +446,19 @@ power_did.default <- function(
 #' variance splits as \eqn{v/n - v^{census}/N}{v/n - v^census/N} with the census term the
 #' same expression at full overlap. At `overlap = 0`, the two occasions are
 #' independent populations and the census term therefore has no cross term,
-#' matching `.diff_var_fpc()`.
+#' matching `.diff_var_fpc()`. Independent draws weight the census term by
+#' the factors of `.overlap_pop_factors()`, both rounds of an arm being the
+#' same size.
 #' @keywords internal
 #' @noRd
-.did_var_pair <- function(v0, v1, overlap, overlap_cor, what) {
+.did_var_pair <- function(v0, v1, overlap, overlap_cor, overlap_draw, what) {
   cross <- overlap_cor * sqrt(v0 * v1)
+  f <- .overlap_pop_factors(overlap, 1, overlap_draw)
   list(
     change = .safe_variance(v0 + v1 - 2 * overlap * cross, what),
     census = .safe_variance(
-      v0 + v1 - if (overlap > 0) 2 * cross else 0,
+      f$marginal[1L] * v0 + f$marginal[2L] * v1 -
+        if (overlap > 0) 2 * f$cross * cross else 0,
       what
     )
   )
@@ -448,19 +466,20 @@ power_did.default <- function(
 
 #' @keywords internal
 #' @noRd
-.did_var_terms_prop <- function(treat, control, overlap, overlap_cor, N_pair) {
+.did_var_terms_prop <- function(treat, control, overlap, overlap_cor,
+                                overlap_draw, N_pair) {
   t0 <- treat[1]; t1 <- treat[2]
   c0 <- control[1]; c1 <- control[2]
 
   vt <- .did_var_pair(
     .bernoulli_var(t0, N_pair[1L]),
     .bernoulli_var(t1, N_pair[1L]),
-    overlap, overlap_cor, "treated change variance"
+    overlap, overlap_cor, overlap_draw, "treated change variance"
   )
   vc <- .did_var_pair(
     .bernoulli_var(c0, N_pair[2L]),
     .bernoulli_var(c1, N_pair[2L]),
-    overlap, overlap_cor, "control change variance"
+    overlap, overlap_cor, overlap_draw, "control change variance"
   )
 
   list(change = c(vt$change, vc$change), census = c(vt$census, vc$census))
@@ -468,11 +487,12 @@ power_did.default <- function(
 
 #' @keywords internal
 #' @noRd
-.did_var_terms_mean <- function(var_parts, overlap, overlap_cor) {
+.did_var_terms_mean <- function(var_parts, overlap, overlap_cor,
+                                overlap_draw) {
   vt <- .did_var_pair(var_parts[1], var_parts[2], overlap, overlap_cor,
-                      "treated change variance")
+                      overlap_draw, "treated change variance")
   vc <- .did_var_pair(var_parts[3], var_parts[4], overlap, overlap_cor,
-                      "control change variance")
+                      overlap_draw, "control change variance")
 
   list(change = c(vt$change, vc$change), census = c(vt$census, vc$census))
 }

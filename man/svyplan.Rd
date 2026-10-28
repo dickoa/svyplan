@@ -16,7 +16,7 @@ svyplan(...)
 \code{prop_method},
 \code{stage_cost}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{fixed_cost},
 \code{unit_cost},
-\code{alternative}, \code{ratio}, \code{overlap}, \code{overlap_cor},
+\code{alternative}, \code{ratio}, \code{overlap}, \code{overlap_cor}, \code{overlap_draw},
 \code{alloc}, \code{min_n_stratum}, \code{min_n_domain}, \code{alloc_q}, \code{phase1_cost}.}
 
 \item{object}{A \code{svyplan} object to update.}

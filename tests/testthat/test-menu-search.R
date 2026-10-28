@@ -14,10 +14,12 @@ menu_brute <- function(p) {
 # A dearer state loads every column less, the shape of a size menu, and
 # each column skips some groups, as a domain target does. With `shaped =
 # FALSE` loads are drawn apart from cost, so many states are dominated.
+# `cols` fixes the number of columns without changing the other draws.
 menu_random <- function(seed, H = sample(2:5, 1), size = 7L,
-                        integer = TRUE, shaped = TRUE) {
+                        integer = TRUE, shaped = TRUE, cols = NULL) {
   set.seed(seed)
   K <- sample(1:3, 1)
+  if (!is.null(cols)) K <- cols
   owner <- rep(seq_len(H), sample(seq_len(size), H, replace = TRUE))
   x <- stats::runif(length(owner), 0.2, 3)
   cost <- if (integer) round(10 * x) else 10 * x
@@ -28,6 +30,19 @@ menu_random <- function(seed, H = sample(2:5, 1), size = 7L,
     if (stats::runif(1) < 0.4) C[owner == sample(H, 1), k] <- 0
   }
   .menu_problem(cost, C, owner)
+}
+
+# The largest one-column bound over zero and every multiplier at which a
+# group's cheapest state can change, the crossings of two of its states.
+dual_brute <- function(p) {
+  lambda <- 0
+  for (j in p$groups) {
+    a <- p$C[j, 1]
+    cross <- outer(p$cost[j], p$cost[j], "-") /
+      outer(a, a, function(x, y) y - x)
+    lambda <- c(lambda, cross[is.finite(cross) & cross > 0])
+  }
+  max(vapply(lambda, function(l) .menu_lagrangian(p, l)$L, 0))
 }
 
 check_plan <- function(p, r, want) {
@@ -114,6 +129,63 @@ test_that("the multipliers never return a plan dearer than their start", {
       expect_equal(sum(p$cost[sg$pick]), sg$ub)
       expect_lte(sg$L, want + 1e-9 * want)
     }
+  }
+})
+
+test_that("a one-column dual is maximized exactly", {
+  for (seed in 1:60) {
+    p <- menu_random(seed, integer = seed %% 2 == 0, cols = 1L)
+    lowest <- sum(vapply(p$groups, function(j) min(p$C[j, 1]), 0))
+    if (lowest > 1) next
+    expect_equal(.menu_subgradient(p, exact = TRUE)$L, dual_brute(p),
+                 tolerance = 1e-9)
+  }
+})
+
+test_that("a one-column implicit dual equals the dual of its listed menu", {
+  for (seed in 1:40) {
+    set.seed(seed)
+    H <- sample(2:5, 1)
+    owner <- rep(seq_len(H), sample(1:2, H, replace = TRUE))
+    B <- length(owner)
+    lo <- sample(1:3, B, replace = TRUE)
+    hi <- lo + sample(2:10, B, replace = TRUE)
+    o0 <- stats::runif(B, 0, 5)
+    o1 <- stats::runif(B, 1, 4)
+    g2 <- stats::runif(B, 0.5, 2) / H
+    q <- .whole_problem(o1, 0, 0, g2, lo, hi, owner, o0 = o0)
+    i <- rep(seq_len(B), hi - lo + 1)
+    x <- unlist(Map(seq, lo, hi))
+    p <- .menu_problem(o0[i] + o1[i] * x, matrix(g2[i] / x), owner[i])
+    expect_equal(.whole_subgradient(q)$L, dual_brute(p), tolerance = 1e-9)
+  }
+})
+
+test_that("a one-column search proves the optimum from zero multipliers", {
+  # A node bracket started at zero multipliers has to find the menu's scale.
+  for (seed in 1:60) {
+    integer <- seed %% 2 == 0
+    p <- menu_random(seed, H = 8L, size = 4L, integer = integer, cols = 1L)
+    want <- menu_brute(p)
+    if (!is.finite(want)) next
+    grain <- if (integer) 1 else 0
+    check_plan(p, .menu_search(p, 0, NULL, grain = grain, exact = TRUE),
+               want)
+    sg <- .menu_subgradient(p, exact = TRUE)
+    check_plan(p, .menu_search(p, sg$lambda, sg$pick, grain = grain,
+                               exact = TRUE), want)
+  }
+})
+
+test_that("a one-column node bound is the exact dual", {
+  # Stopped at its root, the search reports the root's bound, which with
+  # one column is exact and so at least the dual of the whole menu.
+  for (seed in 1:60) {
+    p <- menu_random(seed, H = 8L, size = 4L, integer = FALSE, cols = 1L)
+    if (!is.finite(menu_brute(p))) next
+    want <- dual_brute(p)
+    r <- .menu_search(p, 0, NULL, max_nodes = 1, exact = TRUE)
+    expect_gte(r$bound, want - 1e-9 * abs(want))
   }
 })
 
@@ -316,4 +388,28 @@ test_that("the dive and the search agree with enumeration on small menus", {
       expect_gte(r$value, best - 1e-9)
     }
   }
+})
+
+test_that("the C step-down matches the R scan and its tie rules", {
+  for (seed in 1:100) {
+    p <- menu_random(seed, H = 6L, size = 8L, shaped = FALSE)
+    pick <- vapply(p$groups, function(j) j[which.max(p$cost[j])], 1L)
+    expect_identical(.menu_step_down(p, pick), .menu_step_down_r(p, pick))
+  }
+  p <- .menu_problem(
+    c(5, 4, 4, 3),
+    matrix(c(0.8, 0.7, 0.7, 0.2), ncol = 1),
+    c(1, 1, 1, 1)
+  )
+  pick <- c(only = 1L)
+  expect_identical(.menu_step_down(p, pick), .menu_step_down_r(p, pick))
+})
+
+test_that("the C step-down sums its starting load as the R scan does", {
+  # The load of states 1 to 3 differs in its last bit between a double and
+  # a long double sum, and state 4 fits under 1 + 1e-9 by one bit.
+  C <- matrix(c(0.25742717332905157, 0.077862288348842415,
+                0.2259220897220075, 0.66471053932210622), ncol = 1)
+  p <- .menu_problem(c(1, 1, 2, 1), C, c(1L, 2L, 3L, 3L))
+  expect_identical(.menu_step_down(p, 1:3), .menu_step_down_r(p, 1:3))
 })

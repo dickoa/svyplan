@@ -52,6 +52,12 @@
 #'   not both.
 #' @param cor_decay Correlation at lag \eqn{m} taken as \eqn{\rho^m}{rho^m},
 #'   an alternative to stating `overlap_cor` lag by lag.
+#' @param overlap_draw How the shared units are drawn, `"fixed"` (default)
+#'   for a fixed count drawn with the rest of each occasion's sample, or
+#'   `"independent"` for a retained panel topped up on each occasion by a
+#'   fresh sample drawn independently of it from the whole frame. The
+#'   second is defined for two occasions, or for more when no lag overlaps.
+#'   See [prec_pooled()].
 #' @param df Degrees of freedom of the variance estimator the planned design
 #'   will have, available from [design_df()]. It switches the interval
 #'   quantile from normal to t. `NULL` (default) applies no adjustment.
@@ -152,6 +158,10 @@
 #' n_pooled(var = 100, moe = 1, occasions = 4, N = 50000, deff = 1.5,
 #'          resp_rate = 0.8)
 #'
+#' # Two occasions on a small frame, a retained panel plus independent draws
+#' n_pooled(var = 100, moe = 2.5, occasions = 2, N = 400, overlap = 0.5,
+#'          overlap_cor = 0.8, overlap_draw = "independent")
+#'
 #' @export
 n_pooled <- function(var = NULL, ...) {
   if (!is.null(var)) {
@@ -180,6 +190,7 @@ n_pooled.default <- function(
   overlap = 0,
   overlap_cor = NULL,
   cor_decay = NULL,
+  overlap_draw = c("fixed", "independent"),
   df = NULL,
   plan = NULL,
   .overlap_basis = NULL
@@ -197,6 +208,8 @@ n_pooled.default <- function(
   if (!is.null(df)) check_df(df)
   ov <- .resolve_lag_overlap(overlap, occasions, resp_rate, .overlap_basis)
   rho <- .resolve_lag_cor(overlap_cor, cor_decay, occasions - 1L)
+  overlap_draw <- match.arg(overlap_draw)
+  .check_pooled_draw(overlap_draw, ov$overlap, occasions)
 
   q <- .q_alpha(alpha, df)
   if (!is.null(cv)) {
@@ -217,14 +230,15 @@ n_pooled.default <- function(
   }
 
   n <- .n_pooled_from_se(
-    target_se, inputs$var, N, deff, resp_rate, occasions, ov$overlap, rho
+    target_se, inputs$var, N, deff, resp_rate, occasions, ov$overlap, rho,
+    overlap_draw
   )
   n <- .census_size(n, N)
   .check_attainable(n, N, resp_rate)
 
   prec <- .prec_engine_pooled(
     n, inputs$var, inputs$mu, N, deff, resp_rate, occasions, ov$overlap, rho,
-    alpha, df
+    overlap_draw, alpha, df
   )
   # The inversion is closed form on n <= N, so a mismatch here means the
   # linear form and the variance it inverts have drifted apart, not that
@@ -246,6 +260,7 @@ n_pooled.default <- function(
     overlap = ov$overlap,
     overlap_cor = rho,
     overlap_basis = ov$basis,
+    overlap_draw = overlap_draw,
     df = df
   )
   if (!is.null(inputs$p)) params$p <- inputs$p
@@ -297,6 +312,7 @@ n_pooled.svyplan_prec <- function(var, ..., moe = NULL, cv = NULL,
     resp_rate = par$resp_rate,
     overlap = par$overlap,
     overlap_cor = par$overlap_cor,
+    overlap_draw = par$overlap_draw,
     df = par$df,
     .overlap_basis = par$overlap_basis
   )

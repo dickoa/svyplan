@@ -189,7 +189,7 @@ test_that("the documented DiD variance decomposition is the implemented one", {
   n_eff <- c(300, 300)
   N_pair <- c(1000, 1000)
   terms <- .did_var_terms_prop(
-    c(0.3, 0.4), c(0.3, 0.32), 0.5, 0.6, N_pair
+    c(0.3, 0.4), c(0.3, 0.32), 0.5, 0.6, "fixed", N_pair
   )
 
   expect_equal(
@@ -201,7 +201,7 @@ test_that("the documented DiD variance decomposition is the implemented one", {
   # The factor form is correct only at the two extremes.
   for (overlap in c(0, 1)) {
     ends <- .did_var_terms_prop(
-      c(0.3, 0.4), c(0.3, 0.32), overlap, 0.6, N_pair
+      c(0.3, 0.4), c(0.3, 0.32), overlap, 0.6, "fixed", N_pair
     )
     expect_equal(
       .did_var_d(n_eff, ends, N_pair, 1),

@@ -91,11 +91,15 @@
 #'
 #' `start`, a plan meeting every column, is kept when no cheaper plan is
 #' found. With no plan, from `start` or from the multipliers, `pick` is
-#' `NULL`.
+#' `NULL`. With one column the dual is maximized exactly by `.dual_one()`.
 #' @keywords internal
 #' @noRd
 .whole_subgradient <- function(q, start = NULL, iters = 1500L) {
   at_lo <- abs(sum(q$o0 + q$o1 * q$lo + q$o2 / q$lo)) * q$H / q$B
+  if (q$K == 1L) {
+    one <- .whole_subgradient_one(q, start, at_lo)
+    if (!is.null(one)) return(one)
+  }
   lambda <- rep(at_lo / q$K + 1e-12, q$K)
   pick <- .whole_plan_from(q, lambda)
   if (!is.null(start) &&
@@ -134,6 +138,34 @@
     pick <- cand
   }
   list(lambda = best_lambda, L = best_L, ub = ub, pick = pick)
+}
+
+#' `.whole_subgradient()` with one column, or `NULL`
+#' @keywords internal
+#' @noRd
+.whole_subgradient_one <- function(q, start, at_lo) {
+  pick <- start
+  ub <- if (is.null(pick)) Inf else .whole_cost(q, pick)
+  f <- function(lambda) {
+    l <- .whole_lagrangian(q, lambda)
+    if (l$g <= 1e-9) {
+      v <- .whole_cost(q, l$plan)
+      if (v < ub) {
+        ub <<- v
+        pick <<- l$plan
+      }
+    }
+    list(L = l$L, g = l$g)
+  }
+  d <- .dual_one(f, at_lo + 1e-12)
+  if (is.null(d)) return(NULL)
+  cand <- .whole_plan_from(q, d$lambda)
+  if (!is.null(cand) && .whole_cost(q, cand) < ub) {
+    ub <- .whole_cost(q, cand)
+    pick <- cand
+  }
+  if (is.null(pick)) return(list(lambda = d$lambda, L = -Inf, pick = NULL))
+  list(lambda = d$lambda, L = d$L, ub = ub, pick = pick)
 }
 
 #' The sizes reduced-cost fixing keeps, one interval per branch
@@ -227,9 +259,9 @@
     j <- p$groups[[h]]
     j[branch[j] == pb[h] & x[j] == sg$pick$x[h]][1]
   }, 1L)
-  sg2 <- .menu_subgradient(p, sg$lambda, start = at)
+  sg2 <- .menu_subgradient(p, sg$lambda, start = at, exact = TRUE)
   sr <- .menu_search(p, sg2$lambda, sg2$pick, grain = grain,
-                     max_nodes = max_nodes, gap = gap)
+                     max_nodes = max_nodes, gap = gap, exact = TRUE)
   if (is.null(sr$pick)) {
     stop("internal error: the whole-unit search lost the plan it started from",
          call. = FALSE)

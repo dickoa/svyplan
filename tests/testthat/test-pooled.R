@@ -196,7 +196,7 @@ test_that("the guard catches a kernel whose pooled variance is still positive", 
   N <- 1e5
   ov <- as.numeric(design_overlap("4", max_lag = 7))
   n_net <- 0.67 * N
-  K <- svyplan:::.pooled_kernel(100, n_net, N, 8, ov, 0.8^seq_len(7))
+  K <- svyplan:::.pooled_kernel(100, n_net, N, 8, ov, 0.8^seq_len(7), "fixed")
   expect_true(min(eigen(K, symmetric = TRUE, only.values = TRUE)$values) < 0)
   expect_true(sum(K) / 64 > 0)
   expect_error(

@@ -635,6 +635,7 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
               alternative = p$alternative,
               overlap = p$overlap,
               overlap_cor = p$overlap_cor,
+              overlap_draw = p$overlap_draw,
               method = p$method %||% "wald"
             )
           } else if (x$type %in% c("did_prop", "did_mean")) {
@@ -652,7 +653,8 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
               resp_rate = p$resp_rate,
               alternative = p$alternative,
               overlap = p$overlap,
-              overlap_cor = p$overlap_cor
+              overlap_cor = p$overlap_cor,
+              overlap_draw = p$overlap_draw
             )
           } else {
             res <- power_mean(
@@ -666,7 +668,8 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
               resp_rate = p$resp_rate,
               alternative = p$alternative,
               overlap = p$overlap,
-              overlap_cor = p$overlap_cor
+              overlap_cor = p$overlap_cor,
+              overlap_draw = p$overlap_draw
             )
           }
           res$power

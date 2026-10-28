@@ -4,7 +4,7 @@
 
 /* The draw of round r's set at n_h units, .psu_stratum_counts(). */
 static double SUFFIX(draw_of)(const part_t *p, int r, double n_h,
-                              double *n_c_int) {
+                              double *n_c_int, int *avail_out) {
   ACC_T nc = 0;
   int avail = 0;
   for (int i = 0; i < p->n; i++) {
@@ -17,6 +17,7 @@ static double SUFFIX(draw_of)(const part_t *p, int r, double n_h,
   }
   double nci = (double) nc;
   if (n_c_int) *n_c_int = nci;
+  if (avail_out) *avail_out = avail;
   double rest = n_h - nci;
   if (rest < 0) rest = 0;
   double k = ceil(rest / p->b);

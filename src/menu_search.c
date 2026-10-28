@@ -116,3 +116,84 @@ SEXP C_menu_dominated(SEXP C, SEXP ord) {
   UNPROTECT(1);
   return out;
 }
+
+/* Move each plan to cheaper states, largest saving first, without building
+ * a residual-capacity matrix for every group. Groups are consecutive runs
+ * ending at `ends`, and `pick` has one 1-based state per group. The
+ * starting load is summed as .colSums() sums it, in long double when `ld`
+ * is true, so every feasibility test matches the R scan's to the bit. */
+SEXP C_menu_step_down(SEXP cost, SEXP C, SEXP ends, SEXP pick, SEXP ld) {
+  if (!Rf_isReal(cost)) Rf_error("'cost' must be double");
+  if (!Rf_isReal(C) || !Rf_isMatrix(C)) Rf_error("'C' must be a double matrix");
+  if (!Rf_isInteger(ends) || !Rf_isInteger(pick)) {
+    Rf_error("'ends' and 'pick' must be integer");
+  }
+  if (TYPEOF(ld) != LGLSXP || XLENGTH(ld) != 1) Rf_error("'ld' must be one logical");
+  R_xlen_t rows = Rf_nrows(C), n = XLENGTH(cost);
+  int K = Rf_ncols(C), H = LENGTH(ends);
+  if (rows != n || LENGTH(pick) != H) Rf_error("menu dimensions do not agree");
+  const int *e = INTEGER(ends), *ip = INTEGER(pick);
+  for (int h = 0; h < H; h++) {
+    R_xlen_t lo = h == 0 ? 0 : e[h - 1];
+    if (e[h] <= lo || e[h] > rows) Rf_error("'ends' must increase within 'C'");
+    if (ip[h] == NA_INTEGER || ip[h] < 1 || ip[h] > rows) {
+      Rf_error("'pick' must index rows of 'C'");
+    }
+  }
+  const double *pc = REAL(C), *pcost = REAL(cost);
+  double *load = (double *) R_alloc((size_t) (K > 0 ? K : 1), sizeof(double));
+  int use_ld = LOGICAL(ld)[0] == TRUE;
+  for (int k = 0; k < K; k++) {
+    const double *col = pc + (R_xlen_t) k * rows;
+    if (use_ld) {
+      long double sum = 0;
+      for (int h = 0; h < H; h++) sum += col[ip[h] - 1];
+      load[k] = (double) sum;
+    } else {
+      double sum = 0;
+      for (int h = 0; h < H; h++) sum += col[ip[h] - 1];
+      load[k] = sum;
+    }
+  }
+  SEXP result = PROTECT(Rf_allocVector(INTSXP, H));
+  int *out = INTEGER(result);
+  for (int h = 0; h < H; h++) out[h] = ip[h];
+  unsigned long scans = 0;
+  for (;;) {
+    int best_h = -1;
+    R_xlen_t best_s = -1;
+    double best_save = 0;
+    for (int h = 0; h < H; h++) {
+      if ((++scans & 1023UL) == 0) R_CheckUserInterrupt();
+      R_xlen_t cur = out[h] - 1;
+      R_xlen_t local = -1;
+      for (R_xlen_t i = h == 0 ? 0 : e[h - 1]; i < e[h]; i++) {
+        if (pcost[i] >= pcost[cur]) continue;
+        int k = 0;
+        while (k < K) {
+          double residual = load[k] - pc[cur + (R_xlen_t) k * rows];
+          if (pc[i + (R_xlen_t) k * rows] + residual > 1 + 1e-9) break;
+          k++;
+        }
+        if (k == K && (local < 0 || pcost[i] < pcost[local])) local = i;
+      }
+      if (local >= 0) {
+        double save = pcost[cur] - pcost[local];
+        if (best_h < 0 || save > best_save) {
+          best_h = h;
+          best_s = local;
+          best_save = save;
+        }
+      }
+    }
+    if (best_h < 0) break;
+    R_xlen_t old = out[best_h] - 1;
+    for (int k = 0; k < K; k++) {
+      load[k] = load[k] - pc[old + (R_xlen_t) k * rows] +
+        pc[best_s + (R_xlen_t) k * rows];
+    }
+    out[best_h] = (int) best_s + 1;
+  }
+  UNPROTECT(1);
+  return result;
+}

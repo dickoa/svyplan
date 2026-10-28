@@ -24,6 +24,7 @@ n_change(var = NULL, ...)
   ratio = 1,
   overlap = 0,
   overlap_cor = 0,
+  overlap_draw = c("fixed", "independent"),
   df = NULL,
   plan = NULL
 )
@@ -106,6 +107,12 @@ the size, so a full panel of uncorrelated measurements saves nothing. On the
 proportion scale two Bernoulli marginals bound the correlation they can
 have, and a value above that bound is rejected.}
 
+\item{overlap_draw}{How the shared units are drawn, \code{"fixed"} (default)
+for a fixed count drawn with the rest of each occasion's sample, or
+\code{"independent"} for a retained panel topped up on each occasion by a
+fresh sample drawn independently of it from the whole frame. See
+\code{\link[=prec_change]{prec_change()}} for the variance under each.}
+
 \item{df}{Degrees of freedom of the variance estimator the planned design
 will have, typically sampled PSUs minus strata, and available from
 \code{\link[=design_df]{design_df()}}. It switches the interval quantile from normal to t.
@@ -141,7 +148,6 @@ specified margin of error or coefficient of variation, given how far the
 two samples overlap.
 }
 \details{
-#'
 \subsection{Level or change}{
 
 A repeated survey publishes three things, and each is sized by its own
@@ -241,6 +247,10 @@ n_change(var = 100, moe = 2, ratio = 2)
 
 # With FPC, design effect, and response
 n_change(var = 100, moe = 2, N = 20000, deff = 1.5, resp_rate = 0.8)
+
+# A small frame with a retained panel and independent fresh draws
+n_change(var = 100, moe = 4, N = 400, overlap = 0.5, overlap_cor = 0.8,
+         overlap_draw = "independent")
 
 }
 \references{

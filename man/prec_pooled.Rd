@@ -23,6 +23,7 @@ prec_pooled(var = NULL, ...)
   overlap = 0,
   overlap_cor = NULL,
   cor_decay = NULL,
+  overlap_draw = c("fixed", "independent"),
   df = NULL,
   plan = NULL,
   .overlap_basis = NULL
@@ -85,6 +86,13 @@ share, in \eqn{[0, 1]}. One number for every lag, or one per lag. Default
 lag. It is the shape most panels have, a correlation falling away with
 distance, and a single number is rarely the right one over a long
 horizon.}
+
+\item{overlap_draw}{How the shared units are drawn, \code{"fixed"} (default)
+for a fixed count drawn with the rest of each occasion's sample, or
+\code{"independent"} for a retained panel topped up on each occasion by a
+fresh sample drawn independently of it from the whole frame. The
+second is defined for two occasions, or for more when no lag overlaps.
+See Details.}
 
 \item{df}{Degrees of freedom of the variance estimator the planned design
 will have, typically sampled PSUs minus strata, and available from
@@ -201,10 +209,12 @@ function's.
 Each positive-overlap lag must also satisfy
 \code{(2 - overlap[lag]) * n * resp_rate <= N}: the two responding samples
 cannot require more distinct units than the frame contains. This bound
-applies even at zero outcome correlation. Zero-overlap lags retain the
-independent-samples convention. These pairwise bounds and the covariance
-check below are necessary conditions, not a proof that an arbitrary
-overlap vector can be realized by a complete multi-occasion schedule.
+applies even at zero outcome correlation, and not at all under
+\code{overlap_draw = "independent"}, where each part fits the frame on its
+own. Zero-overlap lags retain the independent-samples convention. These
+pairwise bounds and the covariance check below are necessary conditions,
+not a proof that an arbitrary overlap vector can be realized by a
+complete multi-occasion schedule.
 
 A lag's covariance changes sign once its overlap falls below the sampling
 fraction \code{n / N}, and a covariance whose sign varies across lags need not
@@ -222,10 +232,26 @@ exhaust its own population, and the message says so when it does.
 As in \code{\link[=prec_change]{prec_change()}}, the covariance is a model form, a correlation
 between occasions among the units they share and simple random sampling
 otherwise. It is not the design-based covariance of a complex master
-sample, which carries its own pairwise inclusion probabilities. The
-shared units are a fixed count, and a retained panel topped up by
-independent replacement draws differs only in the population terms, by
-an amount of order \eqn{1/N}.
+sample, which carries its own pairwise inclusion probabilities.
+}
+
+\subsection{How the shared units are drawn}{
+
+Under \code{overlap_draw = "fixed"} the shared units are a fixed count drawn
+with the rest of the sample. Under \code{"independent"} a retained panel is
+drawn once and each occasion adds a fresh sample drawn from the whole
+frame independently of it, each occasion's mean pooling all its units
+with equal weight. With \eqn{w} the lag-1 overlap, an occasion's
+population term becomes \eqn{(w^2 + (1 - w)^2)/N} and the covariance's
+\eqn{w^2/N}, the factors \code{\link[=prec_change]{prec_change()}} gives at equal sizes. Beyond two
+occasions those terms depend on how each occasion's sample splits into
+independently drawn panels, which the lag overlaps do not determine, so
+\code{"independent"} is refused there unless no lag overlaps.
+
+The average moves more than the change. At equal variances, half the
+units retained and \code{overlap_cor = 0.8}, the variance of the two-occasion
+average under \code{"independent"} is 4.2\% higher than under \code{"fixed"} at a
+sampling fraction of 5\% and 9.0\% higher at 10\%.
 }
 }
 \examples{
@@ -255,6 +281,10 @@ prec_pooled(p = 0.3, n = 1600, occasions = 4, resp_rate = 0.8,
 res <- n_pooled(var = 100, moe = 1, occasions = 4, overlap = 0.5,
                 cor_decay = 0.7)
 prec_pooled(res)
+
+# Two occasions on a small frame, a retained panel plus independent draws
+prec_pooled(var = 100, n = 40, occasions = 2, N = 400, overlap = 0.5,
+            overlap_cor = 0.78, overlap_draw = "independent")
 
 }
 \references{

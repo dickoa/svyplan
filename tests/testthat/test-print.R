@@ -349,6 +349,30 @@ test_that("a response rate below 1 never prints as 1", {
   )))
 })
 
+test_that("allocation and stage response rates never round onto a bound", {
+  frame <- data.frame(stratum = c("a", "b"), N = c(4000, 6000),
+                      var = c(4, 9), mean = c(10, 12))
+  out <- capture.output(print(
+    n_alloc(frame, cv = 0.05, alloc = "neyman", resp_rate = 0.999)
+  ))
+  expect_true(any(grepl("resp_rate = 0.999", out, fixed = TRUE)))
+  expect_false(any(grepl("resp_rate = 1.00", out, fixed = TRUE)))
+
+  frame$resp_rate <- c(0.999, 0.004)
+  out <- capture.output(print(summary(
+    n_alloc(frame, cv = 0.05, alloc = "neyman")
+  )))
+  expect_true(any(grepl("response rate: 0.004 to 0.999 by stratum", out,
+                        fixed = TRUE)))
+
+  out <- capture.output(print(n_cluster(
+    stage_cost = c(500, 50), icc = 0.01, cv = 0.05, unit_relvar = 1,
+    resp_rate_psu = 0.999, resp_rate = 0.004
+  )))
+  expect_true(any(grepl("(resp_rate_psu = 0.999, resp_rate = 0.004)", out,
+                        fixed = TRUE)))
+})
+
 test_that("a small alpha prints as itself", {
   out <- capture.output(print(power_mean(var = 100, effect = 2, alpha = 0.001)))
   expect_true(any(grepl("alpha = 0.001", out, fixed = TRUE)))

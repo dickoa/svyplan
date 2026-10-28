@@ -9,11 +9,14 @@ extern SEXP C_psu_menu_part(SEXP sizes, SEXP N, SEXP take, SEXP f_lo,
                             SEXP ord, SEXP f_stop, SEXP ld);
 extern SEXP C_menu_group_min(SEXP x, SEXP ends);
 extern SEXP C_menu_dominated(SEXP C, SEXP ord);
+extern SEXP C_menu_step_down(SEXP cost, SEXP C, SEXP ends, SEXP pick,
+                             SEXP ld);
 
 static const R_CallMethodDef CallEntries[] = {
   {"C_psu_menu_part", (DL_FUNC) &C_psu_menu_part, 11},
   {"C_menu_group_min", (DL_FUNC) &C_menu_group_min, 2},
   {"C_menu_dominated", (DL_FUNC) &C_menu_dominated, 2},
+  {"C_menu_step_down", (DL_FUNC) &C_menu_step_down, 5},
   {NULL, NULL, 0}
 };
 

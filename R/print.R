@@ -89,13 +89,6 @@ NULL
   invisible(NULL)
 }
 
-#' Format the design effect for printing
-#'
-#' `deff = 1` is the most consequential silent default in survey planning,
-#' so it is always shown rather than suppressed when left at its default.
-#' It is printed without decimals so that an assumed value is visually
-#' distinct from a supplied one.
-#'
 #' Name the stages a cluster design loses units at
 #'
 #' Three rates acting at three stages are not interchangeable, so the print
@@ -109,7 +102,7 @@ NULL
     resp_rate = p$resp_rate %||% 1
   )
   set <- rates[rates < 1]
-  parts <- sprintf("%s = %.2f", names(set), set)
+  parts <- sprintf("%s = %s", names(set), vapply(set, .fmt_prob, ""))
   if (!is.null(p[["eligible_rate"]])) {
     parts <- c(parts, sprintf("eligible_rate = %.4g", p[["eligible_rate"]]))
   }
@@ -120,6 +113,12 @@ NULL
   invisible(NULL)
 }
 
+#' Format the design effect for printing
+#'
+#' `deff = 1` is the most consequential silent default in survey planning,
+#' so it is always shown rather than suppressed when left at its default.
+#' It is printed without decimals so that an assumed value is visually
+#' distinct from a supplied one.
 #' @keywords internal
 #' @noRd
 .fmt_deff <- function(deff) {
@@ -129,7 +128,10 @@ NULL
   if (isTRUE(all.equal(unname(deff), rep(1, length(deff))))) {
     "deff = 1"
   } else {
-    sprintf("deff = %s", .fmt_by_stratum(deff, "%.2f"))
+    sprintf(
+      "deff = %s",
+      .fmt_by_stratum(deff, function(v) sprintf("%.2f", v))
+    )
   }
 }
 
@@ -155,15 +157,16 @@ NULL
 #' Format a design parameter that may vary by stratum
 #'
 #' A single value prints as itself. Values that differ print as their range,
-#' so the header stays one line however many strata there are.
+#' so the header stays one line however many strata there are. `fmt`
+#' formats one value.
 #' @keywords internal
 #' @noRd
 .fmt_by_stratum <- function(x, fmt) {
   u <- unique(x)
   if (length(u) == 1L) {
-    return(sprintf(fmt, u))
+    return(fmt(u))
   }
-  sprintf(paste0(fmt, " to ", fmt, " by stratum"), min(x), max(x))
+  sprintf("%s to %s by stratum", fmt(min(x)), fmt(max(x)))
 }
 
 #' @rdname print.svyplan
@@ -242,15 +245,35 @@ print.svyplan_n <- function(x, ...) {
   ov <- p$overlap %||% 0
   rho <- p$overlap_cor %||% 0
   if (all(ov * rho == 0)) {
-    return("No between-occasion covariance (overlap x overlap_cor = 0)\n")
+    return(sprintf(
+      "No between-occasion covariance (overlap x overlap_cor = 0)%s\n",
+      .fmt_overlap_draw(p)
+    ))
   }
   reach <- max(which(ov > 0))
   sprintf(
-    "overlap = %.3g, overlap_cor = %.3g at lag 1, shared out to lag %d\n",
+    "overlap = %.3g, overlap_cor = %.3g at lag 1, shared out to lag %d%s\n",
     ov[1L],
     rho[1L],
-    reach
+    reach,
+    .fmt_overlap_draw(p)
   )
+}
+
+#' Name the overlap draw only where it moves the result
+#'
+#' Independent draws change the finite population terms alone, so the
+#' default prints nothing and an infinite population or a zero overlap,
+#' where the two draws agree, prints nothing either.
+#' @keywords internal
+#' @noRd
+.fmt_overlap_draw <- function(p) {
+  if (identical(p$overlap_draw, "independent") && any((p$overlap %||% 0) > 0) &&
+        all(is.finite(p$N))) {
+    ", independent draws"
+  } else {
+    ""
+  }
 }
 
 #' Report a size that buys one change measured on two occasions
@@ -340,13 +363,17 @@ print.svyplan_n <- function(x, ...) {
   overlap <- p$overlap %||% 0
   overlap_cor <- p$overlap_cor %||% 0
   if (overlap == 0 || overlap_cor == 0) {
-    return("No between-occasion covariance (overlap x overlap_cor = 0)\n")
+    return(sprintf(
+      "No between-occasion covariance (overlap x overlap_cor = 0)%s\n",
+      .fmt_overlap_draw(p)
+    ))
   }
   sprintf(
-    "overlap = %.3g, overlap_cor = %.3g (%.1f%% of the independent variance)\n",
+    "overlap = %.3g, overlap_cor = %.3g (%.1f%% of the independent variance)%s\n",
     overlap,
     overlap_cor,
-    100 * .change_var_share(p)
+    100 * .change_var_share(p),
+    .fmt_overlap_draw(p)
   )
 }
 
@@ -1152,6 +1179,7 @@ print.svyplan_power <- function(x, ...) {
   if (!is.null(p$overlap) && p$overlap > 0) {
     parts <- c(parts, sprintf("overlap = %s", .fmt_prob(p$overlap)))
     parts <- c(parts, sprintf("overlap_cor = %s", .fmt_prob(p$overlap_cor)))
+    if (nzchar(.fmt_overlap_draw(p))) parts <- c(parts, "independent draws")
   }
   if (!is.null(p$alternative) && p$alternative == "one.sided") {
     parts <- c(parts, "one-sided")
@@ -2155,7 +2183,7 @@ print.svyplan_strata <- function(x, ...) {
   if (!is.null(resp_rate) && any(resp_rate < 1)) {
     parts <- c(
       parts,
-      sprintf("resp_rate = %s", .fmt_by_stratum(resp_rate, "%.2f"))
+      sprintf("resp_rate = %s", .fmt_by_stratum(resp_rate, .fmt_prob))
     )
   }
   parts <- c(parts, .fmt_deff(p$deff))
@@ -4052,11 +4080,11 @@ print.summary.svyplan_alloc <- function(x, ...) {
   cat(sprintf("  alpha: %s\n", .fmt_prob(x$assumptions$alpha)))
   cat(sprintf(
     "  design effect: %s\n",
-    .fmt_by_stratum(x$assumptions$deff, "%.2f")
+    .fmt_by_stratum(x$assumptions$deff, function(v) sprintf("%.2f", v))
   ))
   cat(sprintf(
     "  response rate: %s\n",
-    .fmt_by_stratum(x$assumptions$response_rate, "%.2f")
+    .fmt_by_stratum(x$assumptions$response_rate, .fmt_prob)
   ))
   if (!is.null(x$assumptions$df)) {
     cat(sprintf("  interval df: %g\n", x$assumptions$df))

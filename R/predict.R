@@ -295,7 +295,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
         moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N, deff = p$deff, resp_rate = p$resp_rate,
         ratio = p$ratio, overlap = p$overlap, overlap_cor = p$overlap_cor,
-        df = p$df
+        overlap_draw = p$overlap_draw, df = p$df
       )
       data.frame(n1 = res$n[1L], n2 = res$n[length(res$n)],
                  se = res$se, moe = res$moe, cv = res$cv, rmoe = res$rmoe)
@@ -329,7 +329,8 @@ predict.svyplan_n <- function(object, newdata, ...) {
         occasions = p$occasions,
         moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N, deff = p$deff, resp_rate = p$resp_rate,
-        overlap = p$overlap, overlap_cor = p$overlap_cor, df = p$df,
+        overlap = p$overlap, overlap_cor = p$overlap_cor,
+        overlap_draw = p$overlap_draw, df = p$df,
         .overlap_basis = p$overlap_basis
       )
       data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv,
@@ -554,7 +555,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
         alpha = p$alpha, N = p$N, deff = p$deff,
         resp_rate = p$resp_rate,
         alternative = p$alternative, overlap = p$overlap, overlap_cor = p$overlap_cor,
-        method = method
+        overlap_draw = p$overlap_draw, method = method
       )
       args[excluded] <- list(NULL)
       res <- do.call(power_prop, args)
@@ -575,7 +576,8 @@ predict.svyplan_power <- function(object, newdata, ...) {
         effect = p$effect, var = p$var, n = p$n, power = p$power,
         alpha = p$alpha, N = p$N, deff = p$deff,
         resp_rate = p$resp_rate,
-        alternative = p$alternative, overlap = p$overlap, overlap_cor = p$overlap_cor
+        alternative = p$alternative, overlap = p$overlap, overlap_cor = p$overlap_cor,
+        overlap_draw = p$overlap_draw
       )
       args[excluded] <- list(NULL)
       res <- do.call(power_mean, args)
@@ -599,7 +601,8 @@ predict.svyplan_power <- function(object, newdata, ...) {
         alpha = p$alpha, N = p$N, deff = p$deff,
         resp_rate = p$resp_rate,
         alternative = p$alternative, ratio = p$ratio,
-        overlap = p$overlap, overlap_cor = p$overlap_cor
+        overlap = p$overlap, overlap_cor = p$overlap_cor,
+        overlap_draw = p$overlap_draw
       )
       args[excluded] <- list(NULL)
       res <- do.call(power_did, args)

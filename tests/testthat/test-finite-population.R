@@ -122,6 +122,62 @@ test_that("full and independent panels give the enumerated change variances", {
   expect_equal(indep$se^2 * 9, 494, tolerance = 1e-12)
 })
 
+## A retained panel and independent fresh draws on a population of four
+##
+## Each occasion pools the retained units with its own fresh units, drawn
+## from the whole frame independently of the panel, so a unit can be drawn
+## twice on one occasion. Every combination of draws is equally likely.
+
+enumerate_draws <- function(y1, y2, k, f1, f2) {
+  N <- length(y1)
+  pick <- function(m) combn(N, m, simplify = FALSE)
+  est <- list()
+  for (r in pick(k)) for (i in pick(f1)) for (j in pick(f2)) {
+    est[[length(est) + 1L]] <- c(mean(y1[c(r, i)]), mean(y2[c(r, j)]))
+  }
+  est <- do.call(rbind, est)
+  pv <- function(x) mean((x - mean(x))^2)
+  c(change = pv(est[, 2] - est[, 1]), average = pv(rowMeans(est)))
+}
+
+test_that("independent draws give the enumerated change variance", {
+  y1 <- c(1, 2, 4, 9)
+  y2 <- c(3, 5, 4, 12)
+  for (cfg in list(c(1, 1, 1), c(2, 1, 1), c(1, 1, 2), c(3, 1, 1))) {
+    k <- cfg[1]
+    n <- k + cfg[2:3]
+    got <- prec_change(var = c(var(y1), var(y2)), n = n, N = 4,
+                       overlap = k / n[1], overlap_cor = cor(y1, y2),
+                       overlap_draw = "independent")
+    expect_equal(got$se^2, enumerate_draws(y1, y2, k, cfg[2], cfg[3])[[1]],
+                 tolerance = 1e-12, info = paste(cfg, collapse = "-"))
+  }
+})
+
+test_that("independent draws give the enumerated two-occasion average", {
+  y1 <- c(1, 2, 4, 9)
+  y2 <- c(2, 1, 4, 9)
+  for (k in 1:3) {
+    got <- prec_pooled(var = var(y1), n = k + 1, occasions = 2, N = 4,
+                       overlap = k / (k + 1), overlap_cor = cor(y1, y2),
+                       overlap_draw = "independent")
+    expect_equal(got$se^2, enumerate_draws(y1, y2, k, 1, 1)[[2]],
+                 tolerance = 1e-12, info = k)
+  }
+})
+
+## Half of 40 units retained on a frame of 400, variances 100 and 164 and a
+## covariance of 100, on the total scale
+
+test_that("independent draws reproduce the partial-retention change", {
+  args <- list(var = c(100, 164), n = 40, N = 400, overlap = 0.5,
+               overlap_cor = 100 / sqrt(100 * 164))
+  indep <- do.call(prec_change, c(args, overlap_draw = "independent"))
+  fixed <- do.call(prec_change, args)
+  expect_equal(indep$se^2 * 400^2, 623200, tolerance = 1e-12)
+  expect_equal(fixed$se^2 * 400^2, 630400, tolerance = 1e-12)
+})
+
 ## Two-phase sampling on ten units in two strata of five
 
 test_that("an exact between component gives the finite SRS variance", {

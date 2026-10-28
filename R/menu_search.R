@@ -67,6 +67,19 @@
 #' @keywords internal
 #' @noRd
 .menu_step_down <- function(p, pick) {
+  if (!is.null(p$ends)) {
+    out <- .Call(C_menu_step_down, p$cost, p$C, p$ends, as.integer(pick),
+                 isTRUE(capabilities("long.double")))
+    names(out) <- names(pick)
+    return(out)
+  }
+  .menu_step_down_r(p, pick)
+}
+
+#' The R oracle and the fallback for groups not stored in consecutive runs
+#' @keywords internal
+#' @noRd
+.menu_step_down_r <- function(p, pick) {
   K <- ncol(p$C)
   load <- .colSums(p$C[pick, , drop = FALSE], length(pick), K)
   repeat {
@@ -110,15 +123,20 @@
 
 #' Multipliers by subgradient, with the best plan met on the way
 #'
-#' A cold start runs up to 1,500 steps from a uniform guess. Given
-#' `lambda`, the multipliers are taken as close and a warm run takes up to
-#' `iters` smaller steps. `start`, a plan meeting every column, is kept
-#' when no cheaper plan is found. `ub` is `Inf` when no plan is known.
+#' Up to `iters` steps, from a uniform guess or, given `lambda`, smaller
+#' steps from multipliers taken as close. With `exact` and one column the
+#' dual is maximized exactly by `.dual_one()` instead. `start`, a plan
+#' meeting every column, is kept when no cheaper plan is found. `ub` is
+#' `Inf` when no plan is known.
 #' @keywords internal
 #' @noRd
-.menu_subgradient <- function(p, lambda = NULL, start = NULL,
-                              iters = if (is.null(lambda)) 1500L else 100L) {
+.menu_subgradient <- function(p, lambda = NULL, start = NULL, iters = 100L,
+                              exact = FALSE) {
   K <- ncol(p$C)
+  if (exact && K == 1L) {
+    one <- .menu_subgradient_one(p, lambda, start)
+    if (!is.null(one)) return(one)
+  }
   warm <- !is.null(lambda)
   if (!warm) lambda <- rep(abs(mean(p$cost)) * p$H / K + 1e-12, K)
   theta <- if (warm) 0.5 else 2
@@ -166,6 +184,88 @@
   list(lambda = best_lambda, L = best_L, ub = ub, pick = pick)
 }
 
+#' The exact maximum of a concave dual in one multiplier
+#'
+#' `f(lambda)` returns the bound `L` and its slope `g`, the load less the
+#' capacity, which falls as `lambda` grows. The sign change of `g` is
+#' bracketed by multiplying `lambda0` by 4, and each step then moves to
+#' where the two supporting lines of the bracket meet. On a
+#' piecewise-linear dual this reaches the maximum in finitely many steps.
+#' It stops early once the bound passes `stop`, and returns `NULL` when no
+#' multiplier brings the load down to the capacity.
+#' @keywords internal
+#' @noRd
+.dual_one <- function(f, lambda0, stop = Inf) {
+  fa <- f(0)
+  a <- 0
+  if (fa$g <= 1e-9) return(list(lambda = 0, L = fa$L))
+  b <- max(lambda0, 1e-300)
+  fb <- f(b)
+  n <- 2L
+  while (fb$g > 1e-9) {
+    if (n > 400L) return(NULL)
+    a <- b
+    fa <- fb
+    b <- b * 4
+    fb <- f(b)
+    n <- n + 1L
+  }
+  best <- if (fa$L >= fb$L) list(lambda = a, L = fa$L) else
+    list(lambda = b, L = fb$L)
+  for (i in seq_len(200L)) {
+    m <- (fb$L - fa$L + fa$g * a - fb$g * b) / (fa$g - fb$g)
+    if (!(m > a && m < b)) break
+    v <- fa$L + fa$g * (m - a)
+    fm <- f(m)
+    if (fm$L > best$L) best <- list(lambda = m, L = fm$L)
+    if (best$L > stop) break
+    if (v - fm$L <= 1e-12 * max(abs(v), 1e-300)) break
+    if (fm$g > 1e-9) {
+      a <- m
+      fa <- fm
+    } else {
+      b <- m
+      fb <- fm
+    }
+  }
+  best
+}
+
+#' `.menu_subgradient()` with one column, or `NULL`
+#'
+#' Plans met at the multipliers tried are stepped down and kept, as the
+#' subgradient keeps them.
+#' @keywords internal
+#' @noRd
+.menu_subgradient_one <- function(p, lambda, start) {
+  lambda0 <- if (is.null(lambda) || lambda <= 0) {
+    abs(mean(p$cost)) * p$H + 1e-12
+  } else {
+    lambda
+  }
+  pick <- start
+  ub <- if (is.null(pick)) Inf else sum(p$cost[pick])
+  f <- function(lambda) {
+    l <- .menu_lagrangian(p, lambda)
+    if (all(l$g <= 1e-9) && sum(p$cost[l$best]) < 1.02 * ub) {
+      cand <- .menu_step_down(p, l$best)
+      if (sum(p$cost[cand]) < ub) {
+        ub <<- sum(p$cost[cand])
+        pick <<- cand
+      }
+    }
+    list(L = l$L, g = l$g)
+  }
+  d <- .dual_one(f, lambda0)
+  if (is.null(d)) return(NULL)
+  cand <- .menu_plan_from(p, d$lambda)
+  if (!is.null(cand) && sum(p$cost[cand]) < ub) {
+    ub <- sum(p$cost[cand])
+    pick <- cand
+  }
+  list(lambda = d$lambda, L = d$L, ub = ub, pick = pick)
+}
+
 #' The exact plan, or the best one found within a node budget
 #'
 #' Groups that share no column with a nonzero load are separate problems,
@@ -176,18 +276,23 @@
 #' group costs no more and loads no column more.
 #'
 #' The search is branch and bound, a short depth-first dive and then
-#' best-first (`.menu_component()`). Each node fixes some groups
-#' to one state, re-solves the Lagrangian bound on the rest by a few
-#' subgradient steps from its parent's multipliers, and drops states by
-#' the same reduced-cost test. It branches on the group whose two best
-#' reduced costs are closest, and solves the last one or two free groups
-#' outright. Past `max_open` open nodes it continues depth-first from the
-#' node with the smallest bound, so memory stays bounded. It stops after
-#' `max_nodes` nodes, and the smallest bound left open is then a lower
-#' bound on the optimum.
+#' best-first (`.menu_component()`). Each node fixes some groups to one
+#' state, re-solves the Lagrangian bound on the rest by a few subgradient
+#' steps from its parent's multipliers, or exactly with `exact` and one
+#' column, and drops states by the same reduced-cost test. It branches on
+#' the group whose two best reduced costs are closest, and solves the last
+#' one or two free groups outright. Past `max_open` open nodes it continues
+#' depth-first from the node with the smallest bound, so memory stays
+#' bounded. It stops after `max_nodes` nodes, and the smallest bound left
+#' open is then a lower bound on the optimum.
 #'
 #' A positive `gap` stops the search once the plan is within that relative
 #' gap of the smallest open bound.
+#'
+#' `exact` is for the whole-unit search. A register search leaves it off,
+#' since the exact bound gains little there and can return another plan of
+#' the same cost, which a consumer that pins a drawn sample reads as a
+#' change.
 #'
 #' Returns the plan (`pick`, one state per group), its `value`, the lower
 #' `bound`, the `status` and the number of `nodes` and of states `kept` at
@@ -198,7 +303,8 @@
 #' @keywords internal
 #' @noRd
 .menu_search <- function(p, lambda, pick = NULL, grain = 0,
-                         max_nodes = 5000, max_open = 1e4, gap = 0) {
+                         max_nodes = 5000, max_open = 1e4, gap = 0,
+                         exact = FALSE) {
   K <- ncol(p$C)
   if (K == 0L) {
     pick <- .menu_argmin(p$cost, p$groups)
@@ -237,7 +343,7 @@
                        match(p$owner[idx], S))
     start <- if (!is.null(pick)) match(pick[S], idx)
     r <- .menu_component(q, lambda[Kc], start, grain,
-                         max(max_nodes - out$nodes, 1), max_open, gap)
+                         max(max_nodes - out$nodes, 1), max_open, gap, exact)
     out$nodes <- out$nodes + r$nodes
     out$kept <- out$kept + r$kept
     if (is.null(r$pick)) {
@@ -267,19 +373,20 @@
 #' @keywords internal
 #' @noRd
 .menu_component <- function(q, lambda, start, grain, max_nodes, max_open,
-                            gap = 0) {
+                            gap = 0, exact = FALSE) {
   dive_nodes <- min(500, floor(max_nodes / 10))
   if (dive_nodes < 1) {
-    return(.menu_tree(q, lambda, start, grain, max_nodes, max_open, gap))
+    return(.menu_tree(q, lambda, start, grain, max_nodes, max_open, gap,
+                      exact))
   }
-  d <- .menu_tree(q, lambda, start, grain, dive_nodes, 1, gap)
+  d <- .menu_tree(q, lambda, start, grain, dive_nodes, 1, gap, exact)
   if (d$status %in% c("optimal", "infeasible")) return(d)
   if (!is.null(d$pick) &&
         (is.null(start) || d$value < sum(q$cost[start]))) {
     start <- d$pick
   }
   r <- .menu_tree(q, lambda, start, grain, max(max_nodes - d$nodes, 1),
-                  max_open, gap)
+                  max_open, gap, exact)
   r$nodes <- r$nodes + d$nodes
   if (!is.null(r$pick) && is.finite(d$bound)) {
     r$bound <- min(max(r$bound, d$bound), r$value)
@@ -300,7 +407,7 @@
 #' @keywords internal
 #' @noRd
 .menu_tree <- function(q, lambda, start, grain, max_nodes, max_open,
-                       gap = 0) {
+                       gap = 0, exact = FALSE) {
   K <- ncol(q$C)
   best <- if (is.null(start)) Inf else sum(q$cost[start])
   plan <- start
@@ -388,36 +495,60 @@
     cj <- q$cost[j_all]
     cmin <- .menu_group_min(Cj, ends)$min
     if (any(colSums(cmin) > nd$cap + 1e-9)) return(NULL)
-    mu <- nd$mu
-    best_L <- -Inf
-    best_mu <- mu
-    theta <- 1
-    # The loop every node runs. It reads the C group minima directly and
-    # the internal column sums, without the checks of their wrappers.
-    n_free <- length(free)
-    for (it in seq_len(30L)) {
-      r <- cj + drop(Cj %*% mu)
-      gm <- .Call(C_menu_group_min, r, ends)
-      arg <- gm$arg
-      L <- nd$c_fix + sum(gm$min) - sum(mu * nd$cap)
-      if (L > best_L) {
-        best_L <- L
-        best_mu <- mu
-      } else {
-        theta <- theta * 0.7
+    d <- NULL
+    if (exact && K == 1L) {
+      cvec <- drop(Cj)
+      bound_at <- function(m) {
+        gm <- .Call(C_menu_group_min, cj + cvec * m, ends)
+        arg <- gm$arg
+        g <- sum(cvec[arg]) - nd$cap
+        if (g <= 1e-9) {
+          states <- nd$plan
+          states[free] <- j_all[arg]
+          improve(nd$c_fix + sum(cj[arg]), states)
+        }
+        list(L = nd$c_fix + sum(gm$min) - m * nd$cap, g = g)
       }
-      g <- .colSums(Cj[arg, , drop = FALSE], n_free, K) - nd$cap
-      if (all(g <= 1e-9)) {
-        states <- nd$plan
-        states[free] <- j_all[arg]
-        improve(nd$c_fix + sum(cj[arg]), states)
+      # A node can start from zero multipliers, and 1e-300 times 4 does
+      # not reach the menu's scale before the bracket gives up.
+      scale <- (max(cj) - min(cj)) / max(cvec, 1e-300)
+      d <- .dual_one(bound_at, max(nd$mu, scale, 1e-300), stop = limit())
+    }
+    if (!is.null(d)) {
+      best_L <- d$L
+      best_mu <- d$lambda
+    } else {
+      mu <- nd$mu
+      best_L <- -Inf
+      best_mu <- mu
+      theta <- 1
+      # The loop every node runs. It reads the C group minima directly and
+      # the internal column sums, without the checks of their wrappers.
+      n_free <- length(free)
+      for (it in seq_len(30L)) {
+        r <- cj + drop(Cj %*% mu)
+        gm <- .Call(C_menu_group_min, r, ends)
+        arg <- gm$arg
+        L <- nd$c_fix + sum(gm$min) - sum(mu * nd$cap)
+        if (L > best_L) {
+          best_L <- L
+          best_mu <- mu
+        } else {
+          theta <- theta * 0.7
+        }
+        g <- .colSums(Cj[arg, , drop = FALSE], n_free, K) - nd$cap
+        if (all(g <= 1e-9)) {
+          states <- nd$plan
+          states[free] <- j_all[arg]
+          improve(nd$c_fix + sum(cj[arg]), states)
+        }
+        lim <- limit()
+        if (best_L > lim) break
+        g[mu <= 0 & g < 0] <- 0
+        g2 <- sum(g^2)
+        if (g2 == 0) break
+        mu <- pmax.int(0, mu + theta * (lim - L) / g2 * g)
       }
-      lim <- limit()
-      if (best_L > lim) break
-      g[mu <= 0 & g < 0] <- 0
-      g2 <- sum(g^2)
-      if (g2 == 0) break
-      mu <- pmax.int(0, mu + theta * (lim - L) / g2 * g)
     }
     slack <- limit() - best_L
     if (slack < 0) return(NULL)

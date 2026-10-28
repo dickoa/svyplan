@@ -36,6 +36,11 @@
 #'   Defined as the fraction of group 1 that also appears in group 2
 #'   (`overlap = n12 / n1`). Only supported with `method = "wald"`.
 #' @param overlap_cor Correlation between occasions in \eqn{[0, 1]}.
+#' @param overlap_draw How the shared units are drawn, `"fixed"` (default)
+#'   for a fixed count drawn with the rest of each occasion's sample, or
+#'   `"independent"` for a retained panel topped up on each occasion by a
+#'   fresh sample drawn independently of it from the whole frame. It changes
+#'   only the finite population terms. See [prec_change()].
 #' @param method Variance method: `"wald"` (default), `"arcsine"`, or
 #'   `"logodds"`. The arcsine square-root transform is variance-stabilizing.
 #'   The log-odds transform is not, because its variance still depends on the
@@ -203,6 +208,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
                        alternative = c("two.sided", "one.sided"),
                        ratio = 1,
                        overlap = 0, overlap_cor = 0,
+                       overlap_draw = c("fixed", "independent"),
                        method = c("wald", "arcsine", "logodds"),
                        plan = NULL) {
   .plan <- .merge_plan_args(plan, power_prop.default, match.call(), environment())
@@ -217,6 +223,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   check_deff(deff)
   check_overlap(overlap)
   check_overlap_cor(overlap_cor)
+  overlap_draw <- match.arg(overlap_draw)
   .check_overlap_N(overlap, N_pair)
   check_resp_rate(resp_rate)
   ratio <- .resolve_ratio(n, ratio)
@@ -233,7 +240,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
     n <- .check_power_n(n)
     .check_overlap_n(overlap, n = n)
     n_pair <- rep_len(n, 2L) * resp_rate
-    .check_overlap_frame(n_pair[1L], n_pair[2L], N_pair[1L], overlap)
+    .check_overlap_frame(n_pair[1L], n_pair[2L], N_pair[1L],
+                         .frame_overlap(overlap, overlap_draw))
   } else {
     .check_overlap_n(overlap, ratio = ratio)
   }
@@ -248,7 +256,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   params <- list(p1 = p1, alpha = alpha, N = N, deff = deff,
                  resp_rate = resp_rate, alternative = alternative,
                  ratio = ratio, overlap = overlap, overlap_cor = overlap_cor,
-                 method = method)
+                 overlap_draw = overlap_draw, method = method)
 
   if (is.null(n)) {
     if (p1 == p2) stop("'p1' and 'p2' must differ", call. = FALSE)
@@ -257,7 +265,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
     res <- switch(method,
       wald    = .power_prop_n_wald(p1, p2, power, alpha, N_pair, deff,
-                                  alternative, overlap, overlap_cor, ratio, resp_rate),
+                                  alternative, overlap, overlap_cor,
+                                  overlap_draw, ratio, resp_rate),
       arcsine = .power_prop_n_arcsine(p1, p2, power, alpha, N_pair, deff,
                                       alternative, ratio, resp_rate),
       logodds = .power_prop_n_logodds(p1, p2, power, alpha, N_pair, deff,
@@ -267,7 +276,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
     achieved_power <- switch(method,
       wald = .power_prop_power_wald(
         p1, p2, n_eff, alpha, N_pair, deff,
-        alternative, overlap, overlap_cor
+        alternative, overlap, overlap_cor, overlap_draw
       ),
       arcsine = .power_prop_power_arcsine(
         p1, p2, n_eff, alpha, N_pair, deff, alternative
@@ -290,7 +299,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
     res <- switch(method,
       wald    = .power_prop_power_wald(p1, p2, n_eff, alpha, N_pair, deff,
-                                      alternative, overlap, overlap_cor),
+                                      alternative, overlap, overlap_cor,
+                                      overlap_draw),
       arcsine = .power_prop_power_arcsine(p1, p2, n_eff, alpha, N_pair, deff,
                                           alternative),
       logodds = .power_prop_power_logodds(p1, p2, n_eff, alpha, N_pair, deff,
@@ -308,7 +318,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
     res <- switch(method,
       wald    = .power_prop_mde_wald(p1, n_eff, power, alpha, N_pair, deff,
-                                    alternative, overlap, overlap_cor),
+                                    alternative, overlap, overlap_cor,
+                                    overlap_draw),
       arcsine = .power_prop_mde_arcsine(p1, n_eff, power, alpha, N_pair, deff,
                                         alternative),
       logodds = .power_prop_mde_logodds(p1, n_eff, power, alpha, N_pair, deff,
@@ -323,7 +334,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 ## Wald internals
 
 .power_prop_n_wald <- function(p1, p2, power, alpha, N_pair, deff,
-                               alternative, overlap, overlap_cor, ratio, resp_rate) {
+                               alternative, overlap, overlap_cor, overlap_draw,
+                               ratio, resp_rate) {
   z_a <- .z_alpha(alpha, alternative)
   z_b <- qnorm(power)
   icc <- abs(p1 - p2)
@@ -335,28 +347,31 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
     n_eff <- if (r == 1) c(n2, n2) else c(r * n2, n2)
     n_eff <- n_eff * resp_rate
     .power_prop_power_wald(p1, p2, n_eff, alpha, N_pair, deff,
-                           alternative, overlap, overlap_cor)
+                           alternative, overlap, overlap_cor, overlap_draw)
   }
   if (alternative == "one.sided" && all(is.infinite(N_pair))) {
     V_r <- p1 * q1 / r + p2 * q2 - ov_term
     n2 <- (z_a + z_b)^2 * V_r * deff / icc^2 / resp_rate
     n2 <- max(n2, 2, 2 / r)
   } else {
-    n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate,
-                               overlap = overlap)
+    n2 <- .solve_n2_from_power(
+      power, power_n2, N_pair, r, resp_rate,
+      overlap = .frame_overlap(overlap, overlap_draw)
+    )
   }
   if (r == 1) n2 else c(r * n2, n2)
 }
 
 .power_prop_power_wald <- function(p1, p2, n_eff, alpha, N_pair, deff,
-                                   alternative, overlap, overlap_cor) {
+                                   alternative, overlap, overlap_cor,
+                                   overlap_draw) {
   n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
 
   z_a <- .z_alpha(alpha, alternative)
   icc <- abs(p1 - p2)
 
   V_d <- .diff_var_fpc(n_vec, .bernoulli_var(c(p1, p2), N_pair), N_pair, deff,
-                       overlap, overlap_cor)
+                       overlap, overlap_cor, overlap_draw)
   V_d <- .safe_variance(V_d, "difference variance")
   if (V_d == 0) return(1)
 
@@ -368,7 +383,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 }
 
 .power_prop_mde_wald <- function(p1, n_eff, power, alpha, N_pair, deff,
-                                  alternative, overlap, overlap_cor) {
+                                  alternative, overlap, overlap_cor,
+                                  overlap_draw) {
   n_vec <- if (length(n_eff) == 1L) c(n_eff, n_eff) else n_eff
   if (all(vapply(seq_len(2L), function(i) {
     .fpc_factor_prop(n_vec[i], N_pair[i]) == 0
@@ -376,7 +392,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
   target_fn <- function(p2) {
     .power_prop_power_wald(p1, p2, n_eff, alpha, N_pair, deff,
-                           alternative, overlap, overlap_cor) - power
+                           alternative, overlap, overlap_cor,
+                           overlap_draw) - power
   }
 
   eps <- 1e-8

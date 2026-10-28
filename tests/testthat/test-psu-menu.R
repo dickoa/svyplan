@@ -107,3 +107,15 @@ test_that("the sweep keeps a state that two close events bound", {
   expect_setequal(got, want)
   expect_true("1|517241|82758" %in% got)
 })
+
+test_that("the sweep does not emit consecutive copies of a state", {
+  sizes <- c(30, 30, 40)
+  out <- .Call(
+    C_psu_menu_part, sizes, 100, 10, 0.001, 1, 1,
+    logical(3), 0L, as.integer(order(-sizes) - 1L), Inf, TRUE
+  )
+  s <- out$states
+  same <- s$set[-1] == s$set[-length(s$set)] &
+    s$Q[-1] == s$Q[-length(s$Q)] & s$a[-1] == s$a[-length(s$a)]
+  expect_false(any(same))
+})
