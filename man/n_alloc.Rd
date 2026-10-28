@@ -256,7 +256,7 @@ of search nodes after which the search stops with the best design
 found, the status \code{"limit"} and a lower bound. It finishes the node it
 is expanding, so it can open a few nodes past the limit. A larger value
 can prove a design the default leaves at the limit, at the cost of
-time. \code{gap}, a number in [0, 1), 0 by default, stops the search once
+time. \code{gap}, a number in \eqn{[0, 1)}, 0 by default, stops the search once
 the design is within that relative gap of the bound, with the status
 \code{"gap"}. A stop at the node limit within 1e-6 of the bound also reads
 \code{"gap"}. A mode that does not search refuses \code{control}.}
