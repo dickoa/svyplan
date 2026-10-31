@@ -18,6 +18,7 @@ effective_n(x = NULL, ...)
   n = NULL,
   deff = NULL,
   resp_rate = 1,
+  eligibility_rate = 1,
   icc = NULL,
   n_per_psu = NULL,
   n_per_ssu = NULL,
@@ -26,24 +27,48 @@ effective_n(x = NULL, ...)
   strata = NULL
 )
 
-\method{effective_n}{svyplan_deff}(x, ..., n = NULL, resp_rate = 1)
+\method{effective_n}{svyplan_deff}(x, ..., n = NULL, resp_rate = 1, eligibility_rate = 1)
 
-\method{effective_n}{svyplan_cluster}(x, ..., n = NULL, resp_rate = NULL, weights = NULL, strata = NULL)
+\method{effective_n}{svyplan_cluster}(
+  x,
+  ...,
+  n = NULL,
+  resp_rate = NULL,
+  eligibility_rate = NULL,
+  weights = NULL,
+  strata = NULL
+)
 
-\method{effective_n}{svyplan_prec}(x, ..., n = NULL, resp_rate = NULL, weights = NULL, strata = NULL)
+\method{effective_n}{svyplan_prec}(
+  x,
+  ...,
+  n = NULL,
+  resp_rate = NULL,
+  eligibility_rate = NULL,
+  weights = NULL,
+  strata = NULL
+)
 
 \method{effective_n}{svyplan_varcomp}(
   x,
   ...,
   n = NULL,
   resp_rate = 1,
+  eligibility_rate = 1,
   n_per_psu = NULL,
   n_per_ssu = NULL,
   weights = NULL,
   strata = NULL
 )
 
-\method{effective_n}{svyplan_n}(x, ..., n = NULL, resp_rate = NULL, weights = NULL)
+\method{effective_n}{svyplan_n}(
+  x,
+  ...,
+  n = NULL,
+  resp_rate = NULL,
+  eligibility_rate = NULL,
+  weights = NULL
+)
 }
 \arguments{
 \item{x}{A \code{svyplan_deff} from \code{\link[=design_effect]{design_effect()}}, a \code{\link[=n_cluster]{n_cluster()}} or
@@ -64,10 +89,15 @@ unless it can be derived from \code{weights}, \code{strata$n}, or \code{x}.}
 from components. A published DEFT is squared first. See \code{\link[=varcomp]{varcomp()}}
 for that and for removing the published survey's weighting loss.}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1. It nets
-\code{n} down to the units the design expects to analyze before the design
-effect is applied. When \code{x} is a plan, its own rate is used unless you
-override it here.}
+\item{resp_rate}{Expected response rate among eligible units, in (0, 1].
+Default 1. It nets \code{n} down to the units the design expects to analyze
+before the design effect is applied. When \code{x} is a plan, its own rate is
+used unless you override it here. See the nonresponse section of
+\link{svyplan-package} for what the rate counts.}
+
+\item{eligibility_rate}{Share of issued units in scope, in (0, 1].
+Default 1. It nets \code{n} down with \code{resp_rate}. When \code{x} is a plan, its
+own value is used unless you override it here.}
 
 \item{icc, n_per_psu, n_per_ssu, var_ratio, weights, strata}{Design components, with
 the same meaning as in \code{\link[=design_effect]{design_effect()}}.}
@@ -121,7 +151,7 @@ the actual weights, strata, and clusters.
 
 \item \code{effective_n(svyplan_cluster)}: Use the total sample size and design features of
 a \code{\link[=n_cluster]{n_cluster()}} or \code{\link[=prec_cluster]{prec_cluster()}} allocation. The total is netted by
-every stage's response rate and by \code{eligible_rate}, so the result
+every stage's response rate and by \code{eligible_per_unit}, so the result
 counts eligible respondents, as the \code{cv} does.
 
 \item \code{effective_n(svyplan_prec)}: Use the total and design features of a

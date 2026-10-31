@@ -599,7 +599,7 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
         psu = p$psu, certainty_cutoff = p$certainty_cutoff,
         n_psu_per_zone = p$n_psu_per_zone, control = p[["control"]],
         unit_cost = p$unit_cost, alpha = p$alpha, deff = p$deff,
-        resp_rate = p$resp_rate, eligible_rate = p$eligible_rate %||% 1,
+        resp_rate = p$resp_rate, eligible_per_unit = p$eligible_per_unit %||% 1,
         df = p$df, min_n_stratum = p$min_n_stratum, fpc = p$fpc %||% "unit"
       ),
       error = function(e) NULL

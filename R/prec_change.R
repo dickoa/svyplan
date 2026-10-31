@@ -31,10 +31,15 @@
 #'   since units can only be shared by samples drawn from one population.
 #' @param deff Design effect multiplier (> 0), applied to the variance of
 #'   the change rather than to either occasion separately.
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). It applies to both occasions, and nets each size down to
-#'   `n * resp_rate` before the variance is formed. It is a single round's
-#'   response, not attrition across a panel.
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1 (no adjustment). It applies to both occasions, and nets each
+#'   size down to `n * resp_rate` before the variance is formed. It is a single
+#'   round's response, not attrition across a panel. See the nonresponse
+#'   section of [svyplan-package] for what the rate counts.
+#' @param eligibility_rate Share of issued units in scope, in (0, 1\].
+#'   Default 1. It applies to both occasions, and with a finite `N` the
+#'   population in scope is `N * eligibility_rate`. See the nonresponse
+#'   section of [svyplan-package].
 #' @param overlap Fraction of the first occasion's **responding** sample
 #'   carried into the second, in \eqn{[0, 1]}, measured against the first
 #'   occasion as `n12 / n1`, so it cannot exceed `n[2] / n[1]`. `0` (default)
@@ -245,6 +250,7 @@ prec_change.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   overlap = 0,
   overlap_cor = 0,
   overlap_draw = c("fixed", "independent"),
@@ -254,12 +260,15 @@ prec_change.default <- function(
   .plan <- .merge_plan_args(plan, prec_change.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_change.default, c(.plan, list(...))))
   .check_unused_dots(...)
-  N_pair <- .check_power_N(N)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  N_frame <- .check_power_N(N)
+  N_pair <- N_frame * eligibility_rate
   inputs <- .change_inputs(var, sd, p, change, N_pair)
   n <- .check_change_n(n)
   check_alpha(alpha)
   check_deff(deff)
   check_resp_rate(resp_rate)
+  rate <- resp_rate * eligibility_rate
   check_overlap(overlap)
   check_overlap_cor(overlap_cor)
   overlap_draw <- match.arg(overlap_draw)
@@ -268,13 +277,13 @@ prec_change.default <- function(
   .check_bernoulli_cor(inputs$p, overlap_cor, overlap)
   .check_gross_n(
     if (length(n) == 1L) c(n, n) else n,
-    N_pair,
+    N_frame,
     label = c("occasion 1", "occasion 2")
   )
   if (!is.null(df)) check_df(df)
 
   prec <- .prec_engine_change(
-    n, inputs$var_pair, inputs$change, N_pair, deff, resp_rate,
+    n, inputs$var_pair, inputs$change, N_pair, deff, rate,
     overlap, overlap_cor, overlap_draw, alpha, df
   )
 
@@ -290,6 +299,7 @@ prec_change.default <- function(
     overlap_draw = overlap_draw,
     df = df
   )
+  if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
   if (!is.null(inputs$p)) params$p <- inputs$p
   if (!is.null(inputs$change)) params$change <- inputs$change
 
@@ -319,6 +329,7 @@ prec_change.svyplan_n <- function(var, ...) {
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate %||% 1,
+    eligibility_rate = par[["eligibility_rate"]] %||% 1,
     overlap = par$overlap,
     overlap_cor = par$overlap_cor,
     overlap_draw = par$overlap_draw,

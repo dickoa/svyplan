@@ -39,7 +39,9 @@ For element-level proportion measures, the stratum population variance is
 \eqn{S_h^2 = N_h p_h(1-p_h)/(N_h-1)}{S_h^2 = N_h*p_h*(1-p_h)/(N_h-1)},
 with \eqn{N_h > 1}. Combining this with the finite population correction
 gives the same variance as \code{\link[=prec_prop]{prec_prop()}} for a one-stratum design with the
-same response rate and design effect. It applies to both precision targets
+same response rate and design effect. Under \code{fpc = "none"} the variance
+is \code{p * (1 - p)} with no correction, as in \code{\link[=prec_prop]{prec_prop()}} with
+\code{N = Inf}. It applies to both precision targets
 and budget objectives. Explicit \code{var} or \code{sd} values are used as supplied.
 Multistage designs, including designs supplied through a PSU register,
 retain the working proportion variance \code{p * (1 - p)}.
@@ -128,10 +130,11 @@ it shrinks the realized final-stage take and so changes the clustering
 penalty itself. Reading a gross take in that bracket would charge the
 between-PSU component a penalty only whole-cluster loss produces.
 
-An \code{eligible_rate} multiplies \code{resp_rate} wherever it appears, in the
-bracket and in the requirement, and the stratum population in the
-variance becomes \code{N * eligible_rate}. Bounds, weights and costs keep \code{N}.
-See the \code{eligible_rate} argument of \code{\link[=n_alloc]{n_alloc()}}.
+An \code{eligibility_rate} and an \code{eligible_per_unit} multiply \code{resp_rate}
+wherever it appears, in the bracket and in the requirement, and the
+stratum population in the variance becomes
+\code{N * eligibility_rate * eligible_per_unit}. Bounds, sampling weights and
+costs keep \code{N}. See those arguments of \code{\link[=n_alloc]{n_alloc()}}.
 
 All three go in \code{measures}, or in \code{frame} as a stratum default. A rate
 naming a stage the design does not have is an error rather than a

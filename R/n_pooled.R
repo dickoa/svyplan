@@ -36,11 +36,15 @@
 #'   correction.
 #' @param deff Design effect multiplier (> 0), applied to the variance of the
 #'   pooled estimate rather than to any one occasion.
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). Each occasion's size is inflated by `1 / resp_rate`. It is
-#'   a single round's response, not attrition across a panel. See the
-#'   nonresponse section of [svyplan-package] for what this adjustment does
-#'   and does not claim.
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1 (no adjustment). Each occasion's size is inflated by
+#'   `1 / resp_rate`. It is a single round's response, not attrition across a
+#'   panel. See the nonresponse section of [svyplan-package] for what the rate
+#'   counts and what this adjustment does and does not claim.
+#' @param eligibility_rate Share of issued units in scope, such as dwellings
+#'   found occupied, in (0, 1\]. Default 1. It applies to every occasion, and
+#'   with a finite `N` the population in scope is `N * eligibility_rate`. See
+#'   the nonresponse section of [svyplan-package].
 #' @param overlap Fraction of one occasion's **responding** sample carried
 #'   into a later one, in \eqn{[0, 1]}. One number, meaning the same overlap at
 #'   every lag, or one per lag. A [design_overlap()] result is accepted
@@ -187,6 +191,7 @@ n_pooled.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   overlap = 0,
   overlap_cor = NULL,
   cor_decay = NULL,
@@ -199,14 +204,17 @@ n_pooled.default <- function(
   if (!is.null(.plan)) return(do.call(n_pooled.default, c(.plan, list(...))))
   .check_unused_dots(...)
   check_population_size(N)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  N_elig <- N * eligibility_rate
   .check_occasions(occasions)
-  inputs <- .pooled_inputs(var, sd, p, mu, N)
+  inputs <- .pooled_inputs(var, sd, p, mu, N_elig)
   check_precision(moe, cv, rmoe)
   check_alpha(alpha)
   check_deff(deff)
   check_resp_rate(resp_rate)
+  rate <- resp_rate * eligibility_rate
   if (!is.null(df)) check_df(df)
-  ov <- .resolve_lag_overlap(overlap, occasions, resp_rate, .overlap_basis)
+  ov <- .resolve_lag_overlap(overlap, occasions, rate, .overlap_basis)
   rho <- .resolve_lag_cor(overlap_cor, cor_decay, occasions - 1L)
   overlap_draw <- match.arg(overlap_draw)
   .check_pooled_draw(overlap_draw, ov$overlap, occasions)
@@ -230,14 +238,14 @@ n_pooled.default <- function(
   }
 
   n <- .n_pooled_from_se(
-    target_se, inputs$var, N, deff, resp_rate, occasions, ov$overlap, rho,
+    target_se, inputs$var, N_elig, deff, rate, occasions, ov$overlap, rho,
     overlap_draw
   )
   n <- .census_size(n, N)
-  .check_attainable(n, N, resp_rate)
+  .check_attainable(n, N, resp_rate, eligibility_rate)
 
   prec <- .prec_engine_pooled(
-    n, inputs$var, inputs$mu, N, deff, resp_rate, occasions, ov$overlap, rho,
+    n, inputs$var, inputs$mu, N_elig, deff, rate, occasions, ov$overlap, rho,
     overlap_draw, alpha, df
   )
   # The inversion is closed form on n <= N, so a mismatch here means the
@@ -263,6 +271,7 @@ n_pooled.default <- function(
     overlap_draw = overlap_draw,
     df = df
   )
+  if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
   if (!is.null(inputs$p)) params$p <- inputs$p
   if (!is.null(inputs$mu)) params$mu <- inputs$mu
   if (!is.null(moe)) {
@@ -310,6 +319,7 @@ n_pooled.svyplan_prec <- function(var, ..., moe = NULL, cv = NULL,
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate,
+    eligibility_rate = par[["eligibility_rate"]] %||% 1,
     overlap = par$overlap,
     overlap_cor = par$overlap_cor,
     overlap_draw = par$overlap_draw,

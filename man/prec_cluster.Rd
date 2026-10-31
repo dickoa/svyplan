@@ -17,7 +17,8 @@ prec_cluster(n = NULL, ...)
   resp_rate_psu = 1,
   resp_rate_ssu = 1,
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   fpc = c("none", "stage"),
   N = NULL,
   N_psu = NULL,
@@ -64,12 +65,18 @@ nonresponse among the ultimate units inside a cluster.}
 Three-stage designs only, default 1. The effective stage-2 size is
 \code{n[2] * resp_rate_ssu}.}
 
-\item{resp_rate}{Expected ultimate-unit response rate, in (0, 1].
-Default 1. It scales the final stage, so it also shrinks the realized
-cluster and therefore the clustering penalty. See \code{\link[=n_cluster]{n_cluster()}} for the
-decomposition.}
+\item{resp_rate}{Expected ultimate-unit response rate among eligible units,
+in (0, 1]. Default 1. It scales the final stage, so it also shrinks the
+realized cluster and therefore the clustering penalty. See \code{\link[=n_cluster]{n_cluster()}}
+for the decomposition. See the nonresponse section of \link{svyplan-package}
+for what the rate counts.}
 
-\item{eligible_rate}{Eligible units per final-stage unit, a positive
+\item{eligibility_rate}{Share of issued final-stage units in scope, in (0,
+1]. Default 1. It acts at the final stage, as \code{resp_rate} does, and with
+\code{indicators} it applies to every row. See the nonresponse section of
+\link{svyplan-package}.}
+
+\item{eligible_per_unit}{Eligible units per final-stage unit, a positive
 number, default 1. It multiplies \code{resp_rate} in the realized take, and
 \code{n} stays in final-stage units. Not available with \code{indicators}. See
 \code{\link[=n_cluster]{n_cluster()}}.}
@@ -81,8 +88,8 @@ each component by its own stage's sampling fraction and needs \code{N} and
 \code{\link[=n_cluster]{n_cluster()}}.}
 
 \item{N}{Number of final-stage units in the population, the units the
-sizes count. With \code{eligible_rate} the correction reads
-\code{N * eligible_rate} eligible units. Read only with \code{fpc = "stage"} and
+sizes count. With \code{eligible_per_unit} the correction reads
+\code{N * eligible_per_unit} eligible units. Read only with \code{fpc = "stage"} and
 refused otherwise.}
 
 \item{N_psu}{Number of PSUs in the population. Read only with
@@ -194,7 +201,7 @@ prec_cluster(n = c(30, 4, 8), icc = c(0.04, 0.10), fpc = "stage",
 # 600 clusters of 20 households, 0.41 married women per household, for a
 # proportion near 0.28
 prec_cluster(n = c(600, 20), icc = 0.07, unit_relvar = 0.72 / 0.28,
-             resp_rate = 0.9, eligible_rate = 0.41)
+             resp_rate = 0.9, eligible_per_unit = 0.41)
 
 # Several indicators under one allocation
 indicators <- data.frame(

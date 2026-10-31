@@ -256,7 +256,7 @@ design_effect.numeric <- function(x, ...) {
 
 #' @describeIn design_effect Read `icc`, `var_ratio`, and the stage takes from a
 #'   [n_cluster()] or [prec_cluster()] allocation. The takes are those that
-#'   respond, `n_per_psu * resp_rate * eligible_rate` at two stages, the
+#'   respond, `n_per_psu * resp_rate * eligible_per_unit` at two stages, the
 #'   ones the precision reads, so the design effect and the `cv` describe
 #'   one design.
 #' @export
@@ -427,11 +427,10 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
       call. = FALSE
     )
   }
-  W <- detail$N / sum(detail$N)
+  rates <- .alloc_summary_response_rates(x)
+  W <- detail$N * rates$eligibility / sum(detail$N * rates$eligibility)
   n <- detail$n
-  factor_h <- .deff_alloc_factor(
-    x$params$frame, detail, .alloc_summary_response_rates(x)$unit
-  )
+  factor_h <- .deff_alloc_factor(x$params$frame, detail, rates$unit)
   parts <- .deff_variance_parts(W, detail$sd, detail$mean)
   if (parts$within <= 0) {
     stop(paste("the allocation has no within-stratum variability to summarize:",
@@ -784,12 +783,12 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
 #' The responding takes a cluster result's precision reads
 #'
 #' Each stage keeps the share of its units that respond, and the last stage
-#' the ultimate-unit rate times `eligible_rate`, as in the precision kernel.
+#' the ultimate-unit rate times `eligible_per_unit`, as in the precision kernel.
 #' PSU response removes whole clusters, so it does not enter a take.
 #' @keywords internal
 #' @noRd
 .deff_cluster_takes <- function(n, stages, params) {
-  ultimate <- (params[["resp_rate"]] %||% 1) * (params[["eligible_rate"]] %||% 1)
+  ultimate <- (params[["resp_rate"]] %||% 1) * (params[["eligible_per_unit"]] %||% 1)
   if (stages == 2L) {
     list(n_per_psu = unname(n[["n_per_psu"]]) * ultimate, n_per_ssu = NULL)
   } else {

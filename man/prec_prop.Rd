@@ -18,7 +18,8 @@ prec_prop(p, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   method = c("wald", "wilson", "logodds", "beta"),
   df = NULL,
   plan = NULL
@@ -58,12 +59,18 @@ efficient designs (e.g., stratified sampling with Neyman allocation).
 A published DEFT is squared first. See \code{\link[=varcomp]{varcomp()}} for that and for
 removing the published survey's weighting loss.}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
-adjustment). The effective sample size is \code{n * resp_rate}.}
+\item{resp_rate}{Expected response rate among eligible units, in (0, 1].
+Default 1 (no adjustment). The effective sample size is \code{n * resp_rate}.
+See the nonresponse section of \link{svyplan-package} for what the rate counts.}
 
-\item{eligible_rate}{Eligible units per sampled unit, a positive number,
+\item{eligibility_rate}{Share of issued units in scope, such as dwellings
+found occupied, in (0, 1]. Default 1. With a finite \code{N}, the population
+in scope is \code{N * eligibility_rate}. See the nonresponse section of
+\link{svyplan-package}.}
+
+\item{eligible_per_unit}{Eligible units per sampled unit, a positive number,
 default 1. \code{n} and \code{N} stay in sampled units, and a finite
-\code{N * eligible_rate} must exceed 1. See \code{\link[=n_prop]{n_prop()}}.}
+\code{N * eligible_per_unit} must exceed 1. See \code{\link[=n_prop]{n_prop()}}.}
 
 \item{method}{One of \code{"wald"} (default), \code{"wilson"}, \code{"logodds"}, or
 \code{"beta"} (Korn-Graubard). See \code{\link[=n_prop]{n_prop()}} for how to choose.}
@@ -243,7 +250,7 @@ prec_prop(p = 0.3, n = 1600 / 3, deff = 2.1)
 
 # 6000 households and 0.41 married women per household
 prec_prop(p = 0.28, n = 6000, deff = 2.5, resp_rate = 0.9,
-          eligible_rate = 0.41)
+          eligible_per_unit = 0.41)
 
 }
 \seealso{

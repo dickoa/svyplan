@@ -51,18 +51,26 @@ that recommendation when available, or rounds the continuous size up.
   the population. With `domains`, each domain's counts are columns of
   `indicators`, separately or under one joint budget. With domains solved
   separately, a `budget` applies to each domain.
-* `eligible_rate` sizes a sample of households for an estimate over the
+* `eligible_per_unit` sizes a sample of households for an estimate over the
   eligible persons they hold, an average number per household that may exceed
   one. `n_prop()`, `prec_prop()`, `n_cluster()`, `prec_cluster()`, joint
   `n_alloc()` and `prec_alloc()`, and the proportion rows of `n_multi()` and
-  `prec_multi()` take it, each row with its own group. Sizes, bounds and costs stay in
-  households, and the variance reads the eligible respondents out of
-  `N * eligible_rate` eligible persons.
+  `prec_multi()` take it, each row with its own group. Sizes, bounds and
+  costs stay in households, and the variance reads the eligible respondents
+  out of `N * eligible_per_unit` eligible persons.
+* `eligibility_rate` is the share of issued units in scope, such as
+  dwellings found occupied, and `resp_rate` the response rate among them,
+  as a survey report publishes it. Every function that takes `resp_rate`
+  takes `eligibility_rate`, except the two-phase pair. With a finite `N`
+  the population in scope is `N * eligibility_rate`, and `n_alloc()` and
+  `prec_alloc()` weight strata by it, with one rate per stratum from a
+  vector or a `frame` column, a PSU register included.
 * `n_alloc()` allocates a stratified sample from a frame of stratum sizes and
   variabilities, in fixed-`n`, target-`cv`, or `budget` mode, by proportional,
   Neyman, optimal, or Bankier power allocation. An `icc_psu` frame column makes
   it a stratified two-stage design, where `fpc` picks between the ultimate-unit
-  correction, the exact stage-by-stage one, and none.
+  correction, the exact stage-by-stage one, and none. An element allocation
+  takes `fpc = "none"` too, for a plan built on published design effects.
   Bankier allocation weights each stratum's population CV by a size measure
   raised to `alloc_q`. The measure is the stratum total `N * abs(mean)` unless
   a positive `alloc_measure` frame column supplies another. With that default
@@ -217,6 +225,9 @@ that recommendation when available, or rounds the continuous size up.
   sample gives approximately design-unbiased components. `varcomp(deff = )`
   backs an `icc` out of a published design effect instead. Its page explains
   squaring a published DEFT and removing the weighting loss it carries.
+  `estimator = "ratio"` returns the components of the ratio estimator of a
+  mean, which with PSUs of unequal size drawn with equal probability are
+  smaller than those of the default expansion estimator.
 * `design_effect()` builds the design effect a planned design should produce
   from clustering, unequal weighting, and stratification components, reading
   them off a plan where one is supplied. It anticipates a design effect from
@@ -246,11 +257,11 @@ that recommendation when available, or rounds the continuous size up.
 
 ## Survey plan profiles
 
-* `svyplan()` captures shared design defaults such as `deff`, `N`, `resp_rate`,
-  `eligible_rate`, stage-specific response rates, `df`, `alpha`, `stage_cost`,
-  and `unit_cost`, validated at construction. Pass it as `plan = plan` or pipe
-  with `plan |> n_prop(...)`. Explicit arguments override a profile, and
-  `update()` revises one.
+* `svyplan()` captures shared design defaults such as `deff`, `N`,
+  `resp_rate`, `eligible_per_unit`, stage-specific response rates, `df`,
+  `alpha`, `stage_cost`, and `unit_cost`, validated at construction. Pass it
+  as `plan = plan` or pipe with `plan |> n_prop(...)`. Explicit arguments
+  override a profile, and `update()` revises one.
 
 ## Naming
 

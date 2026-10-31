@@ -40,14 +40,17 @@
 #'   designs (e.g., stratified sampling with Neyman allocation). A
 #'   published DEFT is squared first. See [varcomp()] for that and for
 #'   removing the published survey's weighting loss.
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). The required sample size is inflated by `1 / resp_rate`.
-#'   See the nonresponse section of [svyplan-package] for what this adjustment
-#'   does and does not claim. A rate of eligible units per sampled unit at or
-#'   below 1, such as
-#'   0.41 married women per household, folds in here as
-#'   `resp_rate * eligible_rate`. With a finite `N` this errs slightly
-#'   conservative.
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1 (no adjustment). The required sample size is inflated by
+#'   `1 / resp_rate`. See the nonresponse section of [svyplan-package] for what
+#'   the rate counts and what this adjustment does and does not claim. A rate
+#'   of eligible units per sampled unit at or below 1, such as 0.41 married
+#'   women per household, folds in here as `resp_rate * eligible_per_unit`.
+#'   With a finite `N` this errs slightly conservative.
+#' @param eligibility_rate Share of issued units in scope, such as dwellings
+#'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
+#'   in scope is `N * eligibility_rate`. See the nonresponse section of
+#'   [svyplan-package].
 #' @param df Degrees of freedom of the variance estimator the planned design
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the interval quantile from normal to t.
@@ -172,6 +175,7 @@ n_mean.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   df = NULL,
   plan = NULL
 ) {
@@ -187,6 +191,7 @@ n_mean.default <- function(
   check_population_size(N)
   check_deff(deff)
   check_resp_rate(resp_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
 
   if (!is.null(cv) && is.null(mu)) {
     stop("'mu' is required when 'cv' is specified", call. = FALSE)
@@ -203,15 +208,16 @@ n_mean.default <- function(
   # Normalized once, here, so the formulas below see only 'moe'.
   moe_used <- if (is.null(rmoe)) moe else .moe_from_rmoe(rmoe, mu, "mu")
 
+  N_elig <- N * eligibility_rate
   if (!is.null(moe_used)) {
-    n <- z^2 * deff * var / (moe_used^2 + z^2 * deff * var / N)
+    n <- z^2 * deff * var / (moe_used^2 + z^2 * deff * var / N_elig)
   } else {
     CVpop2 <- var / mu^2
-    n <- deff * CVpop2 / (cv^2 + deff * CVpop2 / N)
+    n <- deff * CVpop2 / (cv^2 + deff * CVpop2 / N_elig)
   }
 
-  n <- .census_size(.apply_resp_rate(n, resp_rate), N)
-  .check_attainable(n, N, resp_rate)
+  n <- .census_size(.apply_resp_rate(n, resp_rate * eligibility_rate), N)
+  .check_attainable(n, N, resp_rate, eligibility_rate)
 
   params <- list(
     var = var,
@@ -221,6 +227,9 @@ n_mean.default <- function(
     resp_rate = resp_rate,
     df = df
   )
+  if (eligibility_rate != 1) {
+    params$eligibility_rate <- eligibility_rate
+  }
 
   if (!is.null(mu)) {
     params$mu <- mu
@@ -264,6 +273,7 @@ n_mean.svyplan_prec <- function(var, ..., moe = NULL, cv = NULL, rmoe = NULL) {
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate,
+    eligibility_rate = par[["eligibility_rate"]] %||% 1,
     df = par$df
   )
   do.call(n_mean.default, .roundtrip_args(args, list(...), n_mean.default))

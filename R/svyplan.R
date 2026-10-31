@@ -18,7 +18,8 @@
 #' ```
 #'
 #' @param ... Named defaults to reuse across calls. Allowed names:
-#'   `alpha`, `df`, `N`, `deff`, `resp_rate`, `eligible_rate`,
+#'   `alpha`, `df`, `N`, `deff`, `resp_rate`, `eligibility_rate`,
+#'   `eligible_per_unit`,
 #'   `resp_rate_psu`, `resp_rate_ssu`,
 #'   `prop_method`,
 #'   `stage_cost`, `icc`, `unit_relvar`, `var_ratio`, `fixed_cost`,
@@ -41,8 +42,10 @@
 #'
 #' Defaults are applied only when their names match the called function's
 #' formals. Irrelevant defaults are silently ignored, except
-#' `eligible_rate`. A function without that argument would count eligible
-#' persons where the profile counts households, so it stops instead.
+#' `eligibility_rate` and `eligible_per_unit`. A function without
+#' `eligibility_rate` would size from the units issued as if all were in
+#' scope, and one without `eligible_per_unit` would count eligible persons
+#' where the profile counts households, so either stops instead.
 #' `prop_method` must
 #' be `"wald"`, `"wilson"`, `"logodds"`, or `"beta"` (validated at
 #' construction)
@@ -137,7 +140,8 @@ update.svyplan <- function(object, ...) {
 #' @noRd
 .svyplan_allowed_defaults <- function() {
   c(
-    "alpha", "N", "deff", "resp_rate", "eligible_rate", "df",
+    "alpha", "N", "deff", "resp_rate", "eligibility_rate",
+    "eligible_per_unit", "df",
     "prop_method",
     "stage_cost", "icc", "unit_relvar", "var_ratio", "fixed_cost",
     "resp_rate_psu", "resp_rate_ssu",
@@ -188,7 +192,9 @@ update.svyplan <- function(object, ...) {
   if ("N" %in% nms) check_population_size(defaults$N)
   if ("deff" %in% nms) check_deff(defaults$deff)
   if ("resp_rate" %in% nms) check_resp_rate(defaults$resp_rate)
-  if ("eligible_rate" %in% nms) check_eligible_rate(defaults$eligible_rate)
+  if ("eligibility_rate" %in% nms)
+    check_resp_rate(defaults$eligibility_rate, "eligibility_rate")
+  if ("eligible_per_unit" %in% nms) check_eligible_per_unit(defaults$eligible_per_unit)
   if ("resp_rate_psu" %in% nms)
     check_resp_rate(defaults$resp_rate_psu, "resp_rate_psu")
   if ("resp_rate_ssu" %in% nms)

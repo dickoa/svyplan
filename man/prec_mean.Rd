@@ -19,6 +19,7 @@ prec_mean(var = NULL, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   df = NULL,
   plan = NULL
 )
@@ -54,12 +55,18 @@ efficient designs (e.g., stratified sampling with Neyman allocation).
 A published DEFT is squared first. See \code{\link[=varcomp]{varcomp()}} for that and for
 removing the published survey's weighting loss.}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
-adjustment). The effective sample size is \code{n * resp_rate}. A rate of
-eligible units per sampled unit at or below 1, such as
-0.41 married women per household, folds in here as
-\code{resp_rate * eligible_rate}. With a finite \code{N} this errs slightly
-conservative.}
+\item{resp_rate}{Expected response rate among eligible units, in (0, 1].
+Default 1 (no adjustment). The effective sample size is \code{n * resp_rate}. A
+rate of eligible units per sampled unit at or below 1, such as 0.41
+married women per household, folds in here as
+\code{resp_rate * eligible_per_unit}. With a finite \code{N} this errs slightly
+conservative. See the nonresponse section of \link{svyplan-package} for what
+the rate counts.}
+
+\item{eligibility_rate}{Share of issued units in scope, such as dwellings
+found occupied, in (0, 1]. Default 1. With a finite \code{N}, the population
+in scope is \code{N * eligibility_rate}. See the nonresponse section of
+\link{svyplan-package}.}
 
 \item{df}{Degrees of freedom of the variance estimator the planned design
 will have, typically sampled PSUs minus strata, and available from

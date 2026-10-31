@@ -34,6 +34,8 @@
 #'   \item{`input`}{What the components were computed from: `"frame"`,
 #'     `"weighted"` (a sample with within-cluster weights), `"deff"` or
 #'     `"se"` (a published design effect or standard error).}
+#'   \item{`estimator`}{The estimator the components describe,
+#'     `"expansion"` or `"ratio"`. `NA` for a backed-out `icc`.}
 #' }
 #' The result can be exported with [as.data.frame()]. Unstratified results
 #' become a one-row two- or three-stage component table. Stratified results
@@ -261,6 +263,22 @@
 #' squared ultimate-unit mean, `icc = varb / (varb + varw)`, and
 #' `var_ratio = (varb + varw) / unit_relvar`.
 #'
+#' These are the components of the expansion estimator, which divides an
+#' estimated total by a known population size. A mean or a proportion is
+#' usually estimated as a ratio instead, the estimated total over the
+#' estimated number of units, and with PSUs of unequal size drawn by SRS
+#' its variance can be much smaller. The PSU totals of the expansion
+#' estimator vary with the PSU sizes as well as with their content, and the
+#' ratio estimator removes the part due to size. `estimator = "ratio"`
+#' returns its components, the same expressions with each total \eqn{t_i}
+#' replaced by \eqn{t_i - N_i\bar y}{t_i - N_i ybar} for the overall mean
+#' \eqn{\bar y}{ybar}, at every stage. The within-PSU variances and
+#' `unit_relvar` are unchanged. With PSUs of equal size, or a first stage
+#' drawn with probability proportional to size, the two estimators give the
+#' same components. Use `"ratio"` when planning a mean or a proportion from
+#' PSUs of unequal size drawn with equal probability, and the default when
+#' planning a total.
+#'
 #' For three stages, `varb` uses the between-PSU expression above that
 #' matches the first stage, the SRS one without `prob` and the PPS one with
 #' it. `varw_psu` scales the variance of SSU totals within each PSU by the
@@ -483,11 +501,19 @@ varcomp <- function(x, ...) {
 #'   multi-stage sample use the within-cluster weights, not the full
 #'   design weight (see Details). `NULL` (default) computes frame
 #'   components.
+#' @param estimator The estimator the components describe, `"expansion"`
+#'   (default) for an estimated total over a known population size, or
+#'   `"ratio"` for an estimated total over an estimated number of units,
+#'   the usual estimator of a mean or a proportion. The two differ only when
+#'   PSU sizes vary and PSUs are not drawn proportional to size. See
+#'   Details. Not used on the back-out.
 #'
 #' @export
 varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL,
-                            weights = NULL) {
+                            weights = NULL,
+                            estimator = c("expansion", "ratio")) {
   .check_unused_dots(...)
+  estimator <- match.arg(estimator)
   if (inherits(strata, "formula")) {
     strata_name <- all.vars(strata)
     if (length(strata_name) != 1L) {
@@ -518,7 +544,8 @@ varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL,
       call. = FALSE
     )
   }
-  .varcomp_formula(x, data = data, prob = prob, strata = strata, w = weights)
+  .varcomp_formula(x, data = data, prob = prob, strata = strata, w = weights,
+                   estimator = estimator)
 }
 
 #' @describeIn varcomp Default method for numeric vectors, and for the
@@ -550,15 +577,18 @@ varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL,
 #' @export
 varcomp.default <- function(x, ..., stage_id = NULL, prob = NULL,
                             strata = NULL, weights = NULL,
+                            estimator = c("expansion", "ratio"),
                             deff = NULL, se = NULL, p = NULL, var = NULL,
                             n = NULL, n_per_psu = NULL, n_per_ssu = NULL,
                             cv_take = NULL, var_ratio = NULL) {
   .check_unused_dots(...)
+  estimator <- match.arg(estimator)
   back_out <- !is.null(deff) || !is.null(se)
   if (back_out) {
     data_args <- names(Filter(Negate(is.null), list(
       x = x, stage_id = stage_id, prob = prob, strata = strata,
-      weights = weights
+      weights = weights,
+      estimator = if (identical(estimator, "ratio")) estimator
     )))
     if (length(data_args) > 0L) {
       stop(
@@ -580,7 +610,7 @@ varcomp.default <- function(x, ..., stage_id = NULL, prob = NULL,
                        var_ratio = var_ratio)
   if (is.numeric(x)) {
     .varcomp_vector(x, stage_id = stage_id, prob = prob, strata = strata,
-                    w = weights)
+                    w = weights, estimator = estimator)
   } else {
     stop(
       "'x' must be a formula, numeric vector, or survey design object, or unset with 'deff' to back an icc out of a published design effect",
@@ -619,7 +649,9 @@ varcomp.default <- function(x, ..., stage_id = NULL, prob = NULL,
 #'
 #' @export
 varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
-                                  weights = NULL) {
+                                  weights = NULL,
+                                  estimator = c("expansion", "ratio")) {
+  estimator <- match.arg(estimator)
   dots <- list(...)
   is_formula <- vapply(dots, inherits, logical(1L), "formula")
   formula_idx <- which(is_formula)
@@ -668,7 +700,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   }
 
   stage_id <- lapply(seq_len(n_stages), function(j) cl[[j]])
-  .varcomp_dispatch(y, stage_id, prob, w, strata)
+  .varcomp_dispatch(y, stage_id, prob, w, strata, estimator)
 }
 
 #' Resolve a formula or vector argument against a design's variables
@@ -801,7 +833,8 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     stages      = 2L,
     source      = "deff",
     params      = list(n_per_psu = take$value, n_per_psu_nominal = take$nominal),
-    input       = input
+    input       = input,
+    estimator   = NA_character_
   )
 }
 
@@ -902,7 +935,8 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' Parse formula interface and dispatch
 #' @keywords internal
 #' @noRd
-.varcomp_formula <- function(formula, data, prob, strata = NULL, w = NULL) {
+.varcomp_formula <- function(formula, data, prob, strata = NULL, w = NULL,
+                             estimator = "expansion") {
   if (is.null(data)) {
     stop("'data' is required for the formula interface", call. = FALSE)
   }
@@ -966,7 +1000,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     .varcomp_prob_column(prob, data)
   }
 
-  .varcomp_dispatch(y, stage_id, pp, .varcomp_check_w(w), strata)
+  .varcomp_dispatch(y, stage_id, pp, .varcomp_check_w(w), strata, estimator)
 }
 
 #' One stage's draw probabilities from a formula or a vector
@@ -1017,17 +1051,19 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' Vector interface
 #' @keywords internal
 #' @noRd
-.varcomp_vector <- function(x, stage_id, prob, strata = NULL, w = NULL) {
+.varcomp_vector <- function(x, stage_id, prob, strata = NULL, w = NULL,
+                            estimator = "expansion") {
   if (is.null(stage_id) || !is.list(stage_id)) {
     stop("'stage_id' must be a list of ID vectors", call. = FALSE)
   }
-  .varcomp_dispatch(x, stage_id, prob, .varcomp_check_w(w), strata)
+  .varcomp_dispatch(x, stage_id, prob, .varcomp_check_w(w), strata, estimator)
 }
 
 #' Dispatch to correct variance component estimator
 #' @keywords internal
 #' @noRd
-.varcomp_dispatch <- function(y, stage_id, prob, w = NULL, strata = NULL) {
+.varcomp_dispatch <- function(y, stage_id, prob, w = NULL, strata = NULL,
+                              estimator = "expansion") {
   if (!is.numeric(y) || length(y) == 0L) {
     stop("'y' must be a non-empty numeric vector", call. = FALSE)
   }
@@ -1073,12 +1109,13 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     )
   }
 
+  center <- identical(estimator, "ratio")
   vc <- if (!is.null(strata)) {
-    .varcomp_strata(y, stage_id, prob, w, strata)
+    .varcomp_strata(y, stage_id, prob, w, strata, estimator)
   } else if (stages == 2L && is.null(prob$psu)) {
-    .varcomp_2stage_srs(y, stage_id[[1L]], w)
+    .varcomp_2stage_srs(y, stage_id[[1L]], w, center)
   } else if (stages == 2L) {
-    .varcomp_2stage_pps(y, stage_id[[1L]], prob$psu, w)
+    .varcomp_2stage_pps(y, stage_id[[1L]], prob$psu, w, center)
   } else {
     psu_pp <- prob$psu
     if (is.null(psu_pp)) {
@@ -1087,7 +1124,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     }
     .varcomp_3stage_pps(
       y, stage_id[[1L]], stage_id[[2L]], psu_pp, w, ssu_pp = prob$ssu,
-      psu_srs = is.null(prob$psu)
+      psu_srs = is.null(prob$psu), center = center
     )
   }
   vc$selection <- c(
@@ -1106,7 +1143,8 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' be merged into an allocation frame directly.
 #' @keywords internal
 #' @noRd
-.varcomp_strata <- function(y, stage_id, prob, w, strata) {
+.varcomp_strata <- function(y, stage_id, prob, w, strata,
+                            estimator = "expansion") {
   if (length(strata) != length(y)) {
     stop("'strata' must have the same length as the outcome", call. = FALSE)
   }
@@ -1133,7 +1171,8 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
         lapply(prob, function(pp) if (!is.null(pp)) pp[idx])[
           seq_along(stage_id)
         ],
-        if (!is.null(w)) w[idx]
+        if (!is.null(w)) w[idx],
+        estimator = estimator
       ),
       error = function(e) {
         # A register plan needs no estimate here, and collapsing would merge
@@ -1183,7 +1222,8 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     var_ratio       = NULL,
     unit_relvar = NULL,
     stages  = length(stage_id) + 1L,
-    strata  = tab
+    strata  = tab,
+    estimator = estimator
   )
 }
 
@@ -1375,6 +1415,22 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   size^2 * pmax(1 - observed / size, 0) * group_var / observed
 }
 
+#' The variable whose stage totals the components are built from
+#'
+#' The expansion estimator of a mean divides an estimated total by a known
+#' population size, so its components are those of `y`. The ratio
+#' estimator divides by an estimated size as well, and its linearized
+#' variance is that of the total of `y - ybar`. Only the totals move. The
+#' spread inside each group and the unit relvariance are those of `y`.
+#' @keywords internal
+#' @noRd
+.vc_linearize <- function(y, w, center) {
+  if (!center) {
+    return(y)
+  }
+  y - if (is.null(w)) mean(y) else sum(w * y) / sum(w)
+}
+
 #' One variance component, as a relvariance and as a bare numerator
 #'
 #' Every component here is a variance divided by the square of a total or a
@@ -1508,10 +1564,10 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' first-stage draw probabilities used to scale the within-PSU term.
 #' @keywords internal
 #' @noRd
-.varcomp_2stage <- function(y, psu_id, draw_prob, w, levels) {
+.varcomp_2stage <- function(y, psu_id, draw_prob, w, levels, center = FALSE) {
   psu <- .vc_group(psu_id, levels)
   .check_min_psu(psu$count)
-  summary <- .vc_summarise(y, w, psu)
+  summary <- .vc_summarise(.vc_linearize(y, w, center), w, psu)
   summary$var <- .vc_fill_singletons(summary$var)
 
   correction <- 0
@@ -1551,27 +1607,28 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     icc   = ratios$icc,
     var_ratio       = ratios$var_ratio,
     unit_relvar = unit$rel,
-    stages  = 2L
+    stages  = 2L,
+    estimator = if (center) "ratio" else "expansion"
   )
 }
 
 #' 2-stage SRS variance components
 #' @keywords internal
 #' @noRd
-.varcomp_2stage_srs <- function(y, psu_id, w = NULL) {
-  .varcomp_2stage(y, psu_id, NULL, w, unique(psu_id))
+.varcomp_2stage_srs <- function(y, psu_id, w = NULL, center = FALSE) {
+  .varcomp_2stage(y, psu_id, NULL, w, unique(psu_id), center)
 }
 
 #' 2-stage PPS variance components
 #' @keywords internal
 #' @noRd
-.varcomp_2stage_pps <- function(y, psu_id, pp, w = NULL) {
+.varcomp_2stage_pps <- function(y, psu_id, pp, w = NULL, center = FALSE) {
   levels <- sort(unique(psu_id))
   # A lone PSU has prob 1, which the range check would report first and
   # hide the single-PSU condition the stratum hint keys on.
   .check_min_psu(length(levels))
   draw_prob <- .varcomp_map_pp(pp, y, psu_id, levels)
-  .varcomp_2stage(y, psu_id, draw_prob, w, levels)
+  .varcomp_2stage(y, psu_id, draw_prob, w, levels, center)
 }
 
 #' 3-stage PPS variance components
@@ -1587,7 +1644,8 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' @keywords internal
 #' @noRd
 .varcomp_3stage_pps <- function(y, psu_id, ssu_id, pp, w = NULL,
-                                ssu_pp = NULL, psu_srs = FALSE) {
+                                ssu_pp = NULL, psu_srs = FALSE,
+                                center = FALSE) {
   psu_levels <- sort(unique(psu_id))
   psu <- .vc_group(psu_id, psu_levels)
   .check_min_psu(psu$count)
@@ -1600,8 +1658,9 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   psu_of_ssu <- match(psu_id[match(ssu_levels, nested)], psu_levels)
   ssu_per_psu <- tabulate(psu_of_ssu, nbins = psu$count)
 
-  by_psu <- .vc_summarise(y, w, psu)
-  by_ssu <- .vc_summarise(y, w, ssu)
+  z <- .vc_linearize(y, w, center)
+  by_psu <- .vc_summarise(z, w, psu)
+  by_ssu <- .vc_summarise(z, w, ssu)
   by_psu$var <- .vc_fill_singletons(by_psu$var)
   by_ssu$var <- .vc_fill_singletons(by_ssu$var)
 
@@ -1670,6 +1729,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     icc   = c(icc_psu = psu_ratios$icc, icc_ssu = ssu_ratios$icc),
     var_ratio       = c(var_ratio_psu = psu_ratios$var_ratio, var_ratio_ssu = ssu_ratios$var_ratio),
     unit_relvar = unit$rel,
-    stages  = 3L
+    stages  = 3L,
+    estimator = if (center) "ratio" else "expansion"
   )
 }

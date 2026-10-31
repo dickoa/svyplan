@@ -52,7 +52,7 @@
 #'       neither column takes its variance from `p`, as `measures` does in
 #'       joint allocation, \eqn{N p (1 - p) / (N - 1)}{N p (1 - p) / (N - 1)}
 #'       in an element design and \eqn{p (1 - p)}{p (1 - p)} in a
-#'       multistage one. Without `sd`, `var` or `p`, those two rules
+#'       multistage one or under `fpc = "none"`. Without `sd`, `var` or `p`, those two rules
 #'       allocate a fixed `n` from the stratum sizes alone, and the
 #'       precision fields of the result are `NA` because nothing was
 #'       assessed.}
@@ -140,10 +140,11 @@
 #'   contain either `p` in `[0, 1]`, or `mean` and exactly one of non-negative
 #'   `sd` or `var`. In element-level designs, `p` implies the finite-population
 #'   variance `N * p * (1 - p) / (N - 1)`, using its stratum's `N > 1`,
-#'   consistently with [prec_prop()]. Explicit `var` and `sd` values are used
+#'   consistently with [prec_prop()], and `p * (1 - p)` under
+#'   `fpc = "none"`. Explicit `var` and `sd` values are used
 #'   as supplied. Multistage designs, including PSU-register designs, retain
 #'   the working proportion variance `p * (1 - p)`.
-#'   Optional row-specific `deff`, `resp_rate` and `eligible_rate` values
+#'   Optional row-specific `deff`, `resp_rate` and `eligible_per_unit` values
 #'   take precedence, and `NA` falls back to the stratum's `frame` column of
 #'   the same name, then to the scalar argument. A published DEFT is
 #'   squared first, and the allocation already carries its own weighting
@@ -239,18 +240,27 @@
 #'   overrides a `deff` column in `frame`. A published DEFT is squared
 #'   first, and the allocation already carries its own weighting loss. See
 #'   [varcomp()].
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1. A scalar
-#'   applies to every stratum. A length-`nrow(frame)` vector gives one per
-#'   stratum and overrides a `resp_rate` column in `frame`. See the
-#'   nonresponse section of [svyplan-package] for what this adjustment does
-#'   and does not claim.
-#' @param eligible_rate Eligible units per sampled unit in joint allocation,
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1. A scalar applies to every stratum. A length-`nrow(frame)`
+#'   vector gives one per stratum and overrides a `resp_rate` column in
+#'   `frame`. See the nonresponse section of [svyplan-package] for what the
+#'   rate counts and what this adjustment does and does not claim.
+#' @param eligibility_rate Share of issued units in scope, such as dwellings
+#'   found occupied, in (0, 1\]. Default 1. A scalar applies to every stratum.
+#'   A length-`nrow(frame)` vector gives one per stratum and overrides an
+#'   `eligibility_rate` column in `frame`. In joint allocation it is a scalar,
+#'   a `frame` column or a `measures` column. Strata are weighted by their
+#'   population in scope, `N * eligibility_rate`, while the bounds on the
+#'   sample stay in frame units. With a PSU register it is a scalar or a
+#'   `frame` column, one rate per stratum. See the nonresponse section of
+#'   [svyplan-package].
+#' @param eligible_per_unit Eligible units per sampled unit in joint allocation,
 #'   a positive number, default 1, such as married women per household. It
 #'   can exceed 1. A `measures` column of that name sets it per indicator
 #'   and stratum, and a `frame` column per stratum, with the precedence
 #'   `resp_rate` follows. `N`, `n`, bounds, weights and costs stay in
-#'   sampled units, while every variance term reads `N * eligible_rate`
-#'   eligible units and `resp_rate * eligible_rate` respondents per sampled
+#'   sampled units, while every variance term reads `N * eligible_per_unit`
+#'   eligible units and `resp_rate * eligible_per_unit` respondents per sampled
 #'   unit. Classic allocation and a `psu` register refuse it. See [n_prop()]
 #'   for the caveat above 1.
 #' @param df Degrees of freedom of the variance estimator the allocation
@@ -275,15 +285,16 @@
 #'   on population CVs and the response/design-effect adjustment, independently
 #'   of `alloc_measure`. This does not generally equalize domain CVs.
 #'   Default 0.5.
-#' @param fpc Which finite population correction the variance carries in
-#'   cluster allocation: `"unit"` (default) for the ultimate-unit
-#'   `1 - n / N` on the whole inflated variance, `"stage"` for the
+#' @param fpc Which finite population correction the variance carries:
+#'   `"unit"` (default) for the ultimate-unit `1 - n / N`, on the whole
+#'   inflated variance in cluster allocation, `"stage"` for the
 #'   stage-by-stage correction, exact under the equal-size, equal-take
-#'   variance-component model this path assumes, or `"none"` for
-#'   [n_cluster()]'s default with-replacement model. `"stage"` and `"none"`
-#'   match [n_cluster()] with the same `fpc`. `"stage"` requires `N_psu`, and
-#'   `N_ssu` as well at three stages. Refused outside cluster allocation and
-#'   with a `psu` register. See the correction section in Details.
+#'   variance-component model cluster allocation assumes, or `"none"` for no
+#'   correction, [n_cluster()]'s default with-replacement model. `"stage"`
+#'   and `"none"` match [n_cluster()] with the same `fpc`. `"stage"` requires
+#'   `N_psu`, and `N_ssu` as well at three stages, and is refused in element
+#'   allocation. Only `"unit"` is available with a `psu` register. See the
+#'   correction section in Details.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_n` object with `type = "alloc"` and a stratum-level
@@ -663,8 +674,17 @@
 #' \eqn{f_2} wherever it was, so `"stage"` is not in general a small
 #' correction to `"none"`.
 #'
-#' `fpc` is refused outside cluster allocation, where there are no stages to
-#' choose between and the correction is always `1 - n / N`.
+#' An element allocation has no stages to choose between, so it takes
+#' `"unit"`, the correction `1 - n / N`, or `"none"`, none at all. Under
+#' `"none"` a stratum variance derived from `p` is `p (1 - p)`, as in
+#' [n_prop()] with `N = Inf`, rather than the finite-population
+#' `N p (1 - p) / (N - 1)`. The stratum weights still read `N` (times
+#' `eligibility_rate`), and the caps, take-all strata and base weights stay
+#' in frame units, so only the correction is dropped. A take-all stratum
+#' then keeps a sampling variance, as a census of PSUs does in
+#' [n_cluster()]. Use `"none"` to reproduce a plan built on published
+#' design effects, which carry the clustering and leave no element
+#' correction to apply.
 #'
 #' Because `icc_psu` already accounts for the clustering, leave
 #' `deff` at 1 unless it captures a *different* source of design
@@ -1053,7 +1073,7 @@
 #' joint_cluster$detail[, c("stratum", "n_psu_int", "n_per_psu", "n_int")]
 #'
 #' # Each indicator measured on its own eligible persons per household
-#' joint_measures$eligible_rate <- rep(c(0.41, 2.6), each = 3)
+#' joint_measures$eligible_per_unit <- rep(c(0.41, 2.6), each = 3)
 #' n_alloc(joint_frame, measures = joint_measures, targets = joint_targets)
 #'
 #' # Fixed three-stage takes: PSUs, SSUs within PSU, ultimate units within SSU
@@ -1174,7 +1194,8 @@ n_alloc.default <- function(
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   df = NULL,
   min_n_stratum = NULL,
   alloc_q = 0.5,
@@ -1187,7 +1208,7 @@ n_alloc.default <- function(
   }
   .check_unused_dots(...)
   .check_register_args(certainty_cutoff, n_psu_per_zone, frame, psu)
-  .check_eligible_scope(eligible_rate, frame, measures, psu)
+  .check_eligible_scope(eligible_per_unit, frame, measures, psu)
   min_n_stratum <- .resolve_min_n_stratum(min_n_stratum, frame)
   alloc_default <- c("neyman", "optimal", "proportional", "power")
   alloc_explicit <- !missing(alloc) && !identical(alloc, alloc_default)
@@ -1278,7 +1299,8 @@ n_alloc.default <- function(
         df = df,
         certainty_cutoff = certainty_cutoff,
         n_psu_per_zone = n_psu_per_zone,
-        control = control
+        control = control,
+        eligibility_rate = eligibility_rate
       )))
     }
     fit <- .n_alloc_bethel(
@@ -1289,7 +1311,8 @@ n_alloc.default <- function(
       alpha = alpha,
       deff = deff,
       resp_rate = resp_rate,
-      eligible_rate = eligible_rate,
+      eligible_per_unit = eligible_per_unit,
+      eligibility_rate = eligibility_rate,
       min_n_stratum = min_n_stratum,
       objective = objective,
       budget = budget,
@@ -1364,7 +1387,8 @@ n_alloc.default <- function(
     deff = deff,
     resp_rate = resp_rate,
     fpc = fpc,
-    size_only = alloc %in% c("proportional", "power") && !is.null(n)
+    size_only = alloc %in% c("proportional", "power") && !is.null(n),
+    eligibility_rate = eligibility_rate
   )
   N_h <- prep$N_h
   S_h <- prep$S_h
@@ -1405,8 +1429,8 @@ n_alloc.default <- function(
   M_h <- bounds$M_h
   prep$m_src <- bounds$m_src
   prep$M_src <- bounds$M_src
-  lo_i <- as.integer(ceiling(m_h - 1e-9))
-  hi_i <- as.integer(floor(M_h + 1e-9))
+  lo_i <- ceiling(m_h - 1e-9)
+  hi_i <- floor(M_h + 1e-9)
   if (any(lo_i > hi_i)) {
     bad <- prep$stratum[lo_i > hi_i]
     stop(
@@ -1422,10 +1446,11 @@ n_alloc.default <- function(
   hi <- sum(M_h)
   tol <- 1e-8
 
-  a_h <- .alloc_weights(alloc, alloc_q, N_h, S_h, cost_h, deff, resp_rate,
-                         mean_h = mean_h, alloc_measure = alloc_measure)
+  a_h <- .alloc_weights(alloc, alloc_q, .alloc_scope_N(prep), S_h, cost_h,
+                         deff, resp_rate, mean_h = mean_h,
+                         alloc_measure = alloc_measure)
   if (!is.finite(sum(a_h)) || sum(a_h) <= 0) {
-    a_h <- N_h
+    a_h <- .alloc_scope_N(prep)
   }
 
   if (
@@ -1464,7 +1489,7 @@ n_alloc.default <- function(
     if (round(n) < sum(lo_i) || round(n) > sum(hi_i)) {
       stop(
         sprintf(
-          "no integer allocation reaches total %d within the integer bounds (feasible totals: %d to %d)",
+          "no integer allocation reaches total %d within the integer bounds (feasible totals: %.0f to %.0f)",
           as.integer(round(n)),
           sum(lo_i),
           sum(hi_i)
@@ -1488,6 +1513,7 @@ n_alloc.default <- function(
       if (length(prep$domain_idx) == 0L) {
         .alloc_metrics(
           N_h = N_h,
+          N_pop = .alloc_scope_N(prep),
           S_h = at$S_h,
           mean_h = mean_h,
           n_h = n_h,
@@ -1590,6 +1616,7 @@ n_alloc.default <- function(
   prep <- .cluster_take_rise(prep, n_h)
   metrics <- .alloc_metrics(
     N_h = N_h,
+    N_pop = .alloc_scope_N(prep),
     S_h = prep$S_h,
     mean_h = mean_h,
     n_h = n_h,
@@ -1640,6 +1667,7 @@ n_alloc.default <- function(
     n_h = n_h,
     achieved = list(n = sum(n_h), cv = metrics$cv, cost = metrics$cost)
   )
+  if (!identical(eligibility_rate, 1)) params$eligibility_rate <- eligibility_rate
   params[[mode]] <- switch(mode, n = n, cv = cv, budget = budget)
 
   whole <- NULL
@@ -1768,7 +1796,8 @@ n_alloc.svyplan_prec <- function(
       alpha = p$alpha,
       deff = p$deff,
       resp_rate = p$resp_rate,
-      eligible_rate = p$eligible_rate %||% 1,
+      eligible_per_unit = p$eligible_per_unit %||% 1,
+      eligibility_rate = p[["eligibility_rate"]] %||% 1,
       df = p$df,
       min_n_stratum = p$min_n_stratum,
       fpc = p$fpc %||% "unit"
@@ -1799,15 +1828,15 @@ n_alloc.svyplan_prec <- function(
     alpha = p$alpha,
     deff = p$deff,
     resp_rate = p$resp_rate,
+    eligibility_rate = p[["eligibility_rate"]] %||% 1,
     df = p$df,
     min_n_stratum = p$min_n_stratum,
     alloc_q = p$alloc_q %||% 0.5
   )
   if (!.alloc_is_cluster(p$frame)) {
     args$unit_cost <- p$cost_h
-  } else {
-    args$fpc <- p$fpc %||% "unit"
   }
+  args$fpc <- p$fpc %||% "unit"
   rebuilt <- if (!is.null(n)) "n" else if (!is.null(cv)) "cv" else "budget"
   if (.classic_searched(args$alloc, rebuilt, length(p$domain_cols) > 0L)) {
     args$control <- p[["control"]]
@@ -1883,11 +1912,22 @@ n_alloc.svyplan_prec <- function(
 #'   overrides a `deff` column in `frame`. A published DEFT is squared
 #'   first, and the allocation already carries its own weighting loss. See
 #'   [varcomp()].
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1. A scalar
-#'   applies to every stratum. A length-`nrow(frame)` vector gives one per
-#'   stratum and overrides a `resp_rate` column in `frame`.
-#' @param eligible_rate Eligible units per sampled unit in joint assessment.
-#'   See the `eligible_rate` argument to [n_alloc()]. A fitted result
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1. A scalar applies to every stratum. A length-`nrow(frame)`
+#'   vector gives one per stratum and overrides a `resp_rate` column in
+#'   `frame`. See the nonresponse section of [svyplan-package] for what the
+#'   rate counts.
+#' @param eligibility_rate Share of issued units in scope, such as dwellings
+#'   found occupied, in (0, 1\]. Default 1. A scalar applies to every stratum.
+#'   A length-`nrow(frame)` vector gives one per stratum and overrides an
+#'   `eligibility_rate` column in `frame`. In joint allocation it is a scalar,
+#'   a `frame` column or a `measures` column. Strata are weighted by their
+#'   population in scope, `N * eligibility_rate`, while the bounds on the
+#'   sample stay in frame units. With a PSU register it is a scalar or a
+#'   `frame` column, one rate per stratum. See the nonresponse section of
+#'   [svyplan-package].
+#' @param eligible_per_unit Eligible units per sampled unit in joint assessment.
+#'   See the `eligible_per_unit` argument to [n_alloc()]. A fitted result
 #'   carries its own.
 #' @param df Degrees of freedom of the variance estimator the allocation
 #'   will have, typically sampled PSUs minus strata, and available from
@@ -1898,15 +1938,16 @@ n_alloc.svyplan_prec <- function(
 #'   per-stratum unit costs, overriding `frame$unit_cost`. Fixed-take
 #'   multistage joint assessment instead uses the stage costs stored in
 #'   `frame`.
-#' @param fpc Which finite population correction the variance carries in
-#'   cluster allocation: `"unit"` (default) for the ultimate-unit
-#'   `1 - n / N` on the whole inflated variance, `"stage"` for the
+#' @param fpc Which finite population correction the variance carries:
+#'   `"unit"` (default) for the ultimate-unit `1 - n / N`, on the whole
+#'   inflated variance in cluster allocation, `"stage"` for the
 #'   stage-by-stage correction, exact under the equal-size, equal-take
-#'   variance-component model this path assumes, or `"none"` for
-#'   [n_cluster()]'s default with-replacement model. `"stage"` and `"none"`
-#'   match [n_cluster()] with the same `fpc`. `"stage"` requires `N_psu`, and
-#'   `N_ssu` as well at three stages. Refused outside cluster allocation and
-#'   with a `psu` register. See the correction section in Details.
+#'   variance-component model cluster allocation assumes, or `"none"` for no
+#'   correction, [n_cluster()]'s default with-replacement model. `"stage"`
+#'   and `"none"` match [n_cluster()] with the same `fpc`. `"stage"` requires
+#'   `N_psu`, and `N_ssu` as well at three stages, and is refused in element
+#'   allocation. Only `"unit"` is available with a `psu` register. See the
+#'   correction section in Details.
 #' @param min_n_stratum Optional minimum sample size per stratum, applied as the
 #'   lower bound the assessment reports against in `$bounds`. It is the same
 #'   argument [n_alloc()] takes, one value or one per stratum, so a design
@@ -2027,7 +2068,7 @@ n_alloc.svyplan_prec <- function(
 #' # A fixed allocation of households assessed nationally and per region,
 #' # with each region's published design effect (a DEFT, squared) and its
 #' # married women per household. The national row weights each region by
-#' # its eligible women, N * eligible_rate.
+#' # its eligible women, N * eligible_per_unit.
 #' regions <- data.frame(
 #'   stratum = c("Coast", "Centre", "East"),
 #'   region = c("Coast", "Centre", "East"),
@@ -2038,7 +2079,7 @@ n_alloc.svyplan_prec <- function(
 #'   p = c(0.22, 0.19, 0.08),
 #'   deff = c(1.02, 1.09, 1.65)^2,
 #'   resp_rate = c(0.84, 0.91, 0.88),
-#'   eligible_rate = c(0.59, 1.23, 2.30)
+#'   eligible_per_unit = c(0.59, 1.23, 2.30)
 #' )
 #' every_level <- data.frame(
 #'   name = "mcpr", domain = c(".overall", "region"), cv = 0.10
@@ -2074,7 +2115,8 @@ prec_alloc.default <- function(
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   df = NULL,
   unit_cost = NULL,
   min_n_stratum = NULL,
@@ -2092,7 +2134,7 @@ prec_alloc.default <- function(
   }
   .check_unused_dots(...)
   .check_register_args(certainty_cutoff, n_psu_per_zone, frame, psu)
-  .check_eligible_scope(eligible_rate, frame, measures, psu)
+  .check_eligible_scope(eligible_per_unit, frame, measures, psu)
   fpc <- match.arg(fpc)
   joint_any <- !is.null(measures) || !is.null(targets) || !is.null(objective)
   if (joint_any) {
@@ -2142,7 +2184,8 @@ prec_alloc.default <- function(
         min_n_stratum = min_n_stratum,
         df = df,
         certainty_cutoff = certainty_cutoff,
-        n_psu_per_zone = n_psu_per_zone
+        n_psu_per_zone = n_psu_per_zone,
+        eligibility_rate = eligibility_rate
       ))
     }
     return(.prec_alloc_bethel(
@@ -2156,7 +2199,8 @@ prec_alloc.default <- function(
       alpha = alpha,
       deff = deff,
       resp_rate = resp_rate,
-      eligible_rate = eligible_rate,
+      eligible_per_unit = eligible_per_unit,
+      eligibility_rate = eligibility_rate,
       min_n_stratum = min_n_stratum,
       df = df,
       fpc = fpc,
@@ -2183,7 +2227,8 @@ prec_alloc.default <- function(
     unit_cost = unit_cost,
     deff = deff,
     resp_rate = resp_rate,
-    fpc = fpc
+    fpc = fpc,
+    eligibility_rate = eligibility_rate
   )
   deff_arg <- deff
   resp_rate_arg <- resp_rate
@@ -2204,6 +2249,7 @@ prec_alloc.default <- function(
 
   metrics <- .alloc_metrics(
     N_h = prep$N_h,
+    N_pop = .alloc_scope_N(prep),
     S_h = prep$S_h,
     mean_h = prep$mean_h,
     n_h = n,
@@ -2248,6 +2294,7 @@ prec_alloc.default <- function(
       fpc = fpc,
       deff = deff_arg,
       resp_rate = resp_rate_arg,
+      eligibility_rate = if (!identical(eligibility_rate, 1)) eligibility_rate,
       df = df,
       cost_h = prep$cost_h,
       domain_cols = prep$domain_cols,
@@ -2334,7 +2381,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       alpha = p$alpha,
       deff = p$deff,
       resp_rate = p$resp_rate,
-      eligible_rate = p$eligible_rate %||% 1,
+      eligible_per_unit = p$eligible_per_unit %||% 1,
+      eligibility_rate = p[["eligibility_rate"]] %||% 1,
       df = p$df,
       unit_cost = p$unit_cost,
       min_n_stratum = p$min_n_stratum,
@@ -2369,13 +2417,13 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     alpha = p$alpha,
     deff = p$deff,
     resp_rate = p$resp_rate,
+    eligibility_rate = p[["eligibility_rate"]] %||% 1,
     df = p$df
   )
   if (!.alloc_is_cluster(p$frame)) {
     args$unit_cost <- p$cost_h
-  } else {
-    args$fpc <- p$fpc %||% "unit"
   }
+  args$fpc <- p$fpc %||% "unit"
   out <- do.call(
     prec_alloc.default,
     .roundtrip_args(args, take$dots, prec_alloc.default)
@@ -2397,7 +2445,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   deff = 1,
   resp_rate = 1,
   fpc = "unit",
-  size_only = FALSE
+  size_only = FALSE,
+  eligibility_rate = 1
 ) {
   if (!is.data.frame(frame) || nrow(frame) == 0L) {
     stop("'frame' must be a non-empty data frame", call. = FALSE)
@@ -2410,6 +2459,13 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   if (!is.numeric(N_h) || anyNA(N_h) || any(!is.finite(N_h)) || any(N_h <= 0)) {
     stop("'N' must contain positive finite values", call. = FALSE)
   }
+  e_h <- .alloc_resolve_h(
+    eligibility_rate,
+    frame,
+    "eligibility_rate",
+    nrow(frame),
+    .check_resp_rate_h
+  )
 
   if ("sd" %in% names(frame) && "var" %in% names(frame)) {
     stop("'frame' must contain either 'sd' or 'var', not both", call. = FALSE)
@@ -2433,16 +2489,19 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     S_h <- sqrt(vv)
   } else if ("p" %in% names(frame)) {
     ph <- .alloc_check_p(frame$p)
-    if (.alloc_is_cluster(frame)) {
+    if (.alloc_is_cluster(frame) || identical(fpc, "none")) {
       S_h <- sqrt(ph * (1 - ph))
     } else {
-      if (any(N_h <= 1)) {
+      if (any(N_h * e_h <= 1)) {
         stop(
-          "'N' must be greater than 1 in every stratum when the variance is derived from 'p'",
+          sprintf(
+            "'%s' must be greater than 1 in every stratum when the variance is derived from 'p'",
+            if (all(e_h == 1)) "N" else "N * eligibility_rate"
+          ),
           call. = FALSE
         )
       }
-      S_h <- sqrt(.bernoulli_var(ph, N_h))
+      S_h <- sqrt(.bernoulli_var(ph, N_h * e_h))
     }
   } else if (size_only) {
     S_h <- rep(NA_real_, nrow(frame))
@@ -2517,7 +2576,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     "resp_rate",
     nrow(frame),
     .check_resp_rate_h
-  )
+  ) * e_h
 
   max_weight <- rep(NA_real_, nrow(frame))
   if ("max_weight" %in% names(frame)) {
@@ -2598,6 +2657,8 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     size_only = size_only,
     step_h = step_h,
     N_h = as.numeric(N_h),
+    Ne_h = as.numeric(N_h * e_h),
+    eligibility_h = e_h,
     S_h = as.numeric(S_h),
     mean_h = as.numeric(mean_h),
     cost_h = as.numeric(cost_h),
@@ -2723,9 +2784,9 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #' @noRd
 .alloc_cluster_prep <- function(prep, frame, unit_cost, fpc = "unit") {
   if (!.alloc_is_cluster(frame)) {
-    if (!identical(fpc, "unit")) {
+    if (identical(fpc, "stage")) {
       stop(
-        "'fpc' applies to cluster allocation only, where the correction has stages to choose between. An element allocation always carries 1 - n/N. Add 'icc_psu', or drop 'fpc'",
+        "'fpc = \"stage\"' applies to cluster allocation, where the correction has stages to choose between. An element allocation takes 'fpc = \"unit\"' for the correction 1 - n/N or 'fpc = \"none\"' for no correction. Add 'icc_psu', or choose one of those",
         call. = FALSE
       )
     }
@@ -2748,6 +2809,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
         ),
         call. = FALSE
       )
+    }
+    prep$fpc <- fpc
+    if (identical(fpc, "none")) {
+      prep$N_fpc_h <- rep(Inf, nrow(frame))
     }
     prep$cluster <- FALSE
     return(prep)
@@ -2955,7 +3020,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   responding_take <- take * prep$unit_resp_rate_h
   # Two components, since each stage's correction multiplies its own.
   within_frac <- if (identical(prep$fpc, "stage")) {
-    pmin(1, responding_take / (prep$N_h / prep$N_psu_h))
+    pmin(1, responding_take / (.alloc_scope_N(prep) / prep$N_psu_h))
   } else {
     rep(0, length(take))
   }
@@ -2966,7 +3031,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   # as a separate stage.
   prep$N_fpc_h <- switch(
     prep$fpc,
-    unit = prep$N_h,
+    unit = .alloc_scope_N(prep),
     none = rep(Inf, length(prep$N_h)),
     stage = ifelse(
       icc > 0,
@@ -3150,6 +3215,14 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   list(m_h = m_h, M_h = M_h, m_src = m_src, M_src = M_src)
 }
 
+#' Stratum population in scope, N_h * e_h, or N_h for a frame prepared
+#' without an eligibility rate
+#' @keywords internal
+#' @noRd
+.alloc_scope_N <- function(prep) {
+  prep$Ne_h %||% prep$N_h
+}
+
 #' @keywords internal
 #' @noRd
 .alloc_metrics <- function(
@@ -3162,11 +3235,13 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   resp_rate,
   cost_h,
   df = NULL,
-  N_fpc = NULL
+  N_fpc = NULL,
+  N_pop = NULL
 ) {
+  N_pop <- N_pop %||% N_h
   n_net <- n_h * resp_rate
   n_eff <- n_net / deff
-  W_h <- N_h / sum(N_h)
+  W_h <- N_pop / sum(N_pop)
   if (all(is.na(S_h))) {
     na_h <- rep(NA_real_, length(n_h))
     return(list(
@@ -3180,8 +3255,9 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   good <- n_eff > 0
   # N_fpc is the population the correction divides by, which is the stratum
   # population unless a cluster allocation has folded a first-stage
-  # correction into it. Weights and bounds always read the real N_h.
-  fpc <- pmax(0, 1 - n_net / (N_fpc %||% N_h))
+  # correction into it. N_pop is the population in scope, N_h * e_h, which
+  # the weights read. Bounds read the frame count N_h.
+  fpc <- pmax(0, 1 - n_net / (N_fpc %||% N_pop))
   term[good] <- W_h[good]^2 * S_h[good]^2 * fpc[good] / n_eff[good]
 
   zero_ok <- !good & S_h == 0
@@ -3257,26 +3333,26 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   metrics = NULL
 ) {
   if (is.null(lo_i)) {
-    lo_i <- as.integer(ceiling(pmax(ifelse(is.na(m_h), 0, m_h), 0) - 1e-9))
+    lo_i <- ceiling(pmax(ifelse(is.na(m_h), 0, m_h), 0) - 1e-9)
   }
   if (is.null(hi_i)) {
-    hi_i <- as.integer(floor(M_h + 1e-9))
+    hi_i <- floor(M_h + 1e-9)
   }
   step <- prep$step_h %||% rep(1L, length(n_h))
   stepped <- any(step > 1L)
   n_int <- switch(
     mode,
-    cv = pmin(
-      pmax(as.integer(step * ceiling(n_h / step - 1e-9)), lo_i),
+    cv = as.integer(pmin(
+      pmax(step * ceiling(n_h / step - 1e-9), lo_i),
       hi_i
-    ),
+    )),
     budget = .round_within_budget(
       n_h,
       prep$cost_h,
       budget,
       lo_i,
       hi_i,
-      (prep$N_h / sum(prep$N_h))^2 * prep$S_h^2 *
+      (.alloc_scope_N(prep) / sum(.alloc_scope_N(prep)))^2 * prep$S_h^2 *
         rep_len(deff, length(n_h)) / rep_len(resp_rate, length(n_h)),
       step = step
     ),
@@ -3397,7 +3473,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 .round_steps <- function(x, step, lo, hi) {
   total <- as.integer(round(sum(x)))
   a_min <- as.integer(lo %/% step)
-  a_max <- as.integer(hi %/% step)
+  a_max <- as.integer(pmin(hi, total) %/% step)
   a0 <- pmin(pmax(as.integer(round(x / step)), a_min), a_max)
   a <- .cluster_close_total(a0, step, a_min, a_max, x)
   n_int <- as.integer(a * step)
@@ -3453,10 +3529,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 .alloc_whole_element <- function(prep, alloc, mode, cv, budget, deff,
                                  resp_rate, lo_i, hi_i, max_nodes, gap = 0) {
   H <- length(prep$N_h)
-  W <- prep$N_h / sum(prep$N_h)
+  W <- .alloc_scope_N(prep) / sum(.alloc_scope_N(prep))
   S2 <- W^2 * prep$S_h^2 * rep_len(deff, H)
   a <- S2 / rep_len(resp_rate, H)
-  c0 <- S2 / (prep$N_fpc_h %||% prep$N_h)
+  c0 <- S2 / (prep$N_fpc_h %||% .alloc_scope_N(prep))
   cost <- if (identical(alloc, "neyman")) rep(1, H) else prep$cost_h
   # The search runs on whole steps, n = step * x. A stratum's cost per step
   # is step * cost and its variance coefficient per step a / step.
@@ -3559,7 +3635,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
                                  resp_rate, lo_i, hi_i, b_rule, max_nodes,
                                  gap = 0) {
   H <- length(prep$N_h)
-  W <- prep$N_h / sum(prep$N_h)
+  W <- .alloc_scope_N(prep) / sum(.alloc_scope_N(prep))
   r_u <- rep_len(prep$unit_resp_rate_h %||% resp_rate, H)
   r <- rep_len(resp_rate, H)
   K <- W^2 * prep$S_raw_h^2 * rep_len(deff, H) * prep$var_ratio_psu_h
@@ -3578,7 +3654,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 
   terms <- function(h, b) {
     wf <- if (fpc == "stage") {
-      pmin(1, b * r_u[h] / (prep$N_h[h] / N_psu[h]))
+      pmin(1, b * r_u[h] / (.alloc_scope_N(prep)[h] / N_psu[h]))
     } else {
       0
     }
@@ -3590,7 +3666,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
       pc = if (costed) prep$cost_psu_h[h] + prep$cost_ssu_h[h] * b else b,
       C = K[h] * g / (b * r[h]),
       D = switch(fpc,
-                 unit = K[h] * g / prep$N_h[h],
+                 unit = K[h] * g / .alloc_scope_N(prep)[h],
                  none = 0 * b,
                  stage = rep(K[h] * icc[h] / N_psu[h], length(b))),
       lin = K[h] * icc[h] * r_u[h] * b / (r[h] * hi_i[h])
@@ -3798,6 +3874,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   n_int <- detail$n_int
   m <- .alloc_metrics(
     N_h = prep$N_h,
+    N_pop = .alloc_scope_N(prep),
     S_h = prep$S_h,
     mean_h = prep$mean_h,
     n_h = n_int,
@@ -3893,12 +3970,12 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   icc <- prep$icc_psu_h
   var_ratio <- prep$var_ratio_psu_h
   S_raw <- prep$S_raw_h
-  W <- prep$N_h / sum(prep$N_h)
-  lo_i <- as.integer(ceiling(detail$.lower - 1e-9))
-  hi_i <- as.integer(floor(detail$.upper + 1e-9))
+  W <- .alloc_scope_N(prep) / sum(.alloc_scope_N(prep))
+  lo_i <- ceiling(detail$.lower - 1e-9)
+  hi_i <- floor(detail$.upper + 1e-9)
   # N_psu bounds the PSU count through a_max, not through this element cap.
   psu_capped <- prep$M_src %in% "N_psu"
-  hi_i[psu_capped] <- as.integer(floor(prep$N_h[psu_capped] + 1e-9))
+  hi_i[psu_capped] <- floor(prep$N_h[psu_capped] + 1e-9)
   psu_max <- if (is.null(prep$N_psu_h)) rep(Inf, H) else prep$N_psu_h
   take_options <- lapply(
     seq_len(H),
@@ -4006,7 +4083,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   }
 
   a_min <- as.integer(ceiling(lo_i / b_h))
-  a_max <- as.integer(floor(hi_i / b_h))
+  a_max <- floor(hi_i / b_h)
   # hi_i counts ultimate units, and the integer take b_h chosen here need not
   # be the one that set it, so the PSU universe has to bound a_max directly.
   if (!is.null(prep$N_psu_h)) {
@@ -4046,7 +4123,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   # would score the operational design under a correction it does not get.
   op_take <- b_h * resp_h
   op_within_frac <- if (identical(prep$fpc %||% "unit", "stage")) {
-    pmin(1, op_take / (prep$N_h / prep$N_psu_h))
+    pmin(1, op_take / (.alloc_scope_N(prep) / prep$N_psu_h))
   } else {
     rep(0, H)
   }
@@ -4055,7 +4132,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   S_op <- S_raw * sqrt(op_inflation)
   N_fpc_op <- switch(
     prep$fpc %||% "unit",
-    unit = prep$N_h,
+    unit = .alloc_scope_N(prep),
     none = rep(Inf, H),
     stage = ifelse(
       icc > 0,
@@ -4168,6 +4245,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   e_h <- a_h * b_h
   m <- .alloc_metrics(
     N_h = prep$N_h,
+    N_pop = .alloc_scope_N(prep),
     S_h = S_op,
     mean_h = prep$mean_h,
     n_h = e_h,
@@ -4231,7 +4309,9 @@ prec_alloc.svyplan_n <- function(frame, ...) {
                          df) {
   if (length(prep$domain_idx) == 0L) {
     return(.alloc_metrics(
-      N_h = prep$N_h, S_h = S_op, mean_h = prep$mean_h, n_h = e_h,
+      N_h = prep$N_h,
+      N_pop = .alloc_scope_N(prep), S_h = S_op, mean_h = prep$mean_h,
+      n_h = e_h,
       alpha = alpha, deff = deff, resp_rate = resp_rate,
       cost_h = prep$cost_h, df = df, N_fpc = N_fpc_op
     )$cv)
@@ -4264,6 +4344,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     function(idx) {
       .alloc_metrics(
         N_h = prep$N_h[idx],
+        N_pop = .alloc_scope_N(prep)[idx],
         S_h = prep$S_h[idx],
         mean_h = prep$mean_h[idx],
         n_h = n_h[idx],
@@ -4299,6 +4380,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     idx <- prep$domain_idx[[i]]
     met <- .alloc_metrics(
       N_h = prep$N_h[idx],
+      N_pop = .alloc_scope_N(prep)[idx],
       S_h = prep$S_h[idx],
       mean_h = prep$mean_h[idx],
       n_h = n_h[idx],

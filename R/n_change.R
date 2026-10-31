@@ -40,11 +40,15 @@
 #'   since units can only be shared by samples drawn from one population.
 #' @param deff Design effect multiplier (> 0), applied to the variance of
 #'   the change rather than to either occasion separately. See Details.
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). Each occasion's size is inflated by `1 / resp_rate`. It is
-#'   a single round's response, not attrition across a panel. See the
-#'   nonresponse section of [svyplan-package] for what this adjustment does
-#'   and does not claim.
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1 (no adjustment). Each occasion's size is inflated by
+#'   `1 / resp_rate`. It is a single round's response, not attrition across a
+#'   panel. See the nonresponse section of [svyplan-package] for what the rate
+#'   counts and what this adjustment does and does not claim.
+#' @param eligibility_rate Share of issued units in scope, such as dwellings
+#'   found occupied, in (0, 1\]. Default 1. It applies to both occasions, and
+#'   with a finite `N` the population in scope is `N * eligibility_rate`. See
+#'   the nonresponse section of [svyplan-package].
 #' @param ratio Size of the first occasion relative to the second, so
 #'   `ratio = 2` sizes a large baseline against a smaller follow-up. Default
 #'   1, equal occasions, which returns a single size. Because `overlap` is
@@ -230,6 +234,7 @@ n_change.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   ratio = 1,
   overlap = 0,
   overlap_cor = 0,
@@ -242,12 +247,15 @@ n_change.default <- function(
     return(do.call(n_change.default, c(.plan, list(...))))
   }
   .check_unused_dots(...)
-  N_pair <- .check_power_N(N)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  N_frame <- .check_power_N(N)
+  N_pair <- N_frame * eligibility_rate
   inputs <- .change_inputs(var, sd, p, change, N_pair)
   check_precision(moe, cv, rmoe)
   check_alpha(alpha)
   check_deff(deff)
   check_resp_rate(resp_rate)
+  rate <- resp_rate * eligibility_rate
   check_scalar(ratio, "ratio")
   check_overlap(overlap)
   check_overlap_cor(overlap_cor)
@@ -276,17 +284,17 @@ n_change.default <- function(
   }
 
   n <- .n_change_from_se(
-    target_se, inputs$var_pair, N_pair, deff, resp_rate,
+    target_se, inputs$var_pair, N_pair, deff, rate,
     ratio, overlap, overlap_cor, overlap_draw
   )
-  n <- .census_size(n, if (length(n) == 1L) min(N_pair) else N_pair)
+  n <- .census_size(n, if (length(n) == 1L) min(N_frame) else N_frame)
 
   n_vec <- if (length(n) == 1L) c(n, n) else n
-  .check_attainable(n_vec[1L], N_pair[1L], resp_rate)
-  .check_attainable(n_vec[2L], N_pair[2L], resp_rate)
+  .check_attainable(n_vec[1L], N_frame[1L], resp_rate, eligibility_rate)
+  .check_attainable(n_vec[2L], N_frame[2L], resp_rate, eligibility_rate)
 
   prec <- .prec_engine_change(
-    n, inputs$var_pair, inputs$change, N_pair, deff, resp_rate,
+    n, inputs$var_pair, inputs$change, N_pair, deff, rate,
     overlap, overlap_cor, overlap_draw, alpha, df
   )
   # The inversion is closed form on n <= N, so a mismatch here means the
@@ -311,6 +319,7 @@ n_change.default <- function(
     overlap_draw = overlap_draw,
     df = df
   )
+  if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
   if (!is.null(inputs$p)) params$p <- inputs$p
   if (!is.null(inputs$change)) params$change <- inputs$change
   if (!is.null(moe)) {
@@ -357,6 +366,7 @@ n_change.svyplan_prec <- function(var, ..., moe = NULL, cv = NULL,
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate,
+    eligibility_rate = par[["eligibility_rate"]] %||% 1,
     ratio = if (length(par$n) == 2L) par$n[1L] / par$n[2L] else 1,
     overlap = par$overlap,
     overlap_cor = par$overlap_cor,

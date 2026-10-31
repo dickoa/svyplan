@@ -16,7 +16,8 @@ n_multi(indicators, ...)
   min_n_domain = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   plan = NULL
 )
 
@@ -77,16 +78,23 @@ An optional \code{prop_method} column in \code{indicators} overrides this defaul
 on a per-row basis. \code{"wilson"}, \code{"logodds"} and \code{"beta"} size from an
 interval half-width, so those rows need \code{moe} rather than \code{cv}.}
 
-\item{resp_rate}{Default expected response rate at the ultimate unit, in
-(0, 1]. Used for rows whose \code{resp_rate} column is absent or \code{NA}, and
-a non-missing row value overrides it. See the nonresponse section of
-\link{svyplan-package} for what this adjustment does and does not claim.}
+\item{resp_rate}{Default expected response rate among eligible ultimate
+units, in (0, 1]. Used for rows whose \code{resp_rate} column is absent or
+\code{NA}, and a non-missing row value overrides it. See the nonresponse
+section of \link{svyplan-package} for what the rate counts and what this
+adjustment does and does not claim.}
 
-\item{eligible_rate}{Default eligible units per sampled unit, a positive
+\item{eligibility_rate}{Default share of issued units in scope, in (0, 1].
+Used for rows whose \code{eligibility_rate} column is absent or \code{NA}, and a
+non-missing row value overrides it. With a finite \code{N}, a row's population
+in scope is \code{N * eligibility_rate}. See the nonresponse section of
+\link{svyplan-package}.}
+
+\item{eligible_per_unit}{Default eligible units per sampled unit, a positive
 number such as married women per household, which can exceed 1. Used
-for rows whose \code{eligible_rate} column is absent or \code{NA}, and a
+for rows whose \code{eligible_per_unit} column is absent or \code{NA}, and a
 non-missing row value overrides it. Proportion rows only. See the
-\code{eligible_rate} column under Details.}
+\code{eligible_per_unit} column under Details.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -161,7 +169,7 @@ A row may instead carry only a floor on the number of respondents,
 \code{min_respondents}, with no \code{p}, \code{var} or target. It stands for an
 estimate whose precision is not modeled, such as the fertility rates a
 DHS sizes by a count of interviews with women. Its \code{resp_rate} and
-\code{eligible_rate} turn the count into sampled units, and it raises the
+\code{eligible_per_unit} turn the count into sampled units, and it raises the
 size the other rows set. Every domain needs at least one row with an
 estimate and a target.
 }
@@ -227,7 +235,7 @@ largest is still the binding one, whichever constraint raised it.
 Single-stage \code{n_multi()} only, because a multistage design sizes
 stages against a cost and has no single total for a count to raise.}
 \item{\code{min_respondents}}{Minimum expected number of eligible
-respondents, \code{n * resp_rate * eligible_rate}, a floor on the row's
+respondents, \code{n * resp_rate * eligible_per_unit}, a floor on the row's
 size. Unlike \code{min_cases}, it counts every respondent of the row's
 group, not those with the attribute, and it applies to any row. A row
 with this floor and no estimand is the floor-only row described
@@ -244,12 +252,13 @@ non-response. It means the same thing in a cluster design, where
 that cannot be worked and \code{resp_rate_ssu} for second-stage units in a
 three-stage design. Naming a stage the design does not have is an
 error rather than a column carried along and ignored.}
-\item{\code{eligible_rate}}{Eligible units per sampled unit for the row's
+\item{\code{eligible_per_unit}}{Eligible units per sampled unit for the row's
 estimate, such as married women or children aged 12 to 23 months per
-household. The row is sized as \code{\link[=n_prop]{n_prop()}}\verb{(eligible_rate = )} sizes
+household. The row is sized as \code{\link[=n_prop]{n_prop()}}\verb{(eligible_per_unit = )} sizes
 it. Sizes stay in sampled units, and the variance reads
-\code{N * eligible_rate} eligible units and \code{resp_rate * eligible_rate}
-respondents per sampled unit. Each row can carry its own group.
+\code{N * eligible_per_unit} eligible units and
+\code{resp_rate * eligible_per_unit} respondents per sampled unit. Each row
+can carry its own group.
 Proportion rows only, so a mean or ratio row takes 1. The
 several-indicators mode of \code{\link[=n_cluster]{n_cluster()}} refuses the column.}
 }
@@ -394,7 +403,7 @@ dhs <- data.frame(
   cv = c(0.10, 0.10, 0.10, 0.10, NA, NA),
   deff = c(1.03, 2.71, 1.32, 2.37, NA, NA),
   resp_rate = 0.88,
-  eligible_rate = c(0.59, 2.30, 0.09, 0.47, 1.13, 2.89),
+  eligible_per_unit = c(0.59, 2.30, 0.09, 0.47, 1.13, 2.89),
   min_respondents = c(NA, NA, NA, NA, 800, 800)
 )
 n_multi(dhs, domains = "region")

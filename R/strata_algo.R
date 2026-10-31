@@ -1014,17 +1014,19 @@
 #' @noRd
 .round_oric_bounded <- function(x, lo, hi, total = NULL) {
   T <- as.integer(round(if (is.null(total)) sum(x) else total))
-  lo <- as.integer(lo)
-  hi <- as.integer(hi)
   if (sum(lo) > T || sum(hi) < T) {
     stop(
       sprintf(
-        "no integer allocation preserves the total (%d) within the integer bounds (feasible totals: %d to %d); relax the constraints or change the target",
+        "no integer allocation preserves the total (%d) within the integer bounds (feasible totals: %.0f to %.0f); relax the constraints or change the target",
         T, sum(lo), sum(hi)
       ),
       call. = FALSE
     )
   }
+  # No element of a nonnegative allocation exceeds its total, so a cap above
+  # it binds nothing and the bounds fit in integers.
+  lo <- as.integer(lo)
+  hi <- as.integer(pmin(hi, T))
   m <- pmin(pmax(as.integer(floor(x)), lo), hi)
   d <- T - sum(m)
   while (d != 0L) {

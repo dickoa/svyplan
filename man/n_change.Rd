@@ -21,6 +21,7 @@ n_change(var = NULL, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   ratio = 1,
   overlap = 0,
   overlap_cor = 0,
@@ -78,11 +79,16 @@ since units can only be shared by samples drawn from one population.}
 \item{deff}{Design effect multiplier (> 0), applied to the variance of
 the change rather than to either occasion separately. See Details.}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
-adjustment). Each occasion's size is inflated by \code{1 / resp_rate}. It is
-a single round's response, not attrition across a panel. See the
-nonresponse section of \link{svyplan-package} for what this adjustment does
-and does not claim.}
+\item{resp_rate}{Expected response rate among eligible units, in (0, 1].
+Default 1 (no adjustment). Each occasion's size is inflated by
+\code{1 / resp_rate}. It is a single round's response, not attrition across a
+panel. See the nonresponse section of \link{svyplan-package} for what the rate
+counts and what this adjustment does and does not claim.}
+
+\item{eligibility_rate}{Share of issued units in scope, such as dwellings
+found occupied, in (0, 1]. Default 1. It applies to both occasions, and
+with a finite \code{N} the population in scope is \code{N * eligibility_rate}. See
+the nonresponse section of \link{svyplan-package}.}
 
 \item{ratio}{Size of the first occasion relative to the second, so
 \code{ratio = 2} sizes a large baseline against a smaller follow-up. Default

@@ -20,6 +20,7 @@ prec_pooled(var = NULL, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   overlap = 0,
   overlap_cor = NULL,
   cor_decay = NULL,
@@ -62,10 +63,16 @@ correction.}
 \item{deff}{Design effect multiplier (> 0), applied to the variance of
 the pooled estimate rather than to any one occasion. See Details.}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
-adjustment). It applies to every occasion and nets each size down to
-\code{n * resp_rate} before the covariance is formed. It is a single round's
-response, not attrition across a panel.}
+\item{resp_rate}{Expected response rate among eligible units, in (0, 1].
+Default 1 (no adjustment). It applies to every occasion and nets each size
+down to \code{n * resp_rate} before the covariance is formed. It is a single
+round's response, not attrition across a panel. See the nonresponse
+section of \link{svyplan-package} for what the rate counts.}
+
+\item{eligibility_rate}{Share of issued units in scope, in (0, 1].
+Default 1. It applies to every occasion, and with a finite \code{N} the
+population in scope is \code{N * eligibility_rate}. See the nonresponse
+section of \link{svyplan-package}.}
 
 \item{overlap}{Fraction of one occasion's \strong{responding} sample carried
 into a later one, in \eqn{[0, 1]}. One number, meaning the same overlap at

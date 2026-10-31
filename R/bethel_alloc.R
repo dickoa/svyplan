@@ -92,8 +92,8 @@
     stop("every precision constraint must have a positive coefficient",
          call. = FALSE)
   }
-  lower_int <- as.integer(ceiling(lower - 1e-9))
-  upper_int <- as.integer(floor(upper + 1e-9))
+  lower_int <- ceiling(lower - 1e-9)
+  upper_int <- floor(upper + 1e-9)
   if (any(lower_int > upper_int)) {
     bad <- stratum_ids[lower_int > upper_int]
     stop(
@@ -542,7 +542,7 @@
 #' @keywords internal
 #' @noRd
 .joint_row_value <- function(name, measures, frame, scalar) {
-  rule <- if (name %in% c("deff", "eligible_rate")) {
+  rule <- if (name %in% c("deff", "eligible_per_unit")) {
     list(ok = function(v) is.finite(v) & v > 0,
          text = "positive finite values")
   } else {
@@ -1017,17 +1017,19 @@
   unit_cost = NULL,
   deff = 1,
   resp_rate = 1,
-  eligible_rate = 1,
+  eligible_per_unit = 1,
   alpha = 0.05,
   df = NULL,
   min_n_stratum = NULL,
   objective = NULL,
   fpc = "unit",
-  .finite_prop_var = TRUE
+  .finite_prop_var = TRUE,
+  eligibility_rate = 1
 ) {
   check_deff(deff)
   check_resp_rate(resp_rate)
-  check_eligible_rate(eligible_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  check_eligible_per_unit(eligible_per_unit)
   check_alpha(alpha)
   if (!is.null(df)) check_df(df)
   min_n_stratum <- .resolve_min_n_stratum(min_n_stratum, frame)
@@ -1199,12 +1201,18 @@
   var_norm <- ifelse(has_p, p * (1 - p),
                      ifelse(has_var, var_value, sd_value^2))
   # Each measure row counts its own eligible units, so every variance term
-  # below reads N * eligible_rate while bounds and weights keep N.
-  elig_norm <- .joint_row_value("eligible_rate", measures, frame, eligible_rate)
-  if (stage$stages == 1L && .finite_prop_var && any(has_p)) {
-    prop_N <- N[match(m_stratum[has_p], stratum)] * elig_norm[has_p]
+  # below reads N * eligible_per_unit while bounds and weights keep N.
+  elig_norm <- .joint_row_value("eligible_per_unit", measures, frame, eligible_per_unit)
+  scope_norm <- .joint_row_value("eligibility_rate", measures, frame,
+                                 eligibility_rate)
+  yield_norm <- scope_norm * elig_norm
+  if (stage$stages == 1L && .finite_prop_var && identical(fpc, "unit") &&
+      any(has_p)) {
+    prop_N <- N[match(m_stratum[has_p], stratum)] * yield_norm[has_p]
     if (any(prop_N <= 1)) {
-      stop("'N * eligible_rate', the eligible population, must be greater than 1 for element-level proportion measures",
+      stop(sprintf("'%s', the eligible population, must be greater than 1 for element-level proportion measures",
+                   if (all(scope_norm == 1)) "N * eligible_per_unit" else
+                     "N * eligibility_rate * eligible_per_unit"),
            call. = FALSE)
     }
     # The element-level FPC consumes population variance with denominator
@@ -1219,9 +1227,9 @@
     c("resp_rate_psu", "resp_rate_ssu")[c(stage$stages < 2L, stage$stages < 3L)],
     measures, frame, stage$stages
   )
-  if (!identical(fpc, "unit") && stage$stages < 2L) {
+  if (identical(fpc, "stage") && stage$stages < 2L) {
     stop(
-      "'fpc' applies to cluster allocation only, where the correction has stages to choose between. An element allocation always carries 1 - n/N. Add the stage columns, or drop 'fpc'",
+      "'fpc = \"stage\"' applies to cluster allocation, where the correction has stages to choose between. An element allocation takes 'fpc = \"unit\"' for the correction 1 - n/N or 'fpc = \"none\"' for no correction. Add the stage columns, or choose one of those",
       call. = FALSE
     )
   }
@@ -1280,6 +1288,7 @@
   deff_all <- matrix(NA_real_, H, R)
   resp_all <- matrix(NA_real_, H, R)
   elig_all <- matrix(NA_real_, H, R)
+  scope_all <- matrix(NA_real_, H, R)
   for (k in seq_len(R)) {
     idx <- req_indices[[k]]
     wanted <- .bethel_key(stratum[idx], rep(req_name[k], length(idx)))
@@ -1292,8 +1301,9 @@
     deff_all[idx, k] <- deff_norm[mi]
     resp_all[idx, k] <- resp_norm[mi]
     elig_all[idx, k] <- elig_norm[mi]
-    N_k <- N[idx] * elig_norm[mi]
-    resp_k <- resp_norm[mi] * elig_norm[mi]
+    scope_all[idx, k] <- scope_norm[mi]
+    N_k <- N[idx] * yield_norm[mi]
+    resp_k <- resp_norm[mi] * yield_norm[mi]
     variance_factor <- rep(1, length(idx))
     decision_take <- rep(1, length(idx))
     stage_resp <- resp_k
@@ -1382,6 +1392,7 @@
   deff_hk <- deff_all[, seq_len(K), drop = FALSE]
   resp_hk <- resp_all[, seq_len(K), drop = FALSE]
   elig_hk <- elig_all[, seq_len(K), drop = FALSE]
+  scope_hk <- scope_all[, seq_len(K), drop = FALSE]
   G <- membership[, seq_len(K), drop = FALSE]
   Vmax <- numeric(K)
   # One quantile per constraint, formed once. The ceiling below and the
@@ -1434,7 +1445,8 @@
       membership = membership[, K + seq_len(J), drop = FALSE],
       var_hk = var_all[, K + seq_len(J), drop = FALSE],
       deff_hk = deff_all[, K + seq_len(J), drop = FALSE],
-      resp_hk = resp_all[, K + seq_len(J), drop = FALSE]
+      resp_hk = resp_all[, K + seq_len(J), drop = FALSE],
+      scope_hk = scope_all[, K + seq_len(J), drop = FALSE]
     )
     if (sum(objective_part$q_h) <= 0) {
       stop("the objective has no positive-priority component with positive variance",
@@ -1478,6 +1490,7 @@
   problem$deff_hk <- deff_hk
   problem$resp_hk <- resp_hk
   problem$elig_hk <- elig_hk
+  problem$scope_hk <- scope_hk
   problem$take_all <- take_all
   problem$population_N <- N
   problem$stage <- stage
@@ -2042,7 +2055,8 @@
   df = NULL,
   fpc = "unit",
   .finite_prop_var,
-  eligible_rate = 1,
+  eligible_per_unit = 1,
+  eligibility_rate = 1,
   max_nodes = 5000,
   gap = 0,
   .whole = TRUE
@@ -2055,7 +2069,8 @@
     unit_cost = unit_cost,
     deff = deff,
     resp_rate = resp_rate,
-    eligible_rate = eligible_rate,
+    eligible_per_unit = eligible_per_unit,
+    eligibility_rate = eligibility_rate,
     alpha = alpha,
     df = df,
     min_n_stratum = min_n_stratum,
@@ -2216,7 +2231,8 @@
     problem = problem,
     achieved = list(n = sum(n), cost = continuous$cost)
   )
-  if (eligible_rate != 1) params$eligible_rate <- eligible_rate
+  if (eligible_per_unit != 1) params$eligible_per_unit <- eligible_per_unit
+  if (!identical(eligibility_rate, 1)) params$eligibility_rate <- eligibility_rate
   if (mode == "budget_objective") {
     params$objective <- problem$objective$spec
     params$budget <- budget
@@ -2264,7 +2280,8 @@
   fpc = "unit",
   .allow_fractional_stages = FALSE,
   .finite_prop_var,
-  eligible_rate = 1
+  eligible_per_unit = 1,
+  eligibility_rate = 1
 ) {
   if (is.null(n)) stop("'n' is required", call. = FALSE)
   problem <- .build_bethel_problem(
@@ -2274,7 +2291,8 @@
     unit_cost = unit_cost,
     deff = deff,
     resp_rate = resp_rate,
-    eligible_rate = eligible_rate,
+    eligible_per_unit = eligible_per_unit,
+    eligibility_rate = eligibility_rate,
     alpha = alpha,
     df = df,
     min_n_stratum = min_n_stratum,
@@ -2318,7 +2336,8 @@
     achieved = list(n = sum(ultimate), cost = evaluated$cost),
     feasibility_tolerance = .bethel_control()$tolerance
   )
-  if (eligible_rate != 1) params$eligible_rate <- eligible_rate
+  if (eligible_per_unit != 1) params$eligible_per_unit <- eligible_per_unit
+  if (!identical(eligibility_rate, 1)) params$eligibility_rate <- eligibility_rate
   if (!is.null(assessed)) {
     params$objective <- problem$objective$spec
     params$budget <- budget

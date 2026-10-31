@@ -58,49 +58,53 @@ quantities, suitable for sensitivity analysis or plotting.
 Valid parameters for \code{newdata} by object type:
 \itemize{
 \item \strong{\code{n_prop}}: \code{p}, \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
-\code{resp_rate}, \code{eligible_rate}, \code{df}, \code{min_cases}
+\code{resp_rate}, \code{eligibility_rate}, \code{eligible_per_unit}, \code{df}, \code{min_cases}
 \item \strong{\code{n_mean}}: \code{var}, \code{mu}, \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
-\code{resp_rate}, \code{df}
+\code{resp_rate}, \code{eligibility_rate}, \code{df}
 \item \strong{\code{n_ratio}}: \code{r}, \code{cv_num}, \code{cv_den}, \code{component_cor}, \code{moe}, \code{rmoe},
-\code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}, \code{df}
+\code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}, \code{eligibility_rate}, \code{df}
 \item \strong{\code{n_change}}: \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
-\code{ratio}, \code{overlap}, \code{overlap_cor}, and \code{change} on the mean scale only,
-since two proportions determine it. The occasion variances are held at
-the values the result was built from, so vary the design rather than the
-estimand. Sweeping \code{overlap} and \code{overlap_cor} is what prices a rotation
-against a fresh sample each round.
+\code{eligibility_rate}, \code{ratio}, \code{overlap}, \code{overlap_cor}, and \code{change} on
+the mean scale only, since two proportions determine it. The occasion
+variances are held at the values the result was built from, so vary the
+design rather than the estimand. Sweeping \code{overlap} and \code{overlap_cor}
+is what prices a rotation against a fresh sample each round.
 \item \strong{\code{n_pooled}}: \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
-\code{mu} on the mean scale, and \code{occasions} only where the overlap and
-correlation are flat across lags, a shaped profile being a statement
-about a horizon that changing the horizon would contradict. The lag
-profiles themselves cannot be varied, a grid row having nowhere to hold
-a vector.
+\code{eligibility_rate}, \code{mu} on the mean scale, and \code{occasions} only where
+the overlap and correlation are flat across lags, a shaped profile being
+a statement about a horizon that changing the horizon would contradict.
+The lag profiles themselves cannot be varied, a grid row having nowhere
+to hold a vector.
 \item \strong{\code{n_cluster}}: \code{cv}, \code{budget}, \code{unit_relvar}, \code{resp_rate},
-\code{resp_rate_psu}, \code{resp_rate_ssu}, \code{eligible_rate}, \code{fixed_cost}, the
+\code{resp_rate_psu}, \code{resp_rate_ssu}, \code{eligibility_rate}, \code{eligible_per_unit},
+\code{fixed_cost}, the
 fixed sizes \code{n_psu}, \code{n_per_psu} and \code{n_per_ssu},
 stage deltas (\code{icc} or \code{icc_psu}, plus \code{icc_ssu} for 3-stage),
 stage ratios (\code{var_ratio} or \code{var_ratio_psu}, plus \code{var_ratio_ssu} for 3-stage),
 and stage costs (\code{cost_psu}, \code{cost_ssu}, \code{cost_tsu}). For 2-stage
 designs, \code{cost_tsu} aliases \code{cost_ssu}.
 \item \strong{\code{power_prop}}: \code{p1}, \code{p2}, \code{n}, \code{power}, \code{alpha}, \code{N}, \code{deff},
-\code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate} (excluding the solved-for
-parameter). Not supported for objects with vector \code{n}.
+\code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate}, \code{eligibility_rate}
+(excluding the solved-for parameter). Not supported for objects with
+vector \code{n}.
 \item \strong{\code{power_mean}}: \code{effect}, \code{var}, \code{n}, \code{power}, \code{alpha}, \code{N},
-\code{deff}, \code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate} (excluding the
-solved-for parameter). Not supported for objects with vector \code{n}.
+\code{deff}, \code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate},
+\code{eligibility_rate} (excluding the solved-for parameter). Not supported
+for objects with vector \code{n}.
 \item \strong{\code{n_alloc}} (classic modes): \code{n}, \code{cv}, \code{budget}, \code{alpha}, \code{deff},
-\code{resp_rate}, \code{min_n_stratum}, \code{alloc_q}. A joint constrained allocation
-varies other controls, described below.
+\code{resp_rate}, \code{eligibility_rate}, \code{min_n_stratum}, \code{alloc_q}. A joint
+constrained allocation varies other controls, described below.
 \item \strong{\code{power_did}}: \code{effect}, \code{n}, \code{power}, \code{alpha}, \code{N}, \code{deff},
-\code{resp_rate}, \code{alternative}, \code{overlap}, \code{overlap_cor}, \code{ratio}
-(excluding the solved-for parameter).
+\code{resp_rate}, \code{eligibility_rate}, \code{alternative}, \code{overlap}, \code{overlap_cor},
+\code{ratio} (excluding the solved-for parameter).
 \item \strong{\code{prec_prop}}: \code{p}, \code{n}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
-\code{eligible_rate}, \code{df}. A result that solved for \code{p} varies the
-target it solved from, \code{cv} or \code{rmoe}, in place of \code{p}.
+\code{eligibility_rate}, \code{eligible_per_unit}, \code{df}. A result that solved for
+\code{p} varies the target it solved from, \code{cv} or \code{rmoe}, in place of \code{p}.
 \item \strong{\code{prec_mean}}: \code{var}, \code{n}, \code{mu}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
-\code{df}. A result that solved for \code{mu} varies \code{cv} in place of \code{mu}.
+\code{eligibility_rate}, \code{df}. A result that solved for \code{mu} varies \code{cv} in
+place of \code{mu}.
 \item \strong{\code{prec_ratio}}: \code{r}, \code{n}, \code{cv_num}, \code{cv_den}, \code{component_cor},
-\code{alpha}, \code{N}, \code{deff}, \code{resp_rate}, \code{df}
+\code{alpha}, \code{N}, \code{deff}, \code{resp_rate}, \code{eligibility_rate}, \code{df}
 }
 
 For \code{svyplan_n} objects, \code{moe}, \code{rmoe}, and \code{cv} are mutually exclusive

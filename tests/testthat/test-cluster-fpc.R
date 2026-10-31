@@ -236,15 +236,15 @@ test_that("the operational block reads the take it actually fields", {
   expect_equal(fit$operational$cv, sqrt(exact) / .fpc_p, tolerance = 1e-8)
 })
 
-## T7. The argument is refused where it has no stages to choose between
+## T7. The stage correction is refused where there are no stages
 
-test_that("fpc is refused outside cluster allocation", {
+test_that("fpc = stage is refused outside cluster allocation", {
   flat <- data.frame(
     stratum = c("a", "b"), N = c(1000, 2000), mean = c(10, 12),
     sd = c(3, 4)
   )
-  expect_error(n_alloc(flat, cv = 0.05, fpc = "stage"), "cluster allocation only")
-  expect_error(n_alloc(flat, cv = 0.05, fpc = "none"), "cluster allocation only")
+  expect_error(n_alloc(flat, cv = 0.05, fpc = "stage"), "applies to cluster allocation")
+  expect_silent(n_alloc(flat, cv = 0.05, fpc = "none"))
   expect_silent(n_alloc(flat, cv = 0.05))
 
   measures <- data.frame(
@@ -256,7 +256,7 @@ test_that("fpc is refused outside cluster allocation", {
   expect_error(
     n_alloc(flat[, c("stratum", "N")], measures = measures,
             targets = targets, fpc = "stage"),
-    "cluster allocation only"
+    "applies to cluster allocation"
   )
 })
 
@@ -857,7 +857,7 @@ test_that("the three-stage stage correction survives every round trip", {
   expect_false(isTRUE(all.equal(swept$n_psu[2], swept$n_psu[1])))
 })
 
-## T15. N counts final-stage units, and eligible units are N * eligible_rate
+## T15. N counts final-stage units, and eligible units are N * eligible_per_unit
 ##
 ## The take is bounded by the N / N_psu final-stage units a PSU holds, and
 ## the within-PSU fraction is the responding share of its eligible units.
@@ -866,24 +866,24 @@ test_that("the take counts final-stage units and the variance eligible ones", {
   args <- list(stage_cost = c(12, 3), icc = 0.015, unit_relvar = 0.54,
                budget = 1000, fpc = "stage", N = 4900, N_psu = 100)
   ## 24.5 eligible units per PSU, and 0.015 < 1 / 25.5, so whole PSUs.
-  half <- do.call(n_cluster, c(args, list(eligible_rate = 0.5)))
+  half <- do.call(n_cluster, c(args, list(eligible_per_unit = 0.5)))
   expect_equal(half$n[["n_per_psu"]], 49)
   expect_lte(half$operational$n[["n_per_psu"]], 49)
   expect_identical(half$params$N, 4900)
   ## 98 eligible units per PSU, and 0.015 > 1 / 99, so the corrected take.
-  double <- do.call(n_cluster, c(args, list(eligible_rate = 2)))
+  double <- do.call(n_cluster, c(args, list(eligible_per_unit = 2)))
   D <- 0.015 - 0.985 / 98
   expect_equal(double$n[["n_per_psu"]], sqrt(12 * 0.985 / (3 * 2 * D)),
                tolerance = 1e-10)
   expect_equal(
     prec_cluster(n = c(10, 30), icc = 0.1, unit_relvar = 2, fpc = "stage",
-                 N = 4900, N_psu = 100, eligible_rate = 2)$cv^2,
+                 N = 4900, N_psu = 100, eligible_per_unit = 2)$cv^2,
     .st_cv2(10, 30, icc = 0.1, U = 2, M = 98, r = 2),
     tolerance = 1e-12
   )
   expect_error(
     prec_cluster(n = c(10, 60), icc = 0.1, fpc = "stage", N = 4900,
-                 N_psu = 100, eligible_rate = 0.5),
+                 N_psu = 100, eligible_per_unit = 0.5),
     "exceeds the units per PSU"
   )
 })

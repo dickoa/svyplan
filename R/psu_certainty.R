@@ -197,7 +197,7 @@
 #' @keywords internal
 #' @noRd
 .psu_field_deff <- function(sizes, certain, per_psu, n_psu_draw, take, icc,
-                            resp) {
+                            resp, scope = 1) {
   N_h <- sum(sizes)
   held <- sizes[certain]
   n_h <- sum(per_psu) + n_psu_draw * take
@@ -206,7 +206,7 @@
   v_certain <- sum(held^2 * (1 / (resp * per_psu) - 1 / held))
   size_rest <- N_h - sum(held)
   v_rest <- if (n_psu_draw > 0) {
-    size_rest^2 * (1 + icc * (take * resp - 1)) *
+    size_rest^2 * (1 + icc * (take * resp * scope - 1)) *
       (1 / (resp * n_psu_draw * take) - 1 / size_rest)
   } else {
     0
@@ -217,13 +217,20 @@
 #' Refuse what the register model does not carry
 #'
 #' The register design effect has no slot for a variance ratio, for losing
-#' a whole PSU, or for an eligible-units rate. Every register route reads
+#' a whole PSU, for an eligible-units rate, or for an eligibility rate that
+#' differs between the indicators of one stratum. Every register route reads
 #' its tables through here, overrides of a fitted plan included.
 #' @keywords internal
 #' @noRd
 .check_register_scope <- function(frame, measures) {
-  if ("eligible_rate" %in% c(names(frame), names(measures))) {
+  if ("eligible_per_unit" %in% c(names(frame), names(measures))) {
     .check_eligible_scope(1, frame, measures, psu = TRUE)
+  }
+  if ("eligibility_rate" %in% names(measures)) {
+    stop(
+      "with a PSU register, 'eligibility_rate' is a stratum rate. Give it as the argument or as a 'frame' column, not in 'measures'",
+      call. = FALSE
+    )
   }
   ratio <- c(frame[["var_ratio_psu"]], measures[["var_ratio_psu"]])
   ratio <- ratio[!is.na(ratio)]
@@ -569,7 +576,8 @@
   df,
   certainty_cutoff = NULL,
   n_psu_per_zone = NULL,
-  control = NULL
+  control = NULL,
+  eligibility_rate = 1
 ) {
   .check_measures_keys(measures)
   psu <- .check_psu_table(psu, frame, measures)
@@ -578,7 +586,7 @@
     frame, psu, measures, targets, unit_cost = unit_cost, alpha = alpha,
     deff = deff, resp_rate = resp_rate, min_n_stratum = min_n_stratum,
     objective = objective, df = df, certainty_cutoff = certainty_cutoff,
-    n_psu_per_zone = n_psu_per_zone
+    n_psu_per_zone = n_psu_per_zone, eligibility_rate = eligibility_rate
   )
   max_nodes <- .search_control(control)$max_nodes
   gap <- .search_control(control)$gap
@@ -589,6 +597,8 @@
   idx_of <- ev$idx_of
   icc_row <- .psu_icc(measures, stratum, idx_of)
   resp_row <- .joint_row_value("resp_rate", measures, frame, resp_rate)
+  scope_row <- .joint_row_value("eligibility_rate", measures, frame,
+                                eligibility_rate)
   user_deff <- .joint_row_value("deff", measures, frame, deff)
   row_h <- match(as.character(measures$stratum), stratum)
   if (anyNA(row_h)) {
@@ -620,7 +630,7 @@
       i <- idx_of[[h]]
       .psu_deff(
         N_h[h], sum(psu$N[i][certain[i]]), sum(psu$N[i][!certain[i]]),
-        icc_row[r], take[h] * resp_row[r]
+        icc_row[r], take[h] * resp_row[r] * scope_row[r]
       )
     }, numeric(1))
     unit <- if (is.null(cost_psu)) {
@@ -640,7 +650,8 @@
       unit_cost = unit, alpha = alpha, deff = deff,
       resp_rate = resp_rate, min_n_stratum = min_n_stratum,
       objective = objective, budget = budget, df = df,
-      .finite_prop_var = FALSE, .whole = whole
+      .finite_prop_var = FALSE, .whole = whole,
+      eligibility_rate = eligibility_rate
     )
   }
 
@@ -694,7 +705,8 @@
   n_int <- n_certain_int + n_psu_draw * take
   assessed <- .psu_field_assess(
     frame, psu, measures, targets, unit_cost, alpha, deff, resp_rate,
-    min_n_stratum, objective, budget, df, certain, per_psu, n_psu_draw
+    min_n_stratum, objective, budget, df, certain, per_psu, n_psu_draw,
+    eligibility_rate = eligibility_rate
   )
   if (!all(assessed$detail$.pass)) {
     stop("internal error: the planned field design misses a target",
@@ -909,12 +921,14 @@
 .psu_field_assess <- function(frame, psu, measures, targets, unit_cost,
                               alpha, deff, resp_rate, min_n_stratum,
                               objective, budget, df, certain, per_psu,
-                              n_psu_draw) {
+                              n_psu_draw, eligibility_rate = 1) {
   stratum <- as.character(frame[["stratum"]] %||% seq_len(nrow(frame)))
   idx_of <- split(seq_len(nrow(psu)), factor(psu$stratum, levels = stratum))
   take <- .psu_take(frame, psu, stratum)
   icc_row <- .psu_icc(measures, stratum, idx_of)
   resp_row <- .joint_row_value("resp_rate", measures, frame, resp_rate)
+  scope_row <- .joint_row_value("eligibility_rate", measures, frame,
+                                eligibility_rate)
   user_deff <- .joint_row_value("deff", measures, frame, deff)
   row_h <- match(as.character(measures$stratum), stratum)
   m <- measures[
@@ -925,7 +939,7 @@
     i <- idx_of[[h]]
     .psu_field_deff(
       psu$N[i], certain[i], per_psu[[h]], n_psu_draw[h], take[h],
-      icc_row[r], resp_row[r]
+      icc_row[r], resp_row[r], scope_row[r]
     )
   }, numeric(1))
   n_int <- vapply(per_psu, sum, numeric(1)) + n_psu_draw * take
@@ -938,7 +952,8 @@
     n = n_int, measures = m, targets = targets, unit_cost = unit_cost,
     alpha = alpha, deff = deff, resp_rate = resp_rate,
     min_n_stratum = min_n_stratum, objective = objective, budget = budget,
-    df = df, .allow_fractional_stages = TRUE, .finite_prop_var = FALSE
+    df = df, .allow_fractional_stages = TRUE, .finite_prop_var = FALSE,
+    eligibility_rate = eligibility_rate
   )
 }
 
@@ -974,7 +989,8 @@
   out <- .psu_field_assess(
     p$frame, psu, p$measures, p$targets, p$unit_cost, p$alpha, p$deff,
     p$resp_rate, p$min_n_stratum, p$objective, p$budget, p$df, certain,
-    per_psu, fit$detail$n_psu_draw
+    per_psu, fit$detail$n_psu_draw,
+    eligibility_rate = p[["eligibility_rate"]] %||% 1
   )
   n_certain <- vapply(idx_of, function(i) sum(certain[i]), numeric(1))
   stage_cost <- all(c("cost_psu", "cost_ssu") %in% names(p$frame))
@@ -1030,7 +1046,8 @@
   df,
   certainty_cutoff = NULL,
   n_psu_per_zone = NULL,
-  .allow_fractional_stages = FALSE
+  .allow_fractional_stages = FALSE,
+  eligibility_rate = 1
 ) {
   if (is.null(n)) stop("'n' is required", call. = FALSE)
   .check_measures_keys(measures)
@@ -1055,6 +1072,8 @@
 
   icc_row <- .psu_icc(measures, stratum, idx_of)
   resp_row <- .joint_row_value("resp_rate", measures, frame, resp_rate)
+  scope_row <- .joint_row_value("eligibility_rate", measures, frame,
+                                eligibility_rate)
   # Kept as supplied, so the object records the caller's input.
   unit_cost_in <- unit_cost
   stage_cost <- c("cost_psu", "cost_ssu") %in% names(frame)
@@ -1114,7 +1133,7 @@
     i <- idx_of[[h]]
     .psu_deff(
       N_h[h], sum(psu$N[i][certain[i]]), sum(psu$N[i][!certain[i]]),
-      icc_row[r], take[h] * resp_row[r]
+      icc_row[r], take[h] * resp_row[r] * scope_row[r]
     )
   }, numeric(1))
 
@@ -1134,7 +1153,8 @@
     unit_cost = unit_cost, alpha = alpha, deff = deff, resp_rate = resp_rate,
     min_n_stratum = min_n_stratum, objective = objective, budget = budget,
     df = df, .allow_fractional_stages = .allow_fractional_stages,
-    .finite_prop_var = FALSE
+    .finite_prop_var = FALSE,
+    eligibility_rate = eligibility_rate
   )
 
   if (!is.null(cost_psu)) {

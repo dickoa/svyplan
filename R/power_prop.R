@@ -22,8 +22,14 @@
 #'   population sizes. `Inf` disables FPC for the corresponding group.
 #' @param deff Design effect multiplier (> 0). Values < 1 are valid for
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). The required sample size is inflated by `1 / resp_rate`.
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1 (no adjustment). The required sample size is inflated by
+#'   `1 / resp_rate`. See the nonresponse section of [svyplan-package] for what
+#'   the rate counts.
+#' @param eligibility_rate Share of issued units in scope, such as dwellings
+#'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
+#'   in scope is `N * eligibility_rate`. See the nonresponse section of
+#'   [svyplan-package].
 #' @param alternative Character: `"two.sided"` (default) or `"one.sided"`.
 #'   Use `"two.sided"` when either an increase or decrease matters (the
 #'   usual default). Use `"one.sided"` when only one direction is of
@@ -205,6 +211,7 @@ power_prop <- function(p1, ...) {
 power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
                        alpha = 0.05, N = Inf, deff = 1,
                        resp_rate = 1,
+                       eligibility_rate = 1,
                        alternative = c("two.sided", "one.sided"),
                        ratio = 1,
                        overlap = 0, overlap_cor = 0,
@@ -226,6 +233,10 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   overlap_draw <- match.arg(overlap_draw)
   .check_overlap_N(overlap, N_pair)
   check_resp_rate(resp_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  N_frame <- N_pair
+  N_pair <- N_pair * eligibility_rate
+  rate <- resp_rate * eligibility_rate
   ratio <- .resolve_ratio(n, ratio)
 
   if (method != "wald" && overlap > 0)
@@ -239,7 +250,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   if (!is.null(n)) {
     n <- .check_power_n(n)
     .check_overlap_n(overlap, n = n)
-    n_pair <- rep_len(n, 2L) * resp_rate
+    n_pair <- rep_len(n, 2L) * rate
     .check_overlap_frame(n_pair[1L], n_pair[2L], N_pair[1L],
                          .frame_overlap(overlap, overlap_draw))
   } else {
@@ -257,6 +268,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
                  resp_rate = resp_rate, alternative = alternative,
                  ratio = ratio, overlap = overlap, overlap_cor = overlap_cor,
                  overlap_draw = overlap_draw, method = method)
+  if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
 
   if (is.null(n)) {
     if (p1 == p2) stop("'p1' and 'p2' must differ", call. = FALSE)
@@ -266,13 +278,13 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
     res <- switch(method,
       wald    = .power_prop_n_wald(p1, p2, power, alpha, N_pair, deff,
                                   alternative, overlap, overlap_cor,
-                                  overlap_draw, ratio, resp_rate),
+                                  overlap_draw, ratio, rate),
       arcsine = .power_prop_n_arcsine(p1, p2, power, alpha, N_pair, deff,
-                                      alternative, ratio, resp_rate),
+                                      alternative, ratio, rate),
       logodds = .power_prop_n_logodds(p1, p2, power, alpha, N_pair, deff,
-                                      alternative, ratio, resp_rate))
+                                      alternative, ratio, rate))
 
-    n_eff <- res * resp_rate
+    n_eff <- res * rate
     achieved_power <- switch(method,
       wald = .power_prop_power_wald(
         p1, p2, n_eff, alpha, N_pair, deff,
@@ -293,9 +305,9 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
     if (p1 == p2) stop("'p1' and 'p2' must differ", call. = FALSE)
     params$p2 <- p2
     params$n <- n
-    .check_gross_n(if (length(n) == 1L) c(n, n) else n, N_pair,
+    .check_gross_n(if (length(n) == 1L) c(n, n) else n, N_frame,
                    label = c("group 1", "group 2"))
-    n_eff <- n * resp_rate
+    n_eff <- n * rate
 
     res <- switch(method,
       wald    = .power_prop_power_wald(p1, p2, n_eff, alpha, N_pair, deff,
@@ -312,9 +324,9 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   } else {
     params$n <- n
     params$power <- power
-    .check_gross_n(if (length(n) == 1L) c(n, n) else n, N_pair,
+    .check_gross_n(if (length(n) == 1L) c(n, n) else n, N_frame,
                    label = c("group 1", "group 2"))
-    n_eff <- n * resp_rate
+    n_eff <- n * rate
 
     res <- switch(method,
       wald    = .power_prop_mde_wald(p1, n_eff, power, alpha, N_pair, deff,

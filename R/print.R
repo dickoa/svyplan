@@ -93,6 +93,13 @@ NULL
 #'
 #' Three rates acting at three stages are not interchangeable, so the print
 #' says which one is set rather than showing a single netted figure.
+#' Share of issued units expected to respond, response times eligibility
+#' @keywords internal
+#' @noRd
+.net_rate <- function(p) {
+  (p[["resp_rate"]] %||% 1) * (p[["eligibility_rate"]] %||% 1)
+}
+
 #' @keywords internal
 #' @noRd
 .print_stage_rates <- function(p) {
@@ -103,8 +110,12 @@ NULL
   )
   set <- rates[rates < 1]
   parts <- sprintf("%s = %s", names(set), vapply(set, .fmt_prob, ""))
-  if (!is.null(p[["eligible_rate"]])) {
-    parts <- c(parts, sprintf("eligible_rate = %.4g", p[["eligible_rate"]]))
+  if (!is.null(p[["eligibility_rate"]])) {
+    parts <- c(parts, sprintf("eligibility_rate = %s",
+                              .fmt_prob(p[["eligibility_rate"]])))
+  }
+  if (!is.null(p[["eligible_per_unit"]])) {
+    parts <- c(parts, sprintf("eligible_per_unit = %.4g", p[["eligible_per_unit"]]))
   }
   if (length(parts) == 0L) {
     return(invisible(NULL))
@@ -198,8 +209,8 @@ print.svyplan_n <- function(x, ...) {
   p <- x$params
   cat(sprintf("Sample size for pooled estimate (%s)\n", .pooled_scale_label(p)))
   cat(sprintf("n = %s per occasion", .fmt_count_n(ceiling(x$n))))
-  if (!is.null(p$resp_rate) && p$resp_rate < 1) {
-    cat(sprintf(" (net: %s)", .fmt_count_n(ceiling(x$n * p$resp_rate))))
+  if (.net_rate(p) < 1) {
+    cat(sprintf(" (net: %s)", .fmt_count_n(ceiling(x$n * .net_rate(p)))))
   }
   cat(sprintf(", %d occasions", p$occasions))
   parts <- c(.fmt_pooled_estimand(p), .fmt_deff(p$deff))
@@ -286,7 +297,7 @@ print.svyplan_n <- function(x, ...) {
 .print_change_n <- function(x) {
   p <- x$params
   cat(sprintf("Sample size for change (%s)\n", .change_scale_label(p)))
-  cat(.fmt_change_n(x$n, p$resp_rate))
+  cat(.fmt_change_n(x$n, .net_rate(p)))
   parts <- c(
     .fmt_change_estimand(p),
     if (!is.null(p$moe)) sprintf("moe = %.4g", p$moe),
@@ -295,6 +306,9 @@ print.svyplan_n <- function(x, ...) {
     .fmt_deff(p$deff),
     if (!is.null(p$resp_rate) && p$resp_rate < 1) {
       sprintf("resp_rate = %s", .fmt_prob(p$resp_rate))
+    },
+    if (!is.null(p[["eligibility_rate"]])) {
+      sprintf("eligibility_rate = %s", .fmt_prob(p[["eligibility_rate"]]))
     }
   )
   cat(sprintf(" (%s)\n", paste(parts, collapse = ", ")))
@@ -404,15 +418,17 @@ print.svyplan_n <- function(x, ...) {
   cat(sprintf("Sample size for %s%s\n", type_label, method_label))
   p <- x$params
   resp_rate <- p$resp_rate
-  eligible_rate <- p[["eligible_rate"]]
-  if (!is.null(eligible_rate)) {
+  eligibility_rate <- p[["eligibility_rate"]]
+  eligible_per_unit <- p[["eligible_per_unit"]]
+  if (!is.null(eligible_per_unit)) {
     cat(sprintf(
       "n = %s gross (eligible respondents: %s)",
       .fmt_count_n(ceiling(x$n)),
-      .fmt_count_n(ceiling(x$n * (resp_rate %||% 1) * eligible_rate))
+      .fmt_count_n(ceiling(x$n * (resp_rate %||% 1) * .params_yield(p)))
     ))
-  } else if (!is.null(resp_rate) && resp_rate < 1) {
-    net_n <- ceiling(x$n * resp_rate)
+  } else if (!is.null(eligibility_rate) ||
+             (!is.null(resp_rate) && resp_rate < 1)) {
+    net_n <- ceiling(x$n * (resp_rate %||% 1) * (eligibility_rate %||% 1))
     cat(sprintf(
       "n = %s gross (net: %s)",
       .fmt_count_n(ceiling(x$n)),
@@ -449,8 +465,12 @@ print.svyplan_n <- function(x, ...) {
   if (!is.null(resp_rate) && resp_rate < 1) {
     parts <- c(parts, sprintf("resp_rate = %s", .fmt_prob(resp_rate)))
   }
-  if (!is.null(eligible_rate)) {
-    parts <- c(parts, sprintf("eligible_rate = %.4g", eligible_rate))
+  if (!is.null(eligibility_rate)) {
+    parts <- c(parts, sprintf("eligibility_rate = %s",
+                              .fmt_prob(eligibility_rate)))
+  }
+  if (!is.null(eligible_per_unit)) {
+    parts <- c(parts, sprintf("eligible_per_unit = %.4g", eligible_per_unit))
   }
   if (length(parts) > 0L) {
     cat(sprintf(" (%s)", paste(parts, collapse = ", ")))
@@ -604,13 +624,14 @@ print.svyplan_cluster <- function(x, ...) {
   # figure reads their product.
   resp_rate <- (x$params$resp_rate_psu %||% 1) *
     (x$params$resp_rate_ssu %||% 1) *
-    (x$params$resp_rate %||% 1)
-  eligible_rate <- x$params[["eligible_rate"]]
-  if (!is.null(eligible_rate)) {
+    (x$params$resp_rate %||% 1) *
+    (x$params[["eligibility_rate"]] %||% 1)
+  eligible_per_unit <- x$params[["eligible_per_unit"]]
+  if (!is.null(eligible_per_unit)) {
     cat(sprintf(
       " -> total n = %s (eligible respondents: %s)\n",
       .fmt_count_n(total_display),
-      .fmt_count_n(ceiling(total_display * resp_rate * eligible_rate))
+      .fmt_count_n(ceiling(total_display * resp_rate * eligible_per_unit))
     ))
   } else if (resp_rate < 1) {
     net_total <- ceiling(total_display * resp_rate)
@@ -794,8 +815,8 @@ print.svyplan_prec <- function(x, ...) {
     .pooled_scale_label(p)
   ))
   cat(sprintf("n = %s per occasion", .fmt_count_n(ceiling(p$n))))
-  if (!is.null(p$resp_rate) && p$resp_rate < 1) {
-    cat(sprintf(" (net: %s)", .fmt_count_n(ceiling(p$n * p$resp_rate))))
+  if (.net_rate(p) < 1) {
+    cat(sprintf(" (net: %s)", .fmt_count_n(ceiling(p$n * .net_rate(p)))))
   }
   cat(sprintf(", %d occasions", p$occasions))
   parts <- c(.fmt_pooled_estimand(p), .fmt_deff(p$deff))
@@ -816,7 +837,7 @@ print.svyplan_prec <- function(x, ...) {
 .print_change_prec <- function(x) {
   p <- x$params
   cat(sprintf("Sampling precision for change (%s)\n", .change_scale_label(p)))
-  cat(.fmt_change_n(p$n, p$resp_rate))
+  cat(.fmt_change_n(p$n, .net_rate(p)))
   parts <- c(.fmt_change_estimand(p), .fmt_deff(p$deff))
   cat(sprintf(" (%s)\n", paste(parts, collapse = ", ")))
   cat(.fmt_overlap(p))
@@ -861,12 +882,12 @@ print.svyplan_prec <- function(x, ...) {
     cat(paste(stage_parts, collapse = " | "))
     cat(sprintf(" -> total n = %s", .fmt_count_n(total_display)))
     resp_all <- (p[["resp_rate_psu"]] %||% 1) * (p[["resp_rate_ssu"]] %||% 1) *
-      (p[["resp_rate"]] %||% 1)
-    if (!is.null(p[["eligible_rate"]])) {
+      (p[["resp_rate"]] %||% 1) * (p[["eligibility_rate"]] %||% 1)
+    if (!is.null(p[["eligible_per_unit"]])) {
       cat(sprintf(
-        " (eligible respondents: %s, eligible_rate = %.4g)",
-        .fmt_count_n(ceiling(total_display * resp_all * p[["eligible_rate"]])),
-        p[["eligible_rate"]]
+        " (eligible respondents: %s, eligible_per_unit = %.4g)",
+        .fmt_count_n(ceiling(total_display * resp_all * p[["eligible_per_unit"]])),
+        p[["eligible_per_unit"]]
       ))
     } else if (resp_all < 1) {
       cat(sprintf(
@@ -908,15 +929,17 @@ print.svyplan_prec <- function(x, ...) {
       if (any(resp_rate < 1)) {
         cat(sprintf(", expected respondents = %.1f", sum(p$n * resp_rate)))
       }
-    } else {
+    } else if (is.null(p[["eligibility_rate"]])) {
       resp_rate <- p$resp_rate
+    } else {
+      resp_rate <- (p$resp_rate %||% 1) * p[["eligibility_rate"]]
     }
-    eligible_rate <- p[["eligible_rate"]]
-    if (!identical(x$type, "alloc") && !is.null(eligible_rate)) {
+    eligible_per_unit <- p[["eligible_per_unit"]]
+    if (!identical(x$type, "alloc") && !is.null(eligible_per_unit)) {
       cat(sprintf(
-        " (eligible respondents: %s, eligible_rate = %.4g)",
-        .fmt_count_n(ceiling(sum(p$n * (resp_rate %||% 1) * eligible_rate))),
-        eligible_rate
+        " (eligible respondents: %s, eligible_per_unit = %.4g)",
+        .fmt_count_n(ceiling(sum(p$n * (resp_rate %||% 1) * eligible_per_unit))),
+        eligible_per_unit
       ))
     } else if (
       !identical(x$type, "alloc") && !is.null(resp_rate) && all(resp_rate < 1)
@@ -1025,7 +1048,8 @@ print.svyplan_varcomp <- function(x, ...) {
   paste0(
     ", ",
     paste(toupper(sel), stage, collapse = ", "),
-    if (identical(x$input, "weighted")) ", weighted sample" else ", frame"
+    if (identical(x$input, "weighted")) ", weighted sample" else ", frame",
+    if (identical(x$estimator, "ratio")) ", ratio estimator" else ""
   )
 }
 
@@ -1082,7 +1106,8 @@ print.svyplan_power <- function(x, ...) {
   ))
 
   p <- x$params
-  resp_rate <- p$resp_rate
+  resp_rate <- if (is.null(p[["eligibility_rate"]])) p$resp_rate else
+    (p$resp_rate %||% 1) * p[["eligibility_rate"]]
 
   is_did <- startsWith(x$type, "did")
   if (length(x$n) == 2L) {
@@ -1161,8 +1186,12 @@ print.svyplan_power <- function(x, ...) {
   }
   parts <- c(parts, sprintf("alpha = %s", .fmt_prob(p$alpha)))
   parts <- c(parts, .fmt_deff(p$deff))
-  if (!is.null(resp_rate) && resp_rate < 1) {
-    parts <- c(parts, sprintf("resp_rate = %s", .fmt_prob(resp_rate)))
+  if (!is.null(p$resp_rate) && p$resp_rate < 1) {
+    parts <- c(parts, sprintf("resp_rate = %s", .fmt_prob(p$resp_rate)))
+  }
+  if (!is.null(p[["eligibility_rate"]])) {
+    parts <- c(parts, sprintf("eligibility_rate = %s",
+                              .fmt_prob(p[["eligibility_rate"]])))
   }
   if (!is.null(p$var) && length(p$var) == 4L) {
     parts <- c(
@@ -1420,9 +1449,9 @@ confint.svyplan_n <- function(object, parm, level = 0.95, ...) {
       p = p$p,
       n = object$n,
       alpha = alpha,
-      N = (p$N %||% Inf) * (p[["eligible_rate"]] %||% 1),
+      N = (p$N %||% Inf) * .params_yield(p),
       deff = p$deff %||% 1,
-      resp_rate = (p$resp_rate %||% 1) * (p[["eligible_rate"]] %||% 1),
+      resp_rate = (p$resp_rate %||% 1) * .params_yield(p),
       method = object$method %||% "wald",
       df = p$df
     )
@@ -1509,9 +1538,9 @@ confint.svyplan_prec <- function(object, parm, level = 0.95, ...) {
       p = p$p,
       n = p$n,
       alpha = alpha,
-      N = (p$N %||% Inf) * (p[["eligible_rate"]] %||% 1),
+      N = (p$N %||% Inf) * .params_yield(p),
       deff = p$deff %||% 1,
-      resp_rate = (p$resp_rate %||% 1) * (p[["eligible_rate"]] %||% 1),
+      resp_rate = (p$resp_rate %||% 1) * .params_yield(p),
       method = object$method %||% "wald",
       df = p$df
     )
@@ -2180,6 +2209,13 @@ print.svyplan_strata <- function(x, ...) {
     parts <- c(parts, "min_n_stratum per stratum")
   }
   resp_rate <- p$resp_rate
+  if (!is.null(p[["eligibility_rate"]])) {
+    parts <- c(
+      parts,
+      sprintf("eligibility_rate = %s",
+              .fmt_by_stratum(p[["eligibility_rate"]], .fmt_prob))
+    )
+  }
   if (!is.null(resp_rate) && any(resp_rate < 1)) {
     parts <- c(
       parts,
@@ -3055,9 +3091,13 @@ summary.svyplan_prec <- function(object, ...) {
       response_rate = problem$resp_hk[at],
       stringsAsFactors = FALSE
     )
+    scope <- problem$scope_hk
+    if (!is.null(scope) && any(scope[at] != 1)) {
+      model$eligibility_rate <- scope[at]
+    }
     elig <- problem$elig_hk
     if (!is.null(elig) && any(elig[at] != 1)) {
-      model$eligible_rate <- elig[at]
+      model$eligible_per_unit <- elig[at]
     }
   }
   list(
@@ -3073,6 +3113,7 @@ summary.svyplan_prec <- function(object, ...) {
       "two_part_certainty_wald"
     },
     feasibility_tolerance = p$feasibility_tolerance,
+    fpc = p$fpc %||% "unit",
     min_n_stratum = p$min_n_stratum,
     fixed_takes = if (problem$stages > 1L) {
       data.frame(
@@ -3165,10 +3206,14 @@ summary.svyplan_prec <- function(object, ...) {
       assumptions = list(
         alpha = object$params$alpha,
         deff = state$deff,
-        response_rate = state$response_rate,
+        response_rate = state$response_rate / state$eligibility_rate,
+        eligibility_rate = if (any(state$eligibility_rate != 1)) {
+          state$eligibility_rate
+        },
         unit_response_rate = state$unit_response_rate,
         psu_response_rate = state$psu_response_rate,
         df = object$params$df,
+        fpc = object$params$fpc %||% "unit",
         min_n_stratum = object$params$min_n_stratum,
         alloc_q = object$params$alloc_q
       )
@@ -3193,7 +3238,8 @@ summary.svyplan_prec <- function(object, ...) {
   response <- rates$combined
   S_h <- d$sd
   cost_h <- d$unit_cost
-  N_fpc <- d$N
+  N_scope <- d$N * rates$eligibility
+  N_fpc <- if (identical(p$fpc, "none")) rep(Inf, H) else N_scope
 
   if (cluster) {
     take <- if (operational && "n_per_psu_int" %in% names(d)) {
@@ -3208,7 +3254,7 @@ summary.svyplan_prec <- function(object, ...) {
     # Rebuilt on the take being displayed, so the operational block reads the
     # correction the operational design gets. See .alloc_cluster_prep().
     within_frac <- if (identical(fpc_mode, "stage")) {
-      pmin(1, responding_take / (d$N / frame$N_psu))
+      pmin(1, responding_take / (N_scope / frame$N_psu))
     } else {
       rep(0, H)
     }
@@ -3217,7 +3263,7 @@ summary.svyplan_prec <- function(object, ...) {
     S_h <- d$sd * sqrt(inflation)
     N_fpc <- switch(
       fpc_mode,
-      unit = d$N,
+      unit = N_scope,
       none = rep(Inf, H),
       stage = ifelse(icc > 0, frame$N_psu * inflation / (var_ratio * icc), Inf)
     )
@@ -3231,6 +3277,7 @@ summary.svyplan_prec <- function(object, ...) {
   mean_h <- if ("mean" %in% names(d)) d$mean else rep(NA_real_, H)
   metrics <- .alloc_metrics(
     N_h = d$N,
+    N_pop = N_scope,
     S_h = S_h,
     mean_h = mean_h,
     n_h = n_h,
@@ -3245,6 +3292,7 @@ summary.svyplan_prec <- function(object, ...) {
     metrics = metrics,
     stratum = d$stratum,
     population = d$N,
+    population_in_scope = N_scope,
     N_fpc = N_fpc,
     sd = S_h,
     mean = mean_h,
@@ -3252,6 +3300,7 @@ summary.svyplan_prec <- function(object, ...) {
     unit_response_rate = unit_response,
     psu_response_rate = psu_response,
     response_rate = response,
+    eligibility_rate = rates$eligibility,
     cost_h = cost_h,
     cluster = cluster
   )
@@ -3276,7 +3325,16 @@ summary.svyplan_prec <- function(object, ...) {
   } else {
     rep(1, H)
   }
-  list(unit = unit, psu = psu, combined = unit * psu)
+  eligibility <- .alloc_resolve_h(
+    p[["eligibility_rate"]] %||% 1,
+    frame,
+    "eligibility_rate",
+    H,
+    .check_resp_rate_h
+  )
+  unit <- unit * eligibility
+  list(unit = unit, psu = psu, combined = unit * psu,
+       eligibility = eligibility)
 }
 
 #' Overall fields on the same numerical basis as the stratum tables
@@ -3336,10 +3394,14 @@ summary.svyplan_prec <- function(object, ...) {
   out <- data.frame(
     stratum = d$stratum,
     population = d$N,
-    response_rate = state$response_rate,
+    response_rate = state$response_rate / state$eligibility_rate,
     unit_cost = state$cost_h,
     stringsAsFactors = FALSE
   )
+  if (any(state$eligibility_rate != 1)) {
+    out <- cbind(out[1:3], eligibility_rate = state$eligibility_rate,
+                 out[-(1:3)])
+  }
   if (identical(kind, "design")) {
     out$n_continuous <- d$n
     out$n_field <- n_h
@@ -3416,6 +3478,7 @@ summary.svyplan_prec <- function(object, ...) {
     idx <- idx_list[[i]]
     m <- .alloc_metrics(
       N_h = state$population[idx],
+      N_pop = state$population_in_scope[idx],
       S_h = state$sd[idx],
       mean_h = state$mean[idx],
       n_h = n_h[idx],
@@ -3554,6 +3617,7 @@ print.summary.svyplan_bethel <- function(x, ...) {
     "  feasibility tolerance: %.3g\n",
     x$assumptions$feasibility_tolerance
   ))
+  .print_alloc_fpc(x$assumptions$fpc)
   if (!is.null(x$assumptions$df) && any(is.finite(x$assumptions$df))) {
     cat(sprintf(
       "  interval df: %s\n",
@@ -3884,7 +3948,8 @@ print.summary.svyplan_bethel <- function(x, ...) {
     variance = "Variance",
     deff = "Deff",
     response_rate = "Resp.",
-    eligible_rate = "Elig.",
+    eligibility_rate = "Scope",
+    eligible_per_unit = "Elig.",
     n_per_psu = "Take/PSU",
     n_per_ssu = "Take/SSU",
     diagnostic = "Diagnostic",
@@ -3936,13 +4001,15 @@ print.summary.svyplan_alloc <- function(x, ...) {
     } else {
       "Overall precision"
     },
-    show_response = any(x$assumptions$response_rate < 1)
+    show_response = any(x$assumptions$response_rate < 1) ||
+      !is.null(x$assumptions$eligibility_rate)
   )
   if (!is.null(x$continuous)) {
     cat("\nContinuous design\n")
     .print_alloc_summary_values(
       x$continuous,
-      show_response = any(x$assumptions$response_rate < 1),
+      show_response = any(x$assumptions$response_rate < 1) ||
+      !is.null(x$assumptions$eligibility_rate),
       indent = "  "
     )
   }
@@ -3953,6 +4020,7 @@ print.summary.svyplan_alloc <- function(x, ...) {
       "stratum",
       "population",
       "response_rate",
+      "eligibility_rate",
       "n_continuous",
       "n_field",
       "n_supplied",
@@ -4086,10 +4154,31 @@ print.summary.svyplan_alloc <- function(x, ...) {
     "  response rate: %s\n",
     .fmt_by_stratum(x$assumptions$response_rate, .fmt_prob)
   ))
+  if (!is.null(x$assumptions$eligibility_rate)) {
+    cat(sprintf(
+      "  eligibility rate: %s\n",
+      .fmt_by_stratum(x$assumptions$eligibility_rate, .fmt_prob)
+    ))
+  }
   if (!is.null(x$assumptions$df)) {
     cat(sprintf("  interval df: %g\n", x$assumptions$df))
   }
+  .print_alloc_fpc(x$assumptions$fpc)
   invisible(x)
+}
+
+#' The finite population correction line of an allocation summary
+#'
+#' Printed only away from the default `"unit"`.
+#' @keywords internal
+#' @noRd
+.print_alloc_fpc <- function(fpc) {
+  if (!is.null(fpc) && !identical(fpc, "unit")) {
+    cat(sprintf(
+      "  finite population correction: %s\n",
+      if (identical(fpc, "none")) "none" else "by stage"
+    ))
+  }
 }
 
 #' Print named overall allocation values
@@ -5618,9 +5707,11 @@ print.summary.svyplan_panel <- function(x, ...) {
   } else {
     sprintf("%.0f%% of the loss at wave 1", 100 * share)
   }
+  elig <- x$params[["eligibility_rate"]]
   sprintf(
-    "rates: response %.3g, retention %s (%s)\n",
+    "rates: response %.3g%s, retention %s (%s)\n",
     x$params$resp_rate,
+    if (is.null(elig)) "" else sprintf(", eligibility %.3g", elig),
     ret_txt,
     loss_txt
   )
@@ -5633,7 +5724,10 @@ print.summary.svyplan_panel <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .fmt_panel_target_rate <- function(x) {
-  rr <- .panel_rate_conflict(x$target$params$resp_rate, x$params$resp_rate)
+  rr <- .panel_rate_conflict(
+    .panel_target_rate(x$target$params),
+    x$params$resp_rate * (x$params[["eligibility_rate"]] %||% 1)
+  )
   if (is.null(rr)) {
     return("")
   }

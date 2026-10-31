@@ -498,7 +498,7 @@ test_that("prec_multi(fit) drops the floors that shaped the size", {
 test_that("prec_multi() keeps the domain key on every row of $detail", {
   ind <- data.frame(lga = c("A", "B", "C"), name = "mcpr",
                     p = c(0.2, 0.08, 0.15), n = c(800, 900, 1000),
-                    eligible_rate = c(0.6, 2.3, 1.2))
+                    eligible_per_unit = c(0.6, 2.3, 1.2))
   pr <- prec_multi(ind, domains = "lga")
   expect_identical(names(pr$detail)[1:2], c("lga", "name"))
   expect_identical(pr$detail$lga, ind$lga)

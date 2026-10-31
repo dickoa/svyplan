@@ -22,12 +22,17 @@
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
 #'   A published DEFT is squared first. See [varcomp()] for that and for
 #'   removing the published survey's weighting loss.
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). The effective sample size is `n * resp_rate`. A rate of
-#'   eligible units per sampled unit at or below 1, such as
-#'   0.41 married women per household, folds in here as
-#'   `resp_rate * eligible_rate`. With a finite `N` this errs slightly
-#'   conservative.
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1 (no adjustment). The effective sample size is `n * resp_rate`. A
+#'   rate of eligible units per sampled unit at or below 1, such as 0.41
+#'   married women per household, folds in here as
+#'   `resp_rate * eligible_per_unit`. With a finite `N` this errs slightly
+#'   conservative. See the nonresponse section of [svyplan-package] for what
+#'   the rate counts.
+#' @param eligibility_rate Share of issued units in scope, such as dwellings
+#'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
+#'   in scope is `N * eligibility_rate`. See the nonresponse section of
+#'   [svyplan-package].
 #' @param df Degrees of freedom of the variance estimator the planned design
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the interval quantile from normal to t.
@@ -145,6 +150,7 @@ prec_mean.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   df = NULL,
   plan = NULL
 ) {
@@ -158,6 +164,7 @@ prec_mean.default <- function(
   check_population_size(N)
   check_deff(deff)
   check_resp_rate(resp_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
   .check_gross_n(n, N)
   if (!is.null(mu) && !is.null(cv)) {
     stop("specify at most one of 'mu' or 'cv'", call. = FALSE)
@@ -171,10 +178,12 @@ prec_mean.default <- function(
   solved <- if (!is.null(cv)) "mu" else NULL
   if (!is.null(solved)) {
     check_scalar(cv, "cv")
-    mu <- .prec_solve_mean(cv, var, n, alpha, N, deff, resp_rate, df)
+    mu <- .prec_solve_mean(cv, var, n, alpha, N * eligibility_rate, deff,
+                           resp_rate * eligibility_rate, df)
   }
 
-  prec <- .prec_engine_mean(var, mu, n, alpha, N, deff, resp_rate, df)
+  prec <- .prec_engine_mean(var, mu, n, alpha, N * eligibility_rate, deff,
+                            resp_rate * eligibility_rate, df)
   se <- prec$se
   moe <- prec$moe
   cv_val <- prec$cv
@@ -188,6 +197,9 @@ prec_mean.default <- function(
     resp_rate = resp_rate,
     df = df
   )
+  if (eligibility_rate != 1) {
+    params$eligibility_rate <- eligibility_rate
+  }
 
   if (!is.null(mu)) {
     params$mu <- mu
@@ -219,6 +231,7 @@ prec_mean.svyplan_n <- function(var, ...) {
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate %||% 1,
+    eligibility_rate = par[["eligibility_rate"]] %||% 1,
     df = par$df
   )
   do.call(prec_mean.default, .roundtrip_args(args, list(...), prec_mean.default))

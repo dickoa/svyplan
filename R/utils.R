@@ -283,7 +283,7 @@ check_precision <- function(moe, cv, rmoe = NULL) {
 #'
 #' The whole-unit counterpart of `.check_expected_take()`. Rows sharing a
 #' take need it for the lowest rate among them. A rate above one, which
-#' `eligible_rate` allows, gives one.
+#' `eligible_per_unit` allows, gives one.
 #' @keywords internal
 #' @noRd
 .take_floor <- function(rate) {
@@ -1113,13 +1113,13 @@ check_overlap_cor <- function(overlap_cor) {
 #' Check response rate in (0, 1]
 #' @keywords internal
 #' @noRd
-check_eligible_rate <- function(eligible_rate, name = "eligible_rate") {
+check_eligible_per_unit <- function(eligible_per_unit, name = "eligible_per_unit") {
   if (
-    !is.numeric(eligible_rate) ||
-      length(eligible_rate) != 1L ||
-      anyNA(eligible_rate) ||
-      !is.finite(eligible_rate) ||
-      eligible_rate <= 0
+    !is.numeric(eligible_per_unit) ||
+      length(eligible_per_unit) != 1L ||
+      anyNA(eligible_per_unit) ||
+      !is.finite(eligible_per_unit) ||
+      eligible_per_unit <= 0
   ) {
     stop(sprintf("'%s' must be a positive finite number", name),
          call. = FALSE)
@@ -1129,41 +1129,53 @@ check_eligible_rate <- function(eligible_rate, name = "eligible_rate") {
 
 #' Check the eligible population a proportion's FPC reads
 #'
-#' The Bernoulli correction divides by `N * eligible_rate - 1`, so a finite
+#' The Bernoulli correction divides by `N * eligible_per_unit - 1`, so a finite
 #' eligible population must exceed one unit.
 #' @keywords internal
 #' @noRd
-check_eligible_population <- function(N, eligible_rate) {
-  N_elig <- N * eligible_rate
+check_eligible_population <- function(N, eligible_per_unit,
+                                      eligibility_rate = 1) {
+  N_elig <- N * eligibility_rate * eligible_per_unit
   if (is.finite(N_elig) && N_elig <= 1) {
     stop(
-      "'N * eligible_rate', the eligible population, must be greater than 1",
+      sprintf(
+        "'%s', the eligible population, must be greater than 1",
+        if (eligibility_rate == 1) "N * eligible_per_unit" else
+          "N * eligibility_rate * eligible_per_unit"
+      ),
       call. = FALSE
     )
   }
   invisible(N_elig)
 }
 
+#' Eligible units per issued unit stored in a result's parameters
+#' @keywords internal
+#' @noRd
+.params_yield <- function(params) {
+  (params[["eligibility_rate"]] %||% 1) * (params[["eligible_per_unit"]] %||% 1)
+}
+
 #' Refuse an eligible-units rate where the allocation cannot carry it
 #' @keywords internal
 #' @noRd
-.check_eligible_scope <- function(eligible_rate, frame, measures, psu) {
-  given <- !identical(eligible_rate, 1) ||
-    "eligible_rate" %in% c(names(frame), names(measures))
+.check_eligible_scope <- function(eligible_per_unit, frame, measures, psu) {
+  given <- !identical(eligible_per_unit, 1) ||
+    "eligible_per_unit" %in% c(names(frame), names(measures))
   if (!given) return(invisible(TRUE))
   if (!is.null(psu)) {
     stop(
-      "'eligible_rate' is not available with a PSU register. Fold a rate at most 1 into 'resp_rate', or drop 'psu' and give 'N_psu'",
+      "'eligible_per_unit' is not available with a PSU register. Fold a rate at most 1 into 'resp_rate', or drop 'psu' and give 'N_psu'",
       call. = FALSE
     )
   }
   if (is.null(measures)) {
     stop(
-      "'eligible_rate' applies to joint allocation. Give 'measures' and 'targets', one row each for a single indicator",
+      "'eligible_per_unit' applies to joint allocation. Give 'measures' and 'targets', one row each for a single indicator",
       call. = FALSE
     )
   }
-  check_eligible_rate(eligible_rate)
+  check_eligible_per_unit(eligible_per_unit)
   invisible(TRUE)
 }
 
@@ -1929,12 +1941,14 @@ check_df <- function(df, name = "df") {
 #' Error when a gross sample cannot be drawn from a finite frame
 #' @keywords internal
 #' @noRd
-.check_attainable <- function(n, N, resp_rate) {
+.check_attainable <- function(n, N, resp_rate, eligibility_rate = 1) {
   if (!is.infinite(N) && n > N * (1 + 1e-9)) {
     stop(
       sprintf(
-        "required sample (%s units drawn) exceeds the population (N = %s): even a census yields about %s respondents at resp_rate = %s; the target is unattainable",
-        round(n, 1), N, round(N * resp_rate), resp_rate
+        "required sample (%s units drawn) exceeds the population (N = %s): even a census yields about %s respondents at resp_rate = %s%s; the target is unattainable",
+        round(n, 1), N, round(N * resp_rate * eligibility_rate), resp_rate,
+        if (eligibility_rate == 1) "" else
+          sprintf(" and eligibility_rate = %s", eligibility_rate)
       ),
       call. = FALSE
     )
@@ -1983,7 +1997,7 @@ check_df <- function(df, name = "df") {
   if (!identical(type, "proportion") || is.null(params$p) || is.null(n)) {
     return(NULL)
   }
-  n * (params$resp_rate %||% 1) * (params$eligible_rate %||% 1) * params$p
+  n * (params$resp_rate %||% 1) * .params_yield(params) * params$p
 }
 
 #' Sample size the minimum expected count of positive cases demands
@@ -2145,7 +2159,7 @@ check_df <- function(df, name = "df") {
     counts <- distinct[j]
     population <- rep_len(N, length(distinct))[j]
     stop(sprintf(
-      "finite population overlap is infeasible: the two responding samples require %.10g distinct units but 'N' is %.10g; increase 'overlap', reduce 'n', or relax the sizing target",
+      "finite population overlap is infeasible: the two responding samples require %.10g distinct units but the population in scope ('N', times 'eligibility_rate' when given) is %.10g; increase 'overlap', reduce 'n', or relax the sizing target",
       counts, population
     ), call. = FALSE)
   }
@@ -2871,11 +2885,22 @@ check_df <- function(df, name = "df") {
       defaults$method <- defaults$prop_method
     }
   }
-  if (!is.null(defaults$eligible_rate) && defaults$eligible_rate != 1 &&
-      !"eligible_rate" %in% target_fmls) {
+  if (!is.null(defaults[["eligibility_rate"]]) &&
+      defaults[["eligibility_rate"]] != 1 &&
+      !"eligibility_rate" %in% target_fmls) {
     stop(
       sprintf(
-        "the profile sets 'eligible_rate', which %s() does not take. Drop it from the profile for this call, or fold it into 'resp_rate' when it is at most 1",
+        "the profile sets 'eligibility_rate', which %s() does not take. Drop it from the profile for this call",
+        .plan_target_name(fn, mc)
+      ),
+      call. = FALSE
+    )
+  }
+  if (!is.null(defaults$eligible_per_unit) && defaults$eligible_per_unit != 1 &&
+      !"eligible_per_unit" %in% target_fmls) {
+    stop(
+      sprintf(
+        "the profile sets 'eligible_per_unit', which %s() does not take. Drop it from the profile for this call, or fold it into 'resp_rate' when it is at most 1",
         .plan_target_name(fn, mc)
       ),
       call. = FALSE
@@ -3137,9 +3162,15 @@ check_df <- function(df, name = "df") {
       call. = FALSE
     )
   }
-  if (!eligible && "eligible_rate" %in% nms) {
+  if (!eligible && "eligible_per_unit" %in% nms) {
     stop(
-      "an 'eligible_rate' column applies to n_multi() and prec_multi(). With cluster stages, fold a rate at most 1 into each row's 'resp_rate'",
+      "an 'eligible_per_unit' column applies to n_multi() and prec_multi(). With cluster stages, fold a rate at most 1 into each row's 'resp_rate'",
+      call. = FALSE
+    )
+  }
+  if (!eligible && "eligibility_rate" %in% nms) {
+    stop(
+      "an 'eligibility_rate' column applies to n_multi() and prec_multi(). With cluster stages, give the argument 'eligibility_rate', which applies to every row",
       call. = FALSE
     )
   }
@@ -3193,7 +3224,8 @@ check_df <- function(df, name = "df") {
       call. = FALSE
     )
   }
-  elig <- .indicator_rate(indicators, "eligible_rate", nrow(indicators))
+  elig <- .indicator_rate(indicators, "eligible_per_unit", nrow(indicators)) *
+    .indicator_rate(indicators, "eligibility_rate", nrow(indicators))
   out <- rep(NA_real_, nrow(indicators))
   out[set] <- vapply(
     which(set),
@@ -3297,7 +3329,7 @@ check_df <- function(df, name = "df") {
 
 #' Size each row's respondent floor needs
 #'
-#' The floor counts eligible respondents, `n * resp_rate * eligible_rate`,
+#' The floor counts eligible respondents, `n * resp_rate * eligible_per_unit`,
 #' with no proportion in it, which is what sets it apart from `min_cases`.
 #' @keywords internal
 #' @noRd
@@ -3306,7 +3338,8 @@ check_df <- function(df, name = "df") {
       all(is.na(indicators$min_respondents))) {
     return(NULL)
   }
-  elig <- .indicator_rate(indicators, "eligible_rate", nrow(indicators))
+  elig <- .indicator_rate(indicators, "eligible_per_unit", nrow(indicators)) *
+    .indicator_rate(indicators, "eligibility_rate", nrow(indicators))
   indicators$min_respondents / (indicators$resp_rate * elig)
 }
 
@@ -3346,7 +3379,7 @@ check_df <- function(df, name = "df") {
     }
   }
   for (rate in intersect(
-    c("resp_rate_psu", "resp_rate_ssu", "resp_rate"),
+    c("resp_rate_psu", "resp_rate_ssu", "resp_rate", "eligibility_rate"),
     names(indicators)
   )) {
     vals <- indicators[[rate]][!is.na(indicators[[rate]])]

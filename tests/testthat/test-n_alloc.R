@@ -1392,7 +1392,7 @@ test_that("joint prec_alloc() sums domain variances with eligible weights", {
                      p = c(0.22, 0.19, 0.08),
                      deff = c(1.02, 1.09, 1.65)^2,
                      resp_rate = c(0.84, 0.91, 0.88),
-                     eligible_rate = c(0.59, 1.23, 2.30))
+                     eligible_per_unit = c(0.59, 1.23, 2.30))
   n <- c(850, 1525, 975)
   res <- prec_alloc(regions, n = n, measures = mcpr,
                     targets = data.frame(name = "mcpr",
@@ -1401,13 +1401,13 @@ test_that("joint prec_alloc() sums domain variances with eligible weights", {
   d <- res$detail
   se <- mapply(function(p, n, N, deff, r, e) {
     x <- prec_prop(p, n = n, N = N, deff = deff, resp_rate = r,
-                   eligible_rate = e)
+                   eligible_per_unit = e)
     x$cv * p
-  }, mcpr$p, n, regions$N, mcpr$deff, mcpr$resp_rate, mcpr$eligible_rate)
+  }, mcpr$p, n, regions$N, mcpr$deff, mcpr$resp_rate, mcpr$eligible_per_unit)
   expect_equal(d$.achieved[d$domain == "region"],
                (se / mcpr$p)[match(d$level[d$domain == "region"],
                                    regions$stratum)])
-  W <- regions$N * mcpr$eligible_rate / sum(regions$N * mcpr$eligible_rate)
+  W <- regions$N * mcpr$eligible_per_unit / sum(regions$N * mcpr$eligible_per_unit)
   expect_equal(d$.achieved[d$domain == ".overall"],
                sqrt(sum(W^2 * se^2)) / sum(W * mcpr$p))
   expect_identical(d$.pass[d$level %in% "East"], FALSE)

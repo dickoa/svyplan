@@ -423,13 +423,13 @@ test_that("an assessment override keeps a register fit's field design", {
   m$resp_rate_psu <- 0.9
   expect_error(prec_alloc(fit, measures = m), "'resp_rate_psu' and")
   m <- z$measures
-  m$eligible_rate <- 0.5
+  m$eligible_per_unit <- 0.5
   for (call in list(quote(prec_alloc(fit, measures = m)),
                     quote(prec_alloc(fit, n = fit$detail$n, measures = m)))) {
     expect_error(eval(call),
-                 "'eligible_rate' is not available with a PSU register")
+                 "'eligible_per_unit' is not available with a PSU register")
   }
-  expect_error(prec_alloc(fit, eligible_rate = 0.5), "unused argument")
+  expect_error(prec_alloc(fit, eligible_per_unit = 0.5), "unused argument")
   fr <- z$frame
   fr$cost_psu <- 100
   fr$cost_ssu <- 10

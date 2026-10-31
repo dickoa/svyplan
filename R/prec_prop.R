@@ -27,11 +27,16 @@
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
 #'   A published DEFT is squared first. See [varcomp()] for that and for
 #'   removing the published survey's weighting loss.
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). The effective sample size is `n * resp_rate`.
-#' @param eligible_rate Eligible units per sampled unit, a positive number,
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1 (no adjustment). The effective sample size is `n * resp_rate`.
+#'   See the nonresponse section of [svyplan-package] for what the rate counts.
+#' @param eligibility_rate Share of issued units in scope, such as dwellings
+#'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
+#'   in scope is `N * eligibility_rate`. See the nonresponse section of
+#'   [svyplan-package].
+#' @param eligible_per_unit Eligible units per sampled unit, a positive number,
 #'   default 1. `n` and `N` stay in sampled units, and a finite
-#'   `N * eligible_rate` must exceed 1. See [n_prop()].
+#'   `N * eligible_per_unit` must exceed 1. See [n_prop()].
 #' @param method One of `"wald"` (default), `"wilson"`, `"logodds"`, or
 #'   `"beta"` (Korn-Graubard). See [n_prop()] for how to choose.
 #' @param df Degrees of freedom of the variance estimator, typically sampled
@@ -208,7 +213,7 @@
 #'
 #' # 6000 households and 0.41 married women per household
 #' prec_prop(p = 0.28, n = 6000, deff = 2.5, resp_rate = 0.9,
-#'           eligible_rate = 0.41)
+#'           eligible_per_unit = 0.41)
 #'
 #' @export
 prec_prop <- function(p, ...) {
@@ -231,7 +236,8 @@ prec_prop.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   method = c("wald", "wilson", "logodds", "beta"),
   df = NULL,
   plan = NULL
@@ -247,13 +253,14 @@ prec_prop.default <- function(
   check_population_size(N)
   check_deff(deff)
   check_resp_rate(resp_rate)
-  check_eligible_rate(eligible_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  check_eligible_per_unit(eligible_per_unit)
   .check_gross_n(n, N)
   method <- match.arg(method)
   if (!is.null(df)) check_df(df)
 
-  N_elig <- check_eligible_population(N, eligible_rate)
-  rate <- resp_rate * eligible_rate
+  N_elig <- check_eligible_population(N, eligible_per_unit, eligibility_rate)
+  rate <- resp_rate * eligibility_rate * eligible_per_unit
   solved <- if (is.null(p)) "p" else NULL
   if (!is.null(solved)) {
     if (!is.null(cv)) {
@@ -280,8 +287,11 @@ prec_prop.default <- function(
     resp_rate = resp_rate,
     df = df
   )
-  if (eligible_rate != 1) {
-    params$eligible_rate <- eligible_rate
+  if (eligibility_rate != 1) {
+    params$eligibility_rate <- eligibility_rate
+  }
+  if (eligible_per_unit != 1) {
+    params$eligible_per_unit <- eligible_per_unit
   }
   # Which target drove the solve, since 'cv' and 'rmoe' both report
   # solved = "p" but re-solve differently: the CV root is the same under
@@ -316,7 +326,8 @@ prec_prop.svyplan_n <- function(p, ...) {
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate %||% 1,
-    eligible_rate = par$eligible_rate %||% 1,
+    eligibility_rate = par[["eligibility_rate"]] %||% 1,
+    eligible_per_unit = par$eligible_per_unit %||% 1,
     method = x$method %||% "wald",
     df = par$df
   )

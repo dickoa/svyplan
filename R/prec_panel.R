@@ -18,8 +18,11 @@
 #' @param ... Additional arguments passed to methods. Unused arguments are
 #'   rejected. In the `svyplan_panel` method, named arguments override the
 #'   stored ones, so a stored plan can be re-read under worse retention.
-#' @param resp_rate Response rate at recruitment, wave 1, in (0, 1\].
-#'   Default 1.
+#' @param resp_rate Response rate among eligible units at recruitment, wave 1,
+#'   in (0, 1\]. Default 1. See the nonresponse section of [svyplan-package]
+#'   for what the rate counts.
+#' @param eligibility_rate Share of issued units in scope at recruitment, in
+#'   (0, 1\]. Default 1. See the nonresponse section of [svyplan-package].
 #' @param design `"fixed"` or `"rotating"`. See [n_panel()].
 #' @param target_wave The wave the headline precision is reported at,
 #'   defaulting to the last. It must be absent for a rotating design, whose
@@ -92,6 +95,7 @@ prec_panel.default <- function(
   retention,
   ...,
   resp_rate = 1,
+  eligibility_rate = 1,
   design = c("fixed", "rotating"),
   target_wave = NULL,
   assurance = NULL,
@@ -101,7 +105,7 @@ prec_panel.default <- function(
   .check_unused_dots(...)
   design <- .check_panel_design(design)
   tgt <- .panel_target(target)
-  q <- .panel_q(resp_rate, retention)
+  q <- .panel_q(resp_rate, retention, eligibility_rate)
   target_wave <- .check_target_wave(target_wave, length(q), design)
   assurance <- .check_assurance(assurance)
   start <- .check_panel_start(start, design)
@@ -109,7 +113,7 @@ prec_panel.default <- function(
 
   .panel_result(
     tgt, n_recruit, resp_rate, retention, q, design, target_wave, assurance,
-    start, rotation = rotation, rot = rot
+    start, rotation = rotation, rot = rot, eligibility_rate = eligibility_rate
   )
 }
 
@@ -141,6 +145,7 @@ prec_panel.svyplan_panel <- function(n_recruit, ...) {
     target = x$target,
     retention = p$retention,
     resp_rate = p$resp_rate,
+    eligibility_rate = p[["eligibility_rate"]] %||% 1,
     design = p$design,
     target_wave = p$target_wave,
     assurance = p$assurance,

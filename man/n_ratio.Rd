@@ -21,6 +21,7 @@ n_ratio(r = NULL, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   df = NULL,
   plan = NULL
 )
@@ -73,10 +74,15 @@ above, which is the one place this differs from \code{\link[=n_mean]{n_mean()}}.
 published DEFT is squared first. See \code{\link[=varcomp]{varcomp()}} for that and for
 removing the published survey's weighting loss.}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1. The rate
-is for records usable on both components, not on either alone. See the
-nonresponse section of \link{svyplan-package} for what this adjustment does
-and does not claim.}
+\item{resp_rate}{Expected response rate among eligible units, in (0, 1].
+Default 1. The rate is for records usable on both components, not on
+either alone. See the nonresponse section of \link{svyplan-package} for what
+the rate counts and what this adjustment does and does not claim.}
+
+\item{eligibility_rate}{Share of issued units in scope, such as dwellings
+found occupied, in (0, 1]. Default 1. With a finite \code{N}, the population
+in scope is \code{N * eligibility_rate}. See the nonresponse section of
+\link{svyplan-package}.}
 
 \item{df}{Degrees of freedom of the variance estimator the planned design
 will have, available from \code{\link[=design_df]{design_df()}}. It switches the interval

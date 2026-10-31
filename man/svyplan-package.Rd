@@ -20,6 +20,36 @@ sample belongs to \pkg{survey} or \pkg{srvyr}.
 
 \section{Nonresponse adjustment}{
 
+\code{eligibility_rate} and \code{resp_rate} together turn the units issued into
+the units that respond. \code{eligibility_rate} is the share of issued units in
+scope, such as dwellings found occupied. \code{resp_rate} is the response rate
+among eligible units, the rate defined by the Standard Definitions of the
+American Association for Public Opinion Research (AAPOR) and published in
+survey reports, which leaves units out of scope out of its denominator. A
+unit whose eligibility was never established counts against both, in the
+share the survey estimates to be in scope, AAPOR's e.
+
+A plan combines four quantities. \code{eligibility_rate} is the share of
+issued units in scope. \code{resp_rate} is the response rate among them, such
+as a household response rate. \code{eligible_per_unit} is the number of
+eligible persons per responding unit, such as women aged 15 to 49 per
+household, and can exceed 1. The response rate among eligible persons,
+such as a women's response rate, is a second stage of response, and it
+multiplies \code{resp_rate} when the indicator is about persons.
+
+\code{N} counts the issued frame units, vacant dwellings included. The
+population the estimate describes is \code{N * eligibility_rate}, which is what
+the finite population correction reads, and in \code{\link[=n_alloc]{n_alloc()}} the stratum
+weights too. The caps on the sample stay in frame units.
+
+A survey that publishes households selected, occupied and interviewed,
+as DHS and MICS do, gives \code{eligibility_rate} as the households occupied
+over the households selected, and \code{resp_rate} as its household response
+rate. Passing the households interviewed over the households selected as
+\code{resp_rate}, with \code{eligibility_rate} left at 1, gives the same size when
+\code{N} is infinite. With a finite \code{N} it asks for slightly more units, since
+it counts the units out of scope as part of the population.
+
 Dividing by \code{resp_rate} is an expected-information calculation. It sets the
 expected respondent count and evaluates variance at that net size. It
 assumes response is ignorable under the adjustment planned for analysis.

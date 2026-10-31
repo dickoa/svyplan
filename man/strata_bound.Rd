@@ -18,6 +18,7 @@ strata_bound(
   take_all_above = NULL,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   n_class = NULL,
   max_iter = NULL,
   n_restart = NULL,
@@ -77,9 +78,16 @@ variance of the stratified mean exactly as it does in \code{\link[=n_alloc]{n_al
 that \code{cv} and \code{n} mean the same thing in both. A scalar value leaves the
 boundaries unchanged. See Details.}
 
-\item{resp_rate}{Expected response rate, in (0, 1], default 1. With a
-response rate below 1, \code{n} is the sample fielded and \code{n * resp_rate} the
-number expected to respond, matching \code{\link[=n_alloc]{n_alloc()}}.}
+\item{resp_rate}{Expected response rate among eligible units, in (0, 1],
+default 1. With a response rate below 1, \code{n} is the sample fielded and
+\code{n * resp_rate} the number expected to respond, matching \code{\link[=n_alloc]{n_alloc()}}.
+See the nonresponse section of \link{svyplan-package} for what the rate
+counts.}
+
+\item{eligibility_rate}{Share of issued units in scope, in (0, 1],
+default 1. It joins \code{resp_rate}, so \code{n * resp_rate * eligibility_rate}
+is the number expected to respond. The correction then reads the frame
+count rather than the population in scope, which errs on the large side.}
 
 \item{n_class}{Positive whole number of histogram bins. Applies to
 \code{method = "cumrootf"} only. Supplying it with another method is an

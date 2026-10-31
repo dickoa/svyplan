@@ -104,7 +104,8 @@ The single-stage `n_*()` and `prec_*()` functions share these arguments:
 | `deff` | Design effect multiplying the simple random sampling variance | 1 |
 | `N` | Finite population size, which applies the finite population correction | `Inf` |
 | `alpha` | Significance level of `moe` and `rmoe` targets and of intervals | 0.05 |
-| `resp_rate` | Expected response rate. The issued sample is the respondent sample divided by it | 1 |
+| `resp_rate` | Expected response rate among eligible units, as a survey report publishes it | 1 |
+| `eligibility_rate` | Share of issued units in scope, such as dwellings found occupied. The issued sample is the respondent sample divided by it and by `resp_rate` | 1 |
 
 Any `deff > 0` is accepted. A design effect below 1 describes a design more
 efficient than simple random sampling, such as a well-stratified sample.

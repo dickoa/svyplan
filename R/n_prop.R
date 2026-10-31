@@ -37,16 +37,20 @@
 #'   Neyman allocation). A published DEFT is squared first. See
 #'   [varcomp()] for that and for removing the published survey's
 #'   weighting loss.
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). The required sample size is inflated by `1 / resp_rate`.
-#'   Estimate from response rates observed in similar surveys in the same
-#'   population. See the nonresponse section of [svyplan-package] for what
-#'   this adjustment does and does not claim.
-#' @param eligible_rate Eligible units per sampled unit, a positive number,
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1 (no adjustment). The required sample size is inflated by
+#'   `1 / resp_rate`. Estimate from response rates observed in similar surveys
+#'   in the same population. See the nonresponse section of [svyplan-package]
+#'   for what the rate counts and what this adjustment does and does not claim.
+#' @param eligibility_rate Share of issued units in scope, such as dwellings
+#'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
+#'   in scope is `N * eligibility_rate`. See the nonresponse section of
+#'   [svyplan-package].
+#' @param eligible_per_unit Eligible units per sampled unit, a positive number,
 #'   default 1. In a household survey of married women it is the average
 #'   number of married women per household, and it can exceed 1. `n` and
 #'   `N` stay in sampled units, while the precision is computed on the
-#'   eligible respondents out of `N * eligible_rate` eligible units, which
+#'   eligible respondents out of `N * eligible_per_unit` eligible units, which
 #'   must exceed 1 when `N` is finite. See Details.
 #' @param method One of `"wald"` (default), `"wilson"`, `"logodds"`, or
 #'   `"beta"`.
@@ -238,22 +242,27 @@
 #'
 #' A household survey samples households and measures persons, such as the
 #' married women or the children under five in each sampled household.
-#' `eligible_rate` is their average number per household. The sample size
+#' `eligible_per_unit` is their average number per household. The sample size
 #' and `N` stay in households. The precision is computed on
-#' `n * resp_rate * eligible_rate` eligible respondents out of
-#' `N * eligible_rate` eligible persons, so the sampling fraction is the
+#' `n * resp_rate * eligible_per_unit` eligible respondents out of
+#' `N * eligible_per_unit` eligible persons, so the sampling fraction is the
 #' household one, `n * resp_rate / N`. `expected_cases` counts eligible
 #' respondents with the trait.
 #'
 #' With `N = Inf`, a rate at or below 1 gives the same `n` as passing
-#' `resp_rate * eligible_rate` as the response rate. With a finite `N` that
+#' `resp_rate * eligible_per_unit` as the response rate. With a finite `N` that
 #' folded rate understates the sampling fraction, so it asks for slightly
 #' more households.
 #'
-#' A survey that reports a household and an individual response rate, as DHS
-#' and MICS do, passes their product as `resp_rate`. Folding the individual
-#' rate into `eligible_rate` instead gives the same `n` only at `N = Inf`, and
-#' a slightly smaller one with a finite `N`.
+#' A survey that reports households selected, occupied and interviewed and
+#' an individual response rate, as DHS and MICS do, gives the four inputs
+#' directly. `eligibility_rate` is the households occupied over the
+#' households selected, `resp_rate` the published household response rate
+#' times the individual rate, and `eligible_per_unit` the eligible persons
+#' per interviewed household (see the nonresponse section of
+#' [svyplan-package]). Folding the individual rate into `eligible_per_unit`
+#' instead gives the same `n` only at `N = Inf`, and a slightly smaller one
+#' with a finite `N`.
 #'
 #' Above 1, several eligible persons come from each sampled household and
 #' resemble each other. `deff` then carries that correlation, as a design
@@ -364,7 +373,14 @@
 #'
 #' # Households to sample for married women, 0.41 per household
 #' n_prop(p = 0.28, cv = 0.05, deff = 2.5, resp_rate = 0.9,
-#'        eligible_rate = 0.41)
+#'        eligible_per_unit = 0.41)
+#'
+#' # From a report's household table: 96% of selected dwellings occupied,
+#' # 94% of occupied households and 93% of eligible women interviewed, and
+#' # 1.13 women aged 15 to 49 per interviewed household
+#' n_prop(p = 0.22, moe = 0.04, deff = 1.5, N = 6600,
+#'        eligibility_rate = 0.96, resp_rate = 0.94 * 0.93,
+#'        eligible_per_unit = 1.13)
 #'
 #' @export
 n_prop <- function(p, ...) {
@@ -387,7 +403,8 @@ n_prop.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   method = c("wald", "wilson", "logodds", "beta"),
   df = NULL,
   min_cases = NULL,
@@ -404,7 +421,8 @@ n_prop.default <- function(
   check_population_size(N)
   check_deff(deff)
   check_resp_rate(resp_rate)
-  check_eligible_rate(eligible_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  check_eligible_per_unit(eligible_per_unit)
   method <- match.arg(method)
 
   if (!is.null(df)) {
@@ -416,7 +434,8 @@ n_prop.default <- function(
 
   # The solvers work in eligible respondents against the eligible
   # population, so the fpc fraction stays n * resp_rate / N.
-  N_elig <- check_eligible_population(N, eligible_rate)
+  N_elig <- check_eligible_population(N, eligible_per_unit, eligibility_rate)
+  yield <- eligibility_rate * eligible_per_unit
   n <- switch(
     method,
     wald = .n_prop_wald(p, moe_used, cv, alpha, N_elig, deff, df),
@@ -425,16 +444,16 @@ n_prop.default <- function(
     beta = .n_prop_beta(p, moe_used, cv, alpha, N_elig, deff, df)
   )
 
-  n <- .apply_resp_rate(n, resp_rate * eligible_rate)
+  n <- .apply_resp_rate(n, resp_rate * yield)
 
   binding <- NULL
   if (!is.null(min_cases)) {
-    n_cases <- .n_from_min_cases(min_cases, p, resp_rate * eligible_rate)
+    n_cases <- .n_from_min_cases(min_cases, p, resp_rate * yield)
     binding <- if (n_cases > n) "min_cases" else "precision"
     n <- max(n, n_cases)
   }
   n <- .census_size(n, N)
-  .check_attainable(n, N, resp_rate)
+  .check_attainable(n, N, resp_rate, eligibility_rate)
 
   params <- list(
     p = p,
@@ -444,8 +463,11 @@ n_prop.default <- function(
     resp_rate = resp_rate,
     df = df
   )
-  if (eligible_rate != 1) {
-    params$eligible_rate <- eligible_rate
+  if (eligibility_rate != 1) {
+    params$eligibility_rate <- eligibility_rate
+  }
+  if (eligible_per_unit != 1) {
+    params$eligible_per_unit <- eligible_per_unit
   }
 
   # Exactly one of the three, as supplied: a round trip through predict()
@@ -656,7 +678,8 @@ n_prop.svyplan_prec <- function(p, ..., moe = NULL, cv = NULL, rmoe = NULL) {
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate,
-    eligible_rate = par$eligible_rate %||% 1,
+    eligibility_rate = par[["eligibility_rate"]] %||% 1,
+    eligible_per_unit = par$eligible_per_unit %||% 1,
     method = x$method %||% "wald",
     df = par$df,
     min_cases = par$min_cases

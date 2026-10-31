@@ -232,11 +232,13 @@ check_component_cor <- function(component_cor, name = "component_cor") {
 #' @keywords internal
 #' @noRd
 .n_ratio_from_target <- function(r, unit_relvar, moe, cv, rmoe, alpha, N,
-                                 deff, resp_rate, df = NULL) {
+                                 deff, resp_rate, df = NULL,
+                                 eligibility_rate = 1) {
   q <- .q_alpha(alpha, df)
   target_cv <- .ratio_target_cv(r, moe, cv, rmoe, q)
-  n <- deff * unit_relvar / (target_cv^2 + deff * unit_relvar / N)
-  n <- .census_size(.apply_resp_rate(n, resp_rate), N)
-  .check_attainable(n, N, resp_rate)
+  N_elig <- N * eligibility_rate
+  n <- deff * unit_relvar / (target_cv^2 + deff * unit_relvar / N_elig)
+  n <- .census_size(.apply_resp_rate(n, resp_rate * eligibility_rate), N)
+  .check_attainable(n, N, resp_rate, eligibility_rate)
   n
 }

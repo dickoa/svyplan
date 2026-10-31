@@ -9,7 +9,15 @@
 \usage{
 varcomp(x, ...)
 
-\method{varcomp}{formula}(x, ..., data = NULL, prob = NULL, strata = NULL, weights = NULL)
+\method{varcomp}{formula}(
+  x,
+  ...,
+  data = NULL,
+  prob = NULL,
+  strata = NULL,
+  weights = NULL,
+  estimator = c("expansion", "ratio")
+)
 
 \method{varcomp}{default}(
   x,
@@ -18,6 +26,7 @@ varcomp(x, ...)
   prob = NULL,
   strata = NULL,
   weights = NULL,
+  estimator = c("expansion", "ratio"),
   deff = NULL,
   se = NULL,
   p = NULL,
@@ -29,7 +38,14 @@ varcomp(x, ...)
   var_ratio = NULL
 )
 
-\method{varcomp}{survey.design}(x, ..., prob = NULL, strata = NULL, weights = NULL)
+\method{varcomp}{survey.design}(
+  x,
+  ...,
+  prob = NULL,
+  strata = NULL,
+  weights = NULL,
+  estimator = c("expansion", "ratio")
+)
 }
 \arguments{
 \item{x}{A formula, numeric vector, or survey design object
@@ -65,6 +81,13 @@ summed weights must estimate the cluster population size. For a
 multi-stage sample use the within-cluster weights, not the full
 design weight (see Details). \code{NULL} (default) computes frame
 components.}
+
+\item{estimator}{The estimator the components describe, \code{"expansion"}
+(default) for an estimated total over a known population size, or
+\code{"ratio"} for an estimated total over an estimated number of units,
+the usual estimator of a mean or a proportion. The two differ only when
+PSU sizes vary and PSUs are not drawn proportional to size. See
+Details. Not used on the back-out.}
 
 \item{stage_id}{A list of stage-ID vectors (required for vector interface).
 Length determines the number of stage boundaries (stages - 1).}
@@ -123,6 +146,8 @@ for a backed-out \code{icc}, where the design effect does not say.}
 \item{\code{input}}{What the components were computed from: \code{"frame"},
 \code{"weighted"} (a sample with within-cluster weights), \code{"deff"} or
 \code{"se"} (a published design effect or standard error).}
+\item{\code{estimator}}{The estimator the components describe,
+\code{"expansion"} or \code{"ratio"}. \code{NA} for a backed-out \code{icc}.}
 }
 The result can be exported with \code{\link[=as.data.frame]{as.data.frame()}}. Unstratified results
 become a one-row two- or three-stage component table. Stratified results
@@ -356,6 +381,22 @@ For PPS with one-draw probabilities \eqn{p_i}, they are
 In both cases \code{unit_relvar} is the ultimate-unit variance divided by the
 squared ultimate-unit mean, \code{icc = varb / (varb + varw)}, and
 \code{var_ratio = (varb + varw) / unit_relvar}.
+
+These are the components of the expansion estimator, which divides an
+estimated total by a known population size. A mean or a proportion is
+usually estimated as a ratio instead, the estimated total over the
+estimated number of units, and with PSUs of unequal size drawn by SRS
+its variance can be much smaller. The PSU totals of the expansion
+estimator vary with the PSU sizes as well as with their content, and the
+ratio estimator removes the part due to size. \code{estimator = "ratio"}
+returns its components, the same expressions with each total \eqn{t_i}
+replaced by \eqn{t_i - N_i\bar y}{t_i - N_i ybar} for the overall mean
+\eqn{\bar y}{ybar}, at every stage. The within-PSU variances and
+\code{unit_relvar} are unchanged. With PSUs of equal size, or a first stage
+drawn with probability proportional to size, the two estimators give the
+same components. Use \code{"ratio"} when planning a mean or a proportion from
+PSUs of unequal size drawn with equal probability, and the default when
+planning a total.
 
 For three stages, \code{varb} uses the between-PSU expression above that
 matches the first stage, the SRS one without \code{prob} and the PPS one with

@@ -59,7 +59,8 @@
 .psu_setup <- function(frame, psu, measures, targets, unit_cost = NULL,
                        alpha = 0.05, deff = 1, resp_rate = 1,
                        min_n_stratum = NULL, objective = NULL, df = NULL,
-                       certainty_cutoff = NULL, n_psu_per_zone = NULL) {
+                       certainty_cutoff = NULL, n_psu_per_zone = NULL,
+                       eligibility_rate = 1) {
   stratum <- as.character(frame[["stratum"]] %||% seq_len(nrow(frame)))
   H <- nrow(frame)
   idx_of <- split(seq_len(nrow(psu)), factor(psu$stratum, levels = stratum))
@@ -99,11 +100,12 @@
     frame = base_frame, measures = base_measures, targets = targets,
     unit_cost = unit_cost, deff = deff, resp_rate = resp_rate, alpha = alpha,
     df = df, min_n_stratum = min_n_stratum, objective = objective,
-    fpc = "unit", .finite_prop_var = FALSE
+    fpc = "unit", .finite_prop_var = FALSE,
+    eligibility_rate = eligibility_rate
   )
   key <- .bethel_key(as.character(measures$stratum),
                      as.character(measures$name))
-  rows <- function(name, member, var, deff_hk, resp_hk, weight) {
+  rows <- function(name, member, var, deff_hk, resp_hk, scope_hk, weight) {
     icc <- matrix(0, H, length(name))
     for (k in seq_along(name)) {
       icc[member[, k], k] <-
@@ -111,7 +113,7 @@
     }
     w <- var * deff_hk
     w[!member] <- 0
-    list(w = w, resp = resp_hk, icc = icc, weight = weight)
+    list(w = w, resp = resp_hk, scope = scope_hk, icc = icc, weight = weight)
   }
   obj <- problem$objective
   list(
@@ -130,10 +132,10 @@
     unit = problem$cost,
     target = rows(problem$constraint_meta$name, problem$membership,
                   problem$var_hk, problem$deff_hk, problem$resp_hk,
-                  1 / problem$Vmax),
+                  problem$scope_hk, 1 / problem$Vmax),
     objective = if (!is.null(obj)) {
       rows(obj$name, obj$membership, obj$var_hk, obj$deff_hk, obj$resp_hk,
-           obj$priority / obj$total^2)
+           obj$scope_hk, obj$priority / obj$total^2)
     }
   )
 }
@@ -161,11 +163,16 @@
     out <- matrix(0, length(n), ncol(x$w))
     for (k in which(x$w[h, ] > 0)) {
       r <- x$resp[h, k]
+      # With the population in scope at e times every size, each term is e
+      # times its value at response r, and the bracket reads b * r * e.
+      e <- x$scope[h, k]
       s <- N^2 * (1 / (r * n) - 1 / N)
       v <- states$A / r - states$held
-      v[drawn] <- v[drawn] + rest[drawn]^2 * (1 + x$icc[h, k] * (b * r - 1)) *
+      v[drawn] <- v[drawn] +
+        rest[drawn]^2 * (1 + x$icc[h, k] * (b * r * e - 1)) *
         (1 / (r * states$a[drawn] * b) - 1 / rest[drawn])
-      out[, k] <- x$w[h, k] * x$weight[k] * ifelse(s <= 0, s, pmax(v, s))
+      out[, k] <- x$w[h, k] * x$weight[k] * e *
+        ifelse(s <= 0, s, pmax(v, s))
     }
     out
   }
@@ -239,7 +246,8 @@
     if (is.null(x) || !length(mu)) return(c(0, 0))
     a <- mu * x$w[h, ] * x$weight
     k <- which(a > 0)
-    c(sum(a[k] * N^2 / x$resp[h, k]), sum(a[k] * N))
+    e <- x$scope[h, k]
+    c(sum(a[k] * e * N^2 / x$resp[h, k]), sum(a[k] * e * N))
   }
   tw <- term(ev$target, weights$mu)
   if (!is.null(ev$objective)) {

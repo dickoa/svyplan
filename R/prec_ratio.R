@@ -40,7 +40,13 @@
 #'   for what this is the design effect of. A published DEFT is squared
 #'   first. See [varcomp()] for that and for removing the published
 #'   survey's weighting loss.
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1.
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1. See the nonresponse section of [svyplan-package] for what the
+#'   rate counts.
+#' @param eligibility_rate Share of issued units in scope, such as dwellings
+#'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
+#'   in scope is `N * eligibility_rate`. See the nonresponse section of
+#'   [svyplan-package].
 #' @param df Degrees of freedom of the variance estimator, switching the
 #'   interval quantile from normal to t. `NULL` (default) applies none.
 #' @param plan Optional [svyplan()] object providing design defaults.
@@ -107,6 +113,7 @@ prec_ratio.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   df = NULL,
   plan = NULL
 ) {
@@ -122,6 +129,7 @@ prec_ratio.default <- function(
   check_population_size(N)
   check_deff(deff)
   check_resp_rate(resp_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
   .check_gross_n(n, N)
   if (!is.null(df)) {
     check_df(df)
@@ -130,7 +138,8 @@ prec_ratio.default <- function(
   unit_relvar <- .ratio_unit_relvar(r, cv_num, cv_den, component_cor)
   .check_ratio_relvar(unit_relvar, cv_num, cv_den, component_cor)
 
-  prec <- .prec_engine_ratio(r, unit_relvar, n, alpha, N, deff, resp_rate, df)
+  prec <- .prec_engine_ratio(r, unit_relvar, n, alpha, N * eligibility_rate,
+                            deff, resp_rate * eligibility_rate, df)
 
   params <- list(
     r = r,
@@ -145,6 +154,9 @@ prec_ratio.default <- function(
     resp_rate = resp_rate,
     df = df
   )
+  if (eligibility_rate != 1) {
+    params$eligibility_rate <- eligibility_rate
+  }
 
   .new_svyplan_prec(
     se = prec$se,
@@ -174,6 +186,7 @@ prec_ratio.svyplan_n <- function(r, ...) {
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate %||% 1,
+    eligibility_rate = par[["eligibility_rate"]] %||% 1,
     df = par$df
   )
   do.call(prec_ratio.default,

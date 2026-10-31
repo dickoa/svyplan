@@ -29,11 +29,16 @@
 #' @param resp_rate_ssu Expected SSU-level response rate, in (0, 1\].
 #'   Three-stage designs only, default 1. The effective stage-2 size is
 #'   `n[2] * resp_rate_ssu`.
-#' @param resp_rate Expected ultimate-unit response rate, in (0, 1\].
-#'   Default 1. It scales the final stage, so it also shrinks the realized
-#'   cluster and therefore the clustering penalty. See [n_cluster()] for the
-#'   decomposition.
-#' @param eligible_rate Eligible units per final-stage unit, a positive
+#' @param resp_rate Expected ultimate-unit response rate among eligible units,
+#'   in (0, 1\]. Default 1. It scales the final stage, so it also shrinks the
+#'   realized cluster and therefore the clustering penalty. See [n_cluster()]
+#'   for the decomposition. See the nonresponse section of [svyplan-package]
+#'   for what the rate counts.
+#' @param eligibility_rate Share of issued final-stage units in scope, in (0,
+#'   1\]. Default 1. It acts at the final stage, as `resp_rate` does, and with
+#'   `indicators` it applies to every row. See the nonresponse section of
+#'   [svyplan-package].
+#' @param eligible_per_unit Eligible units per final-stage unit, a positive
 #'   number, default 1. It multiplies `resp_rate` in the realized take, and
 #'   `n` stays in final-stage units. Not available with `indicators`. See
 #'   [n_cluster()].
@@ -43,8 +48,8 @@
 #'   `N_psu`, and `N_ssu` at three stages. See "Finite populations" in
 #'   [n_cluster()].
 #' @param N Number of final-stage units in the population, the units the
-#'   sizes count. With `eligible_rate` the correction reads
-#'   `N * eligible_rate` eligible units. Read only with `fpc = "stage"` and
+#'   sizes count. With `eligible_per_unit` the correction reads
+#'   `N * eligible_per_unit` eligible units. Read only with `fpc = "stage"` and
 #'   refused otherwise.
 #' @param N_psu Number of PSUs in the population. Read only with
 #'   `fpc = "stage"` and refused otherwise.
@@ -154,7 +159,7 @@
 #' # 600 clusters of 20 households, 0.41 married women per household, for a
 #' # proportion near 0.28
 #' prec_cluster(n = c(600, 20), icc = 0.07, unit_relvar = 0.72 / 0.28,
-#'              resp_rate = 0.9, eligible_rate = 0.41)
+#'              resp_rate = 0.9, eligible_per_unit = 0.41)
 #'
 #' # Several indicators under one allocation
 #' indicators <- data.frame(
@@ -188,7 +193,8 @@ prec_cluster.default <- function(
   resp_rate_psu = 1,
   resp_rate_ssu = 1,
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   fpc = c("none", "stage"),
   N = NULL,
   N_psu = NULL,
@@ -221,12 +227,13 @@ prec_cluster.default <- function(
     .cluster_stage_population(fpc, N, N_psu, "the default fpc = \"none\"",
                               N_ssu = N_ssu)
   }
-  if (!is.null(indicators) && !identical(eligible_rate, 1)) {
+  if (!is.null(indicators) && !identical(eligible_per_unit, 1)) {
     stop(
-      "'eligible_rate' applies to the single-indicator call. With 'indicators', fold a rate at most 1 into each row's 'resp_rate'",
+      "'eligible_per_unit' applies to the single-indicator call. With 'indicators', fold a rate at most 1 into each row's 'resp_rate'",
       call. = FALSE
     )
   }
+  check_resp_rate(eligibility_rate, "eligibility_rate")
   if (!is.null(indicators)) {
     .check_prec_cluster_indicator_args(n, icc, unit_relvar, var_ratio)
     return(.prec_cluster_indicators(
@@ -236,6 +243,7 @@ prec_cluster.default <- function(
       resp_rate_psu = resp_rate_psu,
       resp_rate_ssu = resp_rate_ssu,
       resp_rate = resp_rate,
+      eligibility_rate = eligibility_rate,
       fpc = fpc,
       pop = pop
     ))
@@ -285,8 +293,8 @@ prec_cluster.default <- function(
   check_resp_rate(resp_rate_psu, "resp_rate_psu")
   check_resp_rate(resp_rate_ssu, "resp_rate_ssu")
   check_resp_rate(resp_rate, "resp_rate")
-  check_eligible_rate(eligible_rate)
-  pop <- .stage_eligible(pop, eligible_rate)
+  check_eligible_per_unit(eligible_per_unit)
+  pop <- .stage_eligible(pop, eligibility_rate * eligible_per_unit)
   if (stages == 2L && !isTRUE(all.equal(resp_rate_ssu, 1))) {
     stop(
       "'resp_rate_ssu' is not applicable for 2-stage designs: the units inside a PSU are the ultimate ones, so their nonresponse is 'resp_rate'",
@@ -322,7 +330,7 @@ prec_cluster.default <- function(
   # Each stage keeps the share of its own units that respond. The last stage
   # always carries the ultimate-unit rate, whether the design has two stages
   # or three.
-  ultimate_rate <- resp_rate * eligible_rate
+  ultimate_rate <- resp_rate * eligibility_rate * eligible_per_unit
   rates <- if (stages == 2L) {
     c(resp_rate_psu, ultimate_rate)
   } else {
@@ -331,8 +339,10 @@ prec_cluster.default <- function(
   n_eff <- n * rates
   .check_expected_take(n[[stages]], ultimate_rate,
                        if (stages == 2L) "n_per_psu" else "n_per_ssu",
-                       if (eligible_rate == 1) "resp_rate" else
-                         "resp_rate * eligible_rate")
+                       paste(c("resp_rate",
+                               if (eligibility_rate != 1) "eligibility_rate",
+                               if (eligible_per_unit != 1) "eligible_per_unit"),
+                             collapse = " * "))
   if (stages == 3L) {
     .check_expected_take(n[[2L]], resp_rate_ssu, "n_per_psu", "resp_rate_ssu")
   }
@@ -370,7 +380,8 @@ prec_cluster.default <- function(
     resp_rate = resp_rate,
     stages = stages
   )
-  if (eligible_rate != 1) params$eligible_rate <- eligible_rate
+  if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
+  if (eligible_per_unit != 1) params$eligible_per_unit <- eligible_per_unit
   if (!is.null(stage_cost)) params$stage_cost <- stage_cost
   if (!is.null(pop)) {
     params$fpc <- "stage"
@@ -403,7 +414,8 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
     resp_rate_psu = p$resp_rate_psu %||% 1,
     resp_rate_ssu = p$resp_rate_ssu %||% 1,
     resp_rate = p$resp_rate %||% 1,
-    eligible_rate = p$eligible_rate %||% 1,
+    eligibility_rate = p[["eligibility_rate"]] %||% 1,
+    eligible_per_unit = p$eligible_per_unit %||% 1,
     stage_cost = p$stage_cost,
     fpc = p[["fpc"]] %||% "none",
     N = p[["N"]],
@@ -497,11 +509,12 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
     pop = if (!is.null(x$params[["N"]])) {
       .cluster_stage_population("stage", x$params[["N"]], x$params[["N_psu"]],
                                 "the fit", N_ssu = x$params[["N_ssu"]])
-    }
+    },
+    eligibility_rate = x$params[["eligibility_rate"]] %||% 1
   )
   allowed <- c(
     "stage_cost", "domains",
-    "resp_rate_psu", "resp_rate_ssu", "resp_rate"
+    "resp_rate_psu", "resp_rate_ssu", "resp_rate", "eligibility_rate"
   )
   dot_names <- names(dots) %||% rep("", length(dots))
   unknown <- setdiff(dot_names, allowed)
@@ -536,6 +549,10 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
       stop("'resp_rate_ssu' is not applicable for 2-stage designs", call. = FALSE)
     }
     args[[rate]] <- dots[[rate]]
+  }
+  if ("eligibility_rate" %in% names(dots)) {
+    check_resp_rate(dots$eligibility_rate, "eligibility_rate")
+    args$eligibility_rate <- dots$eligibility_rate
   }
   res <- do.call(.prec_multi_cluster, args)
   for (p in c("budget", "n_psu", "n_per_psu", "n_per_ssu", "joint",

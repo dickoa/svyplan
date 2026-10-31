@@ -2375,15 +2375,15 @@ test_that("a floor row joins the precision rows of its domain", {
   long <- rbind(
     data.frame(lga = lga$lga, name = "mcpr", p = lga$mcpr, cv = 0.1,
                deff = lga$deft^2, resp_rate = lga$resp,
-               eligible_rate = lga$married, min_respondents = NA),
+               eligible_per_unit = lga$married, min_respondents = NA),
     data.frame(lga = lga$lga, name = "women", p = NA, cv = NA, deff = NA,
-               resp_rate = lga$resp, eligible_rate = lga$women,
+               resp_rate = lga$resp, eligible_per_unit = lga$women,
                min_respondents = 800)
   )
   fit <- n_multi(long, domains = "lga")
   by_hand <- pmax(
     mapply(function(p, d, r, e) {
-      n_prop(p, cv = 0.1, deff = d^2, resp_rate = r, eligible_rate = e)$n
+      n_prop(p, cv = 0.1, deff = d^2, resp_rate = r, eligible_per_unit = e)$n
     }, lga$mcpr, lga$deft, lga$resp, lga$married),
     800 / (lga$resp * lga$women)
   )
@@ -2399,12 +2399,12 @@ test_that("a floor row joins the precision rows of its domain", {
 
 test_that("a floor on a precision row counts that row's respondents", {
   ind <- data.frame(name = "a", p = 0.3, moe = 0.05, resp_rate = 0.8,
-                    eligible_rate = 2, min_respondents = 2000)
+                    eligible_per_unit = 2, min_respondents = 2000)
   expect_equal(n_multi(ind)$n, 2000 / (0.8 * 2))
   ind$min_respondents <- 10
   expect_equal(
     n_multi(ind)$n,
-    n_prop(0.3, moe = 0.05, resp_rate = 0.8, eligible_rate = 2)$n
+    n_prop(0.3, moe = 0.05, resp_rate = 0.8, eligible_per_unit = 2)$n
   )
 })
 
@@ -2448,7 +2448,7 @@ test_that("shuffling the rows of a floor table moves no size between domains", {
     p = c(0.2, 0.08, 0.15, 0.8, 0.85, 0.9, NA, NA, NA),
     cv = c(rep(0.1, 6), NA, NA, NA),
     resp_rate = c(0.84, 0.88, 0.9),
-    eligible_rate = c(0.6, 2.3, 1.2, 0.1, 0.5, 0.3, 1.1, 2.9, 1.6),
+    eligible_per_unit = c(0.6, 2.3, 1.2, 0.1, 0.5, 0.3, 1.1, 2.9, 1.6),
     min_respondents = c(rep(NA, 6), 800, 800, 800)
   )
   ref <- n_multi(long, domains = "lga")$domains

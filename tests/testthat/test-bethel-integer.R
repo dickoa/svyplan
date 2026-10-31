@@ -181,11 +181,11 @@ test_that("a budget at the floor solves cleanly when a target parallels the obje
   ms <- data.frame(stratum = "A", name = "y", p = 0.3)
   tg <- data.frame(name = "y", cv = 0.05)
   floor_cost <- n_alloc(fr, measures = ms, targets = tg,
-                        eligible_rate = 0.1)$operational$cost
+                        eligible_per_unit = 0.1)$operational$cost
   for (b in c(floor_cost, floor_cost + 1)) {
     fit <- expect_no_warning(
       n_alloc(fr, measures = ms, targets = tg, objective = "y", budget = b,
-              eligible_rate = 0.1)
+              eligible_per_unit = 0.1)
     )
     expect_identical(as.integer(fit$detail$n_int), as.integer(b))
     expect_true(fit$operational$all_pass)

@@ -70,10 +70,14 @@
 #'   above, which is the one place this differs from [n_mean()]. A
 #'   published DEFT is squared first. See [varcomp()] for that and for
 #'   removing the published survey's weighting loss.
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1. The rate
-#'   is for records usable on both components, not on either alone. See the
-#'   nonresponse section of [svyplan-package] for what this adjustment does
-#'   and does not claim.
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1. The rate is for records usable on both components, not on
+#'   either alone. See the nonresponse section of [svyplan-package] for what
+#'   the rate counts and what this adjustment does and does not claim.
+#' @param eligibility_rate Share of issued units in scope, such as dwellings
+#'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
+#'   in scope is `N * eligibility_rate`. See the nonresponse section of
+#'   [svyplan-package].
 #' @param df Degrees of freedom of the variance estimator the planned design
 #'   will have, available from [design_df()]. It switches the interval
 #'   quantile from normal to t. `NULL` (default) applies no adjustment.
@@ -188,6 +192,7 @@ n_ratio.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   df = NULL,
   plan = NULL
 ) {
@@ -202,6 +207,7 @@ n_ratio.default <- function(
   check_population_size(N)
   check_deff(deff)
   check_resp_rate(resp_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
   if (!is.null(df)) {
     check_df(df)
   }
@@ -210,7 +216,7 @@ n_ratio.default <- function(
   .check_ratio_relvar(unit_relvar, cv_num, cv_den, component_cor)
 
   n <- .n_ratio_from_target(r, unit_relvar, moe, cv, rmoe, alpha, N, deff,
-                            resp_rate, df)
+                            resp_rate, df, eligibility_rate)
 
   params <- list(
     r = r,
@@ -224,6 +230,9 @@ n_ratio.default <- function(
     resp_rate = resp_rate,
     df = df
   )
+  if (eligibility_rate != 1) {
+    params$eligibility_rate <- eligibility_rate
+  }
 
   if (!is.null(moe)) {
     params$moe <- moe
@@ -264,6 +273,7 @@ n_ratio.svyplan_prec <- function(r, ..., moe = NULL, cv = NULL, rmoe = NULL) {
     N = par$N,
     deff = par$deff,
     resp_rate = par$resp_rate,
+    eligibility_rate = par[["eligibility_rate"]] %||% 1,
     df = par$df
   )
   do.call(n_ratio.default, .roundtrip_args(args, list(...), n_ratio.default))

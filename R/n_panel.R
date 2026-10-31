@@ -24,11 +24,16 @@
 #'   respond again at wave `j + 1`. Its length plus one is the number of
 #'   waves in a unit's life, so a five-wave panel takes four values.
 #' @param ... Additional arguments are not supported and produce an error.
-#' @param resp_rate Response rate at recruitment, wave 1, in (0, 1\], `1` by
-#'   default. It is separate from `retention` because the first wave is where
-#'   most of a panel's loss happens, and an average rate spread over the waves
-#'   would under-issue. See the nonresponse section of [svyplan-package] for
-#'   what this adjustment does and does not claim.
+#' @param resp_rate Response rate among eligible units at recruitment, wave 1,
+#'   in (0, 1\], `1` by default. It is separate from `retention` because the
+#'   first wave is where most of a panel's loss happens, and an average rate
+#'   spread over the waves would under-issue. See the nonresponse section of
+#'   [svyplan-package] for what the rate counts and what this adjustment does
+#'   and does not claim.
+#' @param eligibility_rate Share of issued units in scope at recruitment, such
+#'   as dwellings found occupied, in (0, 1\]. Default 1. Units leaving scope
+#'   after wave 1 belong in `retention`. See the nonresponse section of
+#'   [svyplan-package].
 #' @param design `"fixed"` for one cohort followed across its waves, or
 #'   `"rotating"` for equal cohorts entering every occasion and leaving at
 #'   the end of their life. The two return different quantities, described
@@ -333,6 +338,7 @@ n_panel <- function(
   retention,
   ...,
   resp_rate = 1,
+  eligibility_rate = 1,
   design = c("fixed", "rotating"),
   target_wave = NULL,
   assurance = NULL,
@@ -342,7 +348,7 @@ n_panel <- function(
   .check_unused_dots(...)
   design <- .check_panel_design(design)
   tgt <- .panel_target(target)
-  q <- .panel_q(resp_rate, retention)
+  q <- .panel_q(resp_rate, retention, eligibility_rate)
   target_wave <- .check_target_wave(target_wave, length(q), design)
   assurance <- .check_assurance(assurance)
   start <- .check_panel_start(start, design)
@@ -356,7 +362,8 @@ n_panel <- function(
 
   .panel_result(
     tgt, n_recruit, resp_rate, retention, q, design, target_wave,
-    assurance, start, solved = "n_recruit", rotation = rotation, rot = rot
+    assurance, start, solved = "n_recruit", rotation = rotation, rot = rot,
+    eligibility_rate = eligibility_rate
   )
 }
 
@@ -407,8 +414,15 @@ n_panel <- function(
     method = target$method,
     params = target$params,
     N = target$params$N %||% Inf,
-    n_target = n * (target$params$resp_rate %||% 1)
+    n_target = n * .panel_target_rate(target$params)
   )
+}
+
+#' Share of a target's issued units that respond, as it was sized
+#' @keywords internal
+#' @noRd
+.panel_target_rate <- function(params) {
+  (params$resp_rate %||% 1) * (params[["eligibility_rate"]] %||% 1)
 }
 
 #' A recruitment response the panel names twice
@@ -436,15 +450,18 @@ n_panel <- function(
 
 #' @keywords internal
 #' @noRd
-.warn_panel_target_rate <- function(tgt, resp_rate) {
-  rr <- .panel_rate_conflict(tgt$params$resp_rate, resp_rate)
+.warn_panel_target_rate <- function(tgt, resp_rate, eligibility_rate = 1) {
+  rr <- .panel_rate_conflict(.panel_target_rate(tgt$params),
+                             resp_rate * eligibility_rate)
   if (is.null(rr)) {
     return(invisible(NULL))
   }
+  own <- if (eligibility_rate == 1) "'resp_rate'" else
+    "'resp_rate' times 'eligibility_rate'"
   warning(
     sprintf(
-      "the target's own response rate %.3g is not used: a panel applies its own 'resp_rate' (%.3g) at wave 1, and the target is read as %s responding",
-      rr, resp_rate, .fmt_count_n(round(tgt$n_target))
+      "the target's own response rate %.3g is not used: a panel applies its own %s (%.3g) at wave 1, and the target is read as %s responding",
+      rr, own, resp_rate * eligibility_rate, .fmt_count_n(round(tgt$n_target))
     ),
     call. = FALSE
   )
@@ -454,8 +471,9 @@ n_panel <- function(
 #' Cumulative probability of still responding, by wave
 #' @keywords internal
 #' @noRd
-.panel_q <- function(resp_rate, retention) {
+.panel_q <- function(resp_rate, retention, eligibility_rate = 1) {
   check_resp_rate(resp_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
   if (!is.numeric(retention) || length(retention) < 1L || anyNA(retention) ||
       !all(is.finite(retention)) || any(retention <= 0) || any(retention > 1)) {
     stop(
@@ -463,7 +481,7 @@ n_panel <- function(
       call. = FALSE
     )
   }
-  resp_rate * cumprod(c(1, as.numeric(retention)))
+  resp_rate * eligibility_rate * cumprod(c(1, as.numeric(retention)))
 }
 
 #' Refuse a survey design where the panel type belongs
@@ -726,8 +744,10 @@ n_panel <- function(
 #' @noRd
 .panel_result <- function(tgt, n_recruit, resp_rate, retention, q, design,
                           target_wave, assurance, start = NULL,
-                          solved = NULL, rotation = NULL, rot = NULL) {
+                          solved = NULL, rotation = NULL, rot = NULL,
+                          eligibility_rate = 1) {
   k <- length(q)
+  tgt$eligibility_rate <- eligibility_rate
   if (!is.numeric(n_recruit) || length(n_recruit) != 1L ||
       !is.finite(n_recruit) || n_recruit <= 0) {
     stop("'n_recruit' must be a single positive size", call. = FALSE)
@@ -736,7 +756,7 @@ n_panel <- function(
   gapped <- life > k
   held <- if (identical(design, "fixed")) n_recruit else life * n_recruit
   .check_panel_frame(held, tgt$N, design, life, k)
-  .warn_panel_target_rate(tgt, resp_rate)
+  .warn_panel_target_rate(tgt, resp_rate, eligibility_rate)
   .warn_panel_whole_units(n_recruit, tgt$N, design, life, gapped)
 
   n_wave <- n_recruit * q
@@ -797,6 +817,7 @@ n_panel <- function(
     target_wave = target_wave,
     assurance = assurance
   )
+  if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
   # Assigning NULL removes the element, so these lines are both branches.
   params$start <- start
   params$rotation <- rotation
@@ -906,11 +927,12 @@ n_panel <- function(
   fn <- switch(tgt$type, mean = prec_mean.default, prec_prop.default)
   keep <- setdiff(
     intersect(names(tgt$params), names(formals(fn))),
-    c("n", "resp_rate", "moe", "cv", "rmoe")
+    c("n", "resp_rate", "eligibility_rate", "moe", "cv", "rmoe")
   )
   args <- tgt$params[keep]
   args$n <- n_resp
   args$resp_rate <- 1
+  if (!is.null(args$N)) args$N <- args$N * (tgt$eligibility_rate %||% 1)
   if (identical(tgt$type, "proportion")) {
     args$method <- tgt$method %||% "wald"
   }

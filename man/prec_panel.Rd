@@ -14,6 +14,7 @@ prec_panel(n_recruit, ...)
   retention,
   ...,
   resp_rate = 1,
+  eligibility_rate = 1,
   design = c("fixed", "rotating"),
   target_wave = NULL,
   assurance = NULL,
@@ -41,8 +42,12 @@ computed for, and the responding sample the design is compared against.}
 \item{retention}{Conditional retention, one value per wave transition,
 each in (0, 1]. See \code{\link[=n_panel]{n_panel()}}.}
 
-\item{resp_rate}{Response rate at recruitment, wave 1, in (0, 1].
-Default 1.}
+\item{resp_rate}{Response rate among eligible units at recruitment, wave 1,
+in (0, 1]. Default 1. See the nonresponse section of \link{svyplan-package}
+for what the rate counts.}
+
+\item{eligibility_rate}{Share of issued units in scope at recruitment, in
+(0, 1]. Default 1. See the nonresponse section of \link{svyplan-package}.}
 
 \item{design}{\code{"fixed"} or \code{"rotating"}. See \code{\link[=n_panel]{n_panel()}}.}
 

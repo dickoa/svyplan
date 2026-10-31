@@ -19,6 +19,7 @@ prec_ratio(r = NULL, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   df = NULL,
   plan = NULL
 )
@@ -54,7 +55,14 @@ for what this is the design effect of. A published DEFT is squared
 first. See \code{\link[=varcomp]{varcomp()}} for that and for removing the published
 survey's weighting loss.}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1.}
+\item{resp_rate}{Expected response rate among eligible units, in (0, 1].
+Default 1. See the nonresponse section of \link{svyplan-package} for what the
+rate counts.}
+
+\item{eligibility_rate}{Share of issued units in scope, such as dwellings
+found occupied, in (0, 1]. Default 1. With a finite \code{N}, the population
+in scope is \code{N * eligibility_rate}. See the nonresponse section of
+\link{svyplan-package}.}
 
 \item{df}{Degrees of freedom of the variance estimator, switching the
 interval quantile from normal to t. \code{NULL} (default) applies none.}

@@ -22,8 +22,14 @@
 #'   population sizes. `Inf` disables FPC for the corresponding group.
 #' @param deff Design effect multiplier (> 0). Values < 1 are valid for
 #'   efficient designs (e.g., stratified sampling with Neyman allocation).
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). The required sample size is inflated by `1 / resp_rate`.
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1 (no adjustment). The required sample size is inflated by
+#'   `1 / resp_rate`. See the nonresponse section of [svyplan-package] for what
+#'   the rate counts.
+#' @param eligibility_rate Share of issued units in scope, such as dwellings
+#'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
+#'   in scope is `N * eligibility_rate`. See the nonresponse section of
+#'   [svyplan-package].
 #' @param alternative Character: `"two.sided"` (default) or `"one.sided"`.
 #'   Use `"two.sided"` when either an increase or decrease matters (the
 #'   usual default). Use `"one.sided"` when only one direction is of
@@ -157,6 +163,7 @@ power_mean <- function(var = NULL, ...) {
 power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NULL, power = 0.80,
                        alpha = 0.05, N = Inf, deff = 1,
                        resp_rate = 1,
+                       eligibility_rate = 1,
                        alternative = c("two.sided", "one.sided"),
                        ratio = 1,
                        overlap = 0, overlap_cor = 0,
@@ -177,6 +184,10 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
   overlap_draw <- match.arg(overlap_draw)
   .check_overlap_N(overlap, N_pair)
   check_resp_rate(resp_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  N_frame <- N_pair
+  N_pair <- N_pair * eligibility_rate
+  rate <- resp_rate * eligibility_rate
   ratio <- .resolve_ratio(n, ratio)
 
   null_count <- is.null(effect) + is.null(n) + is.null(power)
@@ -201,6 +212,7 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
                  resp_rate = resp_rate, alternative = alternative,
                  ratio = ratio, overlap = overlap, overlap_cor = overlap_cor,
                  overlap_draw = overlap_draw)
+  if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
 
 
   ov_term <- 2 * overlap * overlap_cor * sqrt(var_pair[1] * var_pair[2])
@@ -211,7 +223,7 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
     r <- ratio
     power_n2 <- function(n2) {
       n_vec <- if (r == 1) c(n2, n2) else c(r * n2, n2)
-      n_eff <- n_vec * resp_rate
+      n_eff <- n_vec * rate
       V_d <- .diff_var_fpc(
         n_eff, var_pair, N_pair, deff, overlap, overlap_cor, overlap_draw
       )
@@ -222,11 +234,11 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
     if (alternative == "one.sided" && all(is.infinite(N_pair))) {
       z_b <- qnorm(power)
       V_r <- var_pair[1] / r + var_pair[2] - ov_term
-      n2 <- (z_a + z_b)^2 * V_r * deff / effect^2 / resp_rate
+      n2 <- (z_a + z_b)^2 * V_r * deff / effect^2 / rate
       n2 <- max(n2, 2, 2 / r)
     } else {
       n2 <- .solve_n2_from_power(
-        power, power_n2, N_pair, r, resp_rate,
+        power, power_n2, N_pair, r, rate,
         overlap = .frame_overlap(overlap, overlap_draw)
       )
     }
@@ -240,8 +252,8 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
     params$effect <- effect
     params$n <- n
     n_vec <- if (length(n) == 1L) c(n, n) else n
-    .check_gross_n(n_vec, N_pair, label = c("group 1", "group 2"))
-    n_eff <- n_vec * resp_rate
+    .check_gross_n(n_vec, N_frame, label = c("group 1", "group 2"))
+    n_eff <- n_vec * rate
 
     V_d <- .diff_var_fpc(n_eff, var_pair, N_pair, deff, overlap, overlap_cor,
                          overlap_draw)
@@ -263,8 +275,8 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
     params$n <- n
     params$power <- power
     n_vec <- if (length(n) == 1L) c(n, n) else n
-    .check_gross_n(n_vec, N_pair, label = c("group 1", "group 2"))
-    n_eff <- n_vec * resp_rate
+    .check_gross_n(n_vec, N_frame, label = c("group 1", "group 2"))
+    n_eff <- n_vec * rate
 
     V_d <- .diff_var_fpc(n_eff, var_pair, N_pair, deff, overlap, overlap_cor,
                          overlap_draw)

@@ -27,7 +27,8 @@ n_alloc(frame, ...)
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   df = NULL,
   min_n_stratum = NULL,
   alloc_q = 0.5,
@@ -84,7 +85,7 @@ Both must be non-negative and finite. A frame with \code{p} and
 neither column takes its variance from \code{p}, as \code{measures} does in
 joint allocation, \eqn{N p (1 - p) / (N - 1)}{N p (1 - p) / (N - 1)}
 in an element design and \eqn{p (1 - p)}{p (1 - p)} in a
-multistage one. Without \code{sd}, \code{var} or \code{p}, those two rules
+multistage one or under \code{fpc = "none"}. Without \code{sd}, \code{var} or \code{p}, those two rules
 allocate a fixed \code{n} from the stratum sizes alone, and the
 precision fields of the result are \code{NA} because nothing was
 assessed.}
@@ -178,10 +179,11 @@ with one row per required \code{stratum} and indicator \code{name}. Each row mus
 contain either \code{p} in \verb{[0, 1]}, or \code{mean} and exactly one of non-negative
 \code{sd} or \code{var}. In element-level designs, \code{p} implies the finite-population
 variance \code{N * p * (1 - p) / (N - 1)}, using its stratum's \code{N > 1},
-consistently with \code{\link[=prec_prop]{prec_prop()}}. Explicit \code{var} and \code{sd} values are used
+consistently with \code{\link[=prec_prop]{prec_prop()}}, and \code{p * (1 - p)} under
+\code{fpc = "none"}. Explicit \code{var} and \code{sd} values are used
 as supplied. Multistage designs, including PSU-register designs, retain
 the working proportion variance \code{p * (1 - p)}.
-Optional row-specific \code{deff}, \code{resp_rate} and \code{eligible_rate} values
+Optional row-specific \code{deff}, \code{resp_rate} and \code{eligible_per_unit} values
 take precedence, and \code{NA} falls back to the stratum's \code{frame} column of
 the same name, then to the scalar argument. A published DEFT is
 squared first, and the allocation already carries its own weighting
@@ -288,19 +290,29 @@ overrides a \code{deff} column in \code{frame}. A published DEFT is squared
 first, and the allocation already carries its own weighting loss. See
 \code{\link[=varcomp]{varcomp()}}.}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1. A scalar
-applies to every stratum. A length-\code{nrow(frame)} vector gives one per
-stratum and overrides a \code{resp_rate} column in \code{frame}. See the
-nonresponse section of \link{svyplan-package} for what this adjustment does
-and does not claim.}
+\item{resp_rate}{Expected response rate among eligible units, in (0, 1].
+Default 1. A scalar applies to every stratum. A length-\code{nrow(frame)}
+vector gives one per stratum and overrides a \code{resp_rate} column in
+\code{frame}. See the nonresponse section of \link{svyplan-package} for what the
+rate counts and what this adjustment does and does not claim.}
 
-\item{eligible_rate}{Eligible units per sampled unit in joint allocation,
+\item{eligibility_rate}{Share of issued units in scope, such as dwellings
+found occupied, in (0, 1]. Default 1. A scalar applies to every stratum.
+A length-\code{nrow(frame)} vector gives one per stratum and overrides an
+\code{eligibility_rate} column in \code{frame}. In joint allocation it is a scalar,
+a \code{frame} column or a \code{measures} column. Strata are weighted by their
+population in scope, \code{N * eligibility_rate}, while the bounds on the
+sample stay in frame units. With a PSU register it is a scalar or a
+\code{frame} column, one rate per stratum. See the nonresponse section of
+\link{svyplan-package}.}
+
+\item{eligible_per_unit}{Eligible units per sampled unit in joint allocation,
 a positive number, default 1, such as married women per household. It
 can exceed 1. A \code{measures} column of that name sets it per indicator
 and stratum, and a \code{frame} column per stratum, with the precedence
 \code{resp_rate} follows. \code{N}, \code{n}, bounds, weights and costs stay in
-sampled units, while every variance term reads \code{N * eligible_rate}
-eligible units and \code{resp_rate * eligible_rate} respondents per sampled
+sampled units, while every variance term reads \code{N * eligible_per_unit}
+eligible units and \code{resp_rate * eligible_per_unit} respondents per sampled
 unit. Classic allocation and a \code{psu} register refuse it. See \code{\link[=n_prop]{n_prop()}}
 for the caveat above 1.}
 
@@ -329,15 +341,16 @@ on population CVs and the response/design-effect adjustment, independently
 of \code{alloc_measure}. This does not generally equalize domain CVs.
 Default 0.5.}
 
-\item{fpc}{Which finite population correction the variance carries in
-cluster allocation: \code{"unit"} (default) for the ultimate-unit
-\code{1 - n / N} on the whole inflated variance, \code{"stage"} for the
+\item{fpc}{Which finite population correction the variance carries:
+\code{"unit"} (default) for the ultimate-unit \code{1 - n / N}, on the whole
+inflated variance in cluster allocation, \code{"stage"} for the
 stage-by-stage correction, exact under the equal-size, equal-take
-variance-component model this path assumes, or \code{"none"} for
-\code{\link[=n_cluster]{n_cluster()}}'s default with-replacement model. \code{"stage"} and \code{"none"}
-match \code{\link[=n_cluster]{n_cluster()}} with the same \code{fpc}. \code{"stage"} requires \code{N_psu}, and
-\code{N_ssu} as well at three stages. Refused outside cluster allocation and
-with a \code{psu} register. See the correction section in Details.}
+variance-component model cluster allocation assumes, or \code{"none"} for no
+correction, \code{\link[=n_cluster]{n_cluster()}}'s default with-replacement model. \code{"stage"}
+and \code{"none"} match \code{\link[=n_cluster]{n_cluster()}} with the same \code{fpc}. \code{"stage"} requires
+\code{N_psu}, and \code{N_ssu} as well at three stages, and is refused in element
+allocation. Only \code{"unit"} is available with a \code{psu} register. See the
+correction section in Details.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -732,8 +745,17 @@ at all. A large population reached through a few large PSUs leaves
 \eqn{f_2} wherever it was, so \code{"stage"} is not in general a small
 correction to \code{"none"}.
 
-\code{fpc} is refused outside cluster allocation, where there are no stages to
-choose between and the correction is always \code{1 - n / N}.
+An element allocation has no stages to choose between, so it takes
+\code{"unit"}, the correction \code{1 - n / N}, or \code{"none"}, none at all. Under
+\code{"none"} a stratum variance derived from \code{p} is \code{p (1 - p)}, as in
+\code{\link[=n_prop]{n_prop()}} with \code{N = Inf}, rather than the finite-population
+\verb{N p (1 - p) / (N - 1)}. The stratum weights still read \code{N} (times
+\code{eligibility_rate}), and the caps, take-all strata and base weights stay
+in frame units, so only the correction is dropped. A take-all stratum
+then keeps a sampling variance, as a census of PSUs does in
+\code{\link[=n_cluster]{n_cluster()}}. Use \code{"none"} to reproduce a plan built on published
+design effects, which carry the clustering and leave no element
+correction to apply.
 
 Because \code{icc_psu} already accounts for the clustering, leave
 \code{deff} at 1 unless it captures a \emph{different} source of design
@@ -1104,7 +1126,7 @@ joint_cluster <- n_alloc(
 joint_cluster$detail[, c("stratum", "n_psu_int", "n_per_psu", "n_int")]
 
 # Each indicator measured on its own eligible persons per household
-joint_measures$eligible_rate <- rep(c(0.41, 2.6), each = 3)
+joint_measures$eligible_per_unit <- rep(c(0.41, 2.6), each = 3)
 n_alloc(joint_frame, measures = joint_measures, targets = joint_targets)
 
 # Fixed three-stage takes: PSUs, SSUs within PSU, ultimate units within SSU

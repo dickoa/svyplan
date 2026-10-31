@@ -85,10 +85,14 @@ effective_n <- function(x = NULL, ...) {
 #' @param deff Design effect to apply directly, instead of building one
 #'   from components. A published DEFT is squared first. See [varcomp()]
 #'   for that and for removing the published survey's weighting loss.
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1. It nets
-#'   `n` down to the units the design expects to analyze before the design
-#'   effect is applied. When `x` is a plan, its own rate is used unless you
-#'   override it here.
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1. It nets `n` down to the units the design expects to analyze
+#'   before the design effect is applied. When `x` is a plan, its own rate is
+#'   used unless you override it here. See the nonresponse section of
+#'   [svyplan-package] for what the rate counts.
+#' @param eligibility_rate Share of issued units in scope, in (0, 1\].
+#'   Default 1. It nets `n` down with `resp_rate`. When `x` is a plan, its
+#'   own value is used unless you override it here.
 #' @param icc,n_per_psu,n_per_ssu,var_ratio,weights,strata Design components, with
 #'   the same meaning as in [design_effect()].
 #'
@@ -99,6 +103,7 @@ effective_n.default <- function(
   n = NULL,
   deff = NULL,
   resp_rate = 1,
+  eligibility_rate = 1,
   icc = NULL,
   n_per_psu = NULL,
   n_per_ssu = NULL,
@@ -138,20 +143,23 @@ effective_n.default <- function(
       strata = strata
     ))
   }
-  .effective_n(.effective_n_size(n, weights, strata), value, resp_rate)
+  .effective_n(.effective_n_size(n, weights, strata), value, resp_rate,
+               eligibility_rate = eligibility_rate)
 }
 
 #' @describeIn effective_n Apply a design effect already built by
 #'   [design_effect()].
 #' @export
-effective_n.svyplan_deff <- function(x, ..., n = NULL, resp_rate = 1) {
+effective_n.svyplan_deff <- function(x, ..., n = NULL, resp_rate = 1,
+                                     eligibility_rate = 1) {
   .check_unused_dots(...)
-  .effective_n(.effective_n_size(n, NULL, NULL), as.double(x), resp_rate)
+  .effective_n(.effective_n_size(n, NULL, NULL), as.double(x), resp_rate,
+               eligibility_rate = eligibility_rate)
 }
 
 #' @describeIn effective_n Use the total sample size and design features of
 #'   a [n_cluster()] or [prec_cluster()] allocation. The total is netted by
-#'   every stage's response rate and by `eligible_rate`, so the result
+#'   every stage's response rate and by `eligible_per_unit`, so the result
 #'   counts eligible respondents, as the `cv` does.
 #' @export
 effective_n.svyplan_cluster <- function(
@@ -159,6 +167,7 @@ effective_n.svyplan_cluster <- function(
   ...,
   n = NULL,
   resp_rate = NULL,
+  eligibility_rate = NULL,
   weights = NULL,
   strata = NULL
 ) {
@@ -167,7 +176,7 @@ effective_n.svyplan_cluster <- function(
   .effective_n(
     n %||% x$total_n,
     as.double(deff),
-    .effective_n_resp(resp_rate, x),
+    .effective_n_resp(resp_rate, x, eligibility_rate),
     check_rate = !is.null(resp_rate)
   )
 }
@@ -181,6 +190,7 @@ effective_n.svyplan_prec <- function(
   ...,
   n = NULL,
   resp_rate = NULL,
+  eligibility_rate = NULL,
   weights = NULL,
   strata = NULL
 ) {
@@ -189,7 +199,7 @@ effective_n.svyplan_prec <- function(
   .effective_n(
     n %||% prod(x$params$n),
     as.double(deff),
-    .effective_n_resp(resp_rate, x),
+    .effective_n_resp(resp_rate, x, eligibility_rate),
     check_rate = !is.null(resp_rate)
   )
 }
@@ -202,6 +212,7 @@ effective_n.svyplan_varcomp <- function(
   ...,
   n = NULL,
   resp_rate = 1,
+  eligibility_rate = 1,
   n_per_psu = NULL,
   n_per_ssu = NULL,
   weights = NULL,
@@ -218,7 +229,8 @@ effective_n.svyplan_varcomp <- function(
   .effective_n(
     .effective_n_size(n, weights, strata),
     as.double(deff),
-    resp_rate
+    resp_rate,
+    eligibility_rate = eligibility_rate
   )
 }
 
@@ -233,27 +245,31 @@ effective_n.svyplan_n <- function(
   ...,
   n = NULL,
   resp_rate = NULL,
+  eligibility_rate = NULL,
   weights = NULL
 ) {
   .check_unused_dots(...)
   deff <- design_effect(x, weights = weights)
-  .effective_n(n %||% x$n, as.double(deff), .effective_n_resp(resp_rate, x))
+  .effective_n(n %||% x$n, as.double(deff),
+               .effective_n_resp(resp_rate, x, eligibility_rate))
 }
 
 #' Net a validated sample size down for response, then divide by a design
 #' effect
 #' @keywords internal
 #' @noRd
-.effective_n <- function(n, deff, resp_rate = 1, check_rate = TRUE) {
+.effective_n <- function(n, deff, resp_rate = 1, check_rate = TRUE,
+                         eligibility_rate = 1) {
   check_scalar(n, "n")
   if (check_rate) check_resp_rate(resp_rate)
-  n * resp_rate / deff
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  n * resp_rate * eligibility_rate / deff
 }
 
 #' Response rate for a plan, explicit argument first
 #' @keywords internal
 #' @noRd
-.effective_n_resp <- function(resp_rate, x) {
+.effective_n_resp <- function(resp_rate, x, eligibility_rate = NULL) {
   # A cluster plan can lose units at more than one stage, and every loss
   # removes observations from the same total, so the share of the drawn
   # sample that responds is their product. An eligible rate then counts the
@@ -263,11 +279,20 @@ effective_n.svyplan_n <- function(
     (p[["resp_rate_psu"]] %||% 1) *
       (p[["resp_rate_ssu"]] %||% 1) *
       (p[["resp_rate"]] %||% 1) *
-      (p[["eligible_rate"]] %||% 1)
+      (p[["eligible_per_unit"]] %||% 1)
   } else {
     x$params$resp_rate
   }
-  rate <- resp_rate %||% stored %||% 1
+  if (!is.null(eligibility_rate)) {
+    check_resp_rate(eligibility_rate, "eligibility_rate")
+  }
+  stored_scope <- if (identical(x$type, "alloc")) {
+    .alloc_summary_response_rates(x)$eligibility
+  } else {
+    x$params[["eligibility_rate"]]
+  }
+  rate <- (resp_rate %||% stored %||% 1) *
+    (eligibility_rate %||% stored_scope %||% 1)
   if (length(rate) > 1L) {
     # Per-stratum rates net down to one overall rate, the share of the drawn
     # sample expected to respond: sum(n_h r_h) / sum(n_h).

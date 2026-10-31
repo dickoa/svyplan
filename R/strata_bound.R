@@ -71,9 +71,15 @@
 #'   variance of the stratified mean exactly as it does in [n_alloc()], so
 #'   that `cv` and `n` mean the same thing in both. A scalar value leaves the
 #'   boundaries unchanged. See Details.
-#' @param resp_rate Expected response rate, in (0, 1\], default 1. With a
-#'   response rate below 1, `n` is the sample fielded and `n * resp_rate` the
-#'   number expected to respond, matching [n_alloc()].
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\],
+#'   default 1. With a response rate below 1, `n` is the sample fielded and
+#'   `n * resp_rate` the number expected to respond, matching [n_alloc()].
+#'   See the nonresponse section of [svyplan-package] for what the rate
+#'   counts.
+#' @param eligibility_rate Share of issued units in scope, in (0, 1\],
+#'   default 1. It joins `resp_rate`, so `n * resp_rate * eligibility_rate`
+#'   is the number expected to respond. The correction then reads the frame
+#'   count rather than the population in scope, which errs on the large side.
 #' @param n_class Positive whole number of histogram bins. Applies to
 #'   `method = "cumrootf"` only. Supplying it with another method is an
 #'   error rather than a silent no-op.
@@ -313,6 +319,7 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
                          take_all_above = NULL,
                          deff = 1,
                          resp_rate = 1,
+                         eligibility_rate = 1,
                          n_class = NULL,
                          max_iter = NULL,
                          n_restart = NULL,
@@ -357,6 +364,8 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
   alloc <- match.arg(alloc)
   check_deff(deff)
   check_resp_rate(resp_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  rate <- resp_rate * eligibility_rate
   if (alloc == "power") {
     if (!is.numeric(alloc_q) || length(alloc_q) != 1L || is.na(alloc_q) || alloc_q < 0 || alloc_q > 1) {
       stop("'alloc_q' must be a numeric scalar in [0, 1]", call. = FALSE)
@@ -469,7 +478,7 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
     } else NULL
     res <- .strata_lh(x_sort, L_work, n_opt, target_cv, alloc, alloc_q,
                        cost_h[seq_len(L_work)], max_iter,
-                       deff = deff, resp_rate = resp_rate,
+                       deff = deff, resp_rate = rate,
                        target_V = search_target_V)
     bk <- res$bk
     converged <- res$converged
@@ -481,7 +490,7 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
     } else NULL
     res <- .strata_kozak(x_sort, L_work, n_opt, target_cv, alloc, alloc_q,
                           cost_h[seq_len(L_work)], max_iter, n_restart,
-                          deff = deff, resp_rate = resp_rate,
+                          deff = deff, resp_rate = rate,
                           target_V = search_target_V)
     bk <- res$bk
     converged <- res$converged
@@ -563,7 +572,7 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
   if (has_cv && !has_n) {
     n_total <- .strata_n_for_cv(
       x, bk, cv, alloc, alloc_q, cost_h, take_all_idx = take_all_strata,
-      deff = deff, resp_rate = resp_rate
+      deff = deff, resp_rate = rate
     )
     if (!is.finite(n_total)) {
       stop("target 'cv' is unattainable for the computed strata",
@@ -575,7 +584,7 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
 
   alloc_res <- .strata_alloc(x, bk, n_total, alloc, alloc_q, cost_h,
                              take_all_strata, deff = deff,
-                             resp_rate = resp_rate)
+                             resp_rate = rate)
 
   lo_i <- as.integer(pmin(2, alloc_res$N_h))
   hi_i <- as.integer(alloc_res$N_h)
@@ -587,7 +596,7 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
     whole <- .alloc_whole_element(
       list(N_h = alloc_res$N_h, S_h = alloc_res$S_h,
            mean_h = alloc_res$mean_h, cost_h = cost_h),
-      alloc, "cv", cv, NULL, deff, resp_rate, lo_i, hi_i,
+      alloc, "cv", cv, NULL, deff, rate, lo_i, hi_i,
       .search_control(NULL)$max_nodes
     )
     search <- whole$search
@@ -617,7 +626,7 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
   conv <- if (method %in% c("lh", "kozak")) converged else NA
 
   V_int <- .strata_variance(
-    alloc_res$W_h, alloc_res$S_h, n_int, alloc_res$N_h, deff, resp_rate
+    alloc_res$W_h, alloc_res$S_h, n_int, alloc_res$N_h, deff, rate
   )
   ybar <- .aggregate_mean(alloc_res$W_h, alloc_res$mean_h)
   cv_int <- if (ybar == 0) Inf else sqrt(V_int) / abs(ybar)
@@ -634,6 +643,7 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
       N         = length(x),
       deff      = deff,
       resp_rate = resp_rate,
+      eligibility_rate = if (eligibility_rate != 1) eligibility_rate,
       unit_cost = unit_cost,
       alloc_q   = if (alloc == "power") alloc_q else NULL,
       max_iter  = if (method %in% c("lh", "kozak")) max_iter else NULL,

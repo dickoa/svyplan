@@ -22,7 +22,8 @@ n_cluster(stage_cost = NULL, ...)
   resp_rate_psu = 1,
   resp_rate_ssu = 1,
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   fixed_cost = 0,
   fpc = c("none", "stage"),
   N = NULL,
@@ -106,13 +107,18 @@ second-stage units, typically households, that can be interviewed at
 all. A 2-stage design has no such stage, since the units inside a PSU
 are the ultimate ones, and supplying it there is an error.}
 
-\item{resp_rate}{Expected \strong{ultimate-unit} response rate, in (0, 1].
-Default 1. It is the share of selected final-stage units, typically
-persons, that respond. This is the plain \code{resp_rate} the rest of the
-package uses. See the nonresponse section of \link{svyplan-package} for what
-this adjustment does and does not claim.}
+\item{resp_rate}{Expected \strong{ultimate-unit} response rate among eligible
+units, in (0, 1]. Default 1. It is the share of selected final-stage
+units, typically persons, that respond. This is the plain \code{resp_rate} the
+rest of the package uses. See the nonresponse section of \link{svyplan-package}
+for what the rate counts and what this adjustment does and does not claim.}
 
-\item{eligible_rate}{Eligible units per final-stage unit, a positive
+\item{eligibility_rate}{Share of issued final-stage units in scope, such as
+dwellings found occupied, in (0, 1]. Default 1. It acts at the final
+stage, as \code{resp_rate} does, and with \code{indicators} it applies to every row.
+See the nonresponse section of \link{svyplan-package}.}
+
+\item{eligible_per_unit}{Eligible units per final-stage unit, a positive
 number, default 1, such as married women per household when households
 are the final stage. It can exceed 1. It multiplies \code{resp_rate} in the
 realized take and in its cost, and sizes stay in final-stage units. Not
@@ -131,8 +137,8 @@ component by its own stage's sampling fraction and needs \code{N} and
 \code{N_psu}, and \code{N_ssu} at three stages. See "Finite populations".}
 
 \item{N}{Number of final-stage units in the population, the units the
-takes count. With \code{eligible_rate} the correction reads
-\code{N * eligible_rate} eligible units. Read only with \code{fpc = "stage"} and
+takes count. With \code{eligible_per_unit} the correction reads
+\code{N * eligible_per_unit} eligible units. Read only with \code{fpc = "stage"} and
 refused otherwise.}
 
 \item{N_psu}{Number of PSUs in the population. Read only with
@@ -359,9 +365,9 @@ scales cost without moving that trade-off. Sizes and costs stay \strong{gross}:
 \verb{$n} counts units to issue and \verb{$cost} pays for them, while the variance
 reads what they realize.
 
-\code{eligible_rate} enters where \code{resp_rate} does at the final stage. The
+\code{eligible_per_unit} enters where \code{resp_rate} does at the final stage. The
 realized take is the eligible respondents per PSU,
-\code{n_per_psu * resp_rate * eligible_rate}, and \code{r} above is that product.
+\code{n_per_psu * resp_rate * eligible_per_unit}, and \code{r} above is that product.
 \code{icc} is then the homogeneity of eligible persons within a PSU, which a
 design effect published at the person level identifies through
 \code{\link[=varcomp]{varcomp()}}. Above 1, the persons of one household resemble each other
@@ -369,9 +375,14 @@ more than persons of different households, and one \code{icc} averages over
 that. For an outcome the whole household shares, such as poverty counted
 per person, the clustering penalty is then understated.
 
-With households as the final stage, a survey that reports a household and
-an individual response rate passes their product as \code{resp_rate}, as in
-\code{\link[=n_prop]{n_prop()}}.
+With households as the final stage, \code{eligibility_rate} is the households
+occupied over the households selected and \code{resp_rate} the published
+household response rate times the individual rate, as in \code{\link[=n_prop]{n_prop()}}. Both
+act at the final stage, so vacant dwellings shrink the realized take and
+the clustering penalty as nonresponse does. With \code{fpc = "stage"}, the
+final-stage population is \code{N * eligibility_rate * eligible_per_unit}. In a
+three-stage design, dwellings found vacant at the second stage belong in
+\code{resp_rate_ssu}.
 
 This is a deterministic expected-take approximation. It substitutes the
 expected realized stage counts into the planning variance and assumes
@@ -405,7 +416,14 @@ share taken of the \code{N / N_ssu} units per SSU. This is exact for PSUs and
 SSUs of equal size drawn with equal probability, when \code{icc} and
 \code{var_ratio} are the frame components \code{\link[=varcomp]{varcomp()}} returns without \code{prob}.
 Components from a size-proportional stage describe another design and
-are refused.
+are refused. With PSUs of unequal size the correction reads the mean
+size \code{N / N_psu}, while the exact one weights each PSU by its size, so it
+understates the variance slightly. The gap grows with the share of PSUs
+taken and with the within-PSU share of the variance. The default
+\code{fpc = "none"} is not affected, since the frame components are exact
+for unequal sizes. They describe the expansion estimator, and for a mean
+or a proportion from PSUs of unequal size \code{varcomp(estimator = "ratio")}
+gives the components of the ratio estimator instead.
 
 The correction moves the cost-optimal take to
 \deqn{m = \sqrt{\frac{c_1(1-\delta)}{c_2\,r\,\{\delta - (1-\delta)/M\}}},}{m = sqrt(c_1 (1 - delta) / (c_2 r (delta - (1 - delta)/M))),}
@@ -423,7 +441,8 @@ Once a budget or a target calls for more PSUs than \code{N_psu}, every PSU is
 taken and the rest goes to the takes. A fixed take that would need more
 PSUs than exist is refused, since a larger take may still reach the
 target. \code{N} counts final-stage units, as the takes do, and with
-\code{eligible_rate} the correction reads \code{N * eligible_rate} eligible units.
+\code{eligible_per_unit} the correction reads \code{N * eligible_per_unit} eligible
+units.
 
 With \code{indicators}, the arguments \code{N}, \code{N_psu} and \code{N_ssu} describe the
 one population every row is measured on, and the design meets every
@@ -459,7 +478,11 @@ n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, n_per_psu = 20)
 # Households per cluster for married women, 0.41 per household, for a
 # proportion near 0.28, whose unit relvariance is (1 - p) / p
 n_cluster(stage_cost = c(500, 50), icc = 0.07, unit_relvar = 0.72 / 0.28,
-          cv = 0.05, resp_rate = 0.9, eligible_rate = 0.41)
+          cv = 0.05, resp_rate = 0.9, eligible_per_unit = 0.41)
+
+# Dwellings found vacant shrink the realized take as nonresponse does
+n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
+          eligibility_rate = 0.95, resp_rate = 0.9)
 
 # 3-stage
 n_cluster(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05), cv = 0.05)

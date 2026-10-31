@@ -36,49 +36,53 @@
 #' Valid parameters for `newdata` by object type:
 #'
 #' - **`n_prop`**: `p`, `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`,
-#'   `resp_rate`, `eligible_rate`, `df`, `min_cases`
+#'   `resp_rate`, `eligibility_rate`, `eligible_per_unit`, `df`, `min_cases`
 #' - **`n_mean`**: `var`, `mu`, `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`,
-#'   `resp_rate`, `df`
+#'   `resp_rate`, `eligibility_rate`, `df`
 #' - **`n_ratio`**: `r`, `cv_num`, `cv_den`, `component_cor`, `moe`, `rmoe`,
-#'   `cv`, `alpha`, `N`, `deff`, `resp_rate`, `df`
+#'   `cv`, `alpha`, `N`, `deff`, `resp_rate`, `eligibility_rate`, `df`
 #' - **`n_change`**: `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`, `resp_rate`,
-#'   `ratio`, `overlap`, `overlap_cor`, and `change` on the mean scale only,
-#'   since two proportions determine it. The occasion variances are held at
-#'   the values the result was built from, so vary the design rather than the
-#'   estimand. Sweeping `overlap` and `overlap_cor` is what prices a rotation
-#'   against a fresh sample each round.
+#'   `eligibility_rate`, `ratio`, `overlap`, `overlap_cor`, and `change` on
+#'   the mean scale only, since two proportions determine it. The occasion
+#'   variances are held at the values the result was built from, so vary the
+#'   design rather than the estimand. Sweeping `overlap` and `overlap_cor`
+#'   is what prices a rotation against a fresh sample each round.
 #' - **`n_pooled`**: `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`, `resp_rate`,
-#'   `mu` on the mean scale, and `occasions` only where the overlap and
-#'   correlation are flat across lags, a shaped profile being a statement
-#'   about a horizon that changing the horizon would contradict. The lag
-#'   profiles themselves cannot be varied, a grid row having nowhere to hold
-#'   a vector.
+#'   `eligibility_rate`, `mu` on the mean scale, and `occasions` only where
+#'   the overlap and correlation are flat across lags, a shaped profile being
+#'   a statement about a horizon that changing the horizon would contradict.
+#'   The lag profiles themselves cannot be varied, a grid row having nowhere
+#'   to hold a vector.
 #' - **`n_cluster`**: `cv`, `budget`, `unit_relvar`, `resp_rate`,
-#'   `resp_rate_psu`, `resp_rate_ssu`, `eligible_rate`, `fixed_cost`, the
+#'   `resp_rate_psu`, `resp_rate_ssu`, `eligibility_rate`, `eligible_per_unit`,
+#'   `fixed_cost`, the
 #'   fixed sizes `n_psu`, `n_per_psu` and `n_per_ssu`,
 #'   stage deltas (`icc` or `icc_psu`, plus `icc_ssu` for 3-stage),
 #'   stage ratios (`var_ratio` or `var_ratio_psu`, plus `var_ratio_ssu` for 3-stage),
 #'   and stage costs (`cost_psu`, `cost_ssu`, `cost_tsu`). For 2-stage
 #'   designs, `cost_tsu` aliases `cost_ssu`.
 #' - **`power_prop`**: `p1`, `p2`, `n`, `power`, `alpha`, `N`, `deff`,
-#'   `alternative`, `overlap`, `overlap_cor`, `resp_rate` (excluding the solved-for
-#'   parameter). Not supported for objects with vector `n`.
+#'   `alternative`, `overlap`, `overlap_cor`, `resp_rate`, `eligibility_rate`
+#'   (excluding the solved-for parameter). Not supported for objects with
+#'   vector `n`.
 #' - **`power_mean`**: `effect`, `var`, `n`, `power`, `alpha`, `N`,
-#'   `deff`, `alternative`, `overlap`, `overlap_cor`, `resp_rate` (excluding the
-#'   solved-for parameter). Not supported for objects with vector `n`.
+#'   `deff`, `alternative`, `overlap`, `overlap_cor`, `resp_rate`,
+#'   `eligibility_rate` (excluding the solved-for parameter). Not supported
+#'   for objects with vector `n`.
 #' - **`n_alloc`** (classic modes): `n`, `cv`, `budget`, `alpha`, `deff`,
-#'   `resp_rate`, `min_n_stratum`, `alloc_q`. A joint constrained allocation
-#'   varies other controls, described below.
+#'   `resp_rate`, `eligibility_rate`, `min_n_stratum`, `alloc_q`. A joint
+#'   constrained allocation varies other controls, described below.
 #' - **`power_did`**: `effect`, `n`, `power`, `alpha`, `N`, `deff`,
-#'   `resp_rate`, `alternative`, `overlap`, `overlap_cor`, `ratio`
-#'   (excluding the solved-for parameter).
+#'   `resp_rate`, `eligibility_rate`, `alternative`, `overlap`, `overlap_cor`,
+#'   `ratio` (excluding the solved-for parameter).
 #' - **`prec_prop`**: `p`, `n`, `alpha`, `N`, `deff`, `resp_rate`,
-#'   `eligible_rate`, `df`. A result that solved for `p` varies the
-#'   target it solved from, `cv` or `rmoe`, in place of `p`.
+#'   `eligibility_rate`, `eligible_per_unit`, `df`. A result that solved for
+#'   `p` varies the target it solved from, `cv` or `rmoe`, in place of `p`.
 #' - **`prec_mean`**: `var`, `n`, `mu`, `alpha`, `N`, `deff`, `resp_rate`,
-#'   `df`. A result that solved for `mu` varies `cv` in place of `mu`.
+#'   `eligibility_rate`, `df`. A result that solved for `mu` varies `cv` in
+#'   place of `mu`.
 #' - **`prec_ratio`**: `r`, `n`, `cv_num`, `cv_den`, `component_cor`,
-#'   `alpha`, `N`, `deff`, `resp_rate`, `df`
+#'   `alpha`, `N`, `deff`, `resp_rate`, `eligibility_rate`, `df`
 #'
 #' For `svyplan_n` objects, `moe`, `rmoe`, and `cv` are mutually exclusive
 #' in `newdata`. If one appears, that mode is used. If none appears, the
@@ -219,7 +223,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
 
   if (object$type == "proportion") {
     allowed <- c("p", "moe", "cv", "rmoe", "alpha", "N", "deff", "resp_rate",
-                 "eligible_rate", "df", "min_cases")
+                 "eligibility_rate", "eligible_per_unit", "df", "min_cases")
     base <- object$params
     method <- object$method %||% "wald"
 
@@ -231,7 +235,8 @@ predict.svyplan_n <- function(object, newdata, ...) {
         p = p$p, moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N,
         deff = p$deff, resp_rate = p$resp_rate,
-        eligible_rate = p$eligible_rate %||% 1,
+        eligibility_rate = p[["eligibility_rate"]] %||% 1,
+        eligible_per_unit = p$eligible_per_unit %||% 1,
         method = method, df = p$df, min_cases = p$min_cases
       )
       data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv,
@@ -240,7 +245,8 @@ predict.svyplan_n <- function(object, newdata, ...) {
 
   } else if (object$type == "mean") {
     allowed <- c("var", "mu", "moe", "cv", "rmoe", "alpha", "N", "deff",
-                 "resp_rate", "df")
+                 "resp_rate",
+                 "eligibility_rate", "df")
     base <- object$params
 
     .validate_newdata(newdata, allowed)
@@ -250,7 +256,8 @@ predict.svyplan_n <- function(object, newdata, ...) {
       res <- n_mean.default(
         var = p$var, mu = p$mu, moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N,
-        deff = p$deff, resp_rate = p$resp_rate, df = p$df
+        deff = p$deff, resp_rate = p$resp_rate,
+        eligibility_rate = p[["eligibility_rate"]] %||% 1, df = p$df
       )
       data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv,
                  rmoe = res$rmoe)
@@ -258,7 +265,8 @@ predict.svyplan_n <- function(object, newdata, ...) {
 
   } else if (object$type == "ratio") {
     allowed <- c("r", "cv_num", "cv_den", "component_cor", "moe", "cv",
-                 "rmoe", "alpha", "N", "deff", "resp_rate", "df")
+                 "rmoe", "alpha", "N", "deff", "resp_rate",
+                 "eligibility_rate", "df")
     base <- object$params
 
     .validate_newdata(newdata, allowed)
@@ -270,7 +278,8 @@ predict.svyplan_n <- function(object, newdata, ...) {
         component_cor = p$component_cor,
         moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N,
-        deff = p$deff, resp_rate = p$resp_rate, df = p$df
+        deff = p$deff, resp_rate = p$resp_rate,
+        eligibility_rate = p[["eligibility_rate"]] %||% 1, df = p$df
       )
       data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv,
                  rmoe = res$rmoe)
@@ -281,7 +290,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
     # 'change' is p[2] - p[1] on the proportion scale, so varying it there
     # would ask for a change the two proportions contradict.
     allowed <- c("moe", "cv", "rmoe", "alpha", "N", "deff", "resp_rate",
-                 "ratio", "overlap", "overlap_cor",
+                 "eligibility_rate", "ratio", "overlap", "overlap_cor",
                  if (is.null(base$p)) "change")
 
     .validate_newdata(newdata, allowed)
@@ -294,6 +303,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
         change = if (is.null(p$p)) p$change else NULL,
         moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N, deff = p$deff, resp_rate = p$resp_rate,
+        eligibility_rate = p[["eligibility_rate"]] %||% 1,
         ratio = p$ratio, overlap = p$overlap, overlap_cor = p$overlap_cor,
         overlap_draw = p$overlap_draw, df = p$df
       )
@@ -305,13 +315,18 @@ predict.svyplan_n <- function(object, newdata, ...) {
     base <- object$params
     # An issued profile is a respondent one only at full response.
     if (identical(base$overlap_basis, "issued") &&
-          "resp_rate" %in% names(newdata)) {
-      .check_overlap_basis("issued", min(newdata$resp_rate))
+          any(c("resp_rate", "eligibility_rate") %in% names(newdata))) {
+      .check_overlap_basis(
+        "issued",
+        min(newdata[["resp_rate"]] %||% base$resp_rate) *
+          min(newdata[["eligibility_rate"]] %||%
+                (base[["eligibility_rate"]] %||% 1))
+      )
     }
     flat <- length(unique(base$overlap)) == 1L &&
       length(unique(base$overlap_cor)) == 1L
     allowed <- c("moe", "cv", "rmoe", "alpha", "N", "deff", "resp_rate",
-                 if (flat) "occasions",
+                 "eligibility_rate", if (flat) "occasions",
                  if (is.null(base$p)) "mu")
 
     .validate_newdata(newdata, allowed)
@@ -329,6 +344,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
         occasions = p$occasions,
         moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N, deff = p$deff, resp_rate = p$resp_rate,
+        eligibility_rate = p[["eligibility_rate"]] %||% 1,
         overlap = p$overlap, overlap_cor = p$overlap_cor,
         overlap_draw = p$overlap_draw, df = p$df,
         .overlap_basis = p$overlap_basis
@@ -338,11 +354,13 @@ predict.svyplan_n <- function(object, newdata, ...) {
     })
 
   } else if (object$type == "alloc") {
-    allowed <- c("n", "cv", "budget", "alpha", "deff", "resp_rate", "min_n_stratum", "alloc_q")
+    allowed <- c("n", "cv", "budget", "alpha", "deff", "resp_rate",
+                 "eligibility_rate", "min_n_stratum", "alloc_q")
     base <- object$params
     base_small <- list(
       n = base$n, cv = base$cv, budget = base$budget,
       alpha = base$alpha, deff = base$deff, resp_rate = base$resp_rate,
+      eligibility_rate = base[["eligibility_rate"]] %||% 1,
       min_n_stratum = base$min_n_stratum, alloc_q = base$alloc_q %||% 0.5
     )
 
@@ -380,6 +398,7 @@ predict.svyplan_n <- function(object, newdata, ...) {
         alpha = p$alpha,
         deff = p$deff,
         resp_rate = p$resp_rate,
+        eligibility_rate = p[["eligibility_rate"]] %||% 1,
         df = base$df,
         min_n_stratum = p$min_n_stratum,
         alloc_q = p$alloc_q
@@ -392,9 +411,8 @@ predict.svyplan_n <- function(object, newdata, ...) {
       }
       if (!.alloc_is_cluster(base$frame)) {
         alloc_args$unit_cost <- base$cost_h
-      } else {
-        alloc_args$fpc <- base$fpc %||% "unit"
       }
+      alloc_args$fpc <- base$fpc %||% "unit"
       res <- do.call(n_alloc.default, alloc_args)
       data.frame(
         n = res$n, se = res$se, moe = res$moe, cv = res$cv,
@@ -455,7 +473,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
 
   allowed <- unique(c(
     "cv", "budget", "unit_relvar", "resp_rate_psu", "resp_rate_ssu",
-    "resp_rate", "eligible_rate", "fixed_cost",
+    "resp_rate", "eligibility_rate", "eligible_per_unit", "fixed_cost",
     "n_psu", "n_per_psu", "n_per_ssu",
     if (identical(object$params[["fpc"]], "stage")) {
       c("N", "N_psu", if (stages == 3L) "N_ssu")
@@ -475,7 +493,7 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
     stage_cost = p$stage_cost, icc = p$icc, unit_relvar = p$unit_relvar,
     var_ratio = p$var_ratio, resp_rate_psu = p$resp_rate_psu %||% 1,
     resp_rate_ssu = p$resp_rate_ssu %||% 1, resp_rate = p$resp_rate %||% 1,
-    eligible_rate = p$eligible_rate %||% 1,
+    eligible_per_unit = p$eligible_per_unit %||% 1,
     n_psu = p$n_psu,
     n_per_psu = p$n_per_psu, n_per_ssu = p$n_per_ssu,
     fixed_cost = p$fixed_cost %||% 0,
@@ -516,7 +534,8 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
       n_per_ssu = params$n_per_ssu, resp_rate_psu = params$resp_rate_psu,
       resp_rate_ssu = params$resp_rate_ssu %||% 1,
       resp_rate = params$resp_rate %||% 1,
-      eligible_rate = params$eligible_rate %||% 1,
+      eligibility_rate = params[["eligibility_rate"]] %||% 1,
+      eligible_per_unit = params$eligible_per_unit %||% 1,
       fixed_cost = params$fixed_cost,
       fpc = p[["fpc"]] %||% "none",
       N = params[["N"]], N_psu = params[["N_psu"]], N_ssu = params[["N_ssu"]]
@@ -541,7 +560,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
 
   if (object$type == "proportion") {
     all_params <- c("p1", "p2", "n", "power", "alpha", "N", "deff",
-                    "resp_rate", "alternative", "overlap", "overlap_cor")
+                    "resp_rate", "eligibility_rate", "alternative", "overlap", "overlap_cor")
     excluded <- switch(solved, n = "n", power = "power", mde = "p2")
     allowed <- setdiff(all_params, excluded)
 
@@ -554,6 +573,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
         p1 = p$p1, p2 = p$p2, n = p$n, power = p$power,
         alpha = p$alpha, N = p$N, deff = p$deff,
         resp_rate = p$resp_rate,
+        eligibility_rate = p[["eligibility_rate"]] %||% 1,
         alternative = p$alternative, overlap = p$overlap, overlap_cor = p$overlap_cor,
         overlap_draw = p$overlap_draw, method = method
       )
@@ -564,7 +584,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
 
   } else if (object$type == "mean") {
     all_params <- c("effect", "var", "n", "power", "alpha", "N", "deff",
-                    "resp_rate", "alternative", "overlap", "overlap_cor")
+                    "resp_rate", "eligibility_rate", "alternative", "overlap", "overlap_cor")
     excluded <- switch(solved, n = "n", power = "power", mde = "effect")
     allowed <- setdiff(all_params, excluded)
 
@@ -576,6 +596,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
         effect = p$effect, var = p$var, n = p$n, power = p$power,
         alpha = p$alpha, N = p$N, deff = p$deff,
         resp_rate = p$resp_rate,
+        eligibility_rate = p[["eligibility_rate"]] %||% 1,
         alternative = p$alternative, overlap = p$overlap, overlap_cor = p$overlap_cor,
         overlap_draw = p$overlap_draw
       )
@@ -586,7 +607,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
 
   } else if (object$type %in% c("did_prop", "did_mean")) {
     all_params <- c("effect", "n", "power", "alpha", "N", "deff",
-                    "resp_rate", "alternative", "overlap", "overlap_cor", "ratio")
+                    "resp_rate", "eligibility_rate", "alternative", "overlap", "overlap_cor", "ratio")
     excluded <- switch(solved, n = "n", power = "power", mde = "effect")
     allowed <- setdiff(all_params, excluded)
 
@@ -600,6 +621,7 @@ predict.svyplan_power <- function(object, newdata, ...) {
         effect = p$effect, n = p$n, power = p$power,
         alpha = p$alpha, N = p$N, deff = p$deff,
         resp_rate = p$resp_rate,
+        eligibility_rate = p[["eligibility_rate"]] %||% 1,
         alternative = p$alternative, ratio = p$ratio,
         overlap = p$overlap, overlap_cor = p$overlap_cor,
         overlap_draw = p$overlap_draw
@@ -641,7 +663,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 
   if (object$type == "proportion") {
     allowed <- c("p", "n", "alpha", "N", "deff", "resp_rate",
-                 "eligible_rate", "df")
+                 "eligibility_rate", "eligible_per_unit", "df")
     base <- object$params
     method <- object$method %||% "wald"
     if (identical(solved, "p")) {
@@ -660,7 +682,8 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       res <- prec_prop.default(
         p = p$p, n = p$n, cv = p$cv, rmoe = p$rmoe, alpha = p$alpha, N = p$N,
         deff = p$deff, resp_rate = p$resp_rate,
-        eligible_rate = p$eligible_rate %||% 1,
+        eligibility_rate = p[["eligibility_rate"]] %||% 1,
+        eligible_per_unit = p$eligible_per_unit %||% 1,
         method = method, df = p$df
       )
       out <- data.frame(se = res$se, moe = res$moe, cv = res$cv,
@@ -670,7 +693,8 @@ predict.svyplan_prec <- function(object, newdata, ...) {
     })
 
   } else if (object$type == "mean") {
-    allowed <- c("var", "n", "mu", "alpha", "N", "deff", "resp_rate", "df")
+    allowed <- c("var", "n", "mu", "alpha", "N", "deff", "resp_rate",
+                 "eligibility_rate", "df")
     base <- object$params
     if (identical(solved, "mu")) {
       allowed <- c(setdiff(allowed, "mu"), "cv")
@@ -683,7 +707,8 @@ predict.svyplan_prec <- function(object, newdata, ...) {
     .predict_grid(newdata, base, function(p) {
       res <- prec_mean.default(
         var = p$var, n = p$n, mu = p$mu, cv = p$cv, alpha = p$alpha,
-        N = p$N, deff = p$deff, resp_rate = p$resp_rate, df = p$df
+        N = p$N, deff = p$deff, resp_rate = p$resp_rate,
+        eligibility_rate = p[["eligibility_rate"]] %||% 1, df = p$df
       )
       out <- data.frame(se = res$se, moe = res$moe, cv = res$cv,
                         rmoe = res$rmoe)
@@ -695,7 +720,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 
   } else if (object$type == "ratio") {
     allowed <- c("r", "n", "cv_num", "cv_den", "component_cor", "alpha", "N",
-                 "deff", "resp_rate", "df")
+                 "deff", "resp_rate", "eligibility_rate", "df")
     base <- object$params
 
     .validate_newdata(newdata, allowed)
@@ -704,7 +729,8 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       res <- prec_ratio.default(
         r = p$r, n = p$n, cv_num = p$cv_num, cv_den = p$cv_den,
         component_cor = p$component_cor, alpha = p$alpha,
-        N = p$N, deff = p$deff, resp_rate = p$resp_rate, df = p$df
+        N = p$N, deff = p$deff, resp_rate = p$resp_rate,
+        eligibility_rate = p[["eligibility_rate"]] %||% 1, df = p$df
       )
       data.frame(se = res$se, moe = res$moe, cv = res$cv, rmoe = res$rmoe)
     })
@@ -947,7 +973,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
         alpha = p$alpha,
         deff = p$deff,
         resp_rate = p$resp_rate,
-        eligible_rate = p$eligible_rate %||% 1,
+        eligible_per_unit = p$eligible_per_unit %||% 1,
         df = p$df,
         min_n_stratum = p$min_n_stratum,
         fpc = p$fpc %||% "unit"

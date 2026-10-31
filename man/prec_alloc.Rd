@@ -23,7 +23,8 @@ prec_alloc(frame, ...)
   alpha = 0.05,
   deff = 1,
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   df = NULL,
   unit_cost = NULL,
   min_n_stratum = NULL,
@@ -106,12 +107,24 @@ overrides a \code{deff} column in \code{frame}. A published DEFT is squared
 first, and the allocation already carries its own weighting loss. See
 \code{\link[=varcomp]{varcomp()}}.}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1. A scalar
-applies to every stratum. A length-\code{nrow(frame)} vector gives one per
-stratum and overrides a \code{resp_rate} column in \code{frame}.}
+\item{resp_rate}{Expected response rate among eligible units, in (0, 1].
+Default 1. A scalar applies to every stratum. A length-\code{nrow(frame)}
+vector gives one per stratum and overrides a \code{resp_rate} column in
+\code{frame}. See the nonresponse section of \link{svyplan-package} for what the
+rate counts.}
 
-\item{eligible_rate}{Eligible units per sampled unit in joint assessment.
-See the \code{eligible_rate} argument to \code{\link[=n_alloc]{n_alloc()}}. A fitted result
+\item{eligibility_rate}{Share of issued units in scope, such as dwellings
+found occupied, in (0, 1]. Default 1. A scalar applies to every stratum.
+A length-\code{nrow(frame)} vector gives one per stratum and overrides an
+\code{eligibility_rate} column in \code{frame}. In joint allocation it is a scalar,
+a \code{frame} column or a \code{measures} column. Strata are weighted by their
+population in scope, \code{N * eligibility_rate}, while the bounds on the
+sample stay in frame units. With a PSU register it is a scalar or a
+\code{frame} column, one rate per stratum. See the nonresponse section of
+\link{svyplan-package}.}
+
+\item{eligible_per_unit}{Eligible units per sampled unit in joint assessment.
+See the \code{eligible_per_unit} argument to \code{\link[=n_alloc]{n_alloc()}}. A fitted result
 carries its own.}
 
 \item{df}{Degrees of freedom of the variance estimator the allocation
@@ -131,15 +144,16 @@ argument \code{\link[=n_alloc]{n_alloc()}} takes, one value or one per stratum, 
 and its assessment can be held to one floor. Joint assessment only: supplying it without \code{measures} and
 \code{targets} is an error.}
 
-\item{fpc}{Which finite population correction the variance carries in
-cluster allocation: \code{"unit"} (default) for the ultimate-unit
-\code{1 - n / N} on the whole inflated variance, \code{"stage"} for the
+\item{fpc}{Which finite population correction the variance carries:
+\code{"unit"} (default) for the ultimate-unit \code{1 - n / N}, on the whole
+inflated variance in cluster allocation, \code{"stage"} for the
 stage-by-stage correction, exact under the equal-size, equal-take
-variance-component model this path assumes, or \code{"none"} for
-\code{\link[=n_cluster]{n_cluster()}}'s default with-replacement model. \code{"stage"} and \code{"none"}
-match \code{\link[=n_cluster]{n_cluster()}} with the same \code{fpc}. \code{"stage"} requires \code{N_psu}, and
-\code{N_ssu} as well at three stages. Refused outside cluster allocation and
-with a \code{psu} register. See the correction section in Details.}
+variance-component model cluster allocation assumes, or \code{"none"} for no
+correction, \code{\link[=n_cluster]{n_cluster()}}'s default with-replacement model. \code{"stage"}
+and \code{"none"} match \code{\link[=n_cluster]{n_cluster()}} with the same \code{fpc}. \code{"stage"} requires
+\code{N_psu}, and \code{N_ssu} as well at three stages, and is refused in element
+allocation. Only \code{"unit"} is available with a \code{psu} register. See the
+correction section in Details.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -262,7 +276,7 @@ prec_alloc(jf, n = c(120, 150), measures = jm, targets = jt)
 # A fixed allocation of households assessed nationally and per region,
 # with each region's published design effect (a DEFT, squared) and its
 # married women per household. The national row weights each region by
-# its eligible women, N * eligible_rate.
+# its eligible women, N * eligible_per_unit.
 regions <- data.frame(
   stratum = c("Coast", "Centre", "East"),
   region = c("Coast", "Centre", "East"),
@@ -273,7 +287,7 @@ mcpr <- data.frame(
   p = c(0.22, 0.19, 0.08),
   deff = c(1.02, 1.09, 1.65)^2,
   resp_rate = c(0.84, 0.91, 0.88),
-  eligible_rate = c(0.59, 1.23, 2.30)
+  eligible_per_unit = c(0.59, 1.23, 2.30)
 )
 every_level <- data.frame(
   name = "mcpr", domain = c(".overall", "region"), cv = 0.10

@@ -126,10 +126,10 @@ test_that("a whole fixed take below one respondent stays an error", {
 
 test_that("eligibility enters the floor through the ultimate rate", {
   fit <- suppressWarnings(n_cluster(stage_cost = c(1, 100), icc = 0.9,
-                                    cv = 0.05, eligible_rate = 0.25))
+                                    cv = 0.05, eligible_per_unit = 0.25))
   expect_identical(unname(fit$operational$n[["n_per_psu"]]), 4L)
   above <- suppressWarnings(n_cluster(stage_cost = c(1, 100), icc = 0.9,
-                                      cv = 0.05, eligible_rate = 2))
+                                      cv = 0.05, eligible_per_unit = 2))
   expect_identical(unname(above$operational$n[["n_per_psu"]]), 1L)
 })
 

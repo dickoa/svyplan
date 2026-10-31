@@ -35,11 +35,16 @@
 #'   [prec_prop()] for proportion rows and ignored for mean rows.
 #'   An optional `prop_method` column in `indicators` overrides this default
 #'   on a per-row basis.
-#' @param resp_rate Default expected response rate at the ultimate unit, in
-#'   (0, 1\]. Used for rows whose `resp_rate` column is absent or `NA`, and
-#'   a non-missing row value overrides it.
-#' @param eligible_rate Default eligible units per sampled unit, a positive
-#'   number that can exceed 1. Used for rows whose `eligible_rate` column is
+#' @param resp_rate Default expected response rate among eligible ultimate
+#'   units, in (0, 1\]. Used for rows whose `resp_rate` column is absent or
+#'   `NA`, and a non-missing row value overrides it. See the nonresponse
+#'   section of [svyplan-package] for what the rate counts.
+#' @param eligibility_rate Default share of issued units in scope, in (0, 1\].
+#'   Used for rows whose `eligibility_rate` column is absent or `NA`, and a
+#'   non-missing row value overrides it. See the nonresponse section of
+#'   [svyplan-package].
+#' @param eligible_per_unit Default eligible units per sampled unit, a positive
+#'   number that can exceed 1. Used for rows whose `eligible_per_unit` column is
 #'   absent or `NA`. Proportion rows only. See [n_multi()].
 #' @param plan A [svyplan()] profile providing default design parameters.
 #'
@@ -101,7 +106,7 @@
 #'   \item{`resp_rate`}{Expected response rate at the ultimate unit
 #'     (default 1). A cluster design spends a rate at stage 1 too, and
 #'     [prec_cluster()] names that column `resp_rate_psu`.}
-#'   \item{`eligible_rate`}{Eligible units per sampled unit for the row's
+#'   \item{`eligible_per_unit`}{Eligible units per sampled unit for the row's
 #'     estimate, as in [prec_prop()]. Proportion rows only. The
 #'     several-indicators mode of [prec_cluster()] refuses it.}
 #' }
@@ -161,7 +166,8 @@ prec_multi.default <- function(
   domains = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   plan = NULL
 ) {
   merged <- .merge_plan_args(
@@ -192,7 +198,8 @@ prec_multi.default <- function(
     )
   }
   check_resp_rate(resp_rate)
-  check_eligible_rate(eligible_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  check_eligible_per_unit(eligible_per_unit)
 
   if (!is.data.frame(indicators) || nrow(indicators) == 0L) {
     stop("'indicators' must be a non-empty data frame", call. = FALSE)
@@ -227,7 +234,8 @@ prec_multi.default <- function(
   domain_cols <- domains %||% character(0)
   .prec_multi_simple(indicators, prop_method = prop_method,
                      resp_rate = resp_rate,
-                     eligible_rate = eligible_rate,
+                     eligibility_rate = eligibility_rate,
+                     eligible_per_unit = eligible_per_unit,
                      domain_cols = domain_cols)
 }
 
@@ -245,6 +253,7 @@ prec_multi.default <- function(
   resp_rate_psu = 1,
   resp_rate_ssu = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   fpc = "none",
   pop = NULL
 ) {
@@ -319,6 +328,7 @@ prec_multi.default <- function(
     resp_rate_psu = resp_rate_psu,
     resp_rate_ssu = resp_rate_ssu,
     resp_rate = resp_rate,
+    eligibility_rate = eligibility_rate,
     fpc = fpc,
     pop = pop
   )
@@ -343,7 +353,8 @@ prec_multi.default <- function(
 #' @noRd
 .prec_multi_simple <- function(indicators, prop_method = "wald",
                               resp_rate = 1,
-                              eligible_rate = 1,
+                              eligibility_rate = 1,
+                              eligible_per_unit = 1,
                               domain_cols = character(0)) {
   if (!"alpha" %in% names(indicators)) {
     indicators$alpha <- 0.05
@@ -367,7 +378,8 @@ prec_multi.default <- function(
   if (!"df" %in% names(indicators)) {
     indicators$df <- NA_real_
   }
-  indicators <- .fill_eligible_rate(indicators, eligible_rate)
+  indicators <- .fill_eligible_per_unit(indicators, eligible_per_unit)
+  indicators <- .fill_eligibility_rate(indicators, eligibility_rate)
 
   .validate_common_columns(indicators)
 
@@ -419,7 +431,8 @@ prec_multi.default <- function(
     paste("indicator", seq_len(nr))
   }
   .check_gross_n(indicators$n, indicators$N, label = row_labels)
-  elig <- .indicator_rate(indicators, "eligible_rate", nr)
+  elig <- .indicator_rate(indicators, "eligible_per_unit", nr)
+  scope <- .indicator_rate(indicators, "eligibility_rate", nr)
 
   se_vec <- numeric(nr)
   moe_vec <- numeric(nr)
@@ -439,6 +452,7 @@ prec_multi.default <- function(
         N = indicators$N[i],
         deff = indicators$deff[i],
         resp_rate = indicators$resp_rate[i],
+        eligibility_rate = scope[i],
         df = .row_df(indicators, i)
       )
     } else if (is_prop) {
@@ -449,7 +463,8 @@ prec_multi.default <- function(
         N = indicators$N[i],
         deff = indicators$deff[i],
         resp_rate = indicators$resp_rate[i],
-        eligible_rate = elig[i],
+        eligibility_rate = scope[i],
+        eligible_per_unit = elig[i],
         method = indicators$prop_method[i],
         df = .row_df(indicators, i)
       )
@@ -462,6 +477,7 @@ prec_multi.default <- function(
         N = indicators$N[i],
         deff = indicators$deff[i],
         resp_rate = indicators$resp_rate[i],
+        eligibility_rate = scope[i],
         df = .row_df(indicators, i)
       )
     }
@@ -505,6 +521,7 @@ prec_multi.default <- function(
                                 resp_rate_psu = 1,
                                 resp_rate_ssu = 1,
                                 resp_rate = 1,
+                                eligibility_rate = 1,
                                 fpc = "none",
                                 pop = NULL) {
   if (!"alpha" %in% names(indicators)) {
@@ -538,6 +555,10 @@ prec_multi.default <- function(
   }
 
   .validate_common_columns(indicators)
+  # The rows are evaluated on response times eligibility, and the table the
+  # result keeps shows each row's response rate as given.
+  given_resp <- indicators$resp_rate
+  indicators$resp_rate <- given_resp * eligibility_rate
 
   if (!"unit_relvar" %in% names(indicators)) {
     indicators$unit_relvar <- NA_real_
@@ -651,7 +672,8 @@ prec_multi.default <- function(
   n2r <- if (stages == 2L) n2 * ru else n2 * rs
   n3r <- if (stages == 3L) n3 * ru else n3
   row_pops <- .stage_row_pops(indicators, domain_cols, fpc,
-                              .stage_eligible(pop), stages)
+                              .stage_eligible(pop, eligibility_rate), stages,
+                              eligibility_rate)
   for (i in seq_len(nr)) {
     if (!is.null(row_pops)) {
       pop_i <- row_pops[[i]]
@@ -728,6 +750,7 @@ prec_multi.default <- function(
     domain_cols
   )
 
+  indicators$resp_rate <- given_resp
   .new_svyplan_prec(
     se = se_vec,
     moe = moe_vec,
@@ -742,7 +765,8 @@ prec_multi.default <- function(
         stages = stages
       ),
       if (!is.null(row_pops)) list(fpc = "stage"),
-      if (!is.null(pop)) list(N = pop$N, N_psu = pop$A, N_ssu = pop$N_ssu)
+      if (!is.null(pop)) list(N = pop$N, N_psu = pop$A, N_ssu = pop$N_ssu),
+      if (eligibility_rate != 1) list(eligibility_rate = eligibility_rate)
     ),
     detail = detail
   )
@@ -763,8 +787,11 @@ prec_multi.svyplan_n <- function(indicators, ...) {
   if ("resp_rate" %in% names(dots)) {
     tgt$resp_rate <- NA_real_
   }
-  if ("eligible_rate" %in% names(dots) && "eligible_rate" %in% names(tgt)) {
-    tgt$eligible_rate <- NA_real_
+  if ("eligible_per_unit" %in% names(dots) && "eligible_per_unit" %in% names(tgt)) {
+    tgt$eligible_per_unit <- NA_real_
+  }
+  if ("eligibility_rate" %in% names(dots) && "eligibility_rate" %in% names(tgt)) {
+    tgt$eligibility_rate <- NA_real_
   }
   # The design is assessed as sized: every row at the size the fit chose,
   # not at its own requirement, which is the target it was sized to. Floors

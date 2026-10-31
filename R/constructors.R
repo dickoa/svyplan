@@ -143,10 +143,10 @@
   }
 
   deff <- if (!is.null(params$deff)) params$deff else 1
-  eligible_rate <- params[["eligible_rate"]] %||% 1
+  yield <- .params_yield(params)
   resp_rate <- (if (!is.null(params$resp_rate)) params$resp_rate else 1) *
-    eligible_rate
-  N <- (if (!is.null(params$N)) params$N else Inf) * eligible_rate
+    yield
+  N <- (if (!is.null(params$N)) params$N else Inf) * yield
 
   if (type == "proportion") {
     .prec_engine_prop(params$p, n, params$alpha, N, deff, resp_rate,
@@ -288,7 +288,8 @@
   source = "data",
   params = list(),
   selection = NA_character_,
-  input = "frame"
+  input = "frame",
+  estimator = "expansion"
 ) {
   stopifnot(
     is.numeric(stages),
@@ -302,7 +303,10 @@
     all(is.na(selection) | selection %in% c("srs", "pps")),
     is.character(input),
     length(input) == 1L,
-    input %in% c("frame", "weighted", "deff", "se")
+    input %in% c("frame", "weighted", "deff", "se"),
+    is.character(estimator),
+    length(estimator) == 1L,
+    is.na(estimator) || estimator %in% c("expansion", "ratio")
   )
   if (is.null(strata)) {
     stopifnot(
@@ -334,7 +338,8 @@
       source = source,
       params = params,
       selection = selection,
-      input = input
+      input = input,
+      estimator = estimator
     ),
     class = c("svyplan_varcomp", "list")
   )

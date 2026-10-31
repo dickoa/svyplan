@@ -42,8 +42,14 @@
 #'   `c(N_treat, N_control)` for arm-specific population sizes.
 #'   `Inf` (default) disables FPC.
 #' @param deff Design effect multiplier (> 0).
-#' @param resp_rate Expected response rate, in (0, 1\]. Default 1 (no
-#'   adjustment). The required sample size is inflated by `1 / resp_rate`.
+#' @param resp_rate Expected response rate among eligible units, in (0, 1\].
+#'   Default 1 (no adjustment). The required sample size is inflated by
+#'   `1 / resp_rate`. See the nonresponse section of [svyplan-package] for what
+#'   the rate counts.
+#' @param eligibility_rate Share of issued units in scope, such as dwellings
+#'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
+#'   in scope is `N * eligibility_rate`. See the nonresponse section of
+#'   [svyplan-package].
 #' @param alternative Character: `"two.sided"` (default) or `"one.sided"`.
 #'   Use `"two.sided"` when the intervention could plausibly move the
 #'   outcome in either direction (the usual default). Use `"one.sided"`
@@ -207,6 +213,7 @@ power_did.default <- function(
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   alternative = c("two.sided", "one.sided"),
   ratio = 1,
   overlap = 0,
@@ -235,6 +242,10 @@ power_did.default <- function(
   N_pair <- .check_power_N(N)
   check_deff(deff)
   check_resp_rate(resp_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  N_frame <- N_pair
+  N_pair <- N_pair * eligibility_rate
+  rate <- resp_rate * eligibility_rate
   check_overlap(overlap)
   check_overlap_cor(overlap_cor)
   overlap_draw <- match.arg(overlap_draw)
@@ -313,6 +324,7 @@ power_did.default <- function(
     overlap_cor = overlap_cor,
     overlap_draw = overlap_draw
   )
+  if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
 
   if (!is.null(var_parts)) params$var <- var_parts
 
@@ -323,7 +335,7 @@ power_did.default <- function(
     r <- ratio
     power_n2 <- function(n2) {
       n_vec <- if (r == 1) c(n2, n2) else c(r * n2, n2)
-      n_eff <- n_vec * resp_rate
+      n_eff <- n_vec * rate
       .power_did_power_core(
         effect = effect,
         n_eff = n_eff,
@@ -339,11 +351,11 @@ power_did.default <- function(
       z_a <- .z_alpha(alpha, alternative)
       z_b <- qnorm(power)
       V_r <- var_terms$change[1] / r + var_terms$change[2]
-      n2 <- (z_a + z_b)^2 * deff * V_r / effect^2 / resp_rate
+      n2 <- (z_a + z_b)^2 * deff * V_r / effect^2 / rate
       n2 <- max(n2, 2, 2 / r)
     } else {
       n2 <- .solve_n2_from_power(
-        power, power_n2, N_pair, r, resp_rate,
+        power, power_n2, N_pair, r, rate,
         overlap = .frame_overlap(overlap, overlap_draw), within_arm = TRUE
       )
     }
@@ -359,9 +371,9 @@ power_did.default <- function(
     params$effect <- effect
     params$n <- n
     n_vec <- if (length(n) == 1L) c(n, n) else n
-    .check_gross_n(n_vec, N_pair,
+    .check_gross_n(n_vec, N_frame,
                    label = c("the treatment group", "the control group"))
-    n_eff <- n_vec * resp_rate
+    n_eff <- n_vec * rate
 
     pw <- .power_did_power_core(
       effect = effect,
@@ -382,9 +394,9 @@ power_did.default <- function(
     params$n <- n
     params$power <- power
     n_vec <- if (length(n) == 1L) c(n, n) else n
-    .check_gross_n(n_vec, N_pair,
+    .check_gross_n(n_vec, N_frame,
                    label = c("the treatment group", "the control group"))
-    n_eff <- n_vec * resp_rate
+    n_eff <- n_vec * rate
 
     mde <- .power_did_mde_core(
       n_eff = n_eff,

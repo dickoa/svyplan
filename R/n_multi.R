@@ -52,15 +52,21 @@
 #'   An optional `prop_method` column in `indicators` overrides this default
 #'   on a per-row basis. `"wilson"`, `"logodds"` and `"beta"` size from an
 #'   interval half-width, so those rows need `moe` rather than `cv`.
-#' @param resp_rate Default expected response rate at the ultimate unit, in
-#'   (0, 1\]. Used for rows whose `resp_rate` column is absent or `NA`, and
-#'   a non-missing row value overrides it. See the nonresponse section of
-#'   [svyplan-package] for what this adjustment does and does not claim.
-#' @param eligible_rate Default eligible units per sampled unit, a positive
+#' @param resp_rate Default expected response rate among eligible ultimate
+#'   units, in (0, 1\]. Used for rows whose `resp_rate` column is absent or
+#'   `NA`, and a non-missing row value overrides it. See the nonresponse
+#'   section of [svyplan-package] for what the rate counts and what this
+#'   adjustment does and does not claim.
+#' @param eligibility_rate Default share of issued units in scope, in (0, 1\].
+#'   Used for rows whose `eligibility_rate` column is absent or `NA`, and a
+#'   non-missing row value overrides it. With a finite `N`, a row's population
+#'   in scope is `N * eligibility_rate`. See the nonresponse section of
+#'   [svyplan-package].
+#' @param eligible_per_unit Default eligible units per sampled unit, a positive
 #'   number such as married women per household, which can exceed 1. Used
-#'   for rows whose `eligible_rate` column is absent or `NA`, and a
+#'   for rows whose `eligible_per_unit` column is absent or `NA`, and a
 #'   non-missing row value overrides it. Proportion rows only. See the
-#'   `eligible_rate` column under Details.
+#'   `eligible_per_unit` column under Details.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_n` object. The output class is the same with or without
@@ -128,7 +134,7 @@
 #' `min_respondents`, with no `p`, `var` or target. It stands for an
 #' estimate whose precision is not modeled, such as the fertility rates a
 #' DHS sizes by a count of interviews with women. Its `resp_rate` and
-#' `eligible_rate` turn the count into sampled units, and it raises the
+#' `eligible_per_unit` turn the count into sampled units, and it raises the
 #' size the other rows set. Every domain needs at least one row with an
 #' estimate and a target.
 #'
@@ -193,7 +199,7 @@
 #'     Single-stage `n_multi()` only, because a multistage design sizes
 #'     stages against a cost and has no single total for a count to raise.}
 #'   \item{`min_respondents`}{Minimum expected number of eligible
-#'     respondents, `n * resp_rate * eligible_rate`, a floor on the row's
+#'     respondents, `n * resp_rate * eligible_per_unit`, a floor on the row's
 #'     size. Unlike `min_cases`, it counts every respondent of the row's
 #'     group, not those with the attribute, and it applies to any row. A row
 #'     with this floor and no estimand is the floor-only row described
@@ -210,12 +216,13 @@
 #'     that cannot be worked and `resp_rate_ssu` for second-stage units in a
 #'     three-stage design. Naming a stage the design does not have is an
 #'     error rather than a column carried along and ignored.}
-#'   \item{`eligible_rate`}{Eligible units per sampled unit for the row's
+#'   \item{`eligible_per_unit`}{Eligible units per sampled unit for the row's
 #'     estimate, such as married women or children aged 12 to 23 months per
-#'     household. The row is sized as [n_prop()]`(eligible_rate = )` sizes
+#'     household. The row is sized as [n_prop()]`(eligible_per_unit = )` sizes
 #'     it. Sizes stay in sampled units, and the variance reads
-#'     `N * eligible_rate` eligible units and `resp_rate * eligible_rate`
-#'     respondents per sampled unit. Each row can carry its own group.
+#'     `N * eligible_per_unit` eligible units and
+#'     `resp_rate * eligible_per_unit` respondents per sampled unit. Each row
+#'     can carry its own group.
 #'     Proportion rows only, so a mean or ratio row takes 1. The
 #'     several-indicators mode of [n_cluster()] refuses the column.}
 #' }
@@ -371,7 +378,7 @@
 #'   cv = c(0.10, 0.10, 0.10, 0.10, NA, NA),
 #'   deff = c(1.03, 2.71, 1.32, 2.37, NA, NA),
 #'   resp_rate = 0.88,
-#'   eligible_rate = c(0.59, 2.30, 0.09, 0.47, 1.13, 2.89),
+#'   eligible_per_unit = c(0.59, 2.30, 0.09, 0.47, 1.13, 2.89),
 #'   min_respondents = c(NA, NA, NA, NA, 800, 800)
 #' )
 #' n_multi(dhs, domains = "region")
@@ -395,7 +402,8 @@ n_multi.default <- function(
   min_n_domain = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, n_multi.default, match.call(), environment())
@@ -419,7 +427,8 @@ n_multi.default <- function(
     }
   }
   check_resp_rate(resp_rate)
-  check_eligible_rate(eligible_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  check_eligible_per_unit(eligible_per_unit)
   # An unresolved default arrives either as a missing argument or, through
   # the plan-merge path, as the full choice vector itself.
   if (identical(prop_method, c("wald", "wilson", "logodds", "beta"))) {
@@ -453,7 +462,8 @@ n_multi.default <- function(
     prop_method = prop_method,
     resp_rate = resp_rate
   )
-  indicators <- .fill_eligible_rate(indicators, eligible_rate)
+  indicators <- .fill_eligible_per_unit(indicators, eligible_per_unit)
+  indicators <- .fill_eligibility_rate(indicators, eligibility_rate)
 
   rv_final <- indicators$unit_relvar[!is.na(indicators$unit_relvar)]
   if (
@@ -518,6 +528,7 @@ n_multi.default <- function(
   resp_rate_psu = 1,
   resp_rate_ssu = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   fpc = "none",
   pop = NULL
 ) {
@@ -594,6 +605,10 @@ n_multi.default <- function(
     resp_rate = resp_rate
   )
   indicators <- .convert_moe_to_cv(indicators)
+  # The rows are solved on response times eligibility, and the table the
+  # result keeps shows each row's response rate as given.
+  given_resp <- indicators$resp_rate
+  indicators$resp_rate <- given_resp * eligibility_rate
 
   rv_final <- indicators$unit_relvar[!is.na(indicators$unit_relvar)]
   if (
@@ -625,8 +640,9 @@ n_multi.default <- function(
   }
 
   row_pops <- .stage_row_pops(indicators, domain_cols, fpc,
-                              .stage_eligible(pop), stages)
-  if (!is.null(row_pops) && length(domain_cols) == 0L) {
+                              .stage_eligible(pop, eligibility_rate), stages,
+                              eligibility_rate)
+  res <- if (!is.null(row_pops) && length(domain_cols) == 0L) {
     .n_multi_cluster_stage(
       indicators, stage_cost, budget, n_psu, n_per_psu, n_per_ssu,
       fixed_cost, row_pops[[1L]], mode = mode, record_pop = !is.null(pop)
@@ -663,6 +679,26 @@ n_multi.default <- function(
     res$params$allocation <- allocation
     res
   }
+  if (eligibility_rate != 1) {
+    res$indicators$resp_rate <- given_resp
+    res$params$eligibility_rate <- eligibility_rate
+  }
+  res
+}
+
+#' Per-row eligibility rate, materialized only when one is set
+#' @keywords internal
+#' @noRd
+.fill_eligibility_rate <- function(indicators, eligibility_rate) {
+  has_col <- "eligibility_rate" %in% names(indicators)
+  if (!has_col && eligibility_rate == 1) {
+    return(indicators)
+  }
+  e <- if (has_col) indicators$eligibility_rate else
+    rep(NA_real_, nrow(indicators))
+  e[is.na(e)] <- eligibility_rate
+  indicators$eligibility_rate <- e
+  indicators
 }
 
 #' A per-row rate column, defaulting to full response when absent
@@ -687,19 +723,19 @@ n_multi.default <- function(
 #' which a round trip through [prec_multi()] reads back.
 #' @keywords internal
 #' @noRd
-.fill_eligible_rate <- function(indicators, eligible_rate) {
-  has_col <- "eligible_rate" %in% names(indicators)
-  if (!has_col && eligible_rate == 1) {
+.fill_eligible_per_unit <- function(indicators, eligible_per_unit) {
+  has_col <- "eligible_per_unit" %in% names(indicators)
+  if (!has_col && eligible_per_unit == 1) {
     return(indicators)
   }
-  e <- if (has_col) indicators$eligible_rate else rep(NA_real_, nrow(indicators))
+  e <- if (has_col) indicators$eligible_per_unit else rep(NA_real_, nrow(indicators))
   if (!is.numeric(e) && !all(is.na(e))) {
-    stop("'eligible_rate' values must be positive and finite", call. = FALSE)
+    stop("'eligible_per_unit' values must be positive and finite", call. = FALSE)
   }
   e <- as.numeric(e)
-  e[is.na(e)] <- eligible_rate
+  e[is.na(e)] <- eligible_per_unit
   if (any(!is.finite(e)) || any(e <= 0)) {
-    stop("'eligible_rate' values must be positive and finite", call. = FALSE)
+    stop("'eligible_per_unit' values must be positive and finite", call. = FALSE)
   }
   is_ratio <- .is_ratio_row(indicators)
   is_prop <- if ("p" %in% names(indicators)) {
@@ -711,14 +747,14 @@ n_multi.default <- function(
   if (length(bad) > 0L) {
     stop(
       sprintf(
-        "'eligible_rate' applies to proportion rows, as in n_prop(), and to rows with only 'min_respondents'. Row(s) %s carry a %s, so set their 'eligible_rate' to 1",
+        "'eligible_per_unit' applies to proportion rows, as in n_prop(), and to rows with only 'min_respondents'. Row(s) %s carry a %s, so set their 'eligible_per_unit' to 1",
         paste(bad, collapse = ", "),
         if (any(is_ratio[bad])) "ratio" else "mean"
       ),
       call. = FALSE
     )
   }
-  indicators$eligible_rate <- e
+  indicators$eligible_per_unit <- e
   indicators
 }
 
@@ -1251,7 +1287,8 @@ n_multi.default <- function(
   has_p <- "p" %in% names(indicators)
   has_mu <- "mu" %in% names(indicators)
   is_ratio <- .is_ratio_row(indicators)
-  elig <- .indicator_rate(indicators, "eligible_rate", nrow(indicators))
+  elig <- .indicator_rate(indicators, "eligible_per_unit", nrow(indicators))
+  scope <- .indicator_rate(indicators, "eligibility_rate", nrow(indicators))
   floor_only <- .floor_only_rows(indicators)
   cv_achieved_vec <- vapply(
     seq_len(nrow(indicators)),
@@ -1265,9 +1302,9 @@ n_multi.default <- function(
           indicators$unit_relvar[i],
           n_max,
           indicators$alpha[i],
-          indicators$N[i],
+          indicators$N[i] * scope[i],
           indicators$deff[i],
-          indicators$resp_rate[i],
+          indicators$resp_rate[i] * scope[i],
           .row_df(indicators, i)
         )
       } else if (has_p && !is.na(indicators$p[i])) {
@@ -1275,9 +1312,9 @@ n_multi.default <- function(
           indicators$p[i],
           n_max,
           indicators$alpha[i],
-          indicators$N[i] * elig[i],
+          indicators$N[i] * scope[i] * elig[i],
           indicators$deff[i],
-          indicators$resp_rate[i] * elig[i],
+          indicators$resp_rate[i] * scope[i] * elig[i],
           indicators$prop_method[i],
           .row_df(indicators, i)
         )
@@ -1287,9 +1324,9 @@ n_multi.default <- function(
           if (has_mu) indicators$mu[i] else NULL,
           n_max,
           indicators$alpha[i],
-          indicators$N[i],
+          indicators$N[i] * scope[i],
           indicators$deff[i],
-          indicators$resp_rate[i],
+          indicators$resp_rate[i] * scope[i],
           .row_df(indicators, i)
         )
       }
@@ -1336,7 +1373,8 @@ n_multi.default <- function(
   has_moe <- "moe" %in% names(indicators)
   has_mu <- "mu" %in% names(indicators)
   is_ratio <- .is_ratio_row(indicators)
-  elig <- .indicator_rate(indicators, "eligible_rate", nr)
+  elig <- .indicator_rate(indicators, "eligible_per_unit", nr)
+  scope <- .indicator_rate(indicators, "eligibility_rate", nr)
   floor_only <- .floor_only_rows(indicators)
 
   for (i in seq_len(nr)) {
@@ -1360,6 +1398,7 @@ n_multi.default <- function(
         N = indicators$N[i],
         deff = indicators$deff[i],
         resp_rate = indicators$resp_rate[i],
+        eligibility_rate = scope[i],
         df = .row_df(indicators, i)
       )
     } else if (is_prop) {
@@ -1371,7 +1410,8 @@ n_multi.default <- function(
         N = indicators$N[i],
         deff = indicators$deff[i],
         resp_rate = indicators$resp_rate[i],
-        eligible_rate = elig[i],
+        eligibility_rate = scope[i],
+        eligible_per_unit = elig[i],
         method = indicators$prop_method[i],
         df = .row_df(indicators, i)
       )
@@ -1385,6 +1425,7 @@ n_multi.default <- function(
         N = indicators$N[i],
         deff = indicators$deff[i],
         resp_rate = indicators$resp_rate[i],
+        eligibility_rate = scope[i],
         df = .row_df(indicators, i)
       )
     }
@@ -3638,8 +3679,11 @@ n_multi.svyplan_prec <- function(indicators, ...) {
   if ("resp_rate" %in% names(dots)) {
     tgt$resp_rate <- NA_real_
   }
-  if ("eligible_rate" %in% names(dots) && "eligible_rate" %in% names(tgt)) {
-    tgt$eligible_rate <- NA_real_
+  if ("eligible_per_unit" %in% names(dots) && "eligible_per_unit" %in% names(tgt)) {
+    tgt$eligible_per_unit <- NA_real_
+  }
+  if ("eligibility_rate" %in% names(dots) && "eligibility_rate" %in% names(tgt)) {
+    tgt$eligibility_rate <- NA_real_
   }
   tgt$n <- NULL
   tgt$n_per_psu <- NULL

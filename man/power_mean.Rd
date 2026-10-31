@@ -18,6 +18,7 @@ power_mean(var = NULL, ...)
   N = Inf,
   deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   alternative = c("two.sided", "one.sided"),
   ratio = 1,
   overlap = 0,
@@ -55,8 +56,15 @@ population sizes. \code{Inf} disables FPC for the corresponding group.}
 \item{deff}{Design effect multiplier (> 0). Values < 1 are valid for
 efficient designs (e.g., stratified sampling with Neyman allocation).}
 
-\item{resp_rate}{Expected response rate, in (0, 1]. Default 1 (no
-adjustment). The required sample size is inflated by \code{1 / resp_rate}.}
+\item{resp_rate}{Expected response rate among eligible units, in (0, 1].
+Default 1 (no adjustment). The required sample size is inflated by
+\code{1 / resp_rate}. See the nonresponse section of \link{svyplan-package} for what
+the rate counts.}
+
+\item{eligibility_rate}{Share of issued units in scope, such as dwellings
+found occupied, in (0, 1]. Default 1. With a finite \code{N}, the population
+in scope is \code{N * eligibility_rate}. See the nonresponse section of
+\link{svyplan-package}.}
 
 \item{alternative}{Character: \code{"two.sided"} (default) or \code{"one.sided"}.
 Use \code{"two.sided"} when either an increase or decrease matters (the

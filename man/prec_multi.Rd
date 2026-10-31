@@ -15,7 +15,8 @@ prec_multi(indicators, ...)
   domains = NULL,
   prop_method = c("wald", "wilson", "logodds", "beta"),
   resp_rate = 1,
-  eligible_rate = 1,
+  eligibility_rate = 1,
+  eligible_per_unit = 1,
   plan = NULL
 )
 
@@ -60,12 +61,18 @@ for round-trip conversion back to \code{\link[=n_multi]{n_multi()}}, so none can
 An optional \code{prop_method} column in \code{indicators} overrides this default
 on a per-row basis.}
 
-\item{resp_rate}{Default expected response rate at the ultimate unit, in
-(0, 1]. Used for rows whose \code{resp_rate} column is absent or \code{NA}, and
-a non-missing row value overrides it.}
+\item{resp_rate}{Default expected response rate among eligible ultimate
+units, in (0, 1]. Used for rows whose \code{resp_rate} column is absent or
+\code{NA}, and a non-missing row value overrides it. See the nonresponse
+section of \link{svyplan-package} for what the rate counts.}
 
-\item{eligible_rate}{Default eligible units per sampled unit, a positive
-number that can exceed 1. Used for rows whose \code{eligible_rate} column is
+\item{eligibility_rate}{Default share of issued units in scope, in (0, 1].
+Used for rows whose \code{eligibility_rate} column is absent or \code{NA}, and a
+non-missing row value overrides it. See the nonresponse section of
+\link{svyplan-package}.}
+
+\item{eligible_per_unit}{Default eligible units per sampled unit, a positive
+number that can exceed 1. Used for rows whose \code{eligible_per_unit} column is
 absent or \code{NA}. Proportion rows only. See \code{\link[=n_multi]{n_multi()}}.}
 
 \item{plan}{A \code{\link[=svyplan]{svyplan()}} profile providing default design parameters.}
@@ -133,7 +140,7 @@ no adjustment.}
 \item{\code{resp_rate}}{Expected response rate at the ultimate unit
 (default 1). A cluster design spends a rate at stage 1 too, and
 \code{\link[=prec_cluster]{prec_cluster()}} names that column \code{resp_rate_psu}.}
-\item{\code{eligible_rate}}{Eligible units per sampled unit for the row's
+\item{\code{eligible_per_unit}}{Eligible units per sampled unit for the row's
 estimate, as in \code{\link[=prec_prop]{prec_prop()}}. Proportion rows only. The
 several-indicators mode of \code{\link[=prec_cluster]{prec_cluster()}} refuses it.}
 }

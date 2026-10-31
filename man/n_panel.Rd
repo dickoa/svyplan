@@ -9,6 +9,7 @@ n_panel(
   retention,
   ...,
   resp_rate = 1,
+  eligibility_rate = 1,
   design = c("fixed", "rotating"),
   target_wave = NULL,
   assurance = NULL,
@@ -37,11 +38,17 @@ waves in a unit's life, so a five-wave panel takes four values.}
 
 \item{...}{Additional arguments are not supported and produce an error.}
 
-\item{resp_rate}{Response rate at recruitment, wave 1, in (0, 1], \code{1} by
-default. It is separate from \code{retention} because the first wave is where
-most of a panel's loss happens, and an average rate spread over the waves
-would under-issue. See the nonresponse section of \link{svyplan-package} for
-what this adjustment does and does not claim.}
+\item{resp_rate}{Response rate among eligible units at recruitment, wave 1,
+in (0, 1], \code{1} by default. It is separate from \code{retention} because the
+first wave is where most of a panel's loss happens, and an average rate
+spread over the waves would under-issue. See the nonresponse section of
+\link{svyplan-package} for what the rate counts and what this adjustment does
+and does not claim.}
+
+\item{eligibility_rate}{Share of issued units in scope at recruitment, such
+as dwellings found occupied, in (0, 1]. Default 1. Units leaving scope
+after wave 1 belong in \code{retention}. See the nonresponse section of
+\link{svyplan-package}.}
 
 \item{design}{\code{"fixed"} for one cohort followed across its waves, or
 \code{"rotating"} for equal cohorts entering every occasion and leaving at
