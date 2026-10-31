@@ -1449,7 +1449,8 @@ n_multi.default <- function(
   fixed_cost = 0,
   domain_cols = character(0),
   mode = "cv",
-  prop_method = "wald"
+  prop_method = "wald",
+  min_total = 0
 ) {
   .stop_min_cases_column(
     indicators,
@@ -1466,7 +1467,8 @@ n_multi.default <- function(
       fixed_cost,
       domain_cols = domain_cols,
       mode = mode,
-      prop_method = prop_method
+      prop_method = prop_method,
+      min_total = min_total
     )
   } else {
     .n_multi_3stage(
@@ -1479,7 +1481,8 @@ n_multi.default <- function(
       fixed_cost,
       domain_cols = domain_cols,
       mode = mode,
-      prop_method = prop_method
+      prop_method = prop_method,
+      min_total = min_total
     )
   }
 }
@@ -1498,7 +1501,8 @@ n_multi.default <- function(
 #' @noRd
 .n_multi_cluster_stage <- function(indicators, stage_cost, budget, n_psu,
                                    n_per_psu, n_per_ssu, fixed_cost, pop,
-                                   mode = "cv", record_pop = TRUE) {
+                                   mode = "cv", record_pop = TRUE,
+                                   min_total = 0) {
   .stop_min_cases_column(
     indicators,
     "a multistage design sizes stages against a cost, with no single total for a count to raise. Size the count-driven indicator with n_prop(min_cases = ) and set the stage takes around it"
@@ -1523,7 +1527,7 @@ n_multi.default <- function(
       n1_required, function(a1, m) st$cv_rows(a1, m, 1), st$cv_t, stage_cost,
       budget, n_psu, n_per_psu, fixed_cost, cont_m = b,
       m_floor = .take_floor(st$ru), a_max = pop$A,
-      m_max = floor(pop$M_take + 1e-9)
+      m_max = floor(pop$M_take + 1e-9), min_total = min_total
     )
   } else {
     scale <- if (is.null(budget)) st$cv2_t else st$cv_t^2
@@ -1535,7 +1539,7 @@ n_multi.default <- function(
       n_psu, n_per_psu, n_per_ssu, fixed_cost, cont_m = b,
       m_floor = .take_floor(st$rs), q_floor = .take_floor(st$ru),
       a_max = pop$A, m_max = floor(pop$Q + 1e-9),
-      q_max = floor(pop$C_take + 1e-9)
+      q_max = floor(pop$C_take + 1e-9), min_total = min_total
     )
   }
 
@@ -1797,7 +1801,21 @@ n_multi.default <- function(
   unique(c(base, local))
 }
 
+#' Refusal of a whole design below a joint domain floor
+#' @keywords internal
+#' @noRd
+.msg_whole_floor <- function(min_total) {
+  sprintf(
+    "no whole-unit design within its share of the budget reaches min_n_domain = %g. Raise 'budget' or lower 'min_n_domain'",
+    min_total
+  )
+}
+
 #' Constraint-preserving whole-unit design for two-stage n_multi
+#'
+#' `min_total` drops whole designs whose total is below it. In budget mode
+#' each take is paired with the largest PSU count the budget pays, so the
+#' filter loses no design that meets the floor.
 #' @keywords internal
 #' @noRd
 .op_multi_2stage <- function(
@@ -1812,7 +1830,8 @@ n_multi.default <- function(
   cont_m,
   m_floor = 1L,
   a_max = Inf,
-  m_max = Inf
+  m_max = Inf,
+  min_total = 0
 ) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
@@ -1845,6 +1864,10 @@ n_multi.default <- function(
     keep <- a >= 1L & cost <= variable_budget + 1e-8
     if (!any(keep)) {
       stop("no whole-unit n_multi design fits the budget", call. = FALSE)
+    }
+    keep <- keep & a * m_cand >= min_total - 1e-9
+    if (!any(keep)) {
+      stop(.msg_whole_floor(min_total), call. = FALSE)
     }
     a <- a[keep]
     m_cand <- m_cand[keep]
@@ -1916,7 +1939,8 @@ n_multi.default <- function(
   q_floor = 1L,
   a_max = Inf,
   m_max = Inf,
-  q_max = Inf
+  q_max = Inf,
+  min_total = 0
 ) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
@@ -1944,7 +1968,11 @@ n_multi.default <- function(
     n_psu,
     n_per_ssu,
     m_cand,
-    msg_budget = "no whole-unit n_multi design fits the budget",
+    msg_budget = if (min_total > 0) {
+      .msg_whole_floor(min_total)
+    } else {
+      "no whole-unit n_multi design fits the budget"
+    },
     msg_cv = "target CV is not achievable with the fixed whole PSU count",
     m_free = is.null(n_per_psu),
     m_floor = m_floor,
@@ -1952,7 +1980,8 @@ n_multi.default <- function(
     a_max = a_max,
     m_max = m_max,
     q_max = q_max,
-    kappa = coef$kappa
+    kappa = coef$kappa,
+    min_total = min_total
   )
   a_best <- hit[["n_psu"]]
   m_best <- hit[["n_per_psu"]]
@@ -1979,7 +2008,8 @@ n_multi.default <- function(
   fixed_cost = 0,
   domain_cols = character(0),
   mode = "cv",
-  prop_method = "wald"
+  prop_method = "wald",
+  min_total = 0
 ) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
@@ -2117,7 +2147,8 @@ n_multi.default <- function(
     n_per_psu,
     fixed_cost,
     cont_m = n_per_psu_opt,
-    m_floor = .take_floor(ru)
+    m_floor = .take_floor(ru),
+    min_total = min_total
   )
 
   n1_per <- n1_required(n_per_psu_opt)
@@ -2177,7 +2208,8 @@ n_multi.default <- function(
   fixed_cost = 0,
   domain_cols = character(0),
   mode = "cv",
-  prop_method = "wald"
+  prop_method = "wald",
+  min_total = 0
 ) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
@@ -2640,7 +2672,8 @@ n_multi.default <- function(
     fixed_cost,
     cont_m = n_per_psu_opt,
     m_floor = .take_floor(rs),
-    q_floor = .take_floor(ru)
+    q_floor = .take_floor(ru),
+    min_total = min_total
   )
 
   n1_per <- n1_required(n_per_psu_opt, n_per_ssu_opt)
@@ -2996,13 +3029,39 @@ n_multi.default <- function(
     }
   }
 
-  total_n <- sum(ceiling(domains$.total_n))
+  total_n <- sum(domains$.total_n)
   total_cost <- sum(domains$.cost)
   worst_cv_idx <- which.max(domains$.cv)
 
-  # No single stage vector: $domains holds the fieldable per-domain sizes.
+  # No single stage vector: $domains holds the continuous per-domain sizes
+  # and $operational$domains the whole ones.
   n_vec <- rep(NA_real_, stages)
   names(n_vec) <- stage_names
+
+  whole_rows <- lapply(domain_levels, function(lev) {
+    res <- results[[lev]]
+    op <- res$operational
+    dom_vals <- indicators[split_idx[[lev]][1L], domain_cols, drop = FALSE]
+    for (s in seq_len(stages)) {
+      dom_vals[[stage_names[s]]] <- op$n[[s]]
+    }
+    dom_vals$.total_n <- op$total_n
+    dom_vals$.cv <- op$cv
+    dom_vals$.cost <- op$cost
+    dom_vals$.binding <- res$detail$name[
+      which.max(op$cv_by_target / res$detail$.cv_target)
+    ]
+    dom_vals
+  })
+  whole <- do.call(rbind, whole_rows)
+  rownames(whole) <- NULL
+  operational <- list(
+    n = n_vec,
+    total_n = sum(whole$.total_n),
+    cost = sum(whole$.cost),
+    cv = max(whole$.cv),
+    domains = whole
+  )
 
   params <- list(
     stage_cost = stage_cost,
@@ -3040,7 +3099,8 @@ n_multi.default <- function(
     indicators = indicators,
     detail = NULL,
     binding = domains$.binding[worst_cv_idx],
-    domains = domains
+    domains = domains,
+    operational = operational
   )
 }
 
@@ -3071,11 +3131,6 @@ n_multi.default <- function(
   domain_params <- lapply(domain_levels, function(lev) {
     rows <- split_idx[[lev]]
     sub <- indicators[rows, , drop = FALSE]
-    labels <- if ("name" %in% names(sub)) {
-      sub$name
-    } else {
-      seq_along(rows)
-    }
     list(
       cv_t = sub$cv,
       icc_psu = sub$icc_psu,
@@ -3093,8 +3148,7 @@ n_multi.default <- function(
       } else {
         rep(1, length(rows))
       },
-      resp_rate = sub$resp_rate,
-      labels = labels
+      resp_rate = sub$resp_rate
     )
   })
 
@@ -3161,58 +3215,22 @@ n_multi.default <- function(
     }
   }
 
-  if (!is.null(min_n_domain)) {
-    full_total <- vapply(
-      seq_len(nd),
-      function(d) {
-        tryCatch(total_n_for(eval_domain(d, var_budget)), error = function(e) 0)
-      },
-      numeric(1L)
+  domain_label <- function(d) {
+    paste(
+      unlist(lapply(
+        indicators[split_idx[[domain_levels[d]]][1L], domain_cols, drop = FALSE],
+        as.character
+      )),
+      collapse = ":"
     )
-    for (d in seq_len(nd)) {
-      if (full_total[d] < min_n_domain) {
-        lab <- paste(
-          unlist(lapply(
-            indicators[
-              split_idx[[domain_levels[d]]][1L],
-              domain_cols,
-              drop = FALSE
-            ],
-            as.character
-          )),
-          collapse = ":"
-        )
-        stop(
-          sprintf(
-            "min_n_domain = %g not achievable for domain '%s' (max total_n = %.0f at full budget)",
-            min_n_domain,
-            lab,
-            full_total[d]
-          ),
-          call. = FALSE
-        )
-      }
-    }
-    min_fracs <- min_n_domain / full_total
-    if (sum(min_fracs) > 1) {
-      stop(
-        sprintf(
-          "min_n_domain = %g not achievable for all domains within budget",
-          min_n_domain
-        ),
-        call. = FALSE
-      )
-    }
   }
 
   lower_bounds <- rep(1e-4, nd)
-  if (!is.null(min_n_domain)) {
-    lower_bounds <- pmax(lower_bounds, min_fracs)
-  }
   # A domain is solvable only above the cost of its cheapest field design
   # when its PSU count cannot fall below one, under the stage correction or
   # at a fixed n_psu. Searching from these shares keeps the search off a
   # flat penalty that can hide a narrow feasible interval.
+  floor_cost <- rep(0, nd)
   if (!is.null(row_pops) || !is.null(n_psu)) {
     floor_cost <- vapply(seq_len(nd), function(d) {
       p <- domain_params[[d]]
@@ -3233,6 +3251,44 @@ n_multi.default <- function(
     lower_bounds <- pmax(lower_bounds, floor_cost / var_budget)
   }
 
+  floor_tol <- 1e-8
+  if (!is.null(min_n_domain)) {
+    total_at <- function(d, b) {
+      tryCatch(total_n_for(eval_domain(d, b)), error = function(e) 0)
+    }
+    # The least budget whose design reaches the floor. A PSU cost makes the
+    # total grow less than in proportion to the budget, so a share of the
+    # whole-budget total can fall short of the floor.
+    floor_budget <- vapply(seq_len(nd), function(d) {
+      full <- total_at(d, var_budget)
+      if (full < min_n_domain) {
+        stop(
+          sprintf(
+            "min_n_domain = %g not achievable for domain '%s' (max total_n = %.0f at full budget)",
+            min_n_domain, domain_label(d), full
+          ),
+          call. = FALSE
+        )
+      }
+      lo <- floor_cost[d]
+      if (total_at(d, lo) >= min_n_domain) {
+        return(lo)
+      }
+      uniroot(function(b) total_at(d, b) - min_n_domain, c(lo, var_budget),
+              tol = var_budget * 1e-12)$root
+    }, numeric(1L))
+    if (sum(floor_budget) > var_budget * (1 + 1e-12)) {
+      stop(
+        sprintf(
+          "min_n_domain = %g not achievable for all domains within budget: the domains reach it together at a cost of %.4g plus fixed_cost = %.4g",
+          min_n_domain, sum(floor_budget), fixed_cost
+        ),
+        call. = FALSE
+      )
+    }
+    lower_bounds <- pmax(lower_bounds, floor_budget / var_budget)
+  }
+
   outer_obj <- function(w) {
     w_last <- 1 - sum(w)
     if (w_last < lower_bounds[nd]) {
@@ -3245,7 +3301,8 @@ n_multi.default <- function(
           seq_len(nd),
           function(d) {
             bres <- eval_domain(d, fracs[d] * var_budget)
-            if (!is.null(min_n_domain) && total_n_for(bres) < min_n_domain) {
+            if (!is.null(min_n_domain) &&
+                total_n_for(bres) < min_n_domain * (1 - floor_tol)) {
               return(1e12)
             }
             bres$ratio
@@ -3258,20 +3315,23 @@ n_multi.default <- function(
     )
   }
 
-  if (nd == 2L) {
+  slack <- 1 - sum(lower_bounds)
+  if (slack < -1e-12) {
+    stop(
+      "cumulative lower bounds exceed 1; joint allocation is infeasible",
+      call. = FALSE
+    )
+  }
+  if (slack <= 1e-12) {
+    # The budget pays exactly for every domain's least design.
+    w_opt <- lower_bounds / sum(lower_bounds)
+  } else if (nd == 2L) {
     opt <- optimize(
       function(w1) outer_obj(w1),
       interval = c(lower_bounds[1], 1 - lower_bounds[2])
     )
     w_opt <- c(opt$minimum, 1 - opt$minimum)
   } else {
-    slack <- 1 - sum(lower_bounds)
-    if (slack < 0) {
-      stop(
-        "cumulative lower bounds exceed 1; joint allocation is infeasible",
-        call. = FALSE
-      )
-    }
     init_w <- lower_bounds[-nd] + slack / nd
     opt <- optim(
       par = init_w,
@@ -3293,34 +3353,40 @@ n_multi.default <- function(
   }
 
   budgets <- w_opt * var_budget
+  # Each share is solved as a single population would be, so a domain
+  # carries the same whole design as the scalar path at that budget.
   results <- lapply(seq_len(nd), function(d) {
-    bres <- eval_domain(d, budgets[d])
-    p <- domain_params[[d]]
-    if (stages == 2L) {
-      n_vec <- c(n_psu = bres$n1, n_per_psu = bres$n_per_psu)
-    } else {
-      n_vec <- c(
-        n_psu = bres$n1,
-        n_per_psu = bres$n_per_psu,
-        n_per_ssu = bres$n_per_ssu
+    rows <- split_idx[[domain_levels[d]]]
+    sub <- indicators[rows, !names(indicators) %in% domain_cols, drop = FALSE]
+    min_total <- min_n_domain %||% 0
+    fit <- tryCatch(
+      if (!is.null(row_pops)) {
+        .n_multi_cluster_stage(
+          sub, stage_cost, budgets[d], n_psu, n_per_psu, n_per_ssu, 0,
+          row_pops[[rows[1L]]], record_pop = FALSE, min_total = min_total
+        )
+      } else {
+        .n_multi_cluster(
+          sub, stage_cost, budgets[d], n_psu, n_per_psu, n_per_ssu, 0,
+          min_total = min_total
+        )
+      },
+      error = function(e) {
+        stop(sprintf("domain '%s': %s", domain_label(d), conditionMessage(e)),
+             call. = FALSE)
+      }
+    )
+    if (!is.null(min_n_domain) &&
+        fit$total_n < min_n_domain * (1 - floor_tol)) {
+      stop(
+        sprintf(
+          "the joint allocation leaves domain '%s' at total_n = %.4g, below min_n_domain = %g",
+          domain_label(d), fit$total_n, min_n_domain
+        ),
+        call. = FALSE
       )
     }
-    .check_row_takes(
-      indicators[split_idx[[domain_levels[d]]], , drop = FALSE],
-      bres$n_per_psu,
-      if (stages == 3L) bres$n_per_ssu
-    )
-    .new_svyplan_cluster(
-      n = n_vec,
-      stages = stages,
-      total_n = prod(n_vec),
-      cv = bres$cv_achieved[bres$binding_idx],
-      cost = bres$cost,
-      params = list(stage_cost = stage_cost),
-      indicators = NULL,
-      detail = NULL,
-      binding = p$labels[bres$binding_idx]
-    )
+    fit
   })
   names(results) <- domain_levels
 
@@ -3349,6 +3415,7 @@ n_multi.default <- function(
   } else if (fixed_cost > 0) {
     res$cost <- budget
   }
+  res$operational$cost <- fixed_cost + sum(res$operational$domains$.cost)
   res
 }
 

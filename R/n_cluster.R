@@ -101,9 +101,9 @@
 #'   `allocation = "joint"` in budget mode, so a `budget` then applies to
 #'   each domain and `$cost` is their sum. Domains are sized as separate
 #'   quotas, so `$total_n` is their sum and `$n` carries no aggregate stage
-#'   vector. The fieldable per-domain stage sizes are in `$domains`, and
-#'   `domain_sampling` covers why the quota reading is the only one offered
-#'   for a multistage design.
+#'   vector. The continuous per-domain stage sizes are in `$domains` and
+#'   the whole ones in `$operational$domains`. `domain_sampling` covers why
+#'   the quota reading is the only one offered for a multistage design.
 #' @param allocation How a budget is split across domains, either
 #'   `"separate"` (default, each domain sized on its own) or `"joint"` (one
 #'   budget split across domains to minimize the worst precision ratio).
@@ -118,8 +118,9 @@
 #'   and SSUs rather than on its share of the population alone, and that
 #'   model is not in the package.
 #' @param min_n_domain Optional positive minimum total sample size per
-#'   domain. In joint budget mode it is a constraint. With domains solved
-#'   separately, domains below the floor produce a warning.
+#'   domain. In joint budget mode it is a constraint on both the continuous
+#'   and the whole design of each domain. With domains solved separately,
+#'   domains below the floor produce a warning.
 #' @param plan Optional [svyplan()] object providing design defaults
 #'   (including `stage_cost`, `icc`, `unit_relvar`, `var_ratio`, `resp_rate_psu`, `fixed_cost`).
 #'   In the several-indicators mode a profile supplies only the defaults that
@@ -141,7 +142,10 @@
 #'     `budget` mode its cost never exceeds the budget, whereas in `cv` mode it
 #'     meets the target at the lowest cost among the designs searched.
 #'     `as.integer()` returns `operational$n`, and `as.double()` returns the
-#'     continuous `n`.}
+#'     continuous `n`. With domains, `operational$n` is all `NA` as `n` is,
+#'     and `operational$domains` holds each domain's whole stage sizes,
+#'     `.total_n`, `.cv`, `.cost` and `.binding`. Each domain is rounded
+#'     within its own budget, or its share of a joint one.}
 #'   \item{`params`}{List of input parameters.}
 #' }
 #'   With `indicators`, the same class carries `$indicators`, the per-row
@@ -372,9 +376,9 @@
 #' constant within the domain. That needs domains made of whole PSUs, such
 #' as regions or urban and rural strata. A domain that cuts across PSUs,
 #' such as an age group, has no PSU count of its own. The sizes in
-#' `$domains` are continuous and the print rounds them up, so a printed take
-#' can pass a mean PSU size that is not a whole number by less than one
-#' unit.
+#' `$domains` are continuous, and the print shows the whole designs in
+#' `$operational$domains`, whose takes stay within each domain's
+#' population.
 #'
 #' [n_alloc()] and [prec_alloc()] apply the same correction with
 #' `fpc = "stage"`, and a one-row allocation returns the same continuous
@@ -985,6 +989,10 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 #' which moves the budget-mode ranking across several targets, so the key
 #' is then `max_j (need_j / a - kappa_j)`.
 #'
+#' `min_total` drops designs whose total `a m q` is below it. A budget-mode
+#' design takes the largest count the budget pays at each take, so the
+#' filter loses no design that meets the floor.
+#'
 #' @return Named integer vector `c(n_psu, n_per_psu, n_per_ssu)`.
 #' @keywords internal
 #' @noRd
@@ -993,7 +1001,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
                                 msg_budget, msg_cv, m_free = FALSE,
                                 m_floor = 1L, q_floor = 1L,
                                 a_max = Inf, m_max = Inf, q_max = Inf,
-                                kappa = NULL) {
+                                kappa = NULL, min_total = 0) {
   C1 <- stage_cost[1L]
   C2 <- stage_cost[2L]
   C3 <- stage_cost[3L]
@@ -1040,7 +1048,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   best <- list(key = Inf)
   consider <- function(a, m, q) {
     valid <- a >= 1 & is.finite(q) & q >= q_floor & q <= .Machine$integer.max &
-      a <= a_max & q <= q_max
+      a <= a_max & q <= q_max & a * m * q >= min_total - tol
     q[!valid] <- q_floor
     cost <- a * (C1 + C2 * m + C3 * m * q)
     if (budget_mode) {

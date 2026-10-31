@@ -690,16 +690,23 @@ print.svyplan_cluster <- function(x, ...) {
       joint_label,
       min_n_label
     ))
-    dom <- x$domains
-    stage_cols <- names(x$n)
-    for (col in stage_cols) {
-      dom[[col]] <- ceiling(dom[[col]])
+    op <- x$operational
+    if (!is.null(op$domains)) {
+      dom <- op$domains
+      cost_display <- op$cost
+    } else {
+      dom <- x$domains
+      stage_cols <- names(x$n)
+      for (col in stage_cols) {
+        dom[[col]] <- ceiling(dom[[col]])
+      }
+      dom$.total_n <- apply(
+        dom[, stage_cols, drop = FALSE],
+        1,
+        prod
+      )
+      cost_display <- x$cost
     }
-    dom$.total_n <- apply(
-      dom[, stage_cols, drop = FALSE],
-      1,
-      prod
-    )
     unrounded <- .fmt_continuous_n(x$total_n)
     fc <- x$params$fixed_cost
     if (!is.null(fc) && fc > 0) {
@@ -707,7 +714,7 @@ print.svyplan_cluster <- function(x, ...) {
         "Total n = %s (unrounded: %s), cost = %.0f (fixed: %.0f)\n",
         .fmt_count_n(sum(dom$.total_n)),
         unrounded,
-        x$cost,
+        cost_display,
         fc
       ))
     } else {
@@ -720,7 +727,7 @@ print.svyplan_cluster <- function(x, ...) {
     if (!isTRUE(x$params$joint) && !is.null(x$params$budget)) {
       cat(sprintf(
         "budget = %.0f for each domain, total cost = %.0f\n",
-        x$params$budget, x$cost
+        x$params$budget, cost_display
       ))
     }
     .print_stage_fpc(x$params)

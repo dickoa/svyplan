@@ -158,9 +158,9 @@ indicator that \code{icc}, \code{unit_relvar}, \code{var_ratio} and \code{cv} de
 \code{allocation = "joint"} in budget mode, so a \code{budget} then applies to
 each domain and \verb{$cost} is their sum. Domains are sized as separate
 quotas, so \verb{$total_n} is their sum and \verb{$n} carries no aggregate stage
-vector. The fieldable per-domain stage sizes are in \verb{$domains}, and
-\code{domain_sampling} covers why the quota reading is the only one offered
-for a multistage design.}
+vector. The continuous per-domain stage sizes are in \verb{$domains} and
+the whole ones in \verb{$operational$domains}. \code{domain_sampling} covers why
+the quota reading is the only one offered for a multistage design.}
 
 \item{allocation}{How a budget is split across domains, either
 \code{"separate"} (default, each domain sized on its own) or \code{"joint"} (one
@@ -178,8 +178,9 @@ and SSUs rather than on its share of the population alone, and that
 model is not in the package.}
 
 \item{min_n_domain}{Optional positive minimum total sample size per
-domain. In joint budget mode it is a constraint. With domains solved
-separately, domains below the floor produce a warning.}
+domain. In joint budget mode it is a constraint on both the continuous
+and the whole design of each domain. With domains solved separately,
+domains below the floor produce a warning.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults
 (including \code{stage_cost}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{resp_rate_psu}, \code{fixed_cost}).
@@ -203,7 +204,10 @@ discrete search: \code{n} (named integer stage sizes), \code{total_n},
 \code{budget} mode its cost never exceeds the budget, whereas in \code{cv} mode it
 meets the target at the lowest cost among the designs searched.
 \code{as.integer()} returns \code{operational$n}, and \code{as.double()} returns the
-continuous \code{n}.}
+continuous \code{n}. With domains, \code{operational$n} is all \code{NA} as \code{n} is,
+and \code{operational$domains} holds each domain's whole stage sizes,
+\code{.total_n}, \code{.cv}, \code{.cost} and \code{.binding}. Each domain is rounded
+within its own budget, or its share of a joint one.}
 \item{\code{params}}{List of input parameters.}
 }
 With \code{indicators}, the same class carries \verb{$indicators}, the per-row
@@ -451,9 +455,9 @@ its own, and its counts are \code{indicators} columns of the same names,
 constant within the domain. That needs domains made of whole PSUs, such
 as regions or urban and rural strata. A domain that cuts across PSUs,
 such as an age group, has no PSU count of its own. The sizes in
-\verb{$domains} are continuous and the print rounds them up, so a printed take
-can pass a mean PSU size that is not a whole number by less than one
-unit.
+\verb{$domains} are continuous, and the print shows the whole designs in
+\verb{$operational$domains}, whose takes stay within each domain's
+population.
 
 \code{\link[=n_alloc]{n_alloc()}} and \code{\link[=prec_alloc]{prec_alloc()}} apply the same correction with
 \code{fpc = "stage"}, and a one-row allocation returns the same continuous

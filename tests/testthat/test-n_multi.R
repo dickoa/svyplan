@@ -491,8 +491,11 @@ test_that("multistage domains report no aggregate stage vector", {
   # are the fieldable object.
   expect_true(all(is.na(res$n)))
   expect_equal(names(res$n), c("n_psu", "n_per_psu"))
-  expect_equal(res$total_n, sum(ceiling(res$domains$.total_n)))
+  expect_equal(res$total_n, sum(res$domains$.total_n))
   expect_true(all(c("n_psu", "n_per_psu") %in% names(res$domains)))
+  expect_true(all(is.na(res$operational$n)))
+  expect_equal(res$operational$total_n,
+               sum(res$operational$domains$.total_n))
 })
 
 test_that("natural domain sampling is refused for multistage designs", {
