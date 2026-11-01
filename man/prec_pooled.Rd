@@ -130,6 +130,10 @@ entry per lag, whatever form they were supplied in, alongside the
 
 Nothing here is rounded, so passing a continuous \code{n} back from
 \code{\link[=n_pooled]{n_pooled()}} reproduces its \code{se}, \code{moe} and \code{cv} exactly.
+The print shows \code{n} per occasion as evaluated, and for a fit it says
+that \code{n} is the continuous optimum. For a fit \code{res}, the whole sample
+to field on each occasion is \code{ceiling(res$n)}, and \code{prec_pooled(res, n = ceiling(res$n))}
+gives its precision.
 }
 \description{
 Compute the sampling error (SE, margin of error, CV) for the average of
@@ -288,6 +292,7 @@ prec_pooled(p = 0.3, n = 1600, occasions = 4, resp_rate = 0.8,
 res <- n_pooled(var = 100, moe = 1, occasions = 4, overlap = 0.5,
                 cor_decay = 0.7)
 prec_pooled(res)
+prec_pooled(res, n = ceiling(res$n))
 
 # Two occasions on a small frame, a retained panel plus independent draws
 prec_pooled(var = 100, n = 40, occasions = 2, N = 400, overlap = 0.5,

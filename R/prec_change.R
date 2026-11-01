@@ -85,6 +85,10 @@
 #'
 #' Nothing here is rounded, so passing a continuous `n` back from
 #' [n_change()] reproduces its `se`, `moe` and `cv` exactly.
+#' The print shows `n` per occasion as evaluated, and for a fit it says
+#' that `n` is the continuous optimum. For a fit `res`, the whole sample
+#' to field on each occasion is `ceiling(res$n)`, and `prec_change(res, n = ceiling(res$n))`
+#' gives its precision.
 #'
 #' @details
 #' ## Level or change
@@ -223,6 +227,7 @@
 #' # Round-trip from n_change
 #' res <- n_change(var = 100, moe = 2, overlap = 0.5, overlap_cor = 0.6)
 #' prec_change(res)
+#' prec_change(res, n = ceiling(res$n))
 #'
 #' # A small frame: a retained panel topped up by independent fresh draws
 #' prec_change(var = c(100, 164), n = 40, N = 400, overlap = 0.5,
@@ -335,5 +340,6 @@ prec_change.svyplan_n <- function(var, ...) {
     overlap_draw = par$overlap_draw,
     df = par$df
   )
-  do.call(prec_change.default, .roundtrip_args(args, list(...), prec_change.default))
+  out <- do.call(prec_change.default, .roundtrip_args(args, list(...), prec_change.default))
+  .mark_continuous_optimum(out, list(...))
 }

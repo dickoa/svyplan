@@ -79,6 +79,10 @@
 #' Nothing here is rounded: `n` is taken as given, so passing a
 #' continuous `n` back from [n_prop()] reproduces its `se`, `moe`, `cv`
 #' and `rmoe` exactly.
+#' The print shows `n` as evaluated, and for a fit it says that `n` is
+#' the continuous optimum. For a fit `res`, the whole sample to field is
+#' `ceiling(res$n)`, and `prec_prop(res, n = ceiling(res$n))` gives its
+#' precision.
 #'
 #' @details
 #' Computes the standard error for the given sample size and design
@@ -215,6 +219,12 @@
 #' prec_prop(p = 0.28, n = 6000, deff = 2.5, resp_rate = 0.9,
 #'           eligible_per_unit = 0.41)
 #'
+#' # Round trip from n_prop, at the continuous optimum and at the whole
+#' # sample to field
+#' res <- n_prop(p = 0.3, moe = 0.05)
+#' prec_prop(res)
+#' prec_prop(res, n = ceiling(res$n))
+#'
 #' @export
 prec_prop <- function(p, ...) {
   if (!missing(p)) {
@@ -331,5 +341,6 @@ prec_prop.svyplan_n <- function(p, ...) {
     method = x$method %||% "wald",
     df = par$df
   )
-  do.call(prec_prop.default, .roundtrip_args(args, list(...), prec_prop.default))
+  out <- do.call(prec_prop.default, .roundtrip_args(args, list(...), prec_prop.default))
+  .mark_continuous_optimum(out, list(...))
 }

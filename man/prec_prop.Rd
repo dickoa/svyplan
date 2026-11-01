@@ -117,6 +117,10 @@ from one). \code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} 
 Nothing here is rounded: \code{n} is taken as given, so passing a
 continuous \code{n} back from \code{\link[=n_prop]{n_prop()}} reproduces its \code{se}, \code{moe}, \code{cv}
 and \code{rmoe} exactly.
+The print shows \code{n} as evaluated, and for a fit it says that \code{n} is
+the continuous optimum. For a fit \code{res}, the whole sample to field is
+\code{ceiling(res$n)}, and \code{prec_prop(res, n = ceiling(res$n))} gives its
+precision.
 }
 \description{
 Compute the sampling error (SE, margin of error, CV) for estimating a
@@ -251,6 +255,12 @@ prec_prop(p = 0.3, n = 1600 / 3, deff = 2.1)
 # 6000 households and 0.41 married women per household
 prec_prop(p = 0.28, n = 6000, deff = 2.5, resp_rate = 0.9,
           eligible_per_unit = 0.41)
+
+# Round trip from n_prop, at the continuous optimum and at the whole
+# sample to field
+res <- n_prop(p = 0.3, moe = 0.05)
+prec_prop(res)
+prec_prop(res, n = ceiling(res$n))
 
 }
 \seealso{

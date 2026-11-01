@@ -79,6 +79,13 @@ A \code{svyplan_prec} object with \code{type = "ratio"} and
 \item{\code{rmoe}}{Margin of error relative to \code{r}, \code{moe / abs(r)}.}
 \item{\code{params}}{The inputs, plus \code{unit_relvar} and \code{n}.}
 }
+
+Nothing here is rounded, so passing a continuous \code{n} back from
+\code{\link[=n_ratio]{n_ratio()}} reproduces its \code{se}, \code{moe} and \code{cv} exactly.
+The print shows \code{n} as evaluated, and for a fit it says that \code{n} is
+the continuous optimum. For a fit \code{size}, the whole sample to field is
+\code{ceiling(size$n)}, and \code{prec_ratio(size, n = ceiling(size$n))} gives its
+precision.
 }
 \description{
 Evaluate the standard error, margin of error, and coefficient of variation
@@ -128,6 +135,7 @@ prec_ratio(r = 420, n = 1200, cv_num = 1.20, cv_den = 0.45,
 size <- n_ratio(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
                 cv = 0.05)
 prec_ratio(size)$cv
+prec_ratio(size, n = ceiling(size$n))$cv
 
 }
 \seealso{

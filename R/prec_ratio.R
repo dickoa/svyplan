@@ -61,6 +61,13 @@
 #'   \item{`params`}{The inputs, plus `unit_relvar` and `n`.}
 #' }
 #'
+#' Nothing here is rounded, so passing a continuous `n` back from
+#' [n_ratio()] reproduces its `se`, `moe` and `cv` exactly.
+#' The print shows `n` as evaluated, and for a fit it says that `n` is
+#' the continuous optimum. For a fit `size`, the whole sample to field is
+#' `ceiling(size$n)`, and `prec_ratio(size, n = ceiling(size$n))` gives its
+#' precision.
+#'
 #' @details
 #'
 #' At a gross sample `n`, with `n_net = n * resp_rate` and
@@ -90,6 +97,7 @@
 #' size <- n_ratio(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
 #'                 cv = 0.05)
 #' prec_ratio(size)$cv
+#' prec_ratio(size, n = ceiling(size$n))$cv
 #'
 #' @export
 prec_ratio <- function(r = NULL, ...) {
@@ -189,6 +197,7 @@ prec_ratio.svyplan_n <- function(r, ...) {
     eligibility_rate = par[["eligibility_rate"]] %||% 1,
     df = par$df
   )
-  do.call(prec_ratio.default,
-          .roundtrip_args(args, list(...), prec_ratio.default))
+  out <- do.call(prec_ratio.default,
+                 .roundtrip_args(args, list(...), prec_ratio.default))
+  .mark_continuous_optimum(out, list(...))
 }

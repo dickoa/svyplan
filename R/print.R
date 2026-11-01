@@ -323,30 +323,27 @@ print.svyplan_n <- function(x, ...) {
 
 #' @keywords internal
 #' @noRd
-.fmt_change_n <- function(n, resp_rate) {
+.fmt_change_n <- function(n, resp_rate, exact = FALSE) {
   net <- !is.null(resp_rate) && resp_rate < 1
+  fmt_n <- if (exact) {
+    .evaluated_n_formatter(n)
+  } else {
+    function(v) .fmt_count_n(ceiling(v))
+  }
   if (length(n) == 1L) {
-    out <- sprintf("n = %s per occasion", .fmt_count_n(ceiling(n)))
+    out <- sprintf("n = %s per occasion", fmt_n(n))
     if (net) {
-      out <- sprintf(
-        "%s (net: %s)",
-        out,
-        .fmt_count_n(ceiling(n * resp_rate))
-      )
+      out <- sprintf("%s (net: %s)", out, fmt_n(n * resp_rate))
     }
     return(out)
   }
-  out <- sprintf(
-    "n = %s then %s",
-    .fmt_count_n(ceiling(n[1L])),
-    .fmt_count_n(ceiling(n[2L]))
-  )
+  out <- sprintf("n = %s then %s", fmt_n(n[1L]), fmt_n(n[2L]))
   if (net) {
     out <- sprintf(
       "%s (net: %s then %s)",
       out,
-      .fmt_count_n(ceiling(n[1L] * resp_rate)),
-      .fmt_count_n(ceiling(n[2L] * resp_rate))
+      fmt_n(n[1L] * resp_rate),
+      fmt_n(n[2L] * resp_rate)
     )
   }
   out
@@ -524,6 +521,28 @@ print.svyplan_n <- function(x, ...) {
 #' @noRd
 .fmt_continuous_n <- function(x) {
   format(signif(x, 8), trim = TRUE, scientific = FALSE)
+}
+
+#' Formatter for the sizes a precision result evaluated
+#'
+#' Whole sizes print as counts, and the counts derived from them round up.
+#' A fractional size prints as given, and so does every count derived from
+#' it, so the printed design is the one the precision belongs to.
+#' @keywords internal
+#' @noRd
+.evaluated_n_formatter <- function(n) {
+  if (all(n == floor(n))) {
+    function(v) .fmt_count_n(ceiling(v))
+  } else {
+    .fmt_continuous_n
+  }
+}
+
+#' Header note for a fit read back at its continuous optimum
+#' @keywords internal
+#' @noRd
+.continuous_optimum_note <- function(p) {
+  if (isTRUE(p[["continuous_optimum"]])) "continuous optimum"
 }
 
 #' Format a count-like numeric value defensively
@@ -819,11 +838,13 @@ print.svyplan_prec <- function(x, ...) {
   p <- x$params
   cat(sprintf(
     "Sampling precision for pooled estimate (%s)\n",
-    .pooled_scale_label(p)
+    paste(c(.pooled_scale_label(p), .continuous_optimum_note(p)),
+          collapse = ", ")
   ))
-  cat(sprintf("n = %s per occasion", .fmt_count_n(ceiling(p$n))))
+  fmt_n <- .evaluated_n_formatter(p$n)
+  cat(sprintf("n = %s per occasion", fmt_n(p$n)))
   if (.net_rate(p) < 1) {
-    cat(sprintf(" (net: %s)", .fmt_count_n(ceiling(p$n * .net_rate(p)))))
+    cat(sprintf(" (net: %s)", fmt_n(p$n * .net_rate(p))))
   }
   cat(sprintf(", %d occasions", p$occasions))
   parts <- c(.fmt_pooled_estimand(p), .fmt_deff(p$deff))
@@ -843,8 +864,12 @@ print.svyplan_prec <- function(x, ...) {
 #' @noRd
 .print_change_prec <- function(x) {
   p <- x$params
-  cat(sprintf("Sampling precision for change (%s)\n", .change_scale_label(p)))
-  cat(.fmt_change_n(p$n, .net_rate(p)))
+  cat(sprintf(
+    "Sampling precision for change (%s)\n",
+    paste(c(.change_scale_label(p), .continuous_optimum_note(p)),
+          collapse = ", ")
+  ))
+  cat(.fmt_change_n(p$n, .net_rate(p), exact = TRUE))
   parts <- c(.fmt_change_estimand(p), .fmt_deff(p$deff))
   cat(sprintf(" (%s)\n", paste(parts, collapse = ", ")))
   cat(.fmt_overlap(p))
@@ -866,97 +891,67 @@ print.svyplan_prec <- function(x, ...) {
     proportion = "proportion",
     mean = "mean",
     cluster = "cluster",
+    twophase = "two-phase",
+    alloc = "stratum allocation",
     x$type
   )
   p <- x$params
 
   if (x$type == "cluster") {
     stages <- p$stages
-    cat(sprintf("Sampling precision for %d-stage cluster\n", stages))
-    n_display <- ceiling(p$n)
-    total_display <- prod(n_display)
+    note <- .continuous_optimum_note(p)
+    cat(sprintf(
+      "Sampling precision for %d-stage cluster%s\n",
+      stages,
+      if (is.null(note)) "" else sprintf(" (%s)", note)
+    ))
+    # The cv is that of p$n. Rounding a fractional stage up would print
+    # another design beside it.
+    fmt_n <- .evaluated_n_formatter(p$n)
+    total_display <- prod(p$n)
     stage_labels <- names(p$n)
     if (is.null(stage_labels)) {
-      stage_labels <- paste0("stage", seq_along(n_display))
+      stage_labels <- paste0("stage", seq_along(p$n))
     }
     stage_parts <- vapply(
-      seq_along(n_display),
+      seq_along(p$n),
       function(i) {
-        sprintf("%s = %s", stage_labels[i], .fmt_count_n(n_display[i]))
+        sprintf("%s = %s", stage_labels[i], fmt_n(p$n[i]))
       },
       character(1L)
     )
     cat(paste(stage_parts, collapse = " | "))
-    cat(sprintf(" -> total n = %s", .fmt_count_n(total_display)))
+    cat(sprintf(" -> total n = %s", fmt_n(total_display)))
     resp_all <- (p[["resp_rate_psu"]] %||% 1) * (p[["resp_rate_ssu"]] %||% 1) *
       (p[["resp_rate"]] %||% 1) * (p[["eligibility_rate"]] %||% 1)
     if (!is.null(p[["eligible_per_unit"]])) {
       cat(sprintf(
         " (eligible respondents: %s, eligible_per_unit = %.4g)",
-        .fmt_count_n(ceiling(total_display * resp_all * p[["eligible_per_unit"]])),
+        fmt_n(total_display * resp_all * p[["eligible_per_unit"]]),
         p[["eligible_per_unit"]]
       ))
     } else if (resp_all < 1) {
-      cat(sprintf(
-        " (net: %s)",
-        .fmt_count_n(ceiling(total_display * resp_all))
-      ))
+      cat(sprintf(" (net: %s)", fmt_n(total_display * resp_all)))
     }
     cat("\n")
     .print_stage_fpc(p)
   } else {
-    notes <- c(x$method, if (!is.null(x$solved)) paste("solved for", x$solved))
+    notes <- c(
+      x$method,
+      if (!is.null(x$solved)) paste("solved for", x$solved),
+      .continuous_optimum_note(p)
+    )
     note_label <- if (length(notes) > 0L) {
       sprintf(" (%s)", paste(notes, collapse = ", "))
     } else {
       ""
     }
     cat(sprintf("Sampling precision for %s%s\n", type_label, note_label))
-    # An allocation carries one supplied n per stratum. It may be fractional,
-    # so report that allocation exactly rather than ceiling each row into a
-    # different design.
-    n_display <- if (identical(x$type, "alloc")) {
-      sum(p$n)
+    if (identical(x$type, "twophase")) {
+      .print_twophase_prec_sizes(x)
     } else {
-      sum(ceiling(p$n))
+      .print_single_prec_sizes(x)
     }
-    cat(sprintf(
-      "n = %s",
-      if (identical(x$type, "alloc")) {
-        .fmt_continuous_n(n_display)
-      } else {
-        .fmt_count_n(n_display)
-      }
-    ))
-    if (length(p$n) > 1L) {
-      cat(sprintf(" (%d strata)", length(p$n)))
-    }
-    if (identical(x$type, "alloc")) {
-      resp_rate <- .alloc_summary_response_rates(x)$combined
-      if (any(resp_rate < 1)) {
-        cat(sprintf(", expected respondents = %.1f", sum(p$n * resp_rate)))
-      }
-    } else if (is.null(p[["eligibility_rate"]])) {
-      resp_rate <- p$resp_rate
-    } else {
-      resp_rate <- (p$resp_rate %||% 1) * p[["eligibility_rate"]]
-    }
-    eligible_per_unit <- p[["eligible_per_unit"]]
-    if (!identical(x$type, "alloc") && !is.null(eligible_per_unit)) {
-      cat(sprintf(
-        " (eligible respondents: %s, eligible_per_unit = %.4g)",
-        .fmt_count_n(ceiling(sum(p$n * (resp_rate %||% 1) * eligible_per_unit))),
-        eligible_per_unit
-      ))
-    } else if (
-      !identical(x$type, "alloc") && !is.null(resp_rate) && all(resp_rate < 1)
-    ) {
-      cat(sprintf(
-        " (net: %s)",
-        .fmt_count_n(ceiling(sum(p$n * resp_rate)))
-      ))
-    }
-    cat("\n")
   }
 
   if (!is.null(x$solved)) {
@@ -979,6 +974,66 @@ print.svyplan_prec <- function(x, ...) {
 
   .print_expected_cases(x$expected_cases)
   .print_domains_block(x$domains)
+}
+
+#' Size line of a one-stage or allocation precision result
+#'
+#' The precision is that of `p$n`. Rounding a fractional size up would print
+#' another design beside it.
+#' @keywords internal
+#' @noRd
+.print_single_prec_sizes <- function(x) {
+  p <- x$params
+  fmt_n <- .evaluated_n_formatter(p$n)
+  cat(sprintf("n = %s", fmt_n(sum(p$n))))
+  if (length(p$n) > 1L) {
+    cat(sprintf(" (%d strata)", length(p$n)))
+  }
+  if (identical(x$type, "alloc")) {
+    resp_rate <- .alloc_summary_response_rates(x)$combined
+    if (any(resp_rate < 1)) {
+      cat(sprintf(", expected respondents = %.1f", sum(p$n * resp_rate)))
+    }
+    cat("\n")
+    return(invisible(NULL))
+  }
+  resp_rate <- if (is.null(p[["eligibility_rate"]])) {
+    p$resp_rate
+  } else {
+    (p$resp_rate %||% 1) * p[["eligibility_rate"]]
+  }
+  eligible_per_unit <- p[["eligible_per_unit"]]
+  if (!is.null(eligible_per_unit)) {
+    cat(sprintf(
+      " (eligible respondents: %s, eligible_per_unit = %.4g)",
+      fmt_n(sum(p$n * (resp_rate %||% 1) * eligible_per_unit)),
+      eligible_per_unit
+    ))
+  } else if (!is.null(resp_rate) && all(resp_rate < 1)) {
+    cat(sprintf(" (net: %s)", fmt_n(sum(p$n * resp_rate))))
+  }
+  cat("\n")
+  invisible(NULL)
+}
+
+#' Size line of a two-phase precision result
+#'
+#' Both phases as evaluated, the phase-2 sample summed over its strata as
+#' the `n_twophase()` field line sums it.
+#' @keywords internal
+#' @noRd
+.print_twophase_prec_sizes <- function(x) {
+  p <- x$params
+  d <- x$detail
+  n <- c(p[["n_phase1"]], sum(d$n_issued))
+  fmt_n <- .evaluated_n_formatter(n)
+  cat(sprintf("n_phase1 = %s | n_phase2 = %s", fmt_n(n[1L]), fmt_n(n[2L])))
+  net <- c(n[1L] * (p[["resp_rate"]] %||% 1), sum(d$n_resp))
+  if (any(net < n)) {
+    cat(sprintf(" (net: %s | %s)", fmt_n(net[1L]), fmt_n(net[2L])))
+  }
+  cat("\n")
+  invisible(NULL)
 }
 
 #' @keywords internal

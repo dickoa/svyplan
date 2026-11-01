@@ -85,6 +85,10 @@
 #'
 #' Nothing here is rounded, so passing a continuous `n` back from
 #' [n_pooled()] reproduces its `se`, `moe` and `cv` exactly.
+#' The print shows `n` per occasion as evaluated, and for a fit it says
+#' that `n` is the continuous optimum. For a fit `res`, the whole sample
+#' to field on each occasion is `ceiling(res$n)`, and `prec_pooled(res, n = ceiling(res$n))`
+#' gives its precision.
 #'
 #' @details
 #' Here `q` is `qnorm(1 - alpha / 2)` by default and
@@ -240,6 +244,7 @@
 #' res <- n_pooled(var = 100, moe = 1, occasions = 4, overlap = 0.5,
 #'                 cor_decay = 0.7)
 #' prec_pooled(res)
+#' prec_pooled(res, n = ceiling(res$n))
 #'
 #' # Two occasions on a small frame, a retained panel plus independent draws
 #' prec_pooled(var = 100, n = 40, occasions = 2, N = 400, overlap = 0.5,
@@ -354,5 +359,6 @@ prec_pooled.svyplan_n <- function(var, ...) {
     df = par$df,
     .overlap_basis = par$overlap_basis
   )
-  do.call(prec_pooled.default, .roundtrip_args(args, list(...), prec_pooled.default))
+  out <- do.call(prec_pooled.default, .roundtrip_args(args, list(...), prec_pooled.default))
+  .mark_continuous_optimum(out, list(...))
 }

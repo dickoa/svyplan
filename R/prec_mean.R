@@ -62,6 +62,10 @@
 #' Nothing here is rounded: `n` is taken as given, so passing a
 #' continuous `n` back from [n_mean()] reproduces its `se`, `moe` and
 #' `cv` exactly.
+#' The print shows `n` as evaluated, and for a fit it says that `n` is
+#' the continuous optimum. For a fit `res`, the whole sample to field is
+#' `ceiling(res$n)`, and `prec_mean(res, n = ceiling(res$n))` gives its
+#' precision.
 #'
 #' @details
 #' Computes the standard error for the given sample size and design
@@ -116,9 +120,10 @@
 #' # Smallest mean 400 units can report at a 5 percent CV
 #' prec_mean(var = 100, n = 400, cv = 0.05)$params$mu
 #'
-#' # Round-trip from n_mean
+#' # Round-trip from n_mean, then the whole sample to field
 #' res <- n_mean(var = 100, moe = 2)
 #' prec_mean(res)
+#' prec_mean(res, n = ceiling(res$n))
 #'
 #' ## Precision of a total
 #' # Precision of a mean, then scale to total
@@ -234,5 +239,6 @@ prec_mean.svyplan_n <- function(var, ...) {
     eligibility_rate = par[["eligibility_rate"]] %||% 1,
     df = par$df
   )
-  do.call(prec_mean.default, .roundtrip_args(args, list(...), prec_mean.default))
+  out <- do.call(prec_mean.default, .roundtrip_args(args, list(...), prec_mean.default))
+  .mark_continuous_optimum(out, list(...))
 }

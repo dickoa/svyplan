@@ -126,6 +126,10 @@ well when the proportion scale was used, and it is what the
 
 Nothing here is rounded, so passing a continuous \code{n} back from
 \code{\link[=n_change]{n_change()}} reproduces its \code{se}, \code{moe} and \code{cv} exactly.
+The print shows \code{n} per occasion as evaluated, and for a fit it says
+that \code{n} is the continuous optimum. For a fit \code{res}, the whole sample
+to field on each occasion is \code{ceiling(res$n)}, and \code{prec_change(res, n = ceiling(res$n))}
+gives its precision.
 }
 \description{
 Compute the sampling error (SE, margin of error, CV) for the change in a
@@ -265,6 +269,7 @@ prec_change(var = 100, n = c(800, 400), overlap = 0.5, overlap_cor = 0.6)
 # Round-trip from n_change
 res <- n_change(var = 100, moe = 2, overlap = 0.5, overlap_cor = 0.6)
 prec_change(res)
+prec_change(res, n = ceiling(res$n))
 
 # A small frame: a retained panel topped up by independent fresh draws
 prec_change(var = c(100, 164), n = 40, N = 400, overlap = 0.5,

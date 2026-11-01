@@ -99,6 +99,10 @@ design back from here.}
 Nothing here is rounded: \code{n} is taken as given, so passing a
 continuous \code{n} back from \code{\link[=n_mean]{n_mean()}} reproduces its \code{se}, \code{moe} and
 \code{cv} exactly.
+The print shows \code{n} as evaluated, and for a fit it says that \code{n} is
+the continuous optimum. For a fit \code{res}, the whole sample to field is
+\code{ceiling(res$n)}, and \code{prec_mean(res, n = ceiling(res$n))} gives its
+precision.
 }
 \description{
 Compute the sampling error (SE, margin of error, CV) for estimating a
@@ -153,9 +157,10 @@ prec_mean(var = 100, n = 400)
 # Smallest mean 400 units can report at a 5 percent CV
 prec_mean(var = 100, n = 400, cv = 0.05)$params$mu
 
-# Round-trip from n_mean
+# Round-trip from n_mean, then the whole sample to field
 res <- n_mean(var = 100, moe = 2)
 prec_mean(res)
+prec_mean(res, n = ceiling(res$n))
 
 ## Precision of a total
 # Precision of a mean, then scale to total

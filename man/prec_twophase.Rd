@@ -53,6 +53,11 @@ A \code{svyplan_prec} object with \code{type = "twophase"}, carrying
 \verb{$se}, \verb{$moe}, \verb{$rmoe}, \verb{$cv}, and the per-stratum table in \verb{$detail}.
 \verb{$moe} is the \code{alpha}-level half-width \verb{z * $se}, and \verb{$rmoe} states it
 as a fraction of the population mean the design estimates.
+
+The print shows both phase sizes as evaluated. A fit is read back at
+its continuous optimum, as the print says, so \verb{$cv} is the fit's
+\verb{$cv}. The whole design the fit fields, and the cv it achieves, are
+the fit's \verb{$operational$n} and \verb{$operational$cv}.
 }
 \description{
 Achieved precision for a two-phase design you already have, the inverse
@@ -68,6 +73,11 @@ frame <- data.frame(
   nu        = c(0.4, 0.6)
 )
 prec_twophase(frame, n_phase1 = 2000, phase1_cost = 1)
+
+# Round trip from n_twophase, then the whole design it fields
+res <- n_twophase(frame[names(frame) != "nu"], cv = 0.02, phase1_cost = 1)
+prec_twophase(res)
+res$operational
 
 # Ten units in two strata of five, all of the phase-1 sample measured:
 # an SRS of 4, whose variance S2 * (1/4 - 1/10) needs the exact 'between'

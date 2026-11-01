@@ -246,3 +246,49 @@ test_that("a supplied fractional take is refused at every stage", {
     "'n_per_psu' = 0.5 at 'resp_rate_ssu'"
   )
 })
+
+## The printed sizes are the ones evaluated
+
+printed_numbers <- function(line) {
+  as.numeric(regmatches(line, gregexpr("[0-9]+(\\.[0-9]+)?", line))[[1]])
+}
+
+test_that("a fit prints its continuous optimum, labeled, beside its cv", {
+  fits <- list(
+    n_cluster(stage_cost = c(1050, 105), icc = 0.166, unit_relvar = 0.673,
+              budget = 5800),
+    n_cluster(stage_cost = c(500, 100, 10), icc = c(0.1, 0.05),
+              budget = 20000)
+  )
+  for (fit in fits) {
+    expect_false(all(fit$n == floor(fit$n)))
+    pr <- prec_cluster(fit)
+    expect_equal(pr$cv, fit$cv, tolerance = 1e-10)
+    out <- capture.output(print(pr))
+    expect_match(out[1], "-stage cluster \\(continuous optimum\\)$")
+    shown <- printed_numbers(out[2])
+    expect_equal(shown, c(unname(fit$n), prod(fit$n)), tolerance = 1e-6)
+    expect_match(out[3], sprintf("cv = %.4f", fit$cv), fixed = TRUE)
+  }
+})
+
+test_that("the field design of a fit is read by passing its whole sizes", {
+  fit <- n_cluster(stage_cost = c(1050, 105), icc = 0.166,
+                   unit_relvar = 0.673, budget = 5800)
+  pr <- prec_cluster(n = fit$operational$n, icc = 0.166, unit_relvar = 0.673)
+  expect_equal(pr$cv, fit$operational$cv, tolerance = 1e-10)
+  out <- capture.output(print(pr))
+  expect_identical(out[1], "Sampling precision for 2-stage cluster")
+  expect_equal(printed_numbers(out[2]),
+               c(unname(fit$operational$n), fit$operational$total_n))
+})
+
+test_that("supplied fractional sizes print as given, with no label", {
+  out <- capture.output(print(prec_cluster(n = c(3.2, 7.1), icc = 0.1)))
+  expect_identical(out[1], "Sampling precision for 2-stage cluster")
+  expect_equal(printed_numbers(out[2]), c(3.2, 7.1, 22.72))
+  out <- capture.output(print(prec_cluster(n = c(3.2, 7.1), icc = 0.1,
+                                           resp_rate_psu = 0.5,
+                                           resp_rate = 0.8)))
+  expect_equal(printed_numbers(out[2]), c(3.2, 7.1, 22.72, 22.72 * 0.4))
+})

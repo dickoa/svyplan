@@ -167,6 +167,11 @@ given, \verb{$domains} reports \code{.n}, \code{.se}, \code{.moe}, \code{.rmoe},
 the same table \code{\link[=n_alloc]{n_alloc()}} returns, so a design and its assessment can
 be compared row for row.
 
+The print shows the allocation as evaluated, unrounded, and for a fit
+read back without \code{n} it says the allocation is the continuous
+optimum. For a fit \code{res}, \code{prec_alloc(res, n = res$detail$n_int)}
+gives the precision of the whole allocation.
+
 For joint
 assessment, \verb{$detail} is the constraint dictionary described in
 \code{\link[=n_alloc]{n_alloc()}}: target and achieved precision, ratio/residual/tolerance,
@@ -231,6 +236,7 @@ frame <- data.frame(
 )
 res <- n_alloc(frame, n = 600)
 prec_alloc(res)
+prec_alloc(res, n = res$detail$n_int)
 
 # The previous round's allocation, assessed nationally and per region
 last_round <- data.frame(

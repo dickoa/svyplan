@@ -2947,6 +2947,19 @@ check_df <- function(df, name = "df") {
   args
 }
 
+#' Mark a precision result read back from a fit at its own sizes
+#'
+#' The print then says the sizes are the fit's continuous optimum. A size
+#' passed through `...` makes them typed input, so the mark is dropped.
+#' @keywords internal
+#' @noRd
+.mark_continuous_optimum <- function(out, dots, sizes = "n") {
+  if (!any(sizes %in% names(dots))) {
+    out$params$continuous_optimum <- TRUE
+  }
+  out
+}
+
 #' Clamp FPC to 0 when the net sample reaches N (census)
 #' @keywords internal
 #' @noRd

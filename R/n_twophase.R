@@ -977,6 +977,11 @@ n_twophase.default <- function(
 #'   `$moe` is the `alpha`-level half-width `z * $se`, and `$rmoe` states it
 #'   as a fraction of the population mean the design estimates.
 #'
+#'   The print shows both phase sizes as evaluated. A fit is read back at
+#'   its continuous optimum, as the print says, so `$cv` is the fit's
+#'   `$cv`. The whole design the fit fields, and the cv it achieves, are
+#'   the fit's `$operational$n` and `$operational$cv`.
+#'
 #' @family two-phase design functions
 #' @seealso [n_twophase()] for the inverse.
 #'
@@ -990,6 +995,11 @@ n_twophase.default <- function(
 #'   nu        = c(0.4, 0.6)
 #' )
 #' prec_twophase(frame, n_phase1 = 2000, phase1_cost = 1)
+#'
+#' # Round trip from n_twophase, then the whole design it fields
+#' res <- n_twophase(frame[names(frame) != "nu"], cv = 0.02, phase1_cost = 1)
+#' prec_twophase(res)
+#' res$operational
 #'
 #' # Ten units in two strata of five, all of the phase-1 sample measured:
 #' # an SRS of 4, whose variance S2 * (1/4 - 1/10) needs the exact 'between'
@@ -1142,6 +1152,7 @@ prec_twophase.svyplan_twophase <- function(frame, ...) {
   out$params$single_resp_rate <- p$single_resp_rate
   out$params$single_cost <- p$single_cost
   out$detail$take_all <- p$take_all %||% d$take_all
+  out$params$continuous_optimum <- TRUE
   out
 }
 

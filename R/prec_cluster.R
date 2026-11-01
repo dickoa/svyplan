@@ -7,7 +7,8 @@
 #'   sizes (`c(n_psu, n_per_psu)` for 2-stage or
 #'   `c(n_psu, n_per_psu, n_per_ssu)` for 3-stage). Named vectors are accepted
 #'   with stage names `n_psu`, `n_per_psu`, `n_per_ssu`.
-#'   For `svyplan_cluster` objects: a cluster allocation from [n_cluster()].
+#'   For `svyplan_cluster` objects: a cluster allocation from [n_cluster()],
+#'   evaluated at its continuous optimum `$n`.
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param icc Numeric vector of homogeneity measures (length = stages - 1),
 #'   or a `svyplan_varcomp` object.
@@ -92,6 +93,11 @@
 #' `prec_cluster()` is the inverse of [n_cluster()]: given per-stage
 #' sample sizes, it computes the achieved precision. You can pass the
 #' result of `n_cluster()` directly: `prec_cluster(n_cluster(...))`.
+#' A fit is evaluated at its continuous optimum, so the round trip returns
+#' the fit's cv exactly, and the print labels the sizes as that optimum. The
+#' whole design the fit fields is `$operational$n`, and passing it as `n`
+#' with the fit's other inputs gives its precision. Fractional sizes are
+#' printed as given.
 #'
 #' Stage count is determined by `length(n)`.
 #'
@@ -143,9 +149,11 @@
 #' prec_cluster(n = c(50, 12), icc = 0.05)
 #' prec_cluster(n = c(50, 12, 8), icc = c(0.01, 0.05))
 #'
-#' # Round-trip from n_cluster
+#' # Round-trip from n_cluster, at the continuous optimum and at the whole
+#' # design it fields
 #' res <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
 #' prec_cluster(res)
+#' prec_cluster(n = res$operational$n, icc = 0.05)
 #'
 #' # 12 of an island's 16 enumeration areas, 20 of about 150 households each
 #' prec_cluster(n = c(12, 20), icc = 0.05)
@@ -441,6 +449,7 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
   if (!is.null(p$fixed_cost)) {
     out$params$fixed_cost <- p$fixed_cost
   }
+  out$params$continuous_optimum <- TRUE
   out
 }
 

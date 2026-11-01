@@ -133,7 +133,7 @@ test_that("the print counts eligible respondents", {
   expect_match(out[2], "eligible respondents: 2572")
   expect_match(out[2], "eligible_per_unit = 0.41")
   expect_match(capture.output(print(prec_prop(x)))[2],
-               "eligible respondents: 2572, eligible_per_unit = 0.41")
+               "eligible respondents: 2571.429, eligible_per_unit = 0.41")
   expect_false(any(grepl("eligible",
                          capture.output(print(n_prop(p = 0.3, moe = 0.05))))))
 })
@@ -322,7 +322,7 @@ test_that("the cluster print counts eligible respondents", {
   expect_match(out[2], "eligible respondents: 558")
   expect_match(out[3], "resp_rate = 0.90, eligible_per_unit = 0.41")
   expect_match(capture.output(print(prec_cluster(x)))[2],
-               "eligible respondents: 561, eligible_per_unit = 0.41")
+               "eligible respondents: 547.4634, eligible_per_unit = 0.41")
   plain <- capture.output(print(n_cluster(stage_cost = c(500, 50),
                                           icc = 0.05, cv = 0.05)))
   expect_false(any(grepl("eligible", plain)))
