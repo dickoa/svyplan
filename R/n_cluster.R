@@ -119,8 +119,11 @@
 #'   model is not in the package.
 #' @param min_n_domain Optional positive minimum total sample size per
 #'   domain. In joint budget mode it is a constraint on both the continuous
-#'   and the whole design of each domain. With domains solved separately,
-#'   domains below the floor produce a warning.
+#'   and the whole design of each domain. A domain whose precision-optimal
+#'   design falls short takes more units per PSU or SSU, so the floor is
+#'   refused only when no design within the budget or the population reaches
+#'   it. With domains solved separately, domains below the floor produce a
+#'   warning.
 #' @param plan Optional [svyplan()] object providing design defaults
 #'   (including `stage_cost`, `icc`, `unit_relvar`, `var_ratio`, `resp_rate_psu`, `fixed_cost`).
 #'   In the several-indicators mode a profile supplies only the defaults that

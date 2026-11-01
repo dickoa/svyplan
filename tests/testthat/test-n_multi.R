@@ -1559,17 +1559,11 @@ test_that("min_n_domain: joint feasibility error when budget too small for all d
     icc_psu = c(0.02, 0.05, 0.03),
     region = c("A", "B", "C")
   )
-  res_full <- suppressWarnings(nm(
-    df,
-    stage_cost = c(500, 50),
-    budget = 150000,
-    allocation = "joint",
-    domains = "region"
-  ))
-  big_floor <- ceiling(max(res_full$domains$.total_n) * 0.9)
+  ## One PSU of 1500 units costs 500 + 50 * 1500 = 75500, so one domain
+  ## reaches the floor within the budget and three together cannot.
   expect_error(
-    nm(df, stage_cost = c(500, 50), budget = 150000, allocation = "joint", min_n_domain = big_floor, domains = "region"),
-    "not achievable"
+    nm(df, stage_cost = c(500, 50), budget = 150000, allocation = "joint", min_n_domain = 1500, domains = "region"),
+    "not achievable for all domains within budget: the domains reach it together at a cost of 2.265e\\+05"
   )
 })
 

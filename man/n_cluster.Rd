@@ -179,8 +179,11 @@ model is not in the package.}
 
 \item{min_n_domain}{Optional positive minimum total sample size per
 domain. In joint budget mode it is a constraint on both the continuous
-and the whole design of each domain. With domains solved separately,
-domains below the floor produce a warning.}
+and the whole design of each domain. A domain whose precision-optimal
+design falls short takes more units per PSU or SSU, so the floor is
+refused only when no design within the budget or the population reaches
+it. With domains solved separately, domains below the floor produce a
+warning.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults
 (including \code{stage_cost}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{resp_rate_psu}, \code{fixed_cost}).

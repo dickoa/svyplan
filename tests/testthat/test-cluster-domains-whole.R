@@ -90,6 +90,119 @@ test_that("a floor no whole design in the share reaches is refused", {
   expect_equal(room$operational$domains$n_per_ssu, c(11L, 11L))
 })
 
+## Floors reached by raising the takes
+
+.floor_tab <- function(fpc, cv = 0.1, three = FALSE) {
+  tab <- data.frame(name = "y", p = 0.3, cv = cv, icc_psu = if (three) 0.3 else 0.5,
+                    region = c("A", "B"))
+  if (three) tab$icc_ssu <- 0.3
+  if (fpc == "stage") {
+    tab$N <- 1e6
+    tab$N_psu <- if (three) 200 else 100
+    if (three) tab$N_ssu <- 20000
+  }
+  tab
+}
+
+.floor_fit <- function(tab, fpc, budget = 4800, stage_cost = c(500, 10), ...) {
+  n_cluster(indicators = tab, stage_cost = stage_cost, domains = "region",
+            allocation = "joint", budget = budget, fpc = fpc, ...)
+}
+
+.worst_ratio <- function(fit, cv) max(fit$domains$.cv / cv)
+
+## A fixed take whose whole design misses the floor is refused, and it
+## scores no better than any design.
+.grid_ratio <- function(cv, ...) {
+  tryCatch(.worst_ratio(suppressWarnings(.floor_fit(...)), cv),
+           error = function(e) Inf)
+}
+
+test_that("a joint floor is reached by a larger take than the precision optimum", {
+  for (fpc in c("stage", "none")) {
+    tab <- .floor_tab(fpc)
+    for (fl in c(30, 40, 80)) {
+      expect_no_warning(fit <- .floor_fit(tab, fpc, min_n_domain = fl))
+      expect_true(all(fit$domains$.total_n >= fl - 1e-8))
+      expect_true(all(fit$operational$domains$.total_n >= fl))
+      expect_lte(fit$operational$cost, 4800)
+      ## The least take reaching the floor at each domain's share.
+      expect_equal(fit$domains$n_per_psu,
+                   fl * 500 / (fit$domains$.cost - fl * 10), tolerance = 1e-8)
+      fixed <- .floor_fit(tab, fpc, min_n_domain = fl, n_per_psu = fl / 2)
+      expect_lte(max(fit$domains$.cv), max(fixed$domains$.cv) + 1e-8)
+    }
+  }
+})
+
+test_that("free takes do no worse than any fixed take under a joint floor", {
+  for (fpc in c("stage", "none")) {
+    tab <- .floor_tab(fpc, cv = c(0.1, 0.05))
+    fit <- .floor_fit(tab, fpc, budget = 9600, min_n_domain = 30)
+    expect_equal(min(fit$domains$.total_n), 30, tolerance = 1e-8)
+    grid <- vapply(4:30, function(b) {
+      .grid_ratio(c(0.1, 0.05), tab, fpc, budget = 9600, min_n_domain = 30,
+                  n_per_psu = b)
+    }, numeric(1L))
+    expect_lte(.worst_ratio(fit, c(0.1, 0.05)), min(grid) + 1e-6)
+  }
+
+  for (fpc in c("stage", "none")) {
+    tab <- .floor_tab(fpc, cv = c(0.1, 0.08), three = TRUE)
+    grid <- expand.grid(b = c(2, 3, 4, 6), cc = c(4, 8, 12, 16, 24))
+    for (fl in c(80, 150)) {
+      fit <- .floor_fit(tab, fpc, budget = 8000, stage_cost = c(400, 40, 4),
+                        min_n_domain = fl)
+      expect_true(all(fit$domains$.total_n >= fl - 1e-8))
+      expect_true(all(fit$operational$domains$.total_n >= fl))
+      ratios <- mapply(function(b, cc) {
+        .grid_ratio(c(0.1, 0.08), tab, fpc, budget = 8000,
+                    stage_cost = c(400, 40, 4), min_n_domain = fl,
+                    n_per_psu = b, n_per_ssu = cc)
+      }, grid$b, grid$cc)
+      expect_lte(.worst_ratio(fit, c(0.1, 0.08)), min(ratios) + 1e-6)
+    }
+  }
+})
+
+test_that("a joint floor with a fixed PSU count raises the free takes", {
+  tab <- .floor_tab("none", cv = c(0.1, 0.08), three = TRUE)
+  fit <- .floor_fit(tab, "none", budget = 8000, stage_cost = c(400, 40, 4),
+                    n_psu = 4, min_n_domain = 150)
+  expect_equal(min(fit$domains$.total_n), 150, tolerance = 1e-8)
+  grid <- vapply(1:8, function(b) {
+    .grid_ratio(c(0.1, 0.08), tab, "none", budget = 8000,
+                stage_cost = c(400, 40, 4), n_psu = 4, n_per_psu = b,
+                min_n_domain = 150)
+  }, numeric(1L))
+  expect_lte(.worst_ratio(fit, c(0.1, 0.08)), min(grid) + 1e-6)
+})
+
+test_that("a joint floor that does not bind leaves the design as it was", {
+  for (fpc in c("stage", "none")) {
+    tab <- .floor_tab(fpc)
+    free <- .floor_fit(tab, fpc)
+    floored <- .floor_fit(tab, fpc, min_n_domain = 25)
+    expect_equal(floored$domains$n_per_psu, free$domains$n_per_psu,
+                 tolerance = 1e-6)
+    expect_equal(floored$operational$domains, free$operational$domains)
+  }
+})
+
+test_that("a joint floor out of reach names the population or the cost", {
+  capped <- .floor_tab("stage")
+  capped$N <- 2000
+  capped$N_psu <- 20
+  expect_error(
+    .floor_fit(capped, "stage", min_n_domain = 2500),
+    "not achievable for domain 'A': its largest design within the population has total_n = 2000"
+  )
+  expect_error(
+    .floor_fit(.floor_tab("none"), "none", min_n_domain = 500),
+    "not achievable for domain 'A' within budget: its cheapest design reaching it costs 5500"
+  )
+})
+
 ## A budget that pays exactly for the least designs
 
 test_that("an exactly affordable joint design returns its unique split", {

@@ -1511,7 +1511,8 @@ n_multi.default <- function(
                            n_per_ssu, pop)
   stages <- st$stages
   vb <- if (!is.null(budget)) budget - fixed_cost else NULL
-  fit <- .stage_multi_continuous(st, vb, n_psu, fixed_cost)
+  fit <- .stage_multi_continuous(st, vb, n_psu, fixed_cost,
+                                 min_total = min_total)
   a <- fit$a
   b <- fit$b
   cc <- fit$c
@@ -1651,14 +1652,72 @@ n_multi.default <- function(
   )
 }
 
-#' The continuous design of an indicator table under the correction
-#'
-#' `vb` is the variable budget, `NULL` in cv mode. Returns the sizes, each
-#' row's cv, the binding row, the worst ratio of cv to target and the
-#' variable cost.
+#' The least value of a function over an interval and where it is reached
 #' @keywords internal
 #' @noRd
-.stage_multi_continuous <- function(st, vb, n_psu, fixed_cost = 0) {
+.best_over <- function(f, lo, hi) {
+  if (hi - lo <= 1e-12 * max(1, hi)) return(list(x = lo, value = f(lo)))
+  opt <- optimize(f, c(lo, hi), tol = 1e-10 * max(1, hi))
+  vals <- c(opt$objective, f(lo), f(hi))
+  xs <- c(opt$minimum, lo, hi)
+  j <- which.min(vals)
+  list(x = xs[j], value = vals[j])
+}
+
+#' Refusal of a continuous design below a joint domain floor
+#' @keywords internal
+#' @noRd
+.msg_cont_floor <- function(min_total) {
+  sprintf(
+    "no design within its share of the budget reaches min_n_domain = %g. Raise 'budget' or lower 'min_n_domain'",
+    min_total
+  )
+}
+
+#' The least size at which a rising total reaches a floor
+#'
+#' `tot` rises on `[lo, hi]`. Returns `lo` when it already reaches `m`
+#' there and stops when `hi` does not.
+#' @keywords internal
+#' @noRd
+.floor_take <- function(tot, m, lo, hi) {
+  if (tot(lo) >= m) return(lo)
+  if (tot(hi) < m * (1 - 1e-12)) stop(.msg_cont_floor(m), call. = FALSE)
+  if (tot(hi) <= m) return(hi)
+  uniroot(function(x) tot(x) - m, c(lo, hi), tol = 1e-14 * max(1, hi))$root
+}
+
+#' The least variable cost of a continuous design reaching a total
+#'
+#' Over `a` in `[a_lo, a_hi]` and the takes in `b_box` and `c_box`, the
+#' cost of a design with `a b c = m` is `a C1 + m (C2 / c + C3)`. It falls
+#' with `c` until the cheapest design `(a_lo, b_lo, c)` reaches `m` and
+#' rises after, and at a given `c` it is least at the fewest PSUs. A
+#' two-stage design has `c_box = c(1, 1)` and no third cost. `Inf` when no
+#' design in the bounds reaches `m`.
+#' @keywords internal
+#' @noRd
+.floor_least_cost <- function(m, costs, a_lo, a_hi, b_box, c_box) {
+  cc <- min(c_box[2L], max(c_box[1L], m / (a_lo * b_box[1L])))
+  if (a_lo * b_box[1L] * cc >= m) {
+    return(a_lo * (costs[1L] + costs[2L] * b_box[1L] +
+                     costs[3L] * b_box[1L] * cc))
+  }
+  a <- max(a_lo, m / (cc * b_box[2L]))
+  if (a > a_hi * (1 + 1e-12)) return(Inf)
+  a * costs[1L] + m * (costs[2L] / cc + costs[3L])
+}
+
+#' The continuous design of an indicator table under the correction
+#'
+#' `vb` is the variable budget, `NULL` in cv mode. A budget design keeps
+#' its total at `min_total` or more by raising the takes. Returns the
+#' sizes, each row's cv, the binding row, the worst ratio of cv to target
+#' and the variable cost.
+#' @keywords internal
+#' @noRd
+.stage_multi_continuous <- function(st, vb, n_psu, fixed_cost = 0,
+                                    min_total = 0) {
   A <- st$A
   b_box <- st$b_box
   c_box <- st$c_box
@@ -1681,14 +1740,7 @@ n_multi.default <- function(
     if (any(room <= 0)) return(Inf)
     max(c_box[1L], max(co$gamma / room))
   }
-  best_over <- function(f, lo, hi) {
-    if (hi - lo <= 1e-12 * max(1, hi)) return(list(x = lo, value = f(lo)))
-    opt <- optimize(f, c(lo, hi), tol = 1e-10 * max(1, hi))
-    vals <- c(opt$objective, f(lo), f(hi))
-    xs <- c(opt$minimum, lo, hi)
-    j <- which.min(vals)
-    list(x = xs[j], value = vals[j])
-  }
+  best_over <- .best_over
 
   if (is.null(vb)) {
     a_cap <- n_psu %||% A
@@ -1746,20 +1798,39 @@ n_multi.default <- function(
       )
     }
     worst <- function(a, b, cc) max((G(b, cc) / a - co$kappa) / cv_t^2)
+    m <- min_total
     if (!is.null(a_set)) {
       take_b <- function(cc) min(b_box[2L], max(b_box[1L], spend(cc)))
-      hit <- best_over(function(cc) worst(a_set, take_b(cc), cc),
-                       c_box[1L], c_hi)
+      c_lo <- if (m > 0) {
+        .floor_take(function(cc) a_set * take_b(cc) * cc, m, c_box[1L], c_hi)
+      } else {
+        c_box[1L]
+      }
+      hit <- best_over(function(cc) worst(a_set, take_b(cc), cc), c_lo, c_hi)
       cc <- hit$x
       b <- take_b(cc)
       a <- a_set
     } else {
       a_of <- function(b, cc) min(A, vb / H(b, cc))
-      inner <- function(cc) {
-        hi <- min(b_box[2L], max(b_box[1L], spend(cc)))
-        best_over(function(b) worst(a_of(b, cc), b, cc), b_box[1L], hi)
+      b_top <- function(cc) min(b_box[2L], max(b_box[1L], spend(cc)))
+      # The total rises with the take, so the floor is the least take
+      # reaching it at each SSU take.
+      b_min <- function(cc) {
+        room <- vb * cc - m * (costs[2L] + costs[3L] * cc)
+        max(b_box[1L], m / (A * cc), if (room > 0) m * costs[1L] / room else Inf)
       }
-      hit <- best_over(function(cc) inner(cc)$value, c_box[1L], c_hi)
+      inner <- function(cc) {
+        hi <- b_top(cc)
+        lo <- if (m > 0) min(hi, b_min(cc)) else b_box[1L]
+        best_over(function(b) worst(a_of(b, cc), b, cc), lo, hi)
+      }
+      c_lo <- if (m > 0) {
+        .floor_take(function(cc) b_top(cc) * cc * a_of(b_top(cc), cc), m,
+                    c_box[1L], c_hi)
+      } else {
+        c_box[1L]
+      }
+      hit <- best_over(function(cc) inner(cc)$value, c_lo, c_hi)
       cc <- hit$x
       b <- inner(cc)$x
       a <- a_of(b, cc)
@@ -1858,7 +1929,10 @@ n_multi.default <- function(
     a <- if (!is.null(n_psu)) {
       rep(max(1L, as.integer(round(n_psu))), length(m_cand))
     } else {
-      as.integer(pmin(a_max, floor(variable_budget / (C1 + C2 * m_cand))))
+      # A share that pays a whole design up to float noise keeps it, with
+      # the tolerance of the cost check below.
+      as.integer(pmin(a_max,
+                      floor((variable_budget + 1e-8) / (C1 + C2 * m_cand))))
     }
     cost <- a * (C1 + C2 * m_cand)
     keep <- a >= 1L & cost <= variable_budget + 1e-8
@@ -2125,7 +2199,8 @@ n_multi.default <- function(
       C2,
       var_budget,
       n_psu,
-      n_per_psu
+      n_per_psu,
+      min_total = min_total
     )
     n1_opt <- bres$n1
     n_per_psu_opt <- bres$n_per_psu
@@ -2643,7 +2718,8 @@ n_multi.default <- function(
       var_budget,
       n_psu,
       n_per_psu,
-      n_per_ssu
+      n_per_ssu,
+      min_total = min_total
     )
     n1_opt <- bres$n1
     n_per_psu_opt <- bres$n_per_psu
@@ -3009,7 +3085,7 @@ n_multi.default <- function(
   rownames(domains) <- NULL
 
   if (!is.null(min_n_domain)) {
-    below <- which(domains$.total_n < min_n_domain)
+    below <- which(domains$.total_n < min_n_domain * (1 - 1e-8))
     if (length(below) > 0L) {
       dom_labels <- vapply(
         below,
@@ -3164,10 +3240,12 @@ n_multi.default <- function(
     })
   }
 
+  min_total <- min_n_domain %||% 0
   eval_domain <- function(d, budget_d) {
     p <- domain_params[[d]]
     if (!is.null(stage_setups)) {
-      fit <- .stage_multi_continuous(stage_setups[[d]], budget_d, n_psu)
+      fit <- .stage_multi_continuous(stage_setups[[d]], budget_d, n_psu,
+                                     min_total = min_total)
       list(n1 = fit$a, n_per_psu = fit$b, n_per_ssu = fit$c,
            cv_achieved = fit$cv_achieved, ratio = fit$ratio,
            binding_idx = fit$binding_idx, cost = fit$cost)
@@ -3183,7 +3261,8 @@ n_multi.default <- function(
         C2,
         budget_d,
         n_psu,
-        n_per_psu
+        n_per_psu,
+        min_total = min_total
       )
     } else {
       .eval_3stage_budget(
@@ -3202,7 +3281,8 @@ n_multi.default <- function(
         budget_d,
         n_psu,
         n_per_psu,
-        n_per_ssu
+        n_per_ssu,
+        min_total = min_total
       )
     }
   }
@@ -3253,29 +3333,46 @@ n_multi.default <- function(
 
   floor_tol <- 1e-8
   if (!is.null(min_n_domain)) {
-    total_at <- function(d, b) {
-      tryCatch(total_n_for(eval_domain(d, b)), error = function(e) 0)
-    }
-    # The least budget whose design reaches the floor. A PSU cost makes the
-    # total grow less than in proportion to the budget, so a share of the
-    # whole-budget total can fall short of the floor.
+    # The least budget of a design reaching the floor, with the takes free
+    # to rise above the precision-optimal ones.
     floor_budget <- vapply(seq_len(nd), function(d) {
-      full <- total_at(d, var_budget)
-      if (full < min_n_domain) {
+      p <- domain_params[[d]]
+      if (!is.null(stage_setups)) {
+        st <- stage_setups[[d]]
+        costs <- st$costs
+        a_hi <- n_psu %||% st$A
+        b_box <- st$b_box
+        c_box <- st$c_box
+      } else {
+        costs <- c(C1, C2, C3 %||% 0)
+        a_hi <- n_psu %||% Inf
+        b_rate <- if (stages == 2L) p$resp_rate else p$resp_rate_ssu
+        b_box <- if (!is.null(n_per_psu)) rep(n_per_psu, 2L) else
+          c(.take_bound(b_rate), Inf)
+        c_box <- if (stages == 2L) c(1, 1) else if (!is.null(n_per_ssu))
+          rep(n_per_ssu, 2L) else c(.take_bound(p$resp_rate), Inf)
+      }
+      least <- .floor_least_cost(min_n_domain, costs, n_psu %||% 1, a_hi,
+                                 b_box, c_box)
+      if (!is.finite(least)) {
         stop(
           sprintf(
-            "min_n_domain = %g not achievable for domain '%s' (max total_n = %.0f at full budget)",
-            min_n_domain, domain_label(d), full
+            "min_n_domain = %g not achievable for domain '%s': its largest design within the population has total_n = %.0f",
+            min_n_domain, domain_label(d), a_hi * b_box[2L] * c_box[2L]
           ),
           call. = FALSE
         )
       }
-      lo <- floor_cost[d]
-      if (total_at(d, lo) >= min_n_domain) {
-        return(lo)
+      if (least > var_budget * (1 + 1e-12)) {
+        stop(
+          sprintf(
+            "min_n_domain = %g not achievable for domain '%s' within budget: its cheapest design reaching it costs %.4g plus fixed_cost = %.4g",
+            min_n_domain, domain_label(d), least, fixed_cost
+          ),
+          call. = FALSE
+        )
       }
-      uniroot(function(b) total_at(d, b) - min_n_domain, c(lo, var_budget),
-              tol = var_budget * 1e-12)$root
+      max(floor_cost[d], least)
     }, numeric(1L))
     if (sum(floor_budget) > var_budget * (1 + 1e-12)) {
       stop(
@@ -3432,7 +3529,8 @@ n_multi.default <- function(
   C2,
   budget,
   n_psu,
-  n_per_psu = NULL
+  n_per_psu = NULL,
+  min_total = 0
 ) {
   nr <- length(cv_t)
 
@@ -3486,6 +3584,17 @@ n_multi.default <- function(
     }
   }
 
+  if (n1_opt * n_per_psu_opt < min_total * (1 - 1e-8)) {
+    if (!is.null(n_psu) || !is.null(n_per_psu) ||
+        budget <= min_total * C2) {
+      stop(.msg_cont_floor(min_total), call. = FALSE)
+    }
+    # The total rises with the take and the worst ratio has one minimum in
+    # it, so the floored optimum is the least take reaching the floor.
+    n_per_psu_opt <- min_total * C1 / (budget - min_total * C2)
+    n1_opt <- budget / (C1 + C2 * n_per_psu_opt)
+  }
+
   cv_achieved <- cv_fn(n1_opt, n_per_psu_opt)
   ratios <- cv_achieved / cv_t
   binding_idx <- which.max(ratios)
@@ -3518,9 +3627,12 @@ n_multi.default <- function(
   budget,
   n_psu,
   n_per_psu = NULL,
-  n_per_ssu = NULL
+  n_per_ssu = NULL,
+  min_total = 0
 ) {
   nr <- length(cv_t)
+  m <- min_total
+  below <- function(a, b, cc) a * b * cc < m * (1 - 1e-8)
 
   # Mirrors cv_achieved_fn() in the CV-mode solver: both stage takes are
   # gross and each row reads the takes it realizes.
@@ -3593,6 +3705,30 @@ n_multi.default <- function(
     n_per_ssu_opt <- opt$par[2L]
     n1_opt <- budget /
       (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu_opt)
+    if (below(n1_opt, n_per_psu_opt, n_per_ssu_opt)) {
+      if (budget <= m * C3) stop(.msg_cont_floor(m), call. = FALSE)
+      # The floored optimum is searched as nested takes, each from the
+      # least value reaching the floor.
+      ps_hi <- max(upper_ps, m / lower[2L])
+      ss_hi <- max(upper_ss, m / lower[1L])
+      ps_min <- function(ss) {
+        room <- ss * budget - m * (C2 + C3 * ss)
+        if (room > 0) max(lower[1L], m * C1 / room) else Inf
+      }
+      inner <- function(ss) {
+        .best_over(function(ps) obj_fn_2d(c(ps, ss)),
+                   min(ps_hi, ps_min(ss)), ps_hi)
+      }
+      ss_lo <- .floor_take(
+        function(ss) budget * ps_hi * ss / (C1 + C2 * ps_hi + C3 * ps_hi * ss),
+        m, lower[2L], ss_hi
+      )
+      hit <- .best_over(function(ss) inner(ss)$value, ss_lo, ss_hi)
+      n_per_ssu_opt <- hit$x
+      n_per_psu_opt <- inner(n_per_ssu_opt)$x
+      n1_opt <- budget /
+        (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu_opt)
+    }
     total_cost <- budget
   } else if (n_free == 2L) {
     if (!is.null(n_psu)) {
@@ -3629,6 +3765,14 @@ n_multi.default <- function(
         opt <- .optimize_from(obj_fn_ss, q_bound, max_ss)
         n_per_ssu_opt <- opt$minimum
       }
+      if (below(n_psu, ps_from_ss(n_per_ssu_opt), n_per_ssu_opt)) {
+        room <- n_psu * avail - m * C3
+        ss_min <- if (room > 0) m * C2 / room else Inf
+        if (ss_min > max_ss * (1 + 1e-12)) {
+          stop(.msg_cont_floor(m), call. = FALSE)
+        }
+        n_per_ssu_opt <- min(ss_min, max_ss)
+      }
       n_per_psu_opt <- ps_from_ss(n_per_ssu_opt)
       if (!is.finite(n_per_psu_opt) || n_per_psu_opt < 1) {
         stop(
@@ -3649,6 +3793,13 @@ n_multi.default <- function(
       n_per_ssu_opt <- opt$minimum
       n_per_psu_opt <- n_per_psu
       n1_opt <- budget / (C1 + C2 * n_per_psu + C3 * n_per_psu * n_per_ssu_opt)
+      if (below(n1_opt, n_per_psu, n_per_ssu_opt)) {
+        if (budget <= m * C3) stop(.msg_cont_floor(m), call. = FALSE)
+        n_per_ssu_opt <- m * (C1 + C2 * n_per_psu) /
+          (n_per_psu * (budget - m * C3))
+        n1_opt <- budget /
+          (C1 + C2 * n_per_psu + C3 * n_per_psu * n_per_ssu_opt)
+      }
     } else {
       obj_fn_ss2 <- function(ps) {
         n1 <- budget / (C1 + C2 * ps + C3 * ps * n_per_ssu)
@@ -3663,6 +3814,13 @@ n_multi.default <- function(
       n_per_ssu_opt <- n_per_ssu
       n1_opt <- budget /
         (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu)
+      if (below(n1_opt, n_per_psu_opt, n_per_ssu)) {
+        room <- n_per_ssu * budget - m * (C2 + C3 * n_per_ssu)
+        if (room <= 0) stop(.msg_cont_floor(m), call. = FALSE)
+        n_per_psu_opt <- m * C1 / room
+        n1_opt <- budget /
+          (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu)
+      }
     }
     total_cost <- C1 *
       n1_opt +
@@ -3705,6 +3863,10 @@ n_multi.default <- function(
       n1_opt +
       C2 * n1_opt * n_per_psu_opt +
       C3 * n1_opt * n_per_psu_opt * n_per_ssu_opt
+  }
+
+  if (below(n1_opt, n_per_psu_opt, n_per_ssu_opt)) {
+    stop(.msg_cont_floor(m), call. = FALSE)
   }
 
   cv_achieved <- cv_fn(n1_opt, n_per_psu_opt, n_per_ssu_opt)
