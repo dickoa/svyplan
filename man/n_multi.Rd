@@ -235,8 +235,8 @@ largest is still the binding one, whichever constraint raised it.
 Single-stage \code{n_multi()} only, because a multistage design sizes
 stages against a cost and has no single total for a count to raise.}
 \item{\code{min_respondents}}{Minimum expected number of eligible
-respondents, \code{n * resp_rate * eligible_per_unit}, a floor on the row's
-size. Unlike \code{min_cases}, it counts every respondent of the row's
+respondents, \code{n * resp_rate * eligibility_rate * eligible_per_unit},
+a floor on the row's size. Unlike \code{min_cases}, it counts every respondent of the row's
 group, not those with the attribute, and it applies to any row. A row
 with this floor and no estimand is the floor-only row described
 above. \code{NA} (the default) sets no floor. Single-stage \code{n_multi()}
@@ -256,8 +256,9 @@ error rather than a column carried along and ignored.}
 estimate, such as married women or children aged 12 to 23 months per
 household. The row is sized as \code{\link[=n_prop]{n_prop()}} or \code{\link[=n_mean]{n_mean()}} size it with
 \code{eligible_per_unit}. Sizes stay in sampled units, and the variance reads
-\code{N * eligible_per_unit} eligible units and
-\code{resp_rate * eligible_per_unit} respondents per sampled unit. Each row
+\code{N * eligibility_rate * eligible_per_unit} eligible units and
+\code{resp_rate * eligibility_rate * eligible_per_unit} respondents per
+sampled unit. Each row
 can carry its own group.
 Proportion and mean rows, so a ratio row takes 1. The
 several-indicators mode of \code{\link[=n_cluster]{n_cluster()}} refuses the column.}

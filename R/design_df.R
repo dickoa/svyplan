@@ -5,9 +5,10 @@
 #' freedom depend on the responding sample and the analysis variance estimator.
 #'
 #' @param x A `svyplan` result to count from: a [n_cluster()] or
-#'   [prec_cluster()] allocation, a [n_alloc()] allocation, a
-#'   [strata_bound()] stratification, a [n_twophase()] allocation, or a
-#'   single-indicator [n_prop()] or [n_mean()] size. `NULL` (default)
+#'   [prec_cluster()] allocation, a [n_alloc()] or [prec_alloc()]
+#'   allocation, a [strata_bound()] stratification, a [n_twophase()]
+#'   allocation, or a single-indicator [n_prop()], [n_mean()] or
+#'   [n_ratio()] size. `NULL` (default)
 #'   counts from the components below.
 #' @param ... Additional arguments passed to methods. Unused arguments are
 #'   rejected.
@@ -224,18 +225,121 @@ design_df.default <- function(x = NULL, ..., n_psu = NULL, n_strata = 1,
   .df_result(units - n_strata, units, n_strata, stage)
 }
 
-#' @describeIn design_df Count the PSUs a [n_cluster()] or [prec_cluster()]
-#'   allocation selects. Unstratified, so the count is one design.
+#' @describeIn design_df Count the PSUs a [n_cluster()] allocation
+#'   selects. Unstratified, so the count is one design. A plan with
+#'   `domains` fields each domain as its own sample, so each domain counts
+#'   as a stratum, \eqn{\sum_d m_d - D}{sum_d m_d - D}, and `$domains`
+#'   holds the per-domain counts.
 #' @export
 design_df.svyplan_cluster <- function(x, ...) {
   .check_unused_dots(...)
+  if (is.data.frame(x$operational$domains)) {
+    return(.df_cluster_domains(x))
+  }
   n_psu <- (x$operational$n %||% x$n)[[1L]]
   .df_result(n_psu - 1, n_psu, 1L, "psu")
 }
 
+#' @describeIn design_df Count the PSUs of a [prec_cluster()] result, or
+#'   the stratum counts of a one-measure [prec_alloc()] result as for an
+#'   allocation. A precision result carries the counts it was given and not
+#'   a plan's operational design, so counts that are not whole are refused,
+#'   stratum sizes on an element frame and PSU counts on a cluster frame. A
+#'   generalized [prec_alloc()] result is refused too.
+#' @export
+design_df.svyplan_prec <- function(x, ...) {
+  if (identical(x$type, "alloc")) {
+    .df_prec_alloc_counts(x)
+    return(design_df.svyplan_n(x, ...))
+  }
+  .check_unused_dots(...)
+  if (!identical(x$type, "cluster")) {
+    stop(
+      sprintf(
+        "design_df() counts the units of a cluster or allocation precision result; this is a '%s' result. Pass its size by name with design_df(n = ...)",
+        x$type
+      ),
+      call. = FALSE
+    )
+  }
+  n_psu <- x$params$n[[1L]]
+  if (abs(n_psu - round(n_psu)) > 1e-9) {
+    stop(
+      sprintf(
+        paste("this precision result has n_psu = %s, a continuous count,",
+              "and degrees of freedom count PSUs that will be fielded; pass",
+              "whole stage sizes to prec_cluster(), or call design_df() on",
+              "the plan, which carries its operational design"),
+        format(signif(n_psu, 6))
+      ),
+      call. = FALSE
+    )
+  }
+  n_psu <- round(n_psu)
+  .df_result(n_psu - 1, n_psu, 1L, "psu")
+}
+
+#' Refuse a precision allocation whose counts are not a fielded design
+#'
+#' A generalized result's `$detail` holds its constraints, not stratum
+#' counts. A classic result with fractional counts holds the whole columns
+#' of its own rounding, which need not be the plan's operational design.
+#' @keywords internal
+#' @noRd
+.df_prec_alloc_counts <- function(x) {
+  if (!is.null(x$params[["measures"]])) {
+    stop(
+      paste("a generalized prec_alloc() result reports its constraints, not",
+            "a count per stratum; call design_df() on the allocation, or",
+            "pass the counts by name with design_df(n = ..., n_strata = ...)",
+            "or design_df(n_psu = ..., n_strata = ...)"),
+      call. = FALSE
+    )
+  }
+  cluster <- !is.null(x$detail[["n_psu"]])
+  units <- if (cluster) x$detail$n_psu else x$detail$n
+  if (any(abs(units - round(units)) > 1e-9)) {
+    stop(
+      sprintf(
+        paste("this precision result has %s counts that are not whole, and",
+              "degrees of freedom count units that will be fielded; pass",
+              "whole counts to prec_alloc(), or call design_df() on the",
+              "allocation, which carries its operational design"),
+        if (cluster) "PSU" else "stratum"
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+#' Degrees of freedom of a cluster plan whose domains are separate samples
+#' @keywords internal
+#' @noRd
+.df_cluster_domains <- function(x) {
+  dom <- x$operational$domains
+  cols <- x$params$domain_cols
+  units <- as.numeric(dom$n_psu)
+  per <- pmax(units - 1, 0)
+  status <- ifelse(units <= 1, "singleton", "ok")
+  label <- do.call(paste, c(unname(as.list(dom[cols])), sep = "/"))
+  .warn_singleton_strata(label[status == "singleton"], "psu")
+  domains_tab <- dom[cols]
+  domains_tab$.n_units <- units
+  domains_tab$.df <- per
+  domains_tab$.status <- status
+  rownames(domains_tab) <- NULL
+  strata_tab <- data.frame(stratum = label, n_units = units, df = per,
+                           .status = status, stringsAsFactors = FALSE)
+  .df_result(sum(per), sum(units), nrow(dom), "psu", strata = strata_tab,
+             domains = domains_tab)
+}
+
 #' @describeIn design_df Count a [n_alloc()] allocation, at the PSU stage
 #'   when the frame carried cluster columns and at the element stage
-#'   otherwise, or the units of a single [n_prop()] or [n_mean()] size.
+#'   otherwise, or the units of a single [n_prop()], [n_mean()] or
+#'   [n_ratio()] size. A change or pooled size counts more than one
+#'   occasion and is refused.
 #' @param method For an allocation, `"nominal"` (default) counts units
 #'   minus strata. `"satterthwaite"` weights each stratum by its share of
 #'   the planned variance. See "Satterthwaite degrees of freedom".
@@ -255,6 +359,17 @@ design_df.svyplan_n <- function(x, ..., method = c("nominal", "satterthwaite")) 
   if (identical(x$type, "multi")) {
     stop(
       "a multi-indicator result sizes several indicators against one design; count that design with design_df() on the allocation or pass the counts by name",
+      call. = FALSE
+    )
+  }
+  if (x$type %in% c("change", "pooled")) {
+    stop(
+      sprintf(
+        paste("a '%s' size counts units on more than one occasion, which",
+              "design_df() cannot read as one sample; pass each occasion's",
+              "count by name with design_df(n = ...)"),
+        x$type
+      ),
       call. = FALSE
     )
   }

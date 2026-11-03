@@ -188,11 +188,17 @@ that reason.
 Given an \code{\link[=n_alloc]{n_alloc()}} result there is no need to approximate at all.
 Every quantity the ratio needs is already there, so
 \code{design_effect(alloc)} returns the allocation's own variance ratio,
-\deqn{D = n \sum_h W_h^2S_h^2d_hk_h(1+\delta_h(m_hr_h-1))/n_h \Big/
-       \left(\sum_h W_hS_h^2+\sum_h W_h(\bar y_h-\bar y)^2\right),}{D = n sum_h W_h^2S_h^2d_hk_h(1+delta_h(m_h r_h-1))/n_h / (sum_h W_hS_h^2+sum_h W_h(ybar_h-ybar)^2 ),}
+\deqn{D = \sum_h n_hc_h \sum_h W_h^2S_h^2d_hk_h(1+\delta_h(m_hr_h-1))/(n_hc_h) \Big/
+       \left(\sum_h W_hS_h^2+\sum_h W_h(\bar y_h-\bar y)^2\right),}{D = sum_h n_h c_h sum_h W_h^2S_h^2d_hk_h(1+delta_h(m_h r_h-1))/(n_h c_h) / (sum_h W_hS_h^2+sum_h W_h(ybar_h-ybar)^2 ),}
 with the per-stratum cluster factors entering stratum by stratum rather
 than averaged, and the \code{deff} the allocation was built under counted
-once. A per-stratum \code{deff} weights its own stratum's contribution and a
+once. \eqn{n_hc_h}{n_h c_h} counts the units of stratum \eqn{h} that
+respond and are in scope, \eqn{c_h}{c_h} being the product of its unit
+response, PSU response and eligibility rates, since those are the units
+the plan's variance reads. Where every stratum has the same rate it
+cancels. Where the rates differ, a stratum that responds poorly carries
+more of the variance than its issued share suggests, and the ratio
+includes that loss. A per-stratum \code{deff} weights its own stratum's contribution and a
 scalar factors straight back out. A generalized allocation optimizing
 several measures has
 no single such ratio and is refused. Take the measure-specific numbers
@@ -226,12 +232,14 @@ nothing about which design component it describes.
 \code{\link[=n_cluster]{n_cluster()}} or \code{\link[=prec_cluster]{prec_cluster()}} allocation. The takes are those that
 respond, \code{n_per_psu * resp_rate * eligibility_rate * eligible_per_unit}
 at two stages, the ones the precision reads, so the design effect and
-the \code{cv} describe one design.
+the \code{cv} describe one design. A plan sized from an \code{indicators} table
+has no single design effect and is refused.
 
 \item \code{design_effect(svyplan_prec)}: Read the design features off a
-\code{\link[=prec_cluster]{prec_cluster()}} result, the same way as for \code{\link[=n_cluster]{n_cluster()}}. Other
-\code{svyplan_prec} types carry the \code{deff} you supplied rather than one to
-be derived, and are rejected.
+\code{\link[=prec_cluster]{prec_cluster()}} result, the same way as for \code{\link[=n_cluster]{n_cluster()}}, or the
+stratum counts of a \code{\link[=prec_alloc]{prec_alloc()}} result, the same way as for
+\code{\link[=n_alloc]{n_alloc()}}. Other \code{svyplan_prec} types carry the \code{deff} you supplied
+rather than one to be derived, and are rejected.
 
 \item \code{design_effect(svyplan_varcomp)}: Read \code{icc} and \code{var_ratio} from a \code{\link[=varcomp]{varcomp()}}
 estimate. The stage takes are your design choice, so \code{n_per_psu} (and
@@ -243,7 +251,8 @@ computed from the stratum sizes, takes, standard deviations, means and
 any per-stratum cluster factors, rather than a product of separate
 weighting and stratification approximations. An allocation from stratum
 sizes alone has no variance to compare, and returns Kish's weighting
-loss of its whole takes, \eqn{n \sum_h W_h^2 / n_h}{n sum(W_h^2 / n_h)},
+loss of its whole takes that respond,
+\eqn{\sum_h n_hc_h \sum_h W_h^2 / (n_hc_h)}{sum(n_h c_h) sum(W_h^2 / (n_h c_h))},
 the ratio when every stratum has the same variance. Supply \code{weights} only for
 an \emph{additional} anticipated adjustment. See the \code{weights} argument.
 

@@ -312,9 +312,10 @@ a positive number, default 1, such as married women per household. It
 can exceed 1. A \code{measures} column of that name sets it per indicator
 and stratum, and a \code{frame} column per stratum, with the precedence
 \code{resp_rate} follows. \code{N}, \code{n}, bounds, weights and costs stay in
-sampled units, while every variance term reads \code{N * eligible_per_unit}
-eligible units and \code{resp_rate * eligible_per_unit} respondents per sampled
-unit. Classic allocation and a \code{psu} register refuse it. See \code{\link[=n_prop]{n_prop()}}
+sampled units, while every variance term reads
+\code{N * eligibility_rate * eligible_per_unit} eligible units and
+\code{resp_rate * eligibility_rate * eligible_per_unit} respondents per
+sampled unit. Classic allocation and a \code{psu} register refuse it. See \code{\link[=n_prop]{n_prop()}}
 for the caveat above 1.}
 
 \item{df}{Degrees of freedom of the variance estimator the allocation

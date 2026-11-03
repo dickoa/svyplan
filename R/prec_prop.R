@@ -36,7 +36,8 @@
 #'   [svyplan-package].
 #' @param eligible_per_unit Eligible units per sampled unit, a positive number,
 #'   default 1. `n` and `N` stay in sampled units, and a finite
-#'   `N * eligible_per_unit` must exceed 1. See [n_prop()].
+#'   `N * eligibility_rate * eligible_per_unit` must exceed 1. See
+#'   [n_prop()].
 #' @param method One of `"wald"` (default), `"wilson"`, `"logodds"`, or
 #'   `"beta"` (Korn-Graubard). See [n_prop()] for how to choose.
 #' @param df Degrees of freedom of the variance estimator, typically sampled
@@ -65,8 +66,9 @@
 #'     It reads the interval, so like `moe` it is method-specific.}
 #'   \item{`method`}{The interval method used.}
 #'   \item{`expected_cases`}{Positive cases the design expects to yield,
-#'     `n * resp_rate * p`, the same quantity [n_prop()] reports and the
-#'     one its `min_cases` constraint acts on.}
+#'     `n * resp_rate * eligibility_rate * eligible_per_unit * p`, the same
+#'     quantity [n_prop()] reports and the one its `min_cases` constraint
+#'     acts on.}
 #'   \item{`solved`}{`"p"` when the proportion was solved for, and absent
 #'     otherwise. The solved value is in `params$p`, whichever of `cv` or
 #'     `rmoe` asked for it.}
@@ -89,22 +91,24 @@
 #' parameters, then derives the margin of error and coefficient of
 #' variation. The variance equation is
 #' `se^2 = deff * p * (1 - p) * fpc(n_net) / n_net`, where
-#' `n_net = n * resp_rate` is the expected number of responding units:
-#' `deff` multiplies the SRS variance at the realized sample size, and
-#' the finite population correction uses the actual sampling fraction
-#' `n_net / N`. Equivalently, `se^2 = p * (1 - p) / n_eff` with the
+#' `n_net = n * resp_rate * eligibility_rate * eligible_per_unit` is the
+#' expected number of eligible respondents, out of an eligible population
+#' of `N_elig = N * eligibility_rate * eligible_per_unit`. `deff`
+#' multiplies the SRS variance at the realized sample size, and the finite
+#' population correction uses the actual sampling fraction `n_net / N_elig`. Equivalently, `se^2 = p * (1 - p) / n_eff` with the
 #' effective sample size `n_eff = n_net / (deff * fpc(n_net))`, the size at
 #' which an infinite-population simple random sample would carry the same
 #' variance.
 #'
 #' The FPC uses the Cochran (1977, Ch. 3) form. The finite-population
-#' correction for a Bernoulli proportion is `(N - n_net) / (N - 1)`, not
-#' the simpler `1 - n_net / N` used for means. All four methods read the
+#' correction for a Bernoulli proportion is
+#' `(N_elig - n_net) / (N_elig - 1)`, not the simpler `1 - n_net / N_elig`
+#' used for means. All four methods read the
 #' same variance through `n_eff`, so all four respond to `deff` and `N`
 #' and all four return zero at a census. They differ only in the interval
 #' built around that variance. See [n_prop()] for how to choose.
 #'
-#' That division of labour is worth stating plainly, because it decides what
+#' That division of labor is worth stating plainly, because it decides what
 #' each returned quantity answers. `se` and `cv` describe the estimator and
 #' are identical under all four methods, and changing `method` on the same
 #' design does not move them. `moe` and `rmoe` describe the interval and are

@@ -548,3 +548,19 @@ test_that("an issued overlap profile is accepted at full response in scope", {
   expect_error(predict(fit, data.frame(resp_rate = 0.9)),
                "coincide only at resp_rate = 1")
 })
+
+test_that("expected cases and the case floor read every yield factor", {
+  x <- n_prop(p = 0.2, moe = 0.05, resp_rate = 0.8, eligibility_rate = 0.9,
+              eligible_per_unit = 1.3, N = 5000, min_cases = 200)
+  expect_identical(x$binding, "min_cases")
+  expect_equal(x$n, 200 / (0.2 * 0.8 * 0.9 * 1.3))
+  expect_equal(x$expected_cases, x$n * 0.8 * 0.9 * 1.3 * 0.2)
+})
+
+test_that("the proportion variance reads the eligible respondents and population", {
+  se <- prec_prop(p = 0.2, n = 100, N = 1000, resp_rate = 0.8,
+                  eligibility_rate = 0.9, eligible_per_unit = 1.5)$se
+  n_net <- 100 * 0.8 * 0.9 * 1.5
+  N_elig <- 1000 * 0.9 * 1.5
+  expect_equal(se, sqrt(0.2 * 0.8 * (N_elig - n_net) / (N_elig - 1) / n_net))
+})

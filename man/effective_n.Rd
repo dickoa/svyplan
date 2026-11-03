@@ -92,12 +92,18 @@ for that and for removing the published survey's weighting loss.}
 \item{resp_rate}{Expected response rate among eligible units, in (0, 1].
 Default 1. It nets \code{n} down to the units the design expects to analyze
 before the design effect is applied. When \code{x} is a plan, its own rate is
-used unless you override it here. See the nonresponse section of
-\link{svyplan-package} for what the rate counts.}
+used unless you override it here. An override re-evaluates the plan at
+that rate, so the take that responds and with it the clustering factor
+follow. On an allocation or a cluster plan it is the ultimate-unit rate,
+one value or one per stratum, and PSU and SSU response stay the plan's.
+See the nonresponse section of \link{svyplan-package} for what the rate
+counts.}
 
 \item{eligibility_rate}{Share of issued units in scope, in (0, 1].
 Default 1. It nets \code{n} down with \code{resp_rate}. When \code{x} is a plan, its
-own value is used unless you override it here.}
+own value is used unless you override it here. An override re-evaluates
+the plan, so on an allocation the population weights and the population
+variance follow it too.}
 
 \item{icc, n_per_psu, n_per_ssu, var_ratio, weights, strata}{Design components, with
 the same meaning as in \code{\link[=design_effect]{design_effect()}}.}
@@ -155,8 +161,11 @@ every stage's response rate and by \code{eligible_per_unit}, so the result
 counts eligible respondents, as the \code{cv} does.
 
 \item \code{effective_n(svyplan_prec)}: Use the total and design features of a
-\code{\link[=prec_cluster]{prec_cluster()}} result. Other \code{svyplan_prec} types carry the \code{deff}
-you supplied rather than one to be derived, and are rejected.
+\code{\link[=prec_cluster]{prec_cluster()}} result, or the stratum counts of a \code{\link[=prec_alloc]{prec_alloc()}}
+result as for an allocation. \code{prec_alloc(x, n = x$detail$n_int)}
+gives the whole stratum counts. On a cluster frame it keeps the
+plan's takes. Other \code{svyplan_prec} types carry the \code{deff} you
+supplied rather than one to be derived, and are rejected.
 
 \item \code{effective_n(svyplan_varcomp)}: Use the design features of a \code{\link[=varcomp]{varcomp()}}
 estimate. \code{n} and the stage takes are your design choice.
@@ -165,10 +174,14 @@ estimate. \code{n} and the stage takes are your design choice.
 \code{\link[=n_alloc]{n_alloc()}} allocation, dividing by the allocation's own variance
 ratio. The frame needs \code{mean} alongside \code{N} and \code{sd}, since without
 the stratum means the population variance that ratio divides by is
-not identified. The stratum response rates, from the arguments or the
-frame, and PSU response on a cluster frame net the continuous total
-\code{x$n} down. For the whole-unit field design pass
-\code{n = sum(x$detail$n_int)}.
+not identified. Each stratum's response, eligibility and PSU response
+rates, from the arguments or the frame, net its own count down, so the
+result is the population variance over the plan's variance without
+FPC. A scalar \code{n} rescales the continuous allocation and keeps its
+stratum shares. To evaluate the whole stratum counts, pass
+\code{prec_alloc(x, n = x$detail$n_int)} as \code{x}. An allocation from stratum
+sizes alone reads its whole counts throughout, as its design effect
+does.
 
 }}
 \examples{

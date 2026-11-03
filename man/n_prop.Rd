@@ -86,8 +86,8 @@ in scope is \code{N * eligibility_rate}. See the nonresponse section of
 default 1. In a household survey of married women it is the average
 number of married women per household, and it can exceed 1. \code{n} and
 \code{N} stay in sampled units, while the precision is computed on the
-eligible respondents out of \code{N * eligible_per_unit} eligible units, which
-must exceed 1 when \code{N} is finite. See Details.}
+eligible respondents out of \code{N * eligibility_rate * eligible_per_unit}
+eligible units, which must exceed 1 when \code{N} is finite. See Details.}
 
 \item{method}{One of \code{"wald"} (default), \code{"wilson"}, \code{"logodds"}, or
 \code{"beta"}.}
@@ -131,7 +131,7 @@ stated as a relative margin of error reads back in the units it
 was stated in.}
 \item{\code{method}}{The interval method used.}
 \item{\code{expected_cases}}{Positive cases the design expects to yield,
-\code{n * resp_rate * p}.}
+\code{n * resp_rate * eligibility_rate * eligible_per_unit * p}.}
 \item{\code{binding}}{Which constraint set the size, \code{"precision"} or
 \code{"min_cases"}. \code{NULL} when no \code{min_cases} was given, there being
 nothing for precision to bind against.}
@@ -250,7 +250,8 @@ require 30 positive cases on average, or a subgroup analysis may need a
 planning floor for its expected events. \code{min_cases} states that requirement
 directly. The size it demands is
 \deqn{n_\mathrm{cases} = \mathrm{min\_cases} / (p \cdot
-      \mathrm{resp\_rate}),}{n_cases = min_cases / (p * resp_rate),}
+      \mathrm{resp\_rate} \cdot \mathrm{eligibility\_rate} \cdot
+      \mathrm{eligible\_per\_unit}),}{n_cases = min_cases / (p * resp_rate * eligibility_rate * eligible_per_unit),}
 and the result is the larger of that and the size precision asks for.
 Thus the count floor holds in expectation. The realized count is random,
 and the calculation does not control the probability of observing at
@@ -292,9 +293,10 @@ A household survey samples households and measures persons, such as the
 married women or the children under five in each sampled household.
 \code{eligible_per_unit} is their average number per household. The sample size
 and \code{N} stay in households. The precision is computed on
-\code{n * resp_rate * eligible_per_unit} eligible respondents out of
-\code{N * eligible_per_unit} eligible persons, so the sampling fraction is the
-household one, \code{n * resp_rate / N}. \code{expected_cases} counts eligible
+\code{n * resp_rate * eligibility_rate * eligible_per_unit} eligible
+respondents out of \code{N * eligibility_rate * eligible_per_unit} eligible
+persons, so the sampling fraction is the household one,
+\code{n * resp_rate / N}. \code{expected_cases} counts eligible
 respondents with the trait.
 
 With \code{N = Inf}, a rate at or below 1 gives the same \code{n} as passing

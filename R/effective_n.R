@@ -88,11 +88,17 @@ effective_n <- function(x = NULL, ...) {
 #' @param resp_rate Expected response rate among eligible units, in (0, 1\].
 #'   Default 1. It nets `n` down to the units the design expects to analyze
 #'   before the design effect is applied. When `x` is a plan, its own rate is
-#'   used unless you override it here. See the nonresponse section of
-#'   [svyplan-package] for what the rate counts.
+#'   used unless you override it here. An override re-evaluates the plan at
+#'   that rate, so the take that responds and with it the clustering factor
+#'   follow. On an allocation or a cluster plan it is the ultimate-unit rate,
+#'   one value or one per stratum, and PSU and SSU response stay the plan's.
+#'   See the nonresponse section of [svyplan-package] for what the rate
+#'   counts.
 #' @param eligibility_rate Share of issued units in scope, in (0, 1\].
 #'   Default 1. It nets `n` down with `resp_rate`. When `x` is a plan, its
-#'   own value is used unless you override it here.
+#'   own value is used unless you override it here. An override re-evaluates
+#'   the plan, so on an allocation the population weights and the population
+#'   variance follow it too.
 #' @param icc,n_per_psu,n_per_ssu,var_ratio,weights,strata Design components, with
 #'   the same meaning as in [design_effect()].
 #'
@@ -172,18 +178,22 @@ effective_n.svyplan_cluster <- function(
   strata = NULL
 ) {
   .check_unused_dots(...)
+  x <- .effective_n_rated(x, resp_rate, eligibility_rate)
   deff <- design_effect(x, weights = weights, strata = strata)
   .effective_n(
     n %||% x$total_n,
     as.double(deff),
-    .effective_n_resp(resp_rate, x, eligibility_rate),
-    check_rate = !is.null(resp_rate)
+    .effective_n_resp(x),
+    check_rate = FALSE
   )
 }
 
 #' @describeIn effective_n Use the total and design features of a
-#'   [prec_cluster()] result. Other `svyplan_prec` types carry the `deff`
-#'   you supplied rather than one to be derived, and are rejected.
+#'   [prec_cluster()] result, or the stratum counts of a [prec_alloc()]
+#'   result as for an allocation. `prec_alloc(x, n = x$detail$n_int)`
+#'   gives the whole stratum counts. On a cluster frame it keeps the
+#'   plan's takes. Other `svyplan_prec` types carry the `deff` you
+#'   supplied rather than one to be derived, and are rejected.
 #' @export
 effective_n.svyplan_prec <- function(
   x,
@@ -195,12 +205,17 @@ effective_n.svyplan_prec <- function(
   strata = NULL
 ) {
   .check_unused_dots(...)
+  if (identical(x$type, "alloc")) {
+    .deff_no_strata(strata)
+    return(.effective_n_alloc(x, n, resp_rate, eligibility_rate, weights))
+  }
+  x <- .effective_n_rated(x, resp_rate, eligibility_rate)
   deff <- design_effect(x, weights = weights, strata = strata)
   .effective_n(
     n %||% prod(x$params$n),
     as.double(deff),
-    .effective_n_resp(resp_rate, x, eligibility_rate),
-    check_rate = !is.null(resp_rate)
+    .effective_n_resp(x),
+    check_rate = FALSE
   )
 }
 
@@ -238,10 +253,14 @@ effective_n.svyplan_varcomp <- function(
 #'   [n_alloc()] allocation, dividing by the allocation's own variance
 #'   ratio. The frame needs `mean` alongside `N` and `sd`, since without
 #'   the stratum means the population variance that ratio divides by is
-#'   not identified. The stratum response rates, from the arguments or the
-#'   frame, and PSU response on a cluster frame net the continuous total
-#'   `x$n` down. For the whole-unit field design pass
-#'   `n = sum(x$detail$n_int)`.
+#'   not identified. Each stratum's response, eligibility and PSU response
+#'   rates, from the arguments or the frame, net its own count down, so the
+#'   result is the population variance over the plan's variance without
+#'   FPC. A scalar `n` rescales the continuous allocation and keeps its
+#'   stratum shares. To evaluate the whole stratum counts, pass
+#'   `prec_alloc(x, n = x$detail$n_int)` as `x`. An allocation from stratum
+#'   sizes alone reads its whole counts throughout, as its design effect
+#'   does.
 #' @export
 effective_n.svyplan_n <- function(
   x,
@@ -252,9 +271,59 @@ effective_n.svyplan_n <- function(
   weights = NULL
 ) {
   .check_unused_dots(...)
-  deff <- design_effect(x, weights = weights)
-  .effective_n(n %||% x$n, as.double(deff),
-               .effective_n_resp(resp_rate, x, eligibility_rate))
+  .effective_n_alloc(x, n, resp_rate, eligibility_rate, weights)
+}
+
+#' Effective size of a one-measure allocation, stratum rates kept apart
+#'
+#' The overall rate is the issued-weighted mean of the stratum rates, and
+#' the variance ratio reads the same stratum rates, so the result is
+#' `S^2 / V`. Averaging the rates before the ratio does not give this
+#' unless every stratum has the same rate. A size-only allocation reads its
+#' whole counts throughout, as its design effect does.
+#' @keywords internal
+#' @noRd
+.effective_n_alloc <- function(x, n, resp_rate, eligibility_rate, weights) {
+  x <- .effective_n_rated(x, resp_rate, eligibility_rate)
+  deff <- .deff_alloc(x, weights)
+  rate_h <- .alloc_summary_response_rates(x)$combined
+  size_only <- all(is.na(x$detail[["sd"]]))
+  n_h <- if (size_only) x$detail[["n_int"]] %||% x$detail$n else x$detail$n
+  total <- if (size_only) sum(n_h) else x[["n"]] %||% sum(n_h)
+  .effective_n(n %||% total, as.double(deff), sum(n_h * rate_h) / sum(n_h))
+}
+
+#' The plan with overridden rates in place of its own
+#'
+#' Every quantity the design effect reads, the take that responds, the
+#' population weights and the population variance, then follows the new
+#' rates, which a product of rates passed alongside the plan cannot do.
+#' `resp_rate` is the ultimate-unit rate. PSU and SSU response stay the
+#' plan's. A standard deviation the plan derived from `p` reads the
+#' eligible population under the unit FPC, so a new eligibility rate
+#' derives it again.
+#' @keywords internal
+#' @noRd
+.effective_n_rated <- function(x, resp_rate = NULL, eligibility_rate = NULL) {
+  alloc <- identical(x$type, "alloc")
+  frame <- x$params[["frame"]]
+  rates <- list(resp_rate = resp_rate, eligibility_rate = eligibility_rate)
+  for (name in names(rates)) {
+    value <- rates[[name]]
+    if (is.null(value)) next
+    if (!alloc) check_resp_rate(value, name)
+    x$params[[name]] <- value
+    if (is.data.frame(frame)) frame[[name]] <- NULL
+  }
+  if (is.data.frame(frame)) x$params[["frame"]] <- frame
+  if (alloc && !is.null(eligibility_rate) && is.data.frame(frame) &&
+      !is.null(frame[["p"]]) && is.null(frame[["sd"]]) &&
+      is.null(frame[["var"]])) {
+    e_h <- .alloc_summary_response_rates(x)$eligibility
+    x$detail$sd <- .alloc_sd_from_p(.alloc_check_p(frame$p), x$detail$N,
+                                    e_h, frame, x$params[["fpc"]])
+  }
+  x
 }
 
 #' Net a validated sample size down for response, then divide by a design
@@ -269,51 +338,20 @@ effective_n.svyplan_n <- function(
   n * resp_rate * eligibility_rate / deff
 }
 
-#' Response rate for a plan, explicit argument first
+#' Share of a cluster plan's drawn sample that responds and is in scope
 #' @keywords internal
 #' @noRd
-.effective_n_resp <- function(resp_rate, x, eligibility_rate = NULL) {
+.effective_n_resp <- function(x) {
   # A cluster plan can lose units at more than one stage, and every loss
   # removes observations from the same total, so the share of the drawn
   # sample that responds is their product. An eligible rate then counts the
   # eligible persons each responding unit holds, and can exceed 1.
-  alloc_rates <- if (identical(x$type, "alloc")) {
-    .alloc_summary_response_rates(x)
-  }
-  stored <- if (!is.null(alloc_rates)) {
-    alloc_rates$response
-  } else if (inherits(x, "svyplan_cluster") || identical(x$type, "cluster")) {
-    p <- x$params
-    (p[["resp_rate_psu"]] %||% 1) *
-      (p[["resp_rate_ssu"]] %||% 1) *
-      (p[["resp_rate"]] %||% 1) *
-      (p[["eligible_per_unit"]] %||% 1)
-  } else {
-    x$params$resp_rate
-  }
-  if (!is.null(eligibility_rate)) {
-    check_resp_rate(eligibility_rate, "eligibility_rate")
-  }
-  stored_scope <- if (!is.null(alloc_rates)) {
-    alloc_rates$eligibility
-  } else {
-    x$params[["eligibility_rate"]]
-  }
-  rate <- (resp_rate %||% stored %||% 1) *
-    (eligibility_rate %||% stored_scope %||% 1)
-  if (length(rate) > 1L) {
-    # Per-stratum rates net down to one overall rate, the share of the drawn
-    # sample expected to respond: sum(n_h r_h) / sum(n_h).
-    n_h <- x$detail[["n"]]
-    if (is.null(n_h) || length(n_h) != length(rate)) {
-      stop(
-        "'resp_rate' length does not match the allocation's strata",
-        call. = FALSE
-      )
-    }
-    rate <- sum(n_h * rate) / sum(n_h)
-  }
-  rate
+  p <- x$params
+  (p[["resp_rate_psu"]] %||% 1) *
+    (p[["resp_rate_ssu"]] %||% 1) *
+    (p[["resp_rate"]] %||% 1) *
+    (p[["eligible_per_unit"]] %||% 1) *
+    (p[["eligibility_rate"]] %||% 1)
 }
 
 #' Recover the gross sample size from whichever component supplies it

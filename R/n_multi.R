@@ -199,8 +199,8 @@
 #'     Single-stage `n_multi()` only, because a multistage design sizes
 #'     stages against a cost and has no single total for a count to raise.}
 #'   \item{`min_respondents`}{Minimum expected number of eligible
-#'     respondents, `n * resp_rate * eligible_per_unit`, a floor on the row's
-#'     size. Unlike `min_cases`, it counts every respondent of the row's
+#'     respondents, `n * resp_rate * eligibility_rate * eligible_per_unit`,
+#'     a floor on the row's size. Unlike `min_cases`, it counts every respondent of the row's
 #'     group, not those with the attribute, and it applies to any row. A row
 #'     with this floor and no estimand is the floor-only row described
 #'     above. `NA` (the default) sets no floor. Single-stage `n_multi()`
@@ -220,8 +220,9 @@
 #'     estimate, such as married women or children aged 12 to 23 months per
 #'     household. The row is sized as [n_prop()] or [n_mean()] size it with
 #'     `eligible_per_unit`. Sizes stay in sampled units, and the variance reads
-#'     `N * eligible_per_unit` eligible units and
-#'     `resp_rate * eligible_per_unit` respondents per sampled unit. Each row
+#'     `N * eligibility_rate * eligible_per_unit` eligible units and
+#'     `resp_rate * eligibility_rate * eligible_per_unit` respondents per
+#'     sampled unit. Each row
 #'     can carry its own group.
 #'     Proportion and mean rows, so a ratio row takes 1. The
 #'     several-indicators mode of [n_cluster()] refuses the column.}

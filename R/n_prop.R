@@ -50,8 +50,8 @@
 #'   default 1. In a household survey of married women it is the average
 #'   number of married women per household, and it can exceed 1. `n` and
 #'   `N` stay in sampled units, while the precision is computed on the
-#'   eligible respondents out of `N * eligible_per_unit` eligible units, which
-#'   must exceed 1 when `N` is finite. See Details.
+#'   eligible respondents out of `N * eligibility_rate * eligible_per_unit`
+#'   eligible units, which must exceed 1 when `N` is finite. See Details.
 #' @param method One of `"wald"` (default), `"wilson"`, `"logodds"`, or
 #'   `"beta"`.
 #' @param df Degrees of freedom of the variance estimator the planned design
@@ -90,7 +90,7 @@
 #'     was stated in.}
 #'   \item{`method`}{The interval method used.}
 #'   \item{`expected_cases`}{Positive cases the design expects to yield,
-#'     `n * resp_rate * p`.}
+#'     `n * resp_rate * eligibility_rate * eligible_per_unit * p`.}
 #'   \item{`binding`}{Which constraint set the size, `"precision"` or
 #'     `"min_cases"`. `NULL` when no `min_cases` was given, there being
 #'     nothing for precision to bind against.}
@@ -204,7 +204,8 @@
 #' planning floor for its expected events. `min_cases` states that requirement
 #' directly. The size it demands is
 #' \deqn{n_\mathrm{cases} = \mathrm{min\_cases} / (p \cdot
-#'       \mathrm{resp\_rate}),}{n_cases = min_cases / (p * resp_rate),}
+#'       \mathrm{resp\_rate} \cdot \mathrm{eligibility\_rate} \cdot
+#'       \mathrm{eligible\_per\_unit}),}{n_cases = min_cases / (p * resp_rate * eligibility_rate * eligible_per_unit),}
 #' and the result is the larger of that and the size precision asks for.
 #' Thus the count floor holds in expectation. The realized count is random,
 #' and the calculation does not control the probability of observing at
@@ -244,9 +245,10 @@
 #' married women or the children under five in each sampled household.
 #' `eligible_per_unit` is their average number per household. The sample size
 #' and `N` stay in households. The precision is computed on
-#' `n * resp_rate * eligible_per_unit` eligible respondents out of
-#' `N * eligible_per_unit` eligible persons, so the sampling fraction is the
-#' household one, `n * resp_rate / N`. `expected_cases` counts eligible
+#' `n * resp_rate * eligibility_rate * eligible_per_unit` eligible
+#' respondents out of `N * eligibility_rate * eligible_per_unit` eligible
+#' persons, so the sampling fraction is the household one,
+#' `n * resp_rate / N`. `expected_cases` counts eligible
 #' respondents with the trait.
 #'
 #' With `N = Inf`, a rate at or below 1 gives the same `n` as passing
@@ -585,9 +587,22 @@ n_prop.default <- function(
     )
   }
   cap <- upper %||% Inf
+  # A probe whose half-width is not finite carries the quantiles' own
+  # warnings, which describe the probe rather than the answer.
+  probe <- function(n) {
+    caught <- list()
+    value <- withCallingHandlers(gap(n), warning = function(w) {
+      caught[[length(caught) + 1L]] <<- w
+      invokeRestart("muffleWarning")
+    })
+    if (is.finite(value)) {
+      for (w in caught) warning(w)
+    }
+    value
+  }
   upper <- min(cap, max(1, 2 * lower))
   for (i in seq_len(200L)) {
-    g <- gap(upper)
+    g <- probe(upper)
     if (!is.finite(g) && is.finite(cap) && i > 1L) {
       # Every point before this one missed the margin, so it is met only
       # nearer the census than the quantiles can be evaluated. The census

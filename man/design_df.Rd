@@ -4,6 +4,7 @@
 \alias{design_df}
 \alias{design_df.default}
 \alias{design_df.svyplan_cluster}
+\alias{design_df.svyplan_prec}
 \alias{design_df.svyplan_n}
 \alias{design_df.svyplan_strata}
 \alias{design_df.svyplan_twophase}
@@ -15,6 +16,8 @@ design_df(x = NULL, ...)
 
 \method{design_df}{svyplan_cluster}(x, ...)
 
+\method{design_df}{svyplan_prec}(x, ...)
+
 \method{design_df}{svyplan_n}(x, ..., method = c("nominal", "satterthwaite"))
 
 \method{design_df}{svyplan_strata}(x, ...)
@@ -23,9 +26,10 @@ design_df(x = NULL, ...)
 }
 \arguments{
 \item{x}{A \code{svyplan} result to count from: a \code{\link[=n_cluster]{n_cluster()}} or
-\code{\link[=prec_cluster]{prec_cluster()}} allocation, a \code{\link[=n_alloc]{n_alloc()}} allocation, a
-\code{\link[=strata_bound]{strata_bound()}} stratification, a \code{\link[=n_twophase]{n_twophase()}} allocation, or a
-single-indicator \code{\link[=n_prop]{n_prop()}} or \code{\link[=n_mean]{n_mean()}} size. \code{NULL} (default)
+\code{\link[=prec_cluster]{prec_cluster()}} allocation, a \code{\link[=n_alloc]{n_alloc()}} or \code{\link[=prec_alloc]{prec_alloc()}}
+allocation, a \code{\link[=strata_bound]{strata_bound()}} stratification, a \code{\link[=n_twophase]{n_twophase()}}
+allocation, or a single-indicator \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}} or
+\code{\link[=n_ratio]{n_ratio()}} size. \code{NULL} (default)
 counts from the components below.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are
@@ -161,12 +165,24 @@ about.
 \code{n_psu} for a clustered design or \code{n} for an element design, with
 \code{n_strata} where the design is stratified.
 
-\item \code{design_df(svyplan_cluster)}: Count the PSUs a \code{\link[=n_cluster]{n_cluster()}} or \code{\link[=prec_cluster]{prec_cluster()}}
-allocation selects. Unstratified, so the count is one design.
+\item \code{design_df(svyplan_cluster)}: Count the PSUs a \code{\link[=n_cluster]{n_cluster()}} allocation
+selects. Unstratified, so the count is one design. A plan with
+\code{domains} fields each domain as its own sample, so each domain counts
+as a stratum, \eqn{\sum_d m_d - D}{sum_d m_d - D}, and \verb{$domains}
+holds the per-domain counts.
+
+\item \code{design_df(svyplan_prec)}: Count the PSUs of a \code{\link[=prec_cluster]{prec_cluster()}} result, or
+the stratum counts of a one-measure \code{\link[=prec_alloc]{prec_alloc()}} result as for an
+allocation. A precision result carries the counts it was given and not
+a plan's operational design, so counts that are not whole are refused,
+stratum sizes on an element frame and PSU counts on a cluster frame. A
+generalized \code{\link[=prec_alloc]{prec_alloc()}} result is refused too.
 
 \item \code{design_df(svyplan_n)}: Count a \code{\link[=n_alloc]{n_alloc()}} allocation, at the PSU stage
 when the frame carried cluster columns and at the element stage
-otherwise, or the units of a single \code{\link[=n_prop]{n_prop()}} or \code{\link[=n_mean]{n_mean()}} size.
+otherwise, or the units of a single \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}} or
+\code{\link[=n_ratio]{n_ratio()}} size. A change or pooled size counts more than one
+occasion and is refused.
 
 \item \code{design_df(svyplan_strata)}: Count a \code{\link[=strata_bound]{strata_bound()}} stratification, whose
 strata are element-stage and whose take-all strata are censuses.

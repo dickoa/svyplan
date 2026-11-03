@@ -532,8 +532,23 @@ test_that("finite-N interval sizing never reads the near-census endpoint early",
   # a margin met only nearer the census than qbeta() reaches is a census,
   # as for the methods whose half-width stays finite up to the cap
   for (method in c("beta", "logodds", "wilson")) {
-    expect_equal(n_prop(0.3, moe = 1e-9, N = 1e5, method = method)$n, 1e5)
+    expect_warning(
+      fit <- n_prop(0.3, moe = 1e-9, N = 1e5, method = method),
+      "FPC set to 0 \\(census\\)"
+    )
+    expect_equal(fit$n, 1e5)
   }
+  # the NaN of a near-census probe is not the caller's warning
+  caught <- character(0)
+  withCallingHandlers(
+    n_prop(0.3, moe = 1e-9, N = 1e5, method = "beta"),
+    warning = function(w) {
+      caught <<- c(caught, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_length(caught, 1L)
+  expect_match(caught, "census")
   # a root about one unit below the census is still found
   n <- n_prop(0.3, moe = 1e-5, N = 1e5, method = "beta")$n
   expect_lt(n, 1e5)

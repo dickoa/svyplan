@@ -675,3 +675,83 @@ test_that("Satterthwaite is refused for a single size", {
     "a single size has one stratum"
   )
 })
+
+## Precision results, domains and single-size types
+
+test_that("a prec_cluster() result counts its whole PSUs", {
+  d <- design_df(prec_cluster(n = c(50, 12), icc = 0.05))
+  expect_equal(as.double(d), 49)
+  expect_equal(attr(d, "n_units"), 50)
+  fit <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
+  expect_error(design_df(prec_cluster(fit)), "continuous count")
+  three <- prec_cluster(n = c(20, 4, 6), icc = c(0.05, 0.1))
+  expect_equal(as.double(design_df(three)), 19)
+})
+
+test_that("a prec_alloc() result counts like an allocation", {
+  fr <- data.frame(stratum = c("a", "b"), N = c(1000, 2000),
+                   mean = c(10, 20), sd = c(5, 10))
+  p <- prec_alloc(fr, n = c(10, 40))
+  expect_equal(as.double(design_df(p)), 48)
+  expect_equal(as.double(design_df(p, method = "satterthwaite")),
+               as.double(design_df(n_alloc(fr, n = 50),
+                                   method = "satterthwaite")),
+               tolerance = 0.5)
+  expect_error(design_df(prec_prop(p = 0.3, n = 100)), "'proportion' result")
+})
+
+test_that("change and pooled sizes are refused, ratio sizes counted", {
+  expect_error(design_df(n_change(var = 100, moe = 2)), "more than one occasion")
+  expect_error(design_df(n_change(var = 100, moe = 2, ratio = 2)),
+               "more than one occasion")
+  expect_error(
+    design_df(n_pooled(p = 0.3, occasions = 4, moe = 0.02, overlap = 0.5)),
+    "more than one occasion"
+  )
+  r <- n_ratio(r = 2, cv_num = 1.1, cv_den = 0.6, component_cor = 0.7,
+               cv = 0.05)
+  expect_equal(as.double(design_df(r)), ceiling(r$n) - 1)
+})
+
+test_that("a cluster plan with domains counts each domain as a stratum", {
+  tab <- data.frame(name = "y", p = 0.3, cv = 0.1, icc_psu = 0.05,
+                    region = c("A", "B"))
+  x <- n_cluster(indicators = tab, stage_cost = c(100, 10),
+                 domains = "region")
+  op <- x$operational$domains
+  d <- design_df(x)
+  expect_equal(as.double(d), sum(op$n_psu) - 2)
+  expect_equal(d$domains$region, c("A", "B"))
+  expect_equal(d$domains$.df, op$n_psu - 1)
+  expect_equal(sum(d$domains$.df), as.double(d))
+  three <- n_cluster(indicators = transform(tab, icc_ssu = 0.02),
+                     stage_cost = c(100, 30, 10), domains = "region")
+  expect_equal(as.double(design_df(three)),
+               sum(three$operational$domains$n_psu) - 2)
+})
+
+test_that("a prec_alloc() result without a fielded count table is refused", {
+  fr <- data.frame(stratum = c("A", "B"), N = c(1000, 2000))
+  generalized <- prec_alloc(
+    fr, n = c(50, 60),
+    measures = data.frame(stratum = c("A", "B"), name = "y", p = c(0.3, 0.4)),
+    targets = data.frame(name = "y", cv = 0.1)
+  )
+  expect_error(design_df(generalized), "generalized prec_alloc\\(\\) result")
+
+  el <- data.frame(stratum = c("a", "b"), N = c(1000, 2000),
+                   mean = c(10, 20), sd = c(5, 10))
+  expect_error(design_df(prec_alloc(n_alloc(el, n = 51))),
+               "stratum counts that are not whole")
+
+  cl <- data.frame(stratum = c("a", "b"), N = c(400, 900), mean = c(10, 20),
+                   sd = c(5, 10), icc_psu = c(0.05, 0.1),
+                   cost_psu = c(100, 150), cost_ssu = 10)
+  plan <- n_alloc(cl, cv = 0.05)
+  expect_error(design_df(prec_alloc(plan)), "PSU counts that are not whole")
+  fixed <- transform(cl, n_per_psu = 10, cost_psu = NULL, cost_ssu = NULL)
+  d <- design_df(prec_alloc(fixed, n = c(30, 120)))
+  expect_equal(as.double(d), 3 + 12 - 2)
+  expect_error(design_df(prec_alloc(fixed, n = c(35, 120))),
+               "PSU counts that are not whole")
+})

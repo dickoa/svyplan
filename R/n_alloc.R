@@ -259,9 +259,10 @@
 #'   can exceed 1. A `measures` column of that name sets it per indicator
 #'   and stratum, and a `frame` column per stratum, with the precedence
 #'   `resp_rate` follows. `N`, `n`, bounds, weights and costs stay in
-#'   sampled units, while every variance term reads `N * eligible_per_unit`
-#'   eligible units and `resp_rate * eligible_per_unit` respondents per sampled
-#'   unit. Classic allocation and a `psu` register refuse it. See [n_prop()]
+#'   sampled units, while every variance term reads
+#'   `N * eligibility_rate * eligible_per_unit` eligible units and
+#'   `resp_rate * eligibility_rate * eligible_per_unit` respondents per
+#'   sampled unit. Classic allocation and a `psu` register refuse it. See [n_prop()]
 #'   for the caveat above 1.
 #' @param df Degrees of freedom of the variance estimator the allocation
 #'   will have, typically sampled PSUs minus strata, and available from
@@ -2701,21 +2702,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     }
     S_h <- sqrt(vv)
   } else if ("p" %in% names(frame)) {
-    ph <- .alloc_check_p(frame$p)
-    if (.alloc_is_cluster(frame) || identical(fpc, "none")) {
-      S_h <- sqrt(ph * (1 - ph))
-    } else {
-      if (any(N_h * e_h <= 1)) {
-        stop(
-          sprintf(
-            "'%s' must be greater than 1 in every stratum when the variance is derived from 'p'",
-            if (all(e_h == 1)) "N" else "N * eligibility_rate"
-          ),
-          call. = FALSE
-        )
-      }
-      S_h <- sqrt(.bernoulli_var(ph, N_h * e_h))
-    }
+    S_h <- .alloc_sd_from_p(.alloc_check_p(frame$p), N_h, e_h, frame, fpc)
   } else if (size_only) {
     S_h <- rep(NA_real_, nrow(frame))
   } else {
@@ -3426,6 +3413,29 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   }
 
   list(m_h = m_h, M_h = M_h, m_src = m_src, M_src = M_src)
+}
+
+#' Stratum standard deviation of a binary variable given as `p`
+#'
+#' An element frame under the unit FPC reads the finite-population variance
+#' of the eligible population `N_h * e_h`, so the value moves with the
+#' eligibility rate. A cluster frame and `fpc = "none"` read `p (1 - p)`.
+#' @keywords internal
+#' @noRd
+.alloc_sd_from_p <- function(ph, N_h, e_h, frame, fpc) {
+  if (.alloc_is_cluster(frame) || identical(fpc, "none")) {
+    return(sqrt(ph * (1 - ph)))
+  }
+  if (any(N_h * e_h <= 1)) {
+    stop(
+      sprintf(
+        "'%s' must be greater than 1 in every stratum when the variance is derived from 'p'",
+        if (all(e_h == 1)) "N" else "N * eligibility_rate"
+      ),
+      call. = FALSE
+    )
+  }
+  sqrt(.bernoulli_var(ph, N_h * e_h))
 }
 
 #' Stratum population in scope, N_h * e_h, or N_h for a frame prepared

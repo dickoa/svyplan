@@ -84,8 +84,9 @@
 #'   component by its own stage's sampling fraction and needs `N` and
 #'   `N_psu`, and `N_ssu` at three stages. See "Finite populations".
 #' @param N Number of final-stage units in the population, the units the
-#'   takes count. With `eligible_per_unit` the correction reads
-#'   `N * eligible_per_unit` eligible units. Read only with `fpc = "stage"` and
+#'   takes count. With `eligibility_rate` or `eligible_per_unit` the
+#'   correction reads `N * eligibility_rate * eligible_per_unit` eligible
+#'   units. Read only with `fpc = "stage"` and
 #'   refused otherwise.
 #' @param N_psu Number of PSUs in the population. Read only with
 #'   `fpc = "stage"` and refused otherwise.

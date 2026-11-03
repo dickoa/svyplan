@@ -111,11 +111,17 @@
 #' Given an [n_alloc()] result there is no need to approximate at all.
 #' Every quantity the ratio needs is already there, so
 #' `design_effect(alloc)` returns the allocation's own variance ratio,
-#' \deqn{D = n \sum_h W_h^2S_h^2d_hk_h(1+\delta_h(m_hr_h-1))/n_h \Big/
-#'        \left(\sum_h W_hS_h^2+\sum_h W_h(\bar y_h-\bar y)^2\right),}{D = n sum_h W_h^2S_h^2d_hk_h(1+delta_h(m_h r_h-1))/n_h / (sum_h W_hS_h^2+sum_h W_h(ybar_h-ybar)^2 ),}
+#' \deqn{D = \sum_h n_hc_h \sum_h W_h^2S_h^2d_hk_h(1+\delta_h(m_hr_h-1))/(n_hc_h) \Big/
+#'        \left(\sum_h W_hS_h^2+\sum_h W_h(\bar y_h-\bar y)^2\right),}{D = sum_h n_h c_h sum_h W_h^2S_h^2d_hk_h(1+delta_h(m_h r_h-1))/(n_h c_h) / (sum_h W_hS_h^2+sum_h W_h(ybar_h-ybar)^2 ),}
 #' with the per-stratum cluster factors entering stratum by stratum rather
 #' than averaged, and the `deff` the allocation was built under counted
-#' once. A per-stratum `deff` weights its own stratum's contribution and a
+#' once. \eqn{n_hc_h}{n_h c_h} counts the units of stratum \eqn{h} that
+#' respond and are in scope, \eqn{c_h}{c_h} being the product of its unit
+#' response, PSU response and eligibility rates, since those are the units
+#' the plan's variance reads. Where every stratum has the same rate it
+#' cancels. Where the rates differ, a stratum that responds poorly carries
+#' more of the variance than its issued share suggests, and the ratio
+#' includes that loss. A per-stratum `deff` weights its own stratum's contribution and a
 #' scalar factors straight back out. A generalized allocation optimizing
 #' several measures has
 #' no single such ratio and is refused. Take the measure-specific numbers
@@ -258,11 +264,22 @@ design_effect.numeric <- function(x, ...) {
 #'   [n_cluster()] or [prec_cluster()] allocation. The takes are those that
 #'   respond, `n_per_psu * resp_rate * eligibility_rate * eligible_per_unit`
 #'   at two stages, the ones the precision reads, so the design effect and
-#'   the `cv` describe one design.
+#'   the `cv` describe one design. A plan sized from an `indicators` table
+#'   has no single design effect and is refused.
 #' @export
 design_effect.svyplan_cluster <- function(x, ..., weights = NULL,
                                           strata = NULL) {
   .check_unused_dots(...)
+  if (!is.null(x$indicators)) {
+    stop(
+      paste("this plan sizes an 'indicators' table, where each row carries",
+            "its own icc_psu and each domain its own takes, so it has no",
+            "single design effect; build one row's with design_effect(icc =",
+            "..., n_per_psu = ...) from its icc_psu and the takes in",
+            "$operational"),
+      call. = FALSE
+    )
+  }
   takes <- .deff_cluster_takes(x$n, x$stages, x$params)
   .deff_compose(
     icc = x$params$icc,
@@ -275,17 +292,22 @@ design_effect.svyplan_cluster <- function(x, ..., weights = NULL,
 }
 
 #' @describeIn design_effect Read the design features off a
-#'   [prec_cluster()] result, the same way as for [n_cluster()]. Other
-#'   `svyplan_prec` types carry the `deff` you supplied rather than one to
-#'   be derived, and are rejected.
+#'   [prec_cluster()] result, the same way as for [n_cluster()], or the
+#'   stratum counts of a [prec_alloc()] result, the same way as for
+#'   [n_alloc()]. Other `svyplan_prec` types carry the `deff` you supplied
+#'   rather than one to be derived, and are rejected.
 #' @export
 design_effect.svyplan_prec <- function(x, ..., weights = NULL,
                                        strata = NULL) {
   .check_unused_dots(...)
+  if (identical(x$type, "alloc")) {
+    .deff_no_strata(strata)
+    return(.deff_alloc(x, weights))
+  }
   if (!identical(x$type, "cluster")) {
     stop(
       sprintf(
-        "design_effect() reads a cluster design; this is a '%s' result. Its design effect is the 'deff' you supplied",
+        "design_effect() reads a cluster design or an allocation; this is a '%s' result. Its design effect is the 'deff' you supplied",
         x$type
       ),
       call. = FALSE
@@ -344,7 +366,8 @@ design_effect.svyplan_varcomp <- function(x, ..., n_per_psu = NULL,
 #'   any per-stratum cluster factors, rather than a product of separate
 #'   weighting and stratification approximations. An allocation from stratum
 #'   sizes alone has no variance to compare, and returns Kish's weighting
-#'   loss of its whole takes, \eqn{n \sum_h W_h^2 / n_h}{n sum(W_h^2 / n_h)},
+#'   loss of its whole takes that respond,
+#'   \eqn{\sum_h n_hc_h \sum_h W_h^2 / (n_hc_h)}{sum(n_h c_h) sum(W_h^2 / (n_h c_h))},
 #'   the ratio when every stratum has the same variance. Supply `weights` only for
 #'   an *additional* anticipated adjustment. See the `weights` argument.
 #' @param weights For an [n_alloc()] result only: an *additional*
@@ -358,6 +381,13 @@ design_effect.svyplan_varcomp <- function(x, ..., n_per_psu = NULL,
 #' @export
 design_effect.svyplan_n <- function(x, ..., weights = NULL) {
   .check_unused_dots(...)
+  .deff_alloc(x, weights)
+}
+
+#' Design effect of a one-measure allocation at its own stratum rates
+#' @keywords internal
+#' @noRd
+.deff_alloc <- function(x, weights = NULL) {
   if (!identical(x$type, "alloc")) {
     stop(
       sprintf(
@@ -378,7 +408,11 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
   if (all(is.na(x$detail[["sd"]]))) {
     # A size-only allocation identifies no variance ratio. Its weights are
     # all it has, and under equal stratum variances their loss is the ratio.
-    loss <- .deff_from_allocation(x$detail$N, x$detail[["n_int"]] %||% x$detail$n)
+    rates <- .alloc_summary_response_rates(x)
+    loss <- .deff_from_allocation(
+      x$detail$N * rates$eligibility,
+      (x$detail[["n_int"]] %||% x$detail$n) * rates$combined
+    )
     components <- c(weighting = loss$value)
     notes <- c(weighting = paste0(
       loss$note, ", whole takes, equal stratum variances assumed (Kish)"
@@ -396,15 +430,30 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
   .new_svyplan_deff(prod(components), components = components, notes = notes)
 }
 
+#' Refuse a strata table on an allocation, which carries its own strata
+#' @keywords internal
+#' @noRd
+.deff_no_strata <- function(strata) {
+  if (!is.null(strata)) {
+    stop(
+      "an allocation carries its own strata; drop 'strata'",
+      call. = FALSE
+    )
+  }
+}
+
 #' Variance ratio of a one-measure stratified allocation
 #'
 #' The design variance of the mean under this allocation, over the SRS
-#' variance at the same total size. Everything it needs is already in the
-#' result, so there is no reason to approximate it by multiplying a Kish
-#' weighting factor by a proportional-allocation stratification factor: that
-#' product is exact only when the stratum standard deviations agree, and it
-#' is not even an upper bound when a constraint forces the allocation to
-#' oversample a low-variance stratum.
+#' variance at the same total size. Both sizes count the units that respond
+#' and are in scope, `n_h` times the stratum's combined rate, as the plan's
+#' variance does.
+#' Everything it needs is already in the result, so there is no reason to
+#' approximate it by multiplying a Kish weighting factor by a
+#' proportional-allocation stratification factor: that product is exact only
+#' when the stratum standard deviations agree, and it is not even an upper
+#' bound when a constraint forces the allocation to oversample a
+#' low-variance stratum.
 #'
 #' Computed without finite population corrections, on the same scale as the
 #' component API. `prec_alloc()` applies each stratum's FPC, so a ratio
@@ -446,7 +495,9 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
   }
   deff_h <- .alloc_resolve_h(deff_h, x$params$frame, "deff", nrow(detail),
                              .check_deff_h)
-  value <- sum(n) * sum(W^2 * detail$sd^2 * deff_h * factor_h / n) / parts$total
+  m <- n * rates$combined
+  value <- sum(m) * sum(W^2 * detail$sd^2 * deff_h * factor_h / m) /
+    parts$total
   clustered <- is.data.frame(x$params$frame) &&
     !is.null(x$params$frame[["icc_psu"]]) &&
     !is.null(detail[["n_per_psu"]])

@@ -70,7 +70,8 @@ in scope is \code{N * eligibility_rate}. See the nonresponse section of
 
 \item{eligible_per_unit}{Eligible units per sampled unit, a positive number,
 default 1. \code{n} and \code{N} stay in sampled units, and a finite
-\code{N * eligible_per_unit} must exceed 1. See \code{\link[=n_prop]{n_prop()}}.}
+\code{N * eligibility_rate * eligible_per_unit} must exceed 1. See
+\code{\link[=n_prop]{n_prop()}}.}
 
 \item{method}{One of \code{"wald"} (default), \code{"wilson"}, \code{"logodds"}, or
 \code{"beta"} (Korn-Graubard). See \code{\link[=n_prop]{n_prop()}} for how to choose.}
@@ -103,8 +104,9 @@ same under all four methods.}
 It reads the interval, so like \code{moe} it is method-specific.}
 \item{\code{method}}{The interval method used.}
 \item{\code{expected_cases}}{Positive cases the design expects to yield,
-\code{n * resp_rate * p}, the same quantity \code{\link[=n_prop]{n_prop()}} reports and the
-one its \code{min_cases} constraint acts on.}
+\code{n * resp_rate * eligibility_rate * eligible_per_unit * p}, the same
+quantity \code{\link[=n_prop]{n_prop()}} reports and the one its \code{min_cases} constraint
+acts on.}
 \item{\code{solved}}{\code{"p"} when the proportion was solved for, and absent
 otherwise. The solved value is in \code{params$p}, whichever of \code{cv} or
 \code{rmoe} asked for it.}
@@ -132,22 +134,24 @@ Computes the standard error for the given sample size and design
 parameters, then derives the margin of error and coefficient of
 variation. The variance equation is
 \code{se^2 = deff * p * (1 - p) * fpc(n_net) / n_net}, where
-\code{n_net = n * resp_rate} is the expected number of responding units:
-\code{deff} multiplies the SRS variance at the realized sample size, and
-the finite population correction uses the actual sampling fraction
-\code{n_net / N}. Equivalently, \code{se^2 = p * (1 - p) / n_eff} with the
+\code{n_net = n * resp_rate * eligibility_rate * eligible_per_unit} is the
+expected number of eligible respondents, out of an eligible population
+of \code{N_elig = N * eligibility_rate * eligible_per_unit}. \code{deff}
+multiplies the SRS variance at the realized sample size, and the finite
+population correction uses the actual sampling fraction \code{n_net / N_elig}. Equivalently, \code{se^2 = p * (1 - p) / n_eff} with the
 effective sample size \code{n_eff = n_net / (deff * fpc(n_net))}, the size at
 which an infinite-population simple random sample would carry the same
 variance.
 
 The FPC uses the Cochran (1977, Ch. 3) form. The finite-population
-correction for a Bernoulli proportion is \code{(N - n_net) / (N - 1)}, not
-the simpler \code{1 - n_net / N} used for means. All four methods read the
+correction for a Bernoulli proportion is
+\code{(N_elig - n_net) / (N_elig - 1)}, not the simpler \code{1 - n_net / N_elig}
+used for means. All four methods read the
 same variance through \code{n_eff}, so all four respond to \code{deff} and \code{N}
 and all four return zero at a census. They differ only in the interval
 built around that variance. See \code{\link[=n_prop]{n_prop()}} for how to choose.
 
-That division of labour is worth stating plainly, because it decides what
+That division of labor is worth stating plainly, because it decides what
 each returned quantity answers. \code{se} and \code{cv} describe the estimator and
 are identical under all four methods, and changing \code{method} on the same
 design does not move them. \code{moe} and \code{rmoe} describe the interval and are

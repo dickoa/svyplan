@@ -89,8 +89,9 @@ each component by its own stage's sampling fraction and needs \code{N} and
 \code{\link[=n_cluster]{n_cluster()}}.}
 
 \item{N}{Number of final-stage units in the population, the units the
-sizes count. With \code{eligible_per_unit} the correction reads
-\code{N * eligible_per_unit} eligible units. Read only with \code{fpc = "stage"} and
+sizes count. With \code{eligibility_rate} or \code{eligible_per_unit} the
+correction reads \code{N * eligibility_rate * eligible_per_unit} eligible
+units. Read only with \code{fpc = "stage"} and
 refused otherwise.}
 
 \item{N_psu}{Number of PSUs in the population. Read only with
