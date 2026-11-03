@@ -529,6 +529,16 @@ test_that("finite-N interval sizing never reads the near-census endpoint early",
   expect_equal(n, 88983.29, tolerance = 1e-6)
   expect_equal(prec_prop(0.3, n, N = 1e5, method = "beta")$moe, 0.001,
                tolerance = 1e-8)
+  # a margin met only nearer the census than qbeta() reaches is a census,
+  # as for the methods whose half-width stays finite up to the cap
+  for (method in c("beta", "logodds", "wilson")) {
+    expect_equal(n_prop(0.3, moe = 1e-9, N = 1e5, method = method)$n, 1e5)
+  }
+  # a root about one unit below the census is still found
+  n <- n_prop(0.3, moe = 1e-5, N = 1e5, method = "beta")$n
+  expect_lt(n, 1e5)
+  expect_equal(prec_prop(0.3, n, N = 1e5, method = "beta")$moe, 1e-5,
+               tolerance = 1e-6)
   n <- n_prop(0.3, moe = 0.001, N = 1000, method = "beta")$n
   expect_lt(n, 1000)
   expect_equal(prec_prop(0.3, n, N = 1000, method = "beta")$moe, 0.001,

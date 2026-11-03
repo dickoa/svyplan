@@ -553,7 +553,8 @@ n_prop.default <- function(
 #' the cap each step closes three quarters of the distance left, since the
 #' effective size at the cap is near 1e17 and the beta quantiles return
 #' `NaN` there. A margin the cap still misses is met only by the census, so
-#' `N` comes back.
+#' `N` comes back, as it does when the half-width stops being finite on the
+#' way to the cap after every earlier point missed the margin.
 #'
 #' `floor` is the smallest size the method is defined on. Above it the
 #' half-width shrinks monotonically. A margin already met there returns
@@ -587,6 +588,12 @@ n_prop.default <- function(
   upper <- min(cap, max(1, 2 * lower))
   for (i in seq_len(200L)) {
     g <- gap(upper)
+    if (!is.finite(g) && is.finite(cap) && i > 1L) {
+      # Every point before this one missed the margin, so it is met only
+      # nearer the census than the quantiles can be evaluated. The census
+      # meets it, as it does for the methods that reach the cap.
+      return(N)
+    }
     if (!is.finite(g)) {
       stop(
         sprintf(
