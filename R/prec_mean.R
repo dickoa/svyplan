@@ -33,6 +33,13 @@
 #'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
 #'   in scope is `N * eligibility_rate`. See the nonresponse section of
 #'   [svyplan-package].
+#' @param eligible_per_unit Eligible units per sampled unit, a positive
+#'   number, default 1, such as women aged 15 to 49 per household, and it can
+#'   exceed 1. `n` and `N` stay in sampled units, while the precision is
+#'   computed on the eligible respondents out of
+#'   `N * eligibility_rate * eligible_per_unit` eligible units. Above 1, `deff`
+#'   must carry the correlation among the eligible units of one sampled unit.
+#'   See the section on eligible units in [n_prop()].
 #' @param df Degrees of freedom of the variance estimator the planned design
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the interval quantile from normal to t.
@@ -133,6 +140,10 @@
 #' p$se * N    # SE for the estimated total
 #' p$cv        # CV is the same for mean and total
 #'
+#'
+#' # The same households measured on about 2.6 women each
+#' prec_mean(var = 16, n = 400, deff = 1.8, resp_rate = 0.9,
+#'           eligible_per_unit = 2.6)
 #' @export
 prec_mean <- function(var = NULL, ...) {
   if (!is.null(var)) {
@@ -156,6 +167,7 @@ prec_mean.default <- function(
   deff = 1,
   resp_rate = 1,
   eligibility_rate = 1,
+  eligible_per_unit = 1,
   df = NULL,
   plan = NULL
 ) {
@@ -170,7 +182,10 @@ prec_mean.default <- function(
   check_deff(deff)
   check_resp_rate(resp_rate)
   check_resp_rate(eligibility_rate, "eligibility_rate")
+  check_eligible_per_unit(eligible_per_unit)
   .check_gross_n(n, N)
+  N_elig <- check_eligible_population(N, eligible_per_unit, eligibility_rate)
+  rate <- resp_rate * eligibility_rate * eligible_per_unit
   if (!is.null(mu) && !is.null(cv)) {
     stop("specify at most one of 'mu' or 'cv'", call. = FALSE)
   }
@@ -183,12 +198,10 @@ prec_mean.default <- function(
   solved <- if (!is.null(cv)) "mu" else NULL
   if (!is.null(solved)) {
     check_scalar(cv, "cv")
-    mu <- .prec_solve_mean(cv, var, n, alpha, N * eligibility_rate, deff,
-                           resp_rate * eligibility_rate, df)
+    mu <- .prec_solve_mean(cv, var, n, alpha, N_elig, deff, rate, df)
   }
 
-  prec <- .prec_engine_mean(var, mu, n, alpha, N * eligibility_rate, deff,
-                            resp_rate * eligibility_rate, df)
+  prec <- .prec_engine_mean(var, mu, n, alpha, N_elig, deff, rate, df)
   se <- prec$se
   moe <- prec$moe
   cv_val <- prec$cv
@@ -204,6 +217,9 @@ prec_mean.default <- function(
   )
   if (eligibility_rate != 1) {
     params$eligibility_rate <- eligibility_rate
+  }
+  if (eligible_per_unit != 1) {
+    params$eligible_per_unit <- eligible_per_unit
   }
 
   if (!is.null(mu)) {
@@ -237,6 +253,7 @@ prec_mean.svyplan_n <- function(var, ...) {
     deff = par$deff,
     resp_rate = par$resp_rate %||% 1,
     eligibility_rate = par[["eligibility_rate"]] %||% 1,
+    eligible_per_unit = par[["eligible_per_unit"]] %||% 1,
     df = par$df
   )
   out <- do.call(prec_mean.default, .roundtrip_args(args, list(...), prec_mean.default))

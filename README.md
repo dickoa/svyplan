@@ -66,8 +66,8 @@ Pass the result to the paired precision function to check the same plan:
 
 ``` r
 prec_prop(coverage)
-#> Sampling precision for proportion (wald)
-#> n = 570 (net: 485)
+#> Sampling precision for proportion (wald, continuous optimum)
+#> n = 569.4398 (net: 484.0238)
 #> se = 0.0255, moe = 0.0500, cv = 0.0364, rmoe = 0.0714
 #> expected cases = 338.8
 confint(coverage)

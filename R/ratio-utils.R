@@ -78,7 +78,8 @@ check_component_cor <- function(component_cor, name = "component_cor") {
 #' silence.
 #' @keywords internal
 #' @noRd
-.check_ratio_relvar <- function(unit_relvar, cv_num, cv_den, component_cor) {
+.check_ratio_relvar <- function(unit_relvar, cv_num, cv_den, component_cor,
+                                sizing = TRUE) {
   if (!is.finite(unit_relvar)) {
     stop(
       "the ratio's unit relative variance is not finite at these moments: ",
@@ -86,7 +87,7 @@ check_component_cor <- function(component_cor, name = "component_cor") {
       call. = FALSE
     )
   }
-  if (unit_relvar == 0) {
+  if (unit_relvar == 0 && sizing) {
     stop(
       "the ratio has no sampling variance at these moments: 'cv_num' and ",
       "'cv_den' are equal and 'component_cor' is at its bound, which makes ",

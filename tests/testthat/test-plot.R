@@ -308,3 +308,48 @@ test_that("the chart draws the launch its panel was planned with", {
   expect_silent(plot(design_overlap("3"), panel = imm))
   expect_silent(plot(design_overlap("3"), panel = imm, start = "gradual"))
 })
+
+## P2. Curves and grids read the fit's rates
+
+test_that("a power curve passes through the fitted point", {
+  e <- list(resp_rate = 0.8, eligibility_rate = 0.5)
+  fits <- list(
+    do.call(power_prop, c(list(p1 = 0.3, p2 = 0.4, N = 5000), e)),
+    do.call(power_mean, c(list(var = 100, effect = 2, N = 5000), e)),
+    do.call(power_did, c(list(treat = c(0.3, 0.4), control = c(0.3, 0.32),
+                              outcome = "prop", N = 6000, overlap = 0.5,
+                              overlap_cor = 0.4), e)),
+    do.call(power_prop, c(list(p1 = 0.3, p2 = 0.4, N = 5000,
+                               eligible_per_unit = 2.6), e)),
+    do.call(power_mean, c(list(var = 100, effect = 2, N = 5000,
+                               eligible_per_unit = 2.6), e))
+  )
+  for (x in fits) {
+    expect_equal(svyplan:::.power_curve_grid(x, x$n), x$power,
+                 info = x$type)
+  }
+})
+
+test_that("a budget grid starts at the cheapest whole design in scope", {
+  frame <- data.frame(stratum = c("North urban", "North rural", "South urban"),
+                      region = c("North", "North", "South"),
+                      N = c(1000, 1800, 1200))
+  measures <- data.frame(
+    stratum = rep(frame$stratum, 2),
+    name = rep(c("coverage", "income"), each = 3),
+    p = c(0.5, 0.4, 0.6, NA, NA, NA),
+    mean = c(NA, NA, NA, 50, 55, 60),
+    sd = c(NA, NA, NA, 10, 12, 15)
+  )
+  targets <- data.frame(name = c("coverage", "income"),
+                        domain = c(".overall", "region"),
+                        level = c(NA, "North"), cv = c(0.06, NA),
+                        moe = c(NA, 3))
+  fit <- n_alloc(frame, measures = measures, targets = targets,
+                 objective = "income", budget = 1000,
+                 eligibility_rate = 0.7)
+  floor_fit <- n_alloc(frame, measures = measures, targets = targets,
+                       eligibility_rate = 0.7)
+  expect_equal(svyplan:::.budget_grid(fit, 5)[1L],
+               floor_fit$operational$cost)
+})

@@ -88,8 +88,11 @@ test_that("a profile carries the rate and refuses a function without it", {
   expect_identical(
     prec_prop(p = 0.28, n = 6000, plan = pl)$params$eligible_per_unit, 0.41
   )
-  expect_error(n_mean(var = 4, mu = 10, cv = 0.05, plan = pl),
-               "profile sets 'eligible_per_unit', which n_mean\\(\\) does not take")
+  expect_identical(
+    n_mean(var = 4, mu = 10, cv = 0.05, plan = pl)$n,
+    n_mean(var = 4, mu = 10, cv = 0.05, resp_rate = 0.9,
+           eligible_per_unit = 0.41)$n
+  )
   expect_equal(
     n_multi(data.frame(name = "a", p = 0.3, moe = 0.05), plan = pl)$n,
     n_prop(p = 0.3, moe = 0.05, resp_rate = 0.9, eligible_per_unit = 0.41)$n
@@ -105,10 +108,11 @@ test_that("a profile carries the rate and refuses a function without it", {
           "Drop it from the profile for this call, or fold it into",
           "'resp_rate' when it is at most 1")
   )
-  expect_error(pl |> n_mean(var = 4, mu = 10, cv = 0.05),
-               "which n_mean\\(\\) does not take")
-  expect_no_error(n_mean(var = 4, mu = 10, cv = 0.05,
-                         plan = svyplan(eligible_per_unit = 1)))
+  expect_identical((pl |> prec_mean(var = 4, n = 500))$params$eligible_per_unit,
+                   0.41)
+  expect_no_error(n_ratio(r = 0.5, cv_num = 0.3, cv_den = 0.2,
+                          component_cor = 0.5, cv = 0.05,
+                          plan = svyplan(eligible_per_unit = 1)))
   expect_error(svyplan(eligible_per_unit = 0), "positive finite")
 })
 
@@ -253,14 +257,25 @@ test_that("an indicator table sizes each row with its own eligible_per_unit", {
   expect_null(n_multi(ind[, 1:3])$indicators$eligible_per_unit)
 })
 
-test_that("a mean row and the cluster indicator mode refuse the rate", {
+test_that("a mean row takes the rate, a ratio row and the cluster mode refuse it", {
   mixed <- data.frame(name = c("a", "m"), p = c(0.3, NA), var = c(NA, 4),
-                      mu = c(NA, 10), cv = 0.1)
-  expect_error(n_multi(mixed, eligible_per_unit = 2),
-               "proportion rows.*Row\\(s\\) 2 carry a mean")
-  expect_no_error(
-    n_multi(transform(mixed, eligible_per_unit = c(2, 1)))
+                      mu = c(NA, 10), cv = c(0.1, 0.02))
+  fit <- n_multi(mixed, eligible_per_unit = 2)
+  expect_equal(fit$detail$.n[2L],
+               n_mean(var = 4, mu = 10, cv = 0.02, eligible_per_unit = 2)$n)
+  expect_equal(fit$detail$.cv_achieved[2L],
+               prec_mean(var = 4, mu = 10, n = max(fit$detail$.n),
+                         eligible_per_unit = 2)$cv)
+  expect_equal(fit$detail$.n[2L],
+               n_mean(var = 4, mu = 10, cv = 0.02)$n / 2)
+  expect_equal(
+    prec_multi(transform(mixed, n = 300), eligible_per_unit = 2)$detail$.se[2L],
+    prec_mean(var = 4, mu = 10, n = 300, eligible_per_unit = 2)$se
   )
+  ratio <- data.frame(name = "r", r = 420, cv_num = 1.2, cv_den = 0.45,
+                      component_cor = 0.65, cv = 0.05)
+  expect_error(n_multi(ratio, eligible_per_unit = 2),
+               "proportion and mean rows.*Row\\(s\\) 1 carry a ratio")
   expect_error(
     n_multi(data.frame(name = "a", p = 0.3, cv = 0.1, eligible_per_unit = 0)),
     "positive and finite"
@@ -571,4 +586,81 @@ test_that("the default frontier starts at the eligible floor", {
   expect_equal(grid[1], floor_cost)
   rows <- expect_no_warning(predict(fit, data.frame(budget = grid)))
   expect_true(all(rows$.feasible))
+})
+
+## Means and the power family
+
+test_that("a mean is sized on eligible respondents in the eligible population", {
+  z <- qnorm(0.975)
+  for (N in c(Inf, 5000)) {
+    fit <- n_mean(var = 4, moe = 0.2, N = N, deff = 1.5, resp_rate = 0.9,
+                  eligibility_rate = 0.95, eligible_per_unit = 2.6)
+    N_elig <- N * 0.95 * 2.6
+    net <- z^2 * 1.5 * 4 / (0.2^2 + z^2 * 1.5 * 4 / N_elig)
+    expect_equal(fit$n, net / (0.9 * 0.95 * 2.6), info = format(N))
+    back <- prec_mean(var = 4, n = fit$n, N = N, deff = 1.5, resp_rate = 0.9,
+                      eligibility_rate = 0.95, eligible_per_unit = 2.6)
+    expect_equal(back$moe, 0.2, info = format(N))
+    expect_equal(prec_mean(fit)$moe, 0.2, info = format(N))
+    expect_equal(n_mean(back)$n, fit$n, info = format(N))
+  }
+  expect_identical(fit$params$eligible_per_unit, 2.6)
+  expect_null(n_mean(var = 4, moe = 0.2)$params$eligible_per_unit)
+  expect_error(n_mean(var = 4, moe = 0.2, eligible_per_unit = 0),
+               "'eligible_per_unit' must be a positive finite number")
+  expect_error(prec_mean(var = 4, n = 1, N = 2, eligible_per_unit = 0.4),
+               "the eligible population, must be greater than 1")
+})
+
+test_that("a power solve counts eligible respondents and round-trips", {
+  cases <- list(
+    function(...) power_prop(p1 = 0.3, p2 = 0.35, N = 4000, overlap = 0.5,
+                             overlap_cor = 0.4, ...),
+    function(...) power_mean(var = 100, effect = 2, N = 4000, overlap = 0.5,
+                             overlap_cor = 0.4, ...),
+    function(...) power_did(treat = c(0.3, 0.4), control = c(0.3, 0.32),
+                            outcome = "prop", N = 6000, overlap = 0.5,
+                            overlap_cor = 0.4, ...)
+  )
+  for (call in cases) {
+    fit <- call(resp_rate = 0.9, eligible_per_unit = 2.6)
+    expect_identical(fit$params$eligible_per_unit, 2.6)
+    expect_equal(
+      call(resp_rate = 0.9, eligible_per_unit = 2.6, n = fit$n,
+           power = NULL)$power,
+      0.8, tolerance = 1e-6, info = fit$type
+    )
+  }
+  # Without a finite population the count only divides the issued size.
+  expect_equal(power_prop(p1 = 0.3, p2 = 0.35, eligible_per_unit = 2.6)$n,
+               power_prop(p1 = 0.3, p2 = 0.35)$n / 2.6)
+  expect_equal(power_mean(var = 100, effect = 2, eligible_per_unit = 0.45)$n,
+               power_mean(var = 100, effect = 2)$n / 0.45)
+  pl <- svyplan(resp_rate = 0.9, eligible_per_unit = 0.45)
+  expect_equal((pl |> power_prop(p1 = 0.3, p2 = 0.35))$n,
+               power_prop(p1 = 0.3, p2 = 0.35, resp_rate = 0.9,
+                          eligible_per_unit = 0.45)$n)
+})
+
+test_that("a count below 1 scales the population as eligibility does", {
+  # Both multiply the rate and the population in scope, so at 0.5 they agree
+  # exactly, finite population and overlap included.
+  sized <- list(
+    function(...) n_mean(var = 4, moe = 0.2, N = 3000, resp_rate = 0.9, ...),
+    function(...) power_prop(p1 = 0.3, p2 = 0.35, N = 3000, overlap = 0.5,
+                             overlap_cor = 0.4, resp_rate = 0.9, ...),
+    function(...) power_mean(var = 100, effect = 2, N = 3000, overlap = 0.5,
+                             overlap_cor = 0.4, resp_rate = 0.9, ...),
+    function(...) power_did(treat = c(0.3, 0.4), control = c(0.3, 0.32),
+                            outcome = "prop", N = 3000, overlap = 0.5,
+                            overlap_cor = 0.4, resp_rate = 0.9, ...)
+  )
+  for (call in sized) {
+    expect_equal(call(eligible_per_unit = 0.5)$n,
+                 call(eligibility_rate = 0.5)$n)
+  }
+  expect_equal(
+    prec_mean(var = 4, n = 900, N = 3000, eligible_per_unit = 0.5)$se,
+    prec_mean(var = 4, n = 900, N = 3000, eligibility_rate = 0.5)$se
+  )
 })

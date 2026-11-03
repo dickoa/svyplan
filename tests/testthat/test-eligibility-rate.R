@@ -196,7 +196,7 @@ test_that("a panel target sized with the panel's rates raises no warning", {
   expect_equal(pa$n_target, n_prop(p = 0.3, moe = 0.03)$n)
   expect_warning(
     n_panel(tgt, retention = c(0.9, 0.9), resp_rate = 0.8),
-    "0.76 is not used"
+    "response 0.8 times eligibility 0.95 \\(0.76\\) is not used"
   )
   expect_warning(
     n_panel(tgt, retention = c(0.9, 0.9), resp_rate = 0.8,
@@ -461,4 +461,90 @@ test_that("the register search bound is the scorer's stratum-rate floor", {
     bd <- svyplan:::.psu_menu_bound(ev, 1L, list(mu = 1, price = 0, obj = 0))
     expect_equal(bd$W / n - bd$W0, 2 * 0.5 * e * N^2 * (1 / (r * n) - 1 / N))
   }
+})
+
+## The design effect and the frame bounds read the rate
+
+test_that("a cluster design effect reads the take in scope", {
+  for (cost in list(c(500, 50), c(500, 100, 50))) {
+    icc <- if (length(cost) == 2L) 0.05 else c(0.05, 0.1)
+    scoped <- n_cluster(stage_cost = cost, icc = icc, cv = 0.05,
+                        resp_rate = 0.9, eligibility_rate = 0.8)
+    folded <- n_cluster(stage_cost = cost, icc = icc, cv = 0.05,
+                        resp_rate = 0.72)
+    expect_equal(as.double(design_effect(scoped)),
+                 as.double(design_effect(folded)))
+    expect_equal(effective_n(scoped), effective_n(folded))
+    expect_equal(effective_n(scoped), 1 / 0.05^2)
+  }
+  scoped <- prec_cluster(icc = 0.05, n = c(n_psu = 50, n_per_psu = 10),
+                         unit_relvar = 1, resp_rate = 0.9,
+                         eligibility_rate = 0.8)
+  folded <- prec_cluster(icc = 0.05, n = c(n_psu = 50, n_per_psu = 10),
+                         unit_relvar = 1, resp_rate = 0.72)
+  expect_equal(as.double(design_effect(scoped)),
+               as.double(design_effect(folded)))
+  expect_equal(effective_n(scoped), 1 / scoped$cv^2)
+})
+
+test_that("a power solve returns the size whose power it reached", {
+  cases <- list(
+    function(...) power_prop(p1 = 0.3, p2 = 0.33, N = 1000, ...),
+    function(...) power_prop(p1 = 0.3, p2 = 0.33, N = 1000, overlap = 0.5,
+                             overlap_cor = 0.5, ...),
+    function(...) power_mean(var = 100, effect = 1.5, N = 1000, ...),
+    function(...) power_mean(var = 100, effect = 1.5, N = 1000,
+                             overlap = 0.5, overlap_cor = 0.5, ...),
+    function(...) power_did(treat = c(0.3, 0.4), control = c(0.3, 0.32),
+                            outcome = "prop", N = 6000, resp_rate = 0.9,
+                            overlap = 0.5, overlap_cor = 0.4, ...)
+  )
+  for (call in cases) {
+    for (e in c(1, 0.5, 0.4)) {
+      at <- call(eligibility_rate = e, n = 300, power = NULL)$power
+      back <- call(eligibility_rate = e, power = at)
+      expect_equal(back$n, 300, tolerance = 1e-6)
+      expect_equal(call(eligibility_rate = e, n = back$n, power = NULL)$power,
+                   at, tolerance = 1e-8)
+    }
+  }
+})
+
+test_that("a gross sample may exceed the population in scope", {
+  at <- power_prop(p1 = 0.3, p2 = 0.33, N = 1000, eligibility_rate = 0.5,
+                   n = 800, power = NULL)$power
+  fit <- power_prop(p1 = 0.3, p2 = 0.33, N = 1000, eligibility_rate = 0.5,
+                    power = at)
+  expect_equal(fit$n, 800, tolerance = 1e-6)
+  fit <- power_did(treat = c(0.3, 0.4), control = c(0.3, 0.32),
+                   outcome = "prop", N = 6000, resp_rate = 0.9,
+                   eligibility_rate = 0.4, overlap = 0.5, overlap_cor = 0.4)
+  expect_gt(fit$n, 6000 * 0.4 / 2)
+  expect_equal(
+    power_did(treat = c(0.3, 0.4), control = c(0.3, 0.32), outcome = "prop",
+              n = fit$n, power = NULL, N = 6000, resp_rate = 0.9,
+              eligibility_rate = 0.4, overlap = 0.5, overlap_cor = 0.4)$power,
+    0.8, tolerance = 1e-6
+  )
+})
+
+test_that("an issued overlap profile is accepted at full response in scope", {
+  rot <- design_overlap("4")
+  scoped <- prec_pooled(var = 100, n = 500, occasions = 4, resp_rate = 1,
+                        eligibility_rate = 0.8, overlap = rot,
+                        cor_decay = 0.8)
+  eligible <- prec_pooled(var = 100, n = 400, occasions = 4, overlap = rot,
+                          cor_decay = 0.8)
+  expect_equal(scoped$se, eligible$se)
+  expect_error(
+    prec_pooled(var = 100, n = 500, occasions = 4, resp_rate = 0.9,
+                eligibility_rate = 0.8, overlap = rot, cor_decay = 0.8),
+    "coincide only at resp_rate = 1"
+  )
+  fit <- n_pooled(var = 100, moe = 1, occasions = 4, eligibility_rate = 0.8,
+                  overlap = rot, cor_decay = 0.8)
+  res <- predict(fit, data.frame(eligibility_rate = c(0.7, 0.8)))
+  expect_equal(res$n[2L], fit$n)
+  expect_error(predict(fit, data.frame(resp_rate = 0.9)),
+               "coincide only at resp_rate = 1")
 })

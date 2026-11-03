@@ -82,6 +82,17 @@
 #' so when few SSUs are sampled per PSU the between-PSU component (and
 #' `icc_psu`) is conservative: biased upward, never downward.
 #'
+#' The element-stage noise in a 3-stage sample depends on the share of
+#' each SSU's elements that was sampled, \eqn{f_3 = n_{ij} / N_{ij}}{f3 =
+#' n_ij / N_ij}. Only the stage-3 weight sums to \eqn{N_{ij}}{N_ij}, so a
+#' single within-cluster weight column reads the fraction as
+#' \eqn{f_2 f_3}{f2 * f3} and removes too much noise from the SSU totals,
+#' which understates `varw_psu` and `icc_ssu`. The difference is small when
+#' \eqn{f_3}{f3} is small, the usual case of a few households listed from
+#' many. When it is not, pass the stage-2 and stage-3 weights as two
+#' columns. At \eqn{f_2 = 0.2}{f2 = 0.2} and \eqn{f_3 = 0.5}{f3 = 0.5}
+#' one column understates `varw_psu` by about a fifth.
+#'
 #' A sample passed without `weights` is read as the frame, and that
 #' overstates `icc`. Each sampled PSU's mean carries the noise of its own
 #' subsample, about \eqn{(1 - f_2) S_w^2 / m}{(1 - f2) S_w^2 / m} for a take of
@@ -98,7 +109,10 @@
 #' than on how deep its `ids` goes. A design built with per-stage
 #' probabilities, `svydesign(ids = ~psu, probs = ~p1 + p2)`, keeps the
 #' stages apart, and the columns after the first multiply to exactly the
-#' weight required. A design built with `weights=` stores one combined
+#' weight required. At three stages, `ids = ~psu + ssu`, a third
+#' probability column is the element stage and supplies the stage-3 weight
+#' on its own. Without one, every element of a sampled SSU is taken, so the
+#' SSU totals carry no element-stage noise. A design built with `weights=` stores one combined
 #' weight per element however many stages `ids` names, and the stage-1
 #' factor cannot be divided back out of it.
 #'
@@ -408,6 +422,19 @@
 #' vc3 <- varcomp(income ~ district/village, data = frame3)
 #' vc3
 #'
+#' # A 3-stage sample: 2 of 5 villages per district, 2 of 4 units per
+#' # village. Half of each village is sampled, so the stage-2 and stage-3
+#' # weights go in as two columns
+#' villages <- unlist(lapply(split(unique(frame3$village),
+#'                                 rep(1:20, each = 5))[1:6],
+#'                           sample, size = 2))
+#' units <- unlist(lapply(split(seq_len(400), frame3$village)[villages],
+#'                        sample, size = 2))
+#' samp3 <- frame3[units, ]
+#' samp3$w2 <- 5 / 2
+#' samp3$w3 <- 4 / 2
+#' varcomp(income ~ district/village, data = samp3, weights = ~ w2 + w3)
+#'
 #' # 3-stage PPS (explicit first-stage probabilities)
 #' frame3$pp <- rep(1 / 20, 400)
 #' vc3_pps <- varcomp(income ~ district/village, data = frame3, prob = ~pp)
@@ -499,8 +526,11 @@ varcomp <- function(x, ...) {
 #'   one positive value per observation. Within each cluster the
 #'   summed weights must estimate the cluster population size. For a
 #'   multi-stage sample use the within-cluster weights, not the full
-#'   design weight (see Details). `NULL` (default) computes frame
-#'   components.
+#'   design weight (see Details). For a three-stage sample, two columns
+#'   (`~w2 + w3`, or a two-column matrix or data frame) give the stage-2
+#'   and stage-3 conditional weights separately, which the element-stage
+#'   correction needs when many of each SSU's elements are sampled.
+#'   `NULL` (default) computes frame components.
 #' @param estimator The estimator the components describe, `"expansion"`
 #'   (default) for an estimated total over a known population size, or
 #'   `"ratio"` for an estimated total over an estimated number of units,
@@ -528,14 +558,19 @@ varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL,
   }
   if (inherits(weights, "formula")) {
     w_name <- all.vars(weights)
-    if (length(w_name) != 1L) {
-      stop("'weights' formula must reference exactly one variable",
+    if (!length(w_name) %in% 1:2) {
+      stop("'weights' formula must reference one variable, or two for the stage-2 and stage-3 weights",
            call. = FALSE)
     }
-    weights <- data[[w_name]]
-    if (is.null(weights)) {
-      stop(sprintf("variable '%s' not found in 'data'", w_name),
+    missing_w <- setdiff(w_name, names(data))
+    if (length(missing_w) > 0L) {
+      stop(sprintf("variable '%s' not found in 'data'", missing_w[1L]),
            call. = FALSE)
+    }
+    weights <- if (length(w_name) == 1L) {
+      data[[w_name]]
+    } else {
+      as.data.frame(data)[w_name]
     }
   }
   if (is.null(weights) && inherits(data, "tbl_sample")) {
@@ -665,7 +700,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   .stop_unused_dots(names(dots), setdiff(seq_along(dots), formula_idx))
 
   strata <- .varcomp_design_var(strata, x, "strata")
-  weights <- .varcomp_design_var(weights, x, "weights")
+  weights <- .varcomp_design_var(weights, x, "weights", max_vars = 2L)
   formula <- dots[[formula_idx]]
 
   # The design's own strata are the ones it was built with, so an explicit
@@ -674,10 +709,13 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     strata <- x$strata[[1L]]
   }
 
-  w <- if (is.null(weights)) {
-    .varcomp_survey_within_w(x)
+  sw <- if (is.null(weights)) {
+    w <- .varcomp_survey_within_w(x)
+    list(w = w, w3 = if (!is.null(w)) .varcomp_survey_stage3_w(x))
+  } else if (is.matrix(weights) || is.data.frame(weights)) {
+    .varcomp_split_w(weights)
   } else {
-    .varcomp_check_w(as.numeric(weights), "'weights'")
+    .varcomp_split_w(as.numeric(weights))
   }
 
   y_name <- all.vars(formula)
@@ -700,27 +738,38 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   }
 
   stage_id <- lapply(seq_len(n_stages), function(j) cl[[j]])
-  .varcomp_dispatch(y, stage_id, prob, w, strata, estimator)
+  .varcomp_dispatch(y, stage_id, prob, sw$w, strata, estimator,
+                    if (n_stages == 2L) sw$w3)
 }
 
 #' Resolve a formula or vector argument against a design's variables
 #' @keywords internal
 #' @noRd
-.varcomp_design_var <- function(value, x, what) {
+.varcomp_design_var <- function(value, x, what, max_vars = 1L) {
   if (!inherits(value, "formula")) {
     return(value)
   }
   nm <- all.vars(value)
-  if (length(nm) != 1L) {
-    stop(sprintf("'%s' formula must reference exactly one variable", what),
+  if (!length(nm) %in% seq_len(max_vars)) {
+    stop(
+      if (max_vars == 1L) {
+        sprintf("'%s' formula must reference exactly one variable", what)
+      } else {
+        sprintf(
+          "'%s' formula must reference one variable, or two for the stage-2 and stage-3 weights",
+          what
+        )
+      },
+      call. = FALSE
+    )
+  }
+  missing_nm <- setdiff(nm, names(x$variables))
+  if (length(missing_nm) > 0L) {
+    stop(sprintf("variable '%s' not found in design variables",
+                 missing_nm[1L]),
          call. = FALSE)
   }
-  out <- x$variables[[nm]]
-  if (is.null(out)) {
-    stop(sprintf("variable '%s' not found in design variables", nm),
-         call. = FALSE)
-  }
-  out
+  if (length(nm) == 1L) x$variables[[nm]] else as.data.frame(x$variables)[nm]
 }
 
 #' Within-cluster weights implied by a survey design
@@ -758,6 +807,24 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     "this design stores one combined weight per element, so the within-cluster weights the component estimator needs cannot be recovered from it: the stage-1 factor cannot be separated out. Supply them through 'weights=', rebuild the design with per-stage 'probs=' so the stages stay apart, or use the formula or vector interface",
     call. = FALSE
   )
+}
+
+#' The stage-3 weight a design's per-stage probabilities give
+#'
+#' At three stages the third and later probability columns are the
+#' element stage. A design that stores only two columns takes every element
+#' of each sampled SSU, so the weight is 1 and the SSU totals are known.
+#' @keywords internal
+#' @noRd
+.varcomp_survey_stage3_w <- function(x) {
+  allprob <- x$allprob
+  if (ncol(x$cluster) != 2L || ncol(allprob) < 2L) {
+    return(NULL)
+  }
+  if (ncol(allprob) == 2L) {
+    return(rep(1, nrow(allprob)))
+  }
+  1 / apply(allprob[, -(1:2), drop = FALSE], 1L, prod)
 }
 
 #' Back an icc out of a published design effect
@@ -921,15 +988,51 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   if (is.null(w)) {
     return(NULL)
   }
-  if (!is.numeric(w) || length(w) == 0L || anyNA(w) ||
-      any(!is.finite(w)) || any(w <= 0)) {
-    stop(sprintf("%s must be positive and finite", what), call. = FALSE)
-  }
+  .varcomp_positive_w(w, what)
   rng <- range(w)
   if ((rng[2L] - rng[1L]) / rng[2L] <= 1e-8 && abs(rng[1L] - 1) <= 1e-8) {
     return(NULL)
   }
   w
+}
+
+#' @keywords internal
+#' @noRd
+.varcomp_positive_w <- function(w, what) {
+  if (!is.numeric(w) || length(w) == 0L || anyNA(w) ||
+      any(!is.finite(w)) || any(w <= 0)) {
+    stop(sprintf("%s must be positive and finite", what), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+#' Within-cluster weights, with the stage-3 weight when it is given
+#'
+#' One column is the within-cluster weight. Two columns are the stage-2 and
+#' stage-3 conditional weights of a three-stage sample, whose product is
+#' the within-cluster weight and whose second column alone sums to each
+#' SSU's population count. Weights whose product is 1 describe a frame.
+#' @keywords internal
+#' @noRd
+.varcomp_split_w <- function(w, what = "'weights'") {
+  if (!is.matrix(w) && !is.data.frame(w)) {
+    return(list(w = .varcomp_check_w(w, what), w3 = NULL))
+  }
+  if (ncol(w) != 2L) {
+    stop(
+      sprintf(
+        "%s takes one column of within-cluster weights, or two giving the stage-2 and stage-3 weights of a three-stage design",
+        what
+      ),
+      call. = FALSE
+    )
+  }
+  w2 <- as.numeric(w[, 1L, drop = TRUE])
+  w3 <- as.numeric(w[, 2L, drop = TRUE])
+  .varcomp_positive_w(w2, what)
+  .varcomp_positive_w(w3, what)
+  within <- .varcomp_check_w(w2 * w3, what)
+  list(w = within, w3 = if (!is.null(within)) w3)
 }
 
 #' Parse formula interface and dispatch
@@ -1000,7 +1103,8 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     .varcomp_prob_column(prob, data)
   }
 
-  .varcomp_dispatch(y, stage_id, pp, .varcomp_check_w(w), strata, estimator)
+  sw <- .varcomp_split_w(w)
+  .varcomp_dispatch(y, stage_id, pp, sw$w, strata, estimator, sw$w3)
 }
 
 #' One stage's draw probabilities from a formula or a vector
@@ -1056,14 +1160,15 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   if (is.null(stage_id) || !is.list(stage_id)) {
     stop("'stage_id' must be a list of ID vectors", call. = FALSE)
   }
-  .varcomp_dispatch(x, stage_id, prob, .varcomp_check_w(w), strata, estimator)
+  sw <- .varcomp_split_w(w)
+  .varcomp_dispatch(x, stage_id, prob, sw$w, strata, estimator, sw$w3)
 }
 
 #' Dispatch to correct variance component estimator
 #' @keywords internal
 #' @noRd
 .varcomp_dispatch <- function(y, stage_id, prob, w = NULL, strata = NULL,
-                              estimator = "expansion") {
+                              estimator = "expansion", w3 = NULL) {
   if (!is.numeric(y) || length(y) == 0L) {
     stop("'y' must be a non-empty numeric vector", call. = FALSE)
   }
@@ -1079,6 +1184,12 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   if (!is.null(w) && length(w) != length(y)) {
     stop("'weights' must have the same length as the outcome vector",
          call. = FALSE)
+  }
+  if (!is.null(w3) && length(stage_id) != 2L) {
+    stop(
+      "two 'weights' columns give the stage-2 and stage-3 weights of a three-stage design; this design has two stages, so supply one column",
+      call. = FALSE
+    )
   }
   for (i in seq_along(stage_id)) {
     if (length(stage_id[[i]]) != length(y)) {
@@ -1111,7 +1222,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 
   center <- identical(estimator, "ratio")
   vc <- if (!is.null(strata)) {
-    .varcomp_strata(y, stage_id, prob, w, strata, estimator)
+    .varcomp_strata(y, stage_id, prob, w, strata, estimator, w3)
   } else if (stages == 2L && is.null(prob$psu)) {
     .varcomp_2stage_srs(y, stage_id[[1L]], w, center)
   } else if (stages == 2L) {
@@ -1124,7 +1235,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     }
     .varcomp_3stage_pps(
       y, stage_id[[1L]], stage_id[[2L]], psu_pp, w, ssu_pp = prob$ssu,
-      psu_srs = is.null(prob$psu), center = center
+      psu_srs = is.null(prob$psu), center = center, w3 = w3
     )
   }
   vc$selection <- c(
@@ -1144,7 +1255,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' @keywords internal
 #' @noRd
 .varcomp_strata <- function(y, stage_id, prob, w, strata,
-                            estimator = "expansion") {
+                            estimator = "expansion", w3 = NULL) {
   if (length(strata) != length(y)) {
     stop("'strata' must have the same length as the outcome", call. = FALSE)
   }
@@ -1172,7 +1283,8 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
           seq_along(stage_id)
         ],
         if (!is.null(w)) w[idx],
-        estimator = estimator
+        estimator = estimator,
+        w3 = if (!is.null(w3)) w3[idx]
       ),
       error = function(e) {
         # A register plan needs no estimate here, and collapsing would merge
@@ -1411,8 +1523,8 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' because the group is then fully enumerated.
 #' @keywords internal
 #' @noRd
-.vc_total_var <- function(observed, size, group_var) {
-  size^2 * pmax(1 - observed / size, 0) * group_var / observed
+.vc_total_var <- function(observed, size, group_var, scope = size) {
+  size^2 * pmax(1 - observed / scope, 0) * group_var / observed
 }
 
 #' The variable whose stage totals the components are built from
@@ -1645,7 +1757,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' @noRd
 .varcomp_3stage_pps <- function(y, psu_id, ssu_id, pp, w = NULL,
                                 ssu_pp = NULL, psu_srs = FALSE,
-                                center = FALSE) {
+                                center = FALSE, w3 = NULL) {
   psu_levels <- sort(unique(psu_id))
   psu <- .vc_group(psu_id, psu_levels)
   .check_min_psu(psu$count)
@@ -1671,8 +1783,17 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   psu_adjustment <- 0
   if (!is.null(w)) {
     # Estimated SSU totals carry element-stage sampling noise. Remove it
-    # from both terms built on those totals.
-    ssu_noise <- .vc_total_var(by_ssu$observed, by_ssu$size, by_ssu$var)
+    # from both terms built on those totals. The element-stage fraction is
+    # n_ij / N_ij, and only the stage-3 weight sums to N_ij: the summed
+    # within-PSU weight is N_ij * M_i / m_i. Without that weight the
+    # fraction read is f2 * f3, exact only when f3 is small.
+    scope <- if (is.null(w3)) {
+      by_ssu$size
+    } else {
+      vapply(split(w3, ssu$index), sum, numeric(1L), USE.NAMES = FALSE)
+    }
+    ssu_noise <- .vc_total_var(by_ssu$observed, by_ssu$size, by_ssu$var,
+                               scope)
     grouped_noise <- split(ssu_noise, psu_of_ssu)
     ssu_total_var <- pmax(
       ssu_total_var - vapply(grouped_noise, mean, numeric(1L),

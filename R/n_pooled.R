@@ -214,7 +214,7 @@ n_pooled.default <- function(
   check_resp_rate(resp_rate)
   rate <- resp_rate * eligibility_rate
   if (!is.null(df)) check_df(df)
-  ov <- .resolve_lag_overlap(overlap, occasions, rate, .overlap_basis)
+  ov <- .resolve_lag_overlap(overlap, occasions, resp_rate, .overlap_basis)
   rho <- .resolve_lag_cor(overlap_cor, cor_decay, occasions - 1L)
   overlap_draw <- match.arg(overlap_draw)
   .check_pooled_draw(overlap_draw, ov$overlap, occasions)

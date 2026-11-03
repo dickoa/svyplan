@@ -53,11 +53,12 @@ that recommendation when available, or rounds the continuous size up.
   separately, a `budget` applies to each domain.
 * `eligible_per_unit` sizes a sample of households for an estimate over the
   eligible persons they hold, an average number per household that may exceed
-  one. `n_prop()`, `prec_prop()`, `n_cluster()`, `prec_cluster()`, joint
-  `n_alloc()` and `prec_alloc()`, and the proportion rows of `n_multi()` and
-  `prec_multi()` take it, each row with its own group. Sizes, bounds and
-  costs stay in households, and the variance reads the eligible respondents
-  out of `N * eligible_per_unit` eligible persons.
+  one. `n_prop()`, `prec_prop()`, `n_mean()`, `prec_mean()`, `n_cluster()`,
+  `prec_cluster()`, joint `n_alloc()` and `prec_alloc()`, `power_prop()`,
+  `power_mean()`, `power_did()`, and the proportion and mean rows of
+  `n_multi()` and `prec_multi()` take it, each row with its own group. Sizes,
+  bounds and costs stay in households, and the variance reads the eligible
+  respondents out of `N * eligible_per_unit` eligible persons.
 * `eligibility_rate` is the share of issued units in scope, such as
   dwellings found occupied, and `resp_rate` the response rate among them,
   as a survey report publishes it. Every function that takes `resp_rate`
@@ -79,10 +80,15 @@ that recommendation when available, or rounds the continuous size up.
   joint allocation does. An `n_step` column makes each stratum's whole size
   a multiple of its step, such as PSUs in sets of 12 for monthly fieldwork. Proportional and power allocation of a fixed `n`
   need only the stratum sizes, and then report no precision. `min_n_stratum` sets one floor for
-  every stratum or one per stratum, as a vector or a frame column. `$detail` carries the frame's
+  every stratum or one per stratum, as a vector or a frame column, and
+  `min_n_domain` one on each domain's total, such as 400 households per
+  province, held in the whole design. `$detail` carries the frame's
   character, factor and logical columns after `stratum`.
-  Without domains, the target-`cv` mode of optimal and Neyman allocation
-  gives the cheapest whole allocation meeting the target, and the `budget`
+  With `domains`, the target-`cv` mode gives each domain the smallest total
+  that meets the target inside it, allocated there by the rule.
+  The target-`cv` mode of optimal and Neyman allocation gives the cheapest
+  whole allocation meeting the target, per domain with `domains`, and
+  without domains the `budget`
   mode of optimal allocation the smallest whole variance the budget buys,
   each found by a search under `control = list(max_nodes =, gap =)`. In cluster mode
   the search sets each stratum's whole PSU count and, under optimal allocation
@@ -139,7 +145,9 @@ that recommendation when available, or rounds the continuous size up.
   which strata are marked `take_all`. Every result prices the single-phase
   design that skips phase 1, since two-phase sampling is not always the better
   buy. `assurance` converts required respondents into an issue clearing a
-  stated binomial probability.
+  stated binomial probability. `$operational` is the cheapest whole design
+  meeting a cv target, or the most precise a budget buys, found by search
+  over both phases.
 * `n_change()` and `n_pooled()` size an occasion of a repeated survey, for a
   change between two occasions and for an estimate pooled across several.
   Precision comes from the product of `overlap` and `overlap_cor`, so a full
@@ -176,6 +184,11 @@ that recommendation when available, or rounds the continuous size up.
   assessment compare row for row. For a cluster allocation, `n_per_psu` sets
   the take, so the whole-unit counts and whole take of `$operational`
   reproduce its precision exactly.
+* `predict()` sweeps a precision result over the inputs in `newdata`. On a
+  `prec_alloc()` result a number in `n` rescales the stratum sizes to that
+  total and keeps their shares, and a list column `n` compares candidate
+  allocations row by row. On `prec_change()` the occasions vary together
+  through `n` or apart through `n1` and `n2`.
 
 ## Power analysis
 
@@ -222,9 +235,12 @@ that recommendation when available, or rounds the continuous size up.
   three stages, so the stage-by-stage correction reproduces the variance of
   equal-size units drawn without replacement exactly. Weights are read
   as inverse inclusion probabilities, so a previous round's unequal-probability
-  sample gives approximately design-unbiased components. `varcomp(deff = )`
-  backs an `icc` out of a published design effect instead. Its page explains
-  squaring a published DEFT and removing the weighting loss it carries.
+  sample gives approximately design-unbiased components. At three stages the
+  stage-2 and stage-3 weights can be given as two columns, which the
+  element-stage correction needs when much of each SSU is sampled.
+  `varcomp(deff = )` backs an `icc` out of a published design effect instead.
+  Its page explains squaring a published DEFT and removing the weighting loss
+  it carries.
   `estimator = "ratio"` returns the components of the ratio estimator of a
   mean, which with PSUs of unequal size drawn with equal probability are
   smaller than those of the default expansion estimator.

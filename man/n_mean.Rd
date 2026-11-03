@@ -21,6 +21,7 @@ n_mean(var = NULL, ...)
   deff = 1,
   resp_rate = 1,
   eligibility_rate = 1,
+  eligible_per_unit = 1,
   df = NULL,
   plan = NULL
 )
@@ -87,6 +88,14 @@ With a finite \code{N} this errs slightly conservative.}
 found occupied, in (0, 1]. Default 1. With a finite \code{N}, the population
 in scope is \code{N * eligibility_rate}. See the nonresponse section of
 \link{svyplan-package}.}
+
+\item{eligible_per_unit}{Eligible units per sampled unit, a positive
+number, default 1, such as women aged 15 to 49 per household, and it can
+exceed 1. \code{n} and \code{N} stay in sampled units, while the precision is
+computed on the eligible respondents out of
+\code{N * eligibility_rate * eligible_per_unit} eligible units. Above 1, \code{deff}
+must carry the correlation among the eligible units of one sampled unit.
+See the section on eligible units in \code{\link[=n_prop]{n_prop()}}.}
 
 \item{df}{Degrees of freedom of the variance estimator the planned design
 will have, typically sampled PSUs minus strata, and available from
@@ -186,6 +195,11 @@ n_mean(var = 2500, moe = 500000 / 10000, N = 10000)
 # CV mode: identical for means and totals
 n_mean(var = 2500, mu = 300, cv = 0.05, N = 10000)
 
+
+# Mean age at first birth among women 15 to 49, about 2.6 per household,
+# sized in households. The design effect is the person-level one.
+n_mean(var = 16, moe = 0.3, deff = 1.8, resp_rate = 0.9,
+       eligible_per_unit = 2.6)
 }
 \references{
 Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.

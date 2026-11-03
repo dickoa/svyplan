@@ -24,10 +24,13 @@
 \code{print()} on a \code{\link[=n_twophase]{n_twophase()}} result gives the design as it would be
 fielded: the two phase sizes in whole units, the precision and cost they
 buy, the per-stratum subsampling fractions, and which of the two designs
-to run. \code{summary()} gives what that answer was chosen against: the
-continuous optimum beside the fielded one, the full stratum table
-including the continuous issue, the single-phase comparator with its cost
-and whether it reaches the target, and the planning assumptions.
+to run. Its \code{nu} is the fielded fraction, each stratum's \code{n_int} over the
+whole pool phase 1 classifies, times \code{resp_rate}, so a stratum that takes
+its whole pool reads \code{resp_rate}. \code{summary()} gives what that answer was
+chosen against: the continuous optimum beside the fielded one, the full
+stratum table with the continuous \code{nu} and issue, the single-phase
+comparator in whole units and at its continuous optimum, whether it
+reaches the target, and the planning assumptions.
 }
 \examples{
 frame <- data.frame(

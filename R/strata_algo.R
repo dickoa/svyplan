@@ -1045,16 +1045,40 @@
   m
 }
 
+
+#' Bounded allocation with a floor on each domain's total
+#'
+#' The domains partition the strata. A domain whose share of the common
+#' allocation falls below its floor is held at the floor and allocated inside
+#' itself, and the rest of the total is spread over the other domains. Fixing
+#' a domain lowers the others' shares, so this repeats until none falls
+#' short, at most once per domain. Inside each part the allocation is
+#' `.rna_alloc()`, so the shares follow `a_h` there, which is the optimum of
+#' the separable objective under these linear constraints.
+#' @param dom Domain index of each stratum, `1` to `length(floor_d)`.
+#' @param floor_d Floor on each domain's total, `0` for none.
 #' @keywords internal
 #' @noRd
-.round_oric <- function(x) {
-  m <- floor(x)
-  frac <- x - m
-  k <- as.integer(round(sum(frac)))
-  if (k == 0L) {
-    return(as.integer(m))
+.rna_alloc_floored <- function(a_h, n_total, m_h, M_h, dom, floor_d) {
+  D <- length(floor_d)
+  fixed <- rep(FALSE, D)
+  tol <- max(1e-8, 1e-10 * max(1, abs(n_total)))
+  repeat {
+    n_h <- numeric(length(a_h))
+    for (d in which(fixed)) {
+      idx <- dom == d
+      n_h[idx] <- .rna_alloc(a_h[idx], floor_d[d], m_h[idx], M_h[idx])
+    }
+    free <- !fixed[dom]
+    if (any(free)) {
+      rest <- n_total - sum(floor_d[fixed])
+      n_h[free] <- .rna_alloc(a_h[free], rest, m_h[free], M_h[free])
+    }
+    total_d <- vapply(seq_len(D), function(d) sum(n_h[dom == d]), numeric(1))
+    short <- !fixed & total_d < floor_d - tol
+    if (!any(short)) {
+      return(n_h)
+    }
+    fixed[short] <- TRUE
   }
-  idx <- order(frac, m, decreasing = TRUE, method = "radix")[seq_len(k)]
-  m[idx] <- m[idx] + 1L
-  as.integer(m)
 }

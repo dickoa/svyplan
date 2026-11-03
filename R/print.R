@@ -43,7 +43,9 @@
 #' `svyplan_n`: the stratum allocation table (`$detail`) for
 #' `n_alloc()` results, the per-domain table (`$domains`, falling back
 #' to `$detail`) for `n_multi()` results, and a one-row summary
-#' (`n`, `n_int`, `se`, `moe`, `cv`) otherwise. For `svyplan_cluster`:
+#' (`n`, `n_int`, `se`, `moe`, `cv`, `rmoe`) otherwise, with an `occasion`
+#' column and one row per occasion for a two-occasion `n_change()`. For
+#' `svyplan_cluster`:
 #' the per-domain table when domains are present, otherwise a stage
 #' table with columns `stage`, `n`, and `n_int`, where `n` is the continuous
 #' optimum and `n_int` is the constraint-preserving operational design.
@@ -1168,8 +1170,12 @@ print.svyplan_power <- function(x, ...) {
   ))
 
   p <- x$params
-  resp_rate <- if (is.null(p[["eligibility_rate"]])) p$resp_rate else
-    (p$resp_rate %||% 1) * p[["eligibility_rate"]]
+  # Respondents in scope per issued unit. With eligible_per_unit they are
+  # eligible persons, which is what the power is computed on.
+  rate_all <- (p$resp_rate %||% 1) * .params_yield(p)
+  show_net <- !is.null(p[["eligible_per_unit"]]) || rate_all < 1
+  net_label <- if (is.null(p[["eligible_per_unit"]])) "net" else
+    "eligible respondents"
 
   is_did <- startsWith(x$type, "did")
   if (length(x$n) == 2L) {
@@ -1177,15 +1183,16 @@ print.svyplan_power <- function(x, ...) {
     n2 <- ceiling(x$n[2])
     lab1 <- if (is_did) "n_treat" else "n1"
     lab2 <- if (is_did) "n_control" else "n2"
-    if (!is.null(resp_rate) && resp_rate < 1) {
+    if (show_net) {
       cat(sprintf(
-        "%s = %s, %s = %s (total = %s, net: %s), power = %.3f, effect = %.4f\n",
+        "%s = %s, %s = %s (total = %s, %s: %s), power = %.3f, effect = %.4f\n",
         lab1,
         .fmt_count_n(n1),
         lab2,
         .fmt_count_n(n2),
         .fmt_count_n(n1 + n2),
-        .fmt_count_n(ceiling((n1 + n2) * resp_rate)),
+        net_label,
+        .fmt_count_n(ceiling((n1 + n2) * rate_all)),
         x$power,
         x$effect
       ))
@@ -1201,11 +1208,12 @@ print.svyplan_power <- function(x, ...) {
         x$effect
       ))
     }
-  } else if (!is.null(resp_rate) && resp_rate < 1) {
-    net_n <- ceiling(x$n * resp_rate)
+  } else if (show_net) {
+    net_n <- ceiling(x$n * rate_all)
     cat(sprintf(
-      "n = %s (net: %s, per group), power = %.3f, effect = %.4f\n",
+      "n = %s (%s: %s, per group), power = %.3f, effect = %.4f\n",
       .fmt_count_n(ceiling(x$n)),
+      net_label,
       .fmt_count_n(net_n),
       x$power,
       x$effect
@@ -1255,6 +1263,10 @@ print.svyplan_power <- function(x, ...) {
     parts <- c(parts, sprintf("eligibility_rate = %s",
                               .fmt_prob(p[["eligibility_rate"]])))
   }
+  if (!is.null(p[["eligible_per_unit"]])) {
+    parts <- c(parts, sprintf("eligible_per_unit = %.4g",
+                              p[["eligible_per_unit"]]))
+  }
   if (!is.null(p$var) && length(p$var) == 4L) {
     parts <- c(
       parts,
@@ -1290,7 +1302,8 @@ print.svyplan_power <- function(x, ...) {
 #' @export
 format.svyplan_n <- function(x, ...) {
   .check_unused_dots(...)
-  paste0("svyplan_n [n=", ceiling(x$n), ", ", x$type, "]")
+  paste0("svyplan_n [n=", paste(ceiling(x$n), collapse = " then "), ", ",
+         x$type, "]")
 }
 
 #' @rdname print.svyplan
@@ -1317,7 +1330,24 @@ format.svyplan_cluster <- function(x, ...) {
 #' @export
 format.svyplan_prec <- function(x, ...) {
   .check_unused_dots(...)
-  paste0("svyplan_prec [", x$type, ", se=", sprintf("%.4f", x$se[1L]), "]")
+  value <- if (is.na(x$se[1L]) && !is.na(x$cv[1L])) {
+    sprintf("cv=%.4f", x$cv[1L])
+  } else {
+    sprintf("se=%.4f", x$se[1L])
+  }
+  paste0("svyplan_prec [", x$type, ", ", value, "]")
+}
+
+#' @rdname print.svyplan
+#' @export
+format.svyplan_twophase <- function(x, ...) {
+  .check_unused_dots(...)
+  o <- x$operational
+  paste0(
+    "svyplan_twophase [n_phase1=", .fmt_count_n(o$n[["n_phase1"]]),
+    ", n_phase2=", .fmt_count_n(o$n[["n_phase2"]]),
+    ", cv=", sprintf("%.4f", o$cv), "]"
+  )
 }
 
 #' @rdname print.svyplan
@@ -1683,16 +1713,32 @@ as.data.frame.svyplan_n <- function(
   } else if (identical(x$type, "multi")) {
     x$domains %||% x$detail
   } else {
-    data.frame(
+    out <- data.frame(
       n = x$n,
       n_int = as.integer(ceiling(x$n)),
       se = x$se,
       moe = x$moe,
       cv = x$cv,
+      rmoe = x[["rmoe"]] %||% NA_real_,
       stringsAsFactors = stringsAsFactors
     )
+    if (nrow(out) == 2L) cbind(occasion = 1:2, out) else out
   }
   as.data.frame(out, row.names = row.names, optional = optional)
+}
+
+#' @rdname print.svyplan
+#' @export
+as.data.frame.svyplan_twophase <- function(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  validRN = TRUE,
+  ...
+) {
+  .check_unused_dots(...)
+  as.data.frame(x$detail, row.names = row.names, optional = optional)
 }
 
 #' @rdname print.svyplan
@@ -1731,6 +1777,7 @@ as.data.frame.svyplan_prec <- function(
       se = x$se,
       moe = x$moe,
       cv = x$cv,
+      rmoe = x[["rmoe"]] %||% NA_real_,
       stringsAsFactors = stringsAsFactors
     )
   }
@@ -3394,9 +3441,10 @@ summary.svyplan_prec <- function(object, ...) {
     H,
     .check_resp_rate_h
   )
+  response <- unit * psu
   unit <- unit * eligibility
   list(unit = unit, psu = psu, combined = unit * psu,
-       eligibility = eligibility)
+       eligibility = eligibility, response = response)
 }
 
 #' Overall fields on the same numerical basis as the stratum tables
@@ -4507,6 +4555,7 @@ print.svyplan_twophase <- function(x, ...) {
   print(.fmt_twophase_detail(x, brief = TRUE), row.names = FALSE)
   cat("\n")
   cat(.fmt_twophase_assured(x))
+  cat(.fmt_twophase_search(x))
   cat(.fmt_twophase_single(x))
   cat("# summary() for the continuous optimum and the comparator\n")
   invisible(x)
@@ -4618,7 +4667,18 @@ print.svyplan_twophase <- function(x, ...) {
   if (show_resp) {
     out$resp <- formatC(d$resp_rate, format = "f", digits = 2)
   }
-  out$nu <- formatC(d$nu, format = "f", digits = 4)
+  # The print reads the field design, so its fraction is the whole take
+  # over the whole pool phase 1 classifies, on nu's scale (a share of the
+  # units issued, at most resp_rate). summary() keeps the continuous one
+  # beside the continuous issue.
+  nu <- if (brief) {
+    r1 <- x$params$resp_rate %||% 1
+    pool <- floor(r1 * d$share * shown$n[["n_phase1"]] + 1e-9)
+    ifelse(pool > 0, r1 * shown$n_int / pool, 0)
+  } else {
+    d$nu
+  }
+  out$nu <- formatC(nu, format = "f", digits = 4)
   if (!brief) {
     out$n_issued <- format(round(d$n_issued))
   }
@@ -4653,10 +4713,13 @@ print.svyplan_twophase <- function(x, ...) {
 #' `print()` on a [n_twophase()] result gives the design as it would be
 #' fielded: the two phase sizes in whole units, the precision and cost they
 #' buy, the per-stratum subsampling fractions, and which of the two designs
-#' to run. `summary()` gives what that answer was chosen against: the
-#' continuous optimum beside the fielded one, the full stratum table
-#' including the continuous issue, the single-phase comparator with its cost
-#' and whether it reaches the target, and the planning assumptions.
+#' to run. Its `nu` is the fielded fraction, each stratum's `n_int` over the
+#' whole pool phase 1 classifies, times `resp_rate`, so a stratum that takes
+#' its whole pool reads `resp_rate`. `summary()` gives what that answer was
+#' chosen against: the continuous optimum beside the fielded one, the full
+#' stratum table with the continuous `nu` and issue, the single-phase
+#' comparator in whole units and at its continuous optimum, whether it
+#' reaches the target, and the planning assumptions.
 #'
 #' @param object A `svyplan_twophase` object.
 #' @param x A `summary.svyplan_twophase` object.
@@ -4720,17 +4783,25 @@ print.summary.svyplan_twophase <- function(x, ...) {
   ))
   cat(.fmt_twophase_deff(plan))
   cat(.fmt_twophase_assured(plan))
+  cat(.fmt_twophase_search(plan))
 
   cat("\nStrata\n")
   print(x$detail, row.names = FALSE)
 
   s <- x$single_phase
   if (!is.null(s) && is.finite(s$n)) {
+    fmt_cv <- function(v) {
+      if (is.na(v)) "NA" else formatC(v, format = "f", digits = 4)
+    }
     cat(sprintf(
       "\nSingle-phase comparator: n = %s, cv = %s, cost = %s\n",
-      format(round(s$n)),
-      if (is.na(s$cv)) "NA" else formatC(s$cv, format = "f", digits = 4),
-      format(round(s$cost))
+      format(s$n_int %||% round(s$n)),
+      fmt_cv(s$cv_int %||% s$cv),
+      format(round(s$cost_int %||% s$cost))
+    ))
+    cat(sprintf(
+      "continuous optimum: n = %s (cv %s, cost %s)\n",
+      format(signif(s$n, 6)), fmt_cv(s$cv), format(round(s$cost))
     ))
     cat(sprintf(
       "%s, and it %s the target\n",
@@ -4745,6 +4816,24 @@ print.summary.svyplan_twophase <- function(x, ...) {
   invisible(x)
 }
 
+#' The search line, only when a limit stopped the whole-unit search
+#' @keywords internal
+#' @noRd
+.fmt_twophase_search <- function(x) {
+  search <- x$operational$search
+  if (!identical(search$status, "limit")) {
+    return("")
+  }
+  which <- paste(search$limit, collapse = " and ")
+  if (is.finite(search$gap)) {
+    sprintf("search: stopped at the %s limit, gap %.3g%% to a bound\n",
+            which, 100 * search$gap)
+  } else {
+    sprintf("search: stopped at the %s limit, the best design found\n",
+            which)
+  }
+}
+
 #' The single-phase comparator, as a verdict
 #'
 #' Which design to field is the whole content, so the line states it and the
@@ -4757,17 +4846,19 @@ print.summary.svyplan_twophase <- function(x, ...) {
   if (is.null(s) || !is.finite(s$n)) {
     return("")
   }
-  cv <- if (is.na(s$cv)) "NA" else formatC(s$cv, format = "f", digits = 4)
+  cv_int <- s$cv_int %||% s$cv
+  cv <- if (is.na(cv_int)) "NA" else formatC(cv_int, format = "f", digits = 4)
+  n_int <- s$n_int %||% round(s$n)
   if (isTRUE(s$better)) {
     sprintf(
       "single-phase is better here: n = %s at cv %s, so skip phase 1\n",
-      format(round(s$n)),
+      format(n_int),
       cv
     )
   } else {
     sprintf(
       "single-phase alternative: n = %s at cv %s, two-phase wins\n",
-      format(round(s$n)),
+      format(n_int),
       cv
     )
   }
@@ -5794,8 +5885,8 @@ print.summary.svyplan_panel <- function(x, ...) {
     return("")
   }
   sprintf(
-    "target: response %.3g removed, requirement %s responding\n",
-    rr,
+    "target: %s removed, requirement %s responding\n",
+    .panel_target_rate_label(x$target$params, lead = "response"),
     .fmt_count_n(round(x$n_target))
   )
 }

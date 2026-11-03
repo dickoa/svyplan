@@ -31,6 +31,7 @@ n_alloc(frame, ...)
   eligible_per_unit = 1,
   df = NULL,
   min_n_stratum = NULL,
+  min_n_domain = NULL,
   alloc_q = 0.5,
   fpc = c("unit", "stage", "none"),
   plan = NULL
@@ -334,6 +335,13 @@ To give every stratum its minimum and share the rest on top of it,
 allocate \code{n - sum(min_n_stratum)} and add the minimums, as in the
 examples.}
 
+\item{min_n_domain}{Optional floor on each domain's total sample, in the
+units \code{n} counts, such as a publication minimum of 400 households per
+province. One number applies to every domain. A data frame with columns
+\code{domain} (the \code{domains} column), \code{level} and \code{min_n} gives floors that
+differ, and a level it leaves out has none. Needs one \code{domains} column
+and a classic mode. See the domains section in Details.}
+
 \item{alloc_q}{Bankier allocation exponent, used only when \code{alloc = "power"}.
 Numeric scalar in \eqn{[0, 1]}. With the default \code{alloc_measure},
 \code{alloc_q = 1} gives Neyman allocation. At \code{alloc_q = 0} weights depend
@@ -378,12 +386,15 @@ raised above that value only when the strata at their \code{N_psu}
 limits would otherwise fall more than half a take short, and a take
 risen past \code{N_psu} under \code{"optimal"} fields every PSU at its
 nearest whole value. In \code{cv}
-mode with \code{alloc = "optimal"} or \code{"neyman"} and no domains, the
-design is the cheapest whole allocation meeting the target (the
-smallest for \code{"neyman"}), and in \code{budget} mode with \code{"optimal"} the
+mode with \code{alloc = "optimal"} or \code{"neyman"}, the design is the
+cheapest whole allocation meeting the target (the smallest for
+\code{"neyman"}), with domains the cheapest in each domain, and in
+\code{budget} mode with \code{"optimal"} and no domains the
 whole allocation with the smallest variance within the budget,
 each found by a search reported in \verb{$operational$status} and
-\verb{$optimization$search}. A cluster design searches whole PSU counts
+\verb{$optimization$search} (with domains, the search of the domain
+furthest from its bound, each domain's search in
+\verb{$optimization$domains}). A cluster design searches whole PSU counts
 and, under \code{"optimal"} with stage costs and \code{N_psu}, each take the
 frame leaves free, at any whole value up to the average PSU size
 \code{N / N_psu} that the stratum's bounds allow.
@@ -413,7 +424,8 @@ nonresponse or calibration adjustment.}
 \item{\code{.binding}}{Whether the allocation sits on one of its
 bounds.}
 \item{\code{.bound_source}}{Which constraint produced the bound the
-allocation sits on, and \code{NA} when it sits on none.}
+allocation sits on, and \code{NA} when it sits on none.
+\code{"min_n_domain"} marks the strata of a domain held at its floor.}
 \item{\code{.psu_frac}}{Cluster mode with \code{N_psu} only: the share of
 the stratum's PSU universe the design selects, \code{n_psu / N_psu}.}
 \item{\code{.se}, \code{.moe}, \code{.rmoe}, \code{.cv}}{Precision of the stratum's own
@@ -929,13 +941,36 @@ budget mode, \code{budget}, and reports each row's search status.
 
 Domains are specified via the \code{domains} parameter. Domain columns
 partition strata into sub-populations. Each domain groups
-one or more strata. When \code{cv} is specified, the algorithm finds the
-minimum total \eqn{n} such that the \emph{worst-case} domain CV meets the
-target, i.e. every domain achieves the required precision.
+one or more strata. When \code{cv} is specified, every domain must meet the
+target, and since a domain's precision depends on its own strata only,
+the smallest design that does so is each domain at its own smallest
+total. Each domain is allocated by the rule inside itself, as if it were
+the frame, and its total is the least that meets the target there. The
+result is the minimum joint allocation reaches with a cv target in
+every domain. National precision is reported in \verb{$cv} and is not a
+target. To require it as well, state national and domain targets
+together in joint allocation (\code{measures} and \code{targets}). Under
+\code{alloc = "power"}, \code{alloc_q} shapes the shares inside a domain, and the
+domain totals come from their targets.
 
 In \code{n} or \code{budget} mode, domains affect reporting only. Per-domain
 precision metrics appear in \verb{$domains}, but the allocation itself treats
 all strata globally.
+
+\code{min_n_domain} adds a floor on each domain's total, in every mode. A
+domain whose share of the allocation falls short of its floor is held at
+the floor and allocated inside itself by the same rule, and the rest of
+the total is spread over the other domains. This repeats until no domain
+falls short. Holding one domain lowers the others' shares, so a domain
+already above its floor can end up held too. The result is the best
+allocation by the rule under the floors. In \code{cv} and \code{budget} mode the
+floors raise the total or the cost only where they bind. The whole-unit
+design keeps every floor, and in \code{n} and \code{budget} mode it takes the
+units it adds to a short domain from domains with room. With \code{n_step}
+it adds and removes whole steps, and in \code{n} mode it reaches the total by
+moving several strata together when no single step fits the excess, as
+36 and 36 for steps of 12, a total of 72 and floors of 25. \verb{$domains} then
+reports each floor as \code{.min_n} and whether it binds as \code{.floor_binding}.
 }
 
 \subsection{Allocation methods}{
@@ -1024,6 +1059,14 @@ frame_domains <- data.frame(
 
 n_alloc(frame_domains, domains = "province",
        cv = 0.04, alloc = "power", alloc_q = 0.3)
+
+# A publication floor of 480 per province, which holds the South, and
+# one of 550 for the South only
+n_alloc(frame_domains, domains = "province", n = 1000,
+        min_n_domain = 480)$domains
+south <- data.frame(domain = "province", level = "South", min_n = 550)
+n_alloc(frame_domains, domains = "province", n = 1000,
+        min_n_domain = south)$domains
 
 # Power allocation on a size measure alone, as DHS and MICS apply it
 sizes <- data.frame(stratum = c("A", "B", "C"), N = c(4e5, 1e5, 2.5e4))

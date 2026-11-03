@@ -30,6 +30,13 @@
 #'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
 #'   in scope is `N * eligibility_rate`. See the nonresponse section of
 #'   [svyplan-package].
+#' @param eligible_per_unit Eligible units per sampled unit, a positive
+#'   number, default 1, such as children under five per household, and it can
+#'   exceed 1. `n` and `N` stay in sampled units, while each group's precision
+#'   is computed on its eligible respondents out of
+#'   `N * eligibility_rate * eligible_per_unit` eligible units. Above 1, `deff`
+#'   must carry the correlation among the eligible units of one sampled unit.
+#'   See the section on eligible units in [n_prop()].
 #' @param alternative Character: `"two.sided"` (default) or `"one.sided"`.
 #'   Use `"two.sided"` when either an increase or decrease matters (the
 #'   usual default). Use `"one.sided"` when only one direction is of
@@ -197,6 +204,11 @@
 #' # Allocation ratio 2:1
 #' power_prop(p1 = 0.30, p2 = 0.35, ratio = 2)
 #'
+#'
+#' # Households per round to detect a change in a child indicator, with
+#' # about 0.45 children under five per household
+#' power_prop(p1 = 0.30, p2 = 0.25, deff = 1.5, resp_rate = 0.9,
+#'            eligible_per_unit = 0.45)
 #' @export
 power_prop <- function(p1, ...) {
   if (!missing(p1)) {
@@ -212,6 +224,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
                        alpha = 0.05, N = Inf, deff = 1,
                        resp_rate = 1,
                        eligibility_rate = 1,
+                       eligible_per_unit = 1,
                        alternative = c("two.sided", "one.sided"),
                        ratio = 1,
                        overlap = 0, overlap_cor = 0,
@@ -234,9 +247,15 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   .check_overlap_N(overlap, N_pair)
   check_resp_rate(resp_rate)
   check_resp_rate(eligibility_rate, "eligibility_rate")
+  check_eligible_per_unit(eligible_per_unit)
   N_frame <- N_pair
-  N_pair <- N_pair * eligibility_rate
-  rate <- resp_rate * eligibility_rate
+  for (N_arm in N_frame) {
+    check_eligible_population(N_arm, eligible_per_unit, eligibility_rate)
+  }
+  # Eligible respondents per issued unit against the eligible population.
+  # Issued units stay bounded by the frame, N_frame.
+  N_pair <- N_pair * eligibility_rate * eligible_per_unit
+  rate <- resp_rate * eligibility_rate * eligible_per_unit
   ratio <- .resolve_ratio(n, ratio)
 
   if (method != "wald" && overlap > 0)
@@ -269,6 +288,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
                  ratio = ratio, overlap = overlap, overlap_cor = overlap_cor,
                  overlap_draw = overlap_draw, method = method)
   if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
+  if (eligible_per_unit != 1) params$eligible_per_unit <- eligible_per_unit
 
   if (is.null(n)) {
     if (p1 == p2) stop("'p1' and 'p2' must differ", call. = FALSE)
@@ -278,11 +298,11 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
     res <- switch(method,
       wald    = .power_prop_n_wald(p1, p2, power, alpha, N_pair, deff,
                                   alternative, overlap, overlap_cor,
-                                  overlap_draw, ratio, rate),
+                                  overlap_draw, ratio, rate, N_frame),
       arcsine = .power_prop_n_arcsine(p1, p2, power, alpha, N_pair, deff,
-                                      alternative, ratio, rate),
+                                      alternative, ratio, rate, N_frame),
       logodds = .power_prop_n_logodds(p1, p2, power, alpha, N_pair, deff,
-                                      alternative, ratio, rate))
+                                      alternative, ratio, rate, N_frame))
 
     n_eff <- res * rate
     achieved_power <- switch(method,
@@ -347,7 +367,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
 .power_prop_n_wald <- function(p1, p2, power, alpha, N_pair, deff,
                                alternative, overlap, overlap_cor, overlap_draw,
-                               ratio, resp_rate) {
+                               ratio, resp_rate, N_frame = N_pair) {
   z_a <- .z_alpha(alpha, alternative)
   z_b <- qnorm(power)
   icc <- abs(p1 - p2)
@@ -368,7 +388,7 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   } else {
     n2 <- .solve_n2_from_power(
       power, power_n2, N_pair, r, resp_rate,
-      overlap = .frame_overlap(overlap, overlap_draw)
+      overlap = .frame_overlap(overlap, overlap_draw), N_frame = N_frame
     )
   }
   if (r == 1) n2 else c(r * n2, n2)
@@ -444,7 +464,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 ## Arcsine internals
 
 .power_prop_n_arcsine <- function(p1, p2, power, alpha, N_pair, deff,
-                                   alternative, ratio, resp_rate) {
+                                   alternative, ratio, resp_rate,
+                                   N_frame = N_pair) {
   z_a <- .z_alpha(alpha, alternative)
   z_b <- qnorm(power)
   diff_phi <- asin(sqrt(p1)) - asin(sqrt(p2))
@@ -461,7 +482,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
     n2 <- n2 / resp_rate
     n2 <- max(n2, 2, 2 / r)
   } else {
-    n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
+    n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate,
+                               N_frame = N_frame)
   }
   if (r == 1) n2 else c(r * n2, n2)
 }
@@ -517,7 +539,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 ## Log-odds internals
 
 .power_prop_n_logodds <- function(p1, p2, power, alpha, N_pair, deff,
-                                   alternative, ratio, resp_rate) {
+                                   alternative, ratio, resp_rate,
+                                   N_frame = N_pair) {
   z_a <- .z_alpha(alpha, alternative)
   z_b <- qnorm(power)
   q1 <- 1 - p1; q2 <- 1 - p2
@@ -540,7 +563,8 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
       abs(diff_phi))^2 * deff / resp_rate
     n2 <- max(n2, 2, 2 / r)
   } else {
-    n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate)
+    n2 <- .solve_n2_from_power(power, power_n2, N_pair, r, resp_rate,
+                               N_frame = N_frame)
   }
   if (r == 1) n2 else c(r * n2, n2)
 }
@@ -590,19 +614,26 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   eps <- 1e-8
   roots <- list()
 
-  up_lo <- p1 + eps; up_hi <- 1 - eps
-  if (up_lo < up_hi) {
-    f_lo <- target_fn(up_lo); f_hi <- target_fn(up_hi)
-    if (is.finite(f_lo) && is.finite(f_hi) && sign(f_lo) != sign(f_hi))
-      roots <- c(roots, list(uniroot(target_fn, c(up_lo, up_hi), tol = eps)$root))
+  # Power along p2 is not monotone. The variance under the alternative grows
+  # without bound toward 0 and 1 while the null variance stays bounded, so
+  # power rises from p1, peaks, and falls back toward 1/2 at the edge. Each
+  # side is bracketed between p1 and its peak, where the rise is monotone.
+  side_root <- function(near, far) {
+    if (abs(far - near) <= eps) {
+      return(NULL)
+    }
+    peak <- stats::optimize(target_fn, sort(c(near, far)), maximum = TRUE,
+                            tol = eps)
+    top <- if (target_fn(far) > peak$objective) far else peak$maximum
+    f_near <- target_fn(near); f_top <- target_fn(top)
+    if (!is.finite(f_near) || !is.finite(f_top) || f_near >= 0 || f_top < 0) {
+      return(NULL)
+    }
+    uniroot(target_fn, sort(c(near, top)), tol = eps)$root
   }
-
-  dn_lo <- eps; dn_hi <- p1 - eps
-  if (dn_lo < dn_hi) {
-    f_lo <- target_fn(dn_lo); f_hi <- target_fn(dn_hi)
-    if (is.finite(f_lo) && is.finite(f_hi) && sign(f_lo) != sign(f_hi))
-      roots <- c(roots, list(uniroot(target_fn, c(dn_lo, dn_hi), tol = eps)$root))
-  }
+  roots <- c(roots, list(side_root(p1 + eps, 1 - eps)),
+             list(side_root(p1 - eps, eps)))
+  roots <- Filter(Negate(is.null), roots)
 
   if (length(roots) == 0L)
     stop("no detectable alternative exists for the given n and power", call. = FALSE)

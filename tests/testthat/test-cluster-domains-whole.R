@@ -67,12 +67,14 @@ test_that("a joint floor is found under population caps and across three domains
   )
 })
 
-test_that("a floor no whole design in the share reaches is refused", {
+test_that("a floor only a continuous design reaches is refused at its whole cost", {
+  ## Two PSUs need a take of 51 for 101 units, 1220 per domain, where the
+  ## continuous take of 50.5 costs 1210.
   expect_error(
     n_cluster(indicators = .dom_tab(), stage_cost = c(100, 10),
               domains = "region", allocation = "joint", budget = 2420,
               n_psu = 2, min_n_domain = 101, fpc = "stage"),
-    "domain 'A': no whole-unit design within its share"
+    "together at a cost of 2440"
   )
 
   ## A take of 10.5 per SSU reaches 42, and the whole take of 10 gives 40.
@@ -82,7 +84,7 @@ test_that("a floor no whole design in the share reaches is refused", {
     n_cluster(indicators = three, stage_cost = c(200, 40, 5),
               domains = "region", allocation = "joint", budget = 1540,
               n_psu = 2, n_per_psu = 2, min_n_domain = 42),
-    "domain 'A': no whole-unit design within its share"
+    "together at a cost of 1560"
   )
   room <- n_cluster(indicators = three, stage_cost = c(200, 40, 5),
                     domains = "region", allocation = "joint", budget = 1560,
@@ -322,4 +324,84 @@ test_that("the print shows the whole domain designs and their cost", {
                    fpc = "stage")
   expect_true(any(grepl("budget = 450 for each domain, total cost = 880",
                         capture.output(print(sep)), fixed = TRUE)))
+})
+
+test_that("joint domain shares reserve the cost of a whole design at the floor", {
+  # a floor of 41 on PSUs of 20 units needs 3 PSUs whole (cost 342 at take
+  # 14) against 2.05 continuous (246), and a share between the two used to
+  # be rejected although the budget paid for both domains
+  tab <- data.frame(name = "y", region = c("A", "B"), p = c(0.2, 0.5),
+                    cv = c(0.15, 0.2), icc_psu = 0.4, N = 400, N_psu = 20)
+  fit_at <- function(budget) {
+    n_cluster(indicators = tab, stage_cost = c(100, 1), domains = "region",
+              allocation = "joint", budget = budget, min_n_domain = 41,
+              fpc = "stage")
+  }
+  fit <- fit_at(690)
+  d <- fit$operational$domains
+  expect_true(all(d$.total_n >= 41))
+  expect_lte(fit$operational$cost, 690)
+  expect_equal(d$n_psu, c(3, 3))
+
+  # within 1 percent of the best whole design by enumeration
+  cvw <- function(a, b, p) {
+    prec_cluster(n = c(a, b), icc = 0.4, unit_relvar = (1 - p) / p,
+                 N = 400, N_psu = 20, fpc = "stage")$cv
+  }
+  g <- expand.grid(a = 1:20, b = 1:20)
+  g <- g[g$a * g$b >= 41, ]
+  g$cost <- g$a * (100 + g$b)
+  g$rA <- mapply(cvw, g$a, g$b, 0.2) / 0.15
+  g$rB <- mapply(cvw, g$a, g$b, 0.5) / 0.2
+  for (budget in c(690, 1000, 2000)) {
+    best <- min(vapply(seq_len(nrow(g)), function(i) {
+      ok <- g$cost <= budget - g$cost[i]
+      if (any(ok)) max(g$rA[i], min(g$rB[ok])) else Inf
+    }, numeric(1)))
+    d <- fit_at(budget)$operational$domains
+    expect_lte(max(d$.cv / c(0.15, 0.2)), best * 1.01)
+  }
+
+  expect_error(fit_at(683), "together at a cost of 684")
+  expect_equal(
+    svyplan:::.floor_least_whole_cost(41, c(100, 1, 0), 1, 20, c(1, 20),
+                                      c(1, 1)),
+    342
+  )
+})
+
+test_that("a fixed PSU count above what the floor needs still prices the floor", {
+  tab <- data.frame(name = "y", region = c("A", "B"), p = c(0.2, 0.5),
+                    cv = c(0.15, 0.2), icc_psu = 0.1, N = 400, N_psu = 20)
+  fit_at <- function(...) {
+    n_cluster(indicators = tab, stage_cost = c(100, 1), domains = "region",
+              allocation = "joint", budget = 1200, n_psu = 5, fpc = "stage",
+              ...)
+  }
+  free <- fit_at()
+  floored <- fit_at(min_n_domain = 1)
+  expect_equal(floored$operational$domains$.total_n,
+               free$operational$domains$.total_n)
+  expect_true(all(fit_at(min_n_domain = 50)$operational$domains$.total_n >= 50))
+
+  least <- svyplan:::.floor_least_whole_cost
+  # five PSUs fixed, a take of one: 5 * (100 + 1)
+  expect_equal(least(1, c(100, 1, 0), 5, 5, c(1, 20), c(1, 1)), 505)
+  # an SSU take below its box is never priced
+  expect_equal(least(1, c(100, 1, 5), 1, 20, c(1, 20), c(2, 10)), 111)
+  set.seed(9)
+  for (i in 1:60) {
+    m <- sample(1:120, 1)
+    co <- c(runif(1, 10, 200), runif(1, 1, 10), sample(c(0, 2), 1))
+    alo <- sample(1:6, 1)
+    ahi <- alo + sample(0:15, 1)
+    blo <- sample(1:4, 1)
+    bhi <- blo + sample(0:20, 1)
+    clo <- if (co[3] > 0) sample(1:3, 1) else 1
+    chi <- if (co[3] > 0) clo + sample(0:6, 1) else 1
+    g <- expand.grid(a = alo:ahi, b = blo:bhi, c = clo:chi)
+    g <- g[g$a * g$b * g$c >= m, ]
+    ref <- if (nrow(g)) min(g$a * (co[1] + co[2] * g$b + co[3] * g$b * g$c)) else Inf
+    expect_equal(least(m, co, alo, ahi, c(blo, bhi), c(clo, chi)), ref)
+  }
 })

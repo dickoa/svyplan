@@ -186,21 +186,32 @@ units is \code{nu / resp_rate}),
 for strata that were supplied pinned \strong{and} for those the
 allocator truncated at the classification rate.}
 \item{\code{single_phase}}{The design that skips phase 1 and measures the
-variable of interest directly, as \code{c(n = , cv = , cost = )}, plus
-\code{reaches_target}, and \code{better}, \code{TRUE} when that plainer design
-wins. Two-phase sampling is not always an improvement and this
+variable of interest directly, as \code{c(n = , cv = , cost = )}, its
+whole-unit form \code{n_int}, \code{cv_int} and \code{cost_int} (the units the
+budget buys, or the next unit up to the target), plus
+\code{reaches_target}, and \code{better}, \code{TRUE} when that plainer whole
+design wins against the whole two-phase design in \code{operational}.
+Two-phase sampling is not always an improvement and this
 comparison is the check that says so. In \code{cv} mode a comparator
 that cannot reach the target from a frame of size \code{N} is capped
 there, reports the coefficient of variation a census of it would
 achieve, and never wins on cost alone.}
 \item{\code{operational}}{The whole-unit field design: \code{n} (both phases),
 the per-stratum \code{n_int}, and the \code{cost} and \code{cv} it actually
-achieves. Budget mode floors and then buys back whole units in order
-of variance reduction per unit cost, so the integer design stays
-inside the budget. Cv mode rounds up and then adds whole units in the
-same order, phase-1 units included unless \code{n_phase1} fixes them,
-until the design meets the target, and stops with an error when no
-unit can be added. In budget mode a stratum whose expected phase-1
+achieves. It is the cheapest whole design that meets the target in
+cv mode, and the most precise one the budget buys in budget mode,
+over every whole phase-1 size (or the one \code{n_phase1} fixes) and every
+whole phase-2 size its pool allows. A \code{take_all} stratum takes its
+whole pool at every phase-1 size. A greedy design, rounded and then
+repaired a unit at a time, starts a search that solves the phase-2
+sizes exactly at each phase-1 size its bound cannot rule out. The
+search stops after 2,000 phase-1 sizes, and each exact solve after
+5,000 nodes. \code{status} is then \code{"limit"} instead of \code{"optimal"}, the
+design is the best one found, and \code{search} records the solves used,
+which limit stopped it, and the gap to the least bound left
+unexplored. The print shows a line only in that case. Cv mode
+stops with an error when no unit can be added. In budget mode a
+stratum whose expected phase-1
 yield rounds below one unit is left unsampled with a warning, and the
 operational \code{cv} is then \code{Inf}. With \code{assurance} set it also carries \code{assured},
 \code{assured_phase1}, \code{pool} and \code{assured_cost}.}

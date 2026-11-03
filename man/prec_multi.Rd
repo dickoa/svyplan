@@ -73,7 +73,7 @@ non-missing row value overrides it. See the nonresponse section of
 
 \item{eligible_per_unit}{Default eligible units per sampled unit, a positive
 number that can exceed 1. Used for rows whose \code{eligible_per_unit} column is
-absent or \code{NA}. Proportion rows only. See \code{\link[=n_multi]{n_multi()}}.}
+absent or \code{NA}. Proportion and mean rows. See \code{\link[=n_multi]{n_multi()}}.}
 
 \item{plan}{A \code{\link[=svyplan]{svyplan()}} profile providing default design parameters.}
 }
@@ -141,7 +141,8 @@ no adjustment.}
 (default 1). A cluster design spends a rate at stage 1 too, and
 \code{\link[=prec_cluster]{prec_cluster()}} names that column \code{resp_rate_psu}.}
 \item{\code{eligible_per_unit}}{Eligible units per sampled unit for the row's
-estimate, as in \code{\link[=prec_prop]{prec_prop()}}. Proportion rows only. The
+estimate, as in \code{\link[=prec_prop]{prec_prop()}} and \code{\link[=prec_mean]{prec_mean()}}. Proportion and mean
+rows. The
 several-indicators mode of \code{\link[=prec_cluster]{prec_cluster()}} refuses it.}
 }
 

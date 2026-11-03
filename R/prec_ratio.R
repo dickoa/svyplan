@@ -144,7 +144,8 @@ prec_ratio.default <- function(
   }
 
   unit_relvar <- .ratio_unit_relvar(r, cv_num, cv_den, component_cor)
-  .check_ratio_relvar(unit_relvar, cv_num, cv_den, component_cor)
+  .check_ratio_relvar(unit_relvar, cv_num, cv_den, component_cor,
+                      sizing = FALSE)
 
   prec <- .prec_engine_ratio(r, unit_relvar, n, alpha, N * eligibility_rate,
                             deff, resp_rate * eligibility_rate, df)

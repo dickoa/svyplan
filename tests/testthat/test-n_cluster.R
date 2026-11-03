@@ -882,6 +882,24 @@ test_that("budget mode rejects budgets below one realizable PSU", {
   )
 })
 
+test_that("the cheapest budget design takes enough units for one respondent", {
+  expect_error(
+    n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 560,
+              resp_rate = 0.5),
+    "one respondent, n_per_psu = 2, costs 600"
+  )
+  fit <- suppressWarnings(
+    n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 620,
+              resp_rate = 0.5)
+  )
+  expect_equal(unname(fit$n), c(1, 2.4))
+  expect_error(
+    n_cluster(stage_cost = c(500, 100, 50), icc = c(0.05, 0.1), budget = 640,
+              resp_rate = 0.5),
+    "n_per_psu = 1 and n_per_ssu = 2, costs 700"
+  )
+})
+
 test_that("cost-optimal n_per_psu below 1 is clamped with a warning", {
   expect_warning(
     res <- n_cluster(stage_cost = c(1, 1000), icc = 0.9, budget = 5000),

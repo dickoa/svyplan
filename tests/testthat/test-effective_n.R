@@ -118,3 +118,43 @@ test_that("a cluster plan carries its own response rate", {
     plan$total_n * 0.8 / as.double(design_effect(plan))
   )
 })
+
+test_that("an allocation's effective size reads frame response and PSU loss", {
+  frame <- data.frame(stratum = c("a", "b"), N = c(1000, 2000),
+                      mean = c(10, 20), sd = c(5, 10))
+  from_frame <- n_alloc(transform(frame, resp_rate = c(0.5, 0.8)), n = 200)
+  from_arg <- n_alloc(frame, n = 200, resp_rate = c(0.5, 0.8))
+  expect_equal(from_frame$detail$n, from_arg$detail$n)
+  expect_equal(effective_n(from_frame), effective_n(from_arg))
+  expect_equal(
+    effective_n(from_frame),
+    sum(from_frame$detail$n * c(0.5, 0.8)) /
+      as.double(design_effect(from_frame))
+  )
+  expect_equal(effective_n(from_frame), 202.0254, tolerance = 1e-6)
+  # an explicit rate still replaces the stored one
+  expect_equal(effective_n(from_frame, resp_rate = 1),
+               200 / as.double(design_effect(from_frame)))
+
+  # PSU nonresponse removes whole clusters from the same total
+  cluster <- transform(frame, n_per_psu = 10, icc_psu = c(0.03, 0.06),
+                       resp_rate_psu = c(0.5, 0.9))
+  fit <- n_alloc(cluster, n = 1000)
+  expect_equal(
+    effective_n(fit),
+    sum(fit$detail$n * c(0.5, 0.9)) / as.double(design_effect(fit))
+  )
+  expect_equal(effective_n(fit), 751.1398, tolerance = 1e-6)
+
+  # eligibility enters once, beside unit and PSU response
+  both <- n_alloc(
+    transform(cluster, resp_rate = c(0.8, 0.7), resp_rate_psu = NULL,
+              eligibility_rate = c(0.9, 0.6)),
+    n = 1000
+  )
+  expect_equal(
+    effective_n(both),
+    sum(both$detail$n * c(0.8, 0.7) * c(0.9, 0.6)) /
+      as.double(design_effect(both))
+  )
+})

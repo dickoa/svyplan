@@ -9,6 +9,7 @@
   se = NULL,
   moe = NULL,
   cv = NULL,
+  rmoe = NULL,
   indicators = NULL,
   targets = NULL,
   detail = NULL,
@@ -52,7 +53,7 @@
     se = se,
     moe = moe,
     cv = cv,
-    rmoe = .rmoe_for_result(moe, type, params),
+    rmoe = rmoe %||% .rmoe_for_result(moe, type, params),
     indicators = indicators,
     targets = targets,
     detail = detail,
@@ -230,6 +231,7 @@
   bounds = NULL,
   domains = NULL,
   solved = NULL,
+  rmoe = NULL,
   objective = NULL,
   objective_value = NULL
 ) {
@@ -255,7 +257,7 @@
     se = se,
     moe = moe,
     cv = cv,
-    rmoe = .rmoe_for_result(moe, type, params),
+    rmoe = rmoe %||% .rmoe_for_result(moe, type, params),
     type = type,
     method = method,
     params = params,
@@ -603,6 +605,6 @@
       operational = operational,
       params = params
     ),
-    class = "svyplan_twophase"
+    class = c("svyplan_twophase", "list")
   )
 }

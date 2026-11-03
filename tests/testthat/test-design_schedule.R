@@ -435,6 +435,10 @@ test_that("the versioned schedule schema is validated at construction", {
       z$response_model$q[[2L]] <- z$response_model$q[[1L]]
       z
     },
+    eligibility = function(z) {
+      z$response_model$eligibility_rate <- 0.5
+      z
+    },
     component_issue = function(z) {
       z$components$planned_issue[[1L]] <- 1
       z
@@ -463,6 +467,22 @@ test_that("the versioned schedule schema is validated at construction", {
       info = nm
     )
   }
+})
+
+test_that("a panel with eligibility below one gives a valid schedule", {
+  plan <- n_panel(
+    n_prop(p = 0.5, moe = 0.03),
+    retention = c(0.9, 0.9, 0.9),
+    resp_rate = 0.8,
+    eligibility_rate = 0.9,
+    design = "rotating",
+    start = "immediate"
+  )
+  x <- design_schedule(plan, horizon = 6, horizon_policy = "continuing",
+                       refreshment = "entrant_register", rounding = "ceiling")
+  expect_equal(x$response_model$q, plan$waves$q)
+  expect_equal(x$response_model$eligibility_rate, 0.9)
+  expect_invisible(svyplan:::.validate_schedule_schema(unclass(x)))
 })
 
 test_that("operational counts remain whole-valued above the integer range", {

@@ -50,6 +50,13 @@
 #'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
 #'   in scope is `N * eligibility_rate`. See the nonresponse section of
 #'   [svyplan-package].
+#' @param eligible_per_unit Eligible units per sampled unit, a positive
+#'   number, default 1, such as children under five per household, and it can
+#'   exceed 1. `n` and `N` stay in sampled units, while each group's precision
+#'   is computed on its eligible respondents out of
+#'   `N * eligibility_rate * eligible_per_unit` eligible units. Above 1, `deff`
+#'   must carry the correlation among the eligible units of one sampled unit.
+#'   See the section on eligible units in [n_prop()].
 #' @param alternative Character: `"two.sided"` (default) or `"one.sided"`.
 #'   Use `"two.sided"` when the intervention could plausibly move the
 #'   outcome in either direction (the usual default). Use `"one.sided"`
@@ -188,6 +195,10 @@
 #'   outcome = "prop", effect = 0.07, overlap = 0.5, overlap_cor = 0.6
 #' )
 #'
+#'
+#' # The same contrast measured on about 0.45 children per household
+#' power_did(treat = c(0.30, 0.25), control = c(0.30, 0.29), outcome = "prop",
+#'           deff = 1.5, eligible_per_unit = 0.45)
 #' @export
 power_did <- function(treat, ...) {
   if (!missing(treat)) {
@@ -214,6 +225,7 @@ power_did.default <- function(
   deff = 1,
   resp_rate = 1,
   eligibility_rate = 1,
+  eligible_per_unit = 1,
   alternative = c("two.sided", "one.sided"),
   ratio = 1,
   overlap = 0,
@@ -243,9 +255,15 @@ power_did.default <- function(
   check_deff(deff)
   check_resp_rate(resp_rate)
   check_resp_rate(eligibility_rate, "eligibility_rate")
+  check_eligible_per_unit(eligible_per_unit)
   N_frame <- N_pair
-  N_pair <- N_pair * eligibility_rate
-  rate <- resp_rate * eligibility_rate
+  for (N_arm in N_frame) {
+    check_eligible_population(N_arm, eligible_per_unit, eligibility_rate)
+  }
+  # Eligible respondents per issued unit against the eligible population.
+  # Issued units stay bounded by the frame, N_frame.
+  N_pair <- N_pair * eligibility_rate * eligible_per_unit
+  rate <- resp_rate * eligibility_rate * eligible_per_unit
   check_overlap(overlap)
   check_overlap_cor(overlap_cor)
   overlap_draw <- match.arg(overlap_draw)
@@ -284,7 +302,7 @@ power_did.default <- function(
 
   if (!is.null(n)) {
     n <- .check_power_n(n)
-    n_pair <- rep_len(n, 2L) * resp_rate
+    n_pair <- rep_len(n, 2L) * rate
     .check_overlap_frame(n_pair, n_pair, N_pair,
                          .frame_overlap(overlap, overlap_draw))
   }
@@ -325,6 +343,7 @@ power_did.default <- function(
     overlap_draw = overlap_draw
   )
   if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
+  if (eligible_per_unit != 1) params$eligible_per_unit <- eligible_per_unit
 
   if (!is.null(var_parts)) params$var <- var_parts
 
@@ -333,6 +352,8 @@ power_did.default <- function(
     params$power <- power
 
     r <- ratio
+    .check_change_variance(var_terms$change[1] / r + var_terms$change[2],
+                           sum(abs(var_terms$change)))
     power_n2 <- function(n2) {
       n_vec <- if (r == 1) c(n2, n2) else c(r * n2, n2)
       n_eff <- n_vec * rate
@@ -356,7 +377,8 @@ power_did.default <- function(
     } else {
       n2 <- .solve_n2_from_power(
         power, power_n2, N_pair, r, rate,
-        overlap = .frame_overlap(overlap, overlap_draw), within_arm = TRUE
+        overlap = .frame_overlap(overlap, overlap_draw), within_arm = TRUE,
+        N_frame = N_frame
       )
     }
     n0 <- if (r == 1) n2 else c(r * n2, n2)

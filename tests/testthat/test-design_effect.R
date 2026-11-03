@@ -682,3 +682,23 @@ test_that("a three-stage result reads the SSU and ultimate responding takes", {
                             var_ratio = x$params$var_ratio))
   )
 })
+
+test_that("an allocation's design effect reads a frame deff like the argument", {
+  frame <- data.frame(stratum = c("a", "b"), N = c(1000, 2000),
+                      mean = c(10, 20), sd = c(5, 10))
+  from_frame <- n_alloc(transform(frame, deff = c(2, 3)), n = 200)
+  from_arg <- n_alloc(frame, n = 200, deff = c(2, 3))
+  expect_equal(from_frame$cv, from_arg$cv)
+  expect_equal(as.double(design_effect(from_frame)),
+               as.double(design_effect(from_arg)))
+  expect_equal(as.double(design_effect(from_frame)), 1.988455, tolerance = 1e-6)
+  expect_equal(effective_n(from_frame), effective_n(from_arg))
+
+  cluster <- transform(frame, n_per_psu = 10, icc_psu = c(0.03, 0.06))
+  from_frame <- n_alloc(transform(cluster, deff = c(1.2, 1.5)), n = 1000)
+  from_arg <- n_alloc(cluster, n = 1000, deff = c(1.2, 1.5))
+  expect_equal(as.double(design_effect(from_frame)),
+               as.double(design_effect(from_arg)))
+  expect_gt(as.double(design_effect(from_frame)),
+            as.double(design_effect(n_alloc(cluster, n = 1000))))
+})

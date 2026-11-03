@@ -299,6 +299,13 @@
 #' claims more degrees of freedom than an SRS has and narrows the interval
 #' accordingly.
 #'
+#' With `df` set, `"beta"` sizes a sample of at least `df + 1` respondents,
+#' the fewest a design with `df` degrees of freedom can have, and never
+#' fewer than about 5 (7 at `alpha = 0.01`). Below that size the adjusted
+#' interval narrows as the sample shrinks, so no smaller size is a solution.
+#' A margin wide enough to be met at that floor returns the floor, and
+#' [prec_prop()] at that size reports the narrower margin it achieves.
+#'
 #' The reported `se` is the sampling standard error from the common variance
 #' above, and `cv = se / p`. Neither depends on `method`, `alpha`, or `df`.
 #' The margin of error reads the interval construction and is therefore
@@ -359,6 +366,9 @@
 #'
 #' # The same, allowing for a variance estimated from 30 PSUs in 5 strata
 #' n_prop(p = 0.02, moe = 0.01, method = "beta", df = 25)
+#'
+#' # A margin this wide is met by the fewest respondents 25 df allow
+#' n_prop(p = 0.5, moe = 0.4, method = "beta", df = 25)
 #'
 #' # With design effect and response rate
 #' n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)
@@ -537,16 +547,32 @@ n_prop.default <- function(
 #' rather than by carrying a separate closed form, which keeps each `n_*`
 #' method an exact inverse of the corresponding `prec_*` method.
 #'
-#' `upper` bounds the search: just below the population size `N` when it
-#' is finite, otherwise `NULL` to expand the bracket until the half-width
-#' falls below the target. A margin the bracket's top still misses is met
-#' only by the census, so `N` comes back.
+#' The bracket expands outward from the bottom by factors of 4 until the
+#' half-width falls below the target. `upper` caps it just below the
+#' population size `N` when that is finite, otherwise it is `NULL`. Toward
+#' the cap each step closes three quarters of the distance left, since the
+#' effective size at the cap is near 1e17 and the beta quantiles return
+#' `NaN` there. A margin the cap still misses is met only by the census, so
+#' `N` comes back.
+#'
+#' `floor` is the smallest size the method is defined on. Above it the
+#' half-width shrinks monotonically. A margin already met there returns
+#' `floor`. With no `floor` the search starts at zero, and a margin met at
+#' zero is one no size attains.
 #' @keywords internal
 #' @noRd
 .solve_n_from_moe <- function(half_width, moe, upper = NULL, what,
-                              N = Inf) {
+                              N = Inf, floor = NULL) {
   gap <- function(n) half_width(n) - moe
-  lower <- 1e-8
+  if (!is.null(floor)) {
+    if (floor >= N) {
+      return(N)
+    }
+    if (gap(floor) <= 0) {
+      return(floor)
+    }
+  }
+  lower <- floor %||% 1e-8
   if (gap(lower) <= 0) {
     stop(
       sprintf(
@@ -557,22 +583,39 @@ n_prop.default <- function(
       call. = FALSE
     )
   }
-  if (is.null(upper)) {
-    upper <- 1
-    for (i in seq_len(200L)) {
-      if (gap(upper) < 0) {
-        break
-      }
-      upper <- upper * 4
-    }
-    if (gap(upper) >= 0) {
+  cap <- upper %||% Inf
+  upper <- min(cap, max(1, 2 * lower))
+  for (i in seq_len(200L)) {
+    g <- gap(upper)
+    if (!is.finite(g)) {
       stop(
-        sprintf("the %s sample size search did not converge", what),
+        sprintf(
+          "the %s half-width is not finite at n = %.6g, so the sample size search cannot continue",
+          what, upper
+        ),
         call. = FALSE
       )
     }
-  } else if (gap(upper) >= 0) {
-    return(N)
+    if (g < 0 || upper >= cap) {
+      break
+    }
+    # Toward a finite cap the step closes three quarters of the distance
+    # left, so a root just below the census is bracketed long before the
+    # cap, where the beta quantiles return NaN.
+    upper <- if (is.finite(cap)) {
+      min(upper * 4, upper + 0.75 * (cap - upper))
+    } else {
+      upper * 4
+    }
+  }
+  if (g >= 0) {
+    if (is.finite(cap)) {
+      return(N)
+    }
+    stop(
+      sprintf("the %s sample size search did not converge", what),
+      call. = FALSE
+    )
   }
   uniroot(gap, c(lower, upper), tol = .Machine$double.eps^0.75)$root
 }
@@ -605,6 +648,13 @@ n_prop.default <- function(
 #' Unlike the other methods, the degrees-of-freedom adjustment depends on the
 #' net size itself, so the half-width is inverted directly on `n_net` rather
 #' than on the effective scale.
+#'
+#' With `df` given, the adjustment scales the effective size by
+#' `(t_{n_net-1} / t_df)^2`, and `n_net * t_{n_net-1}^2` falls before it
+#' rises. Below its turning point a smaller sample reports a narrower
+#' interval, so the search starts at the turning point. It also starts no
+#' lower than `df + 1`, the fewest respondents a design with `df` degrees of
+#' freedom has.
 #' @keywords internal
 #' @noRd
 .n_prop_beta <- function(p, moe, cv, alpha, N, deff = 1, df = NULL) {
@@ -625,8 +675,27 @@ n_prop.default <- function(
     moe,
     upper = if (is.infinite(N)) NULL else N * (1 - 1e-12),
     what = "Korn-Graubard",
-    N = N
+    N = N,
+    floor = .kg_floor(alpha, df)
   )
+}
+
+#' Smallest net size the Korn-Graubard search reads
+#'
+#' `NULL` without `df`, where no adjustment applies. Otherwise the larger of
+#' `df + 1` and the turning point of `n * t_{n-1}(1 - alpha/2)^2`, which is
+#' 4.17 at alpha 0.10, 4.96 at 0.05 and 6.82 at 0.01.
+#' @keywords internal
+#' @noRd
+.kg_floor <- function(alpha, df) {
+  if (is.null(df)) {
+    return(NULL)
+  }
+  turn <- stats::optimize(
+    function(n) n * stats::qt(1 - alpha / 2, n - 1)^2,
+    c(1 + 1e-6, 1e3)
+  )$minimum
+  if (is.finite(df)) max(df + 1, turn) else turn
 }
 
 #' @keywords internal

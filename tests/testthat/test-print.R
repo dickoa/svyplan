@@ -228,7 +228,7 @@ test_that("as.data.frame.svyplan_prec returns a single-indicator summary", {
   res <- prec_prop(p = 0.3, n = 400)
   df <- as.data.frame(res)
 
-  expect_identical(names(df), c("n", "se", "moe", "cv"))
+  expect_identical(names(df), c("n", "se", "moe", "cv", "rmoe"))
   expect_equal(nrow(df), 1L)
   expect_equal(df$n, 400)
   expect_equal(df$se, res$se)
@@ -377,4 +377,69 @@ test_that("a small alpha prints as itself", {
   out <- capture.output(print(power_mean(var = 100, effect = 2, alpha = 0.001)))
   expect_true(any(grepl("alpha = 0.001", out, fixed = TRUE)))
   expect_false(any(grepl("alpha = 0.00,", out, fixed = TRUE)))
+})
+
+## One string per object
+
+test_that("format() returns one string for every result class", {
+  frame <- data.frame(stratum = c("A", "B", "C", "D"),
+                      N = c(3500, 2500, 2500, 1500), sd = c(12, 25, 8, 40),
+                      mean = c(40, 70, 35, 90), unit_cost = c(2, 5, 1, 9))
+  objects <- list(
+    n_prop(p = 0.3, moe = 0.05),
+    n_change(p = c(0.3, 0.35), moe = 0.03, ratio = 2),
+    n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05),
+    prec_prop(p = 0.3, n = 400),
+    prec_cluster(icc = 0.05, n = c(n_psu = 50, n_per_psu = 10),
+                 unit_relvar = 1),
+    power_prop(p1 = 0.3, p2 = 0.35),
+    n_twophase(frame, phase1_cost = 1, budget = 50000)
+  )
+  for (x in objects) {
+    expect_length(format(x), 1L)
+    expect_false(grepl("NA", format(x)), info = class(x)[1L])
+  }
+  expect_match(format(objects[[2L]]), "n=2839 then 1420")
+  expect_match(format(objects[[5L]]), "cv=0.0539")
+  expect_match(format(objects[[7L]]),
+               "n_phase1=16927, n_phase2=8092, cv=0.0050")
+})
+
+test_that("a two-phase result and a two-occasion change convert to tables", {
+  frame <- data.frame(stratum = c("A", "B", "C", "D"),
+                      N = c(3500, 2500, 2500, 1500), sd = c(12, 25, 8, 40),
+                      mean = c(40, 70, 35, 90), unit_cost = c(2, 5, 1, 9))
+  fit <- n_twophase(frame, phase1_cost = 1, budget = 50000)
+  expect_s3_class(fit, "list")
+  expect_identical(as.data.frame(fit), fit$detail)
+  change <- as.data.frame(n_change(p = c(0.3, 0.35), moe = 0.03, ratio = 2))
+  expect_identical(change$occasion, 1:2)
+  expect_null(as.data.frame(n_prop(p = 0.3, moe = 0.05))$occasion)
+})
+
+test_that("one-row tables and allocation predictions carry rmoe", {
+  x <- n_prop(p = 0.3, moe = 0.05)
+  expect_equal(as.data.frame(x)$rmoe, x$rmoe)
+  p <- prec_prop(p = 0.3, n = 300)
+  expect_equal(as.data.frame(p)$rmoe, p$rmoe)
+  expect_true(is.na(as.data.frame(prec_mean(var = 100, n = 300))$rmoe))
+  a <- n_alloc(data.frame(stratum = c("a", "b"), N = c(1000, 2000),
+                          p = c(0.2, 0.4)), cv = 0.05)
+  expect_equal(predict(a, data.frame(alpha = 0.05))$rmoe, a$rmoe)
+})
+
+test_that("cv() and SE() read every result class", {
+  skip_if_not_installed("survey")
+  frame <- data.frame(stratum = c("A", "B"), N = c(3500, 2500),
+                      sd = c(12, 25), mean = c(40, 70), unit_cost = c(2, 5))
+  twophase <- n_twophase(frame, phase1_cost = 1, cv = 0.02)
+  panel <- n_panel(n_prop(p = 0.3, moe = 0.03), retention = c(0.9, 0.9))
+  set.seed(1)
+  strata <- strata_bound(rlnorm(500), n_strata = 3, cv = 0.05)
+  for (x in list(twophase, panel, strata)) {
+    expect_equal(survey::cv(x), x$cv, info = class(x)[1L])
+  }
+  expect_equal(survey::SE(panel), panel$se)
+  expect_true(is.na(survey::SE(twophase)))
+  expect_true(is.na(survey::SE(strata)))
 })

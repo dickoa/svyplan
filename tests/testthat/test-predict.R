@@ -582,3 +582,184 @@ test_that("a swept input is not repeated as a result column", {
   expect_equal(sum(names(res) == "n_per_psu"), 1L)
   expect_false(any(grepl("_achieved$", names(res))))
 })
+
+## Every result type predicts its own fit back
+
+test_that("predict() at a fit's own values returns the fit, rates included", {
+  e <- list(resp_rate = 0.9, eligibility_rate = 0.7)
+  strata <- data.frame(stratum = c("a", "b"), N = c(1000, 2000),
+                       p = c(0.2, 0.4))
+  fits <- list(
+    do.call(n_prop, c(list(p = 0.3, moe = 0.03, N = 5000), e)),
+    do.call(n_prop, c(list(p = 0.3, moe = 0.03, N = 5000,
+                           eligible_per_unit = 1.5), e)),
+    do.call(n_mean, c(list(var = 100, moe = 1, N = 5000), e)),
+    do.call(n_ratio, c(list(r = 0.5, cv_num = 0.3, cv_den = 0.2,
+                            component_cor = 0.5, cv = 0.05, N = 5000), e)),
+    do.call(n_change, c(list(p = c(0.3, 0.35), moe = 0.03, N = 5000), e)),
+    do.call(n_pooled, c(list(p = 0.3, moe = 0.02, occasions = 3,
+                             N = 5000), e)),
+    do.call(n_alloc, c(list(strata, cv = 0.05), e)),
+    do.call(n_alloc, c(list(strata, n = 500), e)),
+    do.call(power_prop, c(list(p1 = 0.3, p2 = 0.35, N = 5000), e)),
+    do.call(power_mean, c(list(var = 100, effect = 2, N = 5000), e)),
+    do.call(power_did, c(list(treat = c(0.3, 0.4), control = c(0.3, 0.32),
+                              outcome = "prop", N = 6000, overlap = 0.5,
+                              overlap_cor = 0.4), e)),
+    do.call(prec_prop, c(list(p = 0.3, n = 800, N = 5000), e)),
+    do.call(prec_mean, c(list(var = 100, n = 800, N = 5000), e)),
+    do.call(prec_ratio, c(list(r = 0.5, cv_num = 0.3, cv_den = 0.2,
+                               component_cor = 0.5, n = 800, N = 5000), e)),
+    do.call(prec_change, c(list(p = c(0.3, 0.35), n = 800, N = 5000,
+                                overlap = 0.5, overlap_cor = 0.6), e)),
+    do.call(prec_pooled, c(list(var = 100, mu = 20, n = 500, occasions = 4,
+                                overlap = 0.75, cor_decay = 0.8), e)),
+    do.call(prec_alloc, c(list(strata, n = c(300, 500)), e)),
+    do.call(n_mean, c(list(var = 100, moe = 1, N = 5000,
+                           eligible_per_unit = 2.6), e)),
+    do.call(prec_mean, c(list(var = 100, n = 800, N = 5000,
+                              eligible_per_unit = 2.6), e)),
+    do.call(power_prop, c(list(p1 = 0.3, p2 = 0.35, N = 5000,
+                               eligible_per_unit = 2.6), e)),
+    do.call(power_mean, c(list(var = 100, effect = 2, N = 5000,
+                               eligible_per_unit = 2.6), e)),
+    do.call(power_did, c(list(treat = c(0.3, 0.4), control = c(0.3, 0.32),
+                              outcome = "prop", N = 6000, overlap = 0.5,
+                              overlap_cor = 0.4, eligible_per_unit = 2.6), e))
+  )
+  for (x in fits) {
+    res <- predict(x, data.frame(alpha = 0.05))
+    label <- paste(class(x)[1L], x$type)
+    if (inherits(x, "svyplan_prec")) {
+      expect_equal(res$se, x$se, info = label)
+    } else if (identical(x$type, "change")) {
+      expect_equal(c(res$n1, res$n2), rep_len(x$n, 2L), info = label)
+    } else {
+      expect_equal(res$n, x$n, info = label)
+      expect_equal(res$cv %||% res$power, x$cv %||% x$power, info = label)
+    }
+  }
+
+  for (epu in c(1, 1.5)) {
+    cl <- do.call(n_cluster, c(list(stage_cost = c(500, 50), icc = 0.05,
+                                    cv = 0.05, eligible_per_unit = epu), e))
+    res <- predict(cl, data.frame(icc = 0.05))
+    expect_equal(c(res$n_psu, res$n_per_psu), unname(cl$n))
+    expect_equal(res$total_n, cl$total_n)
+  }
+})
+
+test_that("predict() on a budget allocation keeps its eligibility rate", {
+  frame <- data.frame(stratum = c("North urban", "North rural", "South urban"),
+                      region = c("North", "North", "South"),
+                      N = c(1000, 1800, 1200))
+  measures <- data.frame(
+    stratum = rep(frame$stratum, 2),
+    name = rep(c("coverage", "income"), each = 3),
+    p = c(0.5, 0.4, 0.6, NA, NA, NA),
+    mean = c(NA, NA, NA, 50, 55, 60),
+    sd = c(NA, NA, NA, 10, 12, 15)
+  )
+  targets <- data.frame(name = c("coverage", "income"),
+                        domain = c(".overall", "region"),
+                        level = c(NA, "North"), cv = c(0.06, NA),
+                        moe = c(NA, 3))
+  fit <- n_alloc(frame, measures = measures, targets = targets,
+                 objective = "income", budget = 1000,
+                 eligibility_rate = 0.7)
+  res <- predict(fit, data.frame(budget = 1000))
+  expect_equal(res$objective_value,
+               as.numeric(fit$operational$objective_value), tolerance = 1e-5)
+  expect_equal(res$cv, fit$objective$.cv)
+})
+
+## Precision of a change, a pooled estimate and an allocation
+
+test_that("predict() varies the sizes of a change by occasion", {
+  ch <- prec_change(var = 100, change = 5, n = c(1200, 800), overlap = 0.5,
+                    overlap_cor = 0.6)
+  res <- predict(ch, data.frame(n2 = c(700, 900)))
+  expect_equal(res$se, vapply(c(700, 900), function(n2) {
+    prec_change(var = 100, change = 5, n = c(1200, n2), overlap = 0.5,
+                overlap_cor = 0.6)$se
+  }, numeric(1)))
+  res <- predict(ch, data.frame(n1 = 1000))
+  expect_equal(res$se, prec_change(var = 100, change = 5, n = c(1000, 800),
+                                   overlap = 0.5, overlap_cor = 0.6)$se)
+  res <- predict(ch, data.frame(n = c(900, 1100)))
+  expect_equal(res$se[2L], prec_change(var = 100, change = 5, n = 1100,
+                                       overlap = 0.5, overlap_cor = 0.6)$se)
+  expect_error(predict(ch, data.frame(n = 900, n1 = 900)),
+               "'n' together with 'n1' or 'n2'")
+})
+
+test_that("predict() varies a pooled precision within its lag profile", {
+  flat <- prec_pooled(p = 0.3, n = 500, occasions = 4, overlap = 0.5,
+                      overlap_cor = 0.6)
+  res <- predict(flat, data.frame(occasions = c(3, 5), overlap = c(0.5, 0.8)))
+  expect_equal(res$se[2L], prec_pooled(p = 0.3, n = 500, occasions = 5,
+                                       overlap = 0.8, overlap_cor = 0.6)$se)
+  decay <- prec_pooled(var = 100, mu = 20, n = 500, occasions = 4,
+                       overlap = 0.75, cor_decay = 0.8)
+  res <- predict(decay, data.frame(cor_decay = 0.6))
+  expect_equal(res$se, prec_pooled(var = 100, mu = 20, n = 500,
+                                   occasions = 4, overlap = 0.75,
+                                   cor_decay = 0.6)$se)
+  expect_error(predict(decay, data.frame(occasions = 3)),
+               "unknown parameter")
+  expect_error(predict(flat, data.frame(overlap_cor = 0.5, cor_decay = 0.8)),
+               "both 'overlap_cor' and 'cor_decay'")
+})
+
+test_that("predict() rescales an allocation or compares candidate ones", {
+  frame <- data.frame(stratum = c("a", "b", "c"), N = c(3000, 5000, 2000),
+                      p = c(0.2, 0.4, 0.3), region = c("N", "N", "S"))
+  fixed <- prec_alloc(frame, n = c(300, 500, 200), domains = "region")
+  res <- predict(fixed, data.frame(n = c(750, 1000)))
+  scaled <- prec_alloc(frame, n = c(300, 500, 200) * 0.75, domains = "region")
+  expect_equal(res$cv[1L], scaled$cv)
+  expect_equal(res$cv[2L], fixed$cv)
+  expect_equal(res$.max_domain_cv[1L], max(scaled$domains$.cv))
+  cand <- data.frame(n = I(list(c(300, 500, 200), c(250, 250, 250))))
+  res <- predict(fixed, cand)
+  expect_equal(res$total_n, c(1000, 750))
+  expect_equal(res$cv[2L], prec_alloc(frame, n = c(250, 250, 250),
+                                      domains = "region")$cv)
+  bad <- data.frame(alpha = 0.05)
+  bad$n <- list(c(1, 2))
+  expect_error(predict(fixed, bad), "must give 3 stratum sizes")
+  expect_error(predict(fixed, data.frame(eligible_per_unit = 2)),
+               "unknown parameter")
+})
+
+test_that("predict() on a joint allocation precision reports its constraints", {
+  frame <- data.frame(stratum = c("North urban", "North rural", "South urban"),
+                      region = c("North", "North", "South"),
+                      N = c(1000, 1800, 1200))
+  measures <- data.frame(
+    stratum = rep(frame$stratum, 2),
+    name = rep(c("coverage", "income"), each = 3),
+    p = c(0.5, 0.4, 0.6, NA, NA, NA),
+    mean = c(NA, NA, NA, 50, 55, 60),
+    sd = c(NA, NA, NA, 10, 12, 15)
+  )
+  targets <- data.frame(name = c("coverage", "income"),
+                        domain = c(".overall", "region"),
+                        level = c(NA, "North"), cv = c(0.06, NA),
+                        moe = c(NA, 3))
+  fit <- n_alloc(frame, measures = measures, targets = targets,
+                 eligible_per_unit = 1.5)
+  fixed <- prec_alloc(fit, n = fit$detail$n_int)
+  res <- predict(fixed, data.frame(deff = c(1, 1.5)))
+  expect_equal(res$.max_ratio[1L], max(fixed$detail$.ratio))
+  again <- prec_alloc(fit, n = fit$detail$n_int, deff = 1.5)
+  expect_equal(res$.max_ratio[2L], max(again$detail$.ratio))
+  expect_identical(res$.feasible, c(all(fixed$detail$.pass),
+                                    all(again$detail$.pass)))
+  expect_equal(res$.n_fail[2L], sum(!again$detail$.pass))
+  expect_null(res$objective_value)
+  res <- predict(fixed, data.frame(eligible_per_unit = 1))
+  expect_equal(res$.max_ratio, max(prec_alloc(
+    frame, n = fit$detail$n_int, measures = measures, targets = targets
+  )$detail$.ratio))
+})

@@ -203,3 +203,16 @@ test_that("existing prec schemas are untouched", {
   expect_false("component_cor" %in% names(mean_prec$params))
   expect_equal(mean_prec$type, "mean")
 })
+
+## A constant ratio
+
+test_that("a ratio with no variance has zero precision terms at a given n", {
+  fit <- suppressWarnings(
+    prec_ratio(r = 2, cv_num = 0.3, cv_den = 0.3, component_cor = 1, n = 100)
+  )
+  expect_identical(c(fit$se, fit$moe, fit$cv), c(0, 0, 0))
+  expect_error(
+    n_ratio(r = 2, cv_num = 0.3, cv_den = 0.3, component_cor = 1, cv = 0.05),
+    "no sampling variance"
+  )
+})

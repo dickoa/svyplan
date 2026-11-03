@@ -65,7 +65,7 @@
 #' @param eligible_per_unit Default eligible units per sampled unit, a positive
 #'   number such as married women per household, which can exceed 1. Used
 #'   for rows whose `eligible_per_unit` column is absent or `NA`, and a
-#'   non-missing row value overrides it. Proportion rows only. See the
+#'   non-missing row value overrides it. Proportion and mean rows. See the
 #'   `eligible_per_unit` column under Details.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
@@ -218,12 +218,12 @@
 #'     error rather than a column carried along and ignored.}
 #'   \item{`eligible_per_unit`}{Eligible units per sampled unit for the row's
 #'     estimate, such as married women or children aged 12 to 23 months per
-#'     household. The row is sized as [n_prop()]`(eligible_per_unit = )` sizes
-#'     it. Sizes stay in sampled units, and the variance reads
+#'     household. The row is sized as [n_prop()] or [n_mean()] size it with
+#'     `eligible_per_unit`. Sizes stay in sampled units, and the variance reads
 #'     `N * eligible_per_unit` eligible units and
 #'     `resp_rate * eligible_per_unit` respondents per sampled unit. Each row
 #'     can carry its own group.
-#'     Proportion rows only, so a mean or ratio row takes 1. The
+#'     Proportion and mean rows, so a ratio row takes 1. The
 #'     several-indicators mode of [n_cluster()] refuses the column.}
 #' }
 #'
@@ -738,18 +738,12 @@ n_multi.default <- function(
     stop("'eligible_per_unit' values must be positive and finite", call. = FALSE)
   }
   is_ratio <- .is_ratio_row(indicators)
-  is_prop <- if ("p" %in% names(indicators)) {
-    !is.na(indicators$p) & !is_ratio
-  } else {
-    rep(FALSE, nrow(indicators))
-  }
-  bad <- which(e != 1 & !is_prop & !.floor_only_rows(indicators))
+  bad <- which(e != 1 & is_ratio)
   if (length(bad) > 0L) {
     stop(
       sprintf(
-        "'eligible_per_unit' applies to proportion rows, as in n_prop(), and to rows with only 'min_respondents'. Row(s) %s carry a %s, so set their 'eligible_per_unit' to 1",
-        paste(bad, collapse = ", "),
-        if (any(is_ratio[bad])) "ratio" else "mean"
+        "'eligible_per_unit' applies to proportion and mean rows, as in n_prop() and n_mean(), and to rows with only 'min_respondents'. Row(s) %s carry a ratio, so set their 'eligible_per_unit' to 1",
+        paste(bad, collapse = ", ")
       ),
       call. = FALSE
     )
@@ -1324,9 +1318,9 @@ n_multi.default <- function(
           if (has_mu) indicators$mu[i] else NULL,
           n_max,
           indicators$alpha[i],
-          indicators$N[i] * scope[i],
+          indicators$N[i] * scope[i] * elig[i],
           indicators$deff[i],
-          indicators$resp_rate[i] * scope[i],
+          indicators$resp_rate[i] * scope[i] * elig[i],
           .row_df(indicators, i)
         )
       }
@@ -1426,6 +1420,7 @@ n_multi.default <- function(
         deff = indicators$deff[i],
         resp_rate = indicators$resp_rate[i],
         eligibility_rate = scope[i],
+        eligible_per_unit = elig[i],
         df = .row_df(indicators, i)
       )
     }
@@ -1706,6 +1701,42 @@ n_multi.default <- function(
   a <- max(a_lo, m / (cc * b_box[2L]))
   if (a > a_hi * (1 + 1e-12)) return(Inf)
   a * costs[1L] + m * (costs[2L] / cc + costs[3L])
+}
+
+#' The least variable cost of a whole design reaching a total
+#'
+#' As `.floor_least_cost()`, over whole PSU counts and takes: the least
+#' `a (C1 + C2 b + C3 b c)` with `a b c >= m`, `a` in `[a_lo, a_hi]` and
+#' the takes in their boxes. At each `a` and `c` the take is the least whole
+#' one reaching `m`. A whole design can cost well above the continuous one,
+#' 342 against 246 for a floor of 41 on PSUs of 20 at a PSU cost of 100,
+#' and a budget share between the two holds no whole design. `Inf` when no
+#' whole design in the bounds reaches `m`.
+#' @keywords internal
+#' @noRd
+.floor_least_whole_cost <- function(m, costs, a_lo, a_hi, b_box, c_box) {
+  m <- ceiling(m - 1e-9)
+  b_lo <- max(1, ceiling(b_box[1L] - 1e-9))
+  b_hi <- floor(b_box[2L] + 1e-9)
+  c_lo <- max(1, ceiling(c_box[1L] - 1e-9))
+  c_hi <- floor(c_box[2L] + 1e-9)
+  a_lo <- max(1, ceiling(a_lo - 1e-9))
+  # past the fewest PSUs that reach m at the smallest takes, more PSUs only
+  # add cost, but a fixed or least PSU count above that still binds
+  a_hi <- min(floor(a_hi + 1e-9), max(a_lo, ceiling(m / (b_lo * c_lo))))
+  if (a_hi < a_lo || b_hi < b_lo || c_hi < c_lo) {
+    return(Inf)
+  }
+  best <- Inf
+  for (a in seq.int(a_lo, a_hi)) {
+    cs <- seq.int(c_lo, max(c_lo, min(c_hi, ceiling(m / (a * b_lo)))))
+    b <- pmax(b_lo, ceiling(m / (a * cs) - 1e-9))
+    ok <- b <= b_hi
+    if (!any(ok)) next
+    cost <- a * (costs[1L] + costs[2L] * b[ok] + costs[3L] * b[ok] * cs[ok])
+    best <- min(best, cost)
+  }
+  best
 }
 
 #' The continuous design of an indicator table under the correction
@@ -3352,8 +3383,10 @@ n_multi.default <- function(
         c_box <- if (stages == 2L) c(1, 1) else if (!is.null(n_per_ssu))
           rep(n_per_ssu, 2L) else c(.take_bound(p$resp_rate), Inf)
       }
-      least <- .floor_least_cost(min_n_domain, costs, n_psu %||% 1, a_hi,
-                                 b_box, c_box)
+      # The whole solve that follows fields whole PSUs and takes, so the
+      # share it gets must hold a whole design, not only a continuous one.
+      least <- .floor_least_whole_cost(min_n_domain, costs, n_psu %||% 1,
+                                       a_hi, b_box, c_box)
       if (!is.finite(least)) {
         stop(
           sprintf(

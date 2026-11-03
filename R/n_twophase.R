@@ -154,21 +154,32 @@
 #'     for strata that were supplied pinned **and** for those the
 #'     allocator truncated at the classification rate.}
 #'   \item{`single_phase`}{The design that skips phase 1 and measures the
-#'     variable of interest directly, as `c(n = , cv = , cost = )`, plus
-#'     `reaches_target`, and `better`, `TRUE` when that plainer design
-#'     wins. Two-phase sampling is not always an improvement and this
+#'     variable of interest directly, as `c(n = , cv = , cost = )`, its
+#'     whole-unit form `n_int`, `cv_int` and `cost_int` (the units the
+#'     budget buys, or the next unit up to the target), plus
+#'     `reaches_target`, and `better`, `TRUE` when that plainer whole
+#'     design wins against the whole two-phase design in `operational`.
+#'     Two-phase sampling is not always an improvement and this
 #'     comparison is the check that says so. In `cv` mode a comparator
 #'     that cannot reach the target from a frame of size `N` is capped
 #'     there, reports the coefficient of variation a census of it would
 #'     achieve, and never wins on cost alone.}
 #'   \item{`operational`}{The whole-unit field design: `n` (both phases),
 #'     the per-stratum `n_int`, and the `cost` and `cv` it actually
-#'     achieves. Budget mode floors and then buys back whole units in order
-#'     of variance reduction per unit cost, so the integer design stays
-#'     inside the budget. Cv mode rounds up and then adds whole units in the
-#'     same order, phase-1 units included unless `n_phase1` fixes them,
-#'     until the design meets the target, and stops with an error when no
-#'     unit can be added. In budget mode a stratum whose expected phase-1
+#'     achieves. It is the cheapest whole design that meets the target in
+#'     cv mode, and the most precise one the budget buys in budget mode,
+#'     over every whole phase-1 size (or the one `n_phase1` fixes) and every
+#'     whole phase-2 size its pool allows. A `take_all` stratum takes its
+#'     whole pool at every phase-1 size. A greedy design, rounded and then
+#'     repaired a unit at a time, starts a search that solves the phase-2
+#'     sizes exactly at each phase-1 size its bound cannot rule out. The
+#'     search stops after 2,000 phase-1 sizes, and each exact solve after
+#'     5,000 nodes. `status` is then `"limit"` instead of `"optimal"`, the
+#'     design is the best one found, and `search` records the solves used,
+#'     which limit stopped it, and the gap to the least bound left
+#'     unexplored. The print shows a line only in that case. Cv mode
+#'     stops with an error when no unit can be added. In budget mode a
+#'     stratum whose expected phase-1
 #'     yield rounds below one unit is left unsampled with a warning, and the
 #'     operational `cv` is then `Inf`. With `assurance` set it also carries `assured`,
 #'     `assured_phase1`, `pool` and `assured_cost`.}
@@ -459,10 +470,11 @@ n_twophase.default <- function(
   # at nu_max rather than 1, the floor no amount of subsampling can beat
   var_floor <- a_eff + sum(d2_eff * spec$W * spec$S^2 / resp_rate)
 
-  lambda_fn <- NULL
-  if (!is.null(n_phase1)) {
+  # The multiplier at a fixed phase-1 size, which the caller's 'n_phase1'
+  # sets, or the census a free phase 1 is capped at.
+  fixed_lambda <- function(n1, census = FALSE) {
     if (!is.null(budget)) {
-      allocatable <- (budget - fixed_cost) / n_phase1
+      allocatable <- (budget - fixed_cost) / n1
       # take-all strata must be measured whatever is left, so their cost is
       # as mandatory as the screening itself
       mandatory <- phase1_cost +
@@ -471,32 +483,65 @@ n_twophase.default <- function(
         stop(sprintf(
           paste("the budget does not reach phase 2 at this 'n_phase1':",
                 "screening %s units%s costs %s of the %s available"),
-          format(n_phase1),
+          format(n1),
           if (any(spec$pinned)) " and measuring the take-all strata" else " alone",
-          format(round(mandatory * n_phase1)),
+          format(round(mandatory * n1)),
           format(round(budget - fixed_cost))), call. = FALSE)
       }
-      lambda_fn <- .twophase_fixed_lambda(spec$W, spec$S, spec$cost, d2_eff,
-                                          allocatable, "budget")
-    } else {
-      target_var <- n_phase1 * ((cv * spec$mu)^2 + var_pop / N)
-      if (target_var <= var_floor) {
+      return(.twophase_fixed_lambda(spec$W, spec$S, spec$cost, d2_eff,
+                                    allocatable, "budget"))
+    }
+    target_var <- n1 * ((cv * spec$mu)^2 + var_pop / N)
+    if (target_var <= var_floor) {
+      if (census) {
         stop(sprintf(
-          paste("the target 'cv' is out of reach at this 'n_phase1':",
-                "carrying every classified unit into phase 2 still leaves",
-                "cv = %s, because the between-stratum component and the",
-                "phase-2 residual are both already paid for"),
-          formatC(.twophase_cv(n_phase1, var_floor, spec$mu, N, var_pop),
+          paste("the target 'cv' is not reachable from a frame of size 'N':",
+                "a phase-1 census carrying every classified unit into phase 2",
+                "still leaves cv = %s"),
+          formatC(.twophase_cv(n1, var_floor, spec$mu, N, var_pop),
                   format = "f", digits = 5)), call. = FALSE)
       }
-      lambda_fn <- .twophase_fixed_lambda(spec$W, spec$S, spec$cost, d2_eff,
-                                          target_var, "cv")
+      stop(sprintf(
+        paste("the target 'cv' is out of reach at this 'n_phase1':",
+              "carrying every classified unit into phase 2 still leaves",
+              "cv = %s, because the between-stratum component and the",
+              "phase-2 residual are both already paid for"),
+        formatC(.twophase_cv(n1, var_floor, spec$mu, N, var_pop),
+                format = "f", digits = 5)), call. = FALSE)
     }
+    .twophase_fixed_lambda(spec$W, spec$S, spec$cost, d2_eff, target_var, "cv")
+  }
+  solve_nu <- function(lambda_fn) {
+    .twophase_nu(spec$W, spec$S, spec$cost, d2_eff, phase1_cost, a_eff,
+                 spec$pinned, nu_max = resp_rate, lambda_fn = lambda_fn)
+  }
+  unit_terms <- function(nu) {
+    list(
+      var = a_eff + sum(ifelse(spec$S > 0, d2_eff * spec$W * spec$S^2 / nu, 0)),
+      cost = phase1_cost + sum(spec$cost * spec$W * nu)
+    )
   }
 
-  fit <- .twophase_nu(spec$W, spec$S, spec$cost, d2_eff, phase1_cost,
-                      a_eff, spec$pinned, nu_max = resp_rate,
-                      lambda_fn = lambda_fn)
+  fit <- solve_nu(if (!is.null(n_phase1)) fixed_lambda(n_phase1))
+  n1 <- n_phase1
+  if (is.null(n1)) {
+    u <- unit_terms(fit$nu)
+    n1 <- if (!is.null(budget)) {
+      (budget - fixed_cost) / u$cost
+    } else {
+      u$var / ((cv * spec$mu)^2 + var_pop / N)
+    }
+    if (!is.null(budget) && (!is.finite(n1) || n1 <= 0)) {
+      stop("'budget' does not cover a single phase-1 unit", call. = FALSE)
+    }
+    # A free phase 1 larger than the frame is a census. Phase 2 is then
+    # solved again at that size, which spends the rest of the budget or
+    # raises the fractions toward the target.
+    if (n1 > N) {
+      n1 <- N
+      fit <- solve_nu(fixed_lambda(N, census = TRUE))
+    }
+  }
   nu <- fit$nu
   # a stratum with no variance to measure is legitimately left at zero; any
   # other non-positive fraction means the constraints could not be met
@@ -505,27 +550,10 @@ n_twophase.default <- function(
                "there is no feasible allocation; check 'budget' or 'n_phase1'",
                "against the cost of the take-all strata"), call. = FALSE)
   }
-  var_unit <- a_eff + sum(ifelse(spec$S > 0, d2_eff * spec$W * spec$S^2 / nu, 0))
-  cost_unit <- phase1_cost + sum(spec$cost * spec$W * nu)
-
-  if (!is.null(n_phase1)) {
-    n1 <- n_phase1
-    cost <- fixed_cost + n1 * cost_unit
-  } else if (!is.null(budget)) {
-    n1 <- (budget - fixed_cost) / cost_unit
-    if (!is.finite(n1) || n1 <= 0) {
-      stop("'budget' does not cover a single phase-1 unit", call. = FALSE)
-    }
-    n1 <- min(n1, N)
-    cost <- fixed_cost + n1 * cost_unit
-  } else {
-    n1 <- var_unit / ((cv * spec$mu)^2 + var_pop / N)
-    if (n1 > N) {
-      stop("the target 'cv' is not reachable from a frame of size 'N'",
-           call. = FALSE)
-    }
-    cost <- fixed_cost + n1 * cost_unit
-  }
+  u <- unit_terms(nu)
+  var_unit <- u$var
+  cost_unit <- u$cost
+  cost <- fixed_cost + n1 * cost_unit
 
   cv_out <- .twophase_cv(n1, var_unit, spec$mu, N, var_pop)
   if (!is.null(cv) && is.finite(cv_out) && cv_out > cv * (1 + 1e-6)) {
@@ -535,14 +563,6 @@ n_twophase.default <- function(
   }
   single <- .twophase_single(spec, cv, budget, N, fixed_cost, single_cost,
                              single_deff, single_resp_rate)
-  # Budget mode compares precision at equal spend, cv mode compares spend at
-  # equal precision. In cv mode a cheaper comparator that never reaches the
-  # target is not an alternative, so it does not win on cost alone.
-  single$better <- if (!is.null(budget)) {
-    isTRUE(is.finite(single$cv) && is.finite(cv_out) && single$cv < cv_out)
-  } else {
-    isTRUE(single$reaches_target && is.finite(single$cost) && single$cost < cost)
-  }
 
   mode <- if (is.null(budget)) "cv" else "budget"
   operational <- .twophase_integerize(
@@ -550,6 +570,18 @@ n_twophase.default <- function(
     budget %||% Inf, fixed_cost, N, spec$mu, var_pop,
     target_cv = cv, n1_fixed = !is.null(n_phase1)
   )
+  # The verdict is on the whole designs either side, the ones a survey
+  # fields. Budget mode compares precision at equal spend, cv mode compares
+  # spend at equal precision. In cv mode a cheaper comparator that never
+  # reaches the target is not an alternative, so it does not win on cost
+  # alone.
+  single$better <- if (!is.null(budget)) {
+    isTRUE(is.finite(single$cv_int) && is.finite(operational$cv) &&
+             single$cv_int < operational$cv)
+  } else {
+    isTRUE(single$reaches_target && is.finite(single$cost_int) &&
+             single$cost_int < operational$cost)
+  }
   if (!is.null(assurance)) {
     # the design plans on r * issued respondents; assurance asks what to
     # issue so that many actually arrive with probability `assurance`
@@ -771,7 +803,9 @@ n_twophase.default <- function(
 #' the budget. CV mode rounds up, then adds whole units by the same order
 #' until the target holds, since a phase-2 size capped at its pool can leave
 #' it short. Both respect the phase-2 pool, which is what stops either from
-#' reaching a stratum whose expected phase-1 yield rounds to zero.
+#' reaching a stratum whose expected phase-1 yield rounds to zero. That
+#' greedy design starts `.twophase_search()`, which returns the best whole
+#' design when it beats it.
 #' @keywords internal
 #' @noRd
 .twophase_integerize <- function(n1, nu, spec, phase1_cost, a_eff, d2_eff,
@@ -779,13 +813,17 @@ n_twophase.default <- function(
                                  var_pop, target_cv = NULL, n1_fixed = FALSE) {
   W <- spec$W
   measured <- spec$S > 0
+  # the strata the caller pinned take their whole pool at any phase-1 size
+  pinned <- spec$pinned
+  search <- NULL
   if (identical(mode, "budget")) {
     n1_int <- floor(min(n1, N))
     cap <- floor(nu_max * W * n1_int)
     n_int <- pmin(floor(nu * W * n1_int), cap)
+    n_int[pinned] <- cap[pinned]
     spent <- fixed_cost + phase1_cost * n1_int + sum(spec$cost * n_int)
     repeat {
-      room <- n_int < cap & spec$cost > 0 & measured &
+      room <- n_int < cap & spec$cost > 0 & measured & !pinned &
         spent + spec$cost <= budget
       if (!any(room)) break
       # a stratum left at zero contributes an infinite term, so its first
@@ -803,10 +841,30 @@ n_twophase.default <- function(
       n_int[h] <- n_int[h] + 1
       spent <- spent + spec$cost[h]
     }
+    term <- d2_eff * W^2 * spec$S^2
+    held <- measured & n_int == 0
+    incumbent <- if (any(held)) Inf else
+      a_eff / n1_int + sum(term[measured] / n_int[measured])
+    room <- budget - fixed_cost
+    found <- .twophase_search(
+      "budget", term, spec$cost, W, nu_max, phase1_cost, a_eff,
+      budget = room, incumbent = incumbent, pinned = pinned,
+      n1_range = if (n1_fixed) c(n1_int, n1_int) else
+        c(1, floor(min(N, (room - sum(spec$cost[measured])) / phase1_cost)))
+    )
+    search <- found$search
+    found <- found$found
+    if (!is.null(found)) {
+      n1_int <- found$n1
+      n_int <- found$n_int
+      cap <- floor(nu_max * W * n1_int)
+      spent <- fixed_cost + phase1_cost * n1_int + sum(spec$cost * n_int)
+    }
   } else {
     n1_int <- ceiling(min(n1, N))
     cap <- floor(nu_max * W * n1_int)
     n_int <- pmin(ceiling(nu * W * n1_int), cap)
+    n_int[pinned] <- cap[pinned]
     if (!is.null(target_cv)) {
       # Capping a phase-2 size at its pool can leave the design short of the
       # target. Repair by the move that removes the most variance per unit
@@ -821,7 +879,7 @@ n_twophase.default <- function(
       repeat {
         now <- cv_at(n1_int, n_int)
         if (is.finite(now) && now <= target_cv) break
-        room <- measured & n_int < cap
+        room <- measured & !pinned & n_int < cap
         gain <- ifelse(room, ifelse(n_int > 0, term * (1 / n_int - 1 / (n_int + 1)), Inf), -Inf)
         score <- gain / pmax(spec$cost, .Machine$double.eps)
         grow_n1 <- !n1_fixed && n1_int < N
@@ -843,7 +901,27 @@ n_twophase.default <- function(
         } else {
           n1_int <- n1_int + 1
           cap <- floor(nu_max * W * n1_int)
+          n_int[pinned] <- cap[pinned]
         }
+      }
+      target <- (target_cv * mu)^2 + if (is.finite(N)) var_pop / N else 0
+      incumbent <- phase1_cost * n1_int + sum(spec$cost * n_int)
+      # However large phase 1 is, phase 2 costs at least its continuous
+      # least cost at the full target, so phase 1 is bounded above.
+      on <- term > 0
+      tail <- .twophase_cost_bound(term[on], spec$cost[on], target,
+                                   matrix(.Machine$double.xmax, 1L, sum(on)))
+      found <- .twophase_search(
+        "cv", term, spec$cost, W, nu_max, phase1_cost, a_eff,
+        target = target, incumbent = incumbent, pinned = pinned,
+        n1_range = if (n1_fixed) c(n1_int, n1_int) else
+          c(1, floor(min(N, (incumbent - tail) / phase1_cost)))
+      )
+      search <- found$search
+      found <- found$found
+      if (!is.null(found)) {
+        n1_int <- found$n1
+        n_int <- found$n_int
       }
     }
     spent <- fixed_cost + phase1_cost * n1_int + sum(spec$cost * n_int)
@@ -867,8 +945,290 @@ n_twophase.default <- function(
     n = c(n_phase1 = n1_int, n_phase2 = sum(n_int)),
     n_int = n_int,
     cost = spent,
-    cv = .twophase_cv(n1_int, var_unit, mu, N, var_pop)
+    cv = .twophase_cv(n1_int, var_unit, mu, N, var_pop),
+    status = search$status %||% "optimal",
+    search = search
   )
+}
+
+#' The whole-unit two-phase design by search
+#'
+#' For a fixed phase-1 size the phase-2 problem is a stratified allocation
+#' with linear cost, a variance `sum(term_h / n_h)` and bounds
+#' `1 <= n_h <= floor(nu_max * W_h * n1)`, which `.whole_search()` solves
+#' exactly. The phase-1 size is searched outward from nothing: a continuous
+#' bound is computed for every candidate at once, the candidates are solved
+#' in order of that bound, and the search stops once no remaining bound can
+#' beat the best design. The greedy design is the starting incumbent, so the
+#' search never returns a worse one. Strata without variance take no units.
+#' @return A list of `found`, `NULL` when nothing beats `incumbent` and
+#'   otherwise `n1` and `n_int`, and `search`, the record of the search: its
+#'   `status` (`"optimal"`, or `"limit"` when the solve or node limit stopped
+#'   it), the solves used, and the gap to the least unexplored bound.
+#' @keywords internal
+#' @noRd
+.twophase_search <- function(mode, term, cost, W, nu_max, phase1_cost,
+                             a_eff, target = NULL, budget = NULL,
+                             incumbent, n1_range, max_solves = 2000L,
+                             chunk = 512L, pinned = rep(FALSE, length(term))) {
+  on <- term > 0 & !pinned
+  t_on <- term[on]
+  c_on <- cost[on]
+  W_on <- W[on]
+  H <- length(term)
+  # A pinned stratum takes its whole pool at every phase-1 size, so its cost
+  # and variance are known exactly per candidate and join the phase-1 terms.
+  t_pin <- term[pinned]
+  c_pin <- cost[pinned]
+  W_pin <- W[pinned]
+  pin_at <- function(n1s) {
+    cap <- floor(outer(n1s, nu_max * W_pin))
+    tm <- matrix(t_pin, nrow(cap), length(t_pin), byrow = TRUE)
+    list(
+      cap = cap,
+      cost = as.vector(cap %*% c_pin),
+      var = rowSums(ifelse(tm > 0, tm / cap, 0))
+    )
+  }
+  n1_lo <- max(n1_range[1L], ceiling(1 / (nu_max * W[term > 0]) - 1e-9))
+  n1_hi <- n1_range[2L]
+  # A solve limit leaves candidates whose bound could still win, so the
+  # design is the best found, within the gap to the least of those bounds.
+  # A node limit inside a solve leaves no bound to report.
+  record <- function() {
+    stopped <- is.finite(open_bound) || node_limit
+    list(
+      status = if (stopped) "limit" else "optimal",
+      solves = solves,
+      max_solves = max_solves,
+      limit = c(if (is.finite(open_bound)) "solves", if (node_limit) "nodes"),
+      bound = if (is.finite(open_bound) && !node_limit) open_bound else NA_real_,
+      gap = if (is.finite(open_bound) && !node_limit && is.finite(best)) {
+        max(0, (best - open_bound) / max(abs(best), .Machine$double.eps))
+      } else {
+        NA_real_
+      }
+    )
+  }
+  open_bound <- Inf
+  node_limit <- FALSE
+  solves <- 0L
+  best <- incumbent
+  if (!is.finite(n1_hi) || n1_hi < n1_lo) {
+    return(list(found = NULL, search = record()))
+  }
+  bound_at <- function(n1s) {
+    pin <- pin_at(n1s)
+    if (mode == "cv") {
+      room <- target - a_eff / n1s - pin$var
+      rest <- if (any(on)) {
+        .twophase_cost_bound(t_on, c_on, room,
+                             floor(outer(n1s, nu_max * W_on)))
+      } else {
+        ifelse(room >= 0, 0, Inf)
+      }
+      phase1_cost * n1s + pin$cost + rest
+    } else {
+      left <- budget - phase1_cost * n1s - pin$cost
+      rest <- if (any(on)) {
+        .twophase_var_bound(t_on, c_on, left, floor(outer(n1s, nu_max * W_on)))
+      } else {
+        ifelse(left >= 0, 0, Inf)
+      }
+      a_eff / n1s + pin$var + rest
+    }
+  }
+  out <- NULL
+  improves <- function(value) {
+    if (!is.finite(best)) {
+      return(is.finite(value))
+    }
+    value < best - 1e-9 * max(1, abs(best))
+  }
+  # Solve the candidates of one block in order of their bound, and report
+  # whether any bound in it could still beat the best design.
+  scan <- function(n1s) {
+    bound <- bound_at(n1s)
+    for (i in order(bound)) {
+      if (!is.finite(bound[i]) || !improves(bound[i])) {
+        break
+      }
+      if (solves >= max_solves) {
+        open_bound <<- min(open_bound, bound[i])
+        break
+      }
+      solves <<- solves + 1L
+      n1 <- n1s[i]
+      pin <- pin_at(n1)
+      cap_i <- floor(nu_max * W_on * n1)
+      r <- if (mode == "cv") {
+        .twophase_inner(t_on, c_on, cap_i,
+                        room = target - a_eff / n1 - pin$var)
+      } else {
+        .twophase_inner(t_on, c_on, cap_i,
+                        budget = budget - phase1_cost * n1 - pin$cost)
+      }
+      if (identical(r$status, "limit")) node_limit <<- TRUE
+      x <- r$x
+      if (is.null(x)) next
+      value <- if (mode == "cv") {
+        phase1_cost * n1 + pin$cost + sum(c_on * x)
+      } else {
+        a_eff / n1 + pin$var + sum(t_on / x)
+      }
+      if (improves(value)) {
+        best <<- value
+        n_int <- numeric(H)
+        n_int[on] <- x
+        n_int[pinned] <- pin$cap
+        out <<- list(n1 = n1, n_int = n_int)
+      }
+    }
+    any(is.finite(bound) & improves(bound))
+  }
+  # The bound falls and then rises in n1, so the search starts at its
+  # minimum on a coarse grid and widens in blocks until a whole block is
+  # beaten on both sides. A block absorbs the small steps whole caps add.
+  grid <- unique(round(exp(seq(log(n1_lo), log(n1_hi), length.out = 200L))))
+  grid_bound <- bound_at(grid)
+  if (!any(is.finite(grid_bound))) {
+    grid <- seq.int(n1_lo, min(n1_hi, n1_lo + chunk - 1L))
+    grid_bound <- bound_at(grid)
+    if (!any(is.finite(grid_bound))) {
+      return(list(found = NULL, search = record()))
+    }
+  }
+  center <- grid[which.min(grid_bound)]
+  up <- center
+  while (up <= n1_hi) {
+    block <- seq.int(up, min(n1_hi, up + chunk - 1L))
+    if (!scan(block) && up > center) break
+    up <- up + chunk
+  }
+  down <- center - 1
+  while (down >= n1_lo) {
+    block <- seq.int(max(n1_lo, down - chunk + 1L), down)
+    if (!scan(block)) break
+    down <- down - chunk
+  }
+  list(found = out, search = record())
+}
+
+#' Continuous least phase-2 cost at each candidate, `Inf` where infeasible
+#'
+#' Least `sum(cost * n)` with `sum(term / n) <= room` and `1 <= n <= cap`,
+#' one row of `cap` per candidate, found by bisection on the multiplier for
+#' every candidate at once.
+#' @keywords internal
+#' @noRd
+.twophase_cost_bound <- function(term, cost, room, cap) {
+  K <- nrow(cap)
+  tm <- matrix(term, K, length(term), byrow = TRUE)
+  cm <- matrix(pmax(cost, 1e-300), K, length(cost), byrow = TRUE)
+  out <- rep(Inf, K)
+  feasible <- room > 0 & apply(cap, 1L, min) >= 1 &
+    rowSums(tm / pmax(cap, 1)) <= room * (1 + 1e-12)
+  easy <- feasible & rowSums(tm) <= room
+  out[easy] <- sum(cost)
+  k <- which(feasible & !easy)
+  if (length(k) > 0L) {
+    size <- function(l) {
+      pmin(pmax(sqrt(exp(l) * tm[k, , drop = FALSE] / cm[k, , drop = FALSE]),
+                1), cap[k, , drop = FALSE])
+    }
+    lo <- rep(-80, length(k))
+    hi <- rep(80, length(k))
+    for (it in seq_len(80L)) {
+      mid <- (lo + hi) / 2
+      over <- rowSums(tm[k, , drop = FALSE] / size(mid)) > room[k]
+      lo <- ifelse(over, mid, lo)
+      hi <- ifelse(over, hi, mid)
+    }
+    out[k] <- rowSums(cm[k, , drop = FALSE] * size(hi))
+  }
+  out
+}
+
+#' Continuous least phase-2 variance at each candidate, `Inf` where
+#' infeasible
+#'
+#' Least `sum(term / n)` with `sum(cost * n) <= left` and `1 <= n <= cap`.
+#' @keywords internal
+#' @noRd
+.twophase_var_bound <- function(term, cost, left, cap) {
+  K <- nrow(cap)
+  tm <- matrix(term, K, length(term), byrow = TRUE)
+  cm <- matrix(cost, K, length(cost), byrow = TRUE)
+  out <- rep(Inf, K)
+  feasible <- apply(cap, 1L, min) >= 1 & left >= sum(cost) - 1e-9
+  full <- feasible & rowSums(cm * cap) <= left
+  out[full] <- rowSums(tm[full, , drop = FALSE] / cap[full, , drop = FALSE])
+  k <- which(feasible & !full)
+  if (length(k) > 0L) {
+    size <- function(l) {
+      pmin(pmax(sqrt(tm[k, , drop = FALSE] /
+                       (exp(l) * pmax(cm[k, , drop = FALSE], 1e-300))), 1),
+           cap[k, , drop = FALSE])
+    }
+    lo <- rep(-80, length(k))
+    hi <- rep(80, length(k))
+    for (it in seq_len(80L)) {
+      mid <- (lo + hi) / 2
+      over <- rowSums(cm[k, , drop = FALSE] * size(mid)) > left[k]
+      lo <- ifelse(over, mid, lo)
+      hi <- ifelse(over, hi, mid)
+    }
+    out[k] <- rowSums(tm[k, , drop = FALSE] / size(hi))
+  }
+  out
+}
+
+#' Exact whole phase-2 sizes at one phase-1 size, or `NULL`
+#'
+#' With `room`, the least cost whose variance fits it. With `budget`, the
+#' least variance its cost fits. A stratum that costs nothing takes its cap.
+#' Returns the sizes as `x`, `NULL` when none fits, and the status of the
+#' exact search, `"limit"` when its node limit stopped it.
+#' @keywords internal
+#' @noRd
+.twophase_inner <- function(term, cost, cap, room = NULL, budget = NULL) {
+  none <- list(x = NULL, status = "infeasible")
+  if (any(cap < 1)) {
+    return(none)
+  }
+  free <- cost <= 0
+  x <- numeric(length(term))
+  x[free] <- cap[free]
+  t <- term[!free]
+  c <- cost[!free]
+  hi <- cap[!free]
+  if (length(t) == 0L) {
+    feasible <- is.null(room) || sum(term / x) <= room
+    return(if (feasible) list(x = x, status = "optimal") else none)
+  }
+  if (!is.null(room)) {
+    room <- room - sum(term[free] / cap[free])
+    if (room <= 0 || sum(t / hi) > room * (1 + 1e-12)) {
+      return(none)
+    }
+    q <- .whole_problem(c, 0, 0, t / room * (1 + 2e-9), rep(1, length(t)), hi)
+    r <- .whole_search(q, grain = .menu_grain(c), max_nodes = 5000L)
+  } else {
+    if (budget < sum(c) - 1e-9) {
+      return(none)
+    }
+    q <- .whole_problem(0, t, c / (budget + 1e-9 * max(1, budget)), 0,
+                        rep(1, length(t)), hi)
+    r <- .whole_search(q, start = rep(1, length(t)), max_nodes = 5000L)
+  }
+  if (is.null(r$x)) {
+    none$status <- r$status
+    return(none)
+  }
+  y <- numeric(length(t))
+  y[r$branch] <- r$x
+  x[!free] <- y
+  list(x = x, status = r$status)
 }
 
 #' Two-phase variance of the mean, with a component-wise correction
@@ -925,15 +1285,18 @@ n_twophase.default <- function(
   if (!is.numeric(unit) || length(unit) != 1L || !is.finite(unit) || unit < 0) {
     stop("'single_cost' must be a non-negative finite scalar", call. = FALSE)
   }
+  none <- list(n = NA_real_, cv = NA_real_, cost = NA_real_,
+               n_int = NA_real_, cv_int = NA_real_, cost_int = NA_real_,
+               better = FALSE)
   if (unit <= 0) {
-    return(list(n = NA_real_, cv = NA_real_, cost = NA_real_, better = FALSE))
+    return(none)
   }
   reaches <- TRUE
   if (!is.null(budget)) {
     n <- min((budget - fixed_cost) / unit, N)
   } else {
     if (!is.finite(spec$mu) || spec$mu == 0) {
-      return(list(n = NA_real_, cv = NA_real_, cost = NA_real_, better = FALSE))
+      return(none)
     }
     n <- var_unit / ((cv * spec$mu)^2 + var_pop / N)
     # a target under the comparator's own census floor asks for more units
@@ -943,9 +1306,18 @@ n_twophase.default <- function(
       reaches <- FALSE
     }
   }
-  cost <- fixed_cost + n * unit
-  list(n = n, cv = .twophase_cv(n, var_unit, spec$mu, N, var_pop), cost = cost,
-       reaches_target = reaches, better = FALSE)
+  # the whole size: what the budget buys, or the next unit up to the target
+  n_int <- if (!is.null(budget)) floor(n + 1e-9) else ceiling(n - 1e-9)
+  n_int <- min(n_int, N)
+  list(n = n, cv = .twophase_cv(n, var_unit, spec$mu, N, var_pop),
+       cost = fixed_cost + n * unit, reaches_target = reaches,
+       n_int = n_int,
+       cv_int = if (n_int > 0) {
+         .twophase_cv(n_int, var_unit, spec$mu, N, var_pop)
+       } else {
+         Inf
+       },
+       cost_int = fixed_cost + n_int * unit, better = FALSE)
 }
 
 #' Precision of a two-phase allocation

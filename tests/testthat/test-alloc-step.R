@@ -174,10 +174,31 @@ test_that("the searched cv mode is the smallest design in steps", {
   fit <- n_alloc(f, cv = target, alloc = "neyman")
   grid <- expand.grid(a = seq(4, 400, 4), b = seq(6, 402, 6),
                       c = seq(8, 400, 8))
-  grid <- grid[rowSums(grid) <= sum(fit$detail$n_int), ]
-  cv <- apply(grid, 1, function(n) prec_alloc(f, n = n)$cv)
+  grid <- as.matrix(grid[rowSums(grid) <= sum(fit$detail$n_int), ])
+  W <- f$N / sum(f$N)
+  S2 <- f$p * (1 - f$p) * f$N / (f$N - 1)
+  cv_of <- function(n) {
+    n <- matrix(n, ncol = 3L)
+    fpc <- 1 / n - matrix(1 / f$N, nrow(n), 3L, byrow = TRUE)
+    sqrt(as.vector(fpc %*% (W^2 * S2))) / sum(W * f$p)
+  }
+  cv <- cv_of(grid)
   best <- min(rowSums(grid)[cv <= target])
   expect_identical(sum(fit$detail$n_int), as.integer(best))
+
+  # The oracle is the package's own variance: it agrees with prec_alloc() on
+  # a sample of the grid and on the fit's neighbours one step down.
+  set.seed(7)
+  rows <- grid[sample(nrow(grid), 200L), ]
+  near <- t(vapply(1:3, function(h) {
+    n <- fit$detail$n_int
+    n[h] <- n[h] - f$n_step[h]
+    n
+  }, numeric(3)))
+  rows <- rbind(rows, fit$detail$n_int, near)
+  expect_equal(cv_of(rows),
+               unname(apply(rows, 1, function(n) prec_alloc(f, n = n)$cv)),
+               tolerance = 1e-12)
 })
 
 ## S5. Refusals, detail, print and round trips

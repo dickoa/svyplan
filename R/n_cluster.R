@@ -1370,7 +1370,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   if (!is.null(budget) && n1_opt < 1) {
     # Less than one PSU at the cost-optimal take does not mean no design:
     # one PSU at a smaller take may fit, so the cheapest one is priced first.
-    take_min <- n_per_psu_gross %||% 1
+    take_min <- n_per_psu_gross %||% .take_bound(resp_rate)
     cheapest <- stage_cost[1L] + stage_cost[2L] * take_min
     if (is.null(n_psu) && var_budget >= cheapest - 1e-8) {
       return(.n_cluster_2stage(
@@ -1382,7 +1382,14 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     stop(
       sprintf(
         "'budget' is too small for any realizable design: the cheapest design, one PSU with %s, costs %.4g plus fixed_cost = %.4g",
-        if (is.null(n_per_psu_gross)) "one unit" else sprintf("n_per_psu = %.3g", take_min),
+        if (is.null(n_per_psu_gross) && take_min == 1) {
+          "one unit"
+        } else if (is.null(n_per_psu_gross)) {
+          sprintf("the take that yields one respondent, n_per_psu = %.3g",
+                  take_min)
+        } else {
+          sprintf("n_per_psu = %.3g", take_min)
+        },
         cheapest, fixed_cost
       ),
       call. = FALSE
@@ -2537,8 +2544,8 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 
   if (!is.null(budget) && n1 < 1) {
     # As in two stages: one PSU at smaller takes may fit.
-    m_min <- n_per_psu_gross %||% 1
-    q_min <- n_per_ssu_gross %||% 1
+    m_min <- n_per_psu_gross %||% .take_bound(resp_rate_ssu)
+    q_min <- n_per_ssu_gross %||% .take_bound(resp_rate)
     cheapest <- stage_cost[1L] + stage_cost[2L] * m_min + stage_cost[3L] * m_min * q_min
     if (is.null(n_psu) && var_budget >= cheapest - 1e-8) {
       return(.n_cluster_3stage(
@@ -2551,8 +2558,14 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     stop(
       sprintf(
         "'budget' is too small for any realizable design: the cheapest design, one PSU with %s, costs %.4g plus fixed_cost = %.4g",
-        if (is.null(n_per_psu_gross) && is.null(n_per_ssu_gross)) {
+        if (is.null(n_per_psu_gross) && is.null(n_per_ssu_gross) &&
+            m_min == 1 && q_min == 1) {
           "one SSU and one unit"
+        } else if (is.null(n_per_psu_gross) && is.null(n_per_ssu_gross)) {
+          sprintf(
+            "the takes that yield one responding SSU and one respondent in it, n_per_psu = %.3g and n_per_ssu = %.3g",
+            m_min, q_min
+          )
         } else {
           sprintf("n_per_psu = %.3g and n_per_ssu = %.3g", m_min, q_min)
         },

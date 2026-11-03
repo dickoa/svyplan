@@ -165,7 +165,10 @@ estimate. \code{n} and the stage takes are your design choice.
 \code{\link[=n_alloc]{n_alloc()}} allocation, dividing by the allocation's own variance
 ratio. The frame needs \code{mean} alongside \code{N} and \code{sd}, since without
 the stratum means the population variance that ratio divides by is
-not identified.
+not identified. The stratum response rates, from the arguments or the
+frame, and PSU response on a cluster frame net the continuous total
+\code{x$n} down. For the whole-unit field design pass
+\code{n = sum(x$detail$n_int)}.
 
 }}
 \examples{

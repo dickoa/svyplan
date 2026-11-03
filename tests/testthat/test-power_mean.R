@@ -295,3 +295,22 @@ test_that("overlapping samples must come from one population", {
     power_mean(var = 1, effect = 1, n = 40, power = NULL, N = c(100, 200))
   )
 })
+
+## A difference with no variance at any size
+
+test_that("sizing a change with no variance is refused, its power is one", {
+  expect_error(
+    power_mean(var = 100, effect = 2, overlap = 1, overlap_cor = 1),
+    "no sampling variance at any size"
+  )
+  expect_error(
+    power_did(treat = c(10, 12), control = c(10, 10.5), outcome = "mean",
+              var = 100, overlap = 1, overlap_cor = 1),
+    "no sampling variance at any size"
+  )
+  expect_equal(
+    power_mean(var = 100, effect = 2, overlap = 1, overlap_cor = 1, n = 50,
+               power = NULL)$power,
+    1
+  )
+})

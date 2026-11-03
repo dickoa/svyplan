@@ -74,3 +74,22 @@ test_that("predict on an allocation keeps the fit's df", {
   short <- suppressWarnings(predict(fit, data.frame(budget = floor_cost - 1)))
   expect_false(short$.feasible)
 })
+
+test_that("df can be varied for change, pooled and allocation results", {
+  change <- n_change(p = c(0.3, 0.35), moe = 0.03, df = 30)
+  res <- predict(change, data.frame(df = c(20, 40)))
+  expect_equal(res$n1, c(n_change(p = c(0.3, 0.35), moe = 0.03, df = 20)$n[1],
+                         n_change(p = c(0.3, 0.35), moe = 0.03, df = 40)$n[1]))
+  pooled <- n_pooled(p = 0.3, moe = 0.02, occasions = 3, df = 30)
+  res <- predict(pooled, data.frame(df = c(20, 40)))
+  expect_equal(res$n, c(
+    n_pooled(p = 0.3, moe = 0.02, occasions = 3, df = 20)$n,
+    n_pooled(p = 0.3, moe = 0.02, occasions = 3, df = 40)$n
+  ))
+  f <- data.frame(stratum = c("a", "b"), N = c(1000, 2000), p = c(0.2, 0.4))
+  alloc <- n_alloc(f, n = 500, df = 30)
+  res <- predict(alloc, data.frame(df = c(5, 40)))
+  expect_equal(res$moe, c(n_alloc(f, n = 500, df = 5)$moe,
+                          n_alloc(f, n = 500, df = 40)$moe))
+  expect_equal(predict(alloc, data.frame(alpha = 0.05))$moe, alloc$moe)
+})

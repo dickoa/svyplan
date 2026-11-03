@@ -1526,3 +1526,16 @@ test_that("the PSU fraction note is printed only without the stage correction", 
   unit <- capture.output(print(n_alloc(island, n = 16 * 8)))
   expect_true(any(grepl("with-replacement first stage", unit)))
 })
+
+test_that("an allocation's rmoe divides by the mean of the population in scope", {
+  frame <- data.frame(stratum = c("a", "b"), N = c(1000, 1000),
+                      mean = c(10, 100), sd = c(5, 10))
+  as_column <- n_alloc(transform(frame, eligibility_rate = c(1, 0.1)), n = 100)
+  as_arg <- n_alloc(frame, n = 100, eligibility_rate = c(1, 0.1))
+  for (fit in list(as_column, as_arg)) {
+    expect_equal(fit$rmoe, qnorm(0.975) * fit$cv)
+    expect_equal(fit$rmoe, fit$moe / (20000 / 1100))
+    expect_equal(prec_alloc(fit)$rmoe, fit$rmoe)
+  }
+  expect_equal(as_column$rmoe, 0.07785942, tolerance = 1e-6)
+})

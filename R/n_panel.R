@@ -425,6 +425,22 @@ n_panel <- function(
   (params$resp_rate %||% 1) * (params[["eligibility_rate"]] %||% 1)
 }
 
+#' The target's rates as a message names them
+#'
+#' A target sized with an eligibility rate below 1 carries the product of
+#' two rates, and calling that product a response rate misnames half of it.
+#' `lead` is the noun the message puts before a lone response rate.
+#' @keywords internal
+#' @noRd
+.panel_target_rate_label <- function(params, lead = "response rate") {
+  e <- params[["eligibility_rate"]] %||% 1
+  if (isTRUE(all.equal(e, 1))) {
+    return(sprintf("%s %.3g", lead, .panel_target_rate(params)))
+  }
+  sprintf("response %.3g times eligibility %.3g (%.3g)",
+          params$resp_rate %||% 1, e, .panel_target_rate(params))
+}
+
 #' A recruitment response the panel names twice
 #'
 #' A target sized with its own `resp_rate` carries a gross issued count, and
@@ -460,8 +476,9 @@ n_panel <- function(
     "'resp_rate' times 'eligibility_rate'"
   warning(
     sprintf(
-      "the target's own response rate %.3g is not used: a panel applies its own %s (%.3g) at wave 1, and the target is read as %s responding",
-      rr, own, resp_rate * eligibility_rate, .fmt_count_n(round(tgt$n_target))
+      "the target's own %s is not used: a panel applies its own %s (%.3g) at wave 1, and the target is read as %s responding",
+      .panel_target_rate_label(tgt$params), own, resp_rate * eligibility_rate,
+      .fmt_count_n(round(tgt$n_target))
     ),
     call. = FALSE
   )

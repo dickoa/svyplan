@@ -224,9 +224,9 @@ nothing about which design component it describes.
 
 \item \code{design_effect(svyplan_cluster)}: Read \code{icc}, \code{var_ratio}, and the stage takes from a
 \code{\link[=n_cluster]{n_cluster()}} or \code{\link[=prec_cluster]{prec_cluster()}} allocation. The takes are those that
-respond, \code{n_per_psu * resp_rate * eligible_per_unit} at two stages, the
-ones the precision reads, so the design effect and the \code{cv} describe
-one design.
+respond, \code{n_per_psu * resp_rate * eligibility_rate * eligible_per_unit}
+at two stages, the ones the precision reads, so the design effect and
+the \code{cv} describe one design.
 
 \item \code{design_effect(svyplan_prec)}: Read the design features off a
 \code{\link[=prec_cluster]{prec_cluster()}} result, the same way as for \code{\link[=n_cluster]{n_cluster()}}. Other

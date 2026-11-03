@@ -69,9 +69,17 @@ test_that("rules and domains keep their rounding", {
   expect_identical(prop$detail$n_int, as.integer(ceiling(prop$detail$n - 1e-9)))
   expect_null(prop$operational$status)
   fr$region <- c("a", "a", "b")
+  # With domains each domain is searched as its own frame.
   dom <- n_alloc(fr, cv = 0.05, domains = "region")
-  expect_identical(dom$detail$n_int, as.integer(ceiling(dom$detail$n - 1e-9)))
-  expect_null(dom$optimization$search)
+  own <- c(n_alloc(fr[1:2, 1:3], cv = 0.05)$detail$n_int,
+           n_alloc(fr[3, 1:3], cv = 0.05)$detail$n_int)
+  expect_identical(dom$detail$n_int, own)
+  expect_named(dom$optimization$domains, names(dom$params$domain_idx))
+  dom_prop <- n_alloc(fr, cv = 0.05, domains = "region",
+                      alloc = "proportional")
+  expect_identical(dom_prop$detail$n_int,
+                   as.integer(ceiling(dom_prop$detail$n - 1e-9)))
+  expect_null(dom_prop$optimization$search)
   expect_error(n_alloc(fr[, -5], n = 30, control = list(max_nodes = 5)),
                "'control' applies where n_alloc\\(\\) searches")
 })

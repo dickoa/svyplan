@@ -256,9 +256,9 @@ design_effect.numeric <- function(x, ...) {
 
 #' @describeIn design_effect Read `icc`, `var_ratio`, and the stage takes from a
 #'   [n_cluster()] or [prec_cluster()] allocation. The takes are those that
-#'   respond, `n_per_psu * resp_rate * eligible_per_unit` at two stages, the
-#'   ones the precision reads, so the design effect and the `cv` describe
-#'   one design.
+#'   respond, `n_per_psu * resp_rate * eligibility_rate * eligible_per_unit`
+#'   at two stages, the ones the precision reads, so the design effect and
+#'   the `cv` describe one design.
 #' @export
 design_effect.svyplan_cluster <- function(x, ..., weights = NULL,
                                           strata = NULL) {
@@ -444,6 +444,8 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
   if (length(deff_h) > 1L && length(deff_h) != nrow(detail)) {
     stop("'deff' length does not match the allocation's strata", call. = FALSE)
   }
+  deff_h <- .alloc_resolve_h(deff_h, x$params$frame, "deff", nrow(detail),
+                             .check_deff_h)
   value <- sum(n) * sum(W^2 * detail$sd^2 * deff_h * factor_h / n) / parts$total
   clustered <- is.data.frame(x$params$frame) &&
     !is.null(x$params$frame[["icc_psu"]]) &&
@@ -788,7 +790,9 @@ design_effect.svyplan_n <- function(x, ..., weights = NULL) {
 #' @keywords internal
 #' @noRd
 .deff_cluster_takes <- function(n, stages, params) {
-  ultimate <- (params[["resp_rate"]] %||% 1) * (params[["eligible_per_unit"]] %||% 1)
+  ultimate <- (params[["resp_rate"]] %||% 1) *
+    (params[["eligibility_rate"]] %||% 1) *
+    (params[["eligible_per_unit"]] %||% 1)
   if (stages == 2L) {
     list(n_per_psu = unname(n[["n_per_psu"]]) * ultimate, n_per_ssu = NULL)
   } else {

@@ -51,6 +51,13 @@
 #'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
 #'   in scope is `N * eligibility_rate`. See the nonresponse section of
 #'   [svyplan-package].
+#' @param eligible_per_unit Eligible units per sampled unit, a positive
+#'   number, default 1, such as women aged 15 to 49 per household, and it can
+#'   exceed 1. `n` and `N` stay in sampled units, while the precision is
+#'   computed on the eligible respondents out of
+#'   `N * eligibility_rate * eligible_per_unit` eligible units. Above 1, `deff`
+#'   must carry the correlation among the eligible units of one sampled unit.
+#'   See the section on eligible units in [n_prop()].
 #' @param df Degrees of freedom of the variance estimator the planned design
 #'   will have, typically sampled PSUs minus strata, and available from
 #'   [design_df()]. It switches the interval quantile from normal to t.
@@ -152,6 +159,11 @@
 #' # CV mode: identical for means and totals
 #' n_mean(var = 2500, mu = 300, cv = 0.05, N = 10000)
 #'
+#'
+#' # Mean age at first birth among women 15 to 49, about 2.6 per household,
+#' # sized in households. The design effect is the person-level one.
+#' n_mean(var = 16, moe = 0.3, deff = 1.8, resp_rate = 0.9,
+#'        eligible_per_unit = 2.6)
 #' @export
 n_mean <- function(var = NULL, ...) {
   if (!is.null(var)) {
@@ -176,6 +188,7 @@ n_mean.default <- function(
   deff = 1,
   resp_rate = 1,
   eligibility_rate = 1,
+  eligible_per_unit = 1,
   df = NULL,
   plan = NULL
 ) {
@@ -192,6 +205,7 @@ n_mean.default <- function(
   check_deff(deff)
   check_resp_rate(resp_rate)
   check_resp_rate(eligibility_rate, "eligibility_rate")
+  check_eligible_per_unit(eligible_per_unit)
 
   if (!is.null(cv) && is.null(mu)) {
     stop("'mu' is required when 'cv' is specified", call. = FALSE)
@@ -208,7 +222,9 @@ n_mean.default <- function(
   # Normalized once, here, so the formulas below see only 'moe'.
   moe_used <- if (is.null(rmoe)) moe else .moe_from_rmoe(rmoe, mu, "mu")
 
-  N_elig <- N * eligibility_rate
+  # Eligible respondents against the eligible population, as in n_prop().
+  N_elig <- check_eligible_population(N, eligible_per_unit, eligibility_rate)
+  yield <- eligibility_rate * eligible_per_unit
   if (!is.null(moe_used)) {
     n <- z^2 * deff * var / (moe_used^2 + z^2 * deff * var / N_elig)
   } else {
@@ -216,7 +232,7 @@ n_mean.default <- function(
     n <- deff * CVpop2 / (cv^2 + deff * CVpop2 / N_elig)
   }
 
-  n <- .census_size(.apply_resp_rate(n, resp_rate * eligibility_rate), N)
+  n <- .census_size(.apply_resp_rate(n, resp_rate * yield), N)
   .check_attainable(n, N, resp_rate, eligibility_rate)
 
   params <- list(
@@ -229,6 +245,9 @@ n_mean.default <- function(
   )
   if (eligibility_rate != 1) {
     params$eligibility_rate <- eligibility_rate
+  }
+  if (eligible_per_unit != 1) {
+    params$eligible_per_unit <- eligible_per_unit
   }
 
   if (!is.null(mu)) {
@@ -274,6 +293,7 @@ n_mean.svyplan_prec <- function(var, ..., moe = NULL, cv = NULL, rmoe = NULL) {
     deff = par$deff,
     resp_rate = par$resp_rate,
     eligibility_rate = par[["eligibility_rate"]] %||% 1,
+    eligible_per_unit = par[["eligible_per_unit"]] %||% 1,
     df = par$df
   )
   do.call(n_mean.default, .roundtrip_args(args, list(...), n_mean.default))

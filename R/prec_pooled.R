@@ -117,9 +117,10 @@
 #' A lag whose overlap is zero contributes exactly zero, which is the rule
 #' [prec_change()] applies at `overlap = 0` read lag by lag. Two boundaries
 #' fix the whole. A fresh sample each occasion pools to
-#' \eqn{Var(\bar y_t)/T}, independent averaging, and a full panel measured
-#' with correlation 1 pools to \eqn{Var(\bar y_t)}, the same units every
-#' time and averaging buys nothing.
+#' \eqn{Var(\bar y_t)/T}{Var(ybar_t)/T}, independent averaging, and a full
+#' panel measured with correlation 1 pools to
+#' \eqn{Var(\bar y_t)}{Var(ybar_t)}, the same units every time and averaging
+#' buys nothing.
 #'
 #' `deff` multiplies the assembled variance. It is the design effect of the
 #' pooled estimate, which is not in general any one occasion's.
@@ -160,6 +161,13 @@
 #' independent response the responding overlap is about `resp_rate` times
 #' the issued one, and stating it is the planner's decision rather than this
 #' function's.
+#'
+#' `eligibility_rate` does not enter this check. Eligibility is a fixed
+#' attribute of a unit, so a unit out of scope at one occasion is out of
+#' scope at the others, and the share of the eligible sample carried over
+#' is the issued share whenever eligibility does not depend on the rotation
+#' group. A [design_overlap()] result is therefore accepted at
+#' `resp_rate = 1` whatever the eligibility rate.
 #'
 #' ## When the inputs do not describe a covariance
 #'
@@ -296,7 +304,7 @@ prec_pooled.default <- function(
   check_resp_rate(resp_rate)
   rate <- resp_rate * eligibility_rate
   if (!is.null(df)) check_df(df)
-  ov <- .resolve_lag_overlap(overlap, occasions, rate, .overlap_basis)
+  ov <- .resolve_lag_overlap(overlap, occasions, resp_rate, .overlap_basis)
   rho <- .resolve_lag_cor(overlap_cor, cor_decay, occasions - 1L)
   overlap_draw <- match.arg(overlap_draw)
   .check_pooled_draw(overlap_draw, ov$overlap, occasions)

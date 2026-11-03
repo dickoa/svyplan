@@ -163,6 +163,21 @@ test_that("a response rate the panel does not use is reported, once named", {
   expect_false(any(grepl("^target:", capture.output(print(plan)))))
 })
 
+test_that("a target's eligibility rate is named apart from its response", {
+  target <- n_prop(p = 0.3, moe = 0.03, N = 2000, resp_rate = 0.8,
+                   eligibility_rate = 0.5)
+  expect_warning(
+    plan <- n_panel(target, retention = c(0.9, 0.9), resp_rate = 0.8),
+    "own response 0.8 times eligibility 0.5 \\(0.4\\) is not used"
+  )
+  sm <- capture.output(print(summary(plan)))
+  expect_true(any(grepl(
+    "^target: response 0.8 times eligibility 0.5 \\(0.4\\) removed", sm
+  )))
+  expect_no_warning(n_panel(target, retention = c(0.9, 0.9), resp_rate = 0.8,
+                            eligibility_rate = 0.5))
+})
+
 test_that("a response rate the panel agrees with is not reported", {
   ret <- c(0.9, 0.85)
   # The panel removes 0.8 and re-applies 0.8 at wave 1: nothing to say.

@@ -170,9 +170,10 @@ them has
 A lag whose overlap is zero contributes exactly zero, which is the rule
 \code{\link[=prec_change]{prec_change()}} applies at \code{overlap = 0} read lag by lag. Two boundaries
 fix the whole. A fresh sample each occasion pools to
-\eqn{Var(\bar y_t)/T}, independent averaging, and a full panel measured
-with correlation 1 pools to \eqn{Var(\bar y_t)}, the same units every
-time and averaging buys nothing.
+\eqn{Var(\bar y_t)/T}{Var(ybar_t)/T}, independent averaging, and a full
+panel measured with correlation 1 pools to
+\eqn{Var(\bar y_t)}{Var(ybar_t)}, the same units every time and averaging
+buys nothing.
 
 \code{deff} multiplies the assembled variance. It is the design effect of the
 pooled estimate, which is not in general any one occasion's.
@@ -213,6 +214,13 @@ on response at another, which this function does not make. Under
 independent response the responding overlap is about \code{resp_rate} times
 the issued one, and stating it is the planner's decision rather than this
 function's.
+
+\code{eligibility_rate} does not enter this check. Eligibility is a fixed
+attribute of a unit, so a unit out of scope at one occasion is out of
+scope at the others, and the share of the eligible sample carried over
+is the issued share whenever eligibility does not depend on the rotation
+group. A \code{\link[=design_overlap]{design_overlap()}} result is therefore accepted at
+\code{resp_rate = 1} whatever the eligibility rate.
 }
 
 \subsection{When the inputs do not describe a covariance}{

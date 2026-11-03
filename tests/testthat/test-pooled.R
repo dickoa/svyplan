@@ -502,9 +502,10 @@ test_that("predict varies occasions only where the profile is flat", {
                "unknown parameter")
 })
 
-test_that("predict on a pooled precision object is refused", {
+test_that("predict on a pooled precision object refits each row", {
   res <- prec_pooled(var = 100, n = 500, occasions = 4)
-  expect_error(predict(res, data.frame(n = c(100, 200))), "not supported")
+  out <- predict(res, data.frame(n = c(100, 200)))
+  expect_equal(out$se[2L], prec_pooled(var = 100, n = 200, occasions = 4)$se)
 })
 
 test_that("the round trip refuses a result of the wrong type", {

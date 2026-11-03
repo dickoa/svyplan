@@ -299,6 +299,27 @@ test_that("the degrees-of-freedom adjustment follows Korn-Graubard eq (2.2)", {
   )
 })
 
+test_that("the beta size with df falls as the margin widens", {
+  for (alpha in c(0.10, 0.05, 0.01)) {
+    for (df in c(1, 4, 10, 30)) {
+      moe <- seq(0.45, 0.01, by = -0.01)
+      n <- vapply(moe, function(m) {
+        n_prop(p = 0.5, moe = m, alpha = alpha, method = "beta", df = df)$n
+      }, numeric(1))
+      info <- sprintf("alpha %g, df %g", alpha, df)
+      expect_true(all(diff(n) >= 0), info = info)
+      expect_true(all(n >= df + 1), info = info)
+      inside <- n > min(n) + 1e-6
+      back <- vapply(n[inside], function(k) {
+        prec_prop(p = 0.5, n = k, alpha = alpha, method = "beta",
+                  df = df)$moe
+      }, numeric(1))
+      expect_equal(back, moe[inside], tolerance = 1e-8, info = info)
+    }
+  }
+  expect_equal(n_prop(p = 0.5, moe = 0.45, method = "beta", df = 10)$n, 11)
+})
+
 test_that("the beta interval stays inside (0, 1) and is asymmetric", {
   fit <- prec_prop(p = 0.02, n = 150, method = "beta")
   ci <- confint(fit)
@@ -489,5 +510,27 @@ test_that("a tiny target gives the census rather than a size that misses it", {
   fit <- n_prop(p = 0.3, moe = 1e-4, N = 1000, deff = 2)
   expect_lt(fit$n, 1000)
   expect_equal(prec_prop(p = 0.3, n = fit$n, N = 1000, deff = 2)$moe, 1e-4,
+               tolerance = 1e-8)
+})
+
+test_that("finite-N interval sizing never reads the near-census endpoint early", {
+  # at N * (1 - 1e-12) the effective size is near 1e17, where qbeta() can
+  # return NaN, so the bracket must grow from below
+  for (method in c("beta", "logodds")) {
+    n <- n_prop(0.3, moe = 0.05, N = 1e5, method = method)$n
+    expect_lt(n, 1000)
+    expect_equal(prec_prop(0.3, n, N = 1e5, method = method)$moe, 0.05,
+                 tolerance = 1e-8)
+  }
+  expect_equal(n_prop(0.3, moe = 0.05, N = 1e5, method = "beta")$n,
+               339.0194, tolerance = 1e-6)
+  # a root close to the census is still found below it
+  n <- n_prop(0.3, moe = 0.001, N = 1e5, method = "beta")$n
+  expect_equal(n, 88983.29, tolerance = 1e-6)
+  expect_equal(prec_prop(0.3, n, N = 1e5, method = "beta")$moe, 0.001,
+               tolerance = 1e-8)
+  n <- n_prop(0.3, moe = 0.001, N = 1000, method = "beta")$n
+  expect_lt(n, 1000)
+  expect_equal(prec_prop(0.3, n, N = 1000, method = "beta")$moe, 0.001,
                tolerance = 1e-8)
 })

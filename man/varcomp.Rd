@@ -79,8 +79,11 @@ from a sample rather than a frame: a one-sided formula (e.g.,
 one positive value per observation. Within each cluster the
 summed weights must estimate the cluster population size. For a
 multi-stage sample use the within-cluster weights, not the full
-design weight (see Details). \code{NULL} (default) computes frame
-components.}
+design weight (see Details). For a three-stage sample, two columns
+(\code{~w2 + w3}, or a two-column matrix or data frame) give the stage-2
+and stage-3 conditional weights separately, which the element-stage
+correction needs when many of each SSU's elements are sampled.
+\code{NULL} (default) computes frame components.}
 
 \item{estimator}{The estimator the components describe, \code{"expansion"}
 (default) for an estimated total over a known population size, or
@@ -201,6 +204,17 @@ element-stage estimation noise but not SSU-stage subsampling noise,
 so when few SSUs are sampled per PSU the between-PSU component (and
 \code{icc_psu}) is conservative: biased upward, never downward.
 
+The element-stage noise in a 3-stage sample depends on the share of
+each SSU's elements that was sampled, \eqn{f_3 = n_{ij} / N_{ij}}{f3 =
+n_ij / N_ij}. Only the stage-3 weight sums to \eqn{N_{ij}}{N_ij}, so a
+single within-cluster weight column reads the fraction as
+\eqn{f_2 f_3}{f2 * f3} and removes too much noise from the SSU totals,
+which understates \code{varw_psu} and \code{icc_ssu}. The difference is small when
+\eqn{f_3}{f3} is small, the usual case of a few households listed from
+many. When it is not, pass the stage-2 and stage-3 weights as two
+columns. At \eqn{f_2 = 0.2}{f2 = 0.2} and \eqn{f_3 = 0.5}{f3 = 0.5}
+one column understates \code{varw_psu} by about a fifth.
+
 A sample passed without \code{weights} is read as the frame, and that
 overstates \code{icc}. Each sampled PSU's mean carries the noise of its own
 subsample, about \eqn{(1 - f_2) S_w^2 / m}{(1 - f2) S_w^2 / m} for a take of
@@ -216,7 +230,10 @@ whether it can recover them depends on how the design was built rather
 than on how deep its \code{ids} goes. A design built with per-stage
 probabilities, \code{svydesign(ids = ~psu, probs = ~p1 + p2)}, keeps the
 stages apart, and the columns after the first multiply to exactly the
-weight required. A design built with \verb{weights=} stores one combined
+weight required. At three stages, \code{ids = ~psu + ssu}, a third
+probability column is the element stage and supplies the stage-3 weight
+on its own. Without one, every element of a sampled SSU is taken, so the
+SSU totals carry no element-stage noise. A design built with \verb{weights=} stores one combined
 weight per element however many stages \code{ids} names, and the stage-1
 factor cannot be divided back out of it.
 
@@ -521,6 +538,19 @@ frame3 <- data.frame(
 )
 vc3 <- varcomp(income ~ district/village, data = frame3)
 vc3
+
+# A 3-stage sample: 2 of 5 villages per district, 2 of 4 units per
+# village. Half of each village is sampled, so the stage-2 and stage-3
+# weights go in as two columns
+villages <- unlist(lapply(split(unique(frame3$village),
+                                rep(1:20, each = 5))[1:6],
+                          sample, size = 2))
+units <- unlist(lapply(split(seq_len(400), frame3$village)[villages],
+                       sample, size = 2))
+samp3 <- frame3[units, ]
+samp3$w2 <- 5 / 2
+samp3$w3 <- 4 / 2
+varcomp(income ~ district/village, data = samp3, weights = ~ w2 + w3)
 
 # 3-stage PPS (explicit first-stage probabilities)
 frame3$pp <- rep(1 / 20, 400)

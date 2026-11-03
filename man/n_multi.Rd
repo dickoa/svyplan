@@ -93,7 +93,7 @@ in scope is \code{N * eligibility_rate}. See the nonresponse section of
 \item{eligible_per_unit}{Default eligible units per sampled unit, a positive
 number such as married women per household, which can exceed 1. Used
 for rows whose \code{eligible_per_unit} column is absent or \code{NA}, and a
-non-missing row value overrides it. Proportion rows only. See the
+non-missing row value overrides it. Proportion and mean rows. See the
 \code{eligible_per_unit} column under Details.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
@@ -254,12 +254,12 @@ three-stage design. Naming a stage the design does not have is an
 error rather than a column carried along and ignored.}
 \item{\code{eligible_per_unit}}{Eligible units per sampled unit for the row's
 estimate, such as married women or children aged 12 to 23 months per
-household. The row is sized as \code{\link[=n_prop]{n_prop()}}\verb{(eligible_per_unit = )} sizes
-it. Sizes stay in sampled units, and the variance reads
+household. The row is sized as \code{\link[=n_prop]{n_prop()}} or \code{\link[=n_mean]{n_mean()}} size it with
+\code{eligible_per_unit}. Sizes stay in sampled units, and the variance reads
 \code{N * eligible_per_unit} eligible units and
 \code{resp_rate * eligible_per_unit} respondents per sampled unit. Each row
 can carry its own group.
-Proportion rows only, so a mean or ratio row takes 1. The
+Proportion and mean rows, so a ratio row takes 1. The
 several-indicators mode of \code{\link[=n_cluster]{n_cluster()}} refuses the column.}
 }
 

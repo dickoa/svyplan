@@ -19,6 +19,7 @@ power_mean(var = NULL, ...)
   deff = 1,
   resp_rate = 1,
   eligibility_rate = 1,
+  eligible_per_unit = 1,
   alternative = c("two.sided", "one.sided"),
   ratio = 1,
   overlap = 0,
@@ -65,6 +66,14 @@ the rate counts.}
 found occupied, in (0, 1]. Default 1. With a finite \code{N}, the population
 in scope is \code{N * eligibility_rate}. See the nonresponse section of
 \link{svyplan-package}.}
+
+\item{eligible_per_unit}{Eligible units per sampled unit, a positive
+number, default 1, such as children under five per household, and it can
+exceed 1. \code{n} and \code{N} stay in sampled units, while each group's precision
+is computed on its eligible respondents out of
+\code{N * eligibility_rate * eligible_per_unit} eligible units. Above 1, \code{deff}
+must carry the correlation among the eligible units of one sampled unit.
+See the section on eligible units in \code{\link[=n_prop]{n_prop()}}.}
 
 \item{alternative}{Character: \code{"two.sided"} (default) or \code{"one.sided"}.
 Use \code{"two.sided"} when either an increase or decrease matters (the
@@ -181,6 +190,10 @@ power_mean(c(80, 120), effect = 5)
 # Allocation ratio 2:1
 power_mean(100, effect = 5, ratio = 2)
 
+
+# Households per group when the outcome is measured on about 2.6 women
+# in each
+power_mean(effect = 0.5, var = 16, deff = 1.8, eligible_per_unit = 2.6)
 }
 \references{
 Valliant, R., Dever, J. A., & Kreuter, F. (2018). \emph{Practical Tools for

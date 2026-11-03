@@ -18,9 +18,10 @@
 }
 \arguments{
 \item{object}{A svyplan object (\code{svyplan_n}, \code{svyplan_cluster},
-\code{svyplan_power}, or \code{svyplan_prec}). For \code{svyplan_prec}, only
-types \code{"proportion"}, \code{"mean"}, and \code{"ratio"} are supported. Types
-\code{"cluster"} and \code{"multi"} are not supported.}
+\code{svyplan_power}, or \code{svyplan_prec}). For \code{svyplan_prec}, the types
+\code{"proportion"}, \code{"mean"}, \code{"ratio"}, \code{"change"}, \code{"pooled"} and
+\code{"alloc"} are supported. Types \code{"cluster"} and \code{"multi"}, and the
+precision of a PSU register allocation, are not.}
 
 \item{newdata}{A data frame of parameter combinations to evaluate.
 Column names must be valid parameters for the object type (see
@@ -39,7 +40,13 @@ columns. The result columns depend on the object type:
 which reports the design and cost columns described under Details
 \item \code{svyplan_cluster}: \code{n_psu}, \code{n_per_psu}, (opt. \code{n_per_ssu}), \code{total_n}, \code{cv}, \code{cost}
 \item \code{svyplan_power}: \code{n}, \code{power}, \code{effect}
-\item \code{svyplan_prec}: \code{se}, \code{moe}, \code{cv}, \code{rmoe}
+\item \code{svyplan_prec}: \code{se}, \code{moe}, \code{cv}, \code{rmoe}, except for an allocation.
+A classic allocation reports \code{n} (the total), \code{se}, \code{moe}, \code{cv},
+\code{rmoe} and \code{cost}, with \code{.max_domain_cv} when it has domains. A joint
+allocation reports \code{n}, \code{cost}, \code{objective_value} and \code{cv} when it has
+an objective, \code{.max_ratio} (the largest achieved over target ratio),
+\code{.n_fail} and \code{.feasible}. Given a list column \code{n}, the total is
+\code{total_n}.
 }
 
 When \code{newdata} sets a target, \code{cv}, \code{moe}, \code{rmoe} or \code{power}, the
@@ -60,17 +67,17 @@ Valid parameters for \code{newdata} by object type:
 \item \strong{\code{n_prop}}: \code{p}, \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
 \code{resp_rate}, \code{eligibility_rate}, \code{eligible_per_unit}, \code{df}, \code{min_cases}
 \item \strong{\code{n_mean}}: \code{var}, \code{mu}, \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff},
-\code{resp_rate}, \code{eligibility_rate}, \code{df}
+\code{resp_rate}, \code{eligibility_rate}, \code{eligible_per_unit}, \code{df}
 \item \strong{\code{n_ratio}}: \code{r}, \code{cv_num}, \code{cv_den}, \code{component_cor}, \code{moe}, \code{rmoe},
 \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}, \code{eligibility_rate}, \code{df}
 \item \strong{\code{n_change}}: \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
-\code{eligibility_rate}, \code{ratio}, \code{overlap}, \code{overlap_cor}, and \code{change} on
+\code{eligibility_rate}, \code{df}, \code{ratio}, \code{overlap}, \code{overlap_cor}, and \code{change} on
 the mean scale only, since two proportions determine it. The occasion
 variances are held at the values the result was built from, so vary the
 design rather than the estimand. Sweeping \code{overlap} and \code{overlap_cor}
 is what prices a rotation against a fresh sample each round.
 \item \strong{\code{n_pooled}}: \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
-\code{eligibility_rate}, \code{mu} on the mean scale, and \code{occasions} only where
+\code{eligibility_rate}, \code{df}, \code{mu} on the mean scale, and \code{occasions} only where
 the overlap and correlation are flat across lags, a shaped profile being
 a statement about a horizon that changing the horizon would contradict.
 The lag profiles themselves cannot be varied, a grid row having nowhere
@@ -84,27 +91,40 @@ stage ratios (\code{var_ratio} or \code{var_ratio_psu}, plus \code{var_ratio_ssu
 and stage costs (\code{cost_psu}, \code{cost_ssu}, \code{cost_tsu}). For 2-stage
 designs, \code{cost_tsu} aliases \code{cost_ssu}.
 \item \strong{\code{power_prop}}: \code{p1}, \code{p2}, \code{n}, \code{power}, \code{alpha}, \code{N}, \code{deff},
-\code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate}, \code{eligibility_rate}
-(excluding the solved-for parameter). Not supported for objects with
-vector \code{n}.
+\code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate}, \code{eligibility_rate},
+\code{eligible_per_unit} (excluding the solved-for parameter). Not supported
+for objects with vector \code{n}.
 \item \strong{\code{power_mean}}: \code{effect}, \code{var}, \code{n}, \code{power}, \code{alpha}, \code{N},
 \code{deff}, \code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate},
-\code{eligibility_rate} (excluding the solved-for parameter). Not supported
-for objects with vector \code{n}.
+\code{eligibility_rate}, \code{eligible_per_unit} (excluding the solved-for
+parameter). Not supported for objects with vector \code{n}.
 \item \strong{\code{n_alloc}} (classic modes): \code{n}, \code{cv}, \code{budget}, \code{alpha}, \code{deff},
-\code{resp_rate}, \code{eligibility_rate}, \code{min_n_stratum}, \code{alloc_q}. A joint
+\code{resp_rate}, \code{eligibility_rate}, \code{df}, \code{min_n_stratum}, \code{alloc_q}. A joint
 constrained allocation varies other controls, described below.
 \item \strong{\code{power_did}}: \code{effect}, \code{n}, \code{power}, \code{alpha}, \code{N}, \code{deff},
-\code{resp_rate}, \code{eligibility_rate}, \code{alternative}, \code{overlap}, \code{overlap_cor},
-\code{ratio} (excluding the solved-for parameter).
+\code{resp_rate}, \code{eligibility_rate}, \code{eligible_per_unit}, \code{alternative},
+\code{overlap}, \code{overlap_cor}, \code{ratio} (excluding the solved-for parameter).
 \item \strong{\code{prec_prop}}: \code{p}, \code{n}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
 \code{eligibility_rate}, \code{eligible_per_unit}, \code{df}. A result that solved for
 \code{p} varies the target it solved from, \code{cv} or \code{rmoe}, in place of \code{p}.
 \item \strong{\code{prec_mean}}: \code{var}, \code{n}, \code{mu}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
-\code{eligibility_rate}, \code{df}. A result that solved for \code{mu} varies \code{cv} in
+\code{eligibility_rate}, \code{eligible_per_unit}, \code{df}. A result that solved for \code{mu} varies \code{cv} in
 place of \code{mu}.
 \item \strong{\code{prec_ratio}}: \code{r}, \code{n}, \code{cv_num}, \code{cv_den}, \code{component_cor},
 \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}, \code{eligibility_rate}, \code{df}
+\item \strong{\code{prec_change}}: \code{n} for both occasions, or \code{n1} and \code{n2} for each
+(not both forms), \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}, \code{eligibility_rate},
+\code{df}, \code{overlap}, \code{overlap_cor}, and \code{change} on the mean scale.
+\item \strong{\code{prec_pooled}}: \code{n}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
+\code{eligibility_rate}, \code{df}, and \code{mu} on the mean scale. Where the
+overlap is the same at every lag, also \code{overlap} and \code{cor_decay}. Where
+the correlation is, also \code{overlap_cor}. Where both are, also
+\code{occasions}.
+\item \strong{\code{prec_alloc}}: \code{n}, \code{alpha}, \code{deff}, \code{resp_rate},
+\code{eligibility_rate}, \code{df}, and for a joint allocation
+\code{eligible_per_unit}. A number in \code{n} rescales the stratum sizes to that
+total and keeps their shares. A list column \code{n} gives each row its own
+stratum sizes, one per row of the frame, to compare allocations.
 }
 
 For \code{svyplan_n} objects, \code{moe}, \code{rmoe}, and \code{cv} are mutually exclusive
@@ -197,6 +217,20 @@ frame <- data.frame(
 )
 alloc <- n_alloc(frame, n = 600)
 predict(alloc, data.frame(n = seq(200, 1000, 200)))
+
+# The precision of that allocation if the budget is cut or raised, the
+# stratum shares held, then three candidate allocations side by side
+fixed <- prec_alloc(alloc, n = alloc$detail$n_int)
+predict(fixed, data.frame(n = c(450, 600, 750)))
+predict(fixed, data.frame(n = I(list(c(200, 200, 200),
+                                     alloc$detail$n_int,
+                                     c(100, 200, 300)))))
+
+# The precision of a change between two rounds as the panel overlap
+# and its correlation vary
+ch <- prec_change(p = c(0.30, 0.36), n = 1000, overlap = 0.5,
+                  overlap_cor = 0.6)
+predict(ch, expand.grid(n = c(800, 1200), overlap_cor = c(0.4, 0.7)))
 
 # Two-stage joint allocation: what does the per-PSU take cost?
 cluster_frame <- data.frame(

@@ -930,3 +930,16 @@ test_that("the half-population default below the stratum floor is refused", {
                "half the population, 4.5 units")
   expect_s3_class(strata_bound(1:12, 3, method = "cumrootf"), "svyplan_strata")
 })
+
+test_that("a sample larger than the population is refused before the search", {
+  set.seed(1)
+  x <- rlnorm(200)
+  expect_error(
+    strata_bound(x, n_strata = 3, n = 500, method = "lh"),
+    "'n' is infeasible: maximum feasible is 200, the population size"
+  )
+  expect_error(
+    strata_bound(x, n_strata = 3, n = 500, method = "kozak"),
+    "maximum feasible is 200"
+  )
+})

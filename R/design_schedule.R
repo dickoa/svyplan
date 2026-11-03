@@ -335,6 +335,7 @@ design_schedule <- function(
     n_target = unname(panel_plan$n_target),
     response_model = list(
       resp_rate = panel_plan$params$resp_rate,
+      eligibility_rate = panel_plan$params[["eligibility_rate"]] %||% 1,
       retention = panel_plan$params$retention,
       q = panel_plan$waves$q
     ),
@@ -821,9 +822,12 @@ design_schedule <- function(
   }
   response <- x$response_model
   if (!is.list(response) ||
-      !identical(names(response), c("resp_rate", "retention", "q")) ||
+      !identical(names(response),
+                 c("resp_rate", "eligibility_rate", "retention", "q")) ||
       !scalar_number(response$resp_rate, lower = 0, upper = 1) ||
       response$resp_rate == 0 ||
+      !scalar_number(response$eligibility_rate, lower = 0, upper = 1) ||
+      response$eligibility_rate == 0 ||
       !is.numeric(response$retention) ||
       length(response$retention) != visits - 1L ||
       anyNA(response$retention) || any(!is.finite(response$retention)) ||
@@ -832,9 +836,10 @@ design_schedule <- function(
       anyNA(response$q) || any(!is.finite(response$q))) {
     fail("response metadata is inconsistent")
   }
-  expected_q <- response$resp_rate * cumprod(c(1, response$retention))
+  expected_q <- response$resp_rate * response$eligibility_rate *
+    cumprod(c(1, response$retention))
   if (!same(as.numeric(response$q), expected_q)) {
-    fail("response probabilities do not follow resp_rate and retention")
+    fail("response probabilities do not follow resp_rate, eligibility_rate and retention")
   }
   if (!is.double(x$take) || length(x$take) != 1L ||
       !(is.na(x$take) || (is.finite(x$take) && x$take >= 1 &&

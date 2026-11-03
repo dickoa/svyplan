@@ -109,8 +109,9 @@ The single-stage `n_*()` and `prec_*()` functions share these arguments:
 
 Any `deff > 0` is accepted. A design effect below 1 describes a design more
 efficient than simple random sampling, such as a well-stratified sample.
-`n_cluster()` takes `icc` and stage costs in place of `deff` and `N`, and
-accepts a response rate for each stage.
+`n_cluster()` takes `icc` and stage costs in place of `deff`, and `N`
+with `N_psu` for a finite population. It accepts a response rate for each
+stage.
 
 ## Check expected precision
 

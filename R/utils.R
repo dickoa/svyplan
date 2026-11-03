@@ -1405,16 +1405,22 @@ check_df <- function(df, name = "df") {
 }
 
 #' Upper bound for gross n2 from frame and respondent-overlap constraints
+#'
+#' `N_pair` is the population in scope and `resp_rate` the share of an
+#' issued unit that responds in scope, so the overlap bound counts
+#' respondents against `N_pair`. An issued sample also holds the units out
+#' of scope, so the gross bound is the frame, `N_frame`.
 #' @keywords internal
 #' @noRd
 .n2_upper_bound <- function(N_pair, ratio, resp_rate, overlap = 0,
-                            within_arm = FALSE) {
-  b1 <- if (is.infinite(N_pair[1])) Inf else N_pair[1] / ratio
-  b2 <- N_pair[2]
-  cap <- min(b1, b2)
+                            within_arm = FALSE, N_frame = N_pair) {
+  ratio_cap <- function(N) {
+    min(if (is.infinite(N[1])) Inf else N[1] / ratio, N[2])
+  }
+  cap <- ratio_cap(N_frame)
   if (overlap > 0) {
     overlap_cap <- if (within_arm) {
-      cap / (resp_rate * (2 - overlap))
+      ratio_cap(N_pair) / (resp_rate * (2 - overlap))
     } else {
       N_pair[1L] / (resp_rate * (1 + ratio * (1 - overlap)))
     }
@@ -1434,10 +1440,12 @@ check_df <- function(df, name = "df") {
   resp_rate,
   tol = 1e-8,
   overlap = 0,
-  within_arm = FALSE
+  within_arm = FALSE,
+  N_frame = N_pair
 ) {
   lo <- max(2, 2 / ratio)
-  hi_cap <- .n2_upper_bound(N_pair, ratio, resp_rate, overlap, within_arm)
+  hi_cap <- .n2_upper_bound(N_pair, ratio, resp_rate, overlap, within_arm,
+                            N_frame)
   if (hi_cap < lo) {
     stop("target power is unattainable under finite population and overlap constraints",
          call. = FALSE)
@@ -2411,6 +2419,24 @@ check_df <- function(df, name = "df") {
   )
 }
 
+#' Refuse to size a change no sample size can measure
+#'
+#' `A` is the per-unit variance of the difference before any finite
+#' population term, and `scale` the sum of the two variances it is built
+#' from. At full overlap and correlation the difference has no variance at
+#' any size, so a target precision or power identifies no size.
+#' @keywords internal
+#' @noRd
+.check_change_variance <- function(A, scale) {
+  if (A <= sqrt(.Machine$double.eps) * scale) {
+    stop(
+      "the change carries no sampling variance at any size (overlap and overlap_cor leave nothing to sample); reduce either, or size the occasions unequally",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 #' Second-occasion size that reaches a target standard error on the change
 #'
 #' The change variance is \eqn{A/n_2 + B} in the net second-occasion size,
@@ -2438,12 +2464,7 @@ check_df <- function(df, name = "df") {
   B <- -f$marginal[1] * var_pair[1] / N_pair[1] -
     f$marginal[2] * var_pair[2] / N_pair[2] +
     if (is.infinite(N_pair[1])) 0 else 2 * f$cross * cross / N_pair[1]
-  if (A <= sqrt(.Machine$double.eps) * sum(var_pair)) {
-    stop(
-      "the change carries no sampling variance at any size (overlap and overlap_cor leave nothing to sample); reduce either, or size the occasions unequally",
-      call. = FALSE
-    )
-  }
+  .check_change_variance(A, sum(var_pair))
   n2_net <- A / (target_se^2 / deff - B)
   n2 <- n2_net / resp_rate
   if (ratio == 1) n2 else c(ratio * n2, n2)

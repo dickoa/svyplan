@@ -45,7 +45,7 @@
 #'   [svyplan-package].
 #' @param eligible_per_unit Default eligible units per sampled unit, a positive
 #'   number that can exceed 1. Used for rows whose `eligible_per_unit` column is
-#'   absent or `NA`. Proportion rows only. See [n_multi()].
+#'   absent or `NA`. Proportion and mean rows. See [n_multi()].
 #' @param plan A [svyplan()] profile providing default design parameters.
 #'
 #' @return A `svyplan_prec` object with a `$detail` data frame containing
@@ -107,7 +107,8 @@
 #'     (default 1). A cluster design spends a rate at stage 1 too, and
 #'     [prec_cluster()] names that column `resp_rate_psu`.}
 #'   \item{`eligible_per_unit`}{Eligible units per sampled unit for the row's
-#'     estimate, as in [prec_prop()]. Proportion rows only. The
+#'     estimate, as in [prec_prop()] and [prec_mean()]. Proportion and mean
+#'     rows. The
 #'     several-indicators mode of [prec_cluster()] refuses it.}
 #' }
 #'
@@ -478,6 +479,7 @@ prec_multi.default <- function(
         deff = indicators$deff[i],
         resp_rate = indicators$resp_rate[i],
         eligibility_rate = scope[i],
+        eligible_per_unit = elig[i],
         df = .row_df(indicators, i)
       )
     }

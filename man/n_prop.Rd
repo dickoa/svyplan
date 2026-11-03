@@ -348,6 +348,13 @@ size would have, so \code{NULL} is equivalent to \code{df = n - 1}, and \code{df
 claims more degrees of freedom than an SRS has and narrows the interval
 accordingly.
 
+With \code{df} set, \code{"beta"} sizes a sample of at least \code{df + 1} respondents,
+the fewest a design with \code{df} degrees of freedom can have, and never
+fewer than about 5 (7 at \code{alpha = 0.01}). Below that size the adjusted
+interval narrows as the sample shrinks, so no smaller size is a solution.
+A margin wide enough to be met at that floor returns the floor, and
+\code{\link[=prec_prop]{prec_prop()}} at that size reports the narrower margin it achieves.
+
 The reported \code{se} is the sampling standard error from the common variance
 above, and \code{cv = se / p}. Neither depends on \code{method}, \code{alpha}, or \code{df}.
 The margin of error reads the interval construction and is therefore
@@ -384,6 +391,9 @@ confint(rare)
 
 # The same, allowing for a variance estimated from 30 PSUs in 5 strata
 n_prop(p = 0.02, moe = 0.01, method = "beta", df = 25)
+
+# A margin this wide is met by the fewest respondents 25 df allow
+n_prop(p = 0.5, moe = 0.4, method = "beta", df = 25)
 
 # With design effect and response rate
 n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8)

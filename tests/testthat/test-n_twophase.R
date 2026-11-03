@@ -877,9 +877,16 @@ test_that("summary carries the continuous optimum and the comparator", {
   expect_identical(sm$plan, plan)
   expect_identical(sm$n, plan$n)
   expect_identical(sm$single_phase, plan$single_phase)
-  # The full table is the brief one plus the continuous issue.
+  # The full table is the brief one with the continuous nu, plus the
+  # continuous issue. The brief nu is the fielded take over its whole pool.
   brief <- svyplan:::.fmt_twophase_detail(plan, brief = TRUE)
-  expect_identical(sm$detail[names(brief)], brief)
+  same <- setdiff(names(brief), "nu")
+  expect_identical(sm$detail[same], brief[same])
+  expect_identical(sm$detail$nu, formatC(plan$detail$nu, format = "f",
+                                         digits = 4))
+  pool <- floor(plan$detail$share * plan$operational$n[["n_phase1"]])
+  expect_identical(brief$nu, formatC(plan$operational$n_int / pool,
+                                     format = "f", digits = 4))
   expect_identical(sm$detail$n_issued, format(round(plan$detail$n_issued)))
   out <- capture.output(print(sm))
   expect_true(any(grepl("^continuous optimum: ", out)))
@@ -961,4 +968,289 @@ test_that("the fielded two-phase design reaches its cv target", {
 test_that("print() rejects arguments it does not use", {
   fit <- n_twophase(frame4, phase1_cost = 1, budget = 50000)
   expect_error(print(fit, bogus_arg = 1), "bogus_arg")
+})
+
+## The whole-unit design is the best one in whole units
+
+twophase_oracle <- function(fr, mu, cv = NULL, budget = NULL, c1 = 1) {
+  spec <- svyplan:::.twophase_frame(fr, NULL, mu)
+  W <- spec$W
+  A <- spec$A
+  term <- W^2 * spec$S^2
+  var_pop <- A + sum(W * spec$S^2)
+  cost <- fr$unit_cost
+  cv_of <- function(n1, n) {
+    svyplan:::.twophase_cv(n1, A + sum(term * n1 / n), mu, Inf, var_pop)
+  }
+  best <- Inf
+  n1_max <- if (is.null(budget)) 2000 else floor((budget - sum(cost)) / c1)
+  for (n1 in 2:n1_max) {
+    cap <- floor(W * n1)
+    if (any(cap < 1)) next
+    if (!is.null(cv) && c1 * n1 + sum(cost) >= best) break
+    for (na in seq_len(cap[1])) {
+      if (!is.null(cv)) {
+        ok <- vapply(seq_len(cap[2]), function(nb) {
+          cv_of(n1, c(na, nb)) <= cv + 1e-12
+        }, logical(1))
+        if (any(ok)) {
+          best <- min(best, c1 * n1 + sum(cost * c(na, which(ok)[1])))
+        }
+      } else {
+        nb <- min(cap[2], floor((budget - c1 * n1 - cost[1] * na) / cost[2]))
+        if (nb >= 1) best <- min(best, cv_of(n1, c(na, nb)))
+      }
+    }
+  }
+  best
+}
+
+test_that("the whole-unit design is the cheapest or most precise in whole units", {
+  cases <- list(
+    list(N = c(468, 310), sd = c(21, 6), mean = c(78, 75), cost = c(2, 3),
+         cv = 0.099),
+    list(N = c(516, 467), sd = c(1, 12), mean = c(50, 35), cost = c(6, 7),
+         cv = 0.071),
+    list(N = c(510, 599), sd = c(8, 20), mean = c(34, 24), cost = c(1, 14),
+         cv = 0.061),
+    list(N = c(477, 300), sd = c(20, 28), mean = c(50, 65), cost = c(13, 13),
+         budget = 435),
+    list(N = c(503, 280), sd = c(11, 16), mean = c(59, 78), cost = c(8, 2),
+         budget = 406),
+    list(N = c(510, 599), sd = c(8, 20), mean = c(34, 24), cost = c(1, 14),
+         budget = 539),
+    # The optimum lies below the bound's minimum, so the downward scan finds
+    # it.
+    list(N = c(486, 286), sd = c(14.6, 4.7), mean = c(25, 52),
+         cost = c(14.9, 10), cv = 0.1193, c1 = 1.22),
+    list(N = c(267, 401), sd = c(13.8, 10.7), mean = c(58, 28),
+         cost = c(8.7, 13.9), budget = 1392.6, c1 = 0.973)
+  )
+  for (x in cases) {
+    fr <- data.frame(stratum = c("a", "b"), N = x$N, sd = x$sd,
+                     mean = x$mean, unit_cost = x$cost)
+    c1 <- x$c1 %||% 1
+    if (!is.null(x$cv)) {
+      fit <- n_twophase(fr, phase1_cost = c1, cv = x$cv, mu = 50)
+      expect_lte(fit$operational$cv, x$cv + 1e-12)
+      expect_equal(fit$operational$cost,
+                   twophase_oracle(fr, 50, cv = x$cv, c1 = c1),
+                   info = paste("cv", x$cv))
+    } else {
+      fit <- n_twophase(fr, phase1_cost = c1, budget = x$budget, mu = 50)
+      expect_lte(fit$operational$cost, x$budget + 1e-9)
+      expect_equal(fit$operational$cv,
+                   twophase_oracle(fr, 50, budget = x$budget, c1 = c1),
+                   info = paste("budget", x$budget))
+    }
+  }
+})
+
+test_that("a cheap screener searches a wide phase-1 range quickly", {
+  strong <- transform(frame4, mean = c(10, 200, 5, 400))
+  elapsed <- system.time(
+    fit <- n_twophase(strong, phase1_cost = 0.01, budget = 50000)
+  )[["elapsed"]]
+  expect_lt(elapsed, 5)
+  expect_lte(fit$operational$cost, 50000 + 1e-6)
+})
+
+## The November 3 review: supplied pins, the census cap, the comparator basis,
+## the printed fraction and the search record
+
+.tp_brute <- function(frame, phase1_cost, N, budget = NULL, cv = NULL,
+                      resp_rate = 1) {
+  spec <- svyplan:::.twophase_frame(frame, NULL, NULL)
+  term <- spec$d2 / spec$r2 * spec$W^2 * spec$S^2
+  a_eff <- spec$A / resp_rate
+  var_pop <- spec$A + sum(spec$d2 * spec$W * spec$S^2)
+  best <- NULL
+  for (n1 in seq_len(N)) {
+    cap <- floor(resp_rate * spec$W * n1)
+    sizes <- lapply(seq_along(cap), function(h) {
+      if (spec$pinned[h]) cap[h] else if (term[h] == 0) 0 else
+        if (cap[h] >= 1) seq_len(cap[h]) else integer(0)
+    })
+    if (any(lengths(sizes) == 0L)) next
+    g <- as.matrix(expand.grid(sizes))
+    cost <- as.vector(phase1_cost * n1 + g %*% spec$cost)
+    inv <- sweep(1 / g, 2, term, `*`)
+    inv[, term == 0] <- 0
+    v <- a_eff / n1 + rowSums(inv)
+    cvs <- sqrt(pmax(v - var_pop / N, 0)) / abs(spec$mu)
+    ok <- if (is.null(budget)) cvs <= cv * (1 + 1e-9) else cost <= budget + 1e-9
+    if (!any(ok)) next
+    value <- if (is.null(budget)) cost else cvs
+    i <- which(ok)[which.min(value[ok])]
+    if (is.null(best) || value[i] < best$value - 1e-12) {
+      best <- list(n1 = n1, n_int = unname(g[i, ]), value = value[i])
+    }
+  }
+  best
+}
+
+test_that("a take_all stratum takes its whole pool in the whole design", {
+  frame <- data.frame(stratum = c("A", "B"), N = c(50, 50), sd = c(1, 3),
+                      mean = c(10, 20), unit_cost = c(10, 1),
+                      take_all = c(TRUE, FALSE))
+  fit <- n_twophase(frame, phase1_cost = 1, N = 100, budget = 100)
+  o <- fit$operational
+  expect_equal(o$n_int[1], floor(0.5 * o$n[["n_phase1"]]))
+  expect_lte(o$cost, 100)
+  oracle <- .tp_brute(frame, 1, 100, budget = 100)
+  expect_equal(o$n[["n_phase1"]], oracle$n1)
+  expect_equal(o$n_int, oracle$n_int)
+  expect_equal(o$cv, oracle$value)
+
+  fit <- n_twophase(frame, phase1_cost = 1, N = 100, cv = 0.1)
+  o <- fit$operational
+  expect_equal(o$n_int[1], floor(0.5 * o$n[["n_phase1"]]))
+  expect_lte(o$cv, 0.1)
+  oracle <- .tp_brute(frame, 1, 100, cv = 0.1)
+  expect_equal(o$cost, oracle$value)
+  expect_equal(o$n_int, oracle$n_int)
+})
+
+test_that("pins hold with unequal response and a zero-variance pinned stratum", {
+  frames <- list(
+    data.frame(stratum = c("A", "B", "C"), N = 40, sd = c(1.6, 0.5, 0.3),
+               mean = c(16, 41, 20), unit_cost = c(3, 3, 10),
+               resp_rate = c(0.8, 0.6, 0.6), take_all = c(FALSE, TRUE, FALSE)),
+    data.frame(stratum = c("A", "B"), N = 40, sd = c(0, 2),
+               mean = c(30, 12), unit_cost = c(3, 1),
+               resp_rate = c(0.6, 1), take_all = c(TRUE, FALSE))
+  )
+  for (frame in frames) {
+    N <- sum(frame$N)
+    for (args in list(list(budget = 120), list(cv = 0.08))) {
+      fit <- do.call(n_twophase, c(list(frame, phase1_cost = 1, N = N), args))
+      o <- fit$operational
+      expect_equal(o$n_int[frame$take_all],
+                   floor(fit$detail$share[frame$take_all] * o$n[["n_phase1"]]))
+      oracle <- do.call(.tp_brute, c(list(frame, 1, N), args))
+      expect_equal(if (is.null(args$budget)) o$cost else o$cv, oracle$value)
+    }
+  }
+})
+
+test_that("a phase 1 capped at the census solves phase 2 again", {
+  frame <- data.frame(stratum = c("A", "B"), N = c(50, 50), sd = c(1, 3),
+                      mean = c(0, 100), unit_cost = 10)
+  for (budget in c(150, 300, 500, 800)) {
+    free <- n_twophase(frame, phase1_cost = 1, N = 100, budget = budget,
+                       single_cost = 5.05)
+    fixed <- n_twophase(frame, phase1_cost = 1, N = 100, budget = budget,
+                        single_cost = 5.05, n_phase1 = 100)
+    expect_equal(free$n[["n_phase1"]], 100)
+    expect_equal(free$cost, fixed$cost)
+    expect_equal(free$cv, fixed$cv)
+    expect_equal(free$detail$nu, fixed$detail$nu)
+    expect_lte(free$cv, free$operational$cv * (1 + 1e-9))
+    expect_null(free$params$n_phase1_fixed)
+  }
+  fit <- n_twophase(frame, phase1_cost = 1, N = 100, budget = 500,
+                    single_cost = 5.05)
+  expect_false(fit$single_phase$better)
+  # cv mode used to stop with "not reachable" although the census reaches it
+  fit <- n_twophase(frame, phase1_cost = 1, N = 100, cv = 0.03)
+  expect_equal(fit$cost, 117.4, tolerance = 1e-3)
+  expect_lte(fit$operational$cv, 0.03)
+  expect_error(
+    n_twophase(transform(frame, mean = c(10, 10)), phase1_cost = 1, N = 100,
+               cv = 1e-6, resp_rate = 0.5),
+    "phase-1 census"
+  )
+})
+
+test_that("the comparator's verdict is on the whole designs", {
+  frame <- data.frame(stratum = c("A", "B"), N = c(351, 87), sd = c(3.3, 2.1),
+                      mean = c(43, 29), unit_cost = c(2.1, 14.1))
+  fit <- n_twophase(frame, phase1_cost = 1.63, N = 438, cv = 0.0892,
+                    single_cost = 5.07)
+  s <- fit$single_phase
+  # continuous two-phase is cheaper, the whole single-phase design is
+  expect_lt(fit$cost, s$cost)
+  expect_lt(s$cost_int, fit$operational$cost)
+  expect_true(s$better)
+  expect_equal(s$n_int, ceiling(s$n))
+  expect_equal(s$cost_int, s$n_int * 5.07)
+  expect_lte(s$cv_int, 0.0892)
+  out <- capture.output(print(fit))
+  expect_true(any(grepl(sprintf("n = %d at cv %.4f, so skip phase 1",
+                                s$n_int, s$cv_int), out, fixed = TRUE)))
+  out <- capture.output(print(summary(fit)))
+  expect_true(any(grepl(sprintf("^Single-phase comparator: n = %d,", s$n_int),
+                        out)))
+
+  budget <- n_twophase(frame, phase1_cost = 1.63, N = 438, budget = 500,
+                       single_cost = 5.07)
+  s <- budget$single_phase
+  expect_equal(s$n_int, floor(500 / 5.07))
+  expect_identical(s$better, s$cv_int < budget$operational$cv)
+})
+
+test_that("the printed fraction is the fielded take over its whole pool", {
+  frame <- data.frame(stratum = c("A", "B"), N = c(50, 50), sd = c(1, 3),
+                      mean = c(10, 20), unit_cost = c(10, 1),
+                      take_all = c(TRUE, FALSE))
+  for (r in c(1, 0.8)) {
+    fit <- n_twophase(frame, phase1_cost = 1, N = 100, budget = 100,
+                      resp_rate = r)
+    brief <- svyplan:::.fmt_twophase_detail(fit, brief = TRUE)
+    pool <- floor(r * fit$detail$share * fit$operational$n[["n_phase1"]])
+    expect_identical(brief$nu, formatC(r * fit$operational$n_int / pool,
+                                       format = "f", digits = 4))
+    # the pinned stratum takes its whole pool, so it reads resp_rate
+    expect_identical(brief$nu[1], formatC(r, format = "f", digits = 4))
+  }
+})
+
+test_that("a search a limit stopped is recorded and printed", {
+  frame <- .tp_frame()
+  fit <- n_twophase(frame, phase1_cost = 1, budget = 50000)
+  expect_identical(fit$operational$status, "optimal")
+  expect_identical(fit$operational$search$status, "optimal")
+  expect_false(any(grepl("^search:", capture.output(print(fit)))))
+
+  spec <- svyplan:::.twophase_frame(frame, NULL, NULL)
+  term <- spec$W^2 * spec$S^2
+  r <- svyplan:::.twophase_search(
+    "budget", term, spec$cost, spec$W, 1, 1, spec$A, budget = 50000,
+    incumbent = Inf, n1_range = c(1, 40000), max_solves = 1L
+  )
+  expect_identical(r$search$status, "limit")
+  expect_identical(r$search$limit, "solves")
+  expect_identical(r$search$solves, 1L)
+  expect_gte(r$search$gap, 0)
+
+  fit$operational$search <- r$search
+  fit$operational$status <- "limit"
+  expect_true(any(grepl("^search: stopped at the solves limit, gap",
+                        capture.output(print(fit)))))
+  expect_true(any(grepl("^search: stopped at the solves limit",
+                        capture.output(print(summary(fit))))))
+})
+
+test_that("a greedy start with an empty stratum does not stop the search", {
+  # the greedy design left B at zero, its incumbent was Inf, and the search
+  # compared against Inf - Inf
+  frame <- data.frame(stratum = c("A", "B"), N = 40, sd = c(2.5, 0.2),
+                      mean = c(11.12535, 30.19312), unit_cost = c(1, 10),
+                      resp_rate = 0.6)
+  fit <- n_twophase(frame, phase1_cost = 1, N = 80, budget = 89)
+  o <- fit$operational
+  expect_true(all(o$n_int >= 1))
+  expect_lte(o$cost, 89)
+  expect_true(is.finite(o$cv))
+  expect_equal(o$cv, .tp_brute(frame, 1, 80, budget = 89)$value)
+})
+
+test_that("a pinned stratum keeps its pool while the cv repair grows phase 1", {
+  frame <- data.frame(stratum = c("A", "B"), N = c(35, 43), sd = c(4.3, 3.6),
+                      mean = c(24, 18), unit_cost = c(12, 1),
+                      resp_rate = c(0.7, 1), take_all = c(TRUE, FALSE))
+  fit <- n_twophase(frame, phase1_cost = 0.3, N = 78, cv = 0.0746)
+  o <- fit$operational
+  expect_equal(o$n_int[1], floor(fit$detail$share[1] * o$n[["n_phase1"]]))
+  expect_equal(o$cost, .tp_brute(frame, 0.3, 78, cv = 0.0746)$value)
 })

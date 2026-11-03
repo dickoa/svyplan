@@ -817,8 +817,10 @@ test_that("'weights' argument is validated", {
                "same length as the outcome")
   expect_error(varcomp(y ~ psu, data = s, weights = ~nope),
                "not found in 'data'")
-  expect_error(varcomp(y ~ psu, data = s, weights = ~w + y),
-               "exactly one variable")
+  expect_error(varcomp(y ~ psu, data = s, weights = ~w + y + psu),
+               "one variable, or two for the stage-2 and stage-3 weights")
+  expect_error(varcomp(s$y, stage_id = list(s$psu), weights = cbind(s$w, s$w)),
+               "this design has two stages")
 })
 
 test_that("formula interface warns on a samplyr sample without weights", {
@@ -1304,9 +1306,15 @@ test_that("three-stage probs recover the conditional weights", {
     survey::svydesign(ids = ~psu + ssu, probs = ~p1 + p2 + p3, data = s), ~y
   )
   ref <- varcomp(s$y, stage_id = list(s$psu, s$ssu),
-                 weights = rep(1 / (0.5 * 0.6), nrow(s)))
+                 weights = cbind(rep(1 / 0.5, nrow(s)), rep(1 / 0.6, nrow(s))))
   expect_equal(auto$icc, ref$icc, tolerance = 1e-12)
   expect_equal(auto$stages, 3L)
+
+  # One combined column reads the element-stage fraction as f2 * f3, so it
+  # differs once f3 is not small.
+  combined <- varcomp(s$y, stage_id = list(s$psu, s$ssu),
+                      weights = rep(1 / (0.5 * 0.6), nrow(s)))
+  expect_false(isTRUE(all.equal(combined$icc, ref$icc, tolerance = 1e-3)))
 })
 
 test_that("a weights-only multistage design is refused, not guessed at", {
@@ -1484,4 +1492,81 @@ test_that("a second-stage prob is refused where it has no meaning", {
     varcomp(y ~ psu/ssu, data = bad, prob = list(NULL, ~ssu_share)),
     "sum to 1 across the SSUs"
   )
+})
+
+## The element-stage fraction at three stages
+
+test_that("stage-2 and stage-3 weights read the element fraction alone", {
+  A <- 120; M <- 12; Nij <- 12; a <- 30; m <- 3; n <- 6
+  set.seed(21)
+  pop <- expand.grid(k = seq_len(Nij), ssu = seq_len(M), psu = seq_len(A))
+  pop$y <- 50 + rnorm(A, 0, 3)[pop$psu] +
+    rnorm(A * M, 0, 2)[(pop$psu - 1) * M + pop$ssu] + rnorm(nrow(pop), 0, 6)
+  truth <- varcomp(y ~ psu / ssu, data = pop)$varw[["varw_psu"]]
+  draw <- function() {
+    idx <- unlist(lapply(sample(A, a), function(i) {
+      unlist(lapply(sample(M, m), function(j) {
+        ((i - 1) * M + (j - 1)) * Nij + sample(Nij, n)
+      }))
+    }))
+    s <- pop[idx, ]
+    one <- rep((M / m) * (Nij / n), nrow(s))
+    two <- cbind(rep(M / m, nrow(s)), rep(Nij / n, nrow(s)))
+    c(one = varcomp(y ~ psu / ssu, data = s, weights = one)$varw[["varw_psu"]],
+      two = varcomp(y ~ psu / ssu, data = s, weights = two)$varw[["varw_psu"]])
+  }
+  bias <- rowMeans(replicate(200, draw())) / truth - 1
+  # f3 = 0.5: one combined column reads f2 * f3 and removes too much noise.
+  expect_lt(bias[["one"]], -0.10)
+  expect_lt(abs(bias[["two"]]), 0.05)
+})
+
+test_that("every interface takes the stage-3 weight the same way", {
+  skip_if_not_installed("survey")
+  set.seed(5)
+  s <- expand.grid(el = 1:4, ssu = 1:3, psu = 1:10)
+  s$y <- rnorm(10, 0, 2)[s$psu] + rnorm(30)[(s$psu - 1) * 3 + s$ssu] +
+    rnorm(nrow(s), 0, 3)
+  s$w2 <- 4; s$w3 <- 2.5
+  s$p1 <- 0.2; s$p2 <- 1 / 4; s$p3 <- 1 / 2.5
+  ref <- varcomp(s$y, stage_id = list(s$psu, s$ssu),
+                 weights = cbind(s$w2, s$w3))
+  fits <- list(
+    varcomp(y ~ psu / ssu, data = s, weights = ~ w2 + w3),
+    varcomp(y ~ psu / ssu, data = s, weights = s[c("w2", "w3")]),
+    varcomp(survey::svydesign(ids = ~psu + ssu, probs = ~p1 + p2 + p3,
+                              data = s), ~y),
+    varcomp(survey::svydesign(ids = ~psu + ssu, probs = ~p1 + p2 + p3,
+                              data = s), ~y, weights = ~ w2 + w3)
+  )
+  for (fit in fits) {
+    expect_equal(fit$varw, ref$varw, tolerance = 1e-12)
+    expect_equal(fit$icc, ref$icc, tolerance = 1e-12)
+  }
+  # Two probability columns take every element of a sampled SSU, so the
+  # SSU totals carry no element-stage noise.
+  census <- varcomp(survey::svydesign(ids = ~psu + ssu, probs = ~p1 + p2,
+                                      data = s), ~y)
+  expect_equal(census$icc,
+               varcomp(s$y, stage_id = list(s$psu, s$ssu),
+                       weights = cbind(s$w2, 1))$icc,
+               tolerance = 1e-12)
+})
+
+test_that("strata keep the stage-3 weight of each stratum", {
+  set.seed(6)
+  s <- expand.grid(el = 1:4, ssu = 1:3, psu = 1:16)
+  s$region <- ifelse(s$psu <= 8, "North", "South")
+  s$y <- rnorm(16, 0, 2)[s$psu] + rnorm(48)[(s$psu - 1) * 3 + s$ssu] +
+    rnorm(nrow(s), 0, 3)
+  s$w2 <- 4; s$w3 <- 2.5
+  fit <- varcomp(y ~ psu / ssu, data = s, strata = ~region,
+                 weights = ~ w2 + w3)
+  for (r in c("North", "South")) {
+    one <- varcomp(y ~ psu / ssu, data = s[s$region == r, ],
+                   weights = ~ w2 + w3)
+    row <- fit$strata[fit$strata$stratum == r, ]
+    expect_equal(c(row$icc_psu, row$icc_ssu), unname(one$icc),
+                 tolerance = 1e-12, info = r)
+  }
 })

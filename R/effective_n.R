@@ -238,7 +238,10 @@ effective_n.svyplan_varcomp <- function(
 #'   [n_alloc()] allocation, dividing by the allocation's own variance
 #'   ratio. The frame needs `mean` alongside `N` and `sd`, since without
 #'   the stratum means the population variance that ratio divides by is
-#'   not identified.
+#'   not identified. The stratum response rates, from the arguments or the
+#'   frame, and PSU response on a cluster frame net the continuous total
+#'   `x$n` down. For the whole-unit field design pass
+#'   `n = sum(x$detail$n_int)`.
 #' @export
 effective_n.svyplan_n <- function(
   x,
@@ -274,7 +277,12 @@ effective_n.svyplan_n <- function(
   # removes observations from the same total, so the share of the drawn
   # sample that responds is their product. An eligible rate then counts the
   # eligible persons each responding unit holds, and can exceed 1.
-  stored <- if (inherits(x, "svyplan_cluster") || identical(x$type, "cluster")) {
+  alloc_rates <- if (identical(x$type, "alloc")) {
+    .alloc_summary_response_rates(x)
+  }
+  stored <- if (!is.null(alloc_rates)) {
+    alloc_rates$response
+  } else if (inherits(x, "svyplan_cluster") || identical(x$type, "cluster")) {
     p <- x$params
     (p[["resp_rate_psu"]] %||% 1) *
       (p[["resp_rate_ssu"]] %||% 1) *
@@ -286,8 +294,8 @@ effective_n.svyplan_n <- function(
   if (!is.null(eligibility_rate)) {
     check_resp_rate(eligibility_rate, "eligibility_rate")
   }
-  stored_scope <- if (identical(x$type, "alloc")) {
-    .alloc_summary_response_rates(x)$eligibility
+  stored_scope <- if (!is.null(alloc_rates)) {
+    alloc_rates$eligibility
   } else {
     x$params[["eligibility_rate"]]
   }

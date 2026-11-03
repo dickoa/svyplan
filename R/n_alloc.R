@@ -279,6 +279,12 @@
 #'   To give every stratum its minimum and share the rest on top of it,
 #'   allocate `n - sum(min_n_stratum)` and add the minimums, as in the
 #'   examples.
+#' @param min_n_domain Optional floor on each domain's total sample, in the
+#'   units `n` counts, such as a publication minimum of 400 households per
+#'   province. One number applies to every domain. A data frame with columns
+#'   `domain` (the `domains` column), `level` and `min_n` gives floors that
+#'   differ, and a level it leaves out has none. Needs one `domains` column
+#'   and a classic mode. See the domains section in Details.
 #' @param alloc_q Bankier allocation exponent, used only when `alloc = "power"`.
 #'   Numeric scalar in \eqn{[0, 1]}. With the default `alloc_measure`,
 #'   `alloc_q = 1` gives Neyman allocation. At `alloc_q = 0` weights depend
@@ -320,12 +326,15 @@
 #'       limits would otherwise fall more than half a take short, and a take
 #'       risen past `N_psu` under `"optimal"` fields every PSU at its
 #'       nearest whole value. In `cv`
-#'       mode with `alloc = "optimal"` or `"neyman"` and no domains, the
-#'       design is the cheapest whole allocation meeting the target (the
-#'       smallest for `"neyman"`), and in `budget` mode with `"optimal"` the
+#'       mode with `alloc = "optimal"` or `"neyman"`, the design is the
+#'       cheapest whole allocation meeting the target (the smallest for
+#'       `"neyman"`), with domains the cheapest in each domain, and in
+#'       `budget` mode with `"optimal"` and no domains the
 #'       whole allocation with the smallest variance within the budget,
 #'       each found by a search reported in `$operational$status` and
-#'       `$optimization$search`. A cluster design searches whole PSU counts
+#'       `$optimization$search` (with domains, the search of the domain
+#'       furthest from its bound, each domain's search in
+#'       `$optimization$domains`). A cluster design searches whole PSU counts
 #'       and, under `"optimal"` with stage costs and `N_psu`, each take the
 #'       frame leaves free, at any whole value up to the average PSU size
 #'       `N / N_psu` that the stratum's bounds allow.
@@ -355,7 +364,8 @@
 #'     \item{`.binding`}{Whether the allocation sits on one of its
 #'       bounds.}
 #'     \item{`.bound_source`}{Which constraint produced the bound the
-#'       allocation sits on, and `NA` when it sits on none.}
+#'       allocation sits on, and `NA` when it sits on none.
+#'       `"min_n_domain"` marks the strata of a domain held at its floor.}
 #'     \item{`.psu_frac`}{Cluster mode with `N_psu` only: the share of
 #'       the stratum's PSU universe the design selects, `n_psu / N_psu`.}
 #'     \item{`.se`, `.moe`, `.rmoe`, `.cv`}{Precision of the stratum's own
@@ -856,13 +866,36 @@
 #'
 #' Domains are specified via the `domains` parameter. Domain columns
 #' partition strata into sub-populations. Each domain groups
-#' one or more strata. When `cv` is specified, the algorithm finds the
-#' minimum total \eqn{n} such that the *worst-case* domain CV meets the
-#' target, i.e. every domain achieves the required precision.
+#' one or more strata. When `cv` is specified, every domain must meet the
+#' target, and since a domain's precision depends on its own strata only,
+#' the smallest design that does so is each domain at its own smallest
+#' total. Each domain is allocated by the rule inside itself, as if it were
+#' the frame, and its total is the least that meets the target there. The
+#' result is the minimum joint allocation reaches with a cv target in
+#' every domain. National precision is reported in `$cv` and is not a
+#' target. To require it as well, state national and domain targets
+#' together in joint allocation (`measures` and `targets`). Under
+#' `alloc = "power"`, `alloc_q` shapes the shares inside a domain, and the
+#' domain totals come from their targets.
 #'
 #' In `n` or `budget` mode, domains affect reporting only. Per-domain
 #' precision metrics appear in `$domains`, but the allocation itself treats
 #' all strata globally.
+#'
+#' `min_n_domain` adds a floor on each domain's total, in every mode. A
+#' domain whose share of the allocation falls short of its floor is held at
+#' the floor and allocated inside itself by the same rule, and the rest of
+#' the total is spread over the other domains. This repeats until no domain
+#' falls short. Holding one domain lowers the others' shares, so a domain
+#' already above its floor can end up held too. The result is the best
+#' allocation by the rule under the floors. In `cv` and `budget` mode the
+#' floors raise the total or the cost only where they bind. The whole-unit
+#' design keeps every floor, and in `n` and `budget` mode it takes the
+#' units it adds to a short domain from domains with room. With `n_step`
+#' it adds and removes whole steps, and in `n` mode it reaches the total by
+#' moving several strata together when no single step fits the excess, as
+#' 36 and 36 for steps of 12, a total of 72 and floors of 25. `$domains` then
+#' reports each floor as `.min_n` and whether it binds as `.floor_binding`.
 #'
 #' ## Allocation methods
 #'
@@ -971,6 +1004,14 @@
 #'
 #' n_alloc(frame_domains, domains = "province",
 #'        cv = 0.04, alloc = "power", alloc_q = 0.3)
+#'
+#' # A publication floor of 480 per province, which holds the South, and
+#' # one of 550 for the South only
+#' n_alloc(frame_domains, domains = "province", n = 1000,
+#'         min_n_domain = 480)$domains
+#' south <- data.frame(domain = "province", level = "South", min_n = 550)
+#' n_alloc(frame_domains, domains = "province", n = 1000,
+#'         min_n_domain = south)$domains
 #'
 #' # Power allocation on a size measure alone, as DHS and MICS apply it
 #' sizes <- data.frame(stratum = c("A", "B", "C"), N = c(4e5, 1e5, 2.5e4))
@@ -1198,6 +1239,7 @@ n_alloc.default <- function(
   eligible_per_unit = 1,
   df = NULL,
   min_n_stratum = NULL,
+  min_n_domain = NULL,
   alloc_q = 0.5,
   fpc = c("unit", "stage", "none"),
   plan = NULL
@@ -1215,6 +1257,12 @@ n_alloc.default <- function(
   alloc_q_explicit <- !missing(alloc_q) && !identical(alloc_q, 0.5)
   fpc <- match.arg(fpc)
   joint_any <- !is.null(measures) || !is.null(targets) || !is.null(objective)
+  if (!is.null(min_n_domain) && (joint_any || !is.null(psu))) {
+    stop(
+      "'min_n_domain' applies to the classic modes. In a joint allocation, state a domain's need as a target in 'targets'",
+      call. = FALSE
+    )
+  }
   if (joint_any) {
     if (is.null(measures)) {
       stop("joint constrained allocation requires 'measures'", call. = FALSE)
@@ -1407,12 +1455,13 @@ n_alloc.default <- function(
     "budget"
   }
   searched <- .classic_searched(alloc, mode, length(prep$domain_idx) > 0L)
+  per_domain <- .domain_searched(alloc, mode, length(prep$domain_idx) > 0L)
   psu_cap <- NULL
   if (!is.null(prep$N_psu_h)) {
     psu_cap <- prep$N_psu_h * prep$n_per_psu_h
     # A free take under "optimal" rises past the PSU universe, so N_psu caps
     # the PSU count there and not the elements.
-    if (alloc == "optimal" && (searched || mode == "n")) {
+    if (alloc == "optimal" && (searched || per_domain || mode == "n")) {
       psu_cap[!prep$n_per_psu_fixed_h] <- Inf
     }
   }
@@ -1446,6 +1495,41 @@ n_alloc.default <- function(
   hi <- sum(M_h)
   tol <- 1e-8
 
+  floors <- .alloc_domain_floors(min_n_domain, prep)
+  alloc_fn <- function(total) .rna_alloc(a_h, total, m_h, M_h)
+  if (!is.null(floors)) {
+    dom <- floors$dom
+    D <- length(floors$floor)
+    lo_d <- vapply(seq_len(D), function(d) sum(m_h[dom == d]), numeric(1))
+    hi_d <- vapply(seq_len(D), function(d) sum(M_h[dom == d]), numeric(1))
+    over <- floors$floor > hi_d + tol
+    if (any(over)) {
+      stop(
+        sprintf(
+          "'min_n_domain' exceeds what domain(s) %s can hold under the stratum bounds (%s)",
+          paste(sQuote(floors$levels[over]), collapse = ", "),
+          paste(format(hi_d[over]), collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+    idle <- floors$floor > 0 & floors$floor <= lo_d + tol
+    if (any(idle)) {
+      warning(
+        sprintf(
+          "'min_n_domain' is at or below the stratum minimums of domain(s) %s, so it changes nothing there",
+          paste(sQuote(floors$levels[idle]), collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+    floor_d <- pmax(floors$floor, lo_d)
+    lo <- sum(floor_d)
+    alloc_fn <- function(total) {
+      .rna_alloc_floored(a_h, total, m_h, M_h, dom, floor_d)
+    }
+  }
+
   a_h <- .alloc_weights(alloc, alloc_q, .alloc_scope_N(prep), S_h, cost_h,
                          deff, resp_rate, mean_h = mean_h,
                          alloc_measure = alloc_measure)
@@ -1461,19 +1545,24 @@ n_alloc.default <- function(
       call. = FALSE
     )
   }
-  if (!is.null(control) && !searched) {
+  if (!is.null(control) && !searched && !per_domain) {
     stop(
-      "'control' applies where n_alloc() searches the whole design: joint allocation, and without domains the 'cv' mode of alloc = \"optimal\" or \"neyman\" and the 'budget' mode of alloc = \"optimal\"",
+      "'control' applies where n_alloc() searches the whole design: joint allocation, the 'cv' mode of alloc = \"optimal\" or \"neyman\" (with domains, on an element frame), and without domains the 'budget' mode of alloc = \"optimal\"",
       call. = FALSE
     )
   }
   target_total <- NA_real_
+  domain_n_h <- NULL
 
   if (mode == "n") {
     check_scalar(n, "n")
     if (n < lo - tol) {
       stop(
-        "'n' is below the minimum feasible total under constraints",
+        if (is.null(floors)) {
+          "'n' is below the minimum feasible total under constraints"
+        } else {
+          sprintf("'n' is below the %s the domain floors need", format(lo))
+        },
         call. = FALSE
       )
     }
@@ -1498,6 +1587,22 @@ n_alloc.default <- function(
       )
     }
     target_total <- n
+  } else if (mode == "cv" && length(prep$domain_idx) > 0L) {
+    check_scalar(cv, "cv")
+    if (anyNA(mean_h)) {
+      stop(
+        "'mean' (or 'p') is required in frame when solving for 'cv'",
+        call. = FALSE
+      )
+    }
+    if (cv <= 0) {
+      stop("'cv' must be positive", call. = FALSE)
+    }
+    domain_n_h <- .alloc_domain_minimum(
+      prep, a_h, m_h, M_h, cv, alpha, deff, resp_rate,
+      floor_d = if (!is.null(floors)) floor_d, tol = tol
+    )
+    target_total <- sum(domain_n_h)
   } else if (mode == "cv") {
     check_scalar(cv, "cv")
     if (anyNA(mean_h)) {
@@ -1508,7 +1613,7 @@ n_alloc.default <- function(
     }
 
     cv_for_total <- function(n_total) {
-      n_h <- .rna_alloc(a_h, n_total, m_h, M_h)
+      n_h <- alloc_fn(n_total)
       at <- .cluster_take_rise(prep, n_h)
       if (length(prep$domain_idx) == 0L) {
         .alloc_metrics(
@@ -1568,7 +1673,7 @@ n_alloc.default <- function(
     cost_at <- function(n_h) {
       sum(n_h * .cluster_take_rise(prep, n_h)$cost_h)
     }
-    cost_lo <- cost_at(m_h)
+    cost_lo <- cost_at(if (is.null(floors)) m_h else alloc_fn(lo))
     cost_hi <- cost_at(M_h)
     if (budget < cost_at(lo_i) - tol) {
       stop(
@@ -1602,7 +1707,7 @@ n_alloc.default <- function(
       target_total <- hi
     } else {
       cost_for_total <- function(n_total) {
-        cost_at(.rna_alloc(a_h, n_total, m_h, M_h))
+        cost_at(alloc_fn(n_total))
       }
       target_total <- uniroot(
         function(x) cost_for_total(x) - budget,
@@ -1612,7 +1717,11 @@ n_alloc.default <- function(
     }
   }
 
-  n_h <- .rna_alloc(a_h, target_total, m_h, M_h)
+  n_h <- if (!is.null(domain_n_h)) {
+    as.numeric(domain_n_h)
+  } else {
+    alloc_fn(target_total)
+  }
   prep <- .cluster_take_rise(prep, n_h)
   metrics <- .alloc_metrics(
     N_h = N_h,
@@ -1669,6 +1778,21 @@ n_alloc.default <- function(
   )
   if (!identical(eligibility_rate, 1)) params$eligibility_rate <- eligibility_rate
   params[[mode]] <- switch(mode, n = n, cv = cv, budget = budget)
+  if (!is.null(floors)) {
+    params$min_n_domain <- min_n_domain
+    total_d <- vapply(seq_along(floor_d), function(d) sum(n_h[dom == d]),
+                      numeric(1))
+    binds <- floors$floor > lo_d + tol & abs(total_d - floor_d) <= 1e-6 *
+      pmax(1, floor_d)
+    raised <- binds[dom] & !detail$.binding
+    detail$.binding[raised] <- TRUE
+    detail$.bound_source[raised] <- "min_n_domain"
+    if (!is.null(domain_summary)) {
+      domain_summary$.min_n <- ifelse(floors$floor > 0, floors$floor,
+                                      NA_real_)
+      domain_summary$.floor_binding <- binds
+    }
+  }
 
   whole <- NULL
   if (isTRUE(prep$cluster)) {
@@ -1685,13 +1809,19 @@ n_alloc.default <- function(
       df = df,
       alloc_weights = a_h,
       alloc = alloc,
-      max_nodes = if (searched) .search_control(control)$max_nodes,
-      gap = .search_control(control)$gap
+      max_nodes = if (searched || per_domain) {
+        .search_control(control)$max_nodes
+      },
+      gap = .search_control(control)$gap,
+      floors = if (!is.null(floors)) list(dom = dom, need = floor_d),
+      domain_search = if (per_domain) {
+        list(floored = attr(domain_n_h, "floored"))
+      }
     )
     detail <- opc$detail
     operational <- opc$operational
-    if (searched) {
-      whole <- list(search = opc$search)
+    if (searched || per_domain) {
+      whole <- list(search = opc$search, domains = opc$domains)
       params$control <- control
     }
   } else {
@@ -1703,6 +1833,77 @@ n_alloc.default <- function(
       )
       detail$n_int <- whole$n_int
       params$control <- control
+    } else if (per_domain) {
+      # A domain its floor holds above the target keeps the rounded design,
+      # which the floor repair below raises to the floor.
+      floored <- attr(domain_n_h, "floored")
+      records <- list()
+      statuses <- character(0)
+      for (d in seq_along(prep$domain_idx)) {
+        if (floored[d]) next
+        idx <- prep$domain_idx[[d]]
+        w <- .alloc_whole_element(
+          .alloc_prep_slice(prep, idx), alloc, mode, cv, budget,
+          .subset_h(deff, idx), .subset_h(resp_rate, idx), lo_i[idx],
+          hi_i[idx],
+          max_nodes = .search_control(control)$max_nodes,
+          gap = .search_control(control)$gap
+        )
+        detail$n_int[idx] <- w$n_int
+        records[[names(prep$domain_idx)[d]]] <- w$search
+        statuses <- c(statuses, w$status)
+      }
+      # The worst domain's record speaks for the design, so a node limit or a
+      # gap anywhere is printed. Each domain's record is kept beside it.
+      worst <- if (length(records) > 0L) {
+        records[[which.max(vapply(records, function(r) r$gap, numeric(1)))]]
+      }
+      whole <- list(
+        status = if (length(statuses) == 0L || all(statuses == "optimal")) {
+          "optimal"
+        } else {
+          worst$status
+        },
+        search = worst,
+        domains = records
+      )
+      params$control <- control
+    }
+    if (!is.null(floors)) {
+      # in whole steps, so the repair keeps every n_int on its step
+      step <- prep$step_h %||% rep(1L, length(n_h))
+      total <- sum(detail$n_int)
+      a_lo <- ceiling(lo_i / step - 1e-9)
+      a_hi <- floor(hi_i / step + 1e-9)
+      need <- ceiling(floor_d - 1e-9)
+      a <- .alloc_floor_repair(
+        round(detail$n_int / step), cont = n_h / step, unit = step,
+        lo = a_lo, hi = a_hi, dom = dom, need = need,
+        keep = switch(mode, n = "total", budget = "budget", "none"),
+        total = total, cost_step = prep$cost_h * step, budget = budget
+      )
+      if (identical(mode, "n") && sum(a * step) != total) {
+        # whole steps larger than the excess cannot give it back one at a
+        # time, so the total is reached by moving several strata together
+        closed <- .floor_close_total(a, step, a_lo, a_hi, dom, need, n_h,
+                                     total)
+        if (length(closed) == 0L) {
+          reached <- attr(closed, "totals", exact = TRUE)
+          stop(
+            sprintf(
+              "no allocation in steps of 'n_step' meets every 'min_n_domain' floor at the total %d. Within one step of each stratum's floored design, the nearest totals are %s",
+              as.integer(total),
+              paste(c(
+                if (any(reached < total)) max(reached[reached < total]),
+                if (any(reached > total)) min(reached[reached > total])
+              ), collapse = " and ")
+            ),
+            call. = FALSE
+          )
+        }
+        a <- closed
+      }
+      detail$n_int <- as.integer(a * step)
     }
     operational <- .alloc_operational_element(
       prep,
@@ -1727,11 +1928,14 @@ n_alloc.default <- function(
     se = metrics$se,
     moe = metrics$moe,
     cv = metrics$cv,
+    rmoe = metrics$rmoe,
     detail = detail,
     binding = .alloc_binding_label(n_h, m_h, M_h),
     domains = domain_summary,
     operational = operational,
-    optimization = if (!is.null(whole)) list(search = whole$search)
+    optimization = if (!is.null(whole)) {
+      list(search = whole$search, domains = whole$domains)
+    }
   )
 
   obj
@@ -1831,6 +2035,7 @@ n_alloc.svyplan_prec <- function(
     eligibility_rate = p[["eligibility_rate"]] %||% 1,
     df = p$df,
     min_n_stratum = p$min_n_stratum,
+    min_n_domain = p[["min_n_domain"]],
     alloc_q = p$alloc_q %||% 0.5
   )
   if (!.alloc_is_cluster(p$frame)) {
@@ -2292,6 +2497,7 @@ prec_alloc.default <- function(
     se = metrics$se,
     moe = metrics$moe,
     cv = metrics$cv,
+    rmoe = metrics$rmoe,
     type = "alloc",
     params = list(
       frame = frame,
@@ -2438,6 +2644,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   out$params$alloc <- p$alloc
   out$params$alloc_q <- p$alloc_q
   out$params$min_n_stratum <- p$min_n_stratum
+  out$params$min_n_domain <- p[["min_n_domain"]]
   out$params$control <- p[["control"]]
   .mark_continuous_optimum(out, list(...), c("n", "n_per_psu"))
 }
@@ -3502,6 +3709,36 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   n_int
 }
 
+#' The prepared frame of some strata, as a frame without domains
+#' @keywords internal
+#' @noRd
+.alloc_prep_slice <- function(prep, idx) {
+  H <- length(prep$N_h)
+  out <- lapply(prep, function(v) {
+    if (is.atomic(v) && !is.null(v) && length(v) == H && is.null(dim(v))) {
+      v[idx]
+    } else {
+      v
+    }
+  })
+  out$frame <- prep$frame[idx, , drop = FALSE]
+  out$domain_cols <- character(0)
+  out$domain_idx <- list()
+  out$domain_values <- NULL
+  out
+}
+
+#' Whether the cv mode with domains searches each domain's whole design
+#'
+#' The domain cv mode is each domain at its own minimum, so the exact
+#' search of the mode without domains applies to each domain's strata, on
+#' element and cluster frames alike.
+#' @keywords internal
+#' @noRd
+.domain_searched <- function(alloc, mode, domains) {
+  domains && mode == "cv" && alloc %in% c("optimal", "neyman")
+}
+
 #' Whether a classic allocation searches its whole design
 #'
 #' The cv mode of `"optimal"` and `"neyman"`, whose continuous allocation is
@@ -3900,6 +4137,202 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   )
 }
 
+#' Domain floors resolved against the prepared domains
+#'
+#' `min_n_domain` is one number for every domain or a table of `domain`,
+#' `level` and `min_n`, where `domain` names the domain column. Levels the
+#' table leaves out have no floor. Returns the floor of each domain in the
+#' order of `prep$domain_idx` and the domain index of each stratum, or
+#' `NULL` without floors.
+#' @keywords internal
+#' @noRd
+.alloc_domain_floors <- function(min_n_domain, prep) {
+  if (is.null(min_n_domain)) {
+    return(NULL)
+  }
+  cols <- prep$domain_cols
+  if (length(cols) == 0L) {
+    stop("'min_n_domain' needs 'domains', the column whose levels it floors",
+         call. = FALSE)
+  }
+  if (length(cols) > 1L) {
+    stop(
+      "'min_n_domain' applies with one 'domains' column, whose domains partition the strata. Floors on several columns overlap",
+      call. = FALSE
+    )
+  }
+  levels_d <- as.character(prep$domain_values[[cols]])
+  D <- length(levels_d)
+  if (is.data.frame(min_n_domain)) {
+    need <- c("domain", "level", "min_n")
+    if (!all(need %in% names(min_n_domain))) {
+      stop("a 'min_n_domain' table needs columns 'domain', 'level' and 'min_n'",
+           call. = FALSE)
+    }
+    if (any(as.character(min_n_domain[["domain"]]) != cols)) {
+      stop(sprintf("'min_n_domain' column 'domain' must name '%s'", cols),
+           call. = FALSE)
+    }
+    lev <- as.character(min_n_domain[["level"]])
+    if (anyDuplicated(lev)) {
+      stop("'min_n_domain' names a level more than once", call. = FALSE)
+    }
+    unknown <- setdiff(lev, levels_d)
+    if (length(unknown) > 0L) {
+      stop(
+        sprintf("'min_n_domain' names level(s) not in '%s': %s", cols,
+                paste(sQuote(unknown), collapse = ", ")),
+        call. = FALSE
+      )
+    }
+    value <- min_n_domain[["min_n"]]
+    floor_d <- rep(0, D)
+    floor_d[match(lev, levels_d)] <- value
+  } else {
+    value <- min_n_domain
+    if (!is.numeric(value) || length(value) != 1L) {
+      stop("'min_n_domain' must be one number or a table of domain floors",
+           call. = FALSE)
+    }
+    floor_d <- rep(value, D)
+  }
+  if (!is.numeric(value) || anyNA(value) || any(!is.finite(value)) ||
+      any(value < 0)) {
+    stop("'min_n_domain' floors must be non-negative finite numbers",
+         call. = FALSE)
+  }
+  dom <- integer(length(prep$N_h))
+  for (d in seq_len(D)) dom[prep$domain_idx[[d]]] <- d
+  list(floor = as.numeric(floor_d), dom = dom, levels = levels_d)
+}
+
+#' Restore domain floors a rounding lost
+#'
+#' Works in steps: an element, or a whole PSU of `unit` elements in a
+#' cluster stratum. A short domain gains a step where the rounding fell
+#' furthest below the continuous design. To keep a total (`n` mode) or a
+#' budget, a domain with room above its floor gives a step back where the
+#' rounding rose furthest above it.
+#' @keywords internal
+#' @noRd
+.alloc_floor_repair <- function(x, cont, unit, lo, hi, dom, need,
+                                keep = "none", total = NULL,
+                                cost_step = NULL, budget = NULL) {
+  D <- length(need)
+  dom_total <- function(x) {
+    vapply(seq_len(D), function(d) sum((x * unit)[dom == d]), numeric(1))
+  }
+  repeat {
+    short <- which(dom_total(x) < need - 1e-9)
+    if (length(short) == 0L) break
+    d <- short[1L]
+    cand <- which(dom == d & x < hi)
+    if (length(cand) == 0L) {
+      stop(
+        sprintf(
+          "no whole design meets the floor of domain %d within its stratum bounds",
+          d
+        ),
+        call. = FALSE
+      )
+    }
+    h <- cand[which.max(cont[cand] - x[cand])]
+    x[h] <- x[h] + 1
+  }
+  over <- function(x) {
+    if (keep == "total") {
+      sum(x * unit) - total
+    } else if (keep == "budget") {
+      sum(x * cost_step) - budget
+    } else {
+      -Inf
+    }
+  }
+  while (over(x) > 1e-9) {
+    room <- dom_total(x)[dom] - unit >= need[dom] - 1e-9 & x > lo
+    if (keep == "total") room <- room & unit <= over(x) + 1e-9
+    cand <- which(room)
+    if (length(cand) == 0L) {
+      if (keep == "budget") {
+        stop(
+          "no whole design meets every 'min_n_domain' floor within the budget",
+          call. = FALSE
+        )
+      }
+      break
+    }
+    h <- cand[which.min(cont[cand] - x[cand])]
+    x[h] <- x[h] - 1
+  }
+  x
+}
+
+#' Whole steps that meet every domain floor and the total exactly
+#'
+#' The floors are met first, by `.alloc_floor_repair()`. Each stratum then
+#' moves at most `width` steps from that design, and the move closest to the
+#' continuous design that keeps each domain at or above its floor and the
+#' sum at `total` is kept. A dynamic program per domain lists the domain
+#' totals its strata reach, with the least squared distance for each, and a
+#' second one over domains reaches the total. `NULL` when none does, with
+#' the totals reached as attribute `totals`.
+#' @keywords internal
+#' @noRd
+.floor_close_total <- function(a0, step, a_min, a_max, dom, need, target,
+                               total, width = 1L) {
+  reach <- function(states, values, costs) {
+    out <- list()
+    for (key in names(states)) {
+      s <- states[[key]]
+      for (k in seq_along(values)) {
+        t <- s$tot + values[k]
+        c <- s$cost + costs[k]
+        id <- as.character(t)
+        if (is.null(out[[id]]) || c < out[[id]]$cost - 1e-12) {
+          out[[id]] <- list(tot = t, cost = c, pick = c(s$pick, k))
+        }
+      }
+    }
+    out
+  }
+  D <- length(need)
+  moves <- vector("list", length(a0))
+  per_domain <- vector("list", D)
+  for (d in seq_len(D)) {
+    states <- list("0" = list(tot = 0, cost = 0, pick = integer(0)))
+    for (h in which(dom == d)) {
+      m <- seq.int(max(a_min[h] - a0[h], -width), min(a_max[h] - a0[h], width))
+      moves[[h]] <- m
+      e <- step[h] * (a0[h] + m)
+      states <- reach(states, e, (e - target[h])^2)
+    }
+    states <- states[vapply(states, function(s) s$tot >= need[d] - 1e-9,
+                            logical(1))]
+    if (length(states) == 0L) {
+      return(NULL)
+    }
+    per_domain[[d]] <- states
+  }
+  combined <- list("0" = list(tot = 0, cost = 0, pick = integer(0)))
+  for (d in seq_len(D)) {
+    opts <- per_domain[[d]]
+    combined <- reach(combined, vapply(opts, `[[`, numeric(1), "tot"),
+                      vapply(opts, `[[`, numeric(1), "cost"))
+  }
+  hit <- combined[[as.character(total)]]
+  if (is.null(hit)) {
+    return(structure(list(),
+                     totals = sort(vapply(combined, `[[`, numeric(1), "tot"))))
+  }
+  a <- a0
+  for (d in seq_len(D)) {
+    chosen <- per_domain[[d]][[hit$pick[d]]]
+    idx <- which(dom == d)
+    a[idx] <- a0[idx] + mapply(function(h, k) moves[[h]][k], idx, chosen$pick)
+  }
+  a
+}
+
 #' Whole PSU counts, each within one PSU of its rounding, nearest the total
 #' @keywords internal
 #' @noRd
@@ -3967,7 +4400,9 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   alloc_weights = NULL,
   alloc = NULL,
   max_nodes = NULL,
-  gap = 0
+  gap = 0,
+  floors = NULL,
+  domain_search = NULL
 ) {
   H <- length(n_h)
   ps <- prep$n_per_psu_h
@@ -4082,10 +4517,42 @@ prec_alloc.svyplan_n <- function(frame, ...) {
   }
 
   whole <- NULL
-  if (!is.null(max_nodes)) {
+  searched_a <- NULL
+  if (!is.null(max_nodes) && is.null(domain_search)) {
     whole <- .alloc_whole_cluster(prep, alloc, mode, target_cv, budget, deff,
                                   resp_rate, lo_i, hi_i, b_h, max_nodes, gap)
     b_h <- whole$b
+  } else if (!is.null(max_nodes)) {
+    # Each domain is searched as its own frame. A domain its floor holds
+    # keeps the rounding below, which the floor repair raises.
+    searched_a <- rep(NA_integer_, H)
+    records <- list()
+    statuses <- character(0)
+    for (d in seq_along(prep$domain_idx)) {
+      if (domain_search$floored[d]) next
+      idx <- prep$domain_idx[[d]]
+      w <- .alloc_whole_cluster(
+        .alloc_prep_slice(prep, idx), alloc, mode, target_cv, budget,
+        .subset_h(deff, idx), .subset_h(resp_rate, idx), lo_i[idx],
+        hi_i[idx], b_h[idx], max_nodes, gap
+      )
+      b_h[idx] <- w$b
+      searched_a[idx] <- w$a
+      records[[names(prep$domain_idx)[d]]] <- w$search
+      statuses <- c(statuses, w$status)
+    }
+    worst <- if (length(records) > 0L) {
+      records[[which.max(vapply(records, function(r) r$gap, numeric(1)))]]
+    }
+    domain_whole <- list(
+      status = if (length(statuses) == 0L || all(statuses == "optimal")) {
+        "optimal"
+      } else {
+        worst$status
+      },
+      search = worst,
+      domains = records
+    )
   }
 
   a_min <- as.integer(ceiling(lo_i / b_h))
@@ -4248,6 +4715,24 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     }
   }
 
+  if (!is.null(searched_a)) {
+    held <- !is.na(searched_a)
+    a_h[held] <- searched_a[held]
+    a_h <- as.integer(a_h)
+  }
+  if (!is.null(floors)) {
+    a_h <- as.integer(.alloc_floor_repair(
+      a_h, cont = n_h / b_h, unit = b_h, lo = a_min, hi = a_max,
+      dom = floors$dom, need = ceiling(floors$need - 1e-9),
+      keep = if (mode == "budget" && isTRUE(prep$has_stage_costs)) {
+        "budget"
+      } else {
+        "none"
+      },
+      cost_step = psu_cost, budget = budget
+    ))
+  }
+
   e_h <- a_h * b_h
   m <- .alloc_metrics(
     N_h = prep$N_h,
@@ -4304,8 +4789,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     moe = m$moe,
     cv = op_cv
   )
+  if (!is.null(searched_a)) whole <- domain_whole
   operational$status <- whole$status
-  list(operational = operational, detail = detail, search = whole$search)
+  list(operational = operational, detail = detail, search = whole$search,
+       domains = whole$domains)
 }
 
 #' The cv of a whole-cluster design, over its domains where it has them
@@ -4347,23 +4834,84 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 .alloc_domain_cv_max <- function(prep, n_h, alpha, deff, resp_rate) {
   cvs <- vapply(
     prep$domain_idx,
-    function(idx) {
-      .alloc_metrics(
-        N_h = prep$N_h[idx],
-        N_pop = .alloc_scope_N(prep)[idx],
-        S_h = prep$S_h[idx],
-        mean_h = prep$mean_h[idx],
-        n_h = n_h[idx],
-        alpha = alpha,
-        deff = .subset_h(deff, idx),
-        resp_rate = .subset_h(resp_rate, idx),
-        cost_h = prep$cost_h[idx],
-        N_fpc = prep$N_fpc_h[idx]
-      )$cv
-    },
+    function(idx) .alloc_domain_cv(prep, n_h, alpha, deff, resp_rate, idx),
     numeric(1)
   )
   max(cvs)
+}
+
+#' The cv of one domain's estimate under an allocation
+#' @keywords internal
+#' @noRd
+.alloc_domain_cv <- function(prep, n_h, alpha, deff, resp_rate, idx) {
+  .alloc_metrics(
+    N_h = prep$N_h[idx],
+    N_pop = .alloc_scope_N(prep)[idx],
+    S_h = prep$S_h[idx],
+    mean_h = prep$mean_h[idx],
+    n_h = n_h[idx],
+    alpha = alpha,
+    deff = .subset_h(deff, idx),
+    resp_rate = .subset_h(resp_rate, idx),
+    cost_h = prep$cost_h[idx],
+    N_fpc = prep$N_fpc_h[idx]
+  )$cv
+}
+
+#' The domain cv mode, each domain at the smallest total meeting the target
+#'
+#' The domains partition the strata, and a domain's cv reads only its own
+#' strata, so the smallest design meeting every domain's target is each
+#' domain at its own smallest total. Inside a domain the shares follow the
+#' rule's weights `a_h`, which are scale free, so this is the domain
+#' allocated as its own frame. A floor from `min_n_domain` raises a domain's
+#' total to the floor where the target alone asks for less.
+#' @return The stratum sizes, with the domains whose floor set their total
+#'   as attribute `floored`.
+#' @keywords internal
+#' @noRd
+.alloc_domain_minimum <- function(prep, a_h, m_h, M_h, cv, alpha, deff,
+                                  resp_rate, floor_d = NULL, tol = 1e-8) {
+  n_h <- m_h
+  floored <- rep(FALSE, length(prep$domain_idx))
+  for (d in seq_along(prep$domain_idx)) {
+    idx <- prep$domain_idx[[d]]
+    cv_at <- function(t) {
+      n_try <- n_h
+      n_try[idx] <- .rna_alloc(a_h[idx], t, m_h[idx], M_h[idx])
+      at <- .cluster_take_rise(prep, n_try)
+      .alloc_domain_cv(at, n_try, alpha, deff, resp_rate, idx)
+    }
+    lo <- sum(m_h[idx])
+    hi <- sum(M_h[idx])
+    t <- if (cv_at(lo) <= cv + tol) {
+      lo
+    } else {
+      cv_hi <- cv_at(hi)
+      if (!is.finite(cv_hi) || cv_hi > cv + tol) {
+        stop(
+          sprintf(
+            "target 'cv' is unattainable in domain '%s' under current constraints%s",
+            names(prep$domain_idx)[d] %||% d,
+            .alloc_psu_bound_note(prep)
+          ),
+          call. = FALSE
+        )
+      }
+      if (cv_hi >= cv) {
+        hi
+      } else {
+        uniroot(function(x) cv_at(x) - cv, interval = c(lo, hi),
+                tol = 1e-8)$root
+      }
+    }
+    if (!is.null(floor_d) && floor_d[d] > t) {
+      t <- floor_d[d]
+      floored[d] <- TRUE
+    }
+    n_h[idx] <- .rna_alloc(a_h[idx], t, m_h[idx], M_h[idx])
+  }
+  structure(n_h, floored = floored)
 }
 
 #' @keywords internal

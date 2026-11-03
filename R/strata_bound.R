@@ -453,6 +453,13 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
       call. = FALSE
     )
   }
+  if (has_n && n > length(x)) {
+    stop(
+      "'n' is infeasible: maximum feasible is ", length(x),
+      ", the population size",
+      call. = FALSE
+    )
+  }
   if (!has_n && !has_cv && n_total < min_required) {
     stop(
       "with neither 'n' nor 'cv', the allocation is reported at half the ",

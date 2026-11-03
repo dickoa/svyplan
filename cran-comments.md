@@ -17,7 +17,7 @@
 
 ## Test environments
 
-* Local: Arch Linux, R 4.6.1
+* Local: Arch Linux, R 4.6.2
 * GitHub Actions: macOS-latest (R-release)
 * GitHub Actions: windows-latest (R-release)
 * GitHub Actions: ubuntu-latest (R-release, R-devel, R-oldrel-1)

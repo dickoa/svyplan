@@ -10,6 +10,7 @@
 \alias{format.svyplan_n}
 \alias{format.svyplan_cluster}
 \alias{format.svyplan_prec}
+\alias{format.svyplan_twophase}
 \alias{format.svyplan_varcomp}
 \alias{format.svyplan_power}
 \alias{as.integer.svyplan_n}
@@ -17,6 +18,7 @@
 \alias{as.integer.svyplan_cluster}
 \alias{as.double.svyplan_cluster}
 \alias{as.data.frame.svyplan_n}
+\alias{as.data.frame.svyplan_twophase}
 \alias{as.data.frame.svyplan_prec}
 \alias{as.data.frame.svyplan_varcomp}
 \alias{as.data.frame.svyplan_cluster}
@@ -47,6 +49,8 @@
 
 \method{format}{svyplan_prec}(x, ...)
 
+\method{format}{svyplan_twophase}(x, ...)
+
 \method{format}{svyplan_varcomp}(x, ...)
 
 \method{format}{svyplan_power}(x, ...)
@@ -60,6 +64,15 @@
 \method{as.double}{svyplan_cluster}(x, ...)
 
 \method{as.data.frame}{svyplan_n}(
+  x,
+  row.names = NULL,
+  optional = FALSE,
+  stringsAsFactors = FALSE,
+  validRN = TRUE,
+  ...
+)
+
+\method{as.data.frame}{svyplan_twophase}(
   x,
   row.names = NULL,
   optional = FALSE,
@@ -177,7 +190,9 @@ the stable handoff to downstream packages. For
 \code{svyplan_n}: the stratum allocation table (\verb{$detail}) for
 \code{n_alloc()} results, the per-domain table (\verb{$domains}, falling back
 to \verb{$detail}) for \code{n_multi()} results, and a one-row summary
-(\code{n}, \code{n_int}, \code{se}, \code{moe}, \code{cv}) otherwise. For \code{svyplan_cluster}:
+(\code{n}, \code{n_int}, \code{se}, \code{moe}, \code{cv}, \code{rmoe}) otherwise, with an \code{occasion}
+column and one row per occasion for a two-occasion \code{n_change()}. For
+\code{svyplan_cluster}:
 the per-domain table when domains are present, otherwise a stage
 table with columns \code{stage}, \code{n}, and \code{n_int}, where \code{n} is the continuous
 optimum and \code{n_int} is the constraint-preserving operational design.

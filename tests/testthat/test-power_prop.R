@@ -616,3 +616,33 @@ test_that("the log-odds pooled null is invariant to relabelling the groups", {
                   method = "logodds")
   expect_equal(a$power, b$power, tolerance = 1e-12)
 })
+
+## Log-odds detectable effect past the power peak
+
+test_that("the log-odds detectable effect is found on the rise to the peak", {
+  fit <- power_prop(p1 = 0.3, n = 500, power = 0.8, method = "logodds",
+                    alternative = "one.sided")
+  expect_equal(
+    power_prop(p1 = 0.3, p2 = fit$params$p2, n = 500, power = NULL,
+               method = "logodds", alternative = "one.sided")$power,
+    0.8, tolerance = 1e-6
+  )
+  for (alternative in c("one.sided", "two.sided")) {
+    for (n in c(50, 200, 1000, 5000)) {
+      for (p1 in c(0.05, 0.3, 0.7)) {
+        p2 <- power_prop(p1 = p1, n = n, power = 0.8, method = "logodds",
+                         alternative = alternative)$params$p2
+        expect_equal(
+          power_prop(p1 = p1, p2 = p2, n = n, power = NULL,
+                     method = "logodds", alternative = alternative)$power,
+          0.8, tolerance = 1e-6,
+          info = sprintf("%s, n %g, p1 %g", alternative, n, p1)
+        )
+      }
+    }
+  }
+  expect_equal(
+    power_prop(p1 = 0.3, n = 500, power = 0.8, method = "logodds")$params$p2,
+    0.2224067, tolerance = 1e-6
+  )
+})
