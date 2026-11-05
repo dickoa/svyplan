@@ -162,8 +162,8 @@
 #' different procedure. Passing `df` is an error that says so.
 #'
 #' @references
-#' Valliant, R., Dever, J. A., & Kreuter, F. (2018). *Practical Tools for
-#'   Designing and Weighting Survey Samples* (2nd ed.). Springer. Chapter 4.
+#' Valliant, R., Dever, J. A., and Kreuter, F. (2018). *Practical Tools for
+#' Designing and Weighting Survey Samples*, 2nd ed. Springer. Chapter 4.
 #'
 #' @family power analysis functions
 #' @seealso [power_prop()] for two-sample proportions, [power_mean()] for

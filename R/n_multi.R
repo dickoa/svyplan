@@ -274,11 +274,10 @@
 #' examples show.
 #'
 #' @references
-#' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
+#' Cochran, W. G. (1977). *Sampling Techniques*, 3rd ed. Wiley.
 #'
-#' Valliant, R., Dever, J. A., and Kreuter, F. (2018).
-#' *Practical Tools for Designing and Weighting Survey Samples*
-#' (2nd ed.). Springer.
+#' Valliant, R., Dever, J. A., and Kreuter, F. (2018). *Practical Tools for
+#' Designing and Weighting Survey Samples*, 2nd ed. Springer.
 #'
 #' @family multi-indicator functions
 #' @seealso [n_prop()] and [n_mean()] for single-indicator sizing,

@@ -100,12 +100,15 @@ test_that("a rotation carries the life, the take and the two shape flags", {
   expect_true(attr(panel, "equal_take"))
 })
 
-test_that("as.data.frame reports one row per occasion of the life", {
+test_that("as.data.frame lays one panel's life out at its stages", {
   d <- as.data.frame(design_rotation("1-1-0-0-1-1"))
-  expect_named(d, c("occasion", "in_sample", "take"))
-  expect_equal(d$occasion, 1:6)
-  expect_equal(d$in_sample, c(TRUE, TRUE, FALSE, FALSE, TRUE, TRUE))
-  expect_equal(d$take, c(1, 1, 0, 0, 1, 1))
+  one <- d[d$panel == 1L, ]
+  expect_equal(one$period, c(1L, 2L, 5L, 6L))
+  expect_equal(one$life_stage, c(1L, 2L, 5L, 6L))
+  expect_equal(one$wave, 1:4)
+  expect_equal(one$take, c(1, 1, 1, 1))
+  half <- as.data.frame(design_rotation(c(1, 1, 0.5, 0.5)), n_period = 4)
+  expect_equal(half$take[half$panel == 1L], c(1, 1, 0.5, 0.5))
 })
 
 test_that("print and format name the spells", {

@@ -418,18 +418,18 @@ n_twophase(nrfu, phase1_cost = 50, budget = 100000, mu = 1,
 
 }
 \references{
-Fuller, W. A. (2009). \emph{Sampling Statistics}, Sect. 3.3. Wiley.
+Fuller, W. A. (2009). \emph{Sampling Statistics}. Wiley. Section 3.3.
 
 Neyman, J. (1938). Contribution to the theory of sampling human
 populations. \emph{Journal of the American Statistical Association},
 33(201), 101--116.
 
-Saerndal, C.-E., Swensson, B., and Wretman, J. (1992). \emph{Model
-Assisted Survey Sampling}, Sect. 15.4. Springer.
+S\enc{ä}{ae}rndal, C.-E., Swensson, B., and Wretman, J. (1992).
+\emph{Model Assisted Survey Sampling}. Springer. Section 15.4.
 
-Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical
-Tools for Designing and Weighting Survey Samples}, 2nd edition,
-Sect. 17.5.2. Springer.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools
+for Designing and Weighting Survey Samples}, 2nd ed. Springer. Section
+17.5.2.
 }
 \seealso{
 \code{\link[=prec_twophase]{prec_twophase()}} for the inverse, \code{\link[=n_alloc]{n_alloc()}} for

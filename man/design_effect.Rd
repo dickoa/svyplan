@@ -293,9 +293,8 @@ design_effect(plan)
 \references{
 Kish, L. (1965). \emph{Survey Sampling}. Wiley.
 
-Valliant, R., Dever, J. A., and Kreuter, F. (2018).
-\emph{Practical Tools for Designing and Weighting Survey Samples}
-(2nd ed.). Springer. Ch. 9.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples}, 2nd ed. Springer. Chapter 9.
 }
 \seealso{
 \code{\link[=effective_n]{effective_n()}} for the sample size this design effect costs

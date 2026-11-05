@@ -136,9 +136,8 @@
 #' columns of the same names. See "Finite populations" in [n_cluster()].
 #'
 #' @references
-#' Valliant, R., Dever, J. A., and Kreuter, F. (2018).
-#' *Practical Tools for Designing and Weighting Survey Samples*
-#' (2nd ed.). Springer. Ch. 9.
+#' Valliant, R., Dever, J. A., and Kreuter, F. (2018). *Practical Tools for
+#' Designing and Weighting Survey Samples*, 2nd ed. Springer. Chapter 9.
 #'
 #' @family cluster design functions
 #' @seealso [n_cluster()] for the inverse operation, [varcomp()] for

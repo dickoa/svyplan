@@ -5225,29 +5225,67 @@ Math.svyplan_df <- function(x, ...) {
 #'
 #' A `svyplan_rotation` from [design_rotation()] is a numeric vector of takes,
 #' one entry per occasion of a unit's life. `as.double()` gives that vector
-#' bare, and `as.data.frame()` gives it one row per occasion.
+#' bare. `as.data.frame()` lays the pattern out over time as the table of
+#' cells [plot.svyplan_rotation()] draws, one row per interview of every
+#' panel in the periods drawn.
 #'
 #' @param x A `svyplan_rotation` object.
 #' @param row.names,optional,stringsAsFactors,validRN Standard
 #'   `as.data.frame()` arguments.
+#' @param start,n_period,panel How the first panels enter, the periods
+#'   covered and an optional [n_panel()] result, as for
+#'   [plot.svyplan_rotation()].
 #' @param ... Additional arguments are not supported and produce an error.
 #' @return The method-specific result:
 #' \describe{
 #'   \item{`print()`}{Returns `x` invisibly.}
 #'   \item{`format()`}{Returns a string.}
 #'   \item{`as.double()`}{Returns the take vector.}
-#'   \item{`as.data.frame()`}{Returns one row per occasion, with `occasion`,
-#'     `in_sample` and `take`.}
+#'   \item{`as.data.frame()`}{Returns one row per interview, ordered by
+#'     panel and then period, with columns:
+#'     \describe{
+#'       \item{`period`}{The period of the interview.}
+#'       \item{`panel`}{The panel, numbered in the chart's order: under an
+#'         immediate start the launch panels first, the one with the
+#'         shortest remaining life first, then one new panel per period.}
+#'       \item{`entry`}{The period the panel is selected. A launch panel
+#'         whose remaining life starts out of sample is selected in period 1
+#'         and first interviewed later.}
+#'       \item{`launch`}{`TRUE` for a panel of an immediate start.}
+#'       \item{`rotation_group`}{The rotation group the panel takes over,
+#'         as defined on [plot.svyplan_rotation()].}
+#'       \item{`wave`}{The place of the interview in the rotation pattern,
+#'         counting in-sample occasions only.}
+#'       \item{`visit`}{The interview number of the panel. Equal to `wave`
+#'         except for a launch panel.}
+#'       \item{`life_stage`}{The occasion of the full life, out-of-sample
+#'         occasions counted.}
+#'       \item{`take`}{The take at that occasion, 1 under an equal take.}
+#'       \item{`n`}{Units interviewed, `take` times the panel's entrants.
+#'         Present only when `panel` is given.}
+#'     }
+#'     The attributes `rotation`, `start`, `n_period` and
+#'     `full_sample_from`, the first period with the full sample in the
+#'     field, describe the table.}
 #' }
 #'
-#' @seealso [design_rotation()], which builds these objects, and
+#' @seealso [design_rotation()], which builds these objects,
+#'   [plot.svyplan_rotation()] for the chart of the cell table, and
 #'   [design_overlap()] for the lag profile one produces.
 #'
 #' @examples
 #' cps <- design_rotation("4-8-4")
 #' cps
 #' as.double(cps)
-#' as.data.frame(design_rotation("1-1-0-0-1-1"))
+#'
+#' # The cells of an immediate start: a launch panel's first interview can
+#' # be at a later wave
+#' cells <- as.data.frame(design_rotation("2-2-2"), start = "immediate",
+#'                        n_period = 8)
+#' head(cells, 8)
+#'
+#' # Which panels are at their first wave in period 6
+#' subset(cells, period == 6 & wave == 1)
 #'
 #' @name print.svyplan_rotation
 NULL
@@ -5288,16 +5326,28 @@ as.data.frame.svyplan_rotation <- function(
   optional = FALSE,
   stringsAsFactors = FALSE,
   validRN = TRUE,
+  start = c("gradual", "immediate"),
+  n_period = NULL,
+  panel = NULL,
   ...
 ) {
   .check_unused_dots(...)
-  take <- as.double(x)
-  data.frame(
-    occasion = seq_along(take),
-    in_sample = take > 0,
-    take = take,
-    row.names = row.names,
-    stringsAsFactors = stringsAsFactors
+  if (missing(start)) {
+    start <- NULL
+  }
+  start <- .check_chart_start(start, panel)
+  w <- as.double(x)
+  n_period <- .whole_arg(n_period, "n_period", length(w) + 4L)
+  out <- .rotation_cells(w, start, n_period, .chart_take(panel, w))
+  if (!is.null(row.names)) {
+    rownames(out) <- row.names
+  }
+  structure(
+    out,
+    rotation = x,
+    start = start,
+    n_period = n_period,
+    full_sample_from = if (identical(start, "immediate")) 1L else length(w)
   )
 }
 
@@ -5572,7 +5622,7 @@ as.data.frame.svyplan_overlap <- function(
 #' and the wave-by-wave table. `summary()` adds what the design implies
 #' around that answer: the standing sample a rotating design holds, the
 #' response and retention it assumes, where the life's loss falls, and the
-#' launch a design reaching its steady state passes through.
+#' launch a design passes through on its way to equilibrium.
 #' The coercions return the recruitment count, which is a number of units to
 #' release and not the analysis sample. Those differ by the whole of the
 #' panel's attrition, and it is why `svyplan_panel` is a sibling of
@@ -5605,7 +5655,7 @@ as.data.frame.svyplan_overlap <- function(
 #' plan
 #' summary(plan)
 #'
-#' # A rotating design reaching its steady state: the launch table is the
+#' # A rotating design reaching equilibrium: the launch table is the
 #' # occasions before it gets there
 #' rot <- n_panel(
 #'   n_prop(p = 0.5, moe = 0.031),
@@ -5723,7 +5773,7 @@ print.summary.svyplan_panel <- function(x, ...) {
 
 #' Name the launch and the two counts that bracket it
 #'
-#' The occasion-1 figure against the steady-state one is the whole content:
+#' The occasion-1 figure against the equilibrium one is the whole content:
 #' a gradual launch opens below the design and climbs, an immediate one opens
 #' at or above it, every unit there being at wave 1 and no later wave holding
 #' more than wave 1 does. The two coincide where nothing is lost after
@@ -5737,7 +5787,7 @@ print.summary.svyplan_panel <- function(x, ...) {
   # whole units on the display path, as every other count printed here is
   recruit <- ceiling(.panel_recruit(x))
   scale <- recruit / .panel_recruit(x)
-  settled <- which(x$launch$steady_state)[[1L]]
+  settled <- which(x$launch$equilibrium)[[1L]]
   sprintf(
     "launch (%s): %s responding at occasion 1, %s from occasion %d\n",
     x$start,
@@ -5970,7 +6020,7 @@ print.summary.svyplan_panel <- function(x, ...) {
   if (!all(is.na(l$cv))) {
     out$cv <- sprintf("%.3g", l$cv)
   }
-  out$steady <- l$steady_state
+  out$equilibrium <- l$equilibrium
   out
 }
 

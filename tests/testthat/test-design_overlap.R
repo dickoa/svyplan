@@ -346,7 +346,7 @@ test_that("spell notation is untouched by the pattern reading", {
   c(first, entering)
 }
 
-test_that("an immediate start reproduces the steady-state overlap from occasion 1", {
+test_that("an immediate start reproduces the full-sample overlap from occasion 1", {
   for (spec in c("6", "5", "1-1-0-0-1-1", "4-8-4")) {
     x <- design_overlap(spec)
     w <- as.double(x$rotation)
@@ -362,7 +362,7 @@ test_that("an immediate start reproduces the steady-state overlap from occasion 
   }
 })
 
-test_that("a gradual start reaches the steady-state overlap at the life", {
+test_that("a gradual start reaches the full-sample overlap at the life", {
   x <- design_overlap("6")
   grad <- .launch(as.double(x$rotation), "gradual")
   # nothing has rotated out yet, so early overlaps are higher than the design's

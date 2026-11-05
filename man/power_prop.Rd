@@ -246,10 +246,10 @@ power_prop(p1 = 0.30, p2 = 0.25, deff = 1.5, resp_rate = 0.9,
            eligible_per_unit = 0.45)
 }
 \references{
-Valliant, R., Dever, J. A., & Kreuter, F. (2018). \emph{Practical Tools for
-Designing and Weighting Survey Samples} (2nd ed.). Springer. Chapter 4.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples}, 2nd ed. Springer. Chapter 4.
 
-Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
+Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley.
 }
 \seealso{
 \code{\link[=power_mean]{power_mean()}} for continuous outcomes, \code{\link[=power_did]{power_did()}} for

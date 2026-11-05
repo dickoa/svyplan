@@ -1263,22 +1263,22 @@ reg_buy$operational[c("cost", "objective_value", "budget_residual")]
 
 }
 \references{
-Valliant, R., Dever, J. A., & Kreuter, F. (2018). \emph{Practical Tools for
-Designing and Weighting Survey Samples} (2nd ed.). Springer. Chapters 5
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples}, 2nd ed. Springer. Chapters 5
 and 9.
 
 Bankier, M. D. (1988). Power allocations: determining sample sizes for
 subnational areas. \emph{The American Statistician}, 42(3), 174--177.
 
-Bethel, J. (1989). Sample allocation in multivariate surveys.
-\emph{Survey Methodology}, 15(1), 47--57.
+Bethel, J. (1989). Sample allocation in multivariate surveys. \emph{Survey
+Methodology}, 15(1), 47--57.
 
-Cont, R. and Heidari, M. (2015). Optimal rounding under integer
+Cont, R. and Heidari, M. (2014). Optimal rounding under integer
 constraints. \emph{arXiv preprint} arXiv:1501.00014.
 
-Wesolowski, J., Wieczorkowski, R. and Wojciak, W. (2021). Optimality of
-the recursive Neyman allocation. \emph{Journal of Survey Statistics and
-Methodology}, 10(5), 1263--1275.
+Wes\enc{ł}{l}owski, J., Wieczorkowski, R., and W\enc{ó}{o}jciak, W.
+(2022). Optimality of the recursive Neyman allocation. \emph{Journal of Survey
+Statistics and Methodology}, 10(5), 1263--1275.
 }
 \seealso{
 \link{n_alloc-generalized} for the joint mode in full,

@@ -302,11 +302,12 @@ strata_bound(x, n_strata = 4, cv = 0.08, plan = plan)
 
 }
 \references{
-Dalenius, T. and Hodges, J. L. (1959). Minimum variance stratification.
-\emph{Journal of the American Statistical Association}, 54(285), 88--101.
+Dalenius, T. and Hodges, J. L., Jr. (1959). Minimum variance
+stratification. \emph{Journal of the American Statistical Association},
+54(285), 88--101.
 
-Lavall\enc{é}{e}e, P. and Hidiroglou, M. (1988). On the stratification of skewed
-populations. \emph{Survey Methodology}, 14(1), 33--43.
+Lavall\enc{é}{e}e, P. and Hidiroglou, M. A. (1988). On the stratification
+of skewed populations. \emph{Survey Methodology}, 14(1), 33--43.
 
 Kozak, M. (2004). Optimal stratification using random search method in
 agricultural surveys. \emph{Statistics in Transition}, 6(5), 797--806.
@@ -316,17 +317,17 @@ designs in R with the package stratification. \emph{Survey Methodology},
 37(1), 53--65.
 
 Gunning, P. and Horgan, J. M. (2004). A new algorithm for the
-construction of stratum boundaries in skewed populations.
-\emph{Survey Methodology}, 30(2), 159--166.
+construction of stratum boundaries in skewed populations. \emph{Survey
+Methodology}, 30(2), 159--166.
 
-Wesolowski, J., Wieczorkowski, R. and Wojciak, W. (2021). Optimality of
-the recursive Neyman allocation.
-\emph{Journal of Survey Statistics and Methodology}, 10(5), 1263--1275.
+Wes\enc{ł}{l}owski, J., Wieczorkowski, R., and W\enc{ó}{o}jciak, W.
+(2022). Optimality of the recursive Neyman allocation. \emph{Journal of
+Survey Statistics and Methodology}, 10(5), 1263--1275.
 
 Bankier, M. D. (1988). Power allocations: determining sample sizes for
 subnational areas. \emph{The American Statistician}, 42(3), 174--177.
 
-Cont, R. and Heidari, M. (2015). Optimal rounding under integer
+Cont, R. and Heidari, M. (2014). Optimal rounding under integer
 constraints. \emph{arXiv preprint} arXiv:1501.00014.
 }
 \seealso{

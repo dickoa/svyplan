@@ -421,24 +421,24 @@ n_prop(p = 0.22, moe = 0.04, deff = 1.5, N = 6600,
 
 }
 \references{
-Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
+Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley.
 
-Wilson, E. B. (1927). Probable inference, the law of succession,
-and statistical inference. \emph{Journal of the American Statistical
-Association}, 22(158), 209--212.
+Wilson, E. B. (1927). Probable inference, the law of succession, and
+statistical inference. \emph{Journal of the American Statistical Association},
+22(158), 209--212.
 
-Brown, L. D., Cai, T. T. and DasGupta, A. (2001). Interval estimation
-for a binomial proportion. \emph{Statistical Science}, 16(2), 101--133.
-The coverage comparison that motivates preferring the score interval
-for a rare or near-universal outcome.
+Brown, L. D., Cai, T. T., and DasGupta, A. (2001). Interval estimation
+for a binomial proportion. \emph{Statistical Science}, 16(2), 101--133. The
+coverage comparison that motivates preferring the score interval for a
+rare or near-universal outcome.
 
 Korn, E. L. and Graubard, B. I. (1998). Confidence intervals for
 proportions with small expected number of positive counts estimated from
 survey data. \emph{Survey Methodology}, 24(2), 193--201.
 
 Clopper, C. J. and Pearson, E. S. (1934). The use of confidence or
-fiducial limits illustrated in the case of the binomial.
-\emph{Biometrika}, 26(4), 404--413.
+fiducial limits illustrated in the case of the binomial. \emph{Biometrika},
+26(4), 404--413.
 }
 \seealso{
 \code{\link[=n_mean]{n_mean()}} for continuous variables, \code{\link[=n_cluster]{n_cluster()}} for

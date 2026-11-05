@@ -247,8 +247,8 @@ power_did(treat = c(0.30, 0.25), control = c(0.30, 0.29), outcome = "prop",
           deff = 1.5, eligible_per_unit = 0.45)
 }
 \references{
-Valliant, R., Dever, J. A., & Kreuter, F. (2018). \emph{Practical Tools for
-Designing and Weighting Survey Samples} (2nd ed.). Springer. Chapter 4.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples}, 2nd ed. Springer. Chapter 4.
 }
 \seealso{
 \code{\link[=power_prop]{power_prop()}} for two-sample proportions, \code{\link[=power_mean]{power_mean()}} for

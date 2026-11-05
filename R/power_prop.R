@@ -170,10 +170,10 @@
 #' different procedure. Passing `df` is an error that says so.
 #'
 #' @references
-#' Valliant, R., Dever, J. A., & Kreuter, F. (2018). *Practical Tools for
-#'   Designing and Weighting Survey Samples* (2nd ed.). Springer. Chapter 4.
+#' Valliant, R., Dever, J. A., and Kreuter, F. (2018). *Practical Tools for
+#' Designing and Weighting Survey Samples*, 2nd ed. Springer. Chapter 4.
 #'
-#' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
+#' Cochran, W. G. (1977). *Sampling Techniques*, 3rd ed. Wiley.
 #'
 #' @family power analysis functions
 #' @seealso [power_mean()] for continuous outcomes, [power_did()] for

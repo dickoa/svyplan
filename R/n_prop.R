@@ -327,24 +327,24 @@
 #' precision was computed under the original method.
 #'
 #' @references
-#' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
+#' Cochran, W. G. (1977). *Sampling Techniques*, 3rd ed. Wiley.
 #'
-#' Wilson, E. B. (1927). Probable inference, the law of succession,
-#' and statistical inference. *Journal of the American Statistical
-#' Association*, 22(158), 209--212.
+#' Wilson, E. B. (1927). Probable inference, the law of succession, and
+#' statistical inference. *Journal of the American Statistical Association*,
+#' 22(158), 209--212.
 #'
-#' Brown, L. D., Cai, T. T. and DasGupta, A. (2001). Interval estimation
-#' for a binomial proportion. *Statistical Science*, 16(2), 101--133.
-#' The coverage comparison that motivates preferring the score interval
-#' for a rare or near-universal outcome.
+#' Brown, L. D., Cai, T. T., and DasGupta, A. (2001). Interval estimation
+#' for a binomial proportion. *Statistical Science*, 16(2), 101--133. The
+#' coverage comparison that motivates preferring the score interval for a
+#' rare or near-universal outcome.
 #'
 #' Korn, E. L. and Graubard, B. I. (1998). Confidence intervals for
 #' proportions with small expected number of positive counts estimated from
 #' survey data. *Survey Methodology*, 24(2), 193--201.
 #'
 #' Clopper, C. J. and Pearson, E. S. (1934). The use of confidence or
-#' fiducial limits illustrated in the case of the binomial.
-#' *Biometrika*, 26(4), 404--413.
+#' fiducial limits illustrated in the case of the binomial. *Biometrika*,
+#' 26(4), 404--413.
 #'
 #' @family sample size and precision functions
 #' @seealso [n_mean()] for continuous variables, [n_cluster()] for

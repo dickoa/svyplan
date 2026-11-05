@@ -562,9 +562,8 @@ n_cluster(
 
 }
 \references{
-Valliant, R., Dever, J. A., and Kreuter, F. (2018).
-\emph{Practical Tools for Designing and Weighting Survey Samples}
-(2nd ed.). Springer. Ch. 9.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples}, 2nd ed. Springer. Chapter 9.
 }
 \seealso{
 \code{\link[=prec_cluster]{prec_cluster()}} for the inverse, \code{\link[=varcomp]{varcomp()}} for estimating

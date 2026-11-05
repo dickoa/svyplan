@@ -316,18 +316,18 @@
 #' \eqn{\theta}, which is the standard result.
 #'
 #' @references
-#' Fuller, W. A. (2009). \emph{Sampling Statistics}, Sect. 3.3. Wiley.
+#' Fuller, W. A. (2009). \emph{Sampling Statistics}. Wiley. Section 3.3.
 #'
 #' Neyman, J. (1938). Contribution to the theory of sampling human
 #' populations. \emph{Journal of the American Statistical Association},
 #' 33(201), 101--116.
 #'
-#' Saerndal, C.-E., Swensson, B., and Wretman, J. (1992). \emph{Model
-#' Assisted Survey Sampling}, Sect. 15.4. Springer.
+#' S\enc{ä}{ae}rndal, C.-E., Swensson, B., and Wretman, J. (1992).
+#' \emph{Model Assisted Survey Sampling}. Springer. Section 15.4.
 #'
-#' Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical
-#' Tools for Designing and Weighting Survey Samples}, 2nd edition,
-#' Sect. 17.5.2. Springer.
+#' Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools
+#' for Designing and Weighting Survey Samples}, 2nd ed. Springer. Section
+#' 17.5.2.
 #'
 #' @family two-phase design functions
 #' @seealso [prec_twophase()] for the inverse, [n_alloc()] for

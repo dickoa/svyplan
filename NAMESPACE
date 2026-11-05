@@ -106,6 +106,7 @@ S3method(n_twophase,svyplan_prec)
 S3method(plot,svyplan_n)
 S3method(plot,svyplan_overlap)
 S3method(plot,svyplan_power)
+S3method(plot,svyplan_rotation)
 S3method(plot,svyplan_strata)
 S3method(power_did,default)
 S3method(power_mean,default)
@@ -203,6 +204,7 @@ export(svyplan)
 export(varcomp)
 importFrom(grDevices,
   adjustcolor,
+  hcl.colors,
   nclass.FD
 )
 importFrom(graphics,

@@ -62,9 +62,9 @@ modify a plain data frame.
 }
 \description{
 \code{print()} states the issue profile as a run of takes rather than as one
-row per occasion, because a schedule's occasions are mostly identical and
+row per period, because a schedule's periods are mostly identical and
 its length is set by the reporting horizon rather than by the design.
-\code{summary()} gives the occasion-by-occasion tables: the issue profile in
+\code{summary()} gives the period-by-period tables: the issue profile in
 full, the component activity, the overlap the rotation produces, and the
 interviews owed after the horizon. \code{\link[=as.data.frame]{as.data.frame()}} returns the issue
 profile, and every table stays reachable as a field.
@@ -86,7 +86,7 @@ schedule <- design_schedule(
 )
 schedule
 
-# the occasion-by-occasion tables the print block summarizes
+# the period-by-period tables the print block summarizes
 s <- summary(schedule)
 s
 

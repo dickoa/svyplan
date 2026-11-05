@@ -356,21 +356,20 @@
 #' components from the frame instead.
 #'
 #' @references
-#' Valliant, R., Dever, J. A., and Kreuter, F. (2018).
-#' *Practical Tools for Designing and Weighting Survey Samples*
-#' (2nd ed.). Springer. Ch. 9.
+#' Valliant, R., Dever, J. A., and Kreuter, F. (2018). *Practical Tools for
+#' Designing and Weighting Survey Samples*, 2nd ed. Springer. Chapter 9.
 #'
-#' Hansen, M. H., Hurwitz, W. N., and Madow, W. G. (1953).
-#' *Sample Survey Methods and Theory* (Vol. I). Wiley.
+#' Hansen, M. H., Hurwitz, W. N., and Madow, W. G. (1953). *Sample Survey
+#' Methods and Theory, Volume I, Methods and Applications*. Wiley.
 #'
 #' Kalton, G., Brick, J. M., and L\enc{ê}{e}, T. (2005). Estimating
-#' components of design effects for use in sample design. In
-#' *Household Sample Surveys in Developing and Transition Countries*,
-#' Studies in Methods, Series F No. 96, Chapter VI. United Nations.
+#' components of design effects for use in sample design. In *Household
+#' Sample Surveys in Developing and Transition Countries*, Studies in
+#' Methods, Series F No. 96, Chapter VI. United Nations.
 #'
 #' Gabler, S., Haeder, S., and Lahiri, P. (1999). A model based
 #' justification of Kish's formula for design effects for weighting and
-#' clustering. *Survey Methodology*, 25(1), 105-106.
+#' clustering. *Survey Methodology*, 25(1), 105--106.
 #'
 #' @family cluster design functions
 #' @seealso [n_cluster()] which accepts a `svyplan_varcomp` as `icc`,

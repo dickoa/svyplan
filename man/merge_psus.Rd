@@ -72,9 +72,8 @@ aggregate(households ~ stratum + psu_id, listing, sum)
 
 }
 \references{
-Valliant, R., Dever, J. A., & Kreuter, F. (2018). \emph{Practical Tools for
-Designing and Weighting Survey Samples} (2nd ed.). Springer. Section
-10.3.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples}, 2nd ed. Springer. Section 10.3.
 }
 \seealso{
 \code{\link[=n_alloc]{n_alloc()}} for the register the merged ids feed.

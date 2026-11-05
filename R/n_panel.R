@@ -2,8 +2,8 @@
 #'
 #' Compute how many units to recruit so that a panel still delivers a
 #' required responding sample after several waves of attrition, either for a
-#' fixed panel followed to a chosen wave or for a rotating panel at steady
-#' state. The requirement and the estimand both come from an existing sizing
+#' fixed panel followed to a chosen wave or for a rotating panel at
+#' equilibrium. The requirement and the estimand both come from an existing sizing
 #' or precision result, so the panel arithmetic is stated once and the
 #' design it serves is stated where it always was.
 #'
@@ -76,7 +76,7 @@
 #'     design holds across every live cohort, and how many cohorts that is.
 #'     The first two are different budget lines and are named separately for
 #'     that reason. For a life without a gap, `n_in_sample` is also the
-#'     cumulative recruitment that reaching a steady state takes, whether
+#'     cumulative recruitment that reaching the full sample takes, whether
 #'     the cohorts are taken on at once or phased in over the first
 #'     `n_cohorts` occasions. With a gap, cohorts out of sample are held too,
 #'     so that recruitment is `n_held`, reached after `length(rotation)`
@@ -105,9 +105,9 @@
 #'     rows are the cohorts alive at one occasion and `n_resp` sums to the
 #'     occasion's sample.}
 #'   \item{`start`, `launch`, `launch_waves`}{Present when `start` was
-#'     given. `launch` has one row per occasion up to the steady state and
-#'     one past it: the entrants taken on, the units in sample, the expected
-#'     respondents, the precision they buy, and `steady_state` marking the
+#'     given. `launch` has one row per occasion up to equilibrium and one
+#'     past it: the entrants taken on, the units in sample, the expected
+#'     respondents, the precision they buy, and `equilibrium` marking the
 #'     occasion from which the design holds one cohort at every wave. That is
 #'     the composition rather than the count. Where no wave loses anyone, the
 #'     counts coincide from the first occasion and the mix still does not. `launch_waves` decomposes each occasion into the
@@ -149,12 +149,12 @@
 #' below, which is the argument for `resp_rate` and `retention` being
 #' separate arguments rather than one average rate.
 #'
-#' ## Bringing a rotating design up to its steady state
+#' ## Bringing a rotating design up to equilibrium
 #'
-#' A rotating design's recruitment describes it at a steady state, which it
-#' reaches once every stage of the life is represented at one occasion.
+#' A rotating design's recruitment describes it at equilibrium (Lynn,
+#' 2012), which it reaches once one cohort is at every wave of the life.
 #' Getting there is a design decision, and `start` reports what each choice
-#' delivers on the way.
+#' delivers in the start-up period before it (Kalton, 2009).
 #'
 #' A **gradual** launch recruits one cohort an occasion, so the sample climbs
 #' over a full life before it is the design's own. An **immediate** launch
@@ -167,9 +167,9 @@
 #' rotated through. The launch tables therefore describe both the early
 #' membership mix and its response and precision path.
 #'
-#' The point of reporting it is that an immediate launch is **not** in
-#' response equilibrium at its first occasion even though it is in membership
-#' equilibrium. Every unit there is at wave 1, so that occasion holds
+#' The point of reporting it is that an immediate launch is **not** at
+#' equilibrium at its first occasion even though it has the full sample in
+#' the field. Every unit there is at wave 1, so that occasion holds
 #'
 #' \deqn{R_1 - e \sum_s q_s = e \sum_s (q_1 - q_s) \ge 0,}{
 #'       R_1 - e sum_s q_s = e sum_s (q_1 - q_s) >= 0,}
@@ -189,7 +189,7 @@
 #'
 #' `waves` counts interviews, not occasions. Under `rotation = "2-2-2"` a
 #' unit is interviewed at occasions 1, 2, 5 and 6 of a six-occasion life, so
-#' `retention` takes three values. The steady state is that of an unbroken
+#' `retention` takes three values. The equilibrium is that of an unbroken
 #' four-wave life, with the same entrants, the same four cohorts in sample
 #' and the same precision. The loss across the gap belongs in the retention
 #' value that crosses it, `retention[2]` here.
@@ -266,9 +266,16 @@
 #' would each answer a different question about it.
 #'
 #' @references
+#' Kalton, G. (2009). Designs for surveys over time. In D. Pfeffermann and
+#' C. R. Rao (eds.), *Handbook of Statistics 29A, Sample Surveys: Design,
+#' Methods and Applications*, 89--108. Elsevier.
+#'
+#' Lynn, P. (2012). *Longitudinal Survey Methods for the Household Finances
+#' and Consumption Survey*. Report prepared for the European Central Bank.
+#'
 #' Smith, P., Lynn, P., and Elliot, D. (2009). Sample design for
 #' longitudinal surveys. In P. Lynn (ed.), *Methodology of Longitudinal
-#' Surveys*, 21-33. Wiley.
+#' Surveys*, 21--33. Wiley.
 #'
 #' @family repeated survey functions
 #' @seealso [prec_panel()] for the same design from a recruitment you
@@ -320,13 +327,13 @@
 #'                resp_rate = 0.728, design = "rotating", start = "immediate")
 #' subset(imm$launch_waves, period <= 2)
 #'
-#' # A 2-2-2 rotation, in for two occasions, out for two, in for two. The
-#' # steady state is the four-wave one, and six cohorts are held
+#' # A 2-2-2 rotation, in for two occasions, out for two, in for two. Its
+#' # equilibrium is the four-wave one, and six cohorts are held
 #' gap <- n_panel(target, retention = c(0.9, 0.85, 0.9), resp_rate = 0.75,
 #'                design = "rotating", start = "immediate",
 #'                rotation = "2-2-2")
 #' c(in_sample = gap$n_in_sample, held = gap$n_held)
-#' gap$launch[c("period", "n_entrants", "n_in_sample", "steady_state")]
+#' gap$launch[c("period", "n_entrants", "n_in_sample", "equilibrium")]
 #'
 #' # Request at least a 95% probability of reaching the respondent target
 #' n_panel(target, retention = c(0.9, 0.9), resp_rate = 0.8,
@@ -875,7 +882,7 @@ n_panel <- function(
 
 #' What a rotating design delivers at each occasion of its launch
 #'
-#' Reported through the occasion after the steady state is reached, so the
+#' Reported through the occasion after equilibrium is reached, so the
 #' table shows it holding rather than leaving the reader to infer it. Counts
 #' are continuous, from the continuous entrant size, whole units belonging on
 #' the display path, which is where `print()` puts them.
@@ -905,7 +912,7 @@ n_panel <- function(
     moe = vapply(prec, function(z) z$moe, numeric(1L)),
     cv = vapply(prec, function(z) z$cv, numeric(1L)),
     rmoe = vapply(prec, function(z) z$rmoe %||% NA_real_, numeric(1L)),
-    steady_state = vapply(cohorts, function(m) all(m == 1), logical(1L))
+    equilibrium = vapply(cohorts, function(m) all(m == 1), logical(1L))
   )
   if (identical(tgt$type, "proportion")) {
     launch$expected_cases <- vapply(
@@ -958,7 +965,7 @@ n_panel <- function(
 
 #' Entrants per occasion whose pooled respondents clear a target
 #'
-#' At steady state the respondents at one occasion are
+#' At equilibrium the respondents at one occasion are
 #' \eqn{\sum_s \mathrm{Binomial}(e, q_s)}{sum_s Binomial(e, q_s)} over the live cohorts, whose
 #' cumulative response probabilities differ, so this is Poisson-binomial and
 #' not \eqn{\mathrm{Binomial}(ke, \bar{q})}{Binomial(ke, qbar)}. The distribution is assembled

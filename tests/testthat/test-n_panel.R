@@ -722,7 +722,7 @@ test_that("summary carries the launch and the cohort composition", {
   expect_identical(sm$composition, rot$launch_waves)
   expect_true(any(grepl("Launch \\(immediate\\)",
                         capture.output(print(sm)))))
-  # A fixed design has no steady state to reach, so it has no launch table.
+  # A fixed design has no equilibrium to reach, so it has no launch table.
   fixed <- summary(n_panel(lfs_target, retention = lfs_ret,
                            resp_rate = lfs_rr))
   expect_null(fixed$launch)
@@ -811,7 +811,7 @@ test_that("svyplan_panel is a sibling of svyplan_n, not a subtype", {
   expect_error(predict(plan))
 })
 
-## N-launch. What a rotating design delivers before it reaches its steady state
+## N-launch. What a rotating design delivers before it reaches equilibrium
 
 .lfs <- function(...) {
   n_panel(n_prop(p = 0.5, moe = 0.031), retention = c(0.878, 0.963, 0.936, 0.956),
@@ -877,14 +877,14 @@ test_that("the launch is stored continuous and lands on n_target", {
   }
 })
 
-test_that("the two launches bracket the steady state in opposite directions", {
+test_that("the two launches bracket the equilibrium in opposite directions", {
   imm <- .lfs(start = "immediate")$launch
   grad <- .lfs(start = "gradual")$launch
-  steady <- tail(imm$n_resp, 1L)
-  # an immediate start opens above its own steady state, every unit being at
+  at_eq <- tail(imm$n_resp, 1L)
+  # an immediate start opens above its own equilibrium, every unit being at
   # wave 1, and settles down onto it; a gradual one opens below and climbs
-  expect_gt(imm$n_resp[[1L]], steady)
-  expect_lt(grad$n_resp[[1L]], steady)
+  expect_gt(imm$n_resp[[1L]], at_eq)
+  expect_lt(grad$n_resp[[1L]], at_eq)
   expect_false(is.unsorted(rev(imm$n_resp)))
   expect_false(is.unsorted(grad$n_resp))
   expect_lt(imm$moe[[1L]], tail(imm$moe, 1L))
@@ -894,14 +894,14 @@ test_that("the two launches bracket the steady state in opposite directions", {
   expect_lt(grad$n_in_sample[[1L]], tail(grad$n_in_sample, 1L))
 })
 
-test_that("the steady state is flagged where the two launches meet", {
+test_that("equilibrium is flagged where the two launches meet", {
   imm <- .lfs(start = "immediate")
   grad <- .lfs(start = "gradual")
   k <- nrow(imm$waves)
-  expect_equal(which(imm$launch$steady_state)[[1L]], k)
-  expect_equal(which(grad$launch$steady_state)[[1L]], k)
-  expect_equal(imm$launch$n_resp[imm$launch$steady_state],
-               grad$launch$n_resp[grad$launch$steady_state], tolerance = 1e-12)
+  expect_equal(which(imm$launch$equilibrium)[[1L]], k)
+  expect_equal(which(grad$launch$equilibrium)[[1L]], k)
+  expect_equal(imm$launch$n_resp[imm$launch$equilibrium],
+               grad$launch$n_resp[grad$launch$equilibrium], tolerance = 1e-12)
 })
 
 test_that("launch_waves decomposes each occasion", {
@@ -985,21 +985,21 @@ test_that("start = NULL leaves no trace in params", {
   expect_true("start" %in% names(.lfs(start = "gradual")$params))
 })
 
-test_that("an immediate launch opens at the steady state when nothing is lost", {
-  # R_1 - steady = e * sum(q_1 - q_s), which is 0 exactly when q is flat, so
+test_that("an immediate launch opens at equilibrium when nothing is lost", {
+  # R_1 - equilibrium = e * sum(q_1 - q_s), which is 0 exactly when q is flat, so
   # the claim is "at least as many", not "more"
   flat <- n_panel(n_prop(p = 0.5, moe = 0.031), retention = c(1, 1, 1),
                   resp_rate = 0.8, design = "rotating", start = "immediate")
   expect_equal(flat$launch$n_resp[[1L]], tail(flat$launch$n_resp, 1L),
                tolerance = 1e-12)
   expect_equal(flat$launch$moe[[1L]], flat$moe, tolerance = 1e-12)
-  # every occasion delivers the steady-state count here, and the flag still
+  # every occasion delivers the equilibrium count here, and the flag still
   # marks the occasion the wave composition matures at: with nothing lost the
   # counts coincide earlier than the mix does, and it is the mix that decides
   # whether an occasion is comparable with the rest of the series
   expect_equal(flat$launch$n_resp, rep(flat$n_target, nrow(flat$launch)),
                tolerance = 1e-9)
-  expect_equal(which(flat$launch$steady_state)[[1L]], nrow(flat$waves))
+  expect_equal(which(flat$launch$equilibrium)[[1L]], nrow(flat$waves))
   expect_equal(flat$launch_waves$wave[flat$launch_waves$period == 1L], 1L)
 
   # resp_rate cancels from both sides, so it is retention alone that decides
@@ -1021,7 +1021,7 @@ test_that("an immediate launch opens at the steady state when nothing is lost", 
 
 .gap_target <- function() n_prop(p = 0.5, moe = 0.031)
 
-test_that("a gap leaves the steady state of the same visits unchanged", {
+test_that("a gap leaves the equilibrium of the same visits unchanged", {
   for (spec in c("2-2-2", "4-8-4", "2-1-3")) {
     v <- sum(as.double(design_rotation(spec)) > 0)
     ret <- seq(0.95, 0.85, length.out = v - 1L)
@@ -1087,7 +1087,7 @@ test_that("the launch of any rotation matches an enumeration of its cohorts", {
       in_sample <- tabulate(o$period, L + 1L)
       expect_equal(x$launch$n_in_sample, x$n_entrants * in_sample,
                    tolerance = 1e-12, label = lab)
-      expect_identical(x$launch$steady_state, x$launch$period >= L,
+      expect_identical(x$launch$equilibrium, x$launch$period >= L,
                        label = lab)
       entering <- c(if (start == "immediate") L else 1, rep(1, L))
       expect_equal(x$launch$n_entrants, x$n_entrants * entering,
@@ -1101,14 +1101,14 @@ test_that("an immediate 2-2-2 launch is full from the first occasion", {
                design = "rotating", start = "immediate", rotation = "2-2-2")
   expect_equal(x$launch$n_in_sample, rep(4 * x$n_entrants, 7L),
                tolerance = 1e-12)
-  expect_identical(which(x$launch$steady_state)[[1L]], 6L)
+  expect_identical(which(x$launch$equilibrium)[[1L]], 6L)
   grad <- n_panel(.gap_target(), retention = c(0.9, 0.85, 0.9),
                   resp_rate = 0.75, design = "rotating", start = "gradual",
                   rotation = "2-2-2")
   expect_equal(grad$launch$n_in_sample / grad$n_entrants,
                c(1, 2, 2, 2, 3, 4, 4), tolerance = 1e-12)
 
-  # the issued overlap from the first occasion is the steady profile
+  # the issued overlap from the first occasion is the full-sample profile
   o <- launch_oracle(as.double(x$rotation), "immediate", 12L)
   want <- as.double(design_overlap("2-2-2"))
   for (lag in seq_along(want)) {

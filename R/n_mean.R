@@ -128,11 +128,10 @@
 #' See Examples below.
 #'
 #' @references
-#' Cochran, W. G. (1977). *Sampling Techniques* (3rd ed.). Wiley.
+#' Cochran, W. G. (1977). *Sampling Techniques*, 3rd ed. Wiley.
 #'
-#' Valliant, R., Dever, J. A., and Kreuter, F. (2018).
-#' *Practical Tools for Designing and Weighting Survey Samples*
-#' (2nd ed.). Springer.
+#' Valliant, R., Dever, J. A., and Kreuter, F. (2018). *Practical Tools for
+#' Designing and Weighting Survey Samples*, 2nd ed. Springer.
 #'
 #' @family sample size and precision functions
 #' @seealso [n_prop()] for proportions, [n_cluster()] for multistage designs,

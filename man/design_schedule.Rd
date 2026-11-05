@@ -13,7 +13,7 @@ design_schedule(
   rounding,
   take = NULL,
   tenures = 1,
-  subperiods = 1
+  subrounds = 1
 )
 }
 \arguments{
@@ -22,7 +22,7 @@ design_schedule(
 \code{rotation} is the life the schedule lays out, and the overlap the
 manifest records is computed from it, so neither is supplied here.}
 
-\item{horizon}{A positive whole number of program occasions in the finite
+\item{horizon}{A positive whole number of reporting periods in the finite
 planning window.}
 
 \item{horizon_policy}{One of \code{"continuing"}, \code{"truncate_lives"}, or
@@ -59,67 +59,92 @@ life repeats the rotation back to back, and \code{visit} restarts at 1 at
 each tenure, where the group's new units are drawn. A finite number of
 tenures above 1 is not available.}
 
-\item{subperiods}{A positive whole number, \code{1} by default. The rotation,
-the panel plan and \code{horizon} are stated per reporting period, and the
-schedule is written in \code{horizon * subperiods} fieldwork waves. See the
-section on sub-periods.}
+\item{subrounds}{A positive whole number, \code{1} by default, the subrounds
+each period's fieldwork is divided into. The rotation, the panel plan
+and \code{horizon} are stated per reporting period. See the section on
+subrounds.}
 }
 \value{
 An \code{svyplan_schedule} list with scalar planning metadata and four
-data frames. \code{schema_version} is 2. The metadata carries \code{n_entrants},
+data frames. \code{schema_version} is 3. The metadata carries \code{n_entrants},
 \code{n_in_sample} and \code{n_held} from the panel plan, and \code{n_cohorts}, the
-cohorts in sample at an occasion, which is the number of visits.
-\code{life_length} is the life in occasions, gaps included. \code{take},
-\code{tenures} (\code{1}, or \code{Inf} for \code{"open"}) and \code{subperiods} record the
-arguments.
+cohorts in sample at a period, which is the number of visits.
+\code{life_length} is the life in periods, gaps included, and \code{horizon}
+counts periods. \code{equilibrium_from} is the first period at equilibrium,
+\code{NA} when the window ends before it. \code{take}, \code{tenures} (\code{1}, or \code{Inf}
+for \code{"open"}) and \code{subrounds} record the arguments.
 \describe{
 \item{\code{components}}{One row per execution: startup followed by the intake
-cohorts permitted by the horizon policy. Continuous and operational
-issue remain separate.}
-\item{\code{schedule}}{The dense component-panel grid over occasions 1 through
-\code{horizon}. \code{period} names each wave's reporting period,
-\code{(wave - 1) \%/\% subperiods + 1}, which equals \code{wave} when
-\code{subperiods = 1}. A row is in one of three states. Before a panel's entry or
-after its life it has \code{active = FALSE} and \code{life_stage} and \code{visit}
-\code{NA}. Held out of sample, in a gap of its life, it has
-\code{active = FALSE}, a \code{life_stage} and \code{visit = NA}. Interviewed, it has
-\code{active = TRUE}, a \code{life_stage} and a \code{visit}.}
+cohorts permitted by the horizon policy, each with its
+\code{entry_period}. Continuous and operational issue remain separate.}
+\item{\code{schedule}}{The dense component-panel grid over periods 1 through
+\code{horizon}, one row per panel at each \code{period} and \code{subround}, with
+the columns described under Details. A row is in one of three
+states. Before a panel's entry or after its life it has
+\code{active = FALSE} and \code{wave}, \code{visit} and \code{life_stage} \code{NA}. Held out
+of sample, in a gap of its life, it has \code{active = FALSE}, a
+\code{life_stage}, and \code{wave} and \code{visit} \code{NA}. Interviewed, it has
+\code{active = TRUE} and all three.}
 \item{\code{tail_commitments}}{A sparse table of interviews after \code{horizon}
 owed to components entering within a \code{"continuing"} window, with the
-same \code{period}, \code{life_stage} and \code{visit}. It lists interviews only and
-has a fixed empty schema under the other policies.}
+columns of \code{schedule} other than \code{active} and \code{equilibrium}. It lists
+interviews only and has a fixed empty schema under the other
+policies.}
 \item{\code{issue}}{The continuous and operational recruitment issued at each
-in-horizon occasion, in assignment units, and \code{tenure_issue}, the units
-first interviewed there, which is where a tenure's units are drawn.
-\code{\link[=as.data.frame]{as.data.frame()}} returns this view.}
+subround of each period, in assignment units, \code{tenure_issue}, the
+units first interviewed there, which is where a tenure's units are
+drawn, and \code{equilibrium}. \code{\link[=as.data.frame]{as.data.frame()}} returns this view.}
 }
 
 The generated activity is checked against \code{panel_plan$launch_waves} over
 every shared period that the horizon policy has not changed. Its realized
 issued overlap is also checked against the overlap the rotation
-produces, at every mature membership origin for which the destination
-occasion exists.
+produces, at every period with the full sample in the field for which
+the destination period exists.
 }
 \description{
 Translate the launch and recruitment quantities in a rotating
 \link[=n_panel]{svyplan_panel} into named cohort components, a dense
-panel-by-occasion schedule, and any interview commitments beyond the
+panel-by-period schedule, and any interview commitments beyond the
 planning horizon. The result is a planning object. It does not inspect
 a frame, execute a sample, or construct analysis weights.
 }
 \details{
-\code{life_stage} counts the occasions of a panel's own life and \code{visit} its
-interviews, both from 1. They are equal for a life without a break. Under
-\code{"2-2-2"} an intake cohort has \code{life_stage} 1 to 6 and \code{visit} 1, 2,
-\code{NA}, \code{NA}, 3, 4.
+The schedule describes each interview in the terms the cell table of
+\code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}} uses, and for the same rotation and start the
+two agree.
+\itemize{
+\item \code{panel} numbers the panels of a cohort. A panel is the set of units
+that enter and leave the sample together (Steel and McLaren, 2008). The
+startup panels of an immediate start run from the one with a single
+period left to the one with the whole life, so startup panel \code{k} is
+panel \code{k} of the chart.
+\item \code{rotation_group} is the slot a new panel takes over when the panel
+before it rotates out, assigned by the rule on
+\code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}}.
+\item \code{wave} is the place of the interview in the rotation pattern, the
+meaning of Regulation (EU) 2019/2240. \code{visit} is the panel's own
+interview count. They differ only for the startup panels of an
+immediate start, whose first interview can come at a later wave.
+\item \code{life_stage} is the stage of the pattern the panel is at, out-of-sample
+stages counted. \code{life_length} is the length of the panel's own life.
+\item \code{equilibrium} is \code{TRUE} at a period holding one panel at every
+interview of the life, after which response and precision stop
+changing (Lynn, 2012). Under an immediate start the full sample is in
+the field from period 1, and equilibrium comes once the startup panels
+have aged through.
+}
 
-An immediate start covers every stage of the life at the first occasion,
+Under \code{"2-2-2"} an intake cohort has \code{life_stage} 1 to 6, \code{wave} and
+\code{visit} 1, 2, \code{NA}, \code{NA}, 3, 4. The startup panel with two periods left
+has \code{life_stage} 5 and 6 and \code{wave} 3 and 4, at \code{visit} 1 and 2.
+
+An immediate start covers every stage of the life at the first period,
 one startup panel per stage, as \code{\link[=n_panel]{n_panel()}} plans it. A panel covering a
-stage out of sample is selected at the first occasion and held until the
+stage out of sample is selected at the first period and held until the
 rest of its life returns to sample. Its first interview, where \code{visit} is
 1, comes later. Under \code{"2-2-2"} the panels covering stages 3 and 4 are
-first interviewed at occasions 3 and 2. A panel numbers its own stages
-and interviews, so every panel has a \code{visit} of 1 at its first interview.
+first interviewed at periods 3 and 2.
 \subsection{PSUs and tenures}{
 
 With \code{take}, the schedule counts PSUs. Each panel is a group of
@@ -129,33 +154,34 @@ schedule, as in \code{n_alloc(frame, n = schedule$components$operational_issue[1
 the PSU count the schedule promises.
 
 Under \code{tenures = "open"} no PSU is replaced inside the horizon. An
-immediate start selects every group at the first occasion, each group's
+immediate start selects every group at the first period, each group's
 first tenure being the rest of the life from the stage it covers, and a
-gradual start brings in one group an occasion until the life is covered.
+gradual start brings in one group a period until the life is covered.
 A new tenure is a new draw of units, so the overlap of the units is still
-the one \code{\link[=design_overlap]{design_overlap()}} gives for the rotation. The horizon policies
-apply to tenures. \code{"continuing"} lists the rest of every tenure opened in
-the window, \code{"truncate_lives"} cuts tenures at the horizon, and
-\code{"close_intake"} opens no tenure that cannot finish by it.
+the one \code{\link[=design_overlap]{design_overlap()}} gives for the rotation, and \code{visit} restarts
+at 1 while \code{wave} and \code{life_stage} follow the pattern. The horizon
+policies apply to tenures. \code{"continuing"} lists the rest of every tenure
+opened in the window, \code{"truncate_lives"} cuts tenures at the horizon,
+and \code{"close_intake"} opens no tenure that cannot finish by it.
 }
 
-\subsection{Sub-periods}{
+\subsection{Subrounds}{
 
-Monthly fieldwork for quarterly estimates is a schedule over months. With
-\code{subperiods = s}, each reporting panel \code{g} becomes \code{s} panels, numbered
-\code{(g - 1) * s + j} for \code{j} in 1 to \code{s}, so the group of a panel is
-\code{ceiling(panel / s)}. Panel \code{j} is interviewed at wave
-\code{(period - 1) * s + j} of every period its group is interviewed in, and is
-held in the other waves of the group's life. A unit keeps its sub-period at
-every visit and across tenures. \code{period} names the reporting period of
-each wave, and \code{life_stage}, \code{life_length} and \code{visit} count periods and
-interviews, not waves. \code{horizon}, \code{wave}, \code{entry_wave} and
-\code{steady_state_from} count waves, and a cohort entering in period \code{t}
-enters at wave \code{(t - 1) * s + 1}, every sub-period panel being selected
-then. Each sub-period panel takes \code{ceiling(n_entrants / s)} units, or that
-over \code{take} in PSUs, so a period issues up to \code{s - 1} more per group than
-the continuous plan. The launch and overlap checks run on the reporting
-grid, and \verb{$overlap} is the reporting-period profile.
+Monthly fieldwork for quarterly estimates divides each quarterly round
+into monthly subrounds, as the ILO manual describes it (Hussmanns,
+Mehran and Verma, 1990, Chapter 11). With \code{subrounds = s}, each
+reporting panel \code{g} becomes \code{s} panels, numbered \code{(g - 1) * s + j} for
+\code{j} in 1 to \code{s}, so the reporting panel of a panel is \code{ceiling(panel / s)}. Panel \code{j} is interviewed in subround \code{j} of every period its
+reporting panel is interviewed in, and is held in the other subrounds. A
+unit keeps its subround at every visit and across tenures, and a split
+panel keeps the rotation group of its reporting panel. Every count in
+the schedule is in periods, and a cohort entering in period \code{t} has all
+its subround panels selected then. Each subround panel takes
+\code{ceiling(n_entrants / s)} units, or that over \code{take} in PSUs, so a
+period issues up to \code{s - 1} more per group than the continuous plan. The
+launch and overlap checks run on the reporting grid, and \verb{$overlap} is
+the reporting-period profile. A sampling package that draws once per
+subround numbers its draws \code{(period - 1) * s + subround}.
 }
 }
 \examples{
@@ -176,7 +202,7 @@ schedule <- design_schedule(
 schedule
 schedule$components
 
-# A 2-2-2 rotation: six startup panels, four interviewed at each occasion
+# A 2-2-2 rotation: six startup panels, four interviewed at each period
 quarterly <- n_panel(
   n_prop(p = 0.5, moe = 0.03),
   retention = c(0.9, 0.85, 0.9),
@@ -194,7 +220,8 @@ gapped <- design_schedule(
 )
 gapped
 startup <- gapped$schedule[gapped$schedule$cohort == "startup", ]
-xtabs(visit ~ panel + wave, startup, addNA = TRUE)
+xtabs(visit ~ panel + period, startup, addNA = TRUE)
+xtabs(wave ~ panel + period, startup, addNA = TRUE)
 
 # Quarterly reporting on a life of five quarters, 14 units per PSU, PSUs
 # kept and monthly fieldwork: 15 panels, each in its own month
@@ -208,17 +235,38 @@ monthly <- design_schedule(
   rounding = "ceiling",
   take = 14,
   tenures = "open",
-  subperiods = 3
+  subrounds = 3
 )
 monthly
-xtabs(visit ~ panel + wave, monthly$schedule, addNA = TRUE)
+xtabs(visit ~ panel + subround, monthly$schedule[monthly$schedule$period == 2, ])
 
+}
+\references{
+Commission Implementing Regulation (EU) 2019/2240 of 16 December 2019
+specifying the technical items of the data set, establishing the
+technical formats for transmission of information and specifying the
+detailed arrangements and content of the quality reports on the
+organisation of a sample survey in the labour force domain in accordance
+with Regulation (EU) 2019/1700 of the European Parliament and of the
+Council. Article 2.
+
+Hussmanns, R., Mehran, F., and Verma, V. (1990). \emph{Surveys of Economically
+Active Population, Employment, Unemployment and Underemployment: An ILO
+Manual on Concepts and Methods}. International Labour Office, Geneva.
+Chapter 11.
+
+Lynn, P. (2012). \emph{Longitudinal Survey Methods for the Household Finances
+and Consumption Survey}. Report prepared for the European Central Bank.
+
+Steel, D. and McLaren, C. (2008). \emph{Design and Analysis of Repeated
+Surveys}. Working Paper 11-08, Centre for Statistical and Survey
+Methodology, University of Wollongong.
 }
 \seealso{
 \code{\link[=design_rotation]{design_rotation()}} for the pattern this schedules, \code{\link[=n_panel]{n_panel()}}
-and \code{\link[=prec_panel]{prec_panel()}} for the rotating plan, \code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for
-the rotation chart, and \code{\link[=print.svyplan_schedule]{print.svyplan_schedule()}} for the printed form
-and its \code{summary()}.
+and \code{\link[=prec_panel]{prec_panel()}} for the rotating plan, \code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}} for
+the rotation chart and its cell table, and \code{\link[=print.svyplan_schedule]{print.svyplan_schedule()}}
+for the printed form and its \code{summary()}.
 
 Other repeated survey functions:
 \code{\link[=design_overlap]{design_overlap()}},

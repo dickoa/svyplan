@@ -144,9 +144,8 @@
 #' @references
 #' Kish, L. (1965). *Survey Sampling*. Wiley.
 #'
-#' Valliant, R., Dever, J. A., and Kreuter, F. (2018).
-#' *Practical Tools for Designing and Weighting Survey Samples*
-#' (2nd ed.). Springer. Ch. 9.
+#' Valliant, R., Dever, J. A., and Kreuter, F. (2018). *Practical Tools for
+#' Designing and Weighting Survey Samples*, 2nd ed. Springer. Chapter 9.
 #'
 #' @family design input functions
 #' @seealso [effective_n()] for the sample size this design effect costs

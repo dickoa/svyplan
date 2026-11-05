@@ -44,9 +44,8 @@
 #' PSUs of two strata, which [n_alloc()] refuses as a duplicated `psu_id`.
 #'
 #' @references
-#' Valliant, R., Dever, J. A., & Kreuter, F. (2018). *Practical Tools for
-#'   Designing and Weighting Survey Samples* (2nd ed.). Springer. Section
-#'   10.3.
+#' Valliant, R., Dever, J. A., and Kreuter, F. (2018). *Practical Tools for
+#' Designing and Weighting Survey Samples*, 2nd ed. Springer. Section 10.3.
 #'
 #' @seealso [n_alloc()] for the register the merged ids feed.
 #'

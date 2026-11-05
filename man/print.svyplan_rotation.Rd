@@ -19,6 +19,9 @@
   optional = FALSE,
   stringsAsFactors = FALSE,
   validRN = TRUE,
+  start = c("gradual", "immediate"),
+  n_period = NULL,
+  panel = NULL,
   ...
 )
 }
@@ -29,6 +32,10 @@
 
 \item{row.names, optional, stringsAsFactors, validRN}{Standard
 \code{as.data.frame()} arguments.}
+
+\item{start, n_period, panel}{How the first panels enter, the periods
+covered and an optional \code{\link[=n_panel]{n_panel()}} result, as for
+\code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}}.}
 }
 \value{
 The method-specific result:
@@ -36,23 +43,58 @@ The method-specific result:
 \item{\code{print()}}{Returns \code{x} invisibly.}
 \item{\code{format()}}{Returns a string.}
 \item{\code{as.double()}}{Returns the take vector.}
-\item{\code{as.data.frame()}}{Returns one row per occasion, with \code{occasion},
-\code{in_sample} and \code{take}.}
+\item{\code{as.data.frame()}}{Returns one row per interview, ordered by
+panel and then period, with columns:
+\describe{
+\item{\code{period}}{The period of the interview.}
+\item{\code{panel}}{The panel, numbered in the chart's order: under an
+immediate start the launch panels first, the one with the
+shortest remaining life first, then one new panel per period.}
+\item{\code{entry}}{The period the panel is selected. A launch panel
+whose remaining life starts out of sample is selected in period 1
+and first interviewed later.}
+\item{\code{launch}}{\code{TRUE} for a panel of an immediate start.}
+\item{\code{rotation_group}}{The rotation group the panel takes over,
+as defined on \code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}}.}
+\item{\code{wave}}{The place of the interview in the rotation pattern,
+counting in-sample occasions only.}
+\item{\code{visit}}{The interview number of the panel. Equal to \code{wave}
+except for a launch panel.}
+\item{\code{life_stage}}{The occasion of the full life, out-of-sample
+occasions counted.}
+\item{\code{take}}{The take at that occasion, 1 under an equal take.}
+\item{\code{n}}{Units interviewed, \code{take} times the panel's entrants.
+Present only when \code{panel} is given.}
+}
+The attributes \code{rotation}, \code{start}, \code{n_period} and
+\code{full_sample_from}, the first period with the full sample in the
+field, describe the table.}
 }
 }
 \description{
 A \code{svyplan_rotation} from \code{\link[=design_rotation]{design_rotation()}} is a numeric vector of takes,
 one entry per occasion of a unit's life. \code{as.double()} gives that vector
-bare, and \code{as.data.frame()} gives it one row per occasion.
+bare. \code{as.data.frame()} lays the pattern out over time as the table of
+cells \code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}} draws, one row per interview of every
+panel in the periods drawn.
 }
 \examples{
 cps <- design_rotation("4-8-4")
 cps
 as.double(cps)
-as.data.frame(design_rotation("1-1-0-0-1-1"))
+
+# The cells of an immediate start: a launch panel's first interview can
+# be at a later wave
+cells <- as.data.frame(design_rotation("2-2-2"), start = "immediate",
+                       n_period = 8)
+head(cells, 8)
+
+# Which panels are at their first wave in period 6
+subset(cells, period == 6 & wave == 1)
 
 }
 \seealso{
-\code{\link[=design_rotation]{design_rotation()}}, which builds these objects, and
+\code{\link[=design_rotation]{design_rotation()}}, which builds these objects,
+\code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}} for the chart of the cell table, and
 \code{\link[=design_overlap]{design_overlap()}} for the lag profile one produces.
 }

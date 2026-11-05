@@ -196,10 +196,10 @@ power_mean(100, effect = 5, ratio = 2)
 power_mean(effect = 0.5, var = 16, deff = 1.8, eligible_per_unit = 2.6)
 }
 \references{
-Valliant, R., Dever, J. A., & Kreuter, F. (2018). \emph{Practical Tools for
-Designing and Weighting Survey Samples} (2nd ed.). Springer. Chapter 4.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples}, 2nd ed. Springer. Chapter 4.
 
-Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
+Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley.
 }
 \seealso{
 \code{\link[=power_prop]{power_prop()}} for proportions, \code{\link[=power_did]{power_did()}} for

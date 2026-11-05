@@ -45,8 +45,8 @@ complete, replacing a number the planner would otherwise have to know.
 See Details for what a response rate below 1 does to that reading.
 }
 \details{
-One cohort enters at every occasion, so at a steady state the cohorts
-alive span every stage of the life and the sample at occasion \eqn{t} is
+One cohort enters at every occasion, so once the full sample is in the
+field the cohorts alive span every stage of the life and the sample at occasion \eqn{t} is
 \eqn{\sum_s w_s}, writing \eqn{w} for the rotation. Units in sample at
 both \eqn{t} and \eqn{t + m} are those whose cohort is in sample at
 stages \eqn{s} and \eqn{s + m}, so
@@ -64,36 +64,38 @@ is not identifiable from the takes. Where the two occasions measure
 partly disjoint subsamples of the cohort, \code{min} is the largest overlap
 the takes admit rather than the overlap the design has.
 
-These are the overlaps of the design at a steady state, which a rotation
-reaches once every stage of the life is represented at one occasion. Which
+These are the overlaps of the design with the full sample in the field,
+which a rotation reaches once every stage of the life is represented at
+one occasion. Which
 occasion that is depends on how the design is launched, and the overlaps
 themselves do not: \code{shared(m)} sums over stages, and entry dates do not
-enter it. A design that recruits one cohort an occasion reaches the steady
-state at the occasion that spans the life, the overlaps before it being
+enter it. A design that recruits one cohort an occasion reaches the full
+sample at the occasion that spans the life, the overlaps before it being
 those of a design no cohort has yet aged out of. A design whose first
 occasion contains launch components for every possible remaining life
-length is at the steady state from the first occasion, and these figures
+length has the full sample from the first occasion, and these figures
 hold throughout. For an unbroken equal-take life, those are equal panels
 planned for lives from the full life down to one occasion, all at their
 first interview.
 
 Covering every stage is the exact requirement, and for a life with a gap
 it is more than one cohort per remaining length. Under \code{"1-1-0-0-1-1"} the
-stages that hold the steady state include two that are out of sample, so
+stages a full sample covers include two that are out of sample, so
 the cohorts starting there are selected but not interviewed until they
 reach their first in-sample stage. Splitting the first occasion's
 interviewed sample alone puts six cohorts in sample where the design holds
 four, and gives a consecutive overlap of 0.83 against the rotation's 0.50.
-\code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} draws the one-cohort-an-occasion launch and marks
-the occasion the steady state begins.
+\code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}} draws either launch and marks the first
+occasion with the full sample.
 
 \strong{The overlap has one direction here, and that is a property of the
-steady state rather than a simplification.} Elsewhere in the package
+full sample rather than a simplification.} Elsewhere in the package
 \code{overlap} is \code{n12 / n1} and is not symmetric when the occasions differ in
 size. Under a stationary rotation every occasion holds the same mix of
 life stages, so \eqn{n_t} is the same at every occasion and the two
 directions coincide. A design whose cohorts differ in size by entry date
-has no steady state and is outside what this function describes.
+never holds the same mix at every occasion and is outside what this
+function describes.
 \subsection{Issued overlap, and the overlap a variance formula reads}{
 
 What a rotation fixes is which units are \strong{issued} at both occasions.
@@ -119,7 +121,8 @@ produced it.
 \subsection{Visits per unit in a window}{
 
 A window of \eqn{W} consecutive occasions holds \eqn{W \sum_s w_s}
-interviews at the steady state. The units behind them are fewer, since a
+interviews with the full sample in the field. The units behind them are
+fewer, since a
 unit in sample at several occasions of the window is counted once. A
 cohort sees a run of at most \eqn{W} consecutive stages of its life
 inside the window, and with its units nested across stages, as for the
@@ -133,7 +136,7 @@ cohorts the window touches gives the distinct units, and
 
 with \eqn{k} running over the \eqn{L + W - 1} cohorts whose life meets
 the window. Under \code{"2-2-2"} on quarterly occasions, a year holds 16
-interviews of 9 distinct rotation groups, so 16/9 = 1.78.
+interviews of 9 distinct panels, so 16/9 = 1.78.
 
 The figure is a property of the rotation. Some labor force survey
 methodologies use it to scale the cluster size when a yearly estimate
@@ -196,17 +199,20 @@ lfs$visits
 distinct <- 4 * 1600 / lfs$visits
 prec_prop(p = 0.3, n = distinct)
 
-# The chart of the rotation, one row per cohort
-plot(design_overlap("1-1-0-0-1-1"))
+# The overlap at each lag, and the rotation chart it comes from
+ov <- design_overlap("1-1-0-0-1-1")
+plot(ov)
+plot(ov$rotation)
 
 }
 \references{
-U.S. Census Bureau. \emph{Current Population Survey: Design and Methodology},
-Technical Paper 77. The 4-8-4 rotation and its 75\% and 50\% overlaps.
+U.S. Census Bureau and U.S. Bureau of Labor Statistics (2019). \emph{Current
+Population Survey: Design and Methodology}. Technical Paper 77. The 4-8-4
+rotation and its 75\% and 50\% overlaps.
 
-Lynn, P. (2012). \emph{Longitudinal Survey Methods for the Household Finance
-and Consumption Survey}. Report to the European Central Bank. The
-one-flag-per-occasion notation, and the 1-1-0-0-1-1 design whose lag
+Lynn, P. (2012). \emph{Longitudinal Survey Methods for the Household Finances
+and Consumption Survey}. Report prepared for the European Central Bank.
+The one-flag-per-occasion notation, and the 1-1-0-0-1-1 design whose lag
 profile the examples reproduce.
 }
 \seealso{

@@ -202,11 +202,10 @@ n_mean(var = 16, moe = 0.3, deff = 1.8, resp_rate = 0.9,
        eligible_per_unit = 2.6)
 }
 \references{
-Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
+Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley.
 
-Valliant, R., Dever, J. A., and Kreuter, F. (2018).
-\emph{Practical Tools for Designing and Weighting Survey Samples}
-(2nd ed.). Springer.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples}, 2nd ed. Springer.
 }
 \seealso{
 \code{\link[=n_prop]{n_prop()}} for proportions, \code{\link[=n_cluster]{n_cluster()}} for multistage designs,

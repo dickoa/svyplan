@@ -236,9 +236,8 @@ design_df(zoned)
 
 }
 \references{
-Valliant, R., Dever, J. A., and Kreuter, F. (2018).
-\emph{Practical Tools for Designing and Weighting Survey Samples}
-(2nd ed.). Springer. Ch. 3.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples}, 2nd ed. Springer. Chapter 3.
 
 Korn, E. L. and Graubard, B. I. (1998). Confidence intervals for
 proportions with small expected number of positive counts estimated from

@@ -128,3 +128,4 @@ reference:
   contents:
   - plot.svyplan
   - plot.svyplan_overlap
+  - plot.svyplan_rotation

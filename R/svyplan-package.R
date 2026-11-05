@@ -109,17 +109,17 @@
 #' takes `sd` only.
 #'
 #' @references
-#' Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd edition. Wiley.
+#' Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley.
 #'
 #' Kish, L. (1965). \emph{Survey Sampling}. Wiley.
 #'
 #' Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools
-#' for Designing and Weighting Survey Samples}, 2nd edition. Springer.
+#' for Designing and Weighting Survey Samples}, 2nd ed. Springer.
 "_PACKAGE"
 
 #' @importFrom graphics abline axis barplot hist mtext par plot.new
 #'   plot.window points rect strwidth text title
-#' @importFrom grDevices adjustcolor nclass.FD
+#' @importFrom grDevices adjustcolor hcl.colors nclass.FD
 #' @importFrom stats lm.fit optim optimize plogis pnorm predict qlogis quantile qnorm sd terms uniroot var weighted.mean setNames
 #' @importFrom utils modifyList
 #' @useDynLib svyplan, .registration = TRUE

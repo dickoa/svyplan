@@ -124,12 +124,12 @@ takes \code{sd} only.
 }
 
 \references{
-Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd edition. Wiley.
+Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley.
 
 Kish, L. (1965). \emph{Survey Sampling}. Wiley.
 
 Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools
-for Designing and Weighting Survey Samples}, 2nd edition. Springer.
+for Designing and Weighting Survey Samples}, 2nd ed. Springer.
 }
 \seealso{
 Useful links:

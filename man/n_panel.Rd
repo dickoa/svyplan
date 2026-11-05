@@ -96,7 +96,7 @@ Entrants per occasion once the design is running, the units the
 design holds across every live cohort, and how many cohorts that is.
 The first two are different budget lines and are named separately for
 that reason. For a life without a gap, \code{n_in_sample} is also the
-cumulative recruitment that reaching a steady state takes, whether
+cumulative recruitment that reaching the full sample takes, whether
 the cohorts are taken on at once or phased in over the first
 \code{n_cohorts} occasions. With a gap, cohorts out of sample are held too,
 so that recruitment is \code{n_held}, reached after \code{length(rotation)}
@@ -125,9 +125,9 @@ using only those respondents would have. For a rotating design the
 rows are the cohorts alive at one occasion and \code{n_resp} sums to the
 occasion's sample.}
 \item{\code{start}, \code{launch}, \code{launch_waves}}{Present when \code{start} was
-given. \code{launch} has one row per occasion up to the steady state and
-one past it: the entrants taken on, the units in sample, the expected
-respondents, the precision they buy, and \code{steady_state} marking the
+given. \code{launch} has one row per occasion up to equilibrium and one
+past it: the entrants taken on, the units in sample, the expected
+respondents, the precision they buy, and \code{equilibrium} marking the
 occasion from which the design holds one cohort at every wave. That is
 the composition rather than the count. Where no wave loses anyone, the
 counts coincide from the first occasion and the mix still does not. \code{launch_waves} decomposes each occasion into the
@@ -139,8 +139,8 @@ an occasion can be read. Both are continuous, as \code{waves} is.}
 \description{
 Compute how many units to recruit so that a panel still delivers a
 required responding sample after several waves of attrition, either for a
-fixed panel followed to a chosen wave or for a rotating panel at steady
-state. The requirement and the estimand both come from an existing sizing
+fixed panel followed to a chosen wave or for a rotating panel at
+equilibrium. The requirement and the estimand both come from an existing sizing
 or precision result, so the panel arithmetic is stated once and the
 design it serves is stated where it always was.
 }
@@ -177,12 +177,12 @@ below, which is the argument for \code{resp_rate} and \code{retention} being
 separate arguments rather than one average rate.
 }
 
-\subsection{Bringing a rotating design up to its steady state}{
+\subsection{Bringing a rotating design up to equilibrium}{
 
-A rotating design's recruitment describes it at a steady state, which it
-reaches once every stage of the life is represented at one occasion.
+A rotating design's recruitment describes it at equilibrium (Lynn,
+2012), which it reaches once one cohort is at every wave of the life.
 Getting there is a design decision, and \code{start} reports what each choice
-delivers on the way.
+delivers in the start-up period before it (Kalton, 2009).
 
 A \strong{gradual} launch recruits one cohort an occasion, so the sample climbs
 over a full life before it is the design's own. An \strong{immediate} launch
@@ -195,9 +195,9 @@ every life stage is represented because no full set of cohorts has yet
 rotated through. The launch tables therefore describe both the early
 membership mix and its response and precision path.
 
-The point of reporting it is that an immediate launch is \strong{not} in
-response equilibrium at its first occasion even though it is in membership
-equilibrium. Every unit there is at wave 1, so that occasion holds
+The point of reporting it is that an immediate launch is \strong{not} at
+equilibrium at its first occasion even though it has the full sample in
+the field. Every unit there is at wave 1, so that occasion holds
 
 \deqn{R_1 - e \sum_s q_s = e \sum_s (q_1 - q_s) \ge 0,}{
       R_1 - e sum_s q_s = e sum_s (q_1 - q_s) >= 0,}
@@ -218,7 +218,7 @@ there to expose and which is what nonresponse weighting has to carry.
 
 \code{waves} counts interviews, not occasions. Under \code{rotation = "2-2-2"} a
 unit is interviewed at occasions 1, 2, 5 and 6 of a six-occasion life, so
-\code{retention} takes three values. The steady state is that of an unbroken
+\code{retention} takes three values. The equilibrium is that of an unbroken
 four-wave life, with the same entrants, the same four cohorts in sample
 and the same precision. The loss across the gap belongs in the retention
 value that crosses it, \code{retention[2]} here.
@@ -342,13 +342,13 @@ imm <- n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
                resp_rate = 0.728, design = "rotating", start = "immediate")
 subset(imm$launch_waves, period <= 2)
 
-# A 2-2-2 rotation, in for two occasions, out for two, in for two. The
-# steady state is the four-wave one, and six cohorts are held
+# A 2-2-2 rotation, in for two occasions, out for two, in for two. Its
+# equilibrium is the four-wave one, and six cohorts are held
 gap <- n_panel(target, retention = c(0.9, 0.85, 0.9), resp_rate = 0.75,
                design = "rotating", start = "immediate",
                rotation = "2-2-2")
 c(in_sample = gap$n_in_sample, held = gap$n_held)
-gap$launch[c("period", "n_entrants", "n_in_sample", "steady_state")]
+gap$launch[c("period", "n_entrants", "n_in_sample", "equilibrium")]
 
 # Request at least a 95\% probability of reaching the respondent target
 n_panel(target, retention = c(0.9, 0.9), resp_rate = 0.8,
@@ -356,9 +356,16 @@ n_panel(target, retention = c(0.9, 0.9), resp_rate = 0.8,
 
 }
 \references{
+Kalton, G. (2009). Designs for surveys over time. In D. Pfeffermann and
+C. R. Rao (eds.), \emph{Handbook of Statistics 29A, Sample Surveys: Design,
+Methods and Applications}, 89--108. Elsevier.
+
+Lynn, P. (2012). \emph{Longitudinal Survey Methods for the Household Finances
+and Consumption Survey}. Report prepared for the European Central Bank.
+
 Smith, P., Lynn, P., and Elliot, D. (2009). Sample design for
 longitudinal surveys. In P. Lynn (ed.), \emph{Methodology of Longitudinal
-Surveys}, 21-33. Wiley.
+Surveys}, 21--33. Wiley.
 }
 \seealso{
 \code{\link[=prec_panel]{prec_panel()}} for the same design from a recruitment you

@@ -224,9 +224,8 @@ prec_cluster(indicators = indicators)
 
 }
 \references{
-Valliant, R., Dever, J. A., and Kreuter, F. (2018).
-\emph{Practical Tools for Designing and Weighting Survey Samples}
-(2nd ed.). Springer. Ch. 9.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples}, 2nd ed. Springer. Chapter 9.
 }
 \seealso{
 \code{\link[=n_cluster]{n_cluster()}} for the inverse operation, \code{\link[=varcomp]{varcomp()}} for

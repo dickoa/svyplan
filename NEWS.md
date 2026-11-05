@@ -1,4 +1,4 @@
-# svyplan 0.17.0
+# svyplan 0.18.0
 
 Initial CRAN release.
 
@@ -161,12 +161,14 @@ that recommendation when available, or rounds the continuous size up.
   `n_prop()`, `prec_mean()`, or `prec_prop()` result rather than restating its
   arguments. A fixed panel reports `n_issued`, and a rotating one `n_entrants`
   per occasion beside the `n_in_sample` its live cohorts hold between them.
-  `start` reports what a rotating design delivers while it climbs to its steady
-  state, and `assurance` again converts an expected-value recruitment into an
-  assured one.
+  `start` reports what a rotating design delivers until it reaches
+  equilibrium, and `assurance` again converts an expected-value recruitment
+  into an assured one.
 * `design_schedule()` turns a rotating launch into a versioned, package-neutral
   operational manifest, validated field by field, for a sampling package to
-  field.
+  field. Each interview carries its period and subround, its panel and
+  rotation group, its wave and visit, as the cell table of a rotation does,
+  and each period whether the interview mix has reached equilibrium.
 
 ## Precision analysis
 
@@ -265,11 +267,15 @@ that recommendation when available, or rounds the continuous size up.
   sample over its whole life, from a compact spec in either notation the
   literature uses or from an explicit per-occasion take. It is the object
   `design_overlap()` and `design_schedule()` both read, so a pattern is parsed
-  in one place.
+  in one place. `as.data.frame()` lays the pattern out over time, one row per
+  interview with its panel, rotation group, wave and interview number, under
+  a gradual or an immediate start. `plot()` draws that table as the rotation
+  chart a methodology report publishes, with the cell label and color chosen
+  by column or by function.
 * `design_overlap()` reports the issued-sample overlap that rotation produces
   at every lag, and with `window` the mean number of occasions a unit is in
-  sample within that many consecutive occasions. `plot()` draws the rotation
-  chart the design would be published as.
+  sample within that many consecutive occasions. `plot()` draws the overlap
+  at each lag.
 
 ## Survey plan profiles
 

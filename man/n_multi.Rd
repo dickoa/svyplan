@@ -411,11 +411,10 @@ n_multi(dhs, domains = "region")
 
 }
 \references{
-Cochran, W. G. (1977). \emph{Sampling Techniques} (3rd ed.). Wiley.
+Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley.
 
-Valliant, R., Dever, J. A., and Kreuter, F. (2018).
-\emph{Practical Tools for Designing and Weighting Survey Samples}
-(2nd ed.). Springer.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples}, 2nd ed. Springer.
 }
 \seealso{
 \code{\link[=n_prop]{n_prop()}} and \code{\link[=n_mean]{n_mean()}} for single-indicator sizing,

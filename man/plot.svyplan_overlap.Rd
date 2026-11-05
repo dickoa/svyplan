@@ -2,129 +2,34 @@
 % Please edit documentation in R/plot.R
 \name{plot.svyplan_overlap}
 \alias{plot.svyplan_overlap}
-\title{Chart a rotation schedule}
+\title{Bar chart of the overlap at each lag}
 \usage{
-\method{plot}{svyplan_overlap}(
-  x,
-  type = c("schedule", "overlap"),
-  start = c("gradual", "immediate"),
-  n_period = NULL,
-  panel = NULL,
-  ...
-)
+\method{plot}{svyplan_overlap}(x, ...)
 }
 \arguments{
 \item{x}{A \code{svyplan_overlap} object from \code{\link[=design_overlap]{design_overlap()}}.}
 
-\item{type}{\code{"schedule"} (default) for the rotation chart, \code{"overlap"} for
-a bar chart of the overlap at each lag, which is what \code{\link[=print]{print()}} reports
-as a table.}
-
-\item{start}{The launch to draw. \code{"gradual"} recruits one cohort per
-period, so the design fills up over a life. \code{"immediate"} adds, at the
-first period, one launch panel for every possible remaining life length.
-All panels begin at their first interview, so the design is full at once.
-\code{\link[=design_overlap]{design_overlap()}} gives the same mature overlap profile under either
-launch, although realized overlap is higher early in a gradual launch.
-Defaults to the launch \code{panel} was planned with, or to \code{"gradual"} when
-there is none.}
-
-\item{n_period}{Time periods to draw, with a cohort entering at each one.
-Defaults to the life plus four, which reaches the steady state and shows
-several periods of it.}
-
-\item{panel}{Optional \code{\link[=n_panel]{n_panel()}} result with \code{design = "rotating"}, whose
-\code{n_entrants} scales the sample labels and the total row from cohort
-shares to units. It must have been planned on the rotation drawn.}
-
-\item{...}{Additional graphical parameters. \code{main} and \code{col} are honored
-by both types, \code{col} being the cell fill for the chart and the bar fill
-for the profile. The profile passes the rest to \code{\link[=barplot]{barplot()}}.}
+\item{...}{Graphical parameters passed to \code{\link[=barplot]{barplot()}}, which override the
+defaults: \code{col = "grey40"}, \code{ylim = c(0, 1)}, and axis labels and a
+title naming the rotation.}
 }
 \value{
 \code{x}, invisibly.
 }
 \description{
-Draw the rotation chart of a \code{\link[=design_overlap]{design_overlap()}} schedule, one row per
-cohort and one column per time period, with a labeled cell wherever
-that cohort is in sample. This is the figure rotation designs are published as,
-and it is the fastest way to see that a schedule is the one you meant.
-}
-\details{
-Each row is a cohort with an entry period, and its cell at period
-\eqn{t} is the stage of its life that period reaches, drawn when the
-schedule puts that stage in sample. Cells are labeled by wave, counting
-only the occasions in sample, so a schedule with a gap numbers its waves
-consecutively across the gap, and a cohort launched part-way through a
-life still starts at W1, its waves being counted from its own first
-interview.
-
-\strong{The chart is one launch, and the overlap is a steady state.} Drawing
-one cohort entering per period leaves the early periods short of cohorts:
-the total row climbs until every stage of the life is represented, which
-happens at the period marked on the axis, and the overlaps
-\code{\link[=design_overlap]{design_overlap()}} reports describe the design from that period on.
-
-That gradual start is a design decision rather than the only one, and
-\code{start} draws either. \code{"immediate"} splits the first period into panels
-planned for remaining life lengths from the full life down to one period.
-Every panel begins at its first interview, so the design holds its whole
-sample at once and the marked period is the first. \code{\link[=design_overlap]{design_overlap()}} gives
-the mature overlap profile under either launch. Before a gradual launch
-reaches the marked period, its realized overlap is higher because no full
-set of cohorts has yet rotated through. \code{\link[=n_panel]{n_panel()}} reports the response
-and precision path while either launch settles.
-
-For a life with a gap, a launch panel covering a stage out of sample is
-selected at the first period and first drawn when the rest of its life
-returns to sample, as \code{\link[=n_panel]{n_panel()}} plans it. When \code{panel} is supplied and
-\code{start} is not, the chart draws the launch that panel was planned with,
-rather than defaulting past it.
-
-Lynn's printed Figure 5 labels Samples 1 through 10 only. Its total row of
-1,800 through period 10 nevertheless assumes that a new 300-unit sample
-continues to enter in periods 6 through 10. This chart draws those implicit
-Samples 11 through 15 as well, so every displayed total is supported by the
-cohort rows above it.
-
-A take that varies over the life shades its cell in proportion, so a
-schedule that subsamples later waves is visible as it is drawn.
+Draw the issued-sample overlap of a \code{\link[=design_overlap]{design_overlap()}} result as a bar
+per lag, the profile \code{\link[=print]{print()}} reports as a table. The rotation chart
+the overlap comes from is drawn from the rotation, with
+\code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}}.
 }
 \examples{
-# Two occasions in, two out, two in
 plot(design_overlap("1-1-0-0-1-1"))
 
-# The overlap the chart produces, at each lag
-plot(design_overlap("1-1-0-0-1-1"), type = "overlap")
+# The CPS 4-8-4 profile, with its 50 percent overlap at 12 months
+plot(design_overlap("4-8-4"), col = "steelblue")
 
-# CPS 4-8-4, one row per monthly cohort
-plot(design_overlap("4-8-4"))
-
-# The same mature design brought up at once instead, full from period 1
-plot(design_overlap("6"), start = "immediate")
-
-# Lynn Figure 5: six 300-unit launch samples, then 300 new units per period
-lynn_target <- prec_prop(n = 1800, p = 0.5)
-lynn_panel <- prec_panel(
-  300, target = lynn_target, retention = rep(1, 5),
-  design = "rotating", start = "immediate"
-)
-plot(design_overlap("6"), panel = lynn_panel, n_period = 10,
-     main = "1-1-1-1-1-1 rotating panel: immediate start")
-
-# Labeled in units rather than cohort shares
-target <- n_prop(p = 0.5, moe = 0.031)
-rot <- n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
-               resp_rate = 0.728, design = "rotating")
-plot(design_overlap("5"), panel = rot)
-
-}
-\references{
-Lynn, P. (2012). \emph{Longitudinal Survey Methods for the Household Finance
-and Consumption Survey}. Report to the European Central Bank. Figures 2 to
-5 are charts of this kind.
 }
 \seealso{
-\code{\link[=design_overlap]{design_overlap()}} for the schedule and the overlaps it produces,
-and \code{\link[=n_panel]{n_panel()}} for the recruitment that fills it.
+\code{\link[=design_overlap]{design_overlap()}}, and \code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}} for the
+rotation chart.
 }

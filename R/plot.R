@@ -213,134 +213,288 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
   invisible(x)
 }
 
-#' Chart a rotation schedule
+#' Rotation chart of a rotation pattern
 #'
-#' Draw the rotation chart of a [design_overlap()] schedule, one row per
-#' cohort and one column per time period, with a labeled cell wherever
-#' that cohort is in sample. This is the figure rotation designs are published as,
-#' and it is the fastest way to see that a schedule is the one you meant.
+#' Draw the rotation chart of a [design_rotation()] pattern, one row per
+#' panel and one column per period, with a labeled cell wherever the panel
+#' is interviewed. This is the figure a rotation design is published as in
+#' a survey's methodology report, and the fastest way to see that a pattern
+#' is the one you meant. The chart is drawn from `as.data.frame(x)`, the
+#' table of cells described on [print.svyplan_rotation()], which can be
+#' drawn another way, with ggplot2 for instance.
 #'
-#' @param x A `svyplan_overlap` object from [design_overlap()].
-#' @param type `"schedule"` (default) for the rotation chart, `"overlap"` for
-#'   a bar chart of the overlap at each lag, which is what [print()] reports
-#'   as a table.
-#' @param start The launch to draw. `"gradual"` recruits one cohort per
-#'   period, so the design fills up over a life. `"immediate"` adds, at the
-#'   first period, one launch panel for every possible remaining life length.
-#'   All panels begin at their first interview, so the design is full at once.
-#'   [design_overlap()] gives the same mature overlap profile under either
-#'   launch, although realized overlap is higher early in a gradual launch.
-#'   Defaults to the launch `panel` was planned with, or to `"gradual"` when
-#'   there is none.
-#' @param n_period Time periods to draw, with a cohort entering at each one.
-#'   Defaults to the life plus four, which reaches the steady state and shows
-#'   several periods of it.
-#' @param panel Optional [n_panel()] result with `design = "rotating"`, whose
-#'   `n_entrants` scales the sample labels and the total row from cohort
-#'   shares to units. It must have been planned on the rotation drawn.
-#' @param ... Additional graphical parameters. `main` and `col` are honored
-#'   by both types, `col` being the cell fill for the chart and the bar fill
-#'   for the profile. The profile passes the rest to [barplot()].
+#' @param x A `svyplan_rotation` object from [design_rotation()].
+#' @param start How the first panels enter. `"gradual"` selects one panel
+#'   per period, so the sample builds up over a life. `"immediate"` selects,
+#'   in the first period, one panel for each possible remaining life, so the
+#'   full sample is in the field from period 1. Defaults to the start
+#'   `panel` was planned with, or to `"gradual"` when there is none.
+#' @param n_period Periods to draw, a new panel entering at each one.
+#'   Defaults to the life plus four.
+#' @param panel Optional [n_panel()] or [prec_panel()] result with
+#'   `design = "rotating"`. Its `n_entrants` labels the rows and the total
+#'   in units rather than in panel shares, and the cell table gains a column
+#'   `n`. It must have been planned on the rotation drawn.
+#' @param label What each cell shows. `"wave"` (default) writes `W1`, `W2`,
+#'   and so on, `"none"` leaves the cells blank, any other column of the
+#'   cell table writes its values, and a function of the cell table returns
+#'   one label per row.
+#' @param fill What the cell color shows. `"none"` (default) draws every
+#'   cell in one color. A column of the cell table, such as
+#'   `"rotation_group"` or `"wave"`, or a function of the cell table
+#'   returning one value per row, gives each distinct value its own color.
+#' @param col Cell colors. One color when `fill = "none"`, otherwise at
+#'   least one color per distinct fill value, taken in sorted order of the
+#'   values. Defaults to grey, and to a qualitative palette when `fill` is
+#'   set.
+#' @param rows `"panel"` (default) draws one row per panel.
+#'   `"rotation_group"` draws one row per rotation group, the panels that
+#'   take the group over following one another along the row.
+#' @param period_labels Optional labels for the periods, one per period
+#'   drawn, such as `toupper(month.abb)`.
+#' @param marker `TRUE` (default) marks the first period with the full
+#'   sample in the field.
+#' @param main Chart title.
+#' @param ... Not used. Any other argument is an error.
 #'
 #' @return `x`, invisibly.
 #'
 #' @details
-#' Each row is a cohort with an entry period, and its cell at period
-#' \eqn{t} is the stage of its life that period reaches, drawn when the
-#' schedule puts that stage in sample. Cells are labeled by wave, counting
-#' only the occasions in sample, so a schedule with a gap numbers its waves
-#' consecutively across the gap, and a cohort launched part-way through a
-#' life still starts at W1, its waves being counted from its own first
-#' interview.
+#' Each row is a panel, the set of units that enter and leave the sample
+#' together (Steel and McLaren, 2008). A cell is drawn in each period the
+#' panel is interviewed, and by default its label is the wave, the place of
+#' that interview in the rotation pattern. That is the meaning of wave in
+#' Regulation (EU) 2019/2240, "the sub-sample of observation units due to
+#' be interviewed for the same nth time according to the sample rotation
+#' scheme", and the convention of the CPS month in sample and of the
+#' Statistics Canada rotation chart (Statistics Canada, 2017, Figure 2.1).
 #'
-#' **The chart is one launch, and the overlap is a steady state.** Drawing
-#' one cohort entering per period leaves the early periods short of cohorts:
-#' the total row climbs until every stage of the life is represented, which
-#' happens at the period marked on the axis, and the overlaps
-#' [design_overlap()] reports describe the design from that period on.
+#' The wave and the interview number differ only for the panels of an
+#' immediate start. Under `"6"`, the panel selected in period 1 with two
+#' periods of its life left is first interviewed then, at wave 5.
+#' `label = "visit"` shows the interview number instead, which is how Lynn
+#' (2012) labels the samples of an immediate start in Figure 5. Attrition
+#' follows the interview number, and that is how [n_panel()] plans it.
 #'
-#' That gradual start is a design decision rather than the only one, and
-#' `start` draws either. `"immediate"` splits the first period into panels
-#' planned for remaining life lengths from the full life down to one period.
-#' Every panel begins at its first interview, so the design holds its whole
-#' sample at once and the marked period is the first. [design_overlap()] gives
-#' the mature overlap profile under either launch. Before a gradual launch
-#' reaches the marked period, its realized overlap is higher because no full
-#' set of cohorts has yet rotated through. [n_panel()] reports the response
-#' and precision path while either launch settles.
+#' A rotation group is the slot a new panel takes over when the panel
+#' before it rotates out (Steel and McLaren, 2008, and Statistics Canada,
+#' 2017). Kalton (2009) and Hussmanns, Mehran and Verma (1990) also use the
+#' term for a panel itself. Each new panel joins the lowest-numbered group
+#' that is free at every one of its interviews. Under patterns such as
+#' `"6"`, `"2-2-2"` and `"4-8-4"` every group then holds a panel in sample
+#' at every period of a full sample. Under `"3-1-2"` and `"3-2-2"` no
+#' assignment can do that, because no other panel can fill the period a
+#' panel spends out of sample without overlapping it, so there are more
+#' groups than panels in sample and each group has periods with none.
 #'
-#' For a life with a gap, a launch panel covering a stage out of sample is
-#' selected at the first period and first drawn when the rest of its life
-#' returns to sample, as [n_panel()] plans it. When `panel` is supplied and
-#' `start` is not, the chart draws the launch that panel was planned with,
-#' rather than defaulting past it.
+#' The dotted line marks the first period with the full sample in the
+#' field, every stage of the life held by one panel. A gradual start
+#' reaches it once a whole life has passed, and an immediate start has it
+#' from period 1. From that period on, the overlaps [design_overlap()]
+#' reports are those of the chart. Under an immediate start the interview
+#' mix still changes after that, because every launch panel begins at its
+#' first interview. [n_panel()] reports the period at which it reaches
+#' equilibrium (Lynn, 2012), the start-up period before it (Kalton, 2009)
+#' being when response and precision still move.
 #'
-#' Lynn's printed Figure 5 labels Samples 1 through 10 only. Its total row of
-#' 1,800 through period 10 nevertheless assumes that a new 300-unit sample
-#' continues to enter in periods 6 through 10. This chart draws those implicit
-#' Samples 11 through 15 as well, so every displayed total is supported by the
-#' cohort rows above it.
+#' A launch panel whose remaining life starts out of sample is selected in
+#' period 1 and first interviewed when its life returns to sample, as
+#' [n_panel()] plans it.
+#'
+#' Lynn's Figure 5 labels Samples 1 through 10 only. Its total row of 1,800
+#' through period 10 nevertheless assumes that a new 300-unit sample
+#' continues to enter in periods 6 through 10. This chart draws those
+#' implicit panels 11 through 15 as well, so every displayed total is
+#' supported by the rows above it.
 #'
 #' A take that varies over the life shades its cell in proportion, so a
-#' schedule that subsamples later waves is visible as it is drawn.
+#' pattern that subsamples later waves is visible as it is drawn.
 #'
 #' @references
-#' Lynn, P. (2012). *Longitudinal Survey Methods for the Household Finance
-#' and Consumption Survey*. Report to the European Central Bank. Figures 2 to
-#' 5 are charts of this kind.
+#' Commission Implementing Regulation (EU) 2019/2240 of 16 December 2019
+#' specifying the technical items of the data set, establishing the
+#' technical formats for transmission of information and specifying the
+#' detailed arrangements and content of the quality reports on the
+#' organisation of a sample survey in the labour force domain in accordance
+#' with Regulation (EU) 2019/1700 of the European Parliament and of the
+#' Council. Article 2.
 #'
-#' @seealso [design_overlap()] for the schedule and the overlaps it produces,
-#'   and [n_panel()] for the recruitment that fills it.
+#' Hussmanns, R., Mehran, F., and Verma, V. (1990). *Surveys of Economically
+#' Active Population, Employment, Unemployment and Underemployment: An ILO
+#' Manual on Concepts and Methods*. International Labour Office, Geneva.
+#' Chapter 11.
+#'
+#' Kalton, G. (2009). Designs for surveys over time. In D. Pfeffermann and
+#' C. R. Rao (eds.), *Handbook of Statistics 29A, Sample Surveys: Design,
+#' Methods and Applications*, 89--108. Elsevier.
+#'
+#' Lynn, P. (2012). *Longitudinal Survey Methods for the Household Finances
+#' and Consumption Survey*. Report prepared for the European Central Bank.
+#' Figures 2 to 5 are charts of this kind.
+#'
+#' Statistics Canada (2017). *Methodology of the Canadian Labour Force
+#' Survey*. Catalogue no. 71-526-X.
+#'
+#' Steel, D. and McLaren, C. (2008). *Design and Analysis of Repeated
+#' Surveys*. Working Paper 11-08, Centre for Statistical and Survey
+#' Methodology, University of Wollongong.
+#'
+#' @seealso [print.svyplan_rotation()] for the cell table,
+#'   [design_overlap()] for the overlaps the chart produces, and
+#'   [n_panel()] for the recruitment that fills it.
 #'
 #' @examples
-#' # Two occasions in, two out, two in
-#' plot(design_overlap("1-1-0-0-1-1"))
+#' # Two waves in, two out, two in, gradual start
+#' plot(design_rotation("1-1-0-0-1-1"))
 #'
-#' # The overlap the chart produces, at each lag
-#' plot(design_overlap("1-1-0-0-1-1"), type = "overlap")
+#' # Statistics Canada, Figure 2.1: six months in sample from January,
+#' # colored by rotation group
+#' plot(design_rotation("6"), start = "immediate", n_period = 12,
+#'      fill = "rotation_group", period_labels = toupper(month.abb))
 #'
-#' # CPS 4-8-4, one row per monthly cohort
-#' plot(design_overlap("4-8-4"))
+#' # Rwanda LFS 2024, Annex 1: panel number and appearance letter
+#' plot(design_rotation("2-2-2"), start = "immediate", n_period = 12,
+#'      label = function(d) paste0(d$panel, LETTERS[d$wave]),
+#'      fill = "wave")
 #'
-#' # The same mature design brought up at once instead, full from period 1
-#' plot(design_overlap("6"), start = "immediate")
+#' # The same design, one row per rotation group
+#' plot(design_rotation("2-2-2"), start = "immediate", n_period = 12,
+#'      rows = "rotation_group", label = "panel")
 #'
-#' # Lynn Figure 5: six 300-unit launch samples, then 300 new units per period
+#' # CPS 4-8-4, one row per monthly panel
+#' plot(design_rotation("4-8-4"))
+#'
+#' # Lynn Figure 5: six 300-unit launch samples, then 300 new units per
+#' # period, labeled by interview number as Lynn labels them
 #' lynn_target <- prec_prop(n = 1800, p = 0.5)
 #' lynn_panel <- prec_panel(
 #'   300, target = lynn_target, retention = rep(1, 5),
 #'   design = "rotating", start = "immediate"
 #' )
-#' plot(design_overlap("6"), panel = lynn_panel, n_period = 10,
-#'      main = "1-1-1-1-1-1 rotating panel: immediate start")
-#'
-#' # Labeled in units rather than cohort shares
-#' target <- n_prop(p = 0.5, moe = 0.031)
-#' rot <- n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
-#'                resp_rate = 0.728, design = "rotating")
-#' plot(design_overlap("5"), panel = rot)
+#' plot(design_rotation("6"), panel = lynn_panel, n_period = 10,
+#'      label = "visit", main = "1-1-1-1-1-1 rotating panel: immediate start")
 #'
 #' @export
-plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
-                                 start = c("gradual", "immediate"),
-                                 n_period = NULL, panel = NULL, ...) {
-  type <- match.arg(type)
-  if (identical(type, "overlap")) {
-    return(.plot_overlap_profile(x, ...))
-  }
-  # NULL here means "not stated", which a panel carrying its own launch is
-  # then asked for; stating it explicitly overrides the panel, which is how
-  # the two launches of one plan are compared
-  .plot_rotation_chart(
-    x, n_period = n_period, panel = panel,
-    start = if (missing(start)) NULL else match.arg(start), ...
+plot.svyplan_rotation <- function(x, start = c("gradual", "immediate"),
+                                  n_period = NULL, panel = NULL,
+                                  label = "wave", fill = "none", col = NULL,
+                                  rows = c("panel", "rotation_group"),
+                                  period_labels = NULL, marker = TRUE,
+                                  main = NULL, ...) {
+  .check_unused_dots(...)
+  rows <- match.arg(rows)
+  cells <- as.data.frame(
+    x, start = if (missing(start)) NULL else start,
+    n_period = n_period, panel = panel
   )
+  w <- as.double(x)
+  n_period <- attr(cells, "n_period", exact = TRUE)
+  entrants <- .chart_take(panel, w)
+  lab <- .chart_labels(cells, label)
+  fill_col <- .chart_fill(cells, fill, col)
+  axis_labels <- .chart_period_labels(period_labels, n_period)
+  if (!is.logical(marker) || length(marker) != 1L || is.na(marker)) {
+    stop("'marker' must be TRUE or FALSE", call. = FALSE)
+  }
+  if (is.null(main)) {
+    main <- sprintf("Rotation chart (%s)", .fmt_rotation(w))
+  }
+
+  row_id <- cells[[rows]]
+  n_row <- max(row_id)
+  row_labels <- if (identical(rows, "panel")) {
+    out <- paste0("Panel ", seq_len(n_row))
+    if (!is.null(entrants)) {
+      out <- paste0(out, "  (", format(entrants, trim = TRUE), ")")
+    }
+    out
+  } else {
+    paste0("Rotation group ", seq_len(n_row))
+  }
+
+  op <- par(mar = c(2.6, max(6.5, 0.55 * max(nchar(row_labels)) + 1.5),
+                    4.2, 1.2))
+  on.exit(par(op), add = TRUE)
+  plot.new()
+  plot.window(xlim = c(0.5, n_period + 0.5), ylim = c(-1.2, n_row + 0.5))
+
+  y <- n_row - row_id + 1
+  share <- cells$take / max(w)
+  rect(cells$period - 0.42, y - 0.32, cells$period + 0.42, y + 0.32,
+       col = mapply(adjustcolor, fill_col, alpha.f = 0.35 + 0.65 * share,
+                    USE.NAMES = FALSE),
+       border = "grey35")
+  if (!is.null(lab)) {
+    cell_cex <- min(1, 0.82 / max(strwidth(lab), 1e-8))
+    if (cell_cex >= 0.45) {
+      text(cells$period, y, lab, cex = cell_cex)
+    }
+  }
+
+  in_sample <- vapply(seq_len(n_period), function(t) {
+    sum(cells$take[cells$period == t])
+  }, numeric(1L))
+  totals <- if (is.null(entrants)) {
+    .drop_trailing_zeros(in_sample)
+  } else {
+    format(round(in_sample * entrants), trim = TRUE)
+  }
+  text(seq_len(n_period), -0.25, totals, cex = 0.75, col = "grey25")
+
+  axis(2, at = c(n_row:1, -0.25), labels = c(row_labels, "Total"),
+       las = 1, tick = FALSE, line = -0.6, cex.axis = 0.8)
+  axis(3, at = seq_len(n_period), labels = axis_labels,
+       tick = FALSE, line = -0.9, cex.axis = 0.8)
+  mtext("Period", side = 3, line = 0.9, cex = 0.9)
+  title(main = main, line = 2.4)
+
+  full <- attr(cells, "full_sample_from", exact = TRUE)
+  if (marker && n_period >= full) {
+    abline(v = full - 0.5, lty = 3, col = "grey55")
+    text(max(full - 0.35, 0.6), -0.95, "full sample from here", adj = 0,
+         cex = 0.7, col = "grey40")
+  }
+
+  invisible(x)
 }
 
 #' Bar chart of the overlap at each lag
-#' @keywords internal
-#' @noRd
-.plot_overlap_profile <- function(x, ...) {
+#'
+#' Draw the issued-sample overlap of a [design_overlap()] result as a bar
+#' per lag, the profile [print()] reports as a table. The rotation chart
+#' the overlap comes from is drawn from the rotation, with
+#' [plot.svyplan_rotation()].
+#'
+#' @param x A `svyplan_overlap` object from [design_overlap()].
+#' @param ... Graphical parameters passed to [barplot()], which override the
+#'   defaults: `col = "grey40"`, `ylim = c(0, 1)`, and axis labels and a
+#'   title naming the rotation.
+#'
+#' @return `x`, invisibly.
+#'
+#' @seealso [design_overlap()], and [plot.svyplan_rotation()] for the
+#'   rotation chart.
+#'
+#' @examples
+#' plot(design_overlap("1-1-0-0-1-1"))
+#'
+#' # The CPS 4-8-4 profile, with its 50 percent overlap at 12 months
+#' plot(design_overlap("4-8-4"), col = "steelblue")
+#'
+#' @export
+plot.svyplan_overlap <- function(x, ...) {
+  passed <- names(match.call(expand.dots = FALSE)$...)
+  chart <- intersect(passed, c("type", "start", "n_period", "panel", "label",
+                               "fill", "rows", "period_labels", "marker"))
+  if (length(chart) > 0L) {
+    stop(
+      sprintf(
+        "'%s' is an argument of the rotation chart, which is drawn from the rotation: plot(x$rotation, ...)",
+        chart[[1L]]
+      ),
+      call. = FALSE
+    )
+  }
   defaults <- list(
     col = "grey40",
     ylim = c(0, 1),
@@ -357,98 +511,11 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
   invisible(x)
 }
 
-#' Rotation chart, cohorts down and time periods across
-#'
-#' Cohort `c` enters at period `c`, so period `t` shows it at stage
-#' `t - c + 1`. Everything drawn follows from that one index. The schedule
-#' decides only whether a cell is in sample and how dark it is.
-#' @keywords internal
-#' @noRd
-.plot_rotation_chart <- function(x, n_period, panel, start, ...) {
-  rot <- .overlap_rotation(x)
-  w <- as.double(rot)
-  life <- attr(rot, "life", exact = TRUE)
-
-  # a cohort enters at every period drawn, which is what holds the sample at
-  # a steady state once the life is spanned; drawing a fixed set of cohorts
-  # instead would wind the design down again at the right-hand edge
-  n_period <- .whole_arg(n_period, "n_period", life + 4L)
-  take <- .chart_take(panel, w)
-  start <- .check_chart_start(start, panel)
-  cohorts <- .rotation_cohorts(w, start, n_period)
-  n_sample <- length(cohorts)
-
-  args <- modifyList(
-    list(col = "grey75",
-         main = sprintf("Rotation chart (%s)", .fmt_rotation(w))),
-    list(...)
-  )
-
-  op <- par(mar = c(2.6, if (is.null(take)) 6.5 else 9, 4.2, 1.2))
-  on.exit(par(op), add = TRUE)
-
-  plot.new()
-  plot.window(xlim = c(0.5, n_period + 0.5), ylim = c(-1.2, n_sample + 0.5))
-
-  cell_cex <- min(1, 0.82 / max(strwidth(paste0("W", sum(w > 0))), 1e-8))
-  for (i in seq_along(cohorts)) {
-    co <- cohorts[[i]]
-    # a cohort numbers its own waves from its own first interview, so one
-    # launched mid-life starts at W1 like any other
-    wave <- cumsum(co$w > 0)
-    for (t in seq_len(n_period)) {
-      stage <- t - co$entry + 1L
-      if (stage < 1L || stage > length(co$w) || co$w[[stage]] <= 0) next
-      y <- n_sample - i + 1
-      share <- co$w[[stage]] / max(w)
-      rect(t - 0.42, y - 0.32, t + 0.42, y + 0.32,
-           col = adjustcolor(args$col, alpha.f = 0.35 + 0.65 * share),
-           border = "grey35")
-      if (cell_cex >= 0.45) {
-        text(t, y, paste0("W", wave[[stage]]), cex = cell_cex)
-      }
-    }
-  }
-
-  in_sample <- .chart_totals(cohorts, n_period)
-  totals <- if (is.null(take)) {
-    .drop_trailing_zeros(in_sample)
-  } else {
-    format(round(in_sample * take), trim = TRUE)
-  }
-  text(seq_len(n_period), -0.25, totals, cex = 0.75, col = "grey25")
-
-  labels <- paste0("Sample ", seq_len(n_sample))
-  if (!is.null(take)) {
-    labels <- paste0(labels, "  (", format(take, trim = TRUE), ")")
-  }
-  axis(2, at = c(n_sample:1, -0.25), labels = c(labels, "Total"),
-       las = 1, tick = FALSE, line = -0.6, cex.axis = 0.8)
-  axis(3, at = seq_len(n_period), labels = seq_len(n_period),
-       tick = FALSE, line = -0.9, cex.axis = 0.8)
-  mtext("Time period", side = 3, line = 0.9, cex = 0.9)
-  title(main = args$main, line = 2.4)
-
-  # the overlap describes the design once every stage of the life is
-  # represented, which a gradual launch reaches at period `life` and an
-  # immediate one holds from the first period
-  settled <- if (identical(start, "immediate")) 1L else life
-  if (n_period >= settled) {
-    abline(v = settled - 0.5, lty = 3, col = "grey55")
-    text(max(settled - 0.35, 0.6), -0.95, "steady state from here", adj = 0,
-         cex = 0.7, col = "grey40")
-  }
-
-  invisible(x)
-}
-
 #' The launch a chart draws, inherited from a panel when not stated
 #' @keywords internal
 #' @noRd
 .check_chart_start <- function(start, panel = NULL) {
   if (is.null(start)) {
-    # a panel that was planned with a launch has already answered this, and a
-    # chart that ignored it would draw a design its own labels contradict
     start <- panel$start %||% "gradual"
   }
   match.arg(start, c("gradual", "immediate"))
@@ -477,23 +544,161 @@ plot.svyplan_overlap <- function(x, type = c("schedule", "overlap"),
   c(launch, entering[-1L])
 }
 
-#' Units in sample at each drawn period, in cohort shares
-#'
-#' Summed over the cohorts drawn rather than derived from the schedule, so
-#' one reading serves both launches. Under a gradual launch the total climbs
-#' until the whole life is spanned and is `sum(w)` from period `life` on.
-#' under an immediate one it is `sum(w)` throughout. That figure is the
-#' `n_occasion` [design_overlap()] divides by, so where the total reaches it
-#' is where the chart's overlaps become the design's.
+#' One row per interview the chart draws
 #' @keywords internal
 #' @noRd
-.chart_totals <- function(cohorts, n_period) {
-  vapply(seq_len(n_period), function(t) {
-    sum(vapply(cohorts, function(co) {
-      stage <- t - co$entry + 1L
-      if (stage >= 1L && stage <= length(co$w)) co$w[[stage]] else 0
-    }, numeric(1)))
-  }, numeric(1))
+.rotation_cells <- function(w, start, n_period, entrants = NULL) {
+  life <- length(w)
+  cohorts <- .rotation_cohorts(w, start, n_period)
+  wave_at <- cumsum(w > 0)
+  groups <- .rotation_groups(lapply(cohorts, function(co) {
+    (co$entry + seq_along(co$w) - 1L)[co$w > 0]
+  }))
+  rows <- vector("list", length(cohorts))
+  for (i in seq_along(cohorts)) {
+    co <- cohorts[[i]]
+    offset <- life - length(co$w)
+    stage <- seq_along(co$w)
+    period <- co$entry + stage - 1L
+    on <- co$w > 0
+    keep <- on & period <= n_period
+    rows[[i]] <- data.frame(
+      period = as.integer(period[keep]),
+      panel = i,
+      entry = as.integer(co$entry),
+      launch = identical(start, "immediate") && i <= life,
+      rotation_group = groups[[i]],
+      wave = wave_at[offset + stage[keep]],
+      visit = cumsum(on)[keep],
+      life_stage = as.integer(offset + stage[keep]),
+      take = co$w[keep]
+    )
+  }
+  out <- do.call(rbind, rows)
+  if (!is.null(entrants)) {
+    out$n <- out$take * entrants
+  }
+  rownames(out) <- NULL
+  out
+}
+
+#' The rotation group of each panel, panels taken in order
+#'
+#' A panel joins the lowest-numbered group free at every period it is
+#' interviewed, over its whole life and not only a window, so widening a
+#' window never moves a panel. The chart and [design_schedule()] both read
+#' this, so their groups agree.
+#' @keywords internal
+#' @noRd
+.rotation_groups <- function(occupancy) {
+  busy <- list()
+  out <- integer(length(occupancy))
+  for (i in seq_along(occupancy)) {
+    g <- 1L
+    while (g <= length(busy) && any(occupancy[[i]] %in% busy[[g]])) {
+      g <- g + 1L
+    }
+    busy[[g]] <- c(if (g <= length(busy)) busy[[g]], occupancy[[i]])
+    out[[i]] <- g
+  }
+  out
+}
+
+#' The text of each cell
+#' @keywords internal
+#' @noRd
+.chart_labels <- function(cells, label) {
+  if (is.function(label)) {
+    out <- label(cells)
+    if (length(out) != nrow(cells)) {
+      stop(
+        sprintf(
+          "'label' returned %d values for %d cells. A label function must return one per row of the cell table",
+          length(out), nrow(cells)
+        ),
+        call. = FALSE
+      )
+    }
+    return(as.character(out))
+  }
+  if (!is.character(label) || length(label) != 1L || is.na(label)) {
+    stop(.chart_arg_message("label", "\"wave\", \"none\""), call. = FALSE)
+  }
+  if (identical(label, "none")) {
+    return(NULL)
+  }
+  if (identical(label, "wave")) {
+    return(paste0("W", cells$wave))
+  }
+  if (!label %in% names(cells)) {
+    stop(.chart_arg_message("label", "\"wave\", \"none\""), call. = FALSE)
+  }
+  format(cells[[label]], trim = TRUE, drop0trailing = TRUE)
+}
+
+#' The color of each cell, before take shading
+#' @keywords internal
+#' @noRd
+.chart_fill <- function(cells, fill, col) {
+  if (is.character(fill) && length(fill) == 1L && identical(fill, "none")) {
+    col <- col %||% "grey75"
+    if (length(col) != 1L) {
+      stop("'col' must be one color when 'fill' is \"none\"", call. = FALSE)
+    }
+    return(rep(col, nrow(cells)))
+  }
+  key <- if (is.function(fill)) {
+    fill(cells)
+  } else if (is.character(fill) && length(fill) == 1L && !is.na(fill) &&
+             fill %in% names(cells)) {
+    cells[[fill]]
+  } else {
+    stop(.chart_arg_message("fill", "\"none\""), call. = FALSE)
+  }
+  if (length(key) != nrow(cells)) {
+    stop(
+      sprintf(
+        "'fill' returned %d values for %d cells. A fill function must return one per row of the cell table",
+        length(key), nrow(cells)
+      ),
+      call. = FALSE
+    )
+  }
+  values <- sort(unique(key))
+  col <- col %||% hcl.colors(length(values), "Set 2")
+  if (length(col) < length(values)) {
+    stop(
+      sprintf("'col' gives %d colors for %d fill values", length(col),
+              length(values)),
+      call. = FALSE
+    )
+  }
+  col[match(key, values)]
+}
+
+#' @keywords internal
+#' @noRd
+.chart_arg_message <- function(arg, presets) {
+  sprintf(
+    "'%s' must be %s, a column of the cell table (period, panel, entry, launch, rotation_group, wave, visit, life_stage, take) or a function of it",
+    arg, presets
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.chart_period_labels <- function(period_labels, n_period) {
+  if (is.null(period_labels)) {
+    return(seq_len(n_period))
+  }
+  if (length(period_labels) != n_period) {
+    stop(
+      sprintf("'period_labels' has %d labels for %d periods",
+              length(period_labels), n_period),
+      call. = FALSE
+    )
+  }
+  as.character(period_labels)
 }
 
 #' Entrants per cohort for the chart labels, or NULL for cohort shares

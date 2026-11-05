@@ -610,21 +610,20 @@ n_prop(p = 0.28, cv = 0.05,
 
 }
 \references{
-Valliant, R., Dever, J. A., and Kreuter, F. (2018).
-\emph{Practical Tools for Designing and Weighting Survey Samples}
-(2nd ed.). Springer. Ch. 9.
+Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
+Designing and Weighting Survey Samples}, 2nd ed. Springer. Chapter 9.
 
-Hansen, M. H., Hurwitz, W. N., and Madow, W. G. (1953).
-\emph{Sample Survey Methods and Theory} (Vol. I). Wiley.
+Hansen, M. H., Hurwitz, W. N., and Madow, W. G. (1953). \emph{Sample Survey
+Methods and Theory, Volume I, Methods and Applications}. Wiley.
 
 Kalton, G., Brick, J. M., and L\enc{ê}{e}, T. (2005). Estimating
-components of design effects for use in sample design. In
-\emph{Household Sample Surveys in Developing and Transition Countries},
-Studies in Methods, Series F No. 96, Chapter VI. United Nations.
+components of design effects for use in sample design. In \emph{Household
+Sample Surveys in Developing and Transition Countries}, Studies in
+Methods, Series F No. 96, Chapter VI. United Nations.
 
 Gabler, S., Haeder, S., and Lahiri, P. (1999). A model based
 justification of Kish's formula for design effects for weighting and
-clustering. \emph{Survey Methodology}, 25(1), 105-106.
+clustering. \emph{Survey Methodology}, 25(1), 105--106.
 }
 \seealso{
 \code{\link[=n_cluster]{n_cluster()}} which accepts a \code{svyplan_varcomp} as \code{icc},

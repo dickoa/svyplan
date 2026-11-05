@@ -39,8 +39,8 @@ per occasion of a unit's life. It carries:
 \item{\verb{$spec}}{The input as given, so the printed form can name the
 pattern the way it was declared.}
 \item{\verb{$life}}{Occasions from a unit's first interview to its last.}
-\item{\verb{$n_occasion}}{Units in sample at any one occasion, at a steady
-state, which is the sum of the takes.}
+\item{\verb{$n_occasion}}{Units in sample at any one occasion with the full
+sample in the field, which is the sum of the takes.}
 \item{\verb{$unbroken}}{\code{TRUE} when no occasion of the life is out of
 sample.}
 \item{\verb{$equal_take}}{\code{TRUE} when every in-sample occasion takes the same
@@ -75,6 +75,24 @@ are 2/3 and 0. Neither reading is given precedence, because the wrong one
 is invisible in the answer. Write \code{"3"} or \code{"1-0-1"}, which each say one
 thing only.
 }
+
+\subsection{One pattern, four views}{\tabular{lll}{
+   Call \tab Question it answers \tab Needs \cr
+   \code{design_rotation()} \tab What is one unit's life in the sample? \tab the pattern \cr
+   \code{as.data.frame()}, \code{plot()} on the rotation \tab Which panels are interviewed in each period, at which wave? \tab the pattern and how the first panels enter \cr
+   \code{\link[=design_overlap]{design_overlap()}} \tab What share of the sample repeats at each lag? \tab the pattern \cr
+   \code{\link[=design_schedule]{design_schedule()}} \tab What to select and interview, in what numbers? \tab an \code{\link[=n_panel]{n_panel()}} plan \cr
+}
+
+
+The first three are design views, available before any sample size. The
+schedule's interviews carry the cell table's \code{panel}, \code{rotation_group},
+\code{wave}, \code{visit} and \code{life_stage}, so the two agree on every interview. The
+overlap summarizes the cells. Under an equal take, once the full sample
+is in the field, the share of the panels in sample at one period that are
+in sample again a lag later is the overlap at that lag. The schedule is the same layout with sizes, rounding and the
+field rules a sampling package needs.
+}
 }
 \examples{
 # The CPS rotation, declared once
@@ -92,22 +110,27 @@ design_rotation("1-1-0-0-1-1")
 # since the shorthand "1-2(5)" is not read
 design_rotation("1-2-1-2-1-2-1-2-1")
 
-# A take that halves at later waves
-as.data.frame(design_rotation(c(1, 1, 0.5, 0.5)))
+# A take that halves at later waves, laid out over six periods
+as.data.frame(design_rotation(c(1, 1, 0.5, 0.5)), n_period = 6)
+
+# The rotation chart
+plot(cps)
 
 }
 \references{
-U.S. Census Bureau. \emph{Current Population Survey: Design and Methodology},
-Technical Paper 77. The 4-8-4 rotation.
+U.S. Census Bureau and U.S. Bureau of Labor Statistics (2019). \emph{Current
+Population Survey: Design and Methodology}. Technical Paper 77. The 4-8-4
+rotation.
 
-Lynn, P. (2012). \emph{Longitudinal Survey Methods for the Household Finance
-and Consumption Survey}. Report to the European Central Bank. The
-one-flag-per-occasion notation.
+Lynn, P. (2012). \emph{Longitudinal Survey Methods for the Household Finances
+and Consumption Survey}. Report prepared for the European Central Bank.
+The one-flag-per-occasion notation.
 }
 \seealso{
-\code{\link[=design_overlap]{design_overlap()}} for the overlap the rotation produces,
-\code{\link[=design_schedule]{design_schedule()}} for the field manifest it produces, and
-\code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for the rotation chart.
+\code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}} for the rotation chart and
+\code{\link[=print.svyplan_rotation]{print.svyplan_rotation()}} for its table of cells, \code{\link[=design_overlap]{design_overlap()}}
+for the overlap the rotation produces, and \code{\link[=design_schedule]{design_schedule()}} for the
+field manifest it produces.
 
 Other repeated survey functions:
 \code{\link[=design_overlap]{design_overlap()}},
