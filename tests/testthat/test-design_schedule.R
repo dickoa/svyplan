@@ -137,7 +137,7 @@ test_that("generated schedules reconcile with the period-visit table where appli
   closed <- design_schedule(
     plan,
     6,
-    "close_intake",
+    "complete_lives",
     refreshment = "entrant_register",
     rounding = "ceiling"
   )
@@ -206,7 +206,7 @@ test_that("horizon policies separate issue, commitments and tail composition", {
   }
   continuing <- make("continuing")
   truncated <- make("truncate_lives")
-  closed <- make("close_intake")
+  closed <- make("complete_lives")
 
   expect_equal(
     sum(continuing$issue$operational_issue),
@@ -299,7 +299,7 @@ test_that("inputs that cannot be scheduled are refused", {
     design_schedule(
       rotating,
       3,
-      "close_intake",
+      "complete_lives",
       refreshment = "entrant_register",
       rounding = "ceiling"
     ),
@@ -637,14 +637,14 @@ test_that("each horizon policy states its own profile", {
     design_schedule(schedule_panel_plan(), h, policy,
                     refreshment = "entrant_register", rounding = "ceiling")
   }
-  # Intake stopping is a fact about the schedule, not a gap in the report.
-  closed <- capture.output(print(mk(10L, "close_intake")))
-  expect_true(any(grepl("intake closed from period 8", closed, fixed = TRUE)))
+  # Taking no new cohort is a fact about the schedule, not a gap in the report.
+  closed <- capture.output(print(mk(10L, "complete_lives")))
+  expect_true(any(grepl("no new cohort from period 8", closed, fixed = TRUE)))
   expect_true(any(grepl("periods 2-7", closed, fixed = TRUE)))
   expect_length(closed, 7L)
   for (policy in c("continuing", "truncate_lives")) {
     out <- capture.output(print(mk(12L, policy)))
-    expect_false(any(grepl("intake closed", out, fixed = TRUE)))
+    expect_false(any(grepl("no new cohort", out, fixed = TRUE)))
     expect_length(out, 7L)
   }
 })
@@ -770,8 +770,8 @@ test_that("a gapped schedule matches an enumeration of its grid", {
                     resp_rate = 0.8, design = "rotating", start = start,
                     rotation = spec)
     for (h in unique(c(2L, L, L + 3L))) {
-      for (policy in c("continuing", "truncate_lives", "close_intake")) {
-        if (policy == "close_intake" && h < L) next
+      for (policy in c("continuing", "truncate_lives", "complete_lives")) {
+        if (policy == "complete_lives" && h < L) next
         first <- max(vapply(seq_len(L), function(j) {
           which(w[j:L] > 0)[[1L]]
         }, integer(1L)))
@@ -782,7 +782,7 @@ test_that("a gapped schedule matches an enumeration of its grid", {
         x <- design_schedule(plan, h, policy,
                              refreshment = "entrant_register",
                              rounding = "ceiling")
-        last_entry <- if (policy == "close_intake") h - L + 1L else h
+        last_entry <- if (policy == "complete_lives") h - L + 1L else h
         o <- startup_oracle(w, start, last_entry + L)
         o$entry <- ifelse(substr(o$id, 1, 1) == "s", 1L,
                           as.integer(substring(o$id, 2)))
@@ -1009,7 +1009,7 @@ test_that("retained and replaced PSUs field the same units", {
     plan <- .c_plan(spec, start)
     L <- length(as.double(plan$rotation))
     for (h in unique(c(L, L + 3L, 2L * L + 1L))) {
-      for (policy in c("continuing", "truncate_lives", "close_intake")) {
+      for (policy in c("continuing", "truncate_lives", "complete_lives")) {
         lab <- paste(spec, start, h, policy)
         one <- .c_schedule(plan, h, policy)
         open <- .c_schedule(plan, h, policy, take = 1, retain_psus = TRUE)

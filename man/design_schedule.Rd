@@ -27,10 +27,10 @@ manifest records is computed from it, so neither is supplied here.}
 planning window.}
 
 \item{horizon_policy}{One of \code{"continuing"}, \code{"truncate_lives"}, or
-\code{"close_intake"}. Under \code{"continuing"}, interviews owed after \code{horizon}
+\code{"complete_lives"}. Under \code{"continuing"}, interviews owed after \code{horizon}
 are returned separately in \code{tail_commitments}. \code{"truncate_lives"} cuts
 those interviews at the horizon, and a life it cuts ends at its last
-interview inside the window. \code{"close_intake"} stops recruitment soon
+interview inside the window. \code{"complete_lives"} stops recruitment soon
 enough for every recruited cohort to finish by the horizon.}
 
 \item{refreshment}{Whether later selections are drawn from an
@@ -193,7 +193,7 @@ group. A new cohort is a new draw of units, so the overlap of the units
 is still the one \code{\link[=design_overlap]{design_overlap()}} gives for the rotation, and \code{visit}
 restarts at 1 with each cohort. The horizon policies apply to cohorts.
 \code{"continuing"} lists the rest of every cohort taken in the window,
-\code{"truncate_lives"} cuts cohorts at the horizon, and \code{"close_intake"}
+\code{"truncate_lives"} cuts cohorts at the horizon, and \code{"complete_lives"}
 takes no cohort that cannot finish by it.
 }
 

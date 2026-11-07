@@ -13,10 +13,10 @@
 #' @param horizon A positive whole number of reporting periods in the finite
 #'   planning window.
 #' @param horizon_policy One of `"continuing"`, `"truncate_lives"`, or
-#'   `"close_intake"`. Under `"continuing"`, interviews owed after `horizon`
+#'   `"complete_lives"`. Under `"continuing"`, interviews owed after `horizon`
 #'   are returned separately in `tail_commitments`. `"truncate_lives"` cuts
 #'   those interviews at the horizon, and a life it cuts ends at its last
-#'   interview inside the window. `"close_intake"` stops recruitment soon
+#'   interview inside the window. `"complete_lives"` stops recruitment soon
 #'   enough for every recruited cohort to finish by the horizon.
 #' @param refreshment Whether later selections are drawn from an
 #'   `"entrant_register"` or a `"whole_vintage"`. This records a frame role
@@ -165,7 +165,7 @@
 #' is still the one [design_overlap()] gives for the rotation, and `visit`
 #' restarts at 1 with each cohort. The horizon policies apply to cohorts.
 #' `"continuing"` lists the rest of every cohort taken in the window,
-#' `"truncate_lives"` cuts cohorts at the horizon, and `"close_intake"`
+#' `"truncate_lives"` cuts cohorts at the horizon, and `"complete_lives"`
 #' takes no cohort that cannot finish by it.
 #'
 #' ## Subrounds
@@ -332,12 +332,12 @@ design_schedule <- function(
   }
   horizon_policy <- .schedule_choice(
     horizon_policy,
-    c("continuing", "truncate_lives", "close_intake"),
+    c("continuing", "truncate_lives", "complete_lives"),
     "horizon_policy"
   )
-  if (identical(horizon_policy, "close_intake") && horizon < life_length) {
+  if (identical(horizon_policy, "complete_lives") && horizon < life_length) {
     stop(
-      "'close_intake' requires a horizon no shorter than the full cohort life",
+      "'complete_lives' requires a horizon no shorter than the full cohort life",
       call. = FALSE
     )
   }
@@ -404,7 +404,7 @@ design_schedule <- function(
     life_length = life_length,
     life_spec = w
   )
-  last_open <- if (identical(horizon_policy, "close_intake")) {
+  last_open <- if (identical(horizon_policy, "complete_lives")) {
     horizon - life_length + 1L
   } else {
     horizon
@@ -587,7 +587,7 @@ design_schedule <- function(
 #' @keywords internal
 #' @noRd
 .schedule_plan <- function(start, life_length, horizon, policy, retain) {
-  max_entry <- if (identical(policy, "close_intake")) {
+  max_entry <- if (identical(policy, "complete_lives")) {
     horizon - life_length + 1L
   } else {
     horizon
@@ -734,7 +734,7 @@ design_schedule <- function(
   if (!retain || h <= first_cohort) {
     return(as.integer(first_cohort))
   }
-  more <- if (identical(policy, "close_intake")) {
+  more <- if (identical(policy, "complete_lives")) {
     (h - first_cohort) %/% life
   } else {
     ceiling((h - first_cohort) / life)
@@ -1014,7 +1014,7 @@ design_schedule <- function(
       !identical(x$life_notation, "resolved_per_period_take") ||
       !is.character(x$horizon_policy) || length(x$horizon_policy) != 1L ||
       is.na(x$horizon_policy) ||
-      !x$horizon_policy %in% c("continuing", "truncate_lives", "close_intake") ||
+      !x$horizon_policy %in% c("continuing", "truncate_lives", "complete_lives") ||
       !is.character(x$start) || length(x$start) != 1L ||
       is.na(x$start) ||
       !x$start %in% c("immediate", "gradual")) {
@@ -1028,9 +1028,9 @@ design_schedule <- function(
     fail("life_spec must be an equal-take life that starts and ends in sample")
   }
   visits <- as.integer(sum(x$life_spec > 0))
-  if (identical(x$horizon_policy, "close_intake") &&
+  if (identical(x$horizon_policy, "complete_lives") &&
       x$horizon < x$life_length) {
-    fail("close_intake has a horizon shorter than the cohort life")
+    fail("complete_lives has a horizon shorter than the cohort life")
   }
   if (!is.list(x$target_estimand) ||
       !identical(names(x$target_estimand), c("type", "method")) ||
@@ -1316,7 +1316,7 @@ design_schedule <- function(
 #' @noRd
 .check_schedule_startup <- function(x, period_visits, policy, max_entry) {
   top <- min(x$horizon, x$life_length + 1L)
-  if (identical(policy, "close_intake")) {
+  if (identical(policy, "complete_lives")) {
     top <- min(top, max_entry)
   }
   got <- .schedule_active_aggregate(x)
@@ -1494,9 +1494,9 @@ print.svyplan_schedule <- function(x, ...) {
 #' A schedule's length is set by the reporting horizon, not by the design, so
 #' a row per period grows without bound while saying the same thing: a
 #' start-up take, then one selection repeated. Naming the runs states the profile
-#' at a size that does not move when the horizon does. A run of zeros is
-#' intake having closed, which `horizon_policy = "close_intake"` produces and
-#' which is a fact about the schedule rather than a gap in it.
+#' at a size that does not move when the horizon does. A run of zeros means
+#' no new cohort is taken, which `horizon_policy = "complete_lives"` produces,
+#' and it is a fact about the schedule rather than a gap in it.
 #' @keywords internal
 #' @noRd
 .fmt_schedule_issue <- function(x) {
@@ -1504,7 +1504,7 @@ print.svyplan_schedule <- function(x, ...) {
   unit <- "period"
   psu <- if (is.na(x$take)) "" else " PSUs"
   closed <- if (x$retain_psus) "no new PSUs from" else {
-    "intake closed from"
+    "no new cohort from"
   }
   parts <- sprintf("%s%s at start-up", format(v[[1L]]), psu)
   if (length(v) > 1L) {
