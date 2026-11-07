@@ -228,10 +228,10 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #'   per period, so the sample builds up over a life. `"immediate"` selects,
 #'   in the first period, one panel for each possible remaining life, so the
 #'   full sample is in the field from period 1. Defaults to the start
-#'   `panel` was planned with, or to `"gradual"` when there is none.
-#' @param n_period Periods to draw, a new panel entering at each one.
+#'   `panel_plan` was planned with, or to `"gradual"` when there is none.
+#' @param horizon Periods to draw, a new panel entering at each one.
 #'   Defaults to the life plus four.
-#' @param panel Optional [n_panel()] or [prec_panel()] result with
+#' @param panel_plan Optional [n_panel()] or [prec_panel()] result with
 #'   `design = "rotating"`. Its `n_entrants` labels the rows and the total
 #'   in units rather than in panel shares, and the cell table gains a column
 #'   `n`. It must have been planned on the rotation drawn.
@@ -243,6 +243,8 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #'   cell in one color. A column of the cell table, such as
 #'   `"rotation_group"` or `"wave"`, or a function of the cell table
 #'   returning one value per row, gives each distinct value its own color.
+#'   A legend for the colors is drawn below the chart unless `label` names
+#'   the same column, the cells then reading their own color.
 #' @param col Cell colors. One color when `fill = "none"`, otherwise at
 #'   least one color per distinct fill value, taken in sorted order of the
 #'   values. Defaults to grey, and to a qualitative palette when `fill` is
@@ -292,12 +294,12 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #' reaches it once a whole life has passed, and an immediate start has it
 #' from period 1. From that period on, the overlaps [design_overlap()]
 #' reports are those of the chart. Under an immediate start the interview
-#' mix still changes after that, because every launch panel begins at its
+#' mix still changes after that, because every start-up panel begins at its
 #' first interview. [n_panel()] reports the period at which it reaches
 #' equilibrium (Lynn, 2012), the start-up period before it (Kalton, 2009)
 #' being when response and precision still move.
 #'
-#' A launch panel whose remaining life starts out of sample is selected in
+#' A start-up panel whose remaining life starts out of sample is selected in
 #' period 1 and first interviewed when its life returns to sample, as
 #' [n_panel()] plans it.
 #'
@@ -349,34 +351,34 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #'
 #' # Statistics Canada, Figure 2.1: six months in sample from January,
 #' # colored by rotation group
-#' plot(design_rotation("6"), start = "immediate", n_period = 12,
+#' plot(design_rotation("6"), start = "immediate", horizon = 12,
 #'      fill = "rotation_group", period_labels = toupper(month.abb))
 #'
 #' # Rwanda LFS 2024, Annex 1: panel number and appearance letter
-#' plot(design_rotation("2-2-2"), start = "immediate", n_period = 12,
+#' plot(design_rotation("2-2-2"), start = "immediate", horizon = 12,
 #'      label = function(d) paste0(d$panel, LETTERS[d$wave]),
 #'      fill = "wave")
 #'
 #' # The same design, one row per rotation group
-#' plot(design_rotation("2-2-2"), start = "immediate", n_period = 12,
+#' plot(design_rotation("2-2-2"), start = "immediate", horizon = 12,
 #'      rows = "rotation_group", label = "panel")
 #'
 #' # CPS 4-8-4, one row per monthly panel
 #' plot(design_rotation("4-8-4"))
 #'
-#' # Lynn Figure 5: six 300-unit launch samples, then 300 new units per
+#' # Lynn Figure 5: six 300-unit start-up samples, then 300 new units per
 #' # period, labeled by interview number as Lynn labels them
 #' lynn_target <- prec_prop(n = 1800, p = 0.5)
 #' lynn_panel <- prec_panel(
 #'   300, target = lynn_target, retention = rep(1, 5),
 #'   design = "rotating", start = "immediate"
 #' )
-#' plot(design_rotation("6"), panel = lynn_panel, n_period = 10,
+#' plot(design_rotation("6"), panel_plan = lynn_panel, horizon = 10,
 #'      label = "visit", main = "1-1-1-1-1-1 rotating panel: immediate start")
 #'
 #' @export
 plot.svyplan_rotation <- function(x, start = c("gradual", "immediate"),
-                                  n_period = NULL, panel = NULL,
+                                  horizon = NULL, panel_plan = NULL,
                                   label = "wave", fill = "none", col = NULL,
                                   rows = c("panel", "rotation_group"),
                                   period_labels = NULL, marker = TRUE,
@@ -385,14 +387,14 @@ plot.svyplan_rotation <- function(x, start = c("gradual", "immediate"),
   rows <- match.arg(rows)
   cells <- as.data.frame(
     x, start = if (missing(start)) NULL else start,
-    n_period = n_period, panel = panel
+    horizon = horizon, panel_plan = panel_plan
   )
   w <- as.double(x)
-  n_period <- attr(cells, "n_period", exact = TRUE)
-  entrants <- .chart_take(panel, w)
+  horizon <- attr(cells, "horizon", exact = TRUE)
+  entrants <- .chart_take(panel_plan, w)
   lab <- .chart_labels(cells, label)
   fill_col <- .chart_fill(cells, fill, col)
-  axis_labels <- .chart_period_labels(period_labels, n_period)
+  axis_labels <- .chart_period_labels(period_labels, horizon)
   if (!is.logical(marker) || length(marker) != 1L || is.na(marker)) {
     stop("'marker' must be TRUE or FALSE", call. = FALSE)
   }
@@ -412,18 +414,29 @@ plot.svyplan_rotation <- function(x, start = c("gradual", "immediate"),
     paste0("Rotation group ", seq_len(n_row))
   }
 
+  key <- .chart_needs_legend(fill_col, fill, label)
   op <- par(mar = c(2.6, max(6.5, 0.55 * max(nchar(row_labels)) + 1.5),
                     4.2, 1.2))
   on.exit(par(op), add = TRUE)
   plot.new()
-  plot.window(xlim = c(0.5, n_period + 0.5), ylim = c(-1.2, n_row + 0.5))
+  plot.window(xlim = c(0.5, horizon + 0.5),
+              ylim = c(if (key) -2.1 else -1.2, n_row + 0.5))
 
   y <- n_row - row_id + 1
   share <- cells$take / max(w)
   rect(cells$period - 0.42, y - 0.32, cells$period + 0.42, y + 0.32,
-       col = mapply(adjustcolor, fill_col, alpha.f = 0.35 + 0.65 * share,
-                    USE.NAMES = FALSE),
+       col = mapply(adjustcolor, as.vector(fill_col),
+                    alpha.f = 0.35 + 0.65 * share, USE.NAMES = FALSE),
        border = "grey35")
+  if (key) {
+    leg <- attr(fill_col, "legend", exact = TRUE)
+    legend(
+      x = (horizon + 1) / 2, y = -1.55, xjust = 0.5, yjust = 0.5,
+      legend = format(leg$values, trim = TRUE), fill = leg$col,
+      horiz = TRUE, bty = "n", cex = 0.75, border = "grey35",
+      title = if (is.character(fill)) fill else NULL
+    )
+  }
   if (!is.null(lab)) {
     cell_cex <- min(1, 0.82 / max(strwidth(lab), 1e-8))
     if (cell_cex >= 0.45) {
@@ -431,7 +444,7 @@ plot.svyplan_rotation <- function(x, start = c("gradual", "immediate"),
     }
   }
 
-  in_sample <- vapply(seq_len(n_period), function(t) {
+  in_sample <- vapply(seq_len(horizon), function(t) {
     sum(cells$take[cells$period == t])
   }, numeric(1L))
   totals <- if (is.null(entrants)) {
@@ -439,17 +452,17 @@ plot.svyplan_rotation <- function(x, start = c("gradual", "immediate"),
   } else {
     format(round(in_sample * entrants), trim = TRUE)
   }
-  text(seq_len(n_period), -0.25, totals, cex = 0.75, col = "grey25")
+  text(seq_len(horizon), -0.25, totals, cex = 0.75, col = "grey25")
 
   axis(2, at = c(n_row:1, -0.25), labels = c(row_labels, "Total"),
        las = 1, tick = FALSE, line = -0.6, cex.axis = 0.8)
-  axis(3, at = seq_len(n_period), labels = axis_labels,
+  axis(3, at = seq_len(horizon), labels = axis_labels,
        tick = FALSE, line = -0.9, cex.axis = 0.8)
   mtext("Period", side = 3, line = 0.9, cex = 0.9)
   title(main = main, line = 2.4)
 
   full <- attr(cells, "full_sample_from", exact = TRUE)
-  if (marker && n_period >= full) {
+  if (marker && horizon >= full) {
     abline(v = full - 0.5, lty = 3, col = "grey55")
     text(max(full - 0.35, 0.6), -0.95, "full sample from here", adj = 0,
          cex = 0.7, col = "grey40")
@@ -460,8 +473,9 @@ plot.svyplan_rotation <- function(x, start = c("gradual", "immediate"),
 
 #' Bar chart of the overlap at each lag
 #'
-#' Draw the issued-sample overlap of a [design_overlap()] result as a bar
-#' per lag, the profile [print()] reports as a table. The rotation chart
+#' Draw the overlap of a [design_overlap()] result as a bar per lag, the
+#' profile [print()] reports as a table. The axis names its basis, issued
+#' units for a rotation and respondents for a panel plan. The rotation chart
 #' the overlap comes from is drawn from the rotation, with
 #' [plot.svyplan_rotation()].
 #'
@@ -484,7 +498,7 @@ plot.svyplan_rotation <- function(x, start = c("gradual", "immediate"),
 #' @export
 plot.svyplan_overlap <- function(x, ...) {
   passed <- names(match.call(expand.dots = FALSE)$...)
-  chart <- intersect(passed, c("type", "start", "n_period", "panel", "label",
+  chart <- intersect(passed, c("type", "start", "horizon", "panel_plan", "label",
                                "fill", "rows", "period_labels", "marker"))
   if (length(chart) > 0L) {
     stop(
@@ -498,8 +512,12 @@ plot.svyplan_overlap <- function(x, ...) {
   defaults <- list(
     col = "grey40",
     ylim = c(0, 1),
-    xlab = "Lag (occasions)",
-    ylab = "Issued-sample overlap",
+    xlab = "Lag (periods)",
+    ylab = if (identical(.overlap_basis(x), "respondent")) {
+      "Respondent overlap"
+    } else {
+      "Issued-sample overlap"
+    },
     main = sprintf("Overlap by lag (%s)",
                    .fmt_rotation(as.double(.overlap_rotation(x))))
   )
@@ -511,45 +529,45 @@ plot.svyplan_overlap <- function(x, ...) {
   invisible(x)
 }
 
-#' The launch a chart draws, inherited from a panel when not stated
+#' The start a chart draws, inherited from a panel plan when not stated
 #' @keywords internal
 #' @noRd
-.check_chart_start <- function(start, panel = NULL) {
+.check_chart_start <- function(start, panel_plan = NULL) {
   if (is.null(start)) {
-    start <- panel$start %||% "gradual"
+    start <- panel_plan$start %||% "gradual"
   }
   match.arg(start, c("gradual", "immediate"))
 }
 
-#' The cohorts of a launch, in Lynn's Figure 5 order
+#' The cohorts of a start, in Lynn's Figure 5 order
 #'
 #' The one construction the chart, [n_panel()] and [design_schedule()] read.
-#' A gradual launch is one cohort an occasion. An immediate one adds, at the
-#' first occasion, a panel covering each stage of the life with the rest of
-#' the life from it, the one-occasion tail first. A panel whose rest of life
+#' A gradual start is one cohort a period. An immediate one adds, at the
+#' first period, a panel covering each stage of the life with the rest of
+#' the life from it, the one-period tail first. A panel whose rest of life
 #' starts out of sample is held and first interviewed later.
 #' @keywords internal
 #' @noRd
-.rotation_cohorts <- function(w, start, n_period) {
+.rotation_cohorts <- function(w, start, horizon) {
   life <- length(w)
-  entering <- lapply(seq_len(n_period), function(p) {
+  entering <- lapply(seq_len(horizon), function(p) {
     list(entry = p, w = w)
   })
   if (identical(start, "gradual")) {
     return(entering)
   }
-  launch <- lapply(seq.int(life, 1L), function(k) {
+  startup <- lapply(seq.int(life, 1L), function(k) {
     list(entry = 1L, w = w[k:life])
   })
-  c(launch, entering[-1L])
+  c(startup, entering[-1L])
 }
 
 #' One row per interview the chart draws
 #' @keywords internal
 #' @noRd
-.rotation_cells <- function(w, start, n_period, entrants = NULL) {
+.rotation_cells <- function(w, start, horizon, entrants = NULL) {
   life <- length(w)
-  cohorts <- .rotation_cohorts(w, start, n_period)
+  cohorts <- .rotation_cohorts(w, start, horizon)
   wave_at <- cumsum(w > 0)
   groups <- .rotation_groups(lapply(cohorts, function(co) {
     (co$entry + seq_along(co$w) - 1L)[co$w > 0]
@@ -561,12 +579,12 @@ plot.svyplan_overlap <- function(x, ...) {
     stage <- seq_along(co$w)
     period <- co$entry + stage - 1L
     on <- co$w > 0
-    keep <- on & period <= n_period
+    keep <- on & period <= horizon
     rows[[i]] <- data.frame(
       period = as.integer(period[keep]),
       panel = i,
       entry = as.integer(co$entry),
-      launch = identical(start, "immediate") && i <= life,
+      startup = identical(start, "immediate") && i <= life,
       rotation_group = groups[[i]],
       wave = wave_at[offset + stage[keep]],
       visit = cumsum(on)[keep],
@@ -673,28 +691,42 @@ plot.svyplan_overlap <- function(x, ...) {
       call. = FALSE
     )
   }
-  col[match(key, values)]
+  structure(
+    col[match(key, values)],
+    legend = list(values = values, col = col[seq_along(values)])
+  )
+}
+
+#' Whether the fill needs a legend
+#'
+#' The colors can be read off the cells only when the labels print the
+#' same variable.
+#' @keywords internal
+#' @noRd
+.chart_needs_legend <- function(fill_col, fill, label) {
+  !is.null(attr(fill_col, "legend", exact = TRUE)) &&
+    !(is.character(fill) && is.character(label) && identical(fill, label))
 }
 
 #' @keywords internal
 #' @noRd
 .chart_arg_message <- function(arg, presets) {
   sprintf(
-    "'%s' must be %s, a column of the cell table (period, panel, entry, launch, rotation_group, wave, visit, life_stage, take) or a function of it",
+    "'%s' must be %s, a column of the cell table (period, panel, entry, startup, rotation_group, wave, visit, life_stage, take) or a function of it",
     arg, presets
   )
 }
 
 #' @keywords internal
 #' @noRd
-.chart_period_labels <- function(period_labels, n_period) {
+.chart_period_labels <- function(period_labels, horizon) {
   if (is.null(period_labels)) {
-    return(seq_len(n_period))
+    return(seq_len(horizon))
   }
-  if (length(period_labels) != n_period) {
+  if (length(period_labels) != horizon) {
     stop(
       sprintf("'period_labels' has %d labels for %d periods",
-              length(period_labels), n_period),
+              length(period_labels), horizon),
       call. = FALSE
     )
   }
@@ -707,22 +739,23 @@ plot.svyplan_overlap <- function(x, ...) {
 #' and the total row would describe two designs.
 #' @keywords internal
 #' @noRd
-.chart_take <- function(panel, w) {
-  if (is.null(panel)) return(NULL)
-  if (!inherits(panel, "svyplan_panel")) {
-    stop("'panel' must be an n_panel() or prec_panel() result", call. = FALSE)
+.chart_take <- function(panel_plan, w) {
+  if (is.null(panel_plan)) return(NULL)
+  if (!inherits(panel_plan, "svyplan_panel")) {
+    stop("'panel_plan' must be an n_panel() or prec_panel() result",
+         call. = FALSE)
   }
-  if (!identical(panel$design, "rotating")) {
+  if (!identical(panel_plan$design, "rotating")) {
     stop(
-      "'panel' is a fixed panel, which recruits one cohort and has no rotation to chart; pass a result with design = \"rotating\"",
+      "'panel_plan' is a fixed panel, which recruits one cohort and has no rotation to chart; pass a result with design = \"rotating\"",
       call. = FALSE
     )
   }
-  rot <- as.double(panel$rotation)
+  rot <- as.double(panel_plan$rotation)
   if (!isTRUE(all.equal(rot, as.numeric(w)))) {
     stop(
       sprintf(
-        "'panel' follows the rotation %s and the chart draws %s; they must describe the same design",
+        "'panel_plan' follows the rotation %s and the chart draws %s; they must describe the same design",
         .fmt_rotation(rot), .fmt_rotation(as.numeric(w))
       ),
       call. = FALSE
@@ -731,7 +764,7 @@ plot.svyplan_overlap <- function(x, ...) {
   # print.svyplan_panel() issues whole units and reads the recruitment
   # through .panel_recruit(); the chart has to agree with it, or the same
   # object would report two entrant counts
-  ceiling(.panel_recruit(panel))
+  ceiling(.panel_recruit(panel_plan))
 }
 
 #' Whole-number plot argument with a default

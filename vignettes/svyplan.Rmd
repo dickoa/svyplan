@@ -233,14 +233,14 @@ question your plan must answer. The chapters are in the book
 
 | Planning question | Help pages | Book chapter |
 |:---|:---|:---|
-| Which precision target or interval method should I use? | `?n_prop`, `?n_mean`, `?n_ratio`, `?prec_prop` | [Precision targets](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/precision.html) |
-| How do several indicators or domains determine one sample? | `?n_multi`, `?prec_multi` | [Multiple indicators](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/multi-indicator.html) |
-| How should I construct strata or allocate a sample? | `?strata_bound`, `?n_alloc`, `?prec_alloc` | [Stratification and allocation](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/allocation.html) |
-| How do I satisfy several allocation requirements together? | `?n_alloc` | [Joint allocation](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/joint-allocation.html) |
-| How many clusters and units per cluster do I need? | `?varcomp`, `?n_cluster`, `?design_effect` | [Multistage planning](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/multistage-planning.html) |
-| How do I plan screening or nonresponse follow-up? | `?n_twophase`, `?prec_twophase` | [Two-phase surveys](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/two-phase-planning.html) |
-| How do overlap, attrition, and rotation affect repeated surveys? | `?n_change`, `?n_pooled`, `?n_panel`, `?design_rotation`, `?design_schedule` | [Repeated surveys](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/repeated-surveys.html) |
-| Can the design detect a group difference or change? | `?power_prop`, `?power_mean`, `?power_did` | [Power](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/power.html) |
+| Which precision target or interval method should I use? | `?n_prop`, `?n_mean`, `?n_ratio`, `?prec_prop` | [Precision targets and sample size](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/sample-size.html) |
+| How do several indicators or domains determine one sample? | `?n_multi`, `?prec_multi` | [Several indicators and a floor](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/sample-size.html#several-indicators-and-a-floor) |
+| How should I construct strata or allocate a sample? | `?strata_bound`, `?n_alloc`, `?prec_alloc` | [Allocation across domains and strata](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/stratum-allocation.html) |
+| How do I satisfy several allocation requirements together? | `?n_alloc` | [Two targets at once](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/stratum-allocation.html#two-targets-at-once) |
+| How many clusters and units per cluster do I need? | `?varcomp`, `?n_cluster`, `?design_effect` | [Clusters, take size and cost](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/clusters-take.html) |
+| How do I plan screening or nonresponse follow-up? | `?n_twophase`, `?prec_twophase` | [Two-phase designs and subsamples](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/two-phase.html) |
+| How do overlap, attrition, and rotation affect repeated surveys? | `?n_change`, `?n_pooled`, `?n_panel`, `?design_rotation`, `?design_schedule` | [Rotating panels and master samples](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/panels-master-samples.html) |
+| Can the design detect a group difference or change? | `?power_prop`, `?power_mean`, `?power_did` | [Power for evaluation surveys](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/evaluation-power.html) |
 
 Sample-size planning depends on anticipated variances and on the sample design
 [@cochran1977; @valliant2018]. Treat those inputs as documented assumptions and

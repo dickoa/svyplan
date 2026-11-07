@@ -18,9 +18,10 @@ n_panel(
 )
 }
 \arguments{
-\item{target}{A \code{svyplan_n} or \code{svyplan_prec} result for a mean or a
-proportion, from \code{\link[=n_mean]{n_mean()}}, \code{\link[=n_prop]{n_prop()}}, \code{\link[=prec_mean]{prec_mean()}} or
-\code{\link[=prec_prop]{prec_prop()}}. It supplies two things: the responding sample the panel
+\item{target}{A \code{svyplan_n} or \code{svyplan_prec} result for a mean, a
+proportion or a ratio of totals, from \code{\link[=n_mean]{n_mean()}}, \code{\link[=n_prop]{n_prop()}},
+\code{\link[=n_ratio]{n_ratio()}}, \code{\link[=prec_mean]{prec_mean()}}, \code{\link[=prec_prop]{prec_prop()}} or \code{\link[=prec_ratio]{prec_ratio()}}. It
+supplies two things: the responding sample the panel
 must deliver, and the estimand whose precision is reported at every
 wave. Its own \code{resp_rate} is removed first, so the requirement is a
 count of respondents and no response is counted twice. The panel's
@@ -47,11 +48,14 @@ and does not claim.}
 
 \item{eligibility_rate}{Share of issued units in scope at recruitment, such
 as dwellings found occupied, in (0, 1]. Default 1. Units leaving scope
-after wave 1 belong in \code{retention}. See the nonresponse section of
-\link{svyplan-package}.}
+after wave 1 belong in \code{retention}. It converts respondents to issued
+units only. With a finite \code{N} the population each wave's precision is
+evaluated on stays the target's, \code{N} times the target's own eligibility,
+since the target's respondent requirement was solved against it. See the
+nonresponse section of \link{svyplan-package}.}
 
 \item{design}{\code{"fixed"} for one cohort followed across its waves, or
-\code{"rotating"} for equal cohorts entering every occasion and leaving at
+\code{"rotating"} for equal cohorts entering every period and leaving at
 the end of their life. The two return different quantities, described
 under Value. This argument names the panel type. It never accepts a
 \code{survey.design} or a \code{\link[=svyplan]{svyplan()}} object.}
@@ -59,7 +63,7 @@ under Value. This argument names the panel type. It never accepts a
 \item{target_wave}{The wave at which the target must be met, defaulting
 to the last. Sizing to reach a precision at wave 3 of a five-wave panel
 is a legitimate request, and waves 4 and 5 are still reported. It must
-be absent for a rotating design, whose target is an occasion rather
+be absent for a rotating design, whose target is a period rather
 than a wave.}
 
 \item{assurance}{Probability in (0, 1), or \code{NULL} (default). The
@@ -70,19 +74,20 @@ to it, the recruitment for which the required respondents arrive with
 at least that probability. See Details.}
 
 \item{start}{How a rotating design's cohorts are brought in, or \code{NULL}
-(default). \code{"gradual"} recruits one cohort an occasion, so the design
-fills up over a life. \code{"immediate"} splits the first occasion into equal
-panels planned for life lengths from the full life down to one occasion,
-all beginning at wave 1, so it is full at once. Supplying either reports
-what the design delivers at each occasion until it settles. The default
-plans no launch, which is what the recruitment above describes either
-way. Not available for a fixed panel, which recruits one cohort.}
+(default). \code{"gradual"} recruits one cohort a period, so the design
+fills up over a life (Lynn, 2012, gradual start). \code{"immediate"} selects
+one cohort for every place in the life at the first period, each at its
+own wave and at its first visit, so the sample is full at once. Supplying
+either reports what the design delivers at each period of the start-up
+until it settles. The default plans no start-up, which is what the
+recruitment above describes either way. Not available for a fixed
+panel, which recruits one cohort.}
 
 \item{rotation}{The rotation a rotating design's cohorts follow, a
 \code{\link[=design_rotation]{design_rotation()}} result or anything it accepts, such as \code{"2-2-2"}.
-\code{NULL} (default) is a life without a break, one occasion per wave. A
-unit is interviewed at every in-sample occasion, so the rotation has one
-more in-sample occasion than \code{retention} has values, and its in-sample
+\code{NULL} (default) is a life without a break, one period per wave. A
+unit is interviewed at every in-sample period, so the rotation has one
+more in-sample period than \code{retention} has values, and its in-sample
 entries are all 1. See the section on a life with a gap. Not available
 for a fixed panel.}
 }
@@ -92,15 +97,15 @@ A \code{svyplan_panel} object. \code{\link[=prec_panel]{prec_panel()}} returns t
 \describe{
 \item{\code{n_issued}}{Fixed panels only. Units to issue to the one cohort.}
 \item{\code{n_entrants}, \code{n_in_sample}, \code{n_cohorts}}{Rotating panels only.
-Entrants per occasion once the design is running, the units the
+Entrants per period once the design is running, the units the
 design holds across every live cohort, and how many cohorts that is.
 The first two are different budget lines and are named separately for
 that reason. For a life without a gap, \code{n_in_sample} is also the
 cumulative recruitment that reaching the full sample takes, whether
 the cohorts are taken on at once or phased in over the first
-\code{n_cohorts} occasions. With a gap, cohorts out of sample are held too,
+\code{n_cohorts} periods. With a gap, cohorts out of sample are held too,
 so that recruitment is \code{n_held}, reached after \code{length(rotation)}
-occasions.}
+periods.}
 \item{\code{n_held}, \code{rotation}}{Rotating panels only. The units selected
 and not yet past their last interview, those out of sample in a gap
 included, and the rotation they follow. \code{n_held} equals
@@ -122,17 +127,19 @@ reproduce the target's own precision exactly.}
 share \code{loss_share} of the whole life's loss that happens at it,
 the expected respondents \code{n_resp}, and the precision an estimate
 using only those respondents would have. For a rotating design the
-rows are the cohorts alive at one occasion and \code{n_resp} sums to the
-occasion's sample.}
-\item{\code{start}, \code{launch}, \code{launch_waves}}{Present when \code{start} was
-given. \code{launch} has one row per occasion up to equilibrium and one
-past it: the entrants taken on, the units in sample, the expected
+rows are the cohorts alive at one period and \code{n_resp} sums to the
+period's sample.}
+\item{\code{start}, \code{periods}, \code{period_visits}}{Present when \code{start} was
+given. \code{periods} has one row per period of the start-up and one past
+equilibrium: the entrants taken on, the units in sample, the expected
 respondents, the precision they buy, and \code{equilibrium} marking the
-occasion from which the design holds one cohort at every wave. That is
+period from which the design holds one cohort at every wave. That is
 the composition rather than the count. Where no wave loses anyone, the
-counts coincide from the first occasion and the mix still does not. \code{launch_waves} decomposes each occasion into the
-waves in sample at it, which is where the reason for the precision at
-an occasion can be read. Both are continuous, as \code{waves} is.}
+counts coincide from the first period and the mix still does not.
+\code{period_visits} has one row per period and \code{visit}, a cohort's
+interview count, which is what its retention follows. It is where the
+reason for the precision at a period can be read. Both are
+continuous, as \code{waves} is.}
 \item{\code{target}}{The embedded object, unchanged.}
 }
 }
@@ -145,11 +152,11 @@ or precision result, so the panel arithmetic is stated once and the
 design it serves is stated where it always was.
 }
 \details{
-Writing \eqn{r} for \code{resp_rate} and \eqn{c_j} for \code{retention[j]}, the
-probability that a unit approached at recruitment is still responding at
-wave \eqn{w} is
+Writing \eqn{e} for \code{eligibility_rate}, \eqn{r} for \code{resp_rate} and
+\eqn{c_j} for \code{retention[j]}, the probability that a unit approached at
+recruitment is in scope and still responding at wave \eqn{w} is
 
-\deqn{q_w = r \prod_{j < w} c_j,}{q_w = r * prod_(j < w) c_j,}
+\deqn{q_w = e\,r \prod_{j < w} c_j,}{q_w = e * r * prod_(j < w) c_j,}
 
 and the two designs invert it differently:
 
@@ -162,13 +169,13 @@ and the two designs invert it differently:
 Both are exact expected values under the stated rates. They are not the
 same quantity and the object never writes one over the other. The fixed
 figure is the whole issue to one cohort, while the rotating figure is
-what enters at each occasion, with \code{n_in_sample} the separate line for
+what enters at each period, with \code{n_in_sample} the separate line for
 the units every live cohort holds at once.
 
-A rotating panel pools every live cohort into one occasion, so its
-responding sample is \eqn{e \sum_s q_s}{e * sum_s q_s} rather than one
-cohort's count at
-its final wave. On the example below the two differ by a factor of five.
+A rotating panel pools every live cohort into one period, so with
+\eqn{m} entrants per period its responding sample is
+\eqn{m \sum_s q_s}{m * sum_s q_s} rather than one cohort's count at its
+final wave. On the example below the two differ by a factor of five.
 \subsection{Where a panel loses its sample}{
 
 \code{waves$loss_share} divides the whole life's loss across the waves. It is
@@ -184,53 +191,55 @@ A rotating design's recruitment describes it at equilibrium (Lynn,
 Getting there is a design decision, and \code{start} reports what each choice
 delivers in the start-up period before it (Kalton, 2009).
 
-A \strong{gradual} launch recruits one cohort an occasion, so the sample climbs
-over a full life before it is the design's own. An \strong{immediate} launch
-splits the first occasion into equal panels with planned life lengths from
-the full life down to one occasion. Every panel begins at wave 1, and
-together they hold the whole sample from the first occasion.
+A \strong{gradual} start recruits one cohort a period, so the sample climbs
+over a full life before it is the design's own. An \strong{immediate} start
+selects one cohort for every place in the life at the first period. Each
+is at its own wave of the pattern and at its first visit, and together
+they hold the whole sample from the first period.
 \code{\link[=design_overlap]{design_overlap()}} gives the same mature membership-overlap profile under
-either launch. During a gradual launch, realized overlap is higher until
+either start. During a gradual start, realized overlap is higher until
 every life stage is represented because no full set of cohorts has yet
-rotated through. The launch tables therefore describe both the early
-membership mix and its response and precision path.
+rotated through. The tables \code{periods} and \code{period_visits} therefore
+describe both the early membership mix and its response and precision
+path.
 
-The point of reporting it is that an immediate launch is \strong{not} at
-equilibrium at its first occasion even though it has the full sample in
-the field. Every unit there is at wave 1, so that occasion holds
+The point of reporting it is that an immediate start is \strong{not} at
+equilibrium at its first period even though it has the full sample in
+the field. Every unit there is at its first visit, so that period holds
 
-\deqn{R_1 - e \sum_s q_s = e \sum_s (q_1 - q_s) \ge 0,}{
-      R_1 - e sum_s q_s = e sum_s (q_1 - q_s) >= 0,}
+\deqn{R_1 - m \sum_s q_s = m \sum_s (q_1 - q_s) \ge 0,}{
+      R_1 - m sum_s q_s = m sum_s (q_1 - q_s) >= 0,}
 
 at least as many respondents as the design ever holds again, and strictly
 more as soon as any wave retains less than all of the one before. The two
 coincide exactly when every \code{retention} is 1, whatever \code{resp_rate} is,
 since it cancels from both sides. Where they differ the early precision is
-temporarily better. On the example below the first occasion holds 1172
+temporarily better. On the example below the first period holds 1172
 respondents against the design's 1001, \code{moe} 0.0287 against 0.0310,
-converging down as the interview mix matures. A gradual launch approaches the
-same figure from below. Either way the early occasions rest on a different
-response composition from the rest of the series, which \code{launch_waves} is
-there to expose and which is what nonresponse weighting has to carry.
+converging down as the interview mix matures. A gradual start approaches
+the same figure from below. Either way the early periods rest on a
+different response composition from the rest of the series, which
+\code{period_visits} is there to expose and which is what nonresponse
+weighting has to carry.
 }
 
 \subsection{A life with a gap}{
 
-\code{waves} counts interviews, not occasions. Under \code{rotation = "2-2-2"} a
-unit is interviewed at occasions 1, 2, 5 and 6 of a six-occasion life, so
+\code{waves} counts interviews, not periods. Under \code{rotation = "2-2-2"} a
+unit is interviewed at periods 1, 2, 5 and 6 of a six-period life, so
 \code{retention} takes three values. The equilibrium is that of an unbroken
 four-wave life, with the same entrants, the same four cohorts in sample
 and the same precision. The loss across the gap belongs in the retention
 value that crosses it, \code{retention[2]} here.
 
-The rotation changes two things. Six cohorts are held at an occasion,
-two of them out of sample, which is \code{n_held}. The launch follows the
+The rotation changes two things. Six cohorts are held at a period,
+two of them out of sample, which is \code{n_held}. The start-up follows the
 rotation. An immediate start covers every stage of the life at the first
-occasion, and a panel covering a stage out of sample is selected then and
-first interviewed when the rest of its life returns to sample. It numbers
-its interviews from its own first one, so a launch panel that crosses the
-gap at another visit takes that visit's retention. That difference is
-confined to the launch.
+period, and a cohort covering a stage out of sample is selected then and
+first interviewed when the rest of its life returns to sample. Its
+visits count from its own first interview, so a start-up cohort that
+crosses the gap at another visit takes that visit's retention. That
+difference is confined to the start-up.
 }
 
 \subsection{Assurance}{
@@ -238,15 +247,15 @@ confined to the launch.
 For a fixed panel the assured recruitment is the smallest \eqn{g} with
 \eqn{P(\mathrm{Binomial}(g, q_w) \ge n_{\text{target}}) \ge}{P(Binomial(g,
 q_w) >= n_target) >=} \code{assurance}.
-For a rotating panel the respondents at one occasion are a sum of
+For a rotating panel the respondents at one period are a sum of
 binomials at \strong{different} cumulative probabilities, one per live cohort,
 so the distribution is Poisson-binomial rather than binomial. It is
 assembled exactly, by convolving one distribution per cohort, rather than
 approximated by a binomial on their mean rate.
 
-The level is marginal. For a rotating design it holds at one occasion,
-and consecutive occasions share cohorts, so the chance that every
-occasion of a run clears its target is lower and is not computed here.
+The level is marginal. For a rotating design it holds at one period,
+and consecutive periods share cohorts, so the chance that every
+period of a run clears its target is lower and is not computed here.
 
 A requested level can be out of reach. Where the assured recruitment
 exceeds a finite \code{N}, not even a census of the frame delivers the target
@@ -312,7 +321,7 @@ lfs
 # Precision at every wave, and where the loss happens
 lfs$waves
 
-# The same rates run as a rotating panel: entrants per occasion, and the
+# The same rates run as a rotating panel: entrants per period, and the
 # larger number the five live cohorts hold between them
 rot <- n_panel(
   target,
@@ -329,30 +338,43 @@ n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
 # What the design delivers while it is being brought up
 n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
         resp_rate = 0.728, design = "rotating",
-        start = "immediate")$launch
+        start = "immediate")$periods
 
-# The same recruitment phased in one cohort an occasion instead
+# The same recruitment phased in one cohort a period instead
 n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
         resp_rate = 0.728, design = "rotating",
-        start = "gradual")$launch$n_resp
+        start = "gradual")$periods$n_resp
 
-# Why the first occasion of an immediate launch is the most precise one:
-# every unit in it is at wave 1
+# Why the first period of an immediate start is the most precise one:
+# every unit in it is at its first visit
 imm <- n_panel(target, retention = c(0.878, 0.963, 0.936, 0.956),
                resp_rate = 0.728, design = "rotating", start = "immediate")
-subset(imm$launch_waves, period <= 2)
+subset(imm$period_visits, period <= 2)
 
-# A 2-2-2 rotation, in for two occasions, out for two, in for two. Its
+# A 2-2-2 rotation, in for two periods, out for two, in for two. Its
 # equilibrium is the four-wave one, and six cohorts are held
 gap <- n_panel(target, retention = c(0.9, 0.85, 0.9), resp_rate = 0.75,
                design = "rotating", start = "immediate",
                rotation = "2-2-2")
 c(in_sample = gap$n_in_sample, held = gap$n_held)
-gap$launch[c("period", "n_entrants", "n_in_sample", "equilibrium")]
+gap$periods[c("period", "n_entrants", "n_in_sample", "equilibrium")]
 
 # Request at least a 95\% probability of reaching the respondent target
 n_panel(target, retention = c(0.9, 0.9), resp_rate = 0.8,
         assurance = 0.95)$n_assured
+
+# An unemployment rate, unemployed over the labor force, as a ratio of
+# two totals over all persons: 4 percent unemployed, 65 percent in the
+# labor force. The requirement counts persons responding, not labor
+# force members, since the unit coefficients are over everyone in scope.
+pu <- 0.04
+pl <- 0.65
+rate <- n_ratio(r = pu / pl, cv_num = sqrt((1 - pu) / pu),
+                cv_den = sqrt((1 - pl) / pl),
+                component_cor = sqrt(pu * (1 - pl) / (pl * (1 - pu))),
+                cv = 0.05, deff = 1.5)
+n_panel(rate, retention = c(0.9, 0.92, 0.94, 0.95), resp_rate = 0.6,
+        design = "rotating")
 
 }
 \references{

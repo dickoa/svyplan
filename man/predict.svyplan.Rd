@@ -72,16 +72,21 @@ Valid parameters for \code{newdata} by object type:
 \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}, \code{eligibility_rate}, \code{df}
 \item \strong{\code{n_change}}: \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
 \code{eligibility_rate}, \code{df}, \code{ratio}, \code{overlap}, \code{overlap_cor}, and \code{change} on
-the mean scale only, since two proportions determine it. The occasion
-variances are held at the values the result was built from, so vary the
-design rather than the estimand. Sweeping \code{overlap} and \code{overlap_cor}
+the mean scale only, since two proportions or two ratios determine it.
+A ratio change also takes \code{cv_num}, \code{cv_den} and \code{component_cor}, one
+value per row applied to both occasions, but not \code{r}, a pair that a
+grid row cannot hold. Otherwise the occasion variances are held at the
+values the result was built from, so vary the design rather than the
+estimand. Sweeping \code{overlap} and \code{overlap_cor}
 is what prices a rotation against a fresh sample each round.
 \item \strong{\code{n_pooled}}: \code{moe}, \code{rmoe}, \code{cv}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
-\code{eligibility_rate}, \code{df}, \code{mu} on the mean scale, and \code{occasions} only where
+\code{eligibility_rate}, \code{df}, \code{mu} on the mean scale, \code{r}, \code{cv_num},
+\code{cv_den} and \code{component_cor} on the ratio scale, and \code{occasions} only where
 the overlap and correlation are flat across lags, a shaped profile being
 a statement about a horizon that changing the horizon would contradict.
 The lag profiles themselves cannot be varied, a grid row having nowhere
-to hold a vector.
+to hold a vector. \code{cor_decay} can, being one number that replaces the
+correlation profile, whatever the overlap's shape.
 \item \strong{\code{n_cluster}}: \code{cv}, \code{budget}, \code{unit_relvar}, \code{resp_rate},
 \code{resp_rate_psu}, \code{resp_rate_ssu}, \code{eligibility_rate}, \code{eligible_per_unit},
 \code{fixed_cost}, the
@@ -114,12 +119,16 @@ place of \code{mu}.
 \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}, \code{eligibility_rate}, \code{df}
 \item \strong{\code{prec_change}}: \code{n} for both occasions, or \code{n1} and \code{n2} for each
 (not both forms), \code{alpha}, \code{N}, \code{deff}, \code{resp_rate}, \code{eligibility_rate},
-\code{df}, \code{overlap}, \code{overlap_cor}, and \code{change} on the mean scale.
+\code{df}, \code{overlap}, \code{overlap_cor}, \code{change} on the mean scale, and
+\code{cv_num}, \code{cv_den} and \code{component_cor} on the ratio scale, each applied
+to both occasions.
 \item \strong{\code{prec_pooled}}: \code{n}, \code{alpha}, \code{N}, \code{deff}, \code{resp_rate},
-\code{eligibility_rate}, \code{df}, and \code{mu} on the mean scale. Where the
-overlap is the same at every lag, also \code{overlap} and \code{cor_decay}. Where
-the correlation is, also \code{overlap_cor}. Where both are, also
-\code{occasions}.
+\code{eligibility_rate}, \code{df}, \code{mu} on the mean scale, and \code{r}, \code{cv_num},
+\code{cv_den} and \code{component_cor} on the ratio scale. Where the
+overlap is the same at every lag, also \code{overlap}. Where the correlation
+is, also \code{overlap_cor}. Where both are, also \code{occasions}. \code{cor_decay}
+whatever the overlap's shape, since it replaces the correlation
+profile.
 \item \strong{\code{prec_alloc}}: \code{n}, \code{alpha}, \code{deff}, \code{resp_rate},
 \code{eligibility_rate}, \code{df}, and for a joint allocation
 \code{eligible_per_unit}. A number in \code{n} rescales the stratum sizes to that

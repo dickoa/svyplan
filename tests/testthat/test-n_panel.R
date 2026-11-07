@@ -28,7 +28,7 @@ test_that("a fixed panel issues 1816 to hold 1000 at wave 5", {
   expect_identical(plan$target_wave, 5L)
 })
 
-test_that("a rotating panel takes 322 entrants per occasion and holds 1608", {
+test_that("a rotating panel takes 322 entrants per period and holds 1608", {
   plan <- n_panel(
     lfs_target, retention = lfs_ret, resp_rate = lfs_rr, design = "rotating"
   )
@@ -51,7 +51,7 @@ test_that("each design reports its own recruitment under its own name", {
   rot <- n_panel(
     lfs_target, retention = lfs_ret, resp_rate = lfs_rr, design = "rotating"
   )
-  # A single cohort's issue and the entrants per occasion differ by a factor
+  # A single cohort's issue and the entrants per period differ by a factor
   # of five here, so neither name may hold the other's number.
   expect_null(fixed$n_entrants)
   expect_null(fixed$n_in_sample)
@@ -68,12 +68,12 @@ test_that("the in-sample total is the cohorts a running design already holds", {
                tolerance = 1e-12)
 })
 
-test_that("a rotating occasion pools its cohorts and a fixed wave does not", {
+test_that("a rotating period pools its cohorts and a fixed wave does not", {
   rot <- n_panel(
     lfs_target, retention = lfs_ret, resp_rate = lfs_rr, design = "rotating"
   )
   expect_equal(rot$n_resp, sum(rot$waves$n_resp), tolerance = 1e-12)
-  # The pooled occasion is the target; one cohort at one stage is a fifth of
+  # The pooled period is the target; one cohort at one stage is a fifth of
   # it, which is the reading the plan warns against.
   expect_lt(max(rot$waves$n_resp), rot$n_resp / 4)
 })
@@ -82,7 +82,7 @@ test_that("a rotating occasion pools its cohorts and a fixed wave does not", {
 
 test_that("full retention reduces to the resp_rate inflation of n_prop", {
   # q = (r, r), so the requirement at wave 2 is n_target / r, which is what
-  # resp_rate does on a single occasion.
+  # resp_rate does on a single period.
   plan <- n_panel(
     n_prop(p = 0.3, moe = 0.03), retention = 1, resp_rate = 0.6
   )
@@ -257,7 +257,7 @@ test_that("a target must be a single-indicator mean or proportion result", {
   )
 })
 
-test_that("both directions of the single-occasion families are accepted", {
+test_that("both directions of the single-period families are accepted", {
   for (target in list(
     n_mean(var = 100, moe = 2), n_prop(p = 0.3, moe = 0.03),
     prec_mean(var = 100, n = 400), prec_prop(p = 0.3, n = 400)
@@ -375,7 +375,7 @@ test_that("assurance rises with the level and vanishes without one", {
   expect_null(do.call(n_panel, args)$n_assured)
 })
 
-test_that("the assured occasion clears its target and the count below does not", {
+test_that("the assured period clears its target and the count below does not", {
   q <- .panel_q(lfs_rr, lfs_ret)
   got <- .panel_assure_rotating(1000, q, 0.95)
   # Exact by convolution, computed here independently of the search.
@@ -388,7 +388,7 @@ test_that("the assured occasion clears its target and the count below does not",
   expect_lt(tail_at(got - 1), 0.95)
 })
 
-test_that("a rotating occasion is Poisson-binomial, not one binomial", {
+test_that("a rotating period is Poisson-binomial, not one binomial", {
   # The LFS rates cannot show this: their cumulative probabilities sit
   # between 0.55 and 0.73, close enough that a binomial matched on their
   # mean returns the same integer at every level. Severe attrition
@@ -418,7 +418,7 @@ test_that("a rotating occasion is Poisson-binomial, not one binomial", {
 })
 
 test_that("equal cumulative probabilities collapse onto the binomial", {
-  # Retention of 1 makes every live cohort identical, so the occasion is
+  # Retention of 1 makes every live cohort identical, so the period is
   # Binomial(k * e, r) and the exact answer is known independently.
   q <- .panel_q(0.6, c(1, 1, 1))
   got <- .panel_assure_rotating(97, q, 0.95)
@@ -498,13 +498,13 @@ test_that("a cohort larger than its population is refused", {
 
 test_that("cohorts that cannot be in sample at once are refused", {
   # A rotating design needs fewer entrants but holds three cohorts at a
-  # time, so the frame it outgrows is the one it fills at one occasion.
+  # time, so the frame it outgrows is the one it fills at one period.
   expect_error(
     n_panel(
       prec_mean(var = 100, n = 1000, N = 1200),
       retention = c(0.9, 0.8), resp_rate = 0.8, design = "rotating"
     ),
-    "cohorts alive at one occasion"
+    "cohorts alive at one period"
   )
   expect_s3_class(
     n_panel(
@@ -517,7 +517,7 @@ test_that("cohorts that cannot be in sample at once are refused", {
 
 test_that("a whole-unit design the continuous one fits is reported", {
   # 100 respondents over three waves at full response and retention: 33.33
-  # entrants per occasion, which three equal cohorts of 34 cannot field
+  # entrants per period, which three equal cohorts of 34 cannot field
   # inside a population of 101.
   target <- prec_mean(var = 100, n = 100, N = 101)
   expect_warning(
@@ -683,7 +683,7 @@ test_that("print leads with the recruitment and what it holds", {
 })
 
 test_that("print carries the answer and nothing that is derived from it", {
-  # The rates, the standing sample and the launch are all implied by the
+  # The rates, the standing sample and the start-up are all implied by the
   # recruitment and the table, so they belong to summary() and the printed
   # block stays the size of the answer.
   plan <- n_panel(lfs_target, retention = lfs_ret, resp_rate = lfs_rr,
@@ -693,11 +693,11 @@ test_that("print carries the answer and nothing that is derived from it", {
   expect_length(out, 12L)
   expect_false(any(grepl("loss at wave 1", out, fixed = TRUE)))
   expect_false(any(grepl("in sample:", out, fixed = TRUE)))
-  expect_false(any(grepl("launch (immediate)", out, fixed = TRUE)))
+  expect_false(any(grepl("start-up (immediate)", out, fixed = TRUE)))
   # The brief table drops the cumulative rate and the cv it implies.
   expect_match(out[5L], "^ wave retention n_resp se +moe *$")
   expect_identical(out[length(out)],
-                   "# summary() for the launch, the loss and per-wave cv")
+                   "# summary() for the start-up, the loss and per-wave cv")
 })
 
 test_that("print names the entrants and summary the standing sample", {
@@ -705,29 +705,29 @@ test_that("print names the entrants and summary the standing sample", {
                  design = "rotating")
   out <- capture.output(print(rot))
   expect_match(out[2L],
-               "^entrants: 322 per occasion -> .* pooled over 5 cohorts$")
+               "^entrants: 322 per period -> .* pooled over 5 cohorts$")
   sm <- capture.output(print(summary(rot)))
   expect_true(any(grepl("^in sample: 1610 across 5 live cohorts$", sm)))
-  expect_true(any(grepl("Waves alive at one occasion", sm, fixed = TRUE)))
+  expect_true(any(grepl("Waves alive at one period", sm, fixed = TRUE)))
   expect_true(any(grepl("61% of the loss at wave 1", sm, fixed = TRUE)))
 })
 
-test_that("summary carries the launch and the cohort composition", {
+test_that("summary carries the start-up and the cohort composition", {
   rot <- n_panel(lfs_target, retention = lfs_ret, resp_rate = lfs_rr,
                  design = "rotating", start = "immediate")
   sm <- summary(rot)
   expect_s3_class(sm, "summary.svyplan_panel")
   expect_identical(sm$plan, rot)
-  expect_identical(nrow(sm$launch), nrow(rot$launch))
-  expect_identical(sm$composition, rot$launch_waves)
-  expect_true(any(grepl("Launch \\(immediate\\)",
+  expect_identical(nrow(sm$periods), nrow(rot$periods))
+  expect_identical(sm$composition, rot$period_visits)
+  expect_true(any(grepl("By period, immediate start",
                         capture.output(print(sm)))))
-  # A fixed design has no equilibrium to reach, so it has no launch table.
+  # A fixed design has no equilibrium to reach, so it has no period table.
   fixed <- summary(n_panel(lfs_target, retention = lfs_ret,
                            resp_rate = lfs_rr))
-  expect_null(fixed$launch)
+  expect_null(fixed$periods)
   expect_null(fixed$composition)
-  expect_false(any(grepl("Launch", capture.output(print(fixed)))))
+  expect_false(any(grepl("By period", capture.output(print(fixed)))))
 })
 
 test_that("summary counts agree with the counts print shows", {
@@ -811,7 +811,7 @@ test_that("svyplan_panel is a sibling of svyplan_n, not a subtype", {
   expect_error(predict(plan))
 })
 
-## N-launch. What a rotating design delivers before it reaches equilibrium
+## N-startup. What a rotating design delivers before it reaches equilibrium
 
 .lfs <- function(...) {
   n_panel(n_prop(p = 0.5, moe = 0.031), retention = c(0.878, 0.963, 0.936, 0.956),
@@ -823,22 +823,22 @@ test_that("start = NULL is inert", {
   a <- .lfs()
   b <- .lfs(start = "immediate")
   expect_null(a$start)
-  expect_null(a$launch)
-  expect_null(a$launch_waves)
+  expect_null(a$periods)
+  expect_null(a$period_visits)
   expect_null(a$params$start)
   expect_equal(a$n_entrants, b$n_entrants, tolerance = 1e-12)
   expect_equal(a$n_resp, b$n_resp, tolerance = 1e-12)
   expect_equal(a$moe, b$moe, tolerance = 1e-12)
   expect_equal(a$waves, b$waves)
-  # The launch reads in summary(), so that is where its absence shows too.
-  expect_false(any(grepl("Launch", capture.output(print(summary(a))))))
-  expect_true(any(grepl("Launch \\(immediate\\)",
+  # The start-up reads in summary(), so that is where its absence shows too.
+  expect_false(any(grepl("By period", capture.output(print(summary(a))))))
+  expect_true(any(grepl("By period, immediate start",
                         capture.output(print(summary(b))))))
-  # Neither prints a launch line: print() carries the plan, not its approach.
+  # Neither prints a start-up line: print() carries the plan, not its approach.
   expect_identical(capture.output(print(a)), capture.output(print(b)))
 })
 
-test_that("the immediate launch follows the closed form", {
+test_that("the immediate start follows the closed form", {
   x <- .lfs(start = "immediate")
   e <- x$n_entrants
   q <- x$waves$q
@@ -846,40 +846,40 @@ test_that("the immediate launch follows the closed form", {
   expected <- vapply(seq_len(k), function(t) {
     e * ((k - t + 1) * q[[t]] + sum(q[seq_len(t - 1L)]))
   }, numeric(1L))
-  expect_equal(x$launch$n_resp[seq_len(k)], expected, tolerance = 1e-12)
+  expect_equal(x$periods$n_resp[seq_len(k)], expected, tolerance = 1e-12)
   # period 1 is one binomial: every unit is at wave 1
-  expect_equal(x$launch$n_resp[[1L]], k * e * q[[1L]], tolerance = 1e-12)
+  expect_equal(x$periods$n_resp[[1L]], k * e * q[[1L]], tolerance = 1e-12)
 })
 
-test_that("the gradual launch is the cumulative recruitment", {
+test_that("the gradual start is the cumulative recruitment", {
   x <- .lfs(start = "gradual")
   e <- x$n_entrants
   q <- x$waves$q
   expect_equal(
-    x$launch$n_resp[seq_along(q)],
+    x$periods$n_resp[seq_along(q)],
     vapply(seq_along(q), function(t) e * sum(q[seq_len(t)]), numeric(1L)),
     tolerance = 1e-12
   )
-  expect_equal(x$launch$n_entrants, rep(e, length(q) + 1L), tolerance = 1e-12)
+  expect_equal(x$periods$n_entrants, rep(e, length(q) + 1L), tolerance = 1e-12)
 })
 
-test_that("the launch is stored continuous and lands on n_target", {
+test_that("the start-up is stored continuous and lands on n_target", {
   # the stored table must not carry whole units: they belong to print()
   for (s in c("gradual", "immediate")) {
     x <- .lfs(start = s)
-    last <- nrow(x$launch)
-    expect_equal(x$launch$n_resp[[last]], x$n_target, tolerance = 1e-9)
-    expect_equal(x$launch$n_resp[[last]], x$n_entrants * sum(x$waves$q),
+    last <- nrow(x$periods)
+    expect_equal(x$periods$n_resp[[last]], x$n_target, tolerance = 1e-9)
+    expect_equal(x$periods$n_resp[[last]], x$n_entrants * sum(x$waves$q),
                  tolerance = 1e-9)
-    expect_equal(x$launch$moe[[last]], x$moe, tolerance = 1e-12)
-    expect_false(isTRUE(all.equal(x$launch$n_entrants[[last]],
+    expect_equal(x$periods$moe[[last]], x$moe, tolerance = 1e-12)
+    expect_false(isTRUE(all.equal(x$periods$n_entrants[[last]],
                                   ceiling(x$n_entrants))))
   }
 })
 
-test_that("the two launches bracket the equilibrium in opposite directions", {
-  imm <- .lfs(start = "immediate")$launch
-  grad <- .lfs(start = "gradual")$launch
+test_that("the two starts bracket the equilibrium in opposite directions", {
+  imm <- .lfs(start = "immediate")$periods
+  grad <- .lfs(start = "gradual")$periods
   at_eq <- tail(imm$n_resp, 1L)
   # an immediate start opens above its own equilibrium, every unit being at
   # wave 1, and settles down onto it; a gradual one opens below and climbs
@@ -888,53 +888,53 @@ test_that("the two launches bracket the equilibrium in opposite directions", {
   expect_false(is.unsorted(rev(imm$n_resp)))
   expect_false(is.unsorted(grad$n_resp))
   expect_lt(imm$moe[[1L]], tail(imm$moe, 1L))
-  # and an immediate start holds the whole design from its first occasion
+  # and an immediate start holds the whole design from its first period
   expect_equal(imm$n_in_sample, rep(imm$n_in_sample[[1L]], nrow(imm)),
                tolerance = 1e-12)
   expect_lt(grad$n_in_sample[[1L]], tail(grad$n_in_sample, 1L))
 })
 
-test_that("equilibrium is flagged where the two launches meet", {
+test_that("equilibrium is flagged where the two starts meet", {
   imm <- .lfs(start = "immediate")
   grad <- .lfs(start = "gradual")
   k <- nrow(imm$waves)
-  expect_equal(which(imm$launch$equilibrium)[[1L]], k)
-  expect_equal(which(grad$launch$equilibrium)[[1L]], k)
-  expect_equal(imm$launch$n_resp[imm$launch$equilibrium],
-               grad$launch$n_resp[grad$launch$equilibrium], tolerance = 1e-12)
+  expect_equal(which(imm$periods$equilibrium)[[1L]], k)
+  expect_equal(which(grad$periods$equilibrium)[[1L]], k)
+  expect_equal(imm$periods$n_resp[imm$periods$equilibrium],
+               grad$periods$n_resp[grad$periods$equilibrium], tolerance = 1e-12)
 })
 
-test_that("launch_waves decomposes each occasion", {
+test_that("period_visits decomposes each period", {
   for (s in c("gradual", "immediate")) {
     x <- .lfs(start = s)
-    by_period <- tapply(x$launch_waves$n_resp, x$launch_waves$period, sum)
-    expect_equal(as.numeric(by_period), x$launch$n_resp, tolerance = 1e-12)
-    issued <- tapply(x$launch_waves$n_issued, x$launch_waves$period, sum)
-    expect_equal(as.numeric(issued), x$launch$n_in_sample, tolerance = 1e-12)
-    # the wave column is what makes the early moe readable: an immediate
-    # start's first occasion is entirely wave 1
-    first <- x$launch_waves[x$launch_waves$period == 1L, ]
+    by_period <- tapply(x$period_visits$n_resp, x$period_visits$period, sum)
+    expect_equal(as.numeric(by_period), x$periods$n_resp, tolerance = 1e-12)
+    issued <- tapply(x$period_visits$n_issued, x$period_visits$period, sum)
+    expect_equal(as.numeric(issued), x$periods$n_in_sample, tolerance = 1e-12)
+    # the visit column is what makes the early moe readable: an immediate
+    # start's first period is entirely at visit 1
+    first <- x$period_visits[x$period_visits$period == 1L, ]
     if (identical(s, "immediate")) {
-      expect_equal(first$wave, 1L)
+      expect_equal(first$visit, 1L)
       expect_equal(first$n_issued, x$n_in_sample, tolerance = 1e-12)
     }
-    expect_true(all(x$launch_waves$n_resp <= x$launch_waves$n_issued))
+    expect_true(all(x$period_visits$n_resp <= x$period_visits$n_issued))
   }
 })
 
-test_that("a launch holds for lives other than five, and for a mean", {
+test_that("a start-up holds for lives other than five, and for a mean", {
   for (k in c(2L, 3L, 8L)) {
     x <- n_panel(n_prop(p = 0.4, moe = 0.03), retention = rep(0.9, k - 1L),
                  resp_rate = 0.7, design = "rotating", start = "immediate")
     e <- x$n_entrants
     q <- x$waves$q
-    expect_equal(x$launch$n_resp[[1L]], k * e * q[[1L]], tolerance = 1e-12)
-    expect_equal(tail(x$launch$n_resp, 1L), x$n_target, tolerance = 1e-9)
+    expect_equal(x$periods$n_resp[[1L]], k * e * q[[1L]], tolerance = 1e-12)
+    expect_equal(tail(x$periods$n_resp, 1L), x$n_target, tolerance = 1e-9)
   }
   m <- n_panel(n_mean(var = 100, moe = 2), retention = c(0.9, 0.85),
                resp_rate = 0.75, design = "rotating", start = "gradual")
-  expect_equal(tail(m$launch$n_resp, 1L), m$n_target, tolerance = 1e-9)
-  expect_true("rmoe" %in% names(m$launch))
+  expect_equal(tail(m$periods$n_resp, 1L), m$n_target, tolerance = 1e-9)
+  expect_true("rmoe" %in% names(m$periods))
 })
 
 test_that("start is validated and refused for a fixed panel", {
@@ -948,35 +948,35 @@ test_that("start is validated and refused for a fixed panel", {
   )
 })
 
-test_that("prec_panel carries the launch through the round trip", {
+test_that("prec_panel carries the start-up through the round trip", {
   plan <- .lfs(start = "immediate")
   back <- prec_panel(plan)
   expect_identical(back$start, "immediate")
-  expect_equal(back$launch, plan$launch, tolerance = 1e-12)
+  expect_equal(back$periods, plan$periods, tolerance = 1e-12)
 
   # start moves no stored quantity, so unlike design it may be overridden
   swapped <- prec_panel(plan, start = "gradual")
   expect_identical(swapped$start, "gradual")
   expect_equal(swapped$n_entrants, plan$n_entrants, tolerance = 1e-12)
   expect_equal(swapped$n_resp, plan$n_resp, tolerance = 1e-12)
-  expect_lt(swapped$launch$n_resp[[1L]], plan$launch$n_resp[[1L]])
+  expect_lt(swapped$periods$n_resp[[1L]], plan$periods$n_resp[[1L]])
 
   # and a plan stored without one stays without one
-  expect_null(prec_panel(.lfs())$launch)
+  expect_null(prec_panel(.lfs())$periods)
   expect_identical(prec_panel(.lfs(), start = "gradual")$start, "gradual")
 })
 
-test_that("a launch given directly to prec_panel reads the same", {
+test_that("a start-up given directly to prec_panel reads the same", {
   plan <- .lfs(start = "gradual")
   direct <- prec_panel(plan$n_entrants, n_prop(p = 0.5, moe = 0.031),
                        retention = c(0.878, 0.963, 0.936, 0.956),
                        resp_rate = 0.728, design = "rotating", start = "gradual")
-  expect_equal(direct$launch, plan$launch, tolerance = 1e-12)
+  expect_equal(direct$periods, plan$periods, tolerance = 1e-12)
 })
 
 test_that("start = NULL leaves no trace in params", {
   # `list(start = NULL)` carries the name, so a result planned without a
-  # launch would gain a parameter it never had
+  # start-up would gain a parameter it never had
   a <- .lfs()
   expect_false("start" %in% names(a$params))
   expect_length(a$params, 5L)
@@ -985,35 +985,35 @@ test_that("start = NULL leaves no trace in params", {
   expect_true("start" %in% names(.lfs(start = "gradual")$params))
 })
 
-test_that("an immediate launch opens at equilibrium when nothing is lost", {
+test_that("an immediate start opens at equilibrium when nothing is lost", {
   # R_1 - equilibrium = e * sum(q_1 - q_s), which is 0 exactly when q is flat, so
   # the claim is "at least as many", not "more"
   flat <- n_panel(n_prop(p = 0.5, moe = 0.031), retention = c(1, 1, 1),
                   resp_rate = 0.8, design = "rotating", start = "immediate")
-  expect_equal(flat$launch$n_resp[[1L]], tail(flat$launch$n_resp, 1L),
+  expect_equal(flat$periods$n_resp[[1L]], tail(flat$periods$n_resp, 1L),
                tolerance = 1e-12)
-  expect_equal(flat$launch$moe[[1L]], flat$moe, tolerance = 1e-12)
-  # every occasion delivers the equilibrium count here, and the flag still
-  # marks the occasion the wave composition matures at: with nothing lost the
+  expect_equal(flat$periods$moe[[1L]], flat$moe, tolerance = 1e-12)
+  # every period delivers the equilibrium count here, and the flag still
+  # marks the period the wave composition matures at: with nothing lost the
   # counts coincide earlier than the mix does, and it is the mix that decides
-  # whether an occasion is comparable with the rest of the series
-  expect_equal(flat$launch$n_resp, rep(flat$n_target, nrow(flat$launch)),
+  # whether a period is comparable with the rest of the series
+  expect_equal(flat$periods$n_resp, rep(flat$n_target, nrow(flat$periods)),
                tolerance = 1e-9)
-  expect_equal(which(flat$launch$equilibrium)[[1L]], nrow(flat$waves))
-  expect_equal(flat$launch_waves$wave[flat$launch_waves$period == 1L], 1L)
+  expect_equal(which(flat$periods$equilibrium)[[1L]], nrow(flat$waves))
+  expect_equal(flat$period_visits$visit[flat$period_visits$period == 1L], 1L)
 
   # resp_rate cancels from both sides, so it is retention alone that decides
   flat_full <- n_panel(n_prop(p = 0.5, moe = 0.031), retention = c(1, 1, 1),
                        resp_rate = 1, design = "rotating", start = "immediate")
-  expect_equal(flat_full$launch$n_resp[[1L]],
-               tail(flat_full$launch$n_resp, 1L), tolerance = 1e-12)
+  expect_equal(flat_full$periods$n_resp[[1L]],
+               tail(flat_full$periods$n_resp, 1L), tolerance = 1e-12)
 
   # and one wave of attrition is enough to separate them
   one <- n_panel(n_prop(p = 0.5, moe = 0.031), retention = c(1, 0.99, 1),
                  resp_rate = 0.8, design = "rotating", start = "immediate")
-  expect_gt(one$launch$n_resp[[1L]], tail(one$launch$n_resp, 1L))
+  expect_gt(one$periods$n_resp[[1L]], tail(one$periods$n_resp, 1L))
   q <- one$waves$q
-  expect_equal(one$launch$n_resp[[1L]] - tail(one$launch$n_resp, 1L),
+  expect_equal(one$periods$n_resp[[1L]] - tail(one$periods$n_resp, 1L),
                one$n_entrants * sum(q[[1L]] - q), tolerance = 1e-12)
 })
 
@@ -1042,7 +1042,7 @@ test_that("a rotation is checked against the visits and the design", {
   expect_error(
     n_panel(.gap_target(), retention = c(0.9, 0.9), design = "rotating",
             rotation = "2-2-2"),
-    "interviews a unit 4 times over its 6-occasion life"
+    "interviews a unit 4 times over its 6-period life"
   )
   expect_error(
     n_panel(.gap_target(), retention = c(0.9, 0.9, 0.9), design = "rotating",
@@ -1064,7 +1064,7 @@ test_that("a rotation is checked against the visits and the design", {
   expect_false("rotation" %in% names(plain$params))
 })
 
-test_that("the launch of any rotation matches an enumeration of its cohorts", {
+test_that("the start-up of any rotation matches an enumeration of its cohorts", {
   specs <- c("3", "5", "2-2-2", "4-8-4", "2-1-3", "1-0-1", "1-1-0-1")
   for (spec in specs) for (start in c("gradual", "immediate")) {
     w <- as.double(design_rotation(spec))
@@ -1074,42 +1074,42 @@ test_that("the launch of any rotation matches an enumeration of its cohorts", {
       x <- n_panel(.gap_target(), retention = ret, resp_rate = 0.8,
                    design = "rotating", start = start, rotation = spec)
       lab <- paste(spec, start)
-      o <- launch_oracle(w, start, L + 1L)
+      o <- startup_oracle(w, start, L + 1L)
       tab <- stats::aggregate(id ~ period + visit, data = o, FUN = length)
       tab <- tab[order(tab$period, tab$visit), ]
-      got <- x$launch_waves
+      got <- x$period_visits
       expect_identical(got$period, tab$period, label = lab)
-      expect_identical(got$wave, tab$visit, label = lab)
+      expect_identical(got$visit, tab$visit, label = lab)
       expect_equal(got$n_issued, x$n_entrants * tab$id, tolerance = 1e-12,
                    label = lab)
       expect_equal(got$n_resp, x$n_entrants * tab$id * x$waves$q[tab$visit],
                    tolerance = 1e-12, label = lab)
       in_sample <- tabulate(o$period, L + 1L)
-      expect_equal(x$launch$n_in_sample, x$n_entrants * in_sample,
+      expect_equal(x$periods$n_in_sample, x$n_entrants * in_sample,
                    tolerance = 1e-12, label = lab)
-      expect_identical(x$launch$equilibrium, x$launch$period >= L,
+      expect_identical(x$periods$equilibrium, x$periods$period >= L,
                        label = lab)
       entering <- c(if (start == "immediate") L else 1, rep(1, L))
-      expect_equal(x$launch$n_entrants, x$n_entrants * entering,
+      expect_equal(x$periods$n_entrants, x$n_entrants * entering,
                    tolerance = 1e-12, label = lab)
     }
   }
 })
 
-test_that("an immediate 2-2-2 launch is full from the first occasion", {
+test_that("an immediate 2-2-2 start-up is full from the first period", {
   x <- n_panel(.gap_target(), retention = c(0.9, 0.85, 0.9), resp_rate = 0.75,
                design = "rotating", start = "immediate", rotation = "2-2-2")
-  expect_equal(x$launch$n_in_sample, rep(4 * x$n_entrants, 7L),
+  expect_equal(x$periods$n_in_sample, rep(4 * x$n_entrants, 7L),
                tolerance = 1e-12)
-  expect_identical(which(x$launch$equilibrium)[[1L]], 6L)
+  expect_identical(which(x$periods$equilibrium)[[1L]], 6L)
   grad <- n_panel(.gap_target(), retention = c(0.9, 0.85, 0.9),
                   resp_rate = 0.75, design = "rotating", start = "gradual",
                   rotation = "2-2-2")
-  expect_equal(grad$launch$n_in_sample / grad$n_entrants,
+  expect_equal(grad$periods$n_in_sample / grad$n_entrants,
                c(1, 2, 2, 2, 3, 4, 4), tolerance = 1e-12)
 
-  # the issued overlap from the first occasion is the full-sample profile
-  o <- launch_oracle(as.double(x$rotation), "immediate", 12L)
+  # the issued overlap from the first period is the full-sample profile
+  o <- startup_oracle(as.double(x$rotation), "immediate", 12L)
   want <- as.double(design_overlap("2-2-2"))
   for (lag in seq_along(want)) {
     a <- o$id[o$period == 1L]
@@ -1125,7 +1125,7 @@ test_that("a finite population has to supply the cohorts held in a gap", {
   expect_error(
     n_panel(tgt, retention = c(0.9, 0.8, 0.9), resp_rate = 0.75,
             design = "rotating", rotation = "2-2-2"),
-    "6 cohorts held at one occasion, 4 of them in sample"
+    "6 cohorts held at one period, 4 of them in sample"
   )
   ok <- n_panel(tgt, retention = c(0.9, 0.8, 0.9), resp_rate = 0.75,
                 design = "rotating")
@@ -1139,11 +1139,123 @@ test_that("print names a rotation with a gap, and summary the units held", {
   plain <- n_panel(.gap_target(), retention = c(0.9, 0.85, 0.9),
                    resp_rate = 0.75, design = "rotating")
   out <- capture.output(print(gap))
-  expect_true(any(grepl("rotation: 2 in, 2 out, 2 in, a 6-occasion life",
+  expect_true(any(grepl("life: 6 periods (2 in, 2 out, 2 in)",
                         out, fixed = TRUE)))
-  expect_false(any(grepl("rotation:", capture.output(print(plain)))))
+  expect_false(any(grepl("life:", capture.output(print(plain)))))
   s <- capture.output(print(summary(gap)))
   expect_true(any(grepl("held: 2388 across 6 cohorts, 2 of them out of sample",
                         s, fixed = TRUE)))
   expect_false(any(grepl("held:", capture.output(print(summary(plain))))))
+})
+
+test_that("the start-up tables are named by what indexes their rows", {
+  x <- n_panel(n_prop(p = 0.15, cv = 0.12), retention = c(0.9, 0.85, 0.9),
+               resp_rate = 0.75, design = "rotating", start = "immediate",
+               rotation = "2-2-2")
+  expect_false(any(c("launch", "launch_waves") %in% names(x)))
+  expect_named(x$period_visits, c("period", "visit", "n_issued", "n_resp"))
+  expect_identical(unique(x$period_visits$visit[x$period_visits$period == 1L]),
+                   1L)
+  expect_identical(x$periods$period, seq_len(length(x$rotation) + 1L))
+  out <- capture.output(print(summary(x)))
+  expect_false(any(grepl("occasion|launch|Launch", out)))
+  expect_true(max(nchar(out)) <= 80L)
+})
+
+## The target's population stays behind its respondent requirement
+
+test_that("a panel keeps the population the target was sized against", {
+  for (type in c("prop", "mean")) {
+    target <- if (type == "prop") {
+      n_prop(p = 0.5, moe = 0.05, N = 100, eligibility_rate = 0.5)
+    } else {
+      n_mean(var = 1, moe = 0.2, N = 100, eligibility_rate = 0.5)
+    }
+    expect_warning(
+      plan <- n_panel(target, retention = 0.9),
+      "sized against 50 units in scope"
+    )
+    expect_equal(plan$moe, target$moe)
+    expect_warning(back <- prec_panel(plan), "keeps that population")
+    expect_equal(back$moe, target$moe)
+    # matching eligibility: no warning, same precision
+    expect_no_warning(
+      matched <- n_panel(target, retention = 0.9, eligibility_rate = 0.5)
+    )
+    expect_equal(matched$moe, target$moe)
+    expect_equal(matched$n_issued, 2 * plan$n_issued)
+    # rotating and the reverse direction
+    expect_warning(
+      rot <- n_panel(target, retention = 0.9, design = "rotating"),
+      "keeps that population"
+    )
+    expect_equal(rot$moe, target$moe)
+    expect_equal(
+      suppressWarnings(prec_panel(rot$n_entrants, target, retention = 0.9,
+                                  design = "rotating"))$moe,
+      target$moe
+    )
+  }
+  # the panel's eligibility alone does not shrink the target's population
+  t1 <- prec_prop(p = 0.5, n = 40, N = 100)
+  expect_warning(p1 <- n_panel(t1, retention = 0.9, eligibility_rate = 0.5),
+                 "sized against 100 units in scope")
+  expect_equal(p1$moe, t1$moe)
+  # infinite N has no population to disagree about
+  expect_silent(n_panel(prec_prop(p = 0.5, n = 40), retention = 0.9,
+                        eligibility_rate = 0.5))
+})
+
+## Printed precision describes the whole units printed
+
+test_that("print() shows the precision of the whole-unit recruitment", {
+  plan <- n_panel(prec_mean(var = 1, n = 2.1), retention = 1,
+                  design = "rotating", rotation = "2")
+  expect_equal(plan$se, sqrt(1 / 2.1))
+  out <- capture.output(print(plan))
+  expect_true(any(grepl("^entrants: 2 per period -> 4 responding", out)))
+  expect_true(any(grepl("^mean: se = 0.5, moe = 0.98", out)))
+  expect_true(any(grepl("^ 1 +2 +0.7071", out)))
+  # a whole recruitment prints the plan itself
+  whole <- prec_panel(3, prec_mean(var = 1, n = 6), retention = 1,
+                      design = "rotating", rotation = "2")
+  expect_true(any(grepl(sprintf("se = %.4g", whole$se),
+                        capture.output(print(whole)))))
+})
+
+test_that("summary() reports the complete histories of a rotating plan", {
+  plan <- n_panel(prec_mean(var = 1, n = 1000), retention = rep(0.9, 3),
+                  resp_rate = 0.8, design = "rotating", rotation = "4")
+  expect_equal(plan$n_entrants * plan$waves$q[4], 211.9802, tolerance = 1e-6)
+  out <- capture.output(print(summary(plan)))
+  expect_true(any(grepl(
+    "^complete histories: 212 per period, the cohort at wave 4 with all 4 responses$",
+    out
+  )))
+  fixed <- n_panel(prec_mean(var = 1, n = 100), retention = 0.9)
+  expect_false(any(grepl("complete histories",
+                         capture.output(print(summary(fixed))))))
+})
+
+test_that("a whole design beyond the frame prints the continuous one throughout", {
+  expect_warning(
+    plan <- n_panel(prec_mean(var = 100, n = 100, N = 101),
+                    retention = c(1, 1), design = "rotating",
+                    start = "immediate"),
+    "102 units in sample against a population of 101"
+  )
+  out <- capture.output(print(summary(plan)))
+  expect_true(any(grepl("^entrants: 33.33 per period -> 100 responding", out)))
+  expect_true(any(grepl(
+    "^whole units: 34 per period hold 102, above N = 101, so these are continuous$",
+    out
+  )))
+  expect_true(any(grepl("^in sample: 100 across 3 live cohorts$", out)))
+  expect_true(any(grepl("^ 1 +1 +33 +1.418", out)))
+  expect_true(any(grepl("^ 3 +33 +100 +100 +0.0995", out)))
+  expect_false(any(grepl("102 responding|^ 1 +34 ", out)))
+  # a plan whose whole units fit carries no status line
+  fits <- n_panel(prec_mean(var = 100, n = 90, N = 101), retention = c(1, 1),
+                  design = "rotating")
+  expect_false(any(grepl("^whole units:", capture.output(print(fits)))))
 })

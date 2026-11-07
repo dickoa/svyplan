@@ -47,7 +47,8 @@ The method-specific result:
 \describe{
 \item{\code{print()}}{Returns its argument invisibly.}
 \item{\code{summary()}}{Returns a \code{summary.svyplan_panel} object carrying the
-plan, full wave table, launch path, and cohort composition.}
+plan, full wave table, the table by period, and the visits in sample
+at each period.}
 \item{\code{format()}}{Returns a string.}
 \item{\code{as.double()}}{Returns the recruitment count.}
 \item{\code{as.integer()}}{Returns the whole units to which the recruitment
@@ -62,7 +63,7 @@ responding sample it is expected to leave, the precision at the target
 and the wave-by-wave table. \code{summary()} adds what the design implies
 around that answer: the standing sample a rotating design holds, the
 response and retention it assumes, where the life's loss falls, and the
-launch a design passes through on its way to equilibrium.
+start-up a design passes through on its way to equilibrium.
 The coercions return the recruitment count, which is a number of units to
 release and not the analysis sample. Those differ by the whole of the
 panel's attrition, and it is why \code{svyplan_panel} is a sibling of
@@ -77,8 +78,8 @@ plan <- n_panel(
 plan
 summary(plan)
 
-# A rotating design reaching equilibrium: the launch table is the
-# occasions before it gets there
+# A rotating design reaching equilibrium: the table by period shows the
+# start-up before it gets there
 rot <- n_panel(
   n_prop(p = 0.5, moe = 0.031),
   retention = c(0.878, 0.963, 0.936, 0.956),
@@ -86,7 +87,7 @@ rot <- n_panel(
   design = "rotating",
   start = "immediate"
 )
-summary(rot)$launch
+summary(rot)$periods
 summary(rot)$composition
 
 as.integer(plan)

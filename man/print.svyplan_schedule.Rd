@@ -65,7 +65,7 @@ modify a plain data frame.
 row per period, because a schedule's periods are mostly identical and
 its length is set by the reporting horizon rather than by the design.
 \code{summary()} gives the period-by-period tables: the issue profile in
-full, the component activity, the overlap the rotation produces, and the
+full, the selections, the overlap the rotation produces, and the
 interviews owed after the horizon. \code{\link[=as.data.frame]{as.data.frame()}} returns the issue
 profile, and every table stays reachable as a field.
 }
@@ -91,7 +91,7 @@ s <- summary(schedule)
 s
 
 # every table stays reachable as a field
-schedule$components
+schedule$selections
 schedule$tail_commitments
 
 # as.data.frame() returns the issue profile

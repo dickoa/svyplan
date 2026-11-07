@@ -124,7 +124,7 @@ test_that("the frontier title names one component and counts several", {
 ## P1. The rotation chart and its cell table
 
 .cell_totals <- function(d) {
-  vapply(seq_len(attr(d, "n_period")), function(t) {
+  vapply(seq_len(attr(d, "horizon")), function(t) {
     sum(d$take[d$period == t])
   }, numeric(1L))
 }
@@ -144,7 +144,7 @@ test_that("the overlap chart points a chart argument to the rotation", {
   ov <- design_overlap("6")
   pdf(tempfile())
   on.exit(dev.off())
-  for (arg in c("type", "start", "n_period", "panel", "label", "fill")) {
+  for (arg in c("type", "start", "horizon", "panel_plan", "label", "fill")) {
     args <- setNames(list(ov, "x"), c("x", arg))
     expect_error(do.call(plot, args), "drawn from the rotation", fixed = TRUE)
   }
@@ -157,19 +157,19 @@ test_that("the chart draws patterns of every shape", {
   expect_silent(plot(design_rotation("4-8-4")))
   expect_silent(plot(design_rotation("5")))
   expect_silent(plot(design_rotation(c(1, 1, 0.5, 0.5))))
-  expect_silent(plot(design_rotation("2"), n_period = 3L))
+  expect_silent(plot(design_rotation("2"), horizon = 3L))
   expect_silent(plot(design_rotation("3-1-2"), rows = "rotation_group",
-                     fill = "panel", n_period = 14L))
+                     fill = "panel", horizon = 14L))
 })
 
-test_that("n_period is validated", {
+test_that("horizon is validated", {
   x <- design_rotation("5")
   pdf(tempfile())
   on.exit(dev.off())
-  expect_error(plot(x, n_period = 0), "whole number >= 1")
-  expect_error(plot(x, n_period = 2.5), "whole number >= 1")
-  expect_error(plot(x, n_period = c(4, 5)), "whole number >= 1")
-  expect_error(as.data.frame(x, n_period = 0), "whole number >= 1")
+  expect_error(plot(x, horizon = 0), "whole number >= 1")
+  expect_error(plot(x, horizon = 2.5), "whole number >= 1")
+  expect_error(plot(x, horizon = c(4, 5)), "whole number >= 1")
+  expect_error(as.data.frame(x, horizon = 0), "whole number >= 1")
   expect_error(plot(x, rows = "nope"), "should be one of")
   expect_error(plot(x, bogus = 1), "unused argument")
 })
@@ -180,8 +180,8 @@ test_that("a rotating panel labels the chart in units", {
                  resp_rate = 0.728, design = "rotating")
   pdf(tempfile())
   on.exit(dev.off())
-  expect_silent(plot(design_rotation("5"), panel = rot))
-  d <- as.data.frame(design_rotation("5"), panel = rot)
+  expect_silent(plot(design_rotation("5"), panel_plan = rot))
+  d <- as.data.frame(design_rotation("5"), panel_plan = rot)
   expect_equal(d$n, d$take * ceiling(rot$n_entrants))
   expect_false("n" %in% names(as.data.frame(design_rotation("5"))))
 })
@@ -195,7 +195,7 @@ test_that("the chart's entrant count is the one print reports", {
   take <- .chart_take(rot, rep(1, 5))
   expect_equal(take, ceiling(rot$n_entrants))
   out <- capture.output(print(rot))
-  expect_true(any(grepl(sprintf("^entrants: %d per occasion", take), out)))
+  expect_true(any(grepl(sprintf("^entrants: %d per period", take), out)))
   # and the full-sample total the chart draws is the one summary() names
   expect_true(any(grepl(sprintf("^in sample: %d ", take * rot$n_cohorts),
                         capture.output(print(summary(rot))))))
@@ -209,67 +209,67 @@ test_that("a panel that does not describe the rotation is refused", {
                  resp_rate = 0.728, design = "rotating")
   pdf(tempfile())
   on.exit(dev.off())
-  expect_error(plot(design_rotation("5"), panel = fixed), "fixed panel")
-  expect_error(plot(design_rotation("4"), panel = rot),
+  expect_error(plot(design_rotation("5"), panel_plan = fixed), "fixed panel")
+  expect_error(plot(design_rotation("4"), panel_plan = rot),
                "follows the rotation 5 in and the chart draws 4 in")
-  expect_error(plot(design_rotation("5"), panel = target),
+  expect_error(plot(design_rotation("5"), panel_plan = target),
                "must be an n_panel\\(\\) or prec_panel\\(\\) result")
 })
 
 test_that("the cell table has one row per interview, in a fixed shape", {
   d <- as.data.frame(design_rotation("2-2-2"), start = "immediate",
-                     n_period = 8)
-  expect_named(d, c("period", "panel", "entry", "launch", "rotation_group",
+                     horizon = 8)
+  expect_named(d, c("period", "panel", "entry", "startup", "rotation_group",
                     "wave", "visit", "life_stage", "take"))
   for (col in c("period", "panel", "entry", "rotation_group", "wave",
                 "visit", "life_stage")) {
     expect_type(d[[col]], "integer")
   }
-  expect_type(d$launch, "logical")
+  expect_type(d$startup, "logical")
   expect_type(d$take, "double")
   expect_identical(order(d$panel, d$period), seq_len(nrow(d)))
   expect_false(anyDuplicated(d[c("panel", "period")]) > 0L)
   expect_true(all(d$period >= 1L & d$period <= 8L))
   expect_identical(attr(d, "start"), "immediate")
-  expect_identical(attr(d, "n_period"), 8L)
+  expect_identical(attr(d, "horizon"), 8L)
   expect_identical(attr(d, "full_sample_from"), 1L)
   expect_s3_class(attr(d, "rotation"), "svyplan_rotation")
   g <- as.data.frame(design_rotation("2-2-2"))
   expect_identical(attr(g, "full_sample_from"), 6L)
-  expect_identical(attr(g, "n_period"), 10L)
-  expect_false(any(g$launch))
+  expect_identical(attr(g, "horizon"), 10L)
+  expect_false(any(g$startup))
 })
 
 test_that("waves count the pattern and visits count interviews", {
   d <- as.data.frame(design_rotation("6"), start = "immediate",
-                     n_period = 12)
+                     horizon = 12)
   first <- d[d$period == 1L, ]
   # Statistics Canada, Figure 2.1: January holds waves 6 down to 1, every
   # one of them a first interview
   expect_identical(first$panel, 1:6)
   expect_identical(first$wave, 6:1)
   expect_identical(first$visit, rep(1L, 6L))
-  expect_identical(d$wave[!d$launch], d$visit[!d$launch])
-  expect_true(any(d$wave[d$launch] != d$visit[d$launch]))
+  expect_identical(d$wave[!d$startup], d$visit[!d$startup])
+  expect_true(any(d$wave[d$startup] != d$visit[d$startup]))
 })
 
 test_that("an immediate 2-2-2 start reproduces the Rwanda LFS annex", {
   # NISR (2024), Annex 1, rows 1 to 12 over 2024 Q1 to 2026 Q4. A to D are
   # the first to fourth appearance in the 2-2-2 pattern
   d <- as.data.frame(design_rotation("2-2-2"), start = "immediate",
-                     n_period = 12)
+                     horizon = 12)
   d <- d[d$panel <= 12L, ]
   got <- sort(paste0(d$panel, LETTERS[d$wave], "@", d$period))
-  launch <- c("1D@1", "2C@1", "2D@2", "3C@2", "3D@3", "4C@3", "4D@4",
+  startup <- c("1D@1", "2C@1", "2D@2", "3C@2", "3D@3", "4C@3", "4D@4",
               "5B@1", "5C@4", "5D@5")
   later <- unlist(lapply(6:12, function(k) {
     paste0(k, c("A", "B", "C", "D"), "@", k - c(5L, 4L, 1L, 0L))
   }))
-  expect_identical(got, sort(c(launch, later)))
+  expect_identical(got, sort(c(startup, later)))
 })
 
 test_that("rotation groups are the slots the published charts show", {
-  g <- as.data.frame(design_rotation("2-2-2"), n_period = 30)
+  g <- as.data.frame(design_rotation("2-2-2"), horizon = 30)
   by_panel <- tapply(g$rotation_group, g$panel, `[`, 1L)
   # NISR (2024), Figure 1: rotation group A holds the panels entering at
   # quarters 1, 3, 9 and 11
@@ -278,7 +278,7 @@ test_that("rotation groups are the slots the published charts show", {
   expect_false(anyDuplicated(full[c("period", "rotation_group")]) > 0L)
   expect_identical(max(g$rotation_group), 4L)
   for (spec in c("6", "4-8-4")) {
-    d <- as.data.frame(design_rotation(spec), n_period = 40)
+    d <- as.data.frame(design_rotation(spec), horizon = 40)
     life <- length(design_rotation(spec))
     held <- d[d$period >= life, ]
     expect_identical(max(d$rotation_group),
@@ -287,15 +287,15 @@ test_that("rotation groups are the slots the published charts show", {
   }
   # 3-1-2 cannot fill every group at every period: six groups for five
   # panels in sample
-  d <- as.data.frame(design_rotation("3-1-2"), n_period = 40)
+  d <- as.data.frame(design_rotation("3-1-2"), horizon = 40)
   expect_identical(max(d$rotation_group), 6L)
   expect_true(all(table(d$period[d$period >= 6L]) == 5L))
 })
 
 test_that("widening the window never moves a panel to another group", {
   for (start in c("gradual", "immediate")) {
-    a <- as.data.frame(design_rotation("2-2-2"), start = start, n_period = 8)
-    b <- as.data.frame(design_rotation("2-2-2"), start = start, n_period = 30)
+    a <- as.data.frame(design_rotation("2-2-2"), start = start, horizon = 8)
+    b <- as.data.frame(design_rotation("2-2-2"), start = start, horizon = 30)
     ga <- tapply(a$rotation_group, a$panel, `[`, 1L)
     gb <- tapply(b$rotation_group, b$panel, `[`, 1L)
     expect_identical(ga, gb[names(ga)])
@@ -313,7 +313,7 @@ test_that("the cell table holds the interviews the schedule fields", {
                            refreshment = "entrant_register",
                            rounding = "ceiling")
       a <- s$schedule[s$schedule$active, ]
-      d <- as.data.frame(rot, start = start, n_period = 20)
+      d <- as.data.frame(rot, start = start, horizon = 20)
       expect_identical(sort(paste(d$period, d$visit)),
                        sort(paste(a$period, a$visit)))
     }
@@ -323,24 +323,24 @@ test_that("the cell table holds the interviews the schedule fields", {
 test_that("the total climbs to the full sample and holds", {
   # the overlap describes the full sample, so the chart has to reach it:
   # from the period that spans the life, the total is design_overlap()'s
-  # own n_occasion and stays there
+  # own in_sample and stays there
   for (spec in c("4-8-4", "5", "1-1-0-0-1-1")) {
     rot <- design_rotation(spec)
     life <- length(rot)
-    d <- as.data.frame(rot, n_period = life + 4L)
+    d <- as.data.frame(rot, horizon = life + 4L)
     totals <- .cell_totals(d)
     expect_equal(totals[life:(life + 4L)],
-                 rep(attr(rot, "n_occasion"), 5L), tolerance = 1e-12)
-    expect_lt(totals[1L], attr(rot, "n_occasion"))
+                 rep(attr(rot, "in_sample"), 5L), tolerance = 1e-12)
+    expect_lt(totals[1L], attr(rot, "in_sample"))
     expect_false(is.unsorted(totals))
     expect_identical(attr(d, "full_sample_from"), life)
   }
-  # a varying take counts the units, not the occasions
-  d <- as.data.frame(design_rotation(c(1, 1, 0.5, 0.5)), n_period = 6)
+  # a varying take counts the units, not the periods
+  d <- as.data.frame(design_rotation(c(1, 1, 0.5, 0.5)), horizon = 6)
   expect_equal(.cell_totals(d), c(1, 2, 2.5, 3, 3, 3), tolerance = 1e-12)
 })
 
-test_that("the chart draws an immediate launch, full from the first period", {
+test_that("the chart draws an immediate start, full from the first period", {
   x <- design_rotation("6")
   pdf(tempfile())
   on.exit(dev.off())
@@ -348,7 +348,7 @@ test_that("the chart draws an immediate launch, full from the first period", {
   expect_identical(plot(x, start = "immediate"), x)
   expect_error(plot(x, start = "later"), "should be one of")
 
-  # Lynn Figure 5: launch cohorts remain for one through six interviews, so
+  # Lynn Figure 5: start-up cohorts remain for one through six interviews, so
   # the sample is full from period 1 and never climbs
   co <- .rotation_cohorts(as.double(x), "immediate", 10L)
   expect_length(co, length(x) + 10L - 1L)
@@ -361,17 +361,17 @@ test_that("the chart draws an immediate launch, full from the first period", {
     rep(1L, length(x))
   )
   expect_identical(co[[length(x) + 1L]]$entry, 2L)
-  d <- as.data.frame(x, start = "immediate", n_period = 10)
-  expect_equal(.cell_totals(d), rep(attr(x, "n_occasion"), 10L),
+  d <- as.data.frame(x, start = "immediate", horizon = 10)
+  expect_equal(.cell_totals(d), rep(attr(x, "in_sample"), 10L),
                tolerance = 1e-12)
-  grad <- .cell_totals(as.data.frame(x, n_period = 10))
-  expect_lt(grad[[1L]], attr(x, "n_occasion"))
+  grad <- .cell_totals(as.data.frame(x, horizon = 10))
+  expect_lt(grad[[1L]], attr(x, "in_sample"))
   expect_equal(grad[length(x):10L],
-               rep(attr(x, "n_occasion"), 10L - length(x) + 1L),
+               rep(attr(x, "in_sample"), 10L - length(x) + 1L),
                tolerance = 1e-12)
 })
 
-test_that("an immediate launch of a gapped life is drawn as n_panel plans it", {
+test_that("an immediate start of a gapped life is drawn as n_panel plans it", {
   pdf(tempfile())
   on.exit(dev.off())
   expect_silent(plot(design_rotation("1-1-0-0-1-1"), start = "immediate"))
@@ -379,10 +379,10 @@ test_that("an immediate launch of a gapped life is drawn as n_panel plans it", {
   gap <- n_panel(n_prop(p = 0.5, moe = 0.031), retention = c(0.9, 0.85, 0.9),
                  resp_rate = 0.8, design = "rotating", start = "immediate",
                  rotation = "2-2-2")
-  expect_silent(plot(gap$rotation, panel = gap))
+  expect_silent(plot(gap$rotation, panel_plan = gap))
   n <- length(gap$rotation) + 1L
-  d <- as.data.frame(gap$rotation, panel = gap, n_period = n)
-  expect_equal(.cell_totals(d) * gap$n_entrants, gap$launch$n_in_sample,
+  d <- as.data.frame(gap$rotation, panel_plan = gap, horizon = n)
+  expect_equal(.cell_totals(d) * gap$n_entrants, gap$periods$n_in_sample,
                tolerance = 1e-12)
 })
 
@@ -394,17 +394,17 @@ test_that("a panel may only scale the rotation it was planned on", {
                   design = "rotating")
   pdf(tempfile())
   on.exit(dev.off())
-  expect_error(plot(design_rotation("1-1-0-0-1-1"), panel = six),
+  expect_error(plot(design_rotation("1-1-0-0-1-1"), panel_plan = six),
                "follows the rotation 6 in and the chart draws 2 in, 2 out, 2 in")
-  expect_error(plot(design_rotation(c(1, 1, 0.5, 0.5)), panel = four),
+  expect_error(plot(design_rotation(c(1, 1, 0.5, 0.5)), panel_plan = four),
                "must describe the same design")
-  expect_error(plot(design_rotation("4"), panel = six),
+  expect_error(plot(design_rotation("4"), panel_plan = six),
                "must describe the same design")
-  expect_silent(plot(design_rotation("6"), panel = six))
-  expect_silent(plot(design_rotation("4"), panel = four))
+  expect_silent(plot(design_rotation("6"), panel_plan = six))
+  expect_silent(plot(design_rotation("4"), panel_plan = four))
 })
 
-test_that("the chart draws the launch its panel was planned with", {
+test_that("the chart draws the start-up its panel was planned with", {
   target <- n_prop(p = 0.5, moe = 0.031)
   ret <- c(0.9, 0.9)
   imm <- n_panel(target, retention = ret, resp_rate = 0.8,
@@ -416,29 +416,29 @@ test_that("the chart draws the launch its panel was planned with", {
   # inherited when not stated
   expect_identical(.check_chart_start(NULL, imm), "immediate")
   expect_identical(.check_chart_start(NULL, grad), "gradual")
-  # and "gradual" where the panel carries no launch, or there is no panel
+  # and "gradual" where the panel carries no start-up, or there is no panel
   expect_identical(.check_chart_start(NULL, plain), "gradual")
   expect_identical(.check_chart_start(NULL, NULL), "gradual")
-  # stating it wins, which is how one plan's two launches are compared
+  # stating it wins, which is how one plan's two starts are compared
   expect_identical(.check_chart_start("gradual", imm), "gradual")
   expect_identical(.check_chart_start("immediate", grad), "immediate")
-  expect_identical(attr(as.data.frame(imm$rotation, panel = imm), "start"),
+  expect_identical(attr(as.data.frame(imm$rotation, panel_plan = imm), "start"),
                    "immediate")
   expect_identical(
-    attr(as.data.frame(imm$rotation, panel = imm, start = "gradual"),
+    attr(as.data.frame(imm$rotation, panel_plan = imm, start = "gradual"),
          "start"),
     "gradual"
   )
 
   pdf(tempfile())
   on.exit(dev.off())
-  expect_silent(plot(imm$rotation, panel = imm))
-  expect_silent(plot(imm$rotation, panel = imm, start = "gradual"))
+  expect_silent(plot(imm$rotation, panel_plan = imm))
+  expect_silent(plot(imm$rotation, panel_plan = imm, start = "gradual"))
 })
 
 test_that("labels, fills and period labels take presets, columns or functions", {
   x <- design_rotation("2-2-2")
-  d <- as.data.frame(x, start = "immediate", n_period = 12)
+  d <- as.data.frame(x, start = "immediate", horizon = 12)
   expect_identical(.chart_labels(d, "wave"), paste0("W", d$wave))
   expect_null(.chart_labels(d, "none"))
   expect_identical(.chart_labels(d, "visit"), as.character(d$visit))
@@ -452,13 +452,21 @@ test_that("labels, fills and period labels take presets, columns or functions", 
   expect_identical(unique(.chart_fill(d, "none", NULL)), "grey75")
   expect_error(.chart_fill(d, "none", c("red", "blue")), "one color")
   f <- .chart_fill(d, "wave", c("red", "blue", "green", "black"))
-  expect_identical(f, c("red", "blue", "green", "black")[d$wave])
+  expect_identical(as.vector(f), c("red", "blue", "green", "black")[d$wave])
+  expect_identical(attr(f, "legend"),
+                   list(values = 1:4, col = c("red", "blue", "green", "black")))
+  expect_true(.chart_needs_legend(f, "wave", "visit"))
+  expect_false(.chart_needs_legend(f, "wave", "wave"))
+  expect_false(.chart_needs_legend(.chart_fill(d, "none", NULL), "none",
+                                   "visit"))
   expect_length(unique(.chart_fill(d, "rotation_group", NULL)), 4L)
   expect_error(.chart_fill(d, "wave", "red"), "1 colors for 4 fill values")
   expect_error(.chart_fill(d, "nope", NULL), "a column of the cell table")
   expect_error(.chart_fill(d, function(z) 1, NULL), "returned 1 values")
-  expect_identical(.chart_fill(d, function(z) z$wave > 2, c("a", "b")),
-                   c("a", "b")[(d$wave > 2) + 1L])
+  expect_identical(
+    as.vector(.chart_fill(d, function(z) z$wave > 2, c("a", "b"))),
+    c("a", "b")[(d$wave > 2) + 1L]
+  )
 
   expect_identical(.chart_period_labels(NULL, 3L), 1:3)
   expect_identical(.chart_period_labels(c("Q1", "Q2"), 2L), c("Q1", "Q2"))
@@ -466,7 +474,7 @@ test_that("labels, fills and period labels take presets, columns or functions", 
 
   pdf(tempfile())
   on.exit(dev.off())
-  expect_silent(plot(x, start = "immediate", n_period = 12,
+  expect_silent(plot(x, start = "immediate", horizon = 12,
                      label = function(z) paste0(z$panel, LETTERS[z$wave]),
                      fill = "wave", period_labels = paste0("Q", 1:12)))
   expect_silent(plot(x, rows = "rotation_group", label = "panel",
@@ -517,4 +525,15 @@ test_that("a budget grid starts at the cheapest whole design in scope", {
                        eligibility_rate = 0.7)
   expect_equal(svyplan:::.budget_grid(fit, 5)[1L],
                floor_fit$operational$cost)
+})
+
+test_that("the chart and the cell table take the schedule's argument names", {
+  rot <- design_rotation("2-2-2")
+  expect_error(as.data.frame(rot, n_period = 8), "n_period")
+  d <- as.data.frame(rot, start = "immediate", horizon = 8)
+  expect_identical(attr(d, "horizon"), 8L)
+  expect_false("launch" %in% names(d))
+  pdf(tempfile())
+  on.exit(dev.off())
+  expect_error(plot(rot, n_period = 8), "n_period")
 })

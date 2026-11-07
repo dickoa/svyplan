@@ -14,6 +14,10 @@ prec_change(var = NULL, ...)
   ...,
   sd = NULL,
   p = NULL,
+  r = NULL,
+  cv_num = NULL,
+  cv_den = NULL,
+  component_cor = NULL,
   change = NULL,
   alpha = 0.05,
   N = Inf,
@@ -31,8 +35,8 @@ prec_change(var = NULL, ...)
 }
 \arguments{
 \item{var}{For the default method: the population variance \eqn{S^2} on
-each occasion, one value for both or one per occasion. Supply this or
-\code{p}, not both. For \code{svyplan_n} objects: a sample size result from
+each occasion, one value for both or one per occasion. Supply this, \code{p}
+or \code{r}. For \code{svyplan_n} objects: a sample size result from
 \code{\link[=n_change]{n_change()}}.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
@@ -48,6 +52,24 @@ spelling of \code{var}. Supply exactly one of \code{var} or \code{sd}.}
 \code{var}. The occasion variances are then \eqn{Np(1-p)/(N-1)}, the same
 finite population variance \code{\link[=prec_prop]{prec_prop()}} uses, and the change is
 \eqn{p_2 - p_1}, so \code{change} is determined and must not be supplied.}
+
+\item{r}{The two occasion ratios of totals, \code{c(r1, r2)}, each
+\code{mean(y) / mean(x)} as in \code{\link[=n_ratio]{n_ratio()}}, as an alternative to \code{var} and
+\code{p}. The change is \eqn{r_2 - r_1}, so \code{change} is determined and must
+not be supplied. See the section on a ratio of totals.}
+
+\item{cv_num}{Coefficient of variation of the ratio's numerator
+variable, one value for both occasions or one per occasion. Used with
+\code{r} only.}
+
+\item{cv_den}{Coefficient of variation of the ratio's denominator
+variable, one value for both occasions or one per occasion. Used with
+\code{r} only.}
+
+\item{component_cor}{Correlation between the ratio's numerator and
+denominator on one unit, in \eqn{[-1, 1]}, one value or one per
+occasion. Used with \code{r} only. It is not \code{overlap_cor}, which
+correlates the occasions.}
 
 \item{change}{Expected change, \eqn{\mu_2 - \mu_1}, on the \code{var} scale.
 It may be negative. Required only for the relative measures: \code{cv} and
@@ -90,7 +112,9 @@ overlapping units, in \eqn{[0, 1]}. Default 0, which makes overlap
 worthless, since it is the product \code{overlap * overlap_cor} that buys precision
 on a change, so a full panel of uncorrelated measurements buys nothing.
 On the proportion scale two Bernoulli marginals bound the correlation
-they can have, and a value above that bound is rejected.}
+they can have, and a value above that bound is rejected. For a ratio it
+is the correlation of the ratio's linearized variable. See the section
+on a ratio of totals.}
 
 \item{overlap_draw}{How the shared units are drawn. \code{"fixed"} (default)
 draws them as a fixed count with the rest of each occasion's sample,
@@ -121,7 +145,9 @@ about the estimand and not about the design.}
 \item{\code{params}}{The validated inputs. Dispersion is always stored as
 \code{var}, a pair, including when you supplied \code{sd} or \code{p}. \code{p} is kept as
 well when the proportion scale was used, and it is what the
-\code{\link[=n_change]{n_change()}} round trip reads the scale back from.}
+\code{\link[=n_change]{n_change()}} round trip reads the scale back from. A ratio keeps
+\code{r}, its three moments and the \code{unit_relvar} of each occasion, \code{var}
+then being the variance of its linearized variable.}
 }
 
 Nothing here is rounded, so passing a continuous \code{n} back from
@@ -133,7 +159,8 @@ gives its precision.
 }
 \description{
 Compute the sampling error (SE, margin of error, CV) for the change in a
-mean or a proportion between two occasions of the same population, given
+mean, a proportion or a ratio of totals between two occasions of the same
+population, given
 the size of each occasion and how far the two samples overlap. This is
 the inverse of \code{\link[=n_change]{n_change()}}.
 }
@@ -143,7 +170,9 @@ the inverse of \code{\link[=n_change]{n_change()}}.
 A repeated survey publishes three things, and each is read by its own
 function. The level at one occasion is \code{\link[=prec_mean]{prec_mean()}} or \code{\link[=prec_prop]{prec_prop()}} and
 is a function of that occasion's size alone. The change between two
-occasions is this function, which overlap improves. The average of
+occasions is this function, which overlap improves while the covariance
+it induces is positive (see the finite population case below). The
+average of
 several occasions is \code{\link[=prec_pooled]{prec_pooled()}}, which overlap works against,
 because the covariance it induces is subtracted in a difference and added
 in a sum.
@@ -152,9 +181,14 @@ Here \code{q} is \code{qnorm(1 - alpha / 2)} by default and
 \code{qt(1 - alpha / 2, df)} when \code{df} is supplied.
 
 The estimand is the change in one population measured twice, not a
-difference between two populations. Writing \eqn{v_1, v_2} for the
-occasion variances, \eqn{n_1, n_2} for the net sizes and \eqn{k} for the
-shared units, the expression is piecewise in \code{overlap}. At
+difference between two populations. It is a net change between occasion
+estimates. A gross flow, such as the share moving from employed to
+unemployed, is measured on the units responding at both occasions and is
+a proportion sized on that matched sample. Writing \eqn{v_1, v_2} for the
+occasion variances, \eqn{n_1, n_2} for the net sizes, net of response and
+eligibility, and \eqn{k} for the shared units, the expression is piecewise
+in \code{overlap}. \eqn{N}, \eqn{N_1} and \eqn{N_2} are the populations in
+scope, \code{N * eligibility_rate}. At
 \code{overlap = 0} the two occasions are treated as independent, which is what
 also lets them come from different populations:
 
@@ -184,6 +218,21 @@ measured twice and the change is observed rather than estimated.
 change, which is not in general either occasion's design effect, and a
 clustered design measuring the same clusters twice will have a smaller
 one than a design that reclusters.
+}
+
+\subsection{A ratio of totals}{
+
+A ratio \eqn{R = \bar Y / \bar X}{R = Ybar / Xbar}, such as an
+unemployment rate, enters through its linearized variable
+\eqn{z = (y - Rx)/\bar X}{z = (y - R x) / Xbar}, whose variance on each
+occasion is \eqn{R^2 L}, with \eqn{L} the unit relative variance
+\code{\link[=n_ratio]{n_ratio()}} reports. That variance takes the place of \code{var} in every
+formula here and is what \code{params$var} records. \code{overlap_cor} is then the
+correlation of \eqn{z} between the occasions, not of the numerator. The
+two are close when the denominator is stable, as for an unemployment
+rate over a steady labor force, and the first can be derived from the
+cross-occasion correlations of the two components where those are known.
+\code{deff} is the design effect of the change in \eqn{z}.
 }
 
 \subsection{What the overlap covariance assumes}{
@@ -259,6 +308,11 @@ prec_change(var = 100, n = 500, overlap = 0.5, overlap_cor = 0.6)
 
 # A change in a proportion: variances and the change come from p
 prec_change(p = c(0.30, 0.36), n = 1200, overlap = 0.75, overlap_cor = 0.5)
+
+# A change in an unemployment rate, 80 percent of the sample shared
+prec_change(r = c(0.0615, 0.0646), cv_num = 4.9, cv_den = 0.73,
+            component_cor = 0.15, n = 16000, overlap = 0.8,
+            overlap_cor = 0.54)
 
 # Relative measures need the change on the var scale
 prec_change(var = 100, n = 500, change = 5)$cv

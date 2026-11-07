@@ -117,7 +117,7 @@
 #' for Designing and Weighting Survey Samples}, 2nd ed. Springer.
 "_PACKAGE"
 
-#' @importFrom graphics abline axis barplot hist mtext par plot.new
+#' @importFrom graphics abline axis barplot hist legend mtext par plot.new
 #'   plot.window points rect strwidth text title
 #' @importFrom grDevices adjustcolor hcl.colors nclass.FD
 #' @importFrom stats lm.fit optim optimize plogis pnorm predict qlogis quantile qnorm sd terms uniroot var weighted.mean setNames

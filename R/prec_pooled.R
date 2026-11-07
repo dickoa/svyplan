@@ -8,8 +8,8 @@
 #' the inverse of [n_pooled()].
 #'
 #' @param var For the default method: the population variance \eqn{S^2} on
-#'   one occasion, taken to be the same on each. Supply this or `p`, not
-#'   both. For `svyplan_n` objects: a sample size result from [n_pooled()].
+#'   one occasion, taken to be the same on each. Supply this, `p` or `r`.
+#'   For `svyplan_n` objects: a sample size result from [n_pooled()].
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param n Sample size per occasion, gross units drawn.
 #' @param occasions Number of occasions entering the average, at least 2.
@@ -19,6 +19,17 @@
 #'   occasion variance is then \eqn{Np(1-p)/(N-1)}, the same finite
 #'   population variance [prec_prop()] uses, and `mu` is determined and must
 #'   not be supplied.
+#' @param r The ratio of totals being averaged, `mean(y) / mean(x)` as in
+#'   [n_ratio()], taken to be the same on each occasion, as an alternative
+#'   to `var` and `p`. `mu` is then `r` and must not be supplied. See the
+#'   section on a ratio of totals.
+#' @param cv_num Coefficient of variation of the ratio's numerator
+#'   variable. Used with `r` only.
+#' @param cv_den Coefficient of variation of the ratio's denominator
+#'   variable. Used with `r` only.
+#' @param component_cor Correlation between the ratio's numerator and
+#'   denominator on one unit, in \eqn{[-1, 1]}. Used with `r` only. It is
+#'   not `overlap_cor`, which correlates the occasions.
 #' @param mu The level being averaged, on the `var` scale. Required only for
 #'   the relative measures: `cv` and `rmoe` are defined against it and are
 #'   `NA` without it. Determined by `p` on the proportion scale.
@@ -47,7 +58,8 @@
 #'   share, in \eqn{[0, 1]}. One number for every lag, or one per lag. Default
 #'   0, which makes overlap irrelevant, since it is the product
 #'   `overlap * overlap_cor` that moves the variance. Supply this or
-#'   `cor_decay`, not both.
+#'   `cor_decay`, not both. For a ratio it is the correlation of the ratio's
+#'   linearized variable.
 #' @param cor_decay Correlation at lag \eqn{m} taken as
 #'   \eqn{\rho^m}{rho^m}, an alternative to stating `overlap_cor` lag by
 #'   lag. It is the shape most panels have, a correlation falling away with
@@ -80,7 +92,9 @@
 #'   \item{`params`}{The validated inputs. Dispersion is always stored as
 #'     `var`, and `overlap` and `overlap_cor` as resolved vectors of one
 #'     entry per lag, whatever form they were supplied in, alongside the
-#'     `overlap_basis` they were resolved under.}
+#'     `overlap_basis` they were resolved under. A ratio keeps `r`, its
+#'     three moments and its `unit_relvar`, `var` then being the variance of
+#'     its linearized variable.}
 #' }
 #'
 #' Nothing here is rounded, so passing a continuous `n` back from
@@ -100,7 +114,8 @@
 #' pooled variance, and it is not the pooling of the rotating cohorts that
 #' make up one occasion, which [n_panel()] describes.
 #'
-#' Writing \eqn{T} for `occasions`, \eqn{n} for the net size,
+#' Writing \eqn{T} for `occasions`, \eqn{n} for the size net of response and
+#' eligibility, \eqn{N} for the population in scope, `N * eligibility_rate`,
 #' \eqn{o_m} for the overlap at lag \eqn{m} and \eqn{\rho_m} for the
 #' correlation there, the occasions carry
 #'
@@ -124,6 +139,30 @@
 #'
 #' `deff` multiplies the assembled variance. It is the design effect of the
 #' pooled estimate, which is not in general any one occasion's.
+#'
+#' ## A ratio of totals
+#'
+#' A ratio \eqn{R = \bar Y / \bar X}{R = Ybar / Xbar} enters through its
+#' linearized variable \eqn{z = (y - Rx)/\bar X}{z = (y - R x) / Xbar},
+#' whose variance is \eqn{R^2 L}, with \eqn{L} the unit relative variance
+#' [n_ratio()] reports. That variance takes the place of `var` here and is
+#' what `params$var` records, and `overlap_cor` and `cor_decay` describe the
+#' correlation of \eqn{z} between occasions. A ratio whose level moves
+#' between occasions is outside the model, as a moving mean is.
+#'
+#' What is sized is the equal-weight average of the occasion ratios. A ratio
+#' of the pooled totals, \eqn{\sum_t \hat Y_t / \sum_t \hat X_t}{sum_t Yhat_t / sum_t Xhat_t},
+#' is a different estimator even at one level. To first order its error is
+#' \eqn{\sum_t w_t(\hat R_t - R)}{sum_t w_t (Rhat_t - R)}, with
+#' \eqn{w_t} the occasion's share of the denominator total, so it has the
+#' variance computed here only when the denominator totals are equal across
+#' occasions. Otherwise its variance differs, and over independent
+#' occasions it is larger, equal weights being the ones that minimize it
+#' there. Over two independent occasions whose denominator totals stand 1
+#' to 3, it is 25 percent larger than the equal-weight average's. Sizing an annual rate defined on pooled
+#' totals with this function treats the denominator totals as equal, which
+#' is close for a stable population and is an approximation to state where
+#' it is not.
 #'
 #' ## Overlap works against a pooled estimate, when it works at all
 #'
@@ -237,6 +276,10 @@
 #' prec_pooled(p = 0.3, n = 1200, occasions = 12, overlap = 0.75,
 #'             cor_decay = 0.9)
 #'
+#' # An annual unemployment rate averaged over four quarters
+#' prec_pooled(r = 0.0615, cv_num = 4.9, cv_den = 0.73, component_cor = 0.15,
+#'             n = 16000, occasions = 4, overlap = 0.75, cor_decay = 0.8)
+#'
 #' # Overlap read off a rotation schedule, at full response
 #' prec_pooled(var = 100, n = 500, occasions = 8,
 #'             overlap = design_overlap("4", max_lag = 7), cor_decay = 0.8)
@@ -276,6 +319,10 @@ prec_pooled.default <- function(
   ...,
   sd = NULL,
   p = NULL,
+  r = NULL,
+  cv_num = NULL,
+  cv_den = NULL,
+  component_cor = NULL,
   mu = NULL,
   alpha = 0.05,
   N = Inf,
@@ -297,7 +344,9 @@ prec_pooled.default <- function(
   check_resp_rate(eligibility_rate, "eligibility_rate")
   N_elig <- N * eligibility_rate
   .check_occasions(occasions)
-  inputs <- .pooled_inputs(var, sd, p, mu, N_elig)
+  inputs <- .pooled_inputs(var, sd, p, mu, N_elig, r, cv_num, cv_den,
+                           component_cor)
+  s <- inputs$scale
   check_scalar(n, "n")
   check_alpha(alpha)
   check_deff(deff)
@@ -316,7 +365,7 @@ prec_pooled.default <- function(
   )
 
   params <- list(
-    var = inputs$var,
+    var = inputs$var_stored,
     n = n,
     occasions = occasions,
     alpha = alpha,
@@ -331,11 +380,12 @@ prec_pooled.default <- function(
   )
   if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
   if (!is.null(inputs$p)) params$p <- inputs$p
-  if (!is.null(inputs$mu)) params$mu <- inputs$mu
+  params <- .add_ratio_params(params, inputs$ratio)
+  if (!is.null(inputs$mu)) params$mu <- inputs$mu_stored
 
   .new_svyplan_prec(
-    se = prec$se,
-    moe = prec$moe,
+    se = prec$se * s,
+    moe = prec$moe * s,
     cv = prec$cv,
     type = "pooled",
     params = params
@@ -350,12 +400,9 @@ prec_pooled.svyplan_n <- function(var, ...) {
     stop("prec_pooled requires a svyplan_n of type 'pooled'", call. = FALSE)
   }
   par <- x$params
-  args <- list(
-    var = if (is.null(par$p)) par$var else NULL,
-    p = par$p,
+  args <- c(.repeated_scale_args(par, "mu"), list(
     n = x$n,
     occasions = par$occasions,
-    mu = if (is.null(par$p)) par$mu else NULL,
     alpha = par$alpha,
     N = par$N,
     deff = par$deff,
@@ -366,7 +413,7 @@ prec_pooled.svyplan_n <- function(var, ...) {
     overlap_draw = par$overlap_draw,
     df = par$df,
     .overlap_basis = par$overlap_basis
-  )
+  ))
   out <- do.call(prec_pooled.default, .roundtrip_args(args, list(...), prec_pooled.default))
   .mark_continuous_optimum(out, list(...))
 }

@@ -27,17 +27,18 @@ prec_panel(n_recruit, ...)
 \arguments{
 \item{n_recruit}{For the default method: units recruited, meaning the
 whole issue to one cohort for a fixed panel and the entrants per
-occasion for a rotating one. For \code{svyplan_panel} objects: a result from
+period for a rotating one. For \code{svyplan_panel} objects: a result from
 \code{\link[=n_panel]{n_panel()}} or from this function.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are
 rejected. In the \code{svyplan_panel} method, named arguments override the
 stored ones, so a stored plan can be re-read under worse retention.}
 
-\item{target}{A \code{svyplan_n} or \code{svyplan_prec} result for a mean or a
-proportion. Required in the default method, and the same object
-\code{\link[=n_panel]{n_panel()}} takes. It supplies the estimand each wave's precision is
-computed for, and the responding sample the design is compared against.}
+\item{target}{A \code{svyplan_n} or \code{svyplan_prec} result for a mean, a
+proportion or a ratio of totals. Required in the default method, and
+the same object \code{\link[=n_panel]{n_panel()}} takes. It supplies the estimand each wave's
+precision is computed for, and the responding sample the design is
+compared against.}
 
 \item{retention}{Conditional retention, one value per wave transition,
 each in (0, 1]. See \code{\link[=n_panel]{n_panel()}}.}
@@ -47,13 +48,15 @@ in (0, 1]. Default 1. See the nonresponse section of \link{svyplan-package}
 for what the rate counts.}
 
 \item{eligibility_rate}{Share of issued units in scope at recruitment, in
-(0, 1]. Default 1. See the nonresponse section of \link{svyplan-package}.}
+(0, 1]. Default 1. It does not change the population a finite \code{N}
+describes, which stays the target's, as on \code{\link[=n_panel]{n_panel()}}. See the
+nonresponse section of \link{svyplan-package}.}
 
 \item{design}{\code{"fixed"} or \code{"rotating"}. See \code{\link[=n_panel]{n_panel()}}.}
 
 \item{target_wave}{The wave the headline precision is reported at,
 defaulting to the last. It must be absent for a rotating design, whose
-precision belongs to the pooled occasion.}
+precision belongs to the pooled period.}
 
 \item{assurance}{Probability in (0, 1), or \code{NULL} (default). Reports the
 recruitment the target would need at that level, which is what the
@@ -61,12 +64,12 @@ supplied \code{n_recruit} can then be read against.}
 
 \item{start}{\code{"gradual"}, \code{"immediate"} or \code{NULL}. See \code{\link[=n_panel]{n_panel()}}. On a
 stored plan this may be overridden, unlike \code{design}. It selects which
-launch is described and moves no stored quantity, the recruitment being
+start-up is described and moves no stored quantity, the recruitment being
 fixed before any of it is computed.}
 
 \item{rotation}{\code{NULL} or the rotation a rotating design's cohorts
 follow. See \code{\link[=n_panel]{n_panel()}}. On a stored plan this may be overridden, as
-\code{start} may. It changes the launch and the units held, and moves no
+\code{start} may. It changes the start-up and the units held, and moves no
 stored quantity.}
 }
 \value{
@@ -92,10 +95,10 @@ round trip exact:
 target's own precision at wave \code{w}.
 
 A rotating panel has one precision rather than one per wave, its estimate
-pooling every cohort alive at the occasion. The per-wave rows of \verb{$waves}
+pooling every cohort alive at the period. The per-wave rows of \verb{$waves}
 still report what an estimate from a single cohort would carry, which is
 the wave-1-only estimate a rotating design sometimes publishes, and they
-are not the occasion's precision.
+are not the period's precision.
 }
 \examples{
 target <- n_prop(p = 0.5, moe = 0.031)
@@ -118,7 +121,7 @@ prec_panel(plan, retention = c(0.80, 0.90, 0.90, 0.92))$waves
 \code{\link[=n_panel]{n_panel()}} for the inverse (solve the recruitment from a
 target), \code{\link[=design_schedule]{design_schedule()}} for turning a rotating plan into an
 operational schedule, \code{\link[=prec_mean]{prec_mean()}} and \code{\link[=prec_prop]{prec_prop()}} for the
-single-occasion precision the waves are evaluated with.
+single-period precision the waves are evaluated with.
 
 Other repeated survey functions:
 \code{\link[=design_overlap]{design_overlap()}},

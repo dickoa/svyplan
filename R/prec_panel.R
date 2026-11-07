@@ -7,12 +7,13 @@
 #'
 #' @param n_recruit For the default method: units recruited, meaning the
 #'   whole issue to one cohort for a fixed panel and the entrants per
-#'   occasion for a rotating one. For `svyplan_panel` objects: a result from
+#'   period for a rotating one. For `svyplan_panel` objects: a result from
 #'   [n_panel()] or from this function.
-#' @param target A `svyplan_n` or `svyplan_prec` result for a mean or a
-#'   proportion. Required in the default method, and the same object
-#'   [n_panel()] takes. It supplies the estimand each wave's precision is
-#'   computed for, and the responding sample the design is compared against.
+#' @param target A `svyplan_n` or `svyplan_prec` result for a mean, a
+#'   proportion or a ratio of totals. Required in the default method, and
+#'   the same object [n_panel()] takes. It supplies the estimand each wave's
+#'   precision is computed for, and the responding sample the design is
+#'   compared against.
 #' @param retention Conditional retention, one value per wave transition,
 #'   each in (0, 1\]. See [n_panel()].
 #' @param ... Additional arguments passed to methods. Unused arguments are
@@ -22,18 +23,20 @@
 #'   in (0, 1\]. Default 1. See the nonresponse section of [svyplan-package]
 #'   for what the rate counts.
 #' @param eligibility_rate Share of issued units in scope at recruitment, in
-#'   (0, 1\]. Default 1. See the nonresponse section of [svyplan-package].
+#'   (0, 1\]. Default 1. It does not change the population a finite `N`
+#'   describes, which stays the target's, as on [n_panel()]. See the
+#'   nonresponse section of [svyplan-package].
 #' @param design `"fixed"` or `"rotating"`. See [n_panel()].
 #' @param target_wave The wave the headline precision is reported at,
 #'   defaulting to the last. It must be absent for a rotating design, whose
-#'   precision belongs to the pooled occasion.
+#'   precision belongs to the pooled period.
 #' @param start `"gradual"`, `"immediate"` or `NULL`. See [n_panel()]. On a
 #'   stored plan this may be overridden, unlike `design`. It selects which
-#'   launch is described and moves no stored quantity, the recruitment being
+#'   start-up is described and moves no stored quantity, the recruitment being
 #'   fixed before any of it is computed.
 #' @param rotation `NULL` or the rotation a rotating design's cohorts
 #'   follow. See [n_panel()]. On a stored plan this may be overridden, as
-#'   `start` may. It changes the launch and the units held, and moves no
+#'   `start` may. It changes the start-up and the units held, and moves no
 #'   stored quantity.
 #' @param assurance Probability in (0, 1), or `NULL` (default). Reports the
 #'   recruitment the target would need at that level, which is what the
@@ -55,16 +58,16 @@
 #' target's own precision at wave `w`.
 #'
 #' A rotating panel has one precision rather than one per wave, its estimate
-#' pooling every cohort alive at the occasion. The per-wave rows of `$waves`
+#' pooling every cohort alive at the period. The per-wave rows of `$waves`
 #' still report what an estimate from a single cohort would carry, which is
 #' the wave-1-only estimate a rotating design sometimes publishes, and they
-#' are not the occasion's precision.
+#' are not the period's precision.
 #'
 #' @family repeated survey functions
 #' @seealso [n_panel()] for the inverse (solve the recruitment from a
 #'   target), [design_schedule()] for turning a rotating plan into an
 #'   operational schedule, [prec_mean()] and [prec_prop()] for the
-#'   single-occasion precision the waves are evaluated with.
+#'   single-period precision the waves are evaluated with.
 #'
 #' @examples
 #' target <- n_prop(p = 0.5, moe = 0.031)
@@ -132,7 +135,7 @@ prec_panel.svyplan_panel <- function(n_recruit, ...) {
         if (identical(p$design, "fixed")) {
           "the whole issue to one cohort"
         } else {
-          "the entrants per occasion"
+          "the entrants per period"
         },
         if (identical(p$design, "fixed")) "rotating" else "fixed",
         if (identical(p$design, "fixed")) "rotating" else "fixed"
@@ -149,7 +152,7 @@ prec_panel.svyplan_panel <- function(n_recruit, ...) {
     design = p$design,
     target_wave = p$target_wave,
     assurance = p$assurance,
-    # unlike `design`, this may be overridden: it selects which launch is
+    # unlike `design`, this may be overridden: it selects which start-up is
     # described and moves no stored quantity, the recruitment being fixed
     # before any of it is computed
     start = p$start,

@@ -664,3 +664,49 @@ test_that("occasions is capped, the covariance being assembled densely", {
                "at most 1000")
   expect_silent(prec_pooled(var = 100, n = 500, occasions = 1000))
 })
+
+## A shortened overlap profile resolves at every lag of its rotation
+
+test_that("max_lag cut short of the life does not zero later lags", {
+  full <- design_overlap("5")
+  short <- design_overlap("5", max_lag = 1)
+  expect_equal(
+    n_pooled(var = 100, moe = 0.5, occasions = 4, overlap = short,
+             overlap_cor = 0.5)$n,
+    n_pooled(var = 100, moe = 0.5, occasions = 4, overlap = full,
+             overlap_cor = 0.5)$n
+  )
+  expect_equal(
+    prec_pooled(var = 100, n = 500, occasions = 4, overlap = short,
+                overlap_cor = 0.5)$se,
+    sqrt(100 / 500 / 16 * (4 + 2 * 0.5 * (3 * 0.8 + 2 * 0.6 + 1 * 0.4)))
+  )
+  # CPS returns to sample at lag 12, which a profile stopping at lag 3
+  # must not lose
+  cps3 <- design_overlap("4-8-4", max_lag = 3)
+  cps <- design_overlap("4-8-4")
+  expect_equal(
+    n_pooled(var = 1, moe = 0.1, occasions = 13, overlap = cps3,
+             overlap_cor = 0.5)$n,
+    n_pooled(var = 1, moe = 0.1, occasions = 13, overlap = cps,
+             overlap_cor = 0.5)$n
+  )
+  # Past the life nothing is shared, so a horizon longer than the life
+  # still pads with zeros
+  expect_equal(
+    prec_pooled(var = 1, n = 100, occasions = 8, overlap = full,
+                overlap_cor = 0.5)$params$overlap,
+    c(0.8, 0.6, 0.4, 0.2, 0, 0, 0)
+  )
+})
+
+## Visits per unit and the pooled variance multiplier
+
+test_that("mean visits is not the variance multiplier of an average", {
+  lfs <- design_overlap("2-2-2", window = 4)
+  expect_equal(lfs$visits, 16 / 9)
+  v1 <- prec_pooled(var = 1, n = 100, occasions = 4,
+                    overlap = design_overlap("2-2-2"), overlap_cor = 1)$se^2
+  v0 <- prec_pooled(var = 1, n = 100, occasions = 4, overlap = 0)$se^2
+  expect_equal(v1 / v0, 15 / 8)
+})

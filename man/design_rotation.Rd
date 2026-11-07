@@ -12,43 +12,44 @@ design_rotation(x)
 A \strong{compact string} in either of the two notations the literature
 uses, told apart by whether it contains a \code{0}. Without one it names the
 \strong{spells} in order, starting in sample: \code{"4-8-4"} is the CPS pattern,
-four occasions in, eight out, four in, and \code{"5"} is a five-occasion
+four periods in, eight out, four in, and \code{"5"} is a five-period
 panel with no break. The count of spells must be odd, so the life starts
-and ends in sample. With a \code{0} it is one \strong{flag per occasion}:
+and ends in sample. With a \code{0} it is one \strong{flag per period}:
 \code{"1-1-0-0-1-1"} is in for two, out for two, in for two, the same life as
 \code{"2-2-2"}. A string of all 1s is the one form both notations claim and
 is refused, naming the two readings and the unambiguous spelling of
 each.
 
-A \strong{numeric or logical vector} gives one entry per occasion of a
+A \strong{numeric or logical vector} gives one entry per period of a
 unit's life, \code{0}/\code{FALSE} for out of sample. Positive values may differ,
 in which case they are the number of units still measured at that
-occasion of the life, which is how a design that subsamples later waves
+period of the life, which is how a design that subsamples later waves
 is described. No entry may exceed the first, a wave being able only to
 re-interview part of the cohort it recruited. The first and last entries
 must be positive, since an out-of-sample spell before the first or after
 the last interview is not part of a unit's life. A life shorter than two
-occasions is refused, having no lag at which any sample is shared.
+periods is refused, having no lag at which any sample is shared.
 
-An existing \code{svyplan_rotation}, which is returned unchanged.}
+An existing \code{svyplan_rotation}, which is rebuilt from its takes so its
+fields are derived again rather than trusted.}
 }
 \value{
 A \code{svyplan_rotation} object: a numeric vector of takes, one entry
-per occasion of a unit's life. It carries:
+per period of a unit's life. It carries:
 \describe{
 \item{\verb{$spec}}{The input as given, so the printed form can name the
 pattern the way it was declared.}
-\item{\verb{$life}}{Occasions from a unit's first interview to its last.}
-\item{\verb{$n_occasion}}{Units in sample at any one occasion with the full
+\item{\verb{$life}}{Periods from a unit's first interview to its last.}
+\item{\verb{$in_sample}}{Units in sample at any one period with the full
 sample in the field, which is the sum of the takes.}
-\item{\verb{$unbroken}}{\code{TRUE} when no occasion of the life is out of
+\item{\verb{$unbroken}}{\code{TRUE} when no period of the life is out of
 sample.}
-\item{\verb{$equal_take}}{\code{TRUE} when every in-sample occasion takes the same
+\item{\verb{$equal_take}}{\code{TRUE} when every in-sample period takes the same
 number of units as the first.}
 }
 }
 \description{
-Declare the occasions a unit spends in and out of sample over its whole
+Declare the periods a unit spends in and out of sample over its whole
 life. The rotation is the design input that \code{\link[=design_overlap]{design_overlap()}} turns into
 a lag profile and \code{\link[=design_schedule]{design_schedule()}} turns into a field manifest, and it
 is the only place a pattern is parsed.
@@ -56,8 +57,8 @@ is the only place a pattern is parsed.
 \details{
 A rotation is a finite life, not a cycle. Reading \code{"4-8-4"} as "four in,
 eight out, repeat forever" gives the wrong answer, and gives it quietly.
-Under the cycle only the cohort finishing its four-occasion stint leaves
-each occasion, so seven of eight are retained and the consecutive overlap
+Under the cycle only the cohort finishing its four-period stint leaves
+each period, so seven of eight are retained and the consecutive overlap
 comes out at 87.5 percent. Under the finite life two cohorts leave, one
 reaching the end of its first spell and one reaching the end of its
 second, so six of eight are retained and the answer is the published 75
@@ -65,11 +66,11 @@ percent. A compact string with an even number of spells would have to be
 read as a cycle and is rejected for that reason.
 \subsection{Two notations, and the one string that means both}{
 
-Rotation designs are named two ways in print. \code{"4-8-4"} counts occasions
-per spell, and \code{"1-1-0-0-1-1"} carries one flag per occasion. Both are
+Rotation designs are named two ways in print. \code{"4-8-4"} counts periods
+per spell, and \code{"1-1-0-0-1-1"} carries one flag per period. Both are
 accepted, told apart by the \code{0}, which no spell can be. The exception is a
 string of all 1s, which is a valid sentence in both notations and a
-different design in each: \code{"1-1-1"} is three occasions in sample as a
+different design in each: \code{"1-1-1"} is three periods in sample as a
 pattern and one in, one out, one in as spells, whose consecutive overlaps
 are 2/3 and 0. Neither reading is given precedence, because the wrong one
 is invisible in the answer. Write \code{"3"} or \code{"1-0-1"}, which each say one
@@ -86,12 +87,15 @@ thing only.
 
 
 The first three are design views, available before any sample size. The
-schedule's interviews carry the cell table's \code{panel}, \code{rotation_group},
-\code{wave}, \code{visit} and \code{life_stage}, so the two agree on every interview. The
-overlap summarizes the cells. Under an equal take, once the full sample
-is in the field, the share of the panels in sample at one period that are
-in sample again a lag later is the overlap at that lag. The schedule is the same layout with sizes, rounding and the
-field rules a sampling package needs.
+schedule's interviews carry the cell table's \code{period}, \code{panel},
+\code{rotation_group}, \code{wave}, \code{visit} and \code{life_stage}, so the two agree on
+every interview. Each chart panel is one cohort, the units at the same
+wave at every period, and the schedule numbers its cohorts the same way.
+The overlap summarizes the cells. Under an equal take, once the full
+sample is in the field, the share of the panels in sample at one period
+that are in sample again a lag later is the overlap at that lag. The
+schedule is the same layout with sizes, rounding, subrounds and the field
+rules a sampling package needs.
 }
 }
 \examples{
@@ -103,7 +107,7 @@ cps
 design_overlap(cps)[1]
 design_overlap(cps, max_lag = 12)[12]
 
-# One flag per occasion, the other notation in use
+# One flag per period, the other notation in use
 design_rotation("1-1-0-0-1-1")
 
 # A quarterly life of five interviews fielded monthly, written in full,
@@ -111,7 +115,7 @@ design_rotation("1-1-0-0-1-1")
 design_rotation("1-2-1-2-1-2-1-2-1")
 
 # A take that halves at later waves, laid out over six periods
-as.data.frame(design_rotation(c(1, 1, 0.5, 0.5)), n_period = 6)
+as.data.frame(design_rotation(c(1, 1, 0.5, 0.5)), horizon = 6)
 
 # The rotation chart
 plot(cps)
@@ -124,7 +128,7 @@ rotation.
 
 Lynn, P. (2012). \emph{Longitudinal Survey Methods for the Household Finances
 and Consumption Survey}. Report prepared for the European Central Bank.
-The one-flag-per-occasion notation.
+The one-flag-per-period notation.
 }
 \seealso{
 \code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}} for the rotation chart and

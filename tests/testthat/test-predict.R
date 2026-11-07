@@ -763,3 +763,26 @@ test_that("predict() on a joint allocation precision reports its constraints", {
     frame, n = fit$detail$n_int, measures = measures, targets = targets
   )$detail$.ratio))
 })
+
+## cor_decay varies over a shaped overlap profile
+
+test_that("predict() varies cor_decay on a rotation profile", {
+  ov <- design_overlap("4-8-4")
+  x <- n_pooled(var = 1, moe = 0.1, occasions = 13, overlap = ov,
+                cor_decay = 0.8)
+  res <- predict(x, data.frame(cor_decay = c(0.6, 0.8)))
+  expect_equal(res$n[1L], n_pooled(var = 1, moe = 0.1, occasions = 13,
+                                   overlap = ov, cor_decay = 0.6)$n)
+  expect_equal(res$n[2L], x$n)
+  y <- prec_pooled(var = 1, n = 100, occasions = 13, overlap = ov,
+                   cor_decay = 0.8)
+  expect_equal(predict(y, data.frame(cor_decay = 0.6))$se,
+               prec_pooled(var = 1, n = 100, occasions = 13, overlap = ov,
+                           cor_decay = 0.6)$se)
+  # a constant correlation can be replaced by a decay
+  z <- n_pooled(var = 1, moe = 0.1, occasions = 13, overlap = ov,
+                overlap_cor = 0.5)
+  expect_equal(predict(z, data.frame(cor_decay = 0.6))$n, res$n[1L])
+  # the shaped overlap itself stays fixed
+  expect_error(predict(y, data.frame(overlap = 0.5)), "overlap")
+})

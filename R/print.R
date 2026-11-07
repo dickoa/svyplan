@@ -228,17 +228,36 @@ print.svyplan_n <- function(x, ...) {
   cat("\n")
 }
 
+#' The scale a change or pooled estimate is stated on
+#'
+#' A ratio is checked first, and with `[[`, since `$r` would partial-match
+#' `resp_rate` on every result that has no ratio.
+#' @keywords internal
+#' @noRd
+.repeated_scale_label <- function(p) {
+  if (!is.null(p[["r"]])) {
+    "ratio of totals"
+  } else if (!is.null(p[["p"]])) {
+    "proportion scale"
+  } else {
+    "mean scale"
+  }
+}
+
 #' @keywords internal
 #' @noRd
 .pooled_scale_label <- function(p) {
-  if (is.null(p$p)) "mean scale" else "proportion scale"
+  .repeated_scale_label(p)
 }
 
 #' @keywords internal
 #' @noRd
 .fmt_pooled_estimand <- function(p) {
-  if (!is.null(p$p)) {
-    return(sprintf("p = %.3g", p$p))
+  if (!is.null(p[["r"]])) {
+    return(sprintf("r = %.4g", p[["r"]]))
+  }
+  if (!is.null(p[["p"]])) {
+    return(sprintf("p = %.3g", p[["p"]]))
   }
   c(
     sprintf("var = %.4g", p$var),
@@ -320,7 +339,7 @@ print.svyplan_n <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .change_scale_label <- function(p) {
-  if (is.null(p$p)) "mean scale" else "proportion scale"
+  .repeated_scale_label(p)
 }
 
 #' @keywords internal
@@ -354,8 +373,11 @@ print.svyplan_n <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .fmt_change_estimand <- function(p) {
-  if (!is.null(p$p)) {
-    return(sprintf("p = %.3g to %.3g", p$p[1L], p$p[2L]))
+  if (!is.null(p[["r"]])) {
+    return(sprintf("r = %.4g to %.4g", p[["r"]][1L], p[["r"]][2L]))
+  }
+  if (!is.null(p[["p"]])) {
+    return(sprintf("p = %.3g to %.3g", p[["p"]][1L], p[["p"]][2L]))
   }
   c(
     sprintf("var = %s", paste(sprintf("%.4g", p$var), collapse = ", ")),
@@ -5224,16 +5246,23 @@ Math.svyplan_df <- function(x, ...) {
 #' Print, format and coerce a rotation pattern
 #'
 #' A `svyplan_rotation` from [design_rotation()] is a numeric vector of takes,
-#' one entry per occasion of a unit's life. `as.double()` gives that vector
+#' one entry per period of a unit's life. `as.double()` gives that vector
 #' bare. `as.data.frame()` lays the pattern out over time as the table of
 #' cells [plot.svyplan_rotation()] draws, one row per interview of every
 #' panel in the periods drawn.
 #'
 #' @param x A `svyplan_rotation` object.
+#' @param e1,e2 Operands. Arithmetic and comparison return bare numerics,
+#'   since moved takes no longer have the life, standing sample and spec the
+#'   rotation records.
+#' @param i,value Index and replacement value. Replacement is refused: build
+#'   the pattern you mean with [design_rotation()].
+#' @param name Field to extract: `spec`, `life`, `in_sample`, `unbroken` or
+#'   `equal_take`.
 #' @param row.names,optional,stringsAsFactors,validRN Standard
 #'   `as.data.frame()` arguments.
-#' @param start,n_period,panel How the first panels enter, the periods
-#'   covered and an optional [n_panel()] result, as for
+#' @param start,horizon,panel_plan How the first panels enter, the
+#'   periods covered and an optional [n_panel()] result, as for
 #'   [plot.svyplan_rotation()].
 #' @param ... Additional arguments are not supported and produce an error.
 #' @return The method-specific result:
@@ -5241,30 +5270,34 @@ Math.svyplan_df <- function(x, ...) {
 #'   \item{`print()`}{Returns `x` invisibly.}
 #'   \item{`format()`}{Returns a string.}
 #'   \item{`as.double()`}{Returns the take vector.}
+#'   \item{`$`}{Returns one field of the pattern.}
+#'   \item{`Ops()` and `Math()`}{Return bare numerics.}
 #'   \item{`as.data.frame()`}{Returns one row per interview, ordered by
 #'     panel and then period, with columns:
 #'     \describe{
 #'       \item{`period`}{The period of the interview.}
 #'       \item{`panel`}{The panel, numbered in the chart's order: under an
-#'         immediate start the launch panels first, the one with the
-#'         shortest remaining life first, then one new panel per period.}
-#'       \item{`entry`}{The period the panel is selected. A launch panel
+#'         immediate start the start-up panels first, the one with the
+#'         shortest remaining life first, then one new panel per period.
+#'         Each panel here is one cohort, the units at the same wave at
+#'         every period, so the chart needs no separate cohort column.}
+#'       \item{`entry`}{The period the panel is selected. A start-up panel
 #'         whose remaining life starts out of sample is selected in period 1
 #'         and first interviewed later.}
-#'       \item{`launch`}{`TRUE` for a panel of an immediate start.}
+#'       \item{`startup`}{`TRUE` for a panel of an immediate start.}
 #'       \item{`rotation_group`}{The rotation group the panel takes over,
 #'         as defined on [plot.svyplan_rotation()].}
 #'       \item{`wave`}{The place of the interview in the rotation pattern,
-#'         counting in-sample occasions only.}
+#'         counting in-sample periods only.}
 #'       \item{`visit`}{The interview number of the panel. Equal to `wave`
-#'         except for a launch panel.}
-#'       \item{`life_stage`}{The occasion of the full life, out-of-sample
-#'         occasions counted.}
-#'       \item{`take`}{The take at that occasion, 1 under an equal take.}
+#'         except for a start-up panel.}
+#'       \item{`life_stage`}{The period of the full life, out-of-sample
+#'         periods counted.}
+#'       \item{`take`}{The take at that period, 1 under an equal take.}
 #'       \item{`n`}{Units interviewed, `take` times the panel's entrants.
-#'         Present only when `panel` is given.}
+#'         Present only when `panel_plan` is given.}
 #'     }
-#'     The attributes `rotation`, `start`, `n_period` and
+#'     The attributes `rotation`, `start`, `horizon` and
 #'     `full_sample_from`, the first period with the full sample in the
 #'     field, describe the table.}
 #' }
@@ -5278,10 +5311,18 @@ Math.svyplan_df <- function(x, ...) {
 #' cps
 #' as.double(cps)
 #'
-#' # The cells of an immediate start: a launch panel's first interview can
+#' # The fields of the pattern
+#' cps$life
+#' cps$in_sample
+#' cps$unbroken
+#'
+#' # Arithmetic returns plain takes, never a rotation with stale fields
+#' 2 * cps
+#'
+#' # The cells of an immediate start: a start-up panel's first interview can
 #' # be at a later wave
 #' cells <- as.data.frame(design_rotation("2-2-2"), start = "immediate",
-#'                        n_period = 8)
+#'                        horizon = 8)
 #' head(cells, 8)
 #'
 #' # Which panels are at their first wave in period 6
@@ -5327,18 +5368,18 @@ as.data.frame.svyplan_rotation <- function(
   stringsAsFactors = FALSE,
   validRN = TRUE,
   start = c("gradual", "immediate"),
-  n_period = NULL,
-  panel = NULL,
+  horizon = NULL,
+  panel_plan = NULL,
   ...
 ) {
   .check_unused_dots(...)
   if (missing(start)) {
     start <- NULL
   }
-  start <- .check_chart_start(start, panel)
+  start <- .check_chart_start(start, panel_plan)
   w <- as.double(x)
-  n_period <- .whole_arg(n_period, "n_period", length(w) + 4L)
-  out <- .rotation_cells(w, start, n_period, .chart_take(panel, w))
+  horizon <- .whole_arg(horizon, "horizon", length(w) + 4L)
+  out <- .rotation_cells(w, start, horizon, .chart_take(panel_plan, w))
   if (!is.null(row.names)) {
     rownames(out) <- row.names
   }
@@ -5346,9 +5387,55 @@ as.data.frame.svyplan_rotation <- function(
     out,
     rotation = x,
     start = start,
-    n_period = n_period,
+    horizon = horizon,
     full_sample_from = if (identical(start, "immediate")) 1L else length(w)
   )
+}
+
+#' @rdname print.svyplan_rotation
+#' @export
+`$.svyplan_rotation` <- function(x, name) {
+  fields <- c("spec", "life", "in_sample", "unbroken", "equal_take")
+  if (length(name) != 1L || !name %in% fields) {
+    stop(
+      sprintf(
+        "no field '%s' in a rotation pattern; available: %s",
+        paste(name, collapse = ", "),
+        paste(fields, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  attr(x, name, exact = TRUE)
+}
+
+#' @rdname print.svyplan_rotation
+#' @export
+Ops.svyplan_rotation <- function(e1, e2) {
+  e1 <- if (inherits(e1, "svyplan_rotation")) as.double(e1) else e1
+  if (missing(e2)) {
+    return(do.call(.Generic, list(e1)))
+  }
+  e2 <- if (inherits(e2, "svyplan_rotation")) as.double(e2) else e2
+  do.call(.Generic, list(e1, e2))
+}
+
+#' @rdname print.svyplan_rotation
+#' @export
+Math.svyplan_rotation <- function(x, ...) {
+  do.call(.Generic, c(list(as.double(x)), list(...)))
+}
+
+#' @rdname print.svyplan_rotation
+#' @export
+`[<-.svyplan_rotation` <- function(x, i, value) {
+  .no_replacement("rotation pattern", "design_rotation()")
+}
+
+#' @rdname print.svyplan_rotation
+#' @export
+`[[<-.svyplan_rotation` <- function(x, i, value) {
+  .no_replacement("rotation pattern", "design_rotation()")
 }
 
 #' Print, format and coerce a rotation overlap
@@ -5363,12 +5450,12 @@ as.data.frame.svyplan_rotation <- function(
 #'   the counts and the rotation describing the profile as computed and not
 #'   whatever it was transformed into.
 #' @param i Lag to extract, by position or by its name, so `x[12]` and
-#'   `x[["12"]]` are both the twelve-occasion overlap. The result is a bare
+#'   `x[["12"]]` are both the twelve-period overlap. The result is a bare
 #'   number, carrying neither the class nor the lag as a name.
 #' @param value Replacement value. Replacement is refused, an overlap being
 #'   computed from a rotation rather than assembled.
-#' @param name Field to extract: `overlap`, `shared`, `n_occasion`,
-#'   `rotation`, `lag`, `life`, `window` or `visits`.
+#' @param name Field to extract: `overlap`, `shared`, `in_sample`,
+#'   `basis`, `rotation`, `lag`, `life`, `window` or `visits`.
 #' @param row.names,optional,stringsAsFactors,validRN Standard
 #'   `as.data.frame()` arguments.
 #' @param ... Additional arguments are not supported and produce an error.
@@ -5394,7 +5481,7 @@ as.data.frame.svyplan_rotation <- function(
 #'
 #' @seealso [design_overlap()], which builds these objects,
 #'   [design_rotation()] for the pattern behind them,
-#'   [plot.svyplan_overlap()] for the rotation chart, and
+#'   [plot.svyplan_overlap()] for the bar chart by lag, and
 #'   [print.svyplan_schedule()] for the operational schedule a rotation
 #'   becomes.
 #'
@@ -5422,13 +5509,27 @@ NULL
 print.svyplan_overlap <- function(x, ...) {
   .check_unused_dots(...)
   rot <- .overlap_rotation(x)
-  cat("Rotation overlap (planning)\n\n")
+  respondent <- identical(.overlap_basis(x), "respondent")
+  cat(if (respondent) {
+    "Respondent overlap (planning, permanent attrition)\n\n"
+  } else {
+    "Rotation overlap (planning)\n\n"
+  })
   cat(.fmt_rotation_header(rot))
+  if (respondent) {
+    cat(sprintf(
+      "  respondents: %.4g per entrant in sample each period\n",
+      .overlap_in_sample(x)
+    ))
+  }
   cat("\n")
-  # n_occasion is constant by construction and is already in the header;
+  # in_sample is constant by construction and is already in the header;
   # as.data.frame() keeps it, since a table read into code wants it.
   tab <- as.data.frame(x)[c("lag", "shared", "overlap")]
   shown <- utils::head(tab, 16L)
+  if (respondent) {
+    shown$shared <- sprintf("%.4g", shown$shared)
+  }
   shown$overlap <- sprintf("%.4g", shown$overlap)
   print(shown, row.names = FALSE, right = FALSE)
   if (nrow(tab) > nrow(shown)) {
@@ -5441,7 +5542,7 @@ print.svyplan_overlap <- function(x, ...) {
   visits <- attr(x, "visits", exact = TRUE)
   if (!is.null(visits) && !is.na(visits)) {
     cat(sprintf(
-      "\n  %.3g occasions in sample per unit over a window of %d\n",
+      "\n  %.3g visits per unit over a window of %d periods\n",
       visits, attr(x, "window", exact = TRUE)
     ))
   }
@@ -5456,6 +5557,19 @@ print.svyplan_overlap <- function(x, ...) {
 #' @noRd
 .overlap_rotation <- function(x) attr(x, "rotation", exact = TRUE)
 
+#' Whether an overlap counts issued units or expected respondents
+#' @keywords internal
+#' @noRd
+.overlap_basis <- function(x) attr(x, "basis", exact = TRUE) %||% "issued"
+
+#' Units, or expected respondents per entrant, in sample at one period
+#' @keywords internal
+#' @noRd
+.overlap_in_sample <- function(x) {
+  attr(x, "in_sample", exact = TRUE) %||%
+    attr(.overlap_rotation(x), "in_sample", exact = TRUE)
+}
+
 #' The two lines that describe a rotation
 #'
 #' Shared by the rotation's own print method and the overlap's, so the two
@@ -5465,9 +5579,9 @@ print.svyplan_overlap <- function(x, ...) {
 .fmt_rotation_header <- function(rot) {
   paste0(
     sprintf(
-      "  %s-occasion life, %s in sample each occasion\n",
+      "  life: %s periods, %s in sample each period\n",
       .fmt_count_n(attr(rot, "life", exact = TRUE)),
-      .fmt_count_n(attr(rot, "n_occasion", exact = TRUE))
+      .fmt_count_n(attr(rot, "in_sample", exact = TRUE))
     ),
     sprintf("  rotation: %s\n", .fmt_rotation(as.double(rot)))
   )
@@ -5476,7 +5590,7 @@ print.svyplan_overlap <- function(x, ...) {
 #' Render a rotation as the spells a planner declared
 #'
 #' Run-length form, since that is how a rotation is named and argued about.
-#' The per-occasion vector it expands to is what the arithmetic reads.
+#' The per-period vector it expands to is what the arithmetic reads.
 #' @keywords internal
 #' @noRd
 .fmt_rotation <- function(w) {
@@ -5529,7 +5643,8 @@ as.list.svyplan_overlap <- function(x, ...) {
   list(
     overlap = as.double(x),
     shared = attr(x, "shared", exact = TRUE),
-    n_occasion = attr(rot, "n_occasion", exact = TRUE),
+    in_sample = .overlap_in_sample(x),
+    basis = .overlap_basis(x),
     rotation = rot,
     lag = as.integer(names(x)),
     life = attr(rot, "life", exact = TRUE),
@@ -5607,7 +5722,7 @@ as.data.frame.svyplan_overlap <- function(
   data.frame(
     lag = as.integer(names(x)),
     shared = attr(x, "shared", exact = TRUE),
-    n_occasion = attr(.overlap_rotation(x), "n_occasion", exact = TRUE),
+    in_sample = .overlap_in_sample(x),
     overlap = as.double(x),
     row.names = row.names,
     stringsAsFactors = stringsAsFactors
@@ -5622,7 +5737,7 @@ as.data.frame.svyplan_overlap <- function(
 #' and the wave-by-wave table. `summary()` adds what the design implies
 #' around that answer: the standing sample a rotating design holds, the
 #' response and retention it assumes, where the life's loss falls, and the
-#' launch a design passes through on its way to equilibrium.
+#' start-up a design passes through on its way to equilibrium.
 #' The coercions return the recruitment count, which is a number of units to
 #' release and not the analysis sample. Those differ by the whole of the
 #' panel's attrition, and it is why `svyplan_panel` is a sibling of
@@ -5638,7 +5753,8 @@ as.data.frame.svyplan_overlap <- function(
 #' \describe{
 #'   \item{`print()`}{Returns its argument invisibly.}
 #'   \item{`summary()`}{Returns a `summary.svyplan_panel` object carrying the
-#'     plan, full wave table, launch path, and cohort composition.}
+#'     plan, full wave table, the table by period, and the visits in sample
+#'     at each period.}
 #'   \item{`format()`}{Returns a string.}
 #'   \item{`as.double()`}{Returns the recruitment count.}
 #'   \item{`as.integer()`}{Returns the whole units to which the recruitment
@@ -5655,8 +5771,8 @@ as.data.frame.svyplan_overlap <- function(
 #' plan
 #' summary(plan)
 #'
-#' # A rotating design reaching equilibrium: the launch table is the
-#' # occasions before it gets there
+#' # A rotating design reaching equilibrium: the table by period shows the
+#' # start-up before it gets there
 #' rot <- n_panel(
 #'   n_prop(p = 0.5, moe = 0.031),
 #'   retention = c(0.878, 0.963, 0.936, 0.956),
@@ -5664,7 +5780,7 @@ as.data.frame.svyplan_overlap <- function(
 #'   design = "rotating",
 #'   start = "immediate"
 #' )
-#' summary(rot)$launch
+#' summary(rot)$periods
 #' summary(rot)$composition
 #'
 #' as.integer(plan)
@@ -5685,12 +5801,13 @@ print.svyplan_panel <- function(x, ...) {
   cat(sprintf("Panel recruitment (%s, %d-wave life)\n", x$design, k))
   cat(.fmt_panel_rotation(x))
   cat(.fmt_panel_headline(x))
+  cat(.fmt_panel_whole_status(x))
   cat(.fmt_panel_precision(x))
   cat(.fmt_panel_assured(x))
   cat("\n")
   print(.fmt_panel_waves(x, brief = TRUE), row.names = FALSE, right = FALSE)
   cat("\n")
-  cat("# summary() for the launch, the loss and per-wave cv\n")
+  cat("# summary() for the start-up, the loss and per-wave cv\n")
   invisible(x)
 }
 
@@ -5706,8 +5823,8 @@ summary.svyplan_panel <- function(object, ...) {
       n_resp = round(shown$head),
       n_in_sample = shown$in_sample,
       waves = .fmt_panel_waves(object, brief = FALSE),
-      launch = .fmt_panel_launch_table(object),
-      composition = object$launch_waves
+      periods = .fmt_panel_period_table(object),
+      composition = object$period_visits
     ),
     class = "summary.svyplan_panel"
   )
@@ -5725,7 +5842,9 @@ print.summary.svyplan_panel <- function(x, ...) {
   ))
   cat(.fmt_panel_rotation(plan))
   cat(.fmt_panel_headline(plan))
+  cat(.fmt_panel_whole_status(plan))
   cat(.fmt_panel_in_sample(plan))
+  cat(.fmt_panel_histories(plan))
   cat(.fmt_panel_rates(plan))
   cat(.fmt_panel_target_rate(plan))
   cat(.fmt_panel_precision(plan))
@@ -5736,31 +5855,34 @@ print.summary.svyplan_panel <- function(x, ...) {
     if (identical(plan$design, "fixed")) {
       "Waves of the life"
     } else {
-      "Waves alive at one occasion"
+      "Waves alive at one period"
     }
   ))
   print(x$waves, row.names = FALSE, right = FALSE)
 
-  if (!is.null(x$launch)) {
-    cat(sprintf("\nLaunch (%s)\n", plan$start))
-    print(x$launch, row.names = FALSE, right = FALSE)
-    cat("# $composition for the cohort mix at each launch occasion\n")
+  if (!is.null(x$periods)) {
+    cat(sprintf("\nBy period, %s start\n", plan$start))
+    print(x$periods, row.names = FALSE, right = FALSE)
+    cat("# $composition for the visits in sample at each period\n")
   }
   invisible(x)
 }
 
-#' Counts for the whole units a planner would actually release
+#' Counts for the units the printed block describes
 #'
-#' Every count in the printed block is derived from the rounded-up
-#' recruitment, so the headline and the wave it names agree. The stored
+#' Every count in the printed block comes from the same recruitment as the
+#' precision beside it, the whole units a planner would release, or the
+#' continuous requirement when whole units do not fit the frame. The stored
 #' fields stay continuous, which is what keeps the round trip exact.
 #' @keywords internal
 #' @noRd
 .panel_shown <- function(x) {
-  recruit <- ceiling(.panel_recruit(x))
+  op <- .panel_operational(x)
+  recruit <- .panel_recruit(op)
   wave <- recruit * x$waves$q
   list(
     recruit = recruit,
+    whole = attr(op, "whole", exact = TRUE),
     wave = wave,
     head = if (identical(x$design, "fixed")) {
       wave[[x$target_wave]]
@@ -5771,29 +5893,41 @@ print.summary.svyplan_panel <- function(x, ...) {
   )
 }
 
-#' Name the launch and the two counts that bracket it
+#' The plan evaluated at the whole units it would release
 #'
-#' The occasion-1 figure against the equilibrium one is the whole content:
-#' a gradual launch opens below the design and climbs, an immediate one opens
-#' at or above it, every unit there being at wave 1 and no later wave holding
-#' more than wave 1 does. The two coincide where nothing is lost after
-#' recruitment. The table carries the rest.
+#' Precision shown beside whole-unit counts is the precision of those
+#' counts, so the printed block describes one design. A count already whole
+#' is the plan itself. Should rounding up leave the plan's frame, the
+#' continuous plan is the one shown, and `whole` is `FALSE` so the block
+#' says so.
 #' @keywords internal
 #' @noRd
-.fmt_panel_launch <- function(x) {
-  if (is.null(x$launch)) {
+.panel_operational <- function(x) {
+  recruit <- ceiling(.panel_recruit(x))
+  if (recruit == .panel_recruit(x)) {
+    return(structure(x, whole = TRUE))
+  }
+  tryCatch(
+    structure(.panel_at(x, recruit, assurance = NULL), whole = TRUE),
+    error = function(e) structure(x, whole = FALSE)
+  )
+}
+
+#' Say why a block shows the continuous requirement
+#' @keywords internal
+#' @noRd
+.fmt_panel_whole_status <- function(x) {
+  shown <- .panel_shown(x)
+  if (isTRUE(shown$whole)) {
     return("")
   }
-  # whole units on the display path, as every other count printed here is
-  recruit <- ceiling(.panel_recruit(x))
-  scale <- recruit / .panel_recruit(x)
-  settled <- which(x$launch$equilibrium)[[1L]]
+  whole <- ceiling(.panel_recruit(x))
+  held <- if (identical(x$design, "fixed")) whole else whole * length(x$rotation)
   sprintf(
-    "launch (%s): %s responding at occasion 1, %s from occasion %d\n",
-    x$start,
-    .fmt_count_n(round(x$launch$n_resp[[1L]] * scale)),
-    .fmt_count_n(round(x$launch$n_resp[[settled]] * scale)),
-    x$launch$period[[settled]]
+    "whole units: %s %s hold %s, above N = %s, so these are continuous\n",
+    .fmt_count_n(whole),
+    if (identical(x$design, "fixed")) "issued" else "per period",
+    .fmt_count_n(held), .fmt_count_n(x$target$params$N)
   )
 }
 
@@ -5813,10 +5947,15 @@ print.summary.svyplan_panel <- function(x, ...) {
   } else {
     sprintf(", pooled over %d cohorts", x$n_cohorts)
   }
-  lead <- if (identical(x$design, "fixed")) {
-    sprintf("issued: %s", .fmt_count_n(shown$recruit))
+  count <- if (isTRUE(shown$whole)) {
+    .fmt_count_n(shown$recruit)
   } else {
-    sprintf("entrants: %s per occasion", .fmt_count_n(shown$recruit))
+    format(signif(shown$recruit, 4))
+  }
+  lead <- if (identical(x$design, "fixed")) {
+    sprintf("issued: %s", count)
+  } else {
+    sprintf("entrants: %s per period", count)
   }
   need <- ceiling(x$n_target)
   sprintf(
@@ -5844,18 +5983,36 @@ print.summary.svyplan_panel <- function(x, ...) {
   }
   out <- sprintf(
     "in sample: %s across %d live cohorts\n",
-    .fmt_count_n(.panel_shown(x)$in_sample),
+    .fmt_count_n(round(.panel_shown(x)$in_sample)),
     x$n_cohorts
   )
   life <- length(x$rotation)
   if (life > x$n_cohorts) {
     out <- paste0(out, sprintf(
       "held: %s across %d cohorts, %d of them out of sample\n",
-      .fmt_count_n(ceiling(.panel_recruit(x)) * life), life,
+      .fmt_count_n(round(.panel_shown(x)$recruit * life)), life,
       life - x$n_cohorts
     ))
   }
   out
+}
+
+#' Complete histories a rotating design delivers
+#'
+#' The level target pools every live cohort, and only the cohort at its last
+#' wave carries a response at every wave of the life. Under permanent loss
+#' that is the entrants times the last wave's `q`.
+#' @keywords internal
+#' @noRd
+.fmt_panel_histories <- function(x) {
+  if (!identical(x$design, "rotating")) {
+    return("")
+  }
+  k <- nrow(x$waves)
+  sprintf(
+    "complete histories: %s per period, the cohort at wave %d with all %d responses\n",
+    .fmt_count_n(round(.panel_shown(x)$wave[[k]])), k, k
+  )
 }
 
 #' The rotation of a rotating design whose life has a gap
@@ -5867,7 +6024,7 @@ print.summary.svyplan_panel <- function(x, ...) {
     return("")
   }
   sprintf(
-    "rotation: %s, a %d-occasion life\n", .fmt_rotation(w), length(w)
+    "life: %d periods (%s)\n", length(w), .fmt_rotation(w)
   )
 }
 
@@ -5885,7 +6042,7 @@ print.summary.svyplan_panel <- function(x, ...) {
     "assured (%s): %s %s%s\n",
     .fmt_prob(x$params$assurance),
     .fmt_count_n(ceiling(x$n_assured)),
-    if (identical(x$design, "fixed")) "issued" else "entrants per occasion",
+    if (identical(x$design, "fixed")) "issued" else "entrants per period",
     if (isFALSE(x$assured_feasible)) {
       sprintf(", beyond the population of %s", .fmt_count_n(x$target$params$N))
     } else {
@@ -5949,12 +6106,13 @@ print.summary.svyplan_panel <- function(x, ...) {
   } else {
     sprintf("%s (%s)", x$type, x$method)
   }
+  op <- .panel_operational(x)
   sprintf(
     "%s: se = %.4g, moe = %.4g%s\n",
     label,
-    x$se,
-    x$moe,
-    if (is.na(x$cv)) "" else sprintf(", cv = %.3g", x$cv)
+    op$se,
+    op$moe,
+    if (is.na(op$cv)) "" else sprintf(", cv = %.3g", op$cv)
   )
 }
 
@@ -5967,7 +6125,7 @@ print.summary.svyplan_panel <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .fmt_panel_waves <- function(x, brief = FALSE) {
-  w <- x$waves
+  w <- .panel_operational(x)$waves
   out <- data.frame(
     wave = w$wave,
     retention = ifelse(is.na(w$retention), "", sprintf("%.3g", w$retention)),
@@ -5990,29 +6148,28 @@ print.summary.svyplan_panel <- function(x, ...) {
     out$cv <- sprintf("%.3g", w$cv)
   }
   if (!is.null(w$expected_cases)) {
-    scale <- .panel_shown(x)$recruit / .panel_recruit(x)
-    out$cases <- format(round(w$expected_cases * scale))
+    out$cases <- format(round(w$expected_cases))
   }
   out
 }
 
-#' The launch path as a table, on the display path
+#' The table by period, on the display path
 #'
-#' Every count is scaled by the same whole-unit factor the wave table uses,
-#' so the occasion that settles reports the sample the headline promises.
+#' Every count and its precision come from the plan at whole units, as in
+#' the wave table, so the period that settles reports the sample the
+#' headline promises.
 #' @keywords internal
 #' @noRd
-.fmt_panel_launch_table <- function(x) {
-  if (is.null(x$launch)) {
+.fmt_panel_period_table <- function(x) {
+  if (is.null(x$periods)) {
     return(NULL)
   }
-  scale <- .panel_shown(x)$recruit / .panel_recruit(x)
-  l <- x$launch
+  l <- .panel_operational(x)$periods
   out <- data.frame(
-    occasion = l$period,
-    entrants = format(round(l$n_entrants * scale)),
-    in_sample = format(round(l$n_in_sample * scale)),
-    n_resp = format(round(l$n_resp * scale)),
+    period = l$period,
+    entrants = format(round(l$n_entrants)),
+    in_sample = format(round(l$n_in_sample)),
+    n_resp = format(round(l$n_resp)),
     se = sprintf("%.4g", l$se),
     moe = sprintf("%.4g", l$moe),
     stringsAsFactors = FALSE

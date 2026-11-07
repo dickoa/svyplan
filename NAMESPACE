@@ -3,11 +3,13 @@
 S3method("$",svyplan_deff)
 S3method("$",svyplan_df)
 S3method("$",svyplan_overlap)
+S3method("$",svyplan_rotation)
 S3method("$<-",svyplan_schedule)
 S3method("[",svyplan_overlap)
 S3method("[<-",svyplan_deff)
 S3method("[<-",svyplan_df)
 S3method("[<-",svyplan_overlap)
+S3method("[<-",svyplan_rotation)
 S3method("[<-",svyplan_schedule)
 S3method("[[",svyplan_deff)
 S3method("[[",svyplan_df)
@@ -15,13 +17,16 @@ S3method("[[",svyplan_overlap)
 S3method("[[<-",svyplan_deff)
 S3method("[[<-",svyplan_df)
 S3method("[[<-",svyplan_overlap)
+S3method("[[<-",svyplan_rotation)
 S3method("[[<-",svyplan_schedule)
 S3method(Math,svyplan_deff)
 S3method(Math,svyplan_df)
 S3method(Math,svyplan_overlap)
+S3method(Math,svyplan_rotation)
 S3method(Ops,svyplan_deff)
 S3method(Ops,svyplan_df)
 S3method(Ops,svyplan_overlap)
+S3method(Ops,svyplan_rotation)
 S3method(as.data.frame,svyplan_cluster)
 S3method(as.data.frame,svyplan_deff)
 S3method(as.data.frame,svyplan_df)
@@ -212,6 +217,7 @@ importFrom(graphics,
   axis,
   barplot,
   hist,
+  legend,
   mtext,
   par,
   plot.new,

@@ -14,6 +14,10 @@ n_pooled(var = NULL, ...)
   ...,
   sd = NULL,
   p = NULL,
+  r = NULL,
+  cv_num = NULL,
+  cv_den = NULL,
+  component_cor = NULL,
   mu = NULL,
   moe = NULL,
   cv = NULL,
@@ -37,9 +41,8 @@ n_pooled(var = NULL, ...)
 \arguments{
 \item{var}{For the default method: the population variance \eqn{S^2} on
 one occasion, taken to be the same on each. Estimate from a pilot
-study, a previous round, or published data. Supply this or \code{p}, not
-both. For \code{svyplan_prec} objects: a precision result from
-\code{\link[=prec_pooled]{prec_pooled()}}.}
+study, a previous round, or published data. Supply this, \code{p} or \code{r}.
+For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_pooled]{prec_pooled()}}.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
@@ -52,6 +55,21 @@ spelling of \code{var}. Supply exactly one of \code{var} or \code{sd}.}
 occasion variance is then \eqn{Np(1-p)/(N-1)}, the same finite
 population variance \code{\link[=n_prop]{n_prop()}} uses, and \code{mu} is determined and must not
 be supplied.}
+
+\item{r}{The ratio of totals being averaged, \code{mean(y) / mean(x)} as in
+\code{\link[=n_ratio]{n_ratio()}}, taken to be the same on each occasion, as an alternative
+to \code{var} and \code{p}. \code{mu} is then \code{r} and must not be supplied. See the
+section on a ratio of totals.}
+
+\item{cv_num}{Coefficient of variation of the ratio's numerator
+variable. Used with \code{r} only.}
+
+\item{cv_den}{Coefficient of variation of the ratio's denominator
+variable. Used with \code{r} only.}
+
+\item{component_cor}{Correlation between the ratio's numerator and
+denominator on one unit, in \eqn{[-1, 1]}. Used with \code{r} only. It is
+not \code{overlap_cor}, which correlates the occasions.}
 
 \item{mu}{The level being averaged, on the \code{var} scale. Required when \code{cv}
 or \code{rmoe} is specified, both being defined against it. Determined by \code{p}
@@ -96,7 +114,8 @@ directly at \code{resp_rate = 1}. See \code{\link[=prec_pooled]{prec_pooled()}} 
 \item{overlap_cor}{Correlation between two occasions among the units they
 share, in \eqn{[0, 1]}. One number for every lag, or one per lag.
 Default 0, which makes overlap irrelevant. Supply this or \code{cor_decay},
-not both.}
+not both. For a ratio it is the correlation of the ratio's linearized
+variable.}
 
 \item{cor_decay}{Correlation at lag \eqn{m} taken as \eqn{\rho^m}{rho^m},
 an alternative to stating \code{overlap_cor} lag by lag.}
@@ -141,7 +160,9 @@ size, the same values \code{\link[=prec_pooled]{prec_pooled()}} reports for the 
 \item{\code{params}}{The validated inputs, including whichever of \code{moe},
 \code{cv}, or \code{rmoe} was the target, \code{overlap} and \code{overlap_cor} as
 resolved vectors of one entry per lag, and the \code{overlap_basis} they
-were resolved under.}
+were resolved under. A ratio keeps \code{r}, its three moments and its
+\code{unit_relvar}, \code{var} then being the variance of its linearized
+variable.}
 }
 }
 \description{
@@ -159,8 +180,9 @@ bound is rejected, as is a size producing an invalid covariance matrix.
 See \code{\link[=prec_pooled]{prec_pooled()}} for these necessary feasibility conditions.
 
 The pooled variance is \eqn{deff\{A/(n r) + B\}}{deff (A/(n r) + B)} in the gross size per
-occasion, with \eqn{r} the response rate, \eqn{T} the number of occasions
-and
+occasion, with \eqn{r} the response rate times the eligibility rate,
+\eqn{N} the population in scope, \code{N * eligibility_rate}, \eqn{T} the
+number of occasions and
 
 \deqn{A = \frac{S^2}{T^2}\Big[T + 2\sum_{m=1}^{T-1}(T-m)\rho_m o_m\Big],
       \qquad
@@ -177,7 +199,39 @@ out of reach for want of precision however much the occasions overlap.
 Overlap raises the size a target needs, but it does not put a floor under
 the precision. The size can still exceed \eqn{N}, which is the ordinary
 boundary and is reported as unattainable there as everywhere else.
+\subsection{A ratio of totals}{
+
+A ratio \eqn{R = \bar Y / \bar X}{R = Ybar / Xbar} enters through its
+linearized variable \eqn{z = (y - Rx)/\bar X}{z = (y - R x) / Xbar},
+whose variance is \eqn{R^2 L}, with \eqn{L} the unit relative variance
+\code{\link[=n_ratio]{n_ratio()}} reports. That variance takes the place of \code{var} here and is
+what \code{params$var} records, and \code{overlap_cor} and \code{cor_decay} describe the
+correlation of \eqn{z} between occasions. A ratio whose level moves
+between occasions is outside the model, as a moving mean is.
+
+What is sized is the equal-weight average of the occasion ratios. A ratio
+of the pooled totals, \eqn{\sum_t \hat Y_t / \sum_t \hat X_t}{sum_t Yhat_t / sum_t Xhat_t},
+is a different estimator even at one level. To first order its error is
+\eqn{\sum_t w_t(\hat R_t - R)}{sum_t w_t (Rhat_t - R)}, with
+\eqn{w_t} the occasion's share of the denominator total, so it has the
+variance computed here only when the denominator totals are equal across
+occasions. Otherwise its variance differs, and over independent
+occasions it is larger, equal weights being the ones that minimize it
+there. Over two independent occasions whose denominator totals stand 1
+to 3, it is 25 percent larger than the equal-weight average's. Sizing an annual rate defined on pooled
+totals with this function treats the denominator totals as equal, which
+is close for a stable population and is an approximation to state where
+it is not.
+}
+
 \subsection{Sizing for a pooled estimate or for a change}{
+
+The mean number of visits per distinct unit, which \code{\link[=design_overlap]{design_overlap()}}
+reports for a window, measures burden and is not the variance multiplier
+of a pooled average. That multiplier follows from the overlap at every
+lag. Under \code{"2-2-2"} over four quarters with \code{overlap_cor = 1} and no
+finite population correction it is 15/8, against 16/9 visits per unit,
+since a unit interviewed twice carries twice the weight.
 
 The two arms pull in opposite directions against one design lever, and
 which arm gains depends on the sign of the covariance the overlap
@@ -202,6 +256,10 @@ n_pooled(var = 100, moe = 1, occasions = 4, overlap = 0.75,
 # An annual average of a proportion, to within one point
 n_pooled(p = 0.3, moe = 0.01, occasions = 12, overlap = 0.75,
          cor_decay = 0.9)
+
+# An annual unemployment rate from four quarters, to a cv of 3 percent
+n_pooled(r = 0.0615, cv_num = 4.9, cv_den = 0.73, component_cor = 0.15,
+         cv = 0.03, occasions = 4, overlap = 0.75, cor_decay = 0.8)
 
 # Relative target: the average to within 5 percent of itself
 n_pooled(var = 100, mu = 20, rmoe = 0.05, occasions = 4)

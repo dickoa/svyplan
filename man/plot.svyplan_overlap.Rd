@@ -17,8 +17,9 @@ title naming the rotation.}
 \code{x}, invisibly.
 }
 \description{
-Draw the issued-sample overlap of a \code{\link[=design_overlap]{design_overlap()}} result as a bar
-per lag, the profile \code{\link[=print]{print()}} reports as a table. The rotation chart
+Draw the overlap of a \code{\link[=design_overlap]{design_overlap()}} result as a bar per lag, the
+profile \code{\link[=print]{print()}} reports as a table. The axis names its basis, issued
+units for a rotation and respondents for a panel plan. The rotation chart
 the overlap comes from is drawn from the rotation, with
 \code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}}.
 }

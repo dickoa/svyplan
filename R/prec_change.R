@@ -1,13 +1,14 @@
 #' Sampling precision for a change between two occasions
 #'
 #' Compute the sampling error (SE, margin of error, CV) for the change in a
-#' mean or a proportion between two occasions of the same population, given
+#' mean, a proportion or a ratio of totals between two occasions of the same
+#' population, given
 #' the size of each occasion and how far the two samples overlap. This is
 #' the inverse of [n_change()].
 #'
 #' @param var For the default method: the population variance \eqn{S^2} on
-#'   each occasion, one value for both or one per occasion. Supply this or
-#'   `p`, not both. For `svyplan_n` objects: a sample size result from
+#'   each occasion, one value for both or one per occasion. Supply this, `p`
+#'   or `r`. For `svyplan_n` objects: a sample size result from
 #'   [n_change()].
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param n Sample size, gross units drawn, either one size for both
@@ -19,6 +20,20 @@
 #'   `var`. The occasion variances are then \eqn{Np(1-p)/(N-1)}, the same
 #'   finite population variance [prec_prop()] uses, and the change is
 #'   \eqn{p_2 - p_1}, so `change` is determined and must not be supplied.
+#' @param r The two occasion ratios of totals, `c(r1, r2)`, each
+#'   `mean(y) / mean(x)` as in [n_ratio()], as an alternative to `var` and
+#'   `p`. The change is \eqn{r_2 - r_1}, so `change` is determined and must
+#'   not be supplied. See the section on a ratio of totals.
+#' @param cv_num Coefficient of variation of the ratio's numerator
+#'   variable, one value for both occasions or one per occasion. Used with
+#'   `r` only.
+#' @param cv_den Coefficient of variation of the ratio's denominator
+#'   variable, one value for both occasions or one per occasion. Used with
+#'   `r` only.
+#' @param component_cor Correlation between the ratio's numerator and
+#'   denominator on one unit, in \eqn{[-1, 1]}, one value or one per
+#'   occasion. Used with `r` only. It is not `overlap_cor`, which
+#'   correlates the occasions.
 #' @param change Expected change, \eqn{\mu_2 - \mu_1}, on the `var` scale.
 #'   It may be negative. Required only for the relative measures: `cv` and
 #'   `rmoe` are defined against it and are `NA` without it. Determined by
@@ -53,7 +68,9 @@
 #'   worthless, since it is the product `overlap * overlap_cor` that buys precision
 #'   on a change, so a full panel of uncorrelated measurements buys nothing.
 #'   On the proportion scale two Bernoulli marginals bound the correlation
-#'   they can have, and a value above that bound is rejected.
+#'   they can have, and a value above that bound is rejected. For a ratio it
+#'   is the correlation of the ratio's linearized variable. See the section
+#'   on a ratio of totals.
 #' @param overlap_draw How the shared units are drawn. `"fixed"` (default)
 #'   draws them as a fixed count with the rest of each occasion's sample,
 #'   as a rotating panel does. `"independent"` draws a retained panel once
@@ -80,7 +97,9 @@
 #'   \item{`params`}{The validated inputs. Dispersion is always stored as
 #'     `var`, a pair, including when you supplied `sd` or `p`. `p` is kept as
 #'     well when the proportion scale was used, and it is what the
-#'     [n_change()] round trip reads the scale back from.}
+#'     [n_change()] round trip reads the scale back from. A ratio keeps
+#'     `r`, its three moments and the `unit_relvar` of each occasion, `var`
+#'     then being the variance of its linearized variable.}
 #' }
 #'
 #' Nothing here is rounded, so passing a continuous `n` back from
@@ -96,7 +115,9 @@
 #' A repeated survey publishes three things, and each is read by its own
 #' function. The level at one occasion is [prec_mean()] or [prec_prop()] and
 #' is a function of that occasion's size alone. The change between two
-#' occasions is this function, which overlap improves. The average of
+#' occasions is this function, which overlap improves while the covariance
+#' it induces is positive (see the finite population case below). The
+#' average of
 #' several occasions is [prec_pooled()], which overlap works against,
 #' because the covariance it induces is subtracted in a difference and added
 #' in a sum.
@@ -105,9 +126,14 @@
 #' `qt(1 - alpha / 2, df)` when `df` is supplied.
 #'
 #' The estimand is the change in one population measured twice, not a
-#' difference between two populations. Writing \eqn{v_1, v_2} for the
-#' occasion variances, \eqn{n_1, n_2} for the net sizes and \eqn{k} for the
-#' shared units, the expression is piecewise in `overlap`. At
+#' difference between two populations. It is a net change between occasion
+#' estimates. A gross flow, such as the share moving from employed to
+#' unemployed, is measured on the units responding at both occasions and is
+#' a proportion sized on that matched sample. Writing \eqn{v_1, v_2} for the
+#' occasion variances, \eqn{n_1, n_2} for the net sizes, net of response and
+#' eligibility, and \eqn{k} for the shared units, the expression is piecewise
+#' in `overlap`. \eqn{N}, \eqn{N_1} and \eqn{N_2} are the populations in
+#' scope, `N * eligibility_rate`. At
 #' `overlap = 0` the two occasions are treated as independent, which is what
 #' also lets them come from different populations:
 #'
@@ -137,6 +163,20 @@
 #' change, which is not in general either occasion's design effect, and a
 #' clustered design measuring the same clusters twice will have a smaller
 #' one than a design that reclusters.
+#'
+#' ## A ratio of totals
+#'
+#' A ratio \eqn{R = \bar Y / \bar X}{R = Ybar / Xbar}, such as an
+#' unemployment rate, enters through its linearized variable
+#' \eqn{z = (y - Rx)/\bar X}{z = (y - R x) / Xbar}, whose variance on each
+#' occasion is \eqn{R^2 L}, with \eqn{L} the unit relative variance
+#' [n_ratio()] reports. That variance takes the place of `var` in every
+#' formula here and is what `params$var` records. `overlap_cor` is then the
+#' correlation of \eqn{z} between the occasions, not of the numerator. The
+#' two are close when the denominator is stable, as for an unemployment
+#' rate over a steady labor force, and the first can be derived from the
+#' cross-occasion correlations of the two components where those are known.
+#' `deff` is the design effect of the change in \eqn{z}.
 #'
 #' ## What the overlap covariance assumes
 #'
@@ -218,6 +258,11 @@
 #' # A change in a proportion: variances and the change come from p
 #' prec_change(p = c(0.30, 0.36), n = 1200, overlap = 0.75, overlap_cor = 0.5)
 #'
+#' # A change in an unemployment rate, 80 percent of the sample shared
+#' prec_change(r = c(0.0615, 0.0646), cv_num = 4.9, cv_den = 0.73,
+#'             component_cor = 0.15, n = 16000, overlap = 0.8,
+#'             overlap_cor = 0.54)
+#'
 #' # Relative measures need the change on the var scale
 #' prec_change(var = 100, n = 500, change = 5)$cv
 #'
@@ -250,6 +295,10 @@ prec_change.default <- function(
   ...,
   sd = NULL,
   p = NULL,
+  r = NULL,
+  cv_num = NULL,
+  cv_den = NULL,
+  component_cor = NULL,
   change = NULL,
   alpha = 0.05,
   N = Inf,
@@ -268,7 +317,9 @@ prec_change.default <- function(
   check_resp_rate(eligibility_rate, "eligibility_rate")
   N_frame <- .check_power_N(N)
   N_pair <- N_frame * eligibility_rate
-  inputs <- .change_inputs(var, sd, p, change, N_pair)
+  inputs <- .change_inputs(var, sd, p, change, N_pair, r, cv_num, cv_den,
+                           component_cor)
+  s <- inputs$scale
   n <- .check_change_n(n)
   check_alpha(alpha)
   check_deff(deff)
@@ -293,7 +344,7 @@ prec_change.default <- function(
   )
 
   params <- list(
-    var = inputs$var_pair,
+    var = inputs$var_stored,
     n = n,
     alpha = alpha,
     N = N,
@@ -306,11 +357,12 @@ prec_change.default <- function(
   )
   if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
   if (!is.null(inputs$p)) params$p <- inputs$p
-  if (!is.null(inputs$change)) params$change <- inputs$change
+  params <- .add_ratio_params(params, inputs$ratio)
+  if (!is.null(inputs$change)) params$change <- inputs$change_stored
 
   .new_svyplan_prec(
-    se = prec$se,
-    moe = prec$moe,
+    se = prec$se * s,
+    moe = prec$moe * s,
     cv = prec$cv,
     type = "change",
     params = params
@@ -325,11 +377,8 @@ prec_change.svyplan_n <- function(var, ...) {
     stop("prec_change requires a svyplan_n of type 'change'", call. = FALSE)
   }
   par <- x$params
-  args <- list(
-    var = if (is.null(par$p)) par$var else NULL,
-    p = par$p,
+  args <- c(.repeated_scale_args(par, "change"), list(
     n = x$n,
-    change = if (is.null(par$p)) par$change else NULL,
     alpha = par$alpha,
     N = par$N,
     deff = par$deff,
@@ -339,7 +388,7 @@ prec_change.svyplan_n <- function(var, ...) {
     overlap_cor = par$overlap_cor,
     overlap_draw = par$overlap_draw,
     df = par$df
-  )
+  ))
   out <- do.call(prec_change.default, .roundtrip_args(args, list(...), prec_change.default))
   .mark_continuous_optimum(out, list(...))
 }

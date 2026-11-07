@@ -50,16 +50,21 @@
 #'   `cv`, `alpha`, `N`, `deff`, `resp_rate`, `eligibility_rate`, `df`
 #' - **`n_change`**: `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`, `resp_rate`,
 #'   `eligibility_rate`, `df`, `ratio`, `overlap`, `overlap_cor`, and `change` on
-#'   the mean scale only, since two proportions determine it. The occasion
-#'   variances are held at the values the result was built from, so vary the
-#'   design rather than the estimand. Sweeping `overlap` and `overlap_cor`
+#'   the mean scale only, since two proportions or two ratios determine it.
+#'   A ratio change also takes `cv_num`, `cv_den` and `component_cor`, one
+#'   value per row applied to both occasions, but not `r`, a pair that a
+#'   grid row cannot hold. Otherwise the occasion variances are held at the
+#'   values the result was built from, so vary the design rather than the
+#'   estimand. Sweeping `overlap` and `overlap_cor`
 #'   is what prices a rotation against a fresh sample each round.
 #' - **`n_pooled`**: `moe`, `rmoe`, `cv`, `alpha`, `N`, `deff`, `resp_rate`,
-#'   `eligibility_rate`, `df`, `mu` on the mean scale, and `occasions` only where
+#'   `eligibility_rate`, `df`, `mu` on the mean scale, `r`, `cv_num`,
+#'   `cv_den` and `component_cor` on the ratio scale, and `occasions` only where
 #'   the overlap and correlation are flat across lags, a shaped profile being
 #'   a statement about a horizon that changing the horizon would contradict.
 #'   The lag profiles themselves cannot be varied, a grid row having nowhere
-#'   to hold a vector.
+#'   to hold a vector. `cor_decay` can, being one number that replaces the
+#'   correlation profile, whatever the overlap's shape.
 #' - **`n_cluster`**: `cv`, `budget`, `unit_relvar`, `resp_rate`,
 #'   `resp_rate_psu`, `resp_rate_ssu`, `eligibility_rate`, `eligible_per_unit`,
 #'   `fixed_cost`, the
@@ -92,12 +97,16 @@
 #'   `alpha`, `N`, `deff`, `resp_rate`, `eligibility_rate`, `df`
 #' - **`prec_change`**: `n` for both occasions, or `n1` and `n2` for each
 #'   (not both forms), `alpha`, `N`, `deff`, `resp_rate`, `eligibility_rate`,
-#'   `df`, `overlap`, `overlap_cor`, and `change` on the mean scale.
+#'   `df`, `overlap`, `overlap_cor`, `change` on the mean scale, and
+#'   `cv_num`, `cv_den` and `component_cor` on the ratio scale, each applied
+#'   to both occasions.
 #' - **`prec_pooled`**: `n`, `alpha`, `N`, `deff`, `resp_rate`,
-#'   `eligibility_rate`, `df`, and `mu` on the mean scale. Where the
-#'   overlap is the same at every lag, also `overlap` and `cor_decay`. Where
-#'   the correlation is, also `overlap_cor`. Where both are, also
-#'   `occasions`.
+#'   `eligibility_rate`, `df`, `mu` on the mean scale, and `r`, `cv_num`,
+#'   `cv_den` and `component_cor` on the ratio scale. Where the
+#'   overlap is the same at every lag, also `overlap`. Where the correlation
+#'   is, also `overlap_cor`. Where both are, also `occasions`. `cor_decay`
+#'   whatever the overlap's shape, since it replaces the correlation
+#'   profile.
 #' - **`prec_alloc`**: `n`, `alpha`, `deff`, `resp_rate`,
 #'   `eligibility_rate`, `df`, and for a joint allocation
 #'   `eligible_per_unit`. A number in `n` rescales the stratum sizes to that
@@ -324,24 +333,26 @@ predict.svyplan_n <- function(object, newdata, ...) {
     base <- object$params
     # 'change' is p[2] - p[1] on the proportion scale, so varying it there
     # would ask for a change the two proportions contradict.
+    # A ratio's moments may be varied, its two ratios not, since a grid row
+    # holds one number and the change needs a pair.
     allowed <- c("moe", "cv", "rmoe", "alpha", "N", "deff", "resp_rate",
                  "eligibility_rate", "df", "ratio", "overlap", "overlap_cor",
-                 if (is.null(base[["p"]])) "change")
+                 if (.repeated_free_level(base)) "change",
+                 if (!is.null(base[["r"]])) c("cv_num", "cv_den",
+                                              "component_cor"))
 
     .validate_newdata(newdata, allowed)
     base <- .resolve_exclusive(newdata, base, "moe", "cv", "rmoe")
 
     .predict_grid(newdata, base, function(p) {
-      res <- n_change.default(
-        var = if (is.null(p$p)) p$var else NULL,
-        p = p$p,
-        change = if (is.null(p$p)) p$change else NULL,
+      res <- do.call(n_change.default, c(.repeated_scale_args(p, "change"), list(
         moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N, deff = p$deff, resp_rate = p$resp_rate,
         eligibility_rate = p[["eligibility_rate"]] %||% 1,
-        ratio = p$ratio, overlap = p$overlap, overlap_cor = p$overlap_cor,
+        ratio = p[["ratio"]], overlap = p$overlap,
+        overlap_cor = p$overlap_cor,
         overlap_draw = p$overlap_draw, df = p$df
-      )
+      )))
       data.frame(n1 = res$n[1L], n2 = res$n[length(res$n)],
                  se = res$se, moe = res$moe, cv = res$cv, rmoe = res$rmoe)
     })
@@ -356,8 +367,10 @@ predict.svyplan_n <- function(object, newdata, ...) {
     flat <- length(unique(base$overlap)) == 1L &&
       length(unique(base$overlap_cor)) == 1L
     allowed <- c("moe", "cv", "rmoe", "alpha", "N", "deff", "resp_rate",
-                 "eligibility_rate", "df", if (flat) "occasions",
-                 if (is.null(base[["p"]])) "mu")
+                 "eligibility_rate", "df", "cor_decay",
+                 if (flat) "occasions", if (.repeated_free_level(base)) "mu",
+                 if (!is.null(base[["r"]])) c("r", "cv_num", "cv_den",
+                                              "component_cor"))
 
     .validate_newdata(newdata, allowed)
     base <- .resolve_exclusive(newdata, base, "moe", "cv", "rmoe")
@@ -365,20 +378,20 @@ predict.svyplan_n <- function(object, newdata, ...) {
       base$overlap <- base$overlap[1L]
       base$overlap_cor <- base$overlap_cor[1L]
     }
+    if ("cor_decay" %in% names(newdata)) {
+      base$overlap_cor <- NULL
+    }
 
     .predict_grid(newdata, base, function(p) {
-      res <- n_pooled.default(
-        var = if (is.null(p$p)) p$var else NULL,
-        p = p$p,
-        mu = if (is.null(p$p)) p$mu else NULL,
+      res <- do.call(n_pooled.default, c(.repeated_scale_args(p, "mu"), list(
         occasions = p$occasions,
         moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N, deff = p$deff, resp_rate = p$resp_rate,
         eligibility_rate = p[["eligibility_rate"]] %||% 1,
         overlap = p$overlap, overlap_cor = p$overlap_cor,
-        overlap_draw = p$overlap_draw, df = p$df,
+        cor_decay = p$cor_decay, overlap_draw = p$overlap_draw, df = p$df,
         .overlap_basis = p$overlap_basis
-      )
+      )))
       data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv,
                  rmoe = res$rmoe)
     })
@@ -796,7 +809,8 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 #'
 #' A flat lag profile is one number, so it can be varied, along with the
 #' number of occasions it spans. A shaped profile is a statement about a
-#' horizon and stays as it is.
+#' horizon and stays as it is. `cor_decay` replaces the correlation profile
+#' at any overlap shape.
 #' @keywords internal
 #' @noRd
 .predict_prec_pooled <- function(object, newdata) {
@@ -808,9 +822,12 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   flat_ov <- length(unique(base$overlap)) == 1L
   flat_cor <- length(unique(base$overlap_cor)) == 1L
   allowed <- c("n", "alpha", "N", "deff", "resp_rate", "eligibility_rate",
-               "df", if (is.null(base[["p"]])) "mu",
+               "df", if (.repeated_free_level(base)) "mu",
+               if (!is.null(base[["r"]])) c("r", "cv_num", "cv_den",
+                                            "component_cor"),
+               "cor_decay",
                if (flat_ov && flat_cor) "occasions",
-               if (flat_ov) c("overlap", "cor_decay"),
+               if (flat_ov) "overlap",
                if (flat_cor) "overlap_cor")
   .validate_newdata(newdata, allowed)
   if (flat_ov) base$overlap <- base$overlap[1L]
@@ -824,17 +841,14 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   }
 
   .predict_grid(newdata, base, function(p) {
-    res <- prec_pooled.default(
-      var = if (is.null(p[["p"]])) p$var else NULL,
-      p = p[["p"]],
-      mu = if (is.null(p[["p"]])) p$mu else NULL,
+    res <- do.call(prec_pooled.default, c(.repeated_scale_args(p, "mu"), list(
       n = p$n, occasions = p$occasions,
       alpha = p$alpha, N = p$N, deff = p$deff, resp_rate = p$resp_rate,
       eligibility_rate = p[["eligibility_rate"]] %||% 1,
       overlap = p$overlap, overlap_cor = p$overlap_cor,
       cor_decay = p$cor_decay, overlap_draw = p$overlap_draw, df = p$df,
       .overlap_basis = p$overlap_basis
-    )
+    )))
     data.frame(se = res$se, moe = res$moe, cv = res$cv, rmoe = res$rmoe)
   })
 }
@@ -849,7 +863,9 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   base <- object$params
   allowed <- c("n", "n1", "n2", "alpha", "N", "deff", "resp_rate",
                "eligibility_rate", "df", "overlap", "overlap_cor",
-               if (is.null(base[["p"]])) "change")
+               if (.repeated_free_level(base)) "change",
+               if (!is.null(base[["r"]])) c("cv_num", "cv_den",
+                                            "component_cor"))
   .validate_newdata(newdata, allowed)
   pair <- any(c("n1", "n2") %in% names(newdata))
   if (pair && "n" %in% names(newdata)) {
@@ -862,16 +878,13 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 
   .predict_grid(newdata, base, function(p) {
     n <- if (pair) c(p$n1, p$n2) else p$n
-    res <- prec_change.default(
-      var = if (is.null(p[["p"]])) p$var else NULL,
-      p = p[["p"]],
-      change = if (is.null(p[["p"]])) p$change else NULL,
+    res <- do.call(prec_change.default, c(.repeated_scale_args(p, "change"), list(
       n = n,
       alpha = p$alpha, N = p$N, deff = p$deff, resp_rate = p$resp_rate,
       eligibility_rate = p[["eligibility_rate"]] %||% 1,
       overlap = p$overlap, overlap_cor = p$overlap_cor,
       overlap_draw = p$overlap_draw, df = p$df
-    )
+    )))
     data.frame(se = res$se, moe = res$moe, cv = res$cv, rmoe = res$rmoe)
   })
 }

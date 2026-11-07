@@ -52,15 +52,15 @@
 \item{...}{Additional arguments are not supported and produce an error.}
 
 \item{i}{Lag to extract, by position or by its name, so \code{x[12]} and
-\code{x[["12"]]} are both the twelve-occasion overlap. The result is a bare
+\code{x[["12"]]} are both the twelve-period overlap. The result is a bare
 number, carrying neither the class nor the lag as a name.}
 
 \item{e1, e2}{Operands. Arithmetic and comparison return bare numerics,
 the counts and the rotation describing the profile as computed and not
 whatever it was transformed into.}
 
-\item{name}{Field to extract: \code{overlap}, \code{shared}, \code{n_occasion},
-\code{rotation}, \code{lag}, \code{life}, \code{window} or \code{visits}.}
+\item{name}{Field to extract: \code{overlap}, \code{shared}, \code{in_sample},
+\code{basis}, \code{rotation}, \code{lag}, \code{life}, \code{window} or \code{visits}.}
 
 \item{row.names, optional, stringsAsFactors, validRN}{Standard
 \code{as.data.frame()} arguments.}
@@ -115,7 +115,7 @@ as.double(cps)[1:3]
 \seealso{
 \code{\link[=design_overlap]{design_overlap()}}, which builds these objects,
 \code{\link[=design_rotation]{design_rotation()}} for the pattern behind them,
-\code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for the rotation chart, and
+\code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for the bar chart by lag, and
 \code{\link[=print.svyplan_schedule]{print.svyplan_schedule()}} for the operational schedule a rotation
 becomes.
 }

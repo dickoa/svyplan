@@ -15,6 +15,10 @@ prec_pooled(var = NULL, ...)
   ...,
   sd = NULL,
   p = NULL,
+  r = NULL,
+  cv_num = NULL,
+  cv_den = NULL,
+  component_cor = NULL,
   mu = NULL,
   alpha = 0.05,
   N = Inf,
@@ -34,8 +38,8 @@ prec_pooled(var = NULL, ...)
 }
 \arguments{
 \item{var}{For the default method: the population variance \eqn{S^2} on
-one occasion, taken to be the same on each. Supply this or \code{p}, not
-both. For \code{svyplan_n} objects: a sample size result from \code{\link[=n_pooled]{n_pooled()}}.}
+one occasion, taken to be the same on each. Supply this, \code{p} or \code{r}.
+For \code{svyplan_n} objects: a sample size result from \code{\link[=n_pooled]{n_pooled()}}.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
@@ -50,6 +54,21 @@ spelling of \code{var}. Supply exactly one of \code{var} or \code{sd}.}
 occasion variance is then \eqn{Np(1-p)/(N-1)}, the same finite
 population variance \code{\link[=prec_prop]{prec_prop()}} uses, and \code{mu} is determined and must
 not be supplied.}
+
+\item{r}{The ratio of totals being averaged, \code{mean(y) / mean(x)} as in
+\code{\link[=n_ratio]{n_ratio()}}, taken to be the same on each occasion, as an alternative
+to \code{var} and \code{p}. \code{mu} is then \code{r} and must not be supplied. See the
+section on a ratio of totals.}
+
+\item{cv_num}{Coefficient of variation of the ratio's numerator
+variable. Used with \code{r} only.}
+
+\item{cv_den}{Coefficient of variation of the ratio's denominator
+variable. Used with \code{r} only.}
+
+\item{component_cor}{Correlation between the ratio's numerator and
+denominator on one unit, in \eqn{[-1, 1]}. Used with \code{r} only. It is
+not \code{overlap_cor}, which correlates the occasions.}
 
 \item{mu}{The level being averaged, on the \code{var} scale. Required only for
 the relative measures: \code{cv} and \code{rmoe} are defined against it and are
@@ -86,7 +105,8 @@ occasion's divided by \code{occasions}.}
 share, in \eqn{[0, 1]}. One number for every lag, or one per lag. Default
 0, which makes overlap irrelevant, since it is the product
 \code{overlap * overlap_cor} that moves the variance. Supply this or
-\code{cor_decay}, not both.}
+\code{cor_decay}, not both. For a ratio it is the correlation of the ratio's
+linearized variable.}
 
 \item{cor_decay}{Correlation at lag \eqn{m} taken as
 \eqn{\rho^m}{rho^m}, an alternative to stating \code{overlap_cor} lag by
@@ -125,7 +145,9 @@ when \code{mu} is neither supplied nor determined by \code{p}.}
 \item{\code{params}}{The validated inputs. Dispersion is always stored as
 \code{var}, and \code{overlap} and \code{overlap_cor} as resolved vectors of one
 entry per lag, whatever form they were supplied in, alongside the
-\code{overlap_basis} they were resolved under.}
+\code{overlap_basis} they were resolved under. A ratio keeps \code{r}, its
+three moments and its \code{unit_relvar}, \code{var} then being the variance of
+its linearized variable.}
 }
 
 Nothing here is rounded, so passing a continuous \code{n} back from
@@ -153,7 +175,8 @@ things share that name and this is none of the other two. It is not a
 pooled variance, and it is not the pooling of the rotating cohorts that
 make up one occasion, which \code{\link[=n_panel]{n_panel()}} describes.
 
-Writing \eqn{T} for \code{occasions}, \eqn{n} for the net size,
+Writing \eqn{T} for \code{occasions}, \eqn{n} for the size net of response and
+eligibility, \eqn{N} for the population in scope, \code{N * eligibility_rate},
 \eqn{o_m} for the overlap at lag \eqn{m} and \eqn{\rho_m} for the
 correlation there, the occasions carry
 
@@ -177,6 +200,31 @@ buys nothing.
 
 \code{deff} multiplies the assembled variance. It is the design effect of the
 pooled estimate, which is not in general any one occasion's.
+\subsection{A ratio of totals}{
+
+A ratio \eqn{R = \bar Y / \bar X}{R = Ybar / Xbar} enters through its
+linearized variable \eqn{z = (y - Rx)/\bar X}{z = (y - R x) / Xbar},
+whose variance is \eqn{R^2 L}, with \eqn{L} the unit relative variance
+\code{\link[=n_ratio]{n_ratio()}} reports. That variance takes the place of \code{var} here and is
+what \code{params$var} records, and \code{overlap_cor} and \code{cor_decay} describe the
+correlation of \eqn{z} between occasions. A ratio whose level moves
+between occasions is outside the model, as a moving mean is.
+
+What is sized is the equal-weight average of the occasion ratios. A ratio
+of the pooled totals, \eqn{\sum_t \hat Y_t / \sum_t \hat X_t}{sum_t Yhat_t / sum_t Xhat_t},
+is a different estimator even at one level. To first order its error is
+\eqn{\sum_t w_t(\hat R_t - R)}{sum_t w_t (Rhat_t - R)}, with
+\eqn{w_t} the occasion's share of the denominator total, so it has the
+variance computed here only when the denominator totals are equal across
+occasions. Otherwise its variance differs, and over independent
+occasions it is larger, equal weights being the ones that minimize it
+there. Over two independent occasions whose denominator totals stand 1
+to 3, it is 25 percent larger than the equal-weight average's. Sizing an annual rate defined on pooled
+totals with this function treats the denominator totals as equal, which
+is close for a stable population and is an approximation to state where
+it is not.
+}
+
 \subsection{Overlap works against a pooled estimate, when it works at all}{
 
 A covariance is subtracted in a difference and added in a sum, so
@@ -284,6 +332,10 @@ prec_pooled(var = 100, n = 500, occasions = 4, overlap = 0.75,
 # An annual average of a proportion measured monthly
 prec_pooled(p = 0.3, n = 1200, occasions = 12, overlap = 0.75,
             cor_decay = 0.9)
+
+# An annual unemployment rate averaged over four quarters
+prec_pooled(r = 0.0615, cv_num = 4.9, cv_den = 0.73, component_cor = 0.15,
+            n = 16000, occasions = 4, overlap = 0.75, cor_decay = 0.8)
 
 # Overlap read off a rotation schedule, at full response
 prec_pooled(var = 100, n = 500, occasions = 8,

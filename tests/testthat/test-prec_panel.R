@@ -26,7 +26,7 @@ test_that("a panel sized at a wave reports the target's precision there", {
   }
 })
 
-test_that("a rotating occasion round-trips on the pooled sample", {
+test_that("a rotating period round-trips on the pooled sample", {
   target <- n_prop(p = 0.3, moe = 0.03)
   plan <- n_panel(
     target, retention = lfs_ret, resp_rate = lfs_rr, design = "rotating"
@@ -121,8 +121,8 @@ test_that("named overrides replace the stored assumptions", {
 
 test_that("design cannot be overridden on a stored panel", {
   # The stored count is the whole issue to one cohort. Reading it as entrants
-  # per occasion changes the unit the number is in, not an assumption about
-  # it, so 1816 issued would silently become 1816 an occasion.
+  # per period changes the unit the number is in, not an assumption about
+  # it, so 1816 issued would silently become 1816 a period.
   target <- prec_mean(var = 100, n = 1000)
   fixed <- n_panel(target, retention = lfs_ret, resp_rate = lfs_rr)
   expect_error(
@@ -134,7 +134,7 @@ test_that("design cannot be overridden on a stored panel", {
   )
   rot <- n_panel(target, retention = lfs_ret, resp_rate = lfs_rr,
                  design = "rotating")
-  expect_error(prec_panel(rot, design = "fixed"), "entrants per occasion")
+  expect_error(prec_panel(rot, design = "fixed"), "entrants per period")
   # Restating the same design is refused too: the argument is the stored
   # one's, and an override that happens to agree still reads as permission.
   expect_error(prec_panel(fixed, design = "fixed"), "cannot be overridden")
@@ -183,7 +183,7 @@ test_that("a rotating wave row is one cohort, and the headline is the pool", {
       tolerance = 1e-12
     )
   }
-  # A single cohort at a single stage is far wider than the occasion.
+  # A single cohort at a single stage is far wider than the period.
   expect_gt(min(plan$waves$se), 2 * plan$se)
 })
 
@@ -210,13 +210,13 @@ test_that("the round trip carries a rotation, and may change it", {
                resp_rate = 0.75, design = "rotating", start = "immediate",
                rotation = "2-2-2")
   back <- prec_panel(x)
-  for (f in c("n_entrants", "n_held", "rotation", "launch", "launch_waves",
+  for (f in c("n_entrants", "n_held", "rotation", "periods", "period_visits",
               "waves", "se")) {
     expect_identical(back[[f]], x[[f]], label = f)
   }
   other <- prec_panel(x, rotation = "4")
   expect_identical(other$n_entrants, x$n_entrants)
   expect_identical(other$n_held, other$n_in_sample)
-  expect_false(identical(other$launch, x$launch))
+  expect_false(identical(other$periods, x$periods))
   expect_identical(as.double(other$rotation), rep(1, 4))
 })

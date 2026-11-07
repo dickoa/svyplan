@@ -19,7 +19,7 @@ test_that("ONS in-for-27 gives 96 percent and 56 percent", {
   expect_equal(o[12], 15 / 27, tolerance = 1e-12)
 })
 
-test_that("an unbroken panel drops one cohort per occasion", {
+test_that("an unbroken panel drops one cohort per period", {
   expect_equal(design_overlap("5")[1], 0.8, tolerance = 1e-12)
   for (k in c(2L, 4L, 5L, 9L, 20L)) {
     o <- design_overlap(as.character(k))
@@ -37,7 +37,7 @@ test_that("a two-spell life is not a repeating cycle", {
   expect_equal(cps[1], 6 / 8, tolerance = 1e-12)
   expect_false(isTRUE(all.equal(cps[1], 7 / 8)))
   expect_equal(cps$shared[1L], 6)
-  expect_equal(cps$n_occasion, 8)
+  expect_equal(cps$in_sample, 8)
 })
 
 ## O3. The arithmetic behind the fractions
@@ -47,7 +47,7 @@ test_that("shared counts the cohorts in sample at both stages", {
   # exactly one qualifying pair: (1,2) at lag 1, (2,4) at lag 2, (1,4) at
   # lag 3. The pair (1,3) does not count, stage 3 being out of sample.
   o <- design_overlap(c(1, 1, 0, 1))
-  expect_equal(o$n_occasion, 3)
+  expect_equal(o$in_sample, 3)
   expect_equal(o$shared, c(1, 1, 1))
   expect_equal(as.double(o), rep(1 / 3, 3L), tolerance = 1e-12)
 })
@@ -66,7 +66,7 @@ test_that("overlap is zero past the reach of the rotation", {
 
 test_that("a subsampled later wave is nested inside the earlier one", {
   o <- design_overlap(c(1, 1, 0.5, 0.5))
-  expect_equal(o$n_occasion, 3)
+  expect_equal(o$in_sample, 3)
   expect_equal(o$shared, c(2, 1, 0.5), tolerance = 1e-12)
   expect_equal(o[1], 2 / 3, tolerance = 1e-12)
 })
@@ -145,15 +145,15 @@ test_that("as.double strips the counts it carries as attributes", {
 test_that("as.data.frame reports one row per lag", {
   tab <- as.data.frame(design_overlap("4-8-4"))
   expect_equal(nrow(tab), 15L)
-  expect_named(tab, c("lag", "shared", "n_occasion", "overlap"))
+  expect_named(tab, c("lag", "shared", "in_sample", "overlap"))
   expect_equal(tab$lag, 1:15)
-  expect_equal(tab$overlap, tab$shared / tab$n_occasion, tolerance = 1e-12)
+  expect_equal(tab$overlap, tab$shared / tab$in_sample, tolerance = 1e-12)
 })
 
 test_that("$ reaches the fields and rejects unknown names", {
   cps <- design_overlap("4-8-4")
   expect_equal(cps$life, 16L)
-  expect_equal(cps$n_occasion, 8)
+  expect_equal(cps$in_sample, 8)
   expect_equal(cps$lag, 1:15)
   expect_length(cps$rotation, 16L)
   expect_error(cps$nope, "no field 'nope'")
@@ -161,8 +161,8 @@ test_that("$ reaches the fields and rejects unknown names", {
 
 test_that("print reports the life, the take and the spells", {
   out <- capture.output(print(design_overlap("4-8-4")))
-  expect_true(any(grepl("16-occasion life", out)))
-  expect_true(any(grepl("8 in sample each occasion", out)))
+  expect_true(any(grepl("life: 16 periods", out)))
+  expect_true(any(grepl("8 in sample each period", out)))
   expect_true(any(grepl("4 in, 8 out, 4 in", out)))
   expect_true(any(grepl("0.75", out)))
 })
@@ -278,9 +278,9 @@ test_that("passing the whole profile as overlap names the fix", {
   )
 })
 
-## O12. The per-occasion notation, and the string both notations claim
+## O12. The per-period notation, and the string both notations claim
 
-test_that("a spec containing a 0 is one flag per occasion", {
+test_that("a spec containing a 0 is one flag per period", {
   # Lynn (2012) Figure 3: in for two, out for two, in for two
   lynn <- design_overlap("1-1-0-0-1-1")
   expect_equal(as.double(attr(lynn, "rotation")), c(1, 1, 0, 0, 1, 1))
@@ -312,12 +312,12 @@ test_that("spell notation is untouched by the pattern reading", {
                tolerance = 1e-12)
 })
 
-## O13. A launch does not move the overlap, and this is why start lives on
+## O13. A start-up does not move the overlap, and this is why start lives on
 ## n_panel() rather than here
 
 # Explicit cohort bookkeeping, deliberately not calling design_overlap(): a
 # cohort is an entry period and a per-stage weight vector, and the overlap
-# between two occasions is counted from the cohorts alive at each.
+# between two periods is counted from the cohorts alive at each.
 .cohort_overlap <- function(cohorts, t, m) {
   at <- function(p) {
     vapply(cohorts, function(co) {
@@ -330,14 +330,14 @@ test_that("spell notation is untouched by the pattern reading", {
   sum(pmin(a, b)) / sum(a)
 }
 
-.launch <- function(w, start, n_period = 20L) {
+.startup <- function(w, start, horizon = 20L) {
   life <- length(w)
-  entering <- lapply(2:n_period, function(p) list(entry = p, w = w))
+  entering <- lapply(2:horizon, function(p) list(entry = p, w = w))
   first <- switch(
     start,
     # one cohort, the design fills up over its life
     gradual = list(list(entry = 1L, w = w)),
-    # one launch component for every remaining life length; for a gapped life,
+    # one start-up cohort for every remaining life length; for a gapped life,
     # some components are selected before their first in-sample interview
     immediate = lapply(seq_len(life), function(k) list(entry = 1L, w = w[k:life])),
     # the naive reading of an immediate start: split by remaining length
@@ -346,11 +346,11 @@ test_that("spell notation is untouched by the pattern reading", {
   c(first, entering)
 }
 
-test_that("an immediate start reproduces the full-sample overlap from occasion 1", {
+test_that("an immediate start reproduces the full-sample overlap from period 1", {
   for (spec in c("6", "5", "1-1-0-0-1-1", "4-8-4")) {
     x <- design_overlap(spec)
     w <- as.double(x$rotation)
-    imm <- .launch(w, "immediate", n_period = 3L * length(w))
+    imm <- .startup(w, "immediate", horizon = 3L * length(w))
     for (t in 1:4) {
       expect_equal(
         vapply(seq_along(x), function(m) .cohort_overlap(imm, t, m), numeric(1L)),
@@ -364,25 +364,25 @@ test_that("an immediate start reproduces the full-sample overlap from occasion 1
 
 test_that("a gradual start reaches the full-sample overlap at the life", {
   x <- design_overlap("6")
-  grad <- .launch(as.double(x$rotation), "gradual")
+  grad <- .startup(as.double(x$rotation), "gradual")
   # nothing has rotated out yet, so early overlaps are higher than the design's
   expect_equal(vapply(1:5, function(m) .cohort_overlap(grad, 1L, m), numeric(1L)),
                rep(1, 5L), tolerance = 1e-12)
   expect_gt(.cohort_overlap(grad, 3L, 1L), x[1])
-  # and from the occasion that spans the life they are the design's
+  # and from the period that spans the life they are the design's
   for (t in 6:9) {
     expect_equal(vapply(1:5, function(m) .cohort_overlap(grad, t, m), numeric(1L)),
                  as.double(x), tolerance = 1e-12)
   }
 })
 
-test_that("splitting the first occasion by remaining length is not an immediate start", {
+test_that("splitting the first period by remaining length is not an immediate start", {
   # The trap: under a gapped life, covering every stage requires cohorts that
   # start out of sample. Truncating instead holds six cohorts where the design
   # holds four, and reads 0.83 consecutive against the rotation's 0.50.
   x <- design_overlap("1-1-0-0-1-1")
   w <- as.double(x$rotation)
-  naive <- .launch(w, "truncated")
+  naive <- .startup(w, "truncated")
   in_sample <- function(co, t) {
     sum(vapply(co, function(c1) {
       s <- t - c1$entry + 1L
@@ -390,19 +390,19 @@ test_that("splitting the first occasion by remaining length is not an immediate 
     }, numeric(1L)))
   }
   expect_equal(in_sample(naive, 1L), 6)
-  expect_equal(in_sample(.launch(w, "immediate"), 1L), x$n_occasion)
+  expect_equal(in_sample(.startup(w, "immediate"), 1L), x$in_sample)
   expect_equal(.cohort_overlap(naive, 1L, 1L), 5 / 6, tolerance = 1e-12)
   expect_equal(x[1], 0.5, tolerance = 1e-12)
-  # the totals do not even hold constant under the naive launch
+  # the totals do not even hold constant under the naive start
   expect_false(isTRUE(all.equal(
     vapply(1:6, function(t) in_sample(naive, t), numeric(1L)),
-    rep(x$n_occasion, 6L)
+    rep(x$in_sample, 6L)
   )))
 })
 
-test_that("design_overlap takes no launch argument, and does not need one", {
+test_that("design_overlap takes no start argument, and does not need one", {
   # Launch changes the route to the mature life-stage mix, not the overlap that
-  # mix produces. Both launch policies therefore reach the same lag profile,
+  # mix produces. Both start policies therefore reach the same lag profile,
   # so a start argument here would be a second name for one answer.
   expect_error(design_overlap("6", start = "immediate"), "unused argument")
 })
@@ -441,13 +441,90 @@ test_that("visits are absent without a window and printed with one", {
   expect_true(is.na(plain$window))
   expect_false(any(grepl("window", capture.output(print(plain)))))
   expect_output(print(design_overlap("2-2-2", window = 4)),
-                "1.78 occasions in sample per unit over a window of 4")
+                "1.78 visits per unit over a window of 4 periods")
   expect_identical(design_overlap("2-2-2", window = 4)$window, 4L)
 })
 
-test_that("window must be a whole number of occasions", {
+test_that("window must be a whole number of periods", {
   for (bad in list(0, 2.5, NA, c(2, 4), "4", Inf)) {
     expect_error(design_overlap("2-2-2", window = bad),
                  "'window' must be a whole number >= 1")
   }
+})
+
+## Respondent overlap from a rotating panel plan
+
+resp_overlap_oracle <- function(w, q, lags) {
+  visit <- cumsum(w > 0)
+  stage_q <- ifelse(w > 0, q[pmax(visit, 1L)], 0)
+  vapply(lags, function(m) {
+    if (m >= length(w)) return(0)
+    s <- seq_len(length(w) - m)
+    s <- s[w[s] > 0 & w[s + m] > 0]
+    sum(stage_q[s + m]) / sum(stage_q)
+  }, numeric(1))
+}
+
+test_that("a panel plan gives the overlap among respondents", {
+  retention <- c(0.97, 0.97, 0.97, 0.85, 0.97, 0.97, 0.97)
+  plan <- n_panel(n_mean(var = 0.3, mu = 0.15, cv = 0.1),
+                  retention = retention, resp_rate = 0.8,
+                  design = "rotating", rotation = "4-8-4")
+  ov <- design_overlap(plan, max_lag = 15)
+  q <- 0.8 * cumprod(c(1, retention))
+  expect_equal(as.double(ov),
+               resp_overlap_oracle(as.double(plan$rotation), q, 1:15))
+  # the panel-program benchmark's figures
+  expect_equal(ov[1], 0.7384645, tolerance = 1e-6)
+  expect_equal(ov[12], 0.4368647, tolerance = 1e-6)
+  expect_identical(ov$basis, "respondent")
+  expect_equal(ov$in_sample, sum(q))
+  expect_identical(design_overlap("4-8-4")$basis, "issued")
+  out <- capture.output(print(ov))
+  expect_match(out[1], "Respondent overlap \\(planning, permanent attrition\\)")
+})
+
+test_that("recruitment response and eligibility cancel from the overlap", {
+  for (pattern in c("5", "4-8-4", "2-2-2")) {
+    k <- sum(as.double(design_rotation(pattern)) > 0)
+    plan <- n_panel(n_mean(var = 1, moe = 0.1), retention = rep(1, k - 1),
+                    resp_rate = 0.6, eligibility_rate = 0.9,
+                    design = "rotating", rotation = pattern)
+    expect_equal(as.double(design_overlap(plan)),
+                 as.double(design_overlap(pattern)))
+  }
+})
+
+test_that("a respondent overlap feeds pooling below full response", {
+  plan <- n_panel(n_mean(var = 1, moe = 0.1), retention = rep(0.9, 4),
+                  resp_rate = 0.8, design = "rotating", rotation = "5")
+  ov <- design_overlap(plan)
+  expect_equal(
+    n_pooled(var = 1, moe = 0.1, occasions = 4, overlap = ov,
+             overlap_cor = 0.5, resp_rate = 0.8)$n,
+    n_pooled(var = 1, moe = 0.1, occasions = 4, overlap = as.double(ov)[1:3],
+             overlap_cor = 0.5, resp_rate = 0.8)$n
+  )
+  # the issued overlap is still refused there, naming both readings
+  expect_error(
+    n_pooled(var = 1, moe = 0.1, occasions = 4, overlap = design_overlap("5"),
+             overlap_cor = 0.5, resp_rate = 0.8),
+    "permanent.*independent"
+  )
+  # a shortened respondent profile resolves at every lag as well
+  short <- design_overlap(plan, max_lag = 1)
+  expect_equal(
+    prec_pooled(var = 1, n = 200, occasions = 4, overlap = short,
+                overlap_cor = 0.5, resp_rate = 0.8)$se,
+    prec_pooled(var = 1, n = 200, occasions = 4, overlap = ov,
+                overlap_cor = 0.5, resp_rate = 0.8)$se
+  )
+})
+
+test_that("a fixed panel and a window are refused for a panel plan", {
+  rot <- n_panel(n_mean(var = 1, moe = 0.1), retention = rep(0.9, 4),
+                 design = "rotating", rotation = "5")
+  expect_error(design_overlap(rot, window = 4), "property of the rotation")
+  fixed <- n_panel(n_mean(var = 1, moe = 0.1), retention = c(0.9, 0.9))
+  expect_error(design_overlap(fixed), "takes a rotating panel")
 })

@@ -181,10 +181,17 @@ test_that("the inverse functions carry eligibility_rate both ways", {
                   resp_rate = 0.9, eligibility_rate = 0.9, fpc = "stage",
                   N = 40000, N_psu = 400)
   expect_equal(n_cluster(prec_cluster(cl))$n, cl$n)
-  pa <- n_panel(n_prop(p = 0.3, moe = 0.03, N = 20000),
-                retention = c(0.9, 0.9), resp_rate = 0.8,
-                eligibility_rate = 0.95)
-  expect_equal(prec_panel(pa)$n_resp, pa$n_resp)
+  # The panel's eligibility converts respondents to issued units, and the
+  # target's population of 20000 stays behind the requirement
+  expect_warning(
+    pa <- n_panel(n_prop(p = 0.3, moe = 0.03, N = 20000),
+                  retention = c(0.9, 0.9), resp_rate = 0.8,
+                  eligibility_rate = 0.95),
+    "sized against 20000 units in scope"
+  )
+  expect_warning(back <- prec_panel(pa), "keeps that population")
+  expect_equal(back$n_resp, pa$n_resp)
+  expect_equal(pa$moe, 0.03)
 })
 
 test_that("a panel target sized with the panel's rates raises no warning", {

@@ -13,6 +13,10 @@ n_change(var = NULL, ...)
   ...,
   sd = NULL,
   p = NULL,
+  r = NULL,
+  cv_num = NULL,
+  cv_den = NULL,
+  component_cor = NULL,
   change = NULL,
   moe = NULL,
   cv = NULL,
@@ -35,8 +39,8 @@ n_change(var = NULL, ...)
 \arguments{
 \item{var}{For the default method: the population variance \eqn{S^2} on
 each occasion, one value for both or one per occasion. Estimate from a
-pilot study, a previous round, or published data. Supply this or \code{p},
-not both. For \code{svyplan_prec} objects: a precision result from
+pilot study, a previous round, or published data. Supply this, \code{p} or
+\code{r}. For \code{svyplan_prec} objects: a precision result from
 \code{\link[=prec_change]{prec_change()}}.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
@@ -50,6 +54,24 @@ finite population variance \code{\link[=n_prop]{n_prop()}} uses, and the change 
 \eqn{p_2 - p_1}, so \code{change} is determined and must not be supplied.
 Sizing for a change in a proportion is the ordinary case for a repeated
 household survey tracking an indicator.}
+
+\item{r}{The two occasion ratios of totals, \code{c(r1, r2)}, each
+\code{mean(y) / mean(x)} as in \code{\link[=n_ratio]{n_ratio()}}, as an alternative to \code{var} and
+\code{p}. The change is \eqn{r_2 - r_1}, so \code{change} is determined and must
+not be supplied. See the section on a ratio of totals.}
+
+\item{cv_num}{Coefficient of variation of the ratio's numerator
+variable, one value for both occasions or one per occasion. Used with
+\code{r} only.}
+
+\item{cv_den}{Coefficient of variation of the ratio's denominator
+variable, one value for both occasions or one per occasion. Used with
+\code{r} only.}
+
+\item{component_cor}{Correlation between the ratio's numerator and
+denominator on one unit, in \eqn{[-1, 1]}, one value or one per
+occasion. Used with \code{r} only. It is not \code{overlap_cor}, which
+correlates the occasions.}
 
 \item{change}{Expected change, \eqn{\mu_2 - \mu_1}, on the \code{var} scale. It
 may be negative. Required when \code{cv} or \code{rmoe} is specified, both being
@@ -103,7 +125,7 @@ means every responding unit of the first occasion is measured again,
 which is a full panel when the occasions are the same size. A rotation
 pattern determines the issued figure, \code{(D - 1) / D} between consecutive
 occasions of an in-for-\code{D} schedule, and \code{\link[=design_overlap]{design_overlap()}} computes it
-at every lag. The two are the same number at full response only. See
+at every lag, an occasion there being a period of the rotation. The two are the same number at full response only. See
 \code{\link[=prec_change]{prec_change()}} on what a response rate below 1 does to this reading.}
 
 \item{overlap_cor}{Correlation between the two occasions among the
@@ -111,7 +133,9 @@ overlapping units, in \eqn{[0, 1]}. Default 0, which makes overlap
 worthless, since it is the product \code{overlap * overlap_cor} that reduces
 the size, so a full panel of uncorrelated measurements saves nothing. On the
 proportion scale two Bernoulli marginals bound the correlation they can
-have, and a value above that bound is rejected.}
+have, and a value above that bound is rejected. For a ratio it is the
+correlation of the ratio's linearized variable. See the section on a
+ratio of totals.}
 
 \item{overlap_draw}{How the shared units are drawn, \code{"fixed"} (default)
 for a fixed count drawn with the rest of each occasion's sample, or
@@ -144,12 +168,15 @@ size, the same values \code{\link[=prec_change]{prec_change()}} reports for the 
 \code{cv} and \code{rmoe} are \code{NA} unless the change is known.}
 \item{\code{params}}{The validated inputs, including whichever of \code{moe},
 \code{cv}, or \code{rmoe} was the target. Dispersion is always stored as \code{var},
-a pair, and \code{p} is kept as well when the proportion scale was used.}
+a pair, and \code{p} is kept as well when the proportion scale was used.
+A ratio keeps \code{r}, its three moments and the \code{unit_relvar} of each
+occasion, \code{var} then being the variance of its linearized variable.}
 }
 }
 \description{
 Compute the sample size per occasion required to estimate the change in a
-mean or a proportion between two occasions of the same population with a
+mean, a proportion or a ratio of totals between two occasions of the same
+population with a
 specified margin of error or coefficient of variation, given how far the
 two samples overlap.
 }
@@ -159,7 +186,9 @@ two samples overlap.
 A repeated survey publishes three things, and each is sized by its own
 function. The level at one occasion is \code{\link[=n_mean]{n_mean()}} or \code{\link[=n_prop]{n_prop()}} and is a
 function of that occasion's size alone. The change between two occasions
-is this function, which overlap improves. The average of several
+is this function, which overlap improves while the covariance it induces
+is positive (see the finite population case below). The average of
+several
 occasions is \code{\link[=n_pooled]{n_pooled()}}, which overlap works against, because the
 covariance it induces is subtracted in a difference and added in a sum. A
 design serving more than one of the three takes the largest of the three
@@ -171,7 +200,8 @@ where
 \deqn{A = v_1/r + v_2 - 2\,\mathrm{overlap}\,\rho\sqrt{v_1v_2}, \qquad
       B = -\frac{v_1 + v_2 - 2\rho\sqrt{v_1v_2}}{N},}{A = v_1/r + v_2 - 2 overlap rho sqrt(v_1v_2), B = -(v_1 + v_2 - 2 rho sqrt(v_1v_2))/N,}
 
-with \eqn{r} the \code{ratio} and \eqn{\rho} the \code{overlap_cor}. The finite
+with \eqn{r} the \code{ratio}, \eqn{\rho} the \code{overlap_cor} and \eqn{N} the
+population in scope, \code{N * eligibility_rate}. The finite
 population terms collect into \eqn{B}, a constant no sample size can
 move, so the target inverts in closed form rather than by search. Both
 coefficients are written above for a positive \code{overlap}. At
@@ -191,6 +221,21 @@ clustered design revisiting the same clusters has a smaller one than a
 design that reclusters between occasions, because the cluster effects
 partly cancel in the difference. Passing an occasion's design effect
 here therefore over-sizes a design that keeps its clusters.
+}
+
+\subsection{A ratio of totals}{
+
+A ratio \eqn{R = \bar Y / \bar X}{R = Ybar / Xbar}, such as an
+unemployment rate, enters through its linearized variable
+\eqn{z = (y - Rx)/\bar X}{z = (y - R x) / Xbar}, whose variance on each
+occasion is \eqn{R^2 L}, with \eqn{L} the unit relative variance
+\code{\link[=n_ratio]{n_ratio()}} reports. That variance takes the place of \code{var} in every
+formula here and is what \code{params$var} records. \code{overlap_cor} is then the
+correlation of \eqn{z} between the occasions, not of the numerator. The
+two are close when the denominator is stable, as for an unemployment
+rate over a steady labor force, and the first can be derived from the
+cross-occasion correlations of the two components where those are known.
+\code{deff} is the design effect of the change in \eqn{z}.
 }
 
 \subsection{When no size is enough, and when any size is}{
@@ -244,6 +289,12 @@ n_change(p = c(0.30, 0.36), moe = 0.02)
 
 # The same target under a consecutive-month CPS-style overlap of 0.75
 n_change(p = c(0.30, 0.36), moe = 0.02, overlap = 0.75, overlap_cor = 0.5)
+
+# A change in an unemployment rate between two quarters, to within half
+# a point, with 80 percent of the sample shared
+n_change(r = c(0.0615, 0.0646), cv_num = 4.9, cv_den = 0.73,
+         component_cor = 0.15, moe = 0.005, overlap = 0.8,
+         overlap_cor = 0.54)
 
 # Relative target: resolve the change to within a quarter of itself
 n_change(var = 100, change = 5, rmoe = 0.25)

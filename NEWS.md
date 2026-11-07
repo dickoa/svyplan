@@ -1,4 +1,4 @@
-# svyplan 0.18.0
+# svyplan 0.21.0
 
 Initial CRAN release.
 
@@ -156,19 +156,29 @@ that recommendation when available, or rounds the continuous size up.
   the rotating-panel case, or as a retained panel topped up on each occasion
   by a fresh sample drawn independently from the whole frame. The two differ
   only in the finite population terms, and the second pools two occasions.
+  Both plan a mean, a proportion, or a ratio of totals such as an
+  unemployment rate. A ratio enters through its linearized variable, so its
+  `overlap_cor` is that variable's correlation between occasions.
 * `n_panel()` sizes the recruitment a panel needs to still deliver a required
-  responding sample after several waves of attrition. It embeds an `n_mean()`,
-  `n_prop()`, `prec_mean()`, or `prec_prop()` result rather than restating its
-  arguments. A fixed panel reports `n_issued`, and a rotating one `n_entrants`
-  per occasion beside the `n_in_sample` its live cohorts hold between them.
-  `start` reports what a rotating design delivers until it reaches
+  responding sample after several waves of attrition. It embeds a mean,
+  proportion, or ratio result from `n_mean()`, `n_prop()`, `n_ratio()` or
+  their `prec_` counterparts rather than restating its arguments. A fixed panel reports `n_issued`, and a rotating one `n_entrants`
+  per period beside the `n_in_sample` its live cohorts hold between them.
+  `start` reports what a rotating design delivers in each period of its
+  start-up, in `$periods` and `$period_visits`, until it reaches
   equilibrium, and `assurance` again converts an expected-value recruitment
   into an assured one.
-* `design_schedule()` turns a rotating launch into a versioned, package-neutral
+* `design_schedule()` turns a rotating plan into a package-neutral
   operational manifest, validated field by field, for a sampling package to
-  field. Each interview carries its period and subround, its panel and
-  rotation group, its wave and visit, as the cell table of a rotation does,
-  and each period whether the interview mix has reached equilibrium.
+  field. Each interview carries its period and subround, the selection from
+  the frame it comes from, its cohort, panel and rotation group, and its
+  wave and visit, as the cell table of a rotation does, and each period
+  whether the interview mix has reached equilibrium. With `take` it counts
+  PSUs, and `retain_psus = TRUE` keeps the PSUs while their households
+  rotate, each panel taking a new cohort as its life starts again. A plan
+  with an assurance fields its expected or its assured entrants, as
+  `entrants` declares, and a schedule that rounding would push past a finite
+  population is refused.
 
 ## Precision analysis
 
@@ -263,9 +273,9 @@ that recommendation when available, or rounds the continuous size up.
   per-stratum counts need not add up when a group joins strata. `df` switches
   the interval quantile from the normal to `t` in every function that builds
   an interval.
-* `design_rotation()` declares the occasions a unit spends in and out of
+* `design_rotation()` declares the periods a unit spends in and out of
   sample over its whole life, from a compact spec in either notation the
-  literature uses or from an explicit per-occasion take. It is the object
+  literature uses or from an explicit per-period take. It is the object
   `design_overlap()` and `design_schedule()` both read, so a pattern is parsed
   in one place. `as.data.frame()` lays the pattern out over time, one row per
   interview with its panel, rotation group, wave and interview number, under
@@ -273,9 +283,11 @@ that recommendation when available, or rounds the continuous size up.
   chart a methodology report publishes, with the cell label and color chosen
   by column or by function.
 * `design_overlap()` reports the issued-sample overlap that rotation produces
-  at every lag, and with `window` the mean number of occasions a unit is in
-  sample within that many consecutive occasions. `plot()` draws the overlap
-  at each lag.
+  at every lag, and with `window` the mean number of visits a unit receives
+  within that many consecutive periods. Given a rotating `n_panel()` plan it
+  reports the overlap among respondents under permanent attrition, which
+  `n_pooled()`, `prec_pooled()` and the change functions take at any
+  response rate. `plot()` draws the overlap at each lag.
 
 ## Survey plan profiles
 

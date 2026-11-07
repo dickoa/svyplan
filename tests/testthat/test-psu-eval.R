@@ -200,3 +200,23 @@ test_that("the evaluator scores a listed menu state by state", {
     expect_equal(got$cost[j], one$cost)
   }
 })
+
+## The stored eligibility rate reaches an n override
+
+test_that("prec_alloc() with n keeps a register fit's eligibility rate", {
+  z <- .psu_fixture()
+  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+                 psu = z$psu, resp_rate = 0.9, eligibility_rate = 0.8)
+  over <- prec_alloc(fit, n = fit$detail$n)
+  expect_equal(
+    over$detail$.cv,
+    prec_alloc(fit, n = fit$detail$n, eligibility_rate = 0.8)$detail$.cv
+  )
+  # the binding literacy target holds at the stored sizes, as it does for a
+  # fit without an eligibility rate
+  expect_equal(over$detail$.cv[[1L]], 0.04, tolerance = 1e-6)
+  expect_false(isTRUE(all.equal(
+    over$detail$.cv,
+    prec_alloc(fit, n = fit$detail$n, eligibility_rate = 1)$detail$.cv
+  )))
+})

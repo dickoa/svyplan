@@ -98,14 +98,14 @@ predict(
 | Planning task | Functions | Book chapter |
 |:---|:---|:---|
 | Start with sample size and precision | `n_prop()`, `n_mean()`, `prec_prop()`, `prec_mean()` | `vignette("svyplan")` |
-| Choose a precision target or ratio estimand | `n_prop()`, `n_mean()`, `n_ratio()` | [Precision targets](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/precision.html) |
-| Combine indicators or domain requirements | `n_multi()`, `prec_multi()` | [Multiple indicators](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/multi-indicator.html) |
-| Construct strata and allocate a sample | `strata_bound()`, `n_alloc()`, `prec_alloc()` | [Stratification and allocation](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/allocation.html) |
-| Meet several allocation constraints | `n_alloc()` | [Joint allocation](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/joint-allocation.html) |
-| Plan a clustered survey | `varcomp()`, `n_cluster()`, `design_effect()`, `effective_n()`, `design_df()` | [Multistage planning](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/multistage-planning.html) |
-| Plan screening or nonresponse follow-up | `n_twophase()`, `prec_twophase()` | [Two-phase surveys](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/two-phase-planning.html) |
-| Plan changes, averages, panels, and rotations | `n_change()`, `n_pooled()`, `n_panel()`, `design_rotation()`, `design_schedule()` | [Repeated surveys](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/repeated-surveys.html) |
-| Plan a detectable comparison | `power_prop()`, `power_mean()`, `power_did()` | [Power](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/power.html) |
+| Choose a precision target or ratio estimand | `n_prop()`, `n_mean()`, `n_ratio()` | [Precision targets and sample size](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/sample-size.html) |
+| Combine indicators or domain requirements | `n_multi()`, `prec_multi()` | [Several indicators and a floor](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/sample-size.html#several-indicators-and-a-floor) |
+| Construct strata and allocate a sample | `strata_bound()`, `n_alloc()`, `prec_alloc()` | [Allocation across domains and strata](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/stratum-allocation.html) |
+| Meet several allocation constraints | `n_alloc()` | [Two targets at once](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/stratum-allocation.html#two-targets-at-once) |
+| Plan a clustered survey | `varcomp()`, `n_cluster()`, `design_effect()`, `effective_n()`, `design_df()` | [Clusters, take size and cost](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/clusters-take.html) |
+| Plan screening or nonresponse follow-up | `n_twophase()`, `prec_twophase()` | [Two-phase designs and subsamples](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/two-phase.html) |
+| Plan changes, averages, panels, and rotations | `n_change()`, `n_pooled()`, `n_panel()`, `design_rotation()`, `design_schedule()` | [Rotating panels and master samples](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/panels-master-samples.html) |
+| Plan a detectable comparison | `power_prop()`, `power_mean()`, `power_did()` | [Power for evaluation surveys](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/evaluation-power.html) |
 
 `vignette("svyplan")` walks through a first plan. The book [Survey
 Sampling Design with

@@ -7,8 +7,8 @@
 \method{plot}{svyplan_rotation}(
   x,
   start = c("gradual", "immediate"),
-  n_period = NULL,
-  panel = NULL,
+  horizon = NULL,
+  panel_plan = NULL,
   label = "wave",
   fill = "none",
   col = NULL,
@@ -26,12 +26,12 @@
 per period, so the sample builds up over a life. \code{"immediate"} selects,
 in the first period, one panel for each possible remaining life, so the
 full sample is in the field from period 1. Defaults to the start
-\code{panel} was planned with, or to \code{"gradual"} when there is none.}
+\code{panel_plan} was planned with, or to \code{"gradual"} when there is none.}
 
-\item{n_period}{Periods to draw, a new panel entering at each one.
+\item{horizon}{Periods to draw, a new panel entering at each one.
 Defaults to the life plus four.}
 
-\item{panel}{Optional \code{\link[=n_panel]{n_panel()}} or \code{\link[=prec_panel]{prec_panel()}} result with
+\item{panel_plan}{Optional \code{\link[=n_panel]{n_panel()}} or \code{\link[=prec_panel]{prec_panel()}} result with
 \code{design = "rotating"}. Its \code{n_entrants} labels the rows and the total
 in units rather than in panel shares, and the cell table gains a column
 \code{n}. It must have been planned on the rotation drawn.}
@@ -44,7 +44,9 @@ one label per row.}
 \item{fill}{What the cell color shows. \code{"none"} (default) draws every
 cell in one color. A column of the cell table, such as
 \code{"rotation_group"} or \code{"wave"}, or a function of the cell table
-returning one value per row, gives each distinct value its own color.}
+returning one value per row, gives each distinct value its own color.
+A legend for the colors is drawn below the chart unless \code{label} names
+the same column, the cells then reading their own color.}
 
 \item{col}{Cell colors. One color when \code{fill = "none"}, otherwise at
 least one color per distinct fill value, taken in sorted order of the
@@ -110,12 +112,12 @@ field, every stage of the life held by one panel. A gradual start
 reaches it once a whole life has passed, and an immediate start has it
 from period 1. From that period on, the overlaps \code{\link[=design_overlap]{design_overlap()}}
 reports are those of the chart. Under an immediate start the interview
-mix still changes after that, because every launch panel begins at its
+mix still changes after that, because every start-up panel begins at its
 first interview. \code{\link[=n_panel]{n_panel()}} reports the period at which it reaches
 equilibrium (Lynn, 2012), the start-up period before it (Kalton, 2009)
 being when response and precision still move.
 
-A launch panel whose remaining life starts out of sample is selected in
+A start-up panel whose remaining life starts out of sample is selected in
 period 1 and first interviewed when its life returns to sample, as
 \code{\link[=n_panel]{n_panel()}} plans it.
 
@@ -134,29 +136,29 @@ plot(design_rotation("1-1-0-0-1-1"))
 
 # Statistics Canada, Figure 2.1: six months in sample from January,
 # colored by rotation group
-plot(design_rotation("6"), start = "immediate", n_period = 12,
+plot(design_rotation("6"), start = "immediate", horizon = 12,
      fill = "rotation_group", period_labels = toupper(month.abb))
 
 # Rwanda LFS 2024, Annex 1: panel number and appearance letter
-plot(design_rotation("2-2-2"), start = "immediate", n_period = 12,
+plot(design_rotation("2-2-2"), start = "immediate", horizon = 12,
      label = function(d) paste0(d$panel, LETTERS[d$wave]),
      fill = "wave")
 
 # The same design, one row per rotation group
-plot(design_rotation("2-2-2"), start = "immediate", n_period = 12,
+plot(design_rotation("2-2-2"), start = "immediate", horizon = 12,
      rows = "rotation_group", label = "panel")
 
 # CPS 4-8-4, one row per monthly panel
 plot(design_rotation("4-8-4"))
 
-# Lynn Figure 5: six 300-unit launch samples, then 300 new units per
+# Lynn Figure 5: six 300-unit start-up samples, then 300 new units per
 # period, labeled by interview number as Lynn labels them
 lynn_target <- prec_prop(n = 1800, p = 0.5)
 lynn_panel <- prec_panel(
   300, target = lynn_target, retention = rep(1, 5),
   design = "rotating", start = "immediate"
 )
-plot(design_rotation("6"), panel = lynn_panel, n_period = 10,
+plot(design_rotation("6"), panel_plan = lynn_panel, horizon = 10,
      label = "visit", main = "1-1-1-1-1-1 rotating panel: immediate start")
 
 }

@@ -504,14 +504,14 @@
 #' would each answer a different question about it. The recruitment is
 #' stored under a design-specific name, `n_issued` for the one cohort a
 #' fixed panel releases and `n_entrants` for what a rotating design takes on
-#' each occasion, because those are different quantities and one name over
+#' each period, because those are different quantities and one name over
 #' both is how the wrong one gets read.
 #' @keywords internal
 #' @noRd
 .new_svyplan_panel <- function(design, n_recruit, n_target, n_resp, n_assured,
                                assured_feasible, target_wave, waves, prec,
                                target, solved, params, start = NULL,
-                               launch = NULL, launch_waves = NULL,
+                               periods = NULL, period_visits = NULL,
                                rotation = NULL) {
   stopifnot(
     is.character(design),
@@ -532,12 +532,12 @@
     is.null(start) ||
       (is.character(start) && length(start) == 1L &&
          start %in% c("gradual", "immediate")),
-    is.null(launch) || is.data.frame(launch),
-    is.null(launch_waves) || is.data.frame(launch_waves),
-    # a launch is a property of a rotating design, and the three fields are
-    # one fact, so they arrive together or not at all
-    is.null(start) == is.null(launch),
-    is.null(start) == is.null(launch_waves),
+    is.null(periods) || is.data.frame(periods),
+    is.null(period_visits) || is.data.frame(period_visits),
+    # a start-up is a property of a rotating design, and the three fields
+    # are one fact, so they arrive together or not at all
+    is.null(start) == is.null(periods),
+    is.null(start) == is.null(period_visits),
     is.null(start) || !identical(design, "fixed"),
     identical(design, "fixed") == is.null(rotation),
     is.null(rotation) || inherits(rotation, "svyplan_rotation")
@@ -569,9 +569,9 @@
   out$type <- target$type
   out$method <- target$method
   out$waves <- waves
-  if (!is.null(launch)) {
-    out$launch <- launch
-    out$launch_waves <- launch_waves
+  if (!is.null(periods)) {
+    out$periods <- periods
+    out$period_visits <- period_visits
   }
   out$target <- target
   # Recorded only in the forward direction, matching svyplan_prec, so a

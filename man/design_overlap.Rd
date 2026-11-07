@@ -9,35 +9,43 @@ design_overlap(rotation, max_lag = NULL, window = NULL)
 \arguments{
 \item{rotation}{A \code{svyplan_rotation} from \code{\link[=design_rotation]{design_rotation()}}, or anything
 that function accepts, which is wrapped for you. The pattern vocabulary,
-the two notations and every refusal live on \code{\link[=design_rotation]{design_rotation()}}.}
+the two notations and every refusal live on \code{\link[=design_rotation]{design_rotation()}}. A
+rotating \code{\link[=n_panel]{n_panel()}} plan gives the overlap among respondents instead.
+See the section on respondent overlap in Details.}
 
 \item{max_lag}{Largest lag to report. Defaults to one less than the life,
 which is the largest lag at which any overlap is possible.}
 
-\item{window}{Optional number of consecutive occasions, such as 4 for a
-year of quarterly occasions. When given, the result also carries the
-mean number of occasions a unit is in sample within such a window. See
-the section on visits in Details.}
+\item{window}{Optional number of consecutive periods, such as 4 for a
+year of quarterly periods. When given, the result also carries the
+mean number of periods a unit is in sample within such a window. See
+the section on visits in Details. Not available for a panel plan, the
+visits being those of issued units.}
 }
 \value{
 A \code{svyplan_overlap} object: a numeric vector of issued-sample
-overlap fractions named by lag, so \code{x[1]} is the consecutive-occasion
-overlap and \code{x[12]} the overlap a year apart on monthly occasions.
+overlap fractions named by lag, so \code{x[1]} is the consecutive-period
+overlap and \code{x[12]} the overlap a year apart on monthly periods.
 Subsetting returns a plain number, which is what the \code{overlap}
 arguments take, and arithmetic returns bare numerics. It also carries:
 \describe{
-\item{\verb{$shared}}{Units in sample on both occasions, at each lag.}
+\item{\verb{$shared}}{Units in sample in both periods, at each lag. For a
+panel plan, expected respondents per entrant.}
+\item{\verb{$in_sample}}{Units in sample at one period, or for a panel plan
+expected respondents per entrant.}
+\item{\verb{$basis}}{\code{"issued"} for a rotation, \code{"respondent"} for a panel
+plan.}
 \item{\verb{$rotation}}{The \code{\link[=design_rotation]{design_rotation()}} it was computed from, which
-carries the life, the per-occasion takes and the units in sample at
-any one occasion.}
+carries the life, the per-period takes and the units in sample at
+any one period.}
 \item{\verb{$window}, \verb{$visits}}{The window length and the mean number of
-occasions a unit is in sample within it, \code{NA} when \code{window} is not
+periods a unit is in sample within it, \code{NA} when \code{window} is not
 given.}
 }
 }
 \description{
 Compute the fraction of the units a rotation puts in sample that it
-carries from one occasion to another, at every lag the rotation reaches.
+carries from one period to another, at every lag the rotation reaches.
 This is the overlap of the \strong{issued} sample, a property of the rotation
 alone. It is the \code{overlap} that \code{\link[=n_change]{n_change()}}, \code{\link[=prec_change]{prec_change()}},
 \code{\link[=power_mean]{power_mean()}}, \code{\link[=power_prop]{power_prop()}} and \code{\link[=power_did]{power_did()}} take when response is
@@ -45,8 +53,8 @@ complete, replacing a number the planner would otherwise have to know.
 See Details for what a response rate below 1 does to that reading.
 }
 \details{
-One cohort enters at every occasion, so once the full sample is in the
-field the cohorts alive span every stage of the life and the sample at occasion \eqn{t} is
+One cohort enters at every period, so once the full sample is in the
+field the cohorts alive span every stage of the life and the sample at period \eqn{t} is
 \eqn{\sum_s w_s}, writing \eqn{w} for the rotation. Units in sample at
 both \eqn{t} and \eqn{t + m} are those whose cohort is in sample at
 stages \eqn{s} and \eqn{s + m}, so
@@ -56,61 +64,64 @@ stages \eqn{s} and \eqn{s + m}, so
       shared(m) = sum_(s = 1)^(L - m) min(w_s, w_(s + m)),
       and overlap(m) = shared(m) / sum_s w_s.}
 
-The \code{min} is the count when the smaller take at the two occasions is a
+The \code{min} is the count when the smaller take at the two periods is a
 subset of the larger, which is what attrition and planned subsampling both
 give, including a design that subsamples an interim wave and returns to
 the whole cohort afterward. Nesting is an assumption about the design and
-is not identifiable from the takes. Where the two occasions measure
+is not identifiable from the takes. Where the two periods measure
 partly disjoint subsamples of the cohort, \code{min} is the largest overlap
 the takes admit rather than the overlap the design has.
 
 These are the overlaps of the design with the full sample in the field,
 which a rotation reaches once every stage of the life is represented at
-one occasion. Which
-occasion that is depends on how the design is launched, and the overlaps
-themselves do not: \code{shared(m)} sums over stages, and entry dates do not
-enter it. A design that recruits one cohort an occasion reaches the full
-sample at the occasion that spans the life, the overlaps before it being
-those of a design no cohort has yet aged out of. A design whose first
-occasion contains launch components for every possible remaining life
-length has the full sample from the first occasion, and these figures
+one period. Which period that is depends on how the design is started,
+and the overlaps themselves do not: \code{shared(m)} sums over stages, and
+entry dates do not enter it. A design that recruits one cohort a period
+reaches the full sample at the period that spans the life, the overlaps
+before it being those of a design no cohort has yet aged out of. A design
+whose first period selects a start-up cohort for every possible remaining
+life length has the full sample from the first period, and these figures
 hold throughout. For an unbroken equal-take life, those are equal panels
-planned for lives from the full life down to one occasion, all at their
+planned for lives from the full life down to one period, all at their
 first interview.
 
 Covering every stage is the exact requirement, and for a life with a gap
 it is more than one cohort per remaining length. Under \code{"1-1-0-0-1-1"} the
 stages a full sample covers include two that are out of sample, so
 the cohorts starting there are selected but not interviewed until they
-reach their first in-sample stage. Splitting the first occasion's
+reach their first in-sample stage. Splitting the first period's
 interviewed sample alone puts six cohorts in sample where the design holds
 four, and gives a consecutive overlap of 0.83 against the rotation's 0.50.
-\code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}} draws either launch and marks the first
-occasion with the full sample.
+\code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}} draws either start and marks the first
+period with the full sample.
 
 \strong{The overlap has one direction here, and that is a property of the
 full sample rather than a simplification.} Elsewhere in the package
-\code{overlap} is \code{n12 / n1} and is not symmetric when the occasions differ in
-size. Under a stationary rotation every occasion holds the same mix of
-life stages, so \eqn{n_t} is the same at every occasion and the two
+\code{overlap} is \code{n12 / n1} and is not symmetric when the periods differ in
+size. Under a stationary rotation every period holds the same mix of
+life stages, so \eqn{n_t} is the same at every period and the two
 directions coincide. A design whose cohorts differ in size by entry date
-never holds the same mix at every occasion and is outside what this
+never holds the same mix at every period and is outside what this
 function describes.
 \subsection{Issued overlap, and the overlap a variance formula reads}{
 
-What a rotation fixes is which units are \strong{issued} at both occasions.
+What a rotation fixes is which units are \strong{issued} in both periods.
 The \code{overlap} argument of \code{\link[=n_change]{n_change()}}, \code{\link[=prec_change]{prec_change()}} and the power
-family is the fraction of the first occasion's \strong{responding} sample
-measured again, those functions netting each occasion down by \code{resp_rate}
+family is the fraction of the first period's \strong{responding} sample
+measured again, those functions netting each period down by \code{resp_rate}
 before the covariance forms. The two are the same number at
 \code{resp_rate = 1}, and this function's result can be passed straight
-through there.
+through there. Those functions call the two times compared occasions,
+the textbook word for any time a survey is taken, whatever its level
+(Cochran, 1977, sections 12.10 to 12.12). For an overlap read from a
+rotation, an occasion is a period of that rotation and the lag counts
+periods.
 
 Below full response they are not, and converting one into the other needs
-an assumption about how response persists across occasions, which neither
-function makes. Under response independent between occasions at rate
+an assumption about how response persists across periods, which neither
+function makes. Under response independent between periods at rate
 \eqn{r}, an issued overlap \eqn{f} leaves a responding overlap of about
-\eqn{fr}: a shared unit responds at both occasions with probability
+\eqn{fr}: a shared unit responds in both periods with probability
 \eqn{r^2}, against the \eqn{r} of issued units responding at the first. A
 panel whose wave-1 respondents are much likelier to respond again sits
 above that, reaching \eqn{f} itself when response persists perfectly.
@@ -118,12 +129,34 @@ Pass the figure you expect among respondents, and say which assumption
 produced it.
 }
 
+\subsection{Respondent overlap from a panel plan}{
+
+A rotating \code{\link[=n_panel]{n_panel()}} plan states the second assumption, loss that is
+permanent: a unit that stops responding does not return. Then a unit
+responding at the later of two stages of its life responded at the
+earlier one, and with \eqn{q_s} the probability of still responding at
+stage \eqn{s} (zero out of sample),
+
+\deqn{\mathrm{overlap}(m) = \sum_{s:\, w_s > 0,\, w_{s + m} > 0}
+      q_{s + m} \Big/ \sum_s q_s.}{
+      overlap(m) = sum(q_(s + m), over s with w_s > 0 and w_(s + m) > 0)
+      / sum_s q_s.}
+
+Recruitment response and eligibility multiply every \eqn{q_s} and
+cancel, so at retention 1 this is the issued overlap whatever \code{resp_rate}
+is. Retention below 1 lowers it, and more at long lags. The result can be
+passed as the \code{overlap} of \code{\link[=n_pooled]{n_pooled()}} and \code{\link[=prec_pooled]{prec_pooled()}} at any
+\code{resp_rate}, and one lag of it to \code{\link[=n_change]{n_change()}} and \code{\link[=prec_change]{prec_change()}}. It
+describes equal cohorts at equilibrium and does not model response that
+recovers after a loss, nor units joining a sampled dwelling.
+}
+
 \subsection{Visits per unit in a window}{
 
-A window of \eqn{W} consecutive occasions holds \eqn{W \sum_s w_s}
+A window of \eqn{W} consecutive periods holds \eqn{W \sum_s w_s}
 interviews with the full sample in the field. The units behind them are
 fewer, since a
-unit in sample at several occasions of the window is counted once. A
+unit in sample at several periods of the window is counted once. A
 cohort sees a run of at most \eqn{W} consecutive stages of its life
 inside the window, and with its units nested across stages, as for the
 overlap, it contributes the largest take in that run. Summing over the
@@ -135,20 +168,20 @@ cohorts the window touches gives the distinct units, and
       in [1, L]),}
 
 with \eqn{k} running over the \eqn{L + W - 1} cohorts whose life meets
-the window. Under \code{"2-2-2"} on quarterly occasions, a year holds 16
+the window. Under \code{"2-2-2"} on quarterly periods, a year holds 16
 interviews of 9 distinct panels, so 16/9 = 1.78.
 
 The figure is a property of the rotation. Some labor force survey
 methodologies use it to scale the cluster size when a yearly estimate
 pools quarterly interviews, which folds the correlation between a unit's
 repeated interviews into the intraclass correlation. \code{\link[=prec_pooled]{prec_pooled()}}
-treats the average over occasions with that correlation stated
+treats the average over periods with that correlation stated
 separately, as \code{overlap_cor}.
 }
 
 \subsection{What it does not give you}{
 
-The correlation between occasions. \code{overlap} is a property of the
+The correlation between periods. \code{overlap} is a property of the
 rotation and is fixed once the design is declared, whereas \code{overlap_cor}
 is a
 property of the variable being measured and has to come from a previous
@@ -174,12 +207,22 @@ n_change(p = c(0.30, 0.36), moe = 0.02,
 n_change(p = c(0.30, 0.36), moe = 0.02,
          overlap = cps[12], overlap_cor = 0.5)
 
-# Under response independent between occasions at 80 percent, the overlap
+# Under response independent between periods at 80 percent, the overlap
 # among respondents is the issued one scaled by the response rate
 n_change(p = c(0.30, 0.36), moe = 0.02, resp_rate = 0.8,
          overlap = cps[1] * 0.8, overlap_cor = 0.5)
 
-# One flag per occasion, the other notation in use: in for two, out for
+# Under permanent loss, the panel plan gives it: recruitment response
+# cancels and retention lowers the overlap, more at the annual lag
+plan <- n_panel(n_prop(p = 0.3, moe = 0.02), resp_rate = 0.8,
+                retention = c(0.97, 0.97, 0.97, 0.85, 0.97, 0.97, 0.97),
+                design = "rotating", rotation = "4-8-4")
+resp <- design_overlap(plan)
+c(resp[1], resp[12])
+n_change(p = c(0.30, 0.36), moe = 0.02, resp_rate = 0.8,
+         overlap = resp[1], overlap_cor = 0.5)
+
+# One flag per period, the other notation in use: in for two, out for
 # two, in for two. Change is estimable at lags 1, 3, 4 and 5 but not 2
 design_overlap("1-1-0-0-1-1")
 
@@ -190,7 +233,7 @@ identical(as.double(design_overlap("2-2-2")),
 # An explicit take vector, halving the take at later waves
 design_overlap(c(1, 1, 0.5, 0.5))
 
-# Interviews per unit over a year of quarterly occasions
+# Interviews per unit over a year of quarterly periods
 lfs <- design_overlap("2-2-2", window = 4)
 lfs$visits
 
@@ -206,18 +249,23 @@ plot(ov$rotation)
 
 }
 \references{
+Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley. Sections
+12.10 to 12.12, sampling on successive occasions.
+
 U.S. Census Bureau and U.S. Bureau of Labor Statistics (2019). \emph{Current
 Population Survey: Design and Methodology}. Technical Paper 77. The 4-8-4
 rotation and its 75\% and 50\% overlaps.
 
 Lynn, P. (2012). \emph{Longitudinal Survey Methods for the Household Finances
 and Consumption Survey}. Report prepared for the European Central Bank.
-The one-flag-per-occasion notation, and the 1-1-0-0-1-1 design whose lag
+The one-flag-per-period notation, and the 1-1-0-0-1-1 design whose lag
 profile the examples reproduce.
 }
 \seealso{
 \code{\link[=design_rotation]{design_rotation()}} for the pattern this reads,
-\code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for the rotation chart, \code{\link[=n_change]{n_change()}} and
+\code{\link[=plot.svyplan_overlap]{plot.svyplan_overlap()}} for the bar chart by lag,
+\code{\link[=plot.svyplan_rotation]{plot.svyplan_rotation()}} for the rotation chart, \code{\link[=n_panel]{n_panel()}} for the
+plan a respondent overlap comes from, \code{\link[=n_change]{n_change()}} and
 \code{\link[=prec_change]{prec_change()}}, which take the result as their \code{overlap}, and
 \code{\link[=design_effect]{design_effect()}} and \code{\link[=design_df]{design_df()}} for the other quantities a planned
 design determines.

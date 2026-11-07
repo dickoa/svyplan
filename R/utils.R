@@ -2288,13 +2288,42 @@ check_df <- function(df, name = "df") {
 #' \eqn{p(1-p)}. Without it a finite `N` would make one occasion of
 #' `prec_change(p = )` disagree with `prec_prop()` on the same design. The
 #' mean scale needs no adjustment: `var` is already defined on \eqn{N-1}.
+#'
+#' A ratio of totals is the third scale, through `.ratio_occasions()`. Its
+#' variances and change come back divided by the ratio's scale, which is
+#' returned as `scale` (1 on the other two) for the caller to multiply the
+#' standard error and margin back. `var_stored` and `change_stored` are the
+#' unscaled values a result records.
 #' @keywords internal
 #' @noRd
-.change_inputs <- function(var, sd, p, change, N_pair) {
+.change_inputs <- function(var, sd, p, change, N_pair, r = NULL,
+                           cv_num = NULL, cv_den = NULL,
+                           component_cor = NULL) {
   has_var <- !is.null(var) || !is.null(sd)
   has_p <- !is.null(p)
-  if (has_var + has_p != 1L) {
-    stop("specify exactly one of 'var' (or 'sd') or 'p'", call. = FALSE)
+  has_r <- !is.null(r)
+  .check_ratio_trio_needs_r(has_r, cv_num, cv_den, component_cor)
+  if (has_var + has_p + has_r != 1L) {
+    stop("specify exactly one of 'var' (or 'sd'), 'p', or 'r'", call. = FALSE)
+  }
+  if (has_r) {
+    if (!is.null(change)) {
+      stop(
+        "'change' is r[2] - r[1] for a ratio; do not supply it",
+        call. = FALSE
+      )
+    }
+    rat <- .ratio_occasions(r, cv_num, cv_den, component_cor, 2L,
+                            sizing = FALSE)
+    return(list(
+      var_pair = rat$var,
+      change = r[2L] / rat$scale - r[1L] / rat$scale,
+      p = NULL,
+      ratio = rat,
+      scale = rat$scale,
+      var_stored = r^2 * rat$unit_relvar,
+      change_stored = r[2L] - r[1L]
+    ))
   }
   if (has_p) {
     if (!is.null(change)) {
@@ -2308,15 +2337,168 @@ check_df <- function(df, name = "df") {
     }
     check_proportion(p[1L], "p[1]")
     check_proportion(p[2L], "p[2]")
+    var_pair <- .bernoulli_var(p, N_pair)
     return(list(
-      var_pair = .bernoulli_var(p, N_pair),
+      var_pair = var_pair,
       change = p[2L] - p[1L],
-      p = p
+      p = p,
+      scale = 1,
+      var_stored = var_pair,
+      change_stored = p[2L] - p[1L]
     ))
   }
   var <- .resolve_var(var, sd)
   if (!is.null(change)) check_scalar(change, "change", positive = FALSE)
-  list(var_pair = .as_pair(var, "var"), change = change, p = NULL)
+  var_pair <- .as_pair(var, "var")
+  list(var_pair = var_pair, change = change, p = NULL, scale = 1,
+       var_stored = var_pair, change_stored = change)
+}
+
+#' The moments of a ratio of totals on each occasion of a repeated survey
+#'
+#' A ratio enters the change and pooled engines through its linearized
+#' variable \eqn{z = (y - Rx)/\bar X}{z = (y - R x) / Xbar}, whose unit
+#' variance is \eqn{R^2 L} with \eqn{L} the unit relative variance of the
+#' scalar pair. The engines run on \eqn{z} divided by
+#' \eqn{s = \max_t |r_t|}{s = max |r_t|}, so the variance handed over is
+#' \eqn{(r_t/s)^2 L_t}{(r_t / s)^2 L_t}, and the caller multiplies the
+#' standard error and margin back by \eqn{s}. Forming \eqn{r^2 L} itself
+#' overflows for a large finite ratio and underflows for a small one, the
+#' trap `.prec_engine_ratio()` avoids for one occasion.
+#'
+#' `k` is the number of occasions the ratio is stated for: two for a change,
+#' whose ratios may differ, and one for a pooled average, whose level is
+#' taken as the same on every occasion. The moments take one value or one
+#' per occasion. Each occasion's unit relative variance may be zero for a
+#' change, since the other can carry the variance, and `sizing` is passed
+#' through for a pooled average, where one occasion is all of them.
+#' @keywords internal
+#' @noRd
+.ratio_occasions <- function(r, cv_num, cv_den, component_cor, k, sizing) {
+  if (is.null(cv_num) || is.null(cv_den) || is.null(component_cor)) {
+    stop(
+      "a ratio needs 'r', 'cv_num', 'cv_den', and 'component_cor'",
+      call. = FALSE
+    )
+  }
+  if (!is.numeric(r) || length(r) != k) {
+    stop(
+      if (k == 2L) {
+        "'r' must be two ratios, one per occasion"
+      } else {
+        "'r' must be a single ratio, the level on every occasion"
+      },
+      call. = FALSE
+    )
+  }
+  spread <- function(x, name) {
+    if (!is.numeric(x) || !length(x) %in% unique(c(1L, k))) {
+      stop(
+        sprintf("'%s' takes %s", name, if (k == 2L) {
+          "one value, or one per occasion"
+        } else {
+          "one value"
+        }),
+        call. = FALSE
+      )
+    }
+    rep_len(x, k)
+  }
+  num <- spread(cv_num, "cv_num")
+  den <- spread(cv_den, "cv_den")
+  rho <- spread(component_cor, "component_cor")
+  relvar <- numeric(k)
+  for (t in seq_len(k)) {
+    .check_ratio_moments(r[t], num[t], den[t], rho[t])
+    relvar[t] <- .ratio_unit_relvar(r[t], num[t], den[t], rho[t])
+    # Once per distinct set of moments, so moments shared by both occasions
+    # warn once rather than twice.
+    if (t == 1L || !identical(c(num[t], den[t], rho[t], sign(r[t])),
+                              c(num[1L], den[1L], rho[1L], sign(r[1L])))) {
+      .check_ratio_relvar(relvar[t], num[t], den[t], rho[t],
+                          sizing = sizing)
+    }
+  }
+  s <- max(abs(r))
+  list(
+    r = r,
+    cv_num = cv_num,
+    cv_den = cv_den,
+    component_cor = component_cor,
+    unit_relvar = relvar,
+    scale = s,
+    var = (r / s)^2 * relvar
+  )
+}
+
+#' Record a ratio's moments on a change or pooled result
+#'
+#' The moments as supplied, plus the unit relative variance of each
+#' occasion, which a reader would otherwise have to rederive from them.
+#' `var` stays the variance of the linearized variable, so the field means
+#' the same on every scale.
+#' @keywords internal
+#' @noRd
+.add_ratio_params <- function(params, ratio) {
+  if (is.null(ratio)) {
+    return(params)
+  }
+  params$r <- ratio$r
+  params$cv_num <- ratio$cv_num
+  params$cv_den <- ratio$cv_den
+  params$component_cor <- ratio$component_cor
+  params$unit_relvar <- ratio$unit_relvar
+  params
+}
+
+#' Refuse the ratio moments without the ratio they describe
+#'
+#' Without `r` the three would be ignored in favor of `var` or `p`, and a
+#' plan the caller meant for a ratio would silently be sized for something
+#' else.
+#' @keywords internal
+#' @noRd
+.check_ratio_trio_needs_r <- function(has_r, cv_num, cv_den, component_cor) {
+  if (!has_r &&
+        !(is.null(cv_num) && is.null(cv_den) && is.null(component_cor))) {
+    stop(
+      "'cv_num', 'cv_den' and 'component_cor' describe a ratio and need 'r'",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+#' The arguments that rebuild a change or pooled result on its own scale
+#'
+#' One of three: the ratio's moments, the proportions, or the variance with
+#' its change or level. Read with `[[` throughout, since `$r` would
+#' partial-match `resp_rate` on a result that has no ratio.
+#' @keywords internal
+#' @noRd
+.repeated_scale_args <- function(par, level) {
+  if (!is.null(par[["r"]])) {
+    return(list(
+      r = par[["r"]],
+      cv_num = par[["cv_num"]],
+      cv_den = par[["cv_den"]],
+      component_cor = par[["component_cor"]]
+    ))
+  }
+  if (!is.null(par[["p"]])) {
+    return(list(p = par[["p"]]))
+  }
+  out <- list(var = par[["var"]])
+  out[[level]] <- par[[level]]
+  out
+}
+
+#' Is a change or pooled result on the variance scale, where its level or
+#' change is a free input rather than determined by `p` or `r`?
+#' @keywords internal
+#' @noRd
+.repeated_free_level <- function(par) {
+  is.null(par[["p"]]) && is.null(par[["r"]])
 }
 
 #' Refuse a between-occasion correlation two proportions cannot have
@@ -2499,23 +2681,27 @@ check_df <- function(df, name = "df") {
 #' Resolve the overlap at every lag a pooled estimate spans
 #'
 #' A bare number is respondent overlap, the reading every other entry point
-#' in the package uses. A `svyplan_overlap` is issued overlap, which is a
-#' different quantity below full response, so it is accepted only where the
-#' two coincide and refused with the conversion named otherwise. Beyond a
-#' schedule's life nothing is shared, which is why an object shorter than
-#' the horizon is padded with zeros rather than rejected.
+#' in the package uses. A `svyplan_overlap` from a rotation is issued
+#' overlap, which is a different quantity below full response, so it is
+#' accepted only where the two coincide and refused with the conversion named
+#' otherwise. One from a panel plan is already respondent overlap. The
+#' profile is recomputed from the rotation it carries at every lag the
+#' horizon spans, since `max_lag` may have cut it short of the life, and
+#' beyond the life nothing is shared.
 #' @keywords internal
 #' @noRd
 .resolve_lag_overlap <- function(overlap, occasions, resp_rate,
                                  basis = NULL) {
   max_lag <- occasions - 1L
   if (inherits(overlap, "svyplan_overlap")) {
-    .check_overlap_basis("issued", resp_rate)
-    ov <- as.numeric(overlap)
-    return(list(
-      overlap = c(ov, rep(0, max(0L, max_lag - length(ov))))[seq_len(max_lag)],
-      basis = "issued"
-    ))
+    ov_basis <- .overlap_basis(overlap)
+    .check_overlap_basis(ov_basis, resp_rate)
+    prof <- .overlap_profile(
+      as.double(.overlap_rotation(overlap)),
+      seq_len(max_lag),
+      attr(overlap, "response", exact = TRUE)
+    )
+    return(list(overlap = prof$shared / prof$in_sample, basis = ov_basis))
   }
   if (
     !is.numeric(overlap) || anyNA(overlap) || any(overlap < 0) ||
@@ -2554,7 +2740,7 @@ check_df <- function(df, name = "df") {
 .check_overlap_basis <- function(basis, resp_rate) {
   if (identical(basis, "issued") && !isTRUE(all.equal(resp_rate, 1))) {
     stop(
-      "design_overlap() reports the overlap between issued samples, and this variance is formed on respondents; the two coincide only at resp_rate = 1. Supply the respondent overlap you expect, which under independent response is resp_rate times the issued figure",
+      "design_overlap() of a rotation reports the overlap between issued samples, and this variance is formed on respondents; the two coincide only at resp_rate = 1. Under loss that is permanent, design_overlap() of the rotating n_panel() plan gives the respondent overlap, and recruitment response cancels from it. Under response independent between occasions it is about resp_rate times the issued figure. Supply the one whose assumption holds",
       call. = FALSE
     )
   }
@@ -2790,13 +2976,36 @@ check_df <- function(df, name = "df") {
 #' The proportion scale carries the same \eqn{N/(N-1)} adjustment
 #' `.change_inputs()` applies and for the same reason: the variance the
 #' engine wants is \eqn{S^2} on \eqn{N-1} degrees of freedom.
+#'
+#' A ratio of totals is the third scale, at one level for every occasion as
+#' the other two assume. As in `.change_inputs()`, its variance and level
+#' come back divided by the ratio's scale, returned as `scale`.
 #' @keywords internal
 #' @noRd
-.pooled_inputs <- function(var, sd, p, mu, N) {
+.pooled_inputs <- function(var, sd, p, mu, N, r = NULL, cv_num = NULL,
+                           cv_den = NULL, component_cor = NULL) {
   has_var <- !is.null(var) || !is.null(sd)
   has_p <- !is.null(p)
-  if (has_var + has_p != 1L) {
-    stop("specify exactly one of 'var' (or 'sd') or 'p'", call. = FALSE)
+  has_r <- !is.null(r)
+  .check_ratio_trio_needs_r(has_r, cv_num, cv_den, component_cor)
+  if (has_var + has_p + has_r != 1L) {
+    stop("specify exactly one of 'var' (or 'sd'), 'p', or 'r'", call. = FALSE)
+  }
+  if (has_r) {
+    if (!is.null(mu)) {
+      stop("'mu' is 'r' for a ratio; do not supply it", call. = FALSE)
+    }
+    rat <- .ratio_occasions(r, cv_num, cv_den, component_cor, 1L,
+                            sizing = TRUE)
+    return(list(
+      var = rat$var,
+      mu = r / rat$scale,
+      p = NULL,
+      ratio = rat,
+      scale = rat$scale,
+      var_stored = r^2 * rat$unit_relvar,
+      mu_stored = r
+    ))
   }
   if (has_p) {
     if (!is.null(mu)) {
@@ -2807,12 +3016,15 @@ check_df <- function(df, name = "df") {
     }
     check_proportion(p, "p")
     adj <- if (is.infinite(N)) 1 else N / (N - 1)
-    return(list(var = p * (1 - p) * adj, mu = p, p = p))
+    v <- p * (1 - p) * adj
+    return(list(var = v, mu = p, p = p, scale = 1, var_stored = v,
+                mu_stored = p))
   }
   var <- .resolve_var(var, sd)
   check_scalar(var, "var")
   if (!is.null(mu)) check_scalar(mu, "mu", positive = FALSE)
-  list(var = var, mu = mu, p = NULL)
+  list(var = var, mu = mu, p = NULL, scale = 1, var_stored = var,
+       mu_stored = mu)
 }
 
 #' Null-coalescing operator

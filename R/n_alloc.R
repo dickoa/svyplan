@@ -2566,6 +2566,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
         alpha = p$alpha,
         deff = p$deff,
         resp_rate = p$resp_rate,
+        eligibility_rate = p[["eligibility_rate"]] %||% 1,
         df = p$df,
         unit_cost = p$unit_cost,
         min_n_stratum = p$min_n_stratum,
