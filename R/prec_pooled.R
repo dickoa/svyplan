@@ -39,9 +39,10 @@
 #' @param deff Design effect multiplier (> 0), applied to the variance of
 #'   the pooled estimate rather than to any one occasion. See Details.
 #' @param resp_rate Expected response rate among eligible units, in (0, 1\].
-#'   Default 1 (no adjustment). It applies to every occasion and nets each size
-#'   down to `n * resp_rate` before the covariance is formed. It is a single
-#'   round's response, not attrition across a panel. See the nonresponse
+#'   Default 1 (no adjustment). It applies to every occasion and with
+#'   `eligibility_rate` nets each size down to
+#'   `n * resp_rate * eligibility_rate` before the covariance is formed. It is a
+#'   single round's response, not attrition across a panel. See the nonresponse
 #'   section of [svyplan-package] for what the rate counts.
 #' @param eligibility_rate Share of issued units in scope, in (0, 1\].
 #'   Default 1. It applies to every occasion, and with a finite `N` the
@@ -76,29 +77,28 @@
 #'   [design_df()]. It switches the interval quantile from normal to t.
 #'   `NULL` (default) applies no adjustment.
 #' @param plan Optional [svyplan()] object providing design defaults.
-#' @param .overlap_basis Internal. Records whether a stored `overlap`
-#'   profile was resolved from a [design_overlap()] object (`"issued"`) or
-#'   supplied as respondent overlap (`"respondent"`), so that a round trip
-#'   or a grid meets the same refusal the first call would have. Set from
-#'   the result being re-read, and there is no reason to pass it by hand.
 #'
 #' @return A `svyplan_prec` object with `type = "pooled"`:
 #' \describe{
 #'   \item{`se`}{Standard error of the pooled estimate, computed on the net
-#'     sizes `n * resp_rate`.}
+#'     sizes `n * resp_rate * eligibility_rate`.}
 #'   \item{`moe`}{Margin of error, `q * se`, with `q` defined in Details.}
 #'   \item{`cv`}{Standard error relative to the level, `se / abs(mu)`. `NA`
-#'     when `mu` is neither supplied nor determined by `p`.}
+#'     when `mu` is neither supplied nor determined by `p`, or is zero.}
+#'   \item{`rmoe`}{Margin of error relative to the level, `moe / abs(mu)`,
+#'     `NA` exactly when `cv` is.}
 #'   \item{`params`}{The validated inputs. Dispersion is always stored as
 #'     `var`, and `overlap` and `overlap_cor` as resolved vectors of one
 #'     entry per lag, whatever form they were supplied in, alongside the
-#'     `overlap_basis` they were resolved under. A ratio keeps `r`, its
+#'     `overlap_basis` they were resolved under and, when `overlap` was a
+#'     [design_overlap()] object, that object as `overlap_rotation`. A
+#'     ratio keeps `r`, its
 #'     three moments and its `unit_relvar`, `var` then being the variance of
 #'     its linearized variable.}
 #' }
 #'
 #' Nothing here is rounded, so passing a continuous `n` back from
-#' [n_pooled()] reproduces its `se`, `moe` and `cv` exactly.
+#' [n_pooled()] reproduces its `se`, `moe`, `cv` and `rmoe` exactly.
 #' The print shows `n` per occasion as evaluated, and for a fit it says
 #' that `n` is the continuous optimum. For a fit `res`, the whole sample
 #' to field on each occasion is `ceiling(res$n)`, and `prec_pooled(res, n = ceiling(res$n))`
@@ -129,9 +129,7 @@
 #' \deqn{V = \frac{1}{T^2}\Big[\,T\,Var(\bar y_t)
 #'       + 2\sum_{m=1}^{T-1}(T-m)\,Cov_m\Big].}{V = (1/T^2) [ T Var(ybar_t) + 2 sum_m (T - m) Cov_m ].}
 #'
-#' A lag whose overlap is zero contributes exactly zero, which is the rule
-#' [prec_change()] applies at `overlap = 0` read lag by lag. Two boundaries
-#' fix the whole. A fresh sample each occasion pools to
+#' Two boundaries fix the whole. A fresh sample each occasion pools to
 #' \eqn{Var(\bar y_t)/T}{Var(ybar_t)/T}, independent averaging, and a full
 #' panel measured with correlation 1 pools to
 #' \eqn{Var(\bar y_t)}{Var(ybar_t)}, the same units every time and averaging
@@ -139,6 +137,32 @@
 #'
 #' `deff` multiplies the assembled variance. It is the design effect of the
 #' pooled estimate, which is not in general any one occasion's.
+#'
+#' ## A rotation against a bare overlap
+#'
+#' A lag that shares no unit enters according to the type of `overlap`,
+#' never its values. A bare number describes overlap only, and a zero lag
+#' contributes exactly zero, population term included, as for independent
+#' draws. This is the rule [prec_change()] applies at `overlap = 0`, and
+#' under it a fresh sample each occasion pools to
+#' \eqn{Var(\bar y_t)/T}{Var(ybar_t)/T}. A [design_overlap()] object
+#' describes a rotation, whose cohorts are drawn without replacement from
+#' each other. Under `overlap_draw = "fixed"` its lags that share no unit
+#' keep the population term \eqn{-\rho_m S^2/N}{-rho_m S^2/N} of two
+#' disjoint samples, whatever the horizon, which covers the gap of a
+#' rotation such as `"2-2-2"`, lags past a cohort's life, and a horizon so
+#' short that no lag shares a unit. No unit is then taken twice within the
+#' horizon.
+#'
+#' The two readings differ on a small frame. With `N = 8`, `n = 4`, three
+#' occasions and `overlap_cor = 1`, the object `design_overlap("2-2-2")`
+#' gives a pooled variance of 1/12, the value an enumeration of the rotation
+#' gives under this sampling and covariance model, while the bare
+#' `c(0.5, 0)` it resolves to gives 0.25. `as.numeric()` on the object
+#' discards the rotation, and the result is then the bare reading. The
+#' object is stored as `params$overlap_rotation` and passed back by
+#' [n_pooled()], [prec_pooled()] and [predict()] unless `overlap` is
+#' replaced, in which case the replacement's type decides.
 #'
 #' ## A ratio of totals
 #'
@@ -215,7 +239,8 @@
 #' cannot require more distinct units than the frame contains. This bound
 #' applies even at zero outcome correlation, and not at all under
 #' `overlap_draw = "independent"`, where each part fits the frame on its
-#' own. Zero-overlap lags retain the independent-samples convention. These
+#' own. A lag of a rotation object that shares no unit is checked too, its
+#' two disjoint samples needing `2 * n * resp_rate <= N`. These
 #' pairwise bounds and the covariance check below are necessary conditions,
 #' not a proof that an arbitrary overlap vector can be realized by a
 #' complete multi-occasion schedule.
@@ -334,8 +359,7 @@ prec_pooled.default <- function(
   cor_decay = NULL,
   overlap_draw = c("fixed", "independent"),
   df = NULL,
-  plan = NULL,
-  .overlap_basis = NULL
+  plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, prec_pooled.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_pooled.default, c(.plan, list(...))))
@@ -353,7 +377,7 @@ prec_pooled.default <- function(
   check_resp_rate(resp_rate)
   rate <- resp_rate * eligibility_rate
   if (!is.null(df)) check_df(df)
-  ov <- .resolve_lag_overlap(overlap, occasions, resp_rate, .overlap_basis)
+  ov <- .resolve_lag_overlap(overlap, occasions, resp_rate)
   rho <- .resolve_lag_cor(overlap_cor, cor_decay, occasions - 1L)
   overlap_draw <- match.arg(overlap_draw)
   .check_pooled_draw(overlap_draw, ov$overlap, occasions)
@@ -361,7 +385,7 @@ prec_pooled.default <- function(
 
   prec <- .prec_engine_pooled(
     n, inputs$var, inputs$mu, N_elig, deff, rate, occasions, ov$overlap, rho,
-    overlap_draw, alpha, df
+    overlap_draw, alpha, df, rotation = ov$rotation
   )
 
   params <- list(
@@ -378,6 +402,8 @@ prec_pooled.default <- function(
     overlap_draw = overlap_draw,
     df = df
   )
+  # The object itself, not a flag: a new horizon re-derives its lags.
+  params$overlap_rotation <- ov$rotation
   if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
   if (!is.null(inputs$p)) params$p <- inputs$p
   params <- .add_ratio_params(params, inputs$ratio)
@@ -408,12 +434,10 @@ prec_pooled.svyplan_n <- function(var, ...) {
     deff = par$deff,
     resp_rate = par$resp_rate %||% 1,
     eligibility_rate = par[["eligibility_rate"]] %||% 1,
-    overlap = par$overlap,
     overlap_cor = par$overlap_cor,
     overlap_draw = par$overlap_draw,
-    df = par$df,
-    .overlap_basis = par$overlap_basis
-  ))
+    df = par$df
+  ), .stored_overlap_args(par, "overlap" %in% names(list(...))))
   out <- do.call(prec_pooled.default, .roundtrip_args(args, list(...), prec_pooled.default))
   .mark_continuous_optimum(out, list(...))
 }

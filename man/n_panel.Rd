@@ -71,7 +71,8 @@ recruitment above is an expected-value calculation, which does not
 guarantee that the target will be reached. The shortfall probability
 depends on the response distribution and integer rounding. Supplying a level reports, next
 to it, the recruitment for which the required respondents arrive with
-at least that probability. See Details.}
+at least that probability. Not available when the target has
+\code{eligible_per_unit} other than 1. See Details.}
 
 \item{start}{How a rotating design's cohorts are brought in, or \code{NULL}
 (default). \code{"gradual"} recruits one cohort a period, so the design
@@ -111,11 +112,14 @@ and not yet past their last interview, those out of sample in a gap
 included, and the rotation they follow. \code{n_held} equals
 \code{n_in_sample} for a life without a break, and it is what a finite
 population has to supply.}
-\item{\code{n_target}}{The responding sample the target requires.}
+\item{\code{n_target}}{The responding sample the target requires. Counts
+sampled units, as \code{n_resp} and the per-wave \code{n_resp} do. A target with
+\code{eligible_per_unit} holds that many eligible units per responding
+unit on average, and its precision is computed on that product.}
 \item{\code{n_resp}}{The responding sample the design delivers where the
 target is stated: at \code{target_wave} for a fixed panel, pooled across
-the live cohorts for a rotating one. It is what \code{se}, \code{moe} and \code{cv}
-are computed on.}
+the live cohorts for a rotating one. It is what \code{se}, \code{moe}, \code{cv} and
+\code{rmoe} are computed on.}
 \item{\code{n_assured}, \code{assured_feasible}}{Recruitment meeting the target
 with probability at least \code{assurance}, when a level was given, and
 whether a finite population can supply it. See Details.}
@@ -252,6 +256,13 @@ binomials at \strong{different} cumulative probabilities, one per live cohort,
 so the distribution is Poisson-binomial rather than binomial. It is
 assembled exactly, by convolving one distribution per cohort, rather than
 approximated by a binomial on their mean rate.
+
+The level counts responding sampled units. It is refused for a target
+with \code{eligible_per_unit} other than 1, since a mean yield per unit does
+not give the distribution of eligible respondents. When each sampled unit
+holds one eligible unit or none, independently, size the target in
+eligible units and pass that share as \code{eligibility_rate}, which the
+binomial carries.
 
 The level is marginal. For a rotating design it holds at one period,
 and consecutive periods share cohorts, so the chance that every

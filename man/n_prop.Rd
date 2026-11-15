@@ -110,13 +110,13 @@ alone. See Details.}
 \value{
 A \code{svyplan_n} object with \code{type = "proportion"}:
 \describe{
-\item{\code{n}}{Required sample size, continuous and gross. It already
-carries \code{deff} and the \code{1 / resp_rate} inflation, so it counts the
-units to release, not the completed interviews. \verb{$n} and
-\code{as.double()} keep the unrounded value, which is what makes the
-round trip through \code{\link[=prec_prop]{prec_prop()}} exact, whereas \code{print()} and
-\code{as.integer()} round it up to the whole units you would field.
-Take the field figure from \code{as.integer()} rather than from \verb{$n}.}
+\item{\code{n}}{Required sample size, continuous and gross. It already carries
+\code{deff} and the \code{1 / (resp_rate * eligibility_rate * eligible_per_unit)}
+inflation, so it counts the units to release, not the completed
+interviews. \verb{$n} and \code{as.double()} keep the unrounded value, which is
+what makes the round trip through \code{\link[=prec_prop]{prec_prop()}} exact, whereas \code{print()}
+and \code{as.integer()} round it up to the whole units you would field. Take
+the field figure from \code{as.integer()} rather than from \verb{$n}.}
 \item{\code{se}, \code{moe}, \code{cv}, \code{rmoe}}{Precision the design achieves at that \code{n},
 the same values \code{\link[=prec_prop]{prec_prop()}} reports for the same inputs. \code{se} is
 the sampling standard error and \code{cv} is \code{se / p}, so both are the

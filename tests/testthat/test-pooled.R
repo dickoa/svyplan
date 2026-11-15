@@ -710,3 +710,241 @@ test_that("mean visits is not the variance multiplier of an average", {
   v0 <- prec_pooled(var = 1, n = 100, occasions = 4, overlap = 0)$se^2
   expect_equal(v1 / v0, 15 / 8)
 })
+
+## A rotation object's lags that share no unit keep the population term
+
+# Oracle: exact enumeration under SRSWOR of distinct cohort slots, with the
+# outcome unchanged over time (correlation 1). Each assignment of the
+# population values to the slots is equally likely.
+enumerate_rotation_var <- function(y, slots) {
+  perms <- function(v) {
+    if (length(v) <= 1L) return(list(v))
+    out <- list()
+    for (i in seq_along(v)) {
+      for (p in perms(v[-i])) out[[length(out) + 1L]] <- c(v[i], p)
+    }
+    out
+  }
+  est <- vapply(perms(y), function(a) {
+    mean(vapply(slots, function(s) mean(a[s]), numeric(1)))
+  }, numeric(1))
+  mean((est - mean(est))^2)
+}
+
+test_that("a gapped rotation object matches exact enumeration", {
+  # "2-2-2" over three occasions on N = 8 uses 8 distinct slots.
+  slots <- list(c(1, 2, 5, 6), c(2, 3, 6, 7), c(3, 4, 7, 8))
+  exact <- enumerate_rotation_var(1:8, slots)
+  expect_equal(exact, 1 / 12, tolerance = 1e-12)
+  ov <- design_overlap("2-2-2", max_lag = 2)
+  expect_equal(as.double(ov), c(0.5, 0))
+  x <- prec_pooled(var = var(1:8), n = 4, N = 8, occasions = 3,
+                   overlap = ov, overlap_cor = 1)
+  expect_equal(x$se^2, exact, tolerance = 1e-12)
+  expect_s3_class(x$params$overlap_rotation, "svyplan_overlap")
+  # The bare profile it resolves to keeps the independent reading.
+  bare <- prec_pooled(var = var(1:8), n = 4, N = 8, occasions = 3,
+                      overlap = as.numeric(ov), overlap_cor = 1)
+  expect_equal(bare$se^2, 0.25, tolerance = 1e-12)
+  expect_null(bare$params$overlap_rotation)
+  expect_equal(n_pooled(x)$n, 4, tolerance = 1e-9)
+  expect_equal(
+    n_pooled(var = var(1:8), moe = x$moe, N = 8, occasions = 3,
+             overlap = ov, overlap_cor = 1)$n,
+    4, tolerance = 1e-9
+  )
+})
+
+test_that("a rotation with no shared unit in the horizon is still a rotation", {
+  # c(1, 0, 1) over two occasions: four distinct slots from six values, so
+  # the average of the two means is an SRS mean of four. Enumeration.
+  slots <- list(c(1, 2), c(3, 4))
+  exact <- enumerate_rotation_var(1:6, slots)
+  est <- utils::combn(1:6, 4, FUN = mean)
+  expect_equal(exact, mean((est - mean(est))^2), tolerance = 1e-12)
+  ov <- design_overlap(c(1, 0, 1), max_lag = 1)
+  expect_equal(as.double(ov), 0)
+  x <- prec_pooled(var = var(1:6), n = 2, N = 6, occasions = 2,
+                   overlap = ov, overlap_cor = 1)
+  expect_equal(x$se^2, exact, tolerance = 1e-12)
+  expect_equal(
+    prec_pooled(var = var(1:6), n = 2, N = 6, occasions = 2, overlap = 0,
+                overlap_cor = 1)$se^2,
+    2 * exact, tolerance = 1e-12
+  )
+})
+
+test_that("a pair's covariance does not depend on the horizon", {
+  # The shorter horizon's kernel is the leading principal submatrix of the
+  # longer one's, for a rotation object and for a bare profile alike.
+  kern <- function(occ, overlap) {
+    ov <- svyplan:::.resolve_lag_overlap(overlap, occ, 1)
+    svyplan:::.pooled_kernel(3.5, 2, 6, occ, ov$overlap,
+                             rep(1, occ - 1L), "fixed", ov$rotation)
+  }
+  rot <- design_overlap(c(1, 0, 1))
+  checked <- character(0)
+  for (case in list(list("rotation", rot, rot),
+                    list("bare", 0, c(0, 0.5)))) {
+    short <- kern(2, case[[2]])
+    long <- kern(3, case[[3]])
+    expect_equal(long[1:2, 1:2], short, tolerance = 1e-12)
+    checked <- c(checked, case[[1]])
+  }
+  expect_setequal(checked, c("rotation", "bare"))
+  expect_lt(kern(2, rot)[1, 2], 0)
+  expect_equal(kern(2, 0)[1, 2], 0)
+})
+
+test_that("an impossible disjoint pair is refused in an all-zero window", {
+  ov <- design_overlap(c(1, 0, 1), max_lag = 1)
+  # Two disjoint samples of 4 need 8 units. At correlation 0.3 the
+  # covariance stays valid, so the frame check is what refuses it.
+  expect_error(
+    prec_pooled(var = 3.5, n = 4, N = 6, occasions = 2, overlap = ov,
+                overlap_cor = 0.3),
+    "require 8 distinct units"
+  )
+  err <- tryCatch(
+    prec_pooled(var = 3.5, n = 4, N = 6, occasions = 2, overlap = ov,
+                overlap_cor = 1),
+    error = conditionMessage
+  )
+  expect_match(err, "not a valid covariance")
+  # The rotation interviews each cohort twice, which the window's profile
+  # alone would put at once.
+  expect_no_match(err, "each cohort 1 times")
+  # Four occasions of "2-2-2" at one unit per cohort take 9 units of 8.
+  expect_error(
+    prec_pooled(var = 6, n = 4, N = 8, occasions = 4,
+                overlap = design_overlap("2-2-2", max_lag = 3),
+                overlap_cor = 1),
+    "not a valid covariance"
+  )
+  # The bare number keeps the independent reading and is accepted.
+  expect_true(is.finite(prec_pooled(var = 3.5, n = 4, N = 6, occasions = 2,
+                                    overlap = 0, overlap_cor = 0.3)$se))
+})
+
+test_that("a rotation's zero lag carries a correlation the print reports", {
+  ov <- design_overlap("2-2-2", max_lag = 2)
+  # The lag-2 term alone: (3 * 0.75 - 2 * 0.8 * 6 / 8) / 9. Closed form.
+  x <- prec_pooled(var = 6, n = 4, N = 8, occasions = 3, overlap = ov,
+                   overlap_cor = c(0, 0.8))
+  expect_equal(x$se^2, (3 * 0.75 - 2 * 0.6) / 9, tolerance = 1e-12)
+  expect_no_match(paste(capture.output(print(x)), collapse = "\n"),
+                  "No between-occasion covariance")
+  bare <- prec_pooled(var = 6, n = 4, N = 8, occasions = 3,
+                      overlap = c(0.5, 0), overlap_cor = c(0, 0.8))
+  expect_equal(bare$se^2, 0.75 / 3, tolerance = 1e-12)
+})
+
+test_that("the documented inversion formula holds for a rotation and a bare overlap", {
+  # A and B of the n_pooled() help page, with c_m = 1{o_m > 0} for a bare
+  # overlap and c_m = 1 for a rotation object. Closed form.
+  doc_var <- function(var, n, N, o, rho, c_m) {
+    T <- length(o) + 1L
+    w <- 2 * (T - seq_along(o))
+    A <- var / T^2 * (T + sum(w * rho * o))
+    B <- -var / (N * T^2) * (T + sum(w * rho * c_m))
+    A / n + B
+  }
+  rot <- design_overlap("2-2-2")
+  expect_equal(doc_var(6, 4, 8, c(0.5, 0), c(1, 1), c(1, 1)), 1 / 12)
+  expect_equal(doc_var(6, 4, 8, c(0.5, 0), c(1, 1), c(1, 0)), 0.25)
+  expect_equal(prec_pooled(var = 6, n = 4, N = 8, occasions = 3,
+                           overlap = rot, overlap_cor = 1)$se^2,
+               1 / 12, tolerance = 1e-12)
+  expect_equal(prec_pooled(var = 6, n = 4, N = 8, occasions = 3,
+                           overlap = c(0.5, 0), overlap_cor = 1)$se^2,
+               0.25, tolerance = 1e-12)
+  se <- sqrt(doc_var(6, 3.5, 8, c(0.5, 0), c(0.7, 0.4), c(1, 1)))
+  expect_equal(n_pooled(var = 6, N = 8, occasions = 3, overlap = rot,
+                        overlap_cor = c(0.7, 0.4),
+                        moe = stats::qnorm(0.975) * se)$n,
+               3.5, tolerance = 1e-10)
+})
+
+test_that("a rotation that shares no unit in its window prints its covariance", {
+  ov <- design_overlap(c(1, 0, 1), max_lag = 1)
+  # Two disjoint samples of 2 from 6: (2 * 1.75 * (1 - 2/6) - 2 * 3.5 / 6) / 4.
+  # Closed form.
+  x <- prec_pooled(var = 3.5, n = 2, N = 6, occasions = 2, overlap = ov,
+                   overlap_cor = 0.6)
+  expect_equal(x$se^2, (2 * 1.75 * (2 / 3) - 2 * 0.6 * 3.5 / 6) / 4,
+               tolerance = 1e-12)
+  line <- "overlap = 0 at every lag, overlap_cor = 0.6 at lag 1, disjoint cohorts"
+  seen <- character(0)
+  for (obj in list(precision = x, size = n_pooled(x))) {
+    kind <- class(obj)[1L]
+    expect_no_warning(out <- capture.output(print(obj)))
+    expect_true(line %in% out, label = kind)
+    expect_no_warning(sout <- capture.output(print(summary(obj))))
+    expect_true(line %in% sout, label = kind)
+    expect_lte(max(nchar(c(out, sout))), 80L)
+    seen <- c(seen, kind)
+  }
+  expect_setequal(seen, c("svyplan_prec", "svyplan_n"))
+})
+
+test_that("round trips keep the rotation unless overlap is replaced", {
+  ov <- design_overlap(c(1, 0, 1), max_lag = 1)
+  x <- prec_pooled(var = 3.5, n = 2, N = 6, occasions = 2, overlap = ov,
+                   overlap_cor = 1)
+  y <- n_pooled(x)
+  expect_s3_class(y$params$overlap_rotation, "svyplan_overlap")
+  expect_equal(prec_pooled(y)$se, x$se, tolerance = 1e-12)
+  # n, N or correlation changed: still the rotation.
+  expect_equal(
+    prec_pooled(y, n = 1.5)$se,
+    prec_pooled(var = 3.5, n = 1.5, N = 6, occasions = 2, overlap = ov,
+                overlap_cor = 1)$se,
+    tolerance = 1e-12
+  )
+  expect_s3_class(prec_pooled(y, overlap_cor = 0.5)$params$overlap_rotation,
+                  "svyplan_overlap")
+  # A new horizon re-derives every lag from the rotation, lag 2 being 0.5.
+  three <- prec_pooled(y, occasions = 3)
+  expect_equal(three$params$overlap, c(0, 0.5))
+  expect_equal(
+    three$se,
+    prec_pooled(var = 3.5, n = 2, N = 6, occasions = 3,
+                overlap = design_overlap(c(1, 0, 1)), overlap_cor = 1)$se,
+    tolerance = 1e-12
+  )
+  # A bare replacement clears the rotation, an object replacement sets it.
+  bare <- prec_pooled(y, overlap = 0)
+  expect_null(bare$params$overlap_rotation)
+  expect_equal(bare$se,
+               prec_pooled(var = 3.5, n = 2, N = 6, occasions = 2,
+                           overlap = 0, overlap_cor = 1)$se,
+               tolerance = 1e-12)
+  z <- prec_pooled(var = 3.5, n = 2, N = 6, occasions = 2, overlap = 0,
+                   overlap_cor = 1)
+  expect_s3_class(n_pooled(z, overlap = ov)$params$overlap_rotation,
+                  "svyplan_overlap")
+})
+
+test_that("predict() keeps an inherited rotation and drops a replaced one", {
+  ov <- design_overlap(c(1, 0, 1), max_lag = 1)
+  x <- prec_pooled(var = 3.5, n = 2, N = 6, occasions = 2, overlap = ov,
+                   overlap_cor = 1)
+  inherited <- predict(x, data.frame(n = 2))
+  expect_equal(inherited$se, x$se, tolerance = 1e-12)
+  replaced <- predict(x, data.frame(overlap = 0))
+  expect_equal(
+    replaced$se,
+    prec_pooled(var = 3.5, n = 2, N = 6, occasions = 2, overlap = 0,
+                overlap_cor = 1)$se,
+    tolerance = 1e-12
+  )
+  y <- n_pooled(x)
+  expect_equal(predict(y, data.frame(moe = y$moe))$n, y$n, tolerance = 1e-9)
+  # Over a longer horizon the rotation re-derives its lags.
+  expect_equal(
+    predict(y, data.frame(occasions = 3))$n,
+    n_pooled(var = 3.5, moe = y$moe, N = 6, occasions = 3,
+             overlap = design_overlap(c(1, 0, 1)), overlap_cor = 1)$n,
+    tolerance = 1e-9
+  )
+})

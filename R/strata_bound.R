@@ -94,8 +94,8 @@
 #'   another method is an error rather than a silent no-op. Default `NULL`
 #'   (= 5).
 #' @param plan Optional [svyplan()] object providing design defaults. It can
-#'   supply `alloc`, `alloc_q`, `deff`, `resp_rate`, and a scalar
-#'   `unit_cost`. A profile carrying a *vector* `unit_cost` is rejected,
+#'   supply `alloc`, `alloc_q`, `deff`, `resp_rate`, `eligibility_rate`, and
+#'   a scalar `unit_cost`. A profile carrying a *vector* `unit_cost` is rejected,
 #'   because this function orders costs from the lowest to the highest
 #'   stratum while [n_alloc()] orders them by frame row, so a vector written
 #'   for one would be silently misapplied by the other.
@@ -191,14 +191,15 @@
 #'   then supply an `alloc_measure` column to [n_alloc()].
 #'
 #' With `n`, stratum allocations are rounded to integers using the ORIC
-#' method (Cont and Heidari, 2015), which preserves `sum(n) = n` while
+#' method (Cont and Heidari, 2014), which preserves `sum(n) = n` while
 #' minimizing rounding distortion. With `cv` and `alloc = "neyman"`,
 #' `$strata$n` is the smallest whole allocation that meets the target at the
 #' chosen boundaries, and with `"optimal"` the cheapest one. Each sampled
 #' stratum keeps at least two units (one in a stratum of one unit), and a
-#' take-all stratum its census. The search that finds it is reported in
-#' `$search`. `"proportional"` and `"power"` are rules rather than optima,
-#' so with `cv` each of their strata is rounded up.
+#' take-all stratum its census, bounds that recursive Neyman allocation
+#' enforces (Weso\enc{ł}{l}owski et al., 2022). The search that finds it
+#' is reported in `$search`. `"proportional"` and `"power"` are rules
+#' rather than optima, so with `cv` each of their strata is rounded up.
 #'
 #' ## What the boundaries are optimal for
 #'
@@ -271,7 +272,7 @@
 #' construction of stratum boundaries in skewed populations. \emph{Survey
 #' Methodology}, 30(2), 159--166.
 #'
-#' Wes\enc{ł}{l}owski, J., Wieczorkowski, R., and W\enc{ó}{o}jciak, W.
+#' Weso\enc{ł}{l}owski, J., Wieczorkowski, R., and W\enc{ó}{o}jciak, W.
 #' (2022). Optimality of the recursive Neyman allocation. \emph{Journal of
 #' Survey Statistics and Methodology}, 10(5), 1263--1275.
 #'

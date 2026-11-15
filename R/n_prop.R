@@ -69,13 +69,13 @@
 #'
 #' @return A `svyplan_n` object with `type = "proportion"`:
 #' \describe{
-#'   \item{`n`}{Required sample size, continuous and gross. It already
-#'     carries `deff` and the `1 / resp_rate` inflation, so it counts the
-#'     units to release, not the completed interviews. `$n` and
-#'     `as.double()` keep the unrounded value, which is what makes the
-#'     round trip through [prec_prop()] exact, whereas `print()` and
-#'     `as.integer()` round it up to the whole units you would field.
-#'     Take the field figure from `as.integer()` rather than from `$n`.}
+#'   \item{`n`}{Required sample size, continuous and gross. It already carries
+#'     `deff` and the `1 / (resp_rate * eligibility_rate * eligible_per_unit)`
+#'     inflation, so it counts the units to release, not the completed
+#'     interviews. `$n` and `as.double()` keep the unrounded value, which is
+#'     what makes the round trip through [prec_prop()] exact, whereas `print()`
+#'     and `as.integer()` round it up to the whole units you would field. Take
+#'     the field figure from `as.integer()` rather than from `$n`.}
 #'   \item{`se`, `moe`, `cv`, `rmoe`}{Precision the design achieves at that `n`,
 #'     the same values [prec_prop()] reports for the same inputs. `se` is
 #'     the sampling standard error and `cv` is `se / p`, so both are the

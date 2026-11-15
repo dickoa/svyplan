@@ -334,7 +334,9 @@ is added. A stratum whose share already exceeds its minimum keeps that
 share, and the strata held at their minimum leave less for the others.
 To give every stratum its minimum and share the rest on top of it,
 allocate \code{n - sum(min_n_stratum)} and add the minimums, as in the
-examples.}
+examples. Without a floor a stratum can receive one unit, which leaves
+no within-stratum variance to estimate, so \code{min_n_stratum = 2} is the
+usual choice when variances will be estimated stratum by stratum.}
 
 \item{min_n_domain}{Optional floor on each domain's total sample, in the
 units \code{n} counts, such as a publication minimum of 400 households per
@@ -418,7 +420,8 @@ every size is a whole number of steps, as the section on steps in
 Details describes, and \verb{$detail} carries \code{n_step}.}
 \item{\code{weight}}{Base weight \code{N / n} of the issued sample, before
 nonresponse or calibration adjustment.}
-\item{\code{n_eff}}{Effective sample size \code{n * resp_rate / deff}.}
+\item{\code{n_eff}}{Effective sample size
+\code{n * resp_rate * eligibility_rate / deff}.}
 \item{\code{.lower}, \code{.upper}}{Bounds applied to the stratum
 (from \code{min_n_stratum}, \code{max_weight}, \code{take_all}, \code{N_psu}, or
 \code{N}).}
@@ -1007,8 +1010,9 @@ variance optimum, and its purpose is a self-weighting sample, so it is
 the responding sample it holds proportional to \eqn{N_h}.
 
 Stratum allocations are rounded to integers using the ORIC method
-(Cont and Heidari, 2015). Constraints (\code{min_n_stratum}, \code{max_weight}, \code{take_all})
-are enforced via recursive Neyman allocation (RNA, Wesolowski et al., 2021).
+(Cont and Heidari, 2014). Constraints (\code{min_n_stratum}, \code{max_weight},
+\code{take_all}) are enforced via recursive Neyman allocation (RNA,
+Weso\enc{ł}{l}owski et al., 2022).
 
 When \code{budget} is specified, the algorithm finds the maximum affordable
 allocation under unit costs.
@@ -1276,7 +1280,7 @@ Methodology}, 15(1), 47--57.
 Cont, R. and Heidari, M. (2014). Optimal rounding under integer
 constraints. \emph{arXiv preprint} arXiv:1501.00014.
 
-Wes\enc{ł}{l}owski, J., Wieczorkowski, R., and W\enc{ó}{o}jciak, W.
+Weso\enc{ł}{l}owski, J., Wieczorkowski, R., and W\enc{ó}{o}jciak, W.
 (2022). Optimality of the recursive Neyman allocation. \emph{Journal of Survey
 Statistics and Methodology}, 10(5), 1263--1275.
 }

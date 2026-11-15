@@ -67,6 +67,7 @@
 #'   \item{`n`}{Per-group sample size (scalar or length-2 for unequal groups).}
 #'   \item{`power`}{Achieved power.}
 #'   \item{`effect`}{Difference in proportions (`abs(p2 - p1)`).}
+#'   \item{`type`}{`"proportion"`.}
 #'   \item{`solved`}{Which quantity was solved for
 #'     (`"n"`, `"power"`, or `"mde"`).}
 #'   \item{`params`}{List of input parameters.}
@@ -75,7 +76,8 @@
 #' @details
 #' At positive overlap on a finite frame, the responding samples must obey
 #' `n1_net + n2_net - overlap * n1_net <= N`. This bound applies to supplied
-#' sizes and to the sample-size search, independently of `overlap_cor`.
+#' sizes and to the sample-size search, independently of `overlap_cor`, and
+#' a solved size is refused when its whole size `ceiling(n)` breaks it.
 #' A target requiring a larger union is unattainable at that overlap.
 #' Zero overlap retains the independent-samples convention.
 #'
@@ -304,6 +306,11 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
       logodds = .power_prop_n_logodds(p1, p2, power, alpha, N_pair, deff,
                                       alternative, ratio, rate, N_frame))
 
+    .check_whole_size(res, function(whole) {
+      net <- rep_len(whole, 2L) * rate
+      .check_overlap_frame(net[1L], net[2L], N_pair[1L],
+                           .frame_overlap(overlap, overlap_draw))
+    }, " per group")
     n_eff <- res * rate
     achieved_power <- switch(method,
       wald = .power_prop_power_wald(

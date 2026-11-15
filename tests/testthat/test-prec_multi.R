@@ -149,14 +149,14 @@ test_that("prec_multi simple rejects invalid var", {
   )
 })
 
-test_that("prec_multi simple rejects a zero or non-finite mu", {
-  expect_error(
-    prec_multi(data.frame(var = 10, mu = 0, n = 100)),
-    "must be finite and non-zero"
-  )
+test_that("prec_multi simple reads a zero mu as no relative scale", {
+  # Closed form: se = sqrt(10 / 100), with cv and rmoe NA at a zero level.
+  x <- prec_multi(data.frame(var = 10, mu = 0, n = 100))
+  expect_equal(x$detail$.se, sqrt(10 / 100))
+  expect_true(is.na(x$detail$.cv))
   expect_error(
     prec_multi(data.frame(var = 10, mu = Inf, n = 100)),
-    "must be finite and non-zero"
+    "must be finite"
   )
 })
 
@@ -505,7 +505,8 @@ test_that("prec_multi() keeps the domain key on every row of $detail", {
   shuffled <- prec_multi(ind[c(3, 1, 2), ], domains = "lga")$detail
   expect_equal(shuffled[match(ind$lga, shuffled$lga), ], pr$detail,
                ignore_attr = TRUE)
-  expect_identical(names(prec_multi(ind[, -1])$detail)[1], "name")
+  no_domain <- transform(ind[, -1], name = paste0("mcpr_", ind$lga))
+  expect_identical(names(prec_multi(no_domain)$detail)[1], "name")
 
   cl <- prec_cluster(indicators = data.frame(
     region = c("N", "S"), name = "a", p = 0.3, n = 40, n_per_psu = 10,

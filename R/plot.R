@@ -764,7 +764,7 @@ plot.svyplan_overlap <- function(x, ...) {
   # print.svyplan_panel() issues whole units and reads the recruitment
   # through .panel_recruit(); the chart has to agree with it, or the same
   # object would report two entrant counts
-  ceiling(.panel_recruit(panel_plan))
+  .whole_count(.panel_recruit(panel_plan))
 }
 
 #' Whole-number plot argument with a default

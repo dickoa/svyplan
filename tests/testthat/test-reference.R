@@ -1,8 +1,8 @@
 # Comparative tests against published results
-# Cochran (1977) Chapter 3: Proportions
+## Cochran (1977, 3rd ed.), Chapter 4: the estimation of sample size
 test_that("n_prop matches Cochran (1977) SRS formula", {
-  # Cochran Eq 3.22: n0 = z^2 * p*q / e^2
-  # with FPC: n = n0 / (1 + n0/N)
+  # Cochran (1977), Sect. 4.4, pp. 75 to 76, Eqs. (4.1) to (4.3):
+  # n0 = z^2 * p*q / e^2, and with the fpc n = n0 / (1 + (n0 - 1)/N), (4.3)
   p <- 0.5
   e <- 0.05
   z <- qnorm(0.975)
@@ -28,10 +28,9 @@ test_that("n_prop p=0.5 gives largest sample (conservative)", {
   expect_true(n_05 >= n_09)
 })
 
-# Cochran (1977) Chapter 5: Means
 test_that("n_mean matches Cochran (1977) SRS formula", {
-  # Cochran Eq 5.3: n0 = z^2 * S^2 / e^2
-  # with FPC: n = n0 / (1 + n0/N)
+  # Cochran (1977), Sect. 4.6, p. 78: for an absolute error d,
+  # n0 = t^2 * S^2 / d^2, and with the fpc n = n0 / (1 + n0/N) as in (4.3)
   S2 <- 100
   e <- 2
   z <- qnorm(0.975)
@@ -47,7 +46,7 @@ test_that("n_mean matches Cochran (1977) SRS formula", {
 })
 
 test_that("n_mean CV mode matches Cochran formula", {
-  # CV = SE/mu, so SE = cv*mu, and n = S^2/(mu^2 * cv^2) for SRS
+  # Cochran (1977), Eq. (4.5): n0 = (S/Ybar)^2 / C, C the desired cv^2
   S2 <- 100
   mu <- 50
   cv <- 0.05
@@ -57,10 +56,10 @@ test_that("n_mean CV mode matches Cochran formula", {
   expect_equal(result$n, n0, tolerance = 1e-6)
 })
 
-# VDK (2018) Chapter 3: Design Effect
-test_that("design_effect weighting matches VDK Eq 3.5", {
-  # VDK Eq 3.5: deff_w = n * sum(w^2) / sum(w)^2
-  # equivalently: 1 + CV_pop(w)^2
+## Valliant, Dever and Kreuter (2018, 2nd ed.)
+test_that("design_effect weighting matches VDK Eq 14.8", {
+  # VDK (2018), Sect. 14.4.1, p. 396, Eq. (14.8): Kish's
+  # deff_K = 1 + relvar(w), which equals n * sum(w^2) / sum(w)^2
   w <- c(1, 1, 1, 1, 5)
   n <- length(w)
   deff_exp <- n * sum(w^2) / sum(w)^2
@@ -75,9 +74,9 @@ test_that("design_effect weighting = 1 for equal weights (VDK)", {
   expect_equal(as.double(result), 1, tolerance = 1e-10)
 })
 
-test_that("design_effect clustering matches VDK Eq 3.18", {
-  # VDK Eq 3.18: deff_c = 1 + (b_bar - 1) * icc
-  # where b_bar = avg cluster size, icc = ICC
+test_that("design_effect clustering matches VDK Eq 9.5", {
+  # VDK (2018), Sect. 9.2.1, p. 213, Eqs. (9.5) and (9.6) at k = 1:
+  # deff_c = 1 + (b_bar - 1) * delta, b_bar the elements per PSU
   icc <- 0.05
   b_bar <- 20
   deff_exp <- 1 + (b_bar - 1) * icc
@@ -85,28 +84,32 @@ test_that("design_effect clustering matches VDK Eq 3.18", {
   expect_equal(as.double(result), deff_exp, tolerance = 1e-10)
 })
 
-# VDK (2018) Chapter 4: Power Analysis
-test_that("power_prop matches VDK Eq 4.7 (Wald, SRS)", {
-  # VDK Eq 4.7: n = (z_a + z_b)^2 * (p1*q1 + p2*q2) / icc^2
+test_that("power_prop matches VDK Eq 4.18 (Wald, SRS)", {
+  # VDK (2018), Sect. 4.3.3, Eq. (4.18), with the pooled null term Delta1
+  # replaced by the unpooled Delta2, as the Wald method does, and the
+  # quantile at 1 - alpha/2 for a two-sided test:
+  # n = (z_a + z_b)^2 * (p1*q1 + p2*q2) / delta^2
   p1 <- 0.30
   p2 <- 0.35
   z_a <- qnorm(0.975)
   z_b <- qnorm(0.80)
-  icc <- abs(p1 - p2)
+  delta <- abs(p1 - p2)
   V <- p1 * (1 - p1) + p2 * (1 - p2)
-  n_exp <- (z_a + z_b)^2 * V / icc^2
+  n_exp <- (z_a + z_b)^2 * V / delta^2
   result <- power_prop(p1 = p1, p2 = p2)
   expect_equal(result$n, n_exp, tolerance = 1e-4)
 })
 
-test_that("power_mean matches VDK Eq 4.14 (SRS)", {
-  # VDK Eq 4.14: n = (z_a + z_b)^2 * 2 * sigma^2 / icc^2
+test_that("power_mean matches VDK Eq 4.15 (SRS)", {
+  # VDK (2018), Sect. 4.3.2, Eq. (4.15) at r = 1, which is (4.14) with no
+  # overlap, with the quantile at 1 - alpha/2 for a two-sided test:
+  # n = (z_a + z_b)^2 * 2 * sigma^2 / delta^2
   sigma2 <- 100
-  icc <- 5
+  delta <- 5
   z_a <- qnorm(0.975)
   z_b <- qnorm(0.80)
-  n_exp <- (z_a + z_b)^2 * 2 * sigma2 / icc^2
-  result <- power_mean(effect = icc, var = sigma2)
+  n_exp <- (z_a + z_b)^2 * 2 * sigma2 / delta^2
+  result <- power_mean(effect = delta, var = sigma2)
   expect_equal(result$n, n_exp, tolerance = 1e-4)
 })
 
@@ -125,9 +128,9 @@ test_that("n_prop MICS-style with resp_rate and deff", {
   expect_equal(result$n, n_exp, tolerance = 1e-4)
 })
 
-# Cluster design: optimal allocation (VDK Ch 9)
 test_that("n_cluster optimal allocation matches VDK formula", {
-  # VDK Eq 9.14: m_opt = sqrt(c1/c2 * (1-icc)/icc)
+  # VDK (2018), Sect. 9.3.1, p. 232, Eq. (9.24):
+  # m_opt = sqrt(c1/c2 * (1 - delta)/delta)
   c1 <- 500
   c2 <- 50
   icc <- 0.05

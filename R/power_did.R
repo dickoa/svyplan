@@ -94,6 +94,8 @@
 #' and unequal treatment/control sizes are allowed. The allocation ratio
 #' does not constrain the within-arm overlap. Supplied sizes must fit these
 #' bounds, and sample-size searches stop at the most restrictive arm bound.
+#' A solved size is refused when its whole size `ceiling(n)` breaks an arm's
+#' bound.
 #' Zero overlap retains the independent-wave convention.
 #'
 #' The DiD estimand is
@@ -382,6 +384,11 @@ power_did.default <- function(
       )
     }
     n0 <- if (r == 1) n2 else c(r * n2, n2)
+    .check_whole_size(n0, function(whole) {
+      net <- rep_len(whole, 2L) * rate
+      .check_overlap_frame(net, net, N_pair,
+                           .frame_overlap(overlap, overlap_draw))
+    }, " per group")
     achieved_power <- power_n2(n2)
 
     .new_svyplan_power(

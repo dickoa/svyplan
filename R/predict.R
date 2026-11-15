@@ -388,10 +388,9 @@ predict.svyplan_n <- function(object, newdata, ...) {
         moe = p$moe, cv = p$cv, rmoe = p$rmoe,
         alpha = p$alpha, N = p$N, deff = p$deff, resp_rate = p$resp_rate,
         eligibility_rate = p[["eligibility_rate"]] %||% 1,
-        overlap = p$overlap, overlap_cor = p$overlap_cor,
-        cor_decay = p$cor_decay, overlap_draw = p$overlap_draw, df = p$df,
-        .overlap_basis = p$overlap_basis
-      )))
+        overlap_cor = p$overlap_cor,
+        cor_decay = p$cor_decay, overlap_draw = p$overlap_draw, df = p$df
+      ), .stored_overlap_args(p, "overlap" %in% names(newdata))))
       data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv,
                  rmoe = res$rmoe)
     })
@@ -845,10 +844,9 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       n = p$n, occasions = p$occasions,
       alpha = p$alpha, N = p$N, deff = p$deff, resp_rate = p$resp_rate,
       eligibility_rate = p[["eligibility_rate"]] %||% 1,
-      overlap = p$overlap, overlap_cor = p$overlap_cor,
-      cor_decay = p$cor_decay, overlap_draw = p$overlap_draw, df = p$df,
-      .overlap_basis = p$overlap_basis
-    )))
+      overlap_cor = p$overlap_cor,
+      cor_decay = p$cor_decay, overlap_draw = p$overlap_draw, df = p$df
+    ), .stored_overlap_args(p, "overlap" %in% names(newdata))))
     data.frame(se = res$se, moe = res$moe, cv = res$cv, rmoe = res$rmoe)
   })
 }

@@ -159,7 +159,7 @@ correction section in Details.}
 }
 \value{
 A \code{svyplan_prec} object with \code{type = "alloc"}. Top-level \code{se},
-\code{moe}, and \code{cv} describe the whole population. \verb{$detail} carries the
+\code{moe}, \code{cv}, and \code{rmoe} describe the whole population. \verb{$detail} carries the
 stratum table documented in \code{\link[=n_alloc]{n_alloc()}}, including per-stratum \code{.se},
 \code{.moe}, \code{.rmoe}, \code{.cv}, and the variance \code{.share}. When \code{domains} is
 given, \verb{$domains} reports \code{.n}, \code{.se}, \code{.moe}, \code{.rmoe}, \code{.cv}, and

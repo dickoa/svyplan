@@ -110,6 +110,7 @@ A \code{svyplan_power} object with components:
 \item{\code{n}}{Per-group sample size (scalar or length-2 for unequal groups).}
 \item{\code{power}}{Achieved power.}
 \item{\code{effect}}{Effect size (difference in means).}
+\item{\code{type}}{\code{"mean"}.}
 \item{\code{solved}}{Which quantity was solved for
 (\code{"n"}, \code{"power"}, or \code{"mde"}).}
 \item{\code{params}}{List of input parameters.}
@@ -123,7 +124,8 @@ as \code{NULL} to solve for that quantity.
 \details{
 At positive overlap on a finite frame, the responding samples must obey
 \code{n1_net + n2_net - overlap * n1_net <= N}. This bound applies to supplied
-sizes and to the sample-size search, independently of \code{overlap_cor}.
+sizes and to the sample-size search, independently of \code{overlap_cor}, and
+a solved size is refused when its whole size \code{ceiling(n)} breaks it.
 A target requiring a larger union is unattainable at that overlap.
 Zero overlap retains the independent-samples convention.
 

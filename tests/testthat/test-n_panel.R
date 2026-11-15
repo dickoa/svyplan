@@ -1259,3 +1259,91 @@ test_that("a whole design beyond the frame prints the continuous one throughout"
                   design = "rotating")
   expect_false(any(grepl("^whole units:", capture.output(print(fits)))))
 })
+
+## Assurance and a yield per sampled unit
+
+test_that("assurance is refused when the target has a yield per unit", {
+  # Oracle: closed form. With one eligible unit or none per household at
+  # rate 0.5, 200 households give P(at least 100 eligible) = 0.528, not 0.95,
+  # so no assured size follows from the mean yield alone.
+  expect_lt(pbinom(99, 200, 0.5, lower.tail = FALSE), 0.53)
+  for (epu in c(0.5, 1.8)) {
+    tgt <- prec_prop(n = 200, p = 0.5, eligible_per_unit = epu)
+    expect_error(n_panel(tgt, retention = 1, assurance = 0.95),
+                 "not available for a target with eligible_per_unit")
+    expect_error(
+      n_panel(tgt, retention = c(0.8, 0.9), design = "rotating",
+              assurance = 0.9),
+      "not available for a target with eligible_per_unit"
+    )
+    expect_error(
+      prec_panel(tgt, n_recruit = 300, retention = 1, assurance = 0.9),
+      "not available for a target with eligible_per_unit"
+    )
+    expect_error(prec_panel(n_panel(tgt, retention = 1), assurance = 0.9),
+                 "not available for a target with eligible_per_unit")
+  }
+})
+
+test_that("the eligibility rate route carries the Bernoulli yield", {
+  # Oracle: closed form. Smallest g with P(Binomial(g, 0.5) >= 100) >= 0.95.
+  g <- 100:400
+  smallest <- g[pbinom(99, g, 0.5, lower.tail = FALSE) >= 0.95][1L]
+  expect_identical(smallest, 224L)
+  p <- n_panel(prec_prop(n = 100, p = 0.5), retention = 1,
+               eligibility_rate = 0.5, assurance = 0.95)
+  expect_equal(p$n_assured, smallest)
+})
+
+test_that("a panel with a yield per unit names its eligible count", {
+  tgt <- prec_prop(n = 200, p = 0.5, eligible_per_unit = 0.5)
+  p <- n_panel(tgt, retention = c(0.8, 0.9))
+  expect_equal(p$n_target, 200)
+  expect_equal(p$se, tgt$se)
+  expect_match(.fmt_panel_headline(p), "200 responding (100 eligible) at wave 3",
+               fixed = TRUE)
+  out <- capture.output(summary(p))
+  expect_true(any(grepl("(100 eligible)", out, fixed = TRUE)))
+  r <- n_panel(prec_prop(n = 200, p = 0.5, eligible_per_unit = 1.8),
+               retention = c(0.8, 0.9), design = "rotating")
+  shown <- .panel_shown(r)$head
+  expect_match(.fmt_panel_headline(r),
+               sprintf("(%d eligible), pooled", round(shown * 1.8)),
+               fixed = TRUE)
+  plain <- n_panel(prec_prop(n = 200, p = 0.5), retention = c(0.8, 0.9))
+  expect_no_match(.fmt_panel_headline(plain), "eligible")
+})
+
+## The headline shortfall is read on the unrounded counts
+
+test_that("a plan that meets its target is never printed short", {
+  a <- n_panel(prec_mean(var = 100, mu = 50, n = 100.1), retention = 0.7)
+  expect_equal(.panel_shown(a)$head, a$n_target)
+  expect_no_match(.fmt_panel_headline(a), "short of")
+  b <- n_panel(n_mean(var = 100, moe = 1.958), retention = 0.75,
+               resp_rate = 0.935)
+  expect_gte(.panel_shown(b)$head, b$n_target)
+  expect_no_match(.fmt_panel_headline(b), "short of")
+})
+
+test_that("a plan below its target is printed short with distinct figures", {
+  tgt <- prec_mean(var = 100, mu = 50, n = 100.1)
+  low <- prec_panel(tgt, n_recruit = 100, retention = 1)
+  expect_match(.fmt_panel_headline(low),
+               "100 responding at wave 2, short of the 101 the target needs",
+               fixed = TRUE)
+  # 503 * 0.2 = 100.6 against 100.8: both round to 101, so one decimal.
+  near <- prec_panel(prec_mean(var = 100, mu = 50, n = 100.8),
+                     n_recruit = 503, retention = 0.2)
+  expect_match(.fmt_panel_headline(near),
+               "100.6 responding at wave 2, short of the 100.8 the target needs",
+               fixed = TRUE)
+  # 504 * 0.2 = 100.8 against 100.81: two decimals tell them apart.
+  close <- prec_panel(prec_mean(var = 100, mu = 50, n = 100.81),
+                      n_recruit = 504, retention = 0.2)
+  expect_match(.fmt_panel_headline(close),
+               "100.80 responding at wave 2, short of the 100.81 the target needs",
+               fixed = TRUE)
+  exact <- prec_panel(tgt, n_recruit = 1001, retention = 0.1)
+  expect_no_match(.fmt_panel_headline(exact), "short of")
+})

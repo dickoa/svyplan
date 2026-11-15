@@ -190,7 +190,7 @@
 #' simple random sample of the same size, \eqn{D = s^2 / (pq/n)} for a
 #' proportion and \eqn{D = s^2 / (S^2/n)} for a mean.
 #'
-#' ### Which take identifies the icc
+#' ## Which take identifies the icc
 #'
 #' The \eqn{b} in the identity is the **size-weighted** average number of
 #' sampled units per PSU,
@@ -219,7 +219,7 @@
 #' out at all is to re-plan at a different take, and defaulting to the old
 #' one would return the old design's number.
 #'
-#' ### A published DEFT and its weighting loss
+#' ## A published DEFT and its weighting loss
 #'
 #' `deff` is a ratio of variances. Some survey programs publish DEFT, the
 #' ratio of standard errors, which is its square root. The DHS

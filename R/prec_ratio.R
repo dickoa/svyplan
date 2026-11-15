@@ -25,7 +25,7 @@
 #'   May be negative, but not zero.
 #'   For `svyplan_n` objects: a sample size result from [n_ratio()].
 #' @param n Sample size to evaluate, gross of nonresponse. The responding
-#'   sample is `n * resp_rate`.
+#'   sample is `n * resp_rate * eligibility_rate`.
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #' @param cv_num Coefficient of variation of the numerator variable,
 #'   strictly positive.
@@ -62,7 +62,7 @@
 #' }
 #'
 #' Nothing here is rounded, so passing a continuous `n` back from
-#' [n_ratio()] reproduces its `se`, `moe` and `cv` exactly.
+#' [n_ratio()] reproduces its `se`, `moe`, `cv` and `rmoe` exactly.
 #' The print shows `n` as evaluated, and for a fit it says that `n` is
 #' the continuous optimum. For a fit `size`, the whole sample to field is
 #' `ceiling(size$n)`, and `prec_ratio(size, n = ceiling(size$n))` gives its
@@ -70,8 +70,9 @@
 #'
 #' @details
 #'
-#' At a gross sample `n`, with `n_net = n * resp_rate` and
-#' `n_eff = n_net / deff`,
+#' At a gross sample `n`, with `n_net = n * resp_rate * eligibility_rate`,
+#' `n_eff = n_net / deff`, and \eqn{N} the population in scope,
+#' `N * eligibility_rate`,
 #'
 #' \deqn{SE(\hat{R}) = |R| \sqrt{L_R (1 - n_{net}/N) / n_{eff}}}{SE(Rhat) = abs(R) * sqrt(L_R * (1 - n_net/N) / n_eff)}
 #'

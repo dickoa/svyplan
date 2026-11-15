@@ -102,7 +102,7 @@
 #'
 #' Stage count is determined by `length(n)`.
 #'
-#' **2-stage** (Valliant et al., 2018, Eq. 9.2.23):
+#' **2-stage** (Valliant et al., 2018, Eq. 9.23):
 #' \deqn{CV = \sqrt{\frac{V \cdot k}{n_1 \cdot n_2} (1 + \delta (n_2 - 1))}}{CV = sqrt((V * k)/(n_1 * n_2) (1 + delta (n_2 - 1)))}
 #'
 #' **3-stage**:
@@ -413,9 +413,19 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
   if (!is.null(x[["indicators"]])) {
     return(.prec_cluster_from_indicator_fit(x, list(...)))
   }
+  .prec_cluster_from_fit(x, list(...))
+}
+
+#' Read a single-indicator cluster allocation back as precision
+#'
+#' At the continuous optimum, or with `field = TRUE` at the whole design in
+#' `$operational`.
+#' @keywords internal
+#' @noRd
+.prec_cluster_from_fit <- function(x, dots, field = FALSE) {
   p <- x$params
   args <- list(
-    n = x$n,
+    n = if (field) x$operational$n else x$n,
     icc = p$icc,
     unit_relvar = p$unit_relvar,
     var_ratio = p$var_ratio,
@@ -432,7 +442,7 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
   )
   out <- do.call(
     prec_cluster.default,
-    .roundtrip_args(args, list(...), prec_cluster.default)
+    .roundtrip_args(args, dots, prec_cluster.default)
   )
   if (!is.null(p$budget)) {
     out$params$budget <- p$budget
@@ -449,7 +459,7 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
   if (!is.null(p$fixed_cost)) {
     out$params$fixed_cost <- p$fixed_cost
   }
-  out$params$continuous_optimum <- TRUE
+  out$params$continuous_optimum <- !field
   out
 }
 
@@ -477,7 +487,7 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
 #' back onto it, per domain where the design has domains.
 #' @keywords internal
 #' @noRd
-.prec_cluster_from_indicator_fit <- function(x, dots) {
+.prec_cluster_from_indicator_fit <- function(x, dots, field = FALSE) {
   tgt <- x$indicators
   for (rate in intersect(
     c("resp_rate_psu", "resp_rate_ssu", "resp_rate"),
@@ -487,17 +497,18 @@ prec_cluster.svyplan_cluster <- function(n, ...) {
   }
   tgt$cv <- NULL
   tgt$moe <- NULL
-  tgt$n <- x$n[1L]
+  stage_n <- if (field) x$operational$n else x$n
+  tgt$n <- stage_n[1L]
   if (x$stages >= 2L) {
-    tgt$n_per_psu <- x$n[2L]
+    tgt$n_per_psu <- stage_n[2L]
   }
   if (x$stages >= 3L) {
-    tgt$n_per_ssu <- x$n[3L]
+    tgt$n_per_ssu <- stage_n[3L]
   }
 
   dom_cols <- x$params$domain_cols %||% character(0)
   if (!is.null(x$domains) && length(dom_cols) > 0L) {
-    dom <- x$domains
+    dom <- if (field) x$operational$domains else x$domains
     tgt_key <- .domain_key(tgt, dom_cols)
     dom_key <- .domain_key(dom, dom_cols)
     dom_idx <- match(tgt_key, dom_key)

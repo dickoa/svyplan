@@ -215,3 +215,24 @@ test_that("the documented DiD variance decomposition is the implemented one", {
     sum(terms$change * (1 - n_eff / N_pair) / n_eff)
   )))
 })
+
+## A negative infinite population is refused
+
+test_that("every caller of the power population check refuses -Inf", {
+  for (N in list(-Inf, c(-Inf, 1000), c(1000, -Inf))) {
+    msg <- "'N' values must be greater than 1 \\(or Inf\\)"
+    expect_error(power_mean(var = 100, effect = 5, n = 100, power = NULL,
+                            N = N), msg)
+    expect_error(power_prop(p1 = 0.3, p2 = 0.4, n = 100, power = NULL,
+                            N = N), msg)
+    expect_error(prec_change(p = c(0.3, 0.35), n = 100, N = N), msg)
+    expect_error(n_change(p = c(0.3, 0.35), moe = 0.05, N = N), msg)
+  }
+  expect_error(
+    power_did(treat = c(0.50, 0.55), control = c(0.50, 0.48),
+              outcome = "prop", n = 200, power = NULL, N = -Inf),
+    "'N' values must be greater than 1"
+  )
+  expect_true(is.finite(power_mean(var = 100, effect = 5, n = 100,
+                                   power = NULL, N = Inf)$power))
+})

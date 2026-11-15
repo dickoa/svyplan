@@ -167,7 +167,8 @@ the quota reading is the only one offered for a multistage design.}
 \code{"separate"} (default, each domain sized on its own) or \code{"joint"} (one
 budget split across domains to minimize the worst precision ratio).
 \code{"joint"} applies only when \code{indicators}, \code{domains} and \code{budget} are all
-supplied.}
+supplied. Each domain gets at least the cost of its cheapest whole
+design, one PSU (or \code{n_psu}) at the least whole takes.}
 
 \item{domain_sampling}{How the per-domain requirements combine into the
 one overall size. Only \code{"separate"} (the default) is available for a
@@ -184,7 +185,7 @@ and the whole design of each domain. A domain whose precision-optimal
 design falls short takes more units per PSU or SSU, so the floor is
 refused only when no design within the budget or the population reaches
 it. With domains solved separately, domains below the floor produce a
-warning.}
+warning and keep their precision design.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults
 (including \code{stage_cost}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{resp_rate_psu}, \code{fixed_cost}).
@@ -200,7 +201,9 @@ A \code{svyplan_cluster} object with components:
 optimum.}
 \item{\code{stages}}{Number of stages (2 or 3).}
 \item{\code{total_n}}{Continuous total sample size (\code{prod(n)}).}
-\item{\code{cv}}{Coefficient of variation of the continuous optimum.}
+\item{\code{cv}}{Coefficient of variation of the continuous optimum. With
+\code{indicators} it is the largest achieved cv over the rows (and the
+domains), which need not be the binding row's.}
 \item{\code{cost}}{Cost of the continuous optimum.}
 \item{\code{operational}}{The whole-unit field design, found by a
 discrete search: \code{n} (named integer stage sizes), \code{total_n},
@@ -215,8 +218,19 @@ within its own budget, or its share of a joint one.}
 \item{\code{params}}{List of input parameters.}
 }
 With \code{indicators}, the same class carries \verb{$indicators}, the per-row
-\verb{$detail} and, where domains were named, \verb{$domains}. The class does not
-depend on which optional arguments were supplied.
+\verb{$detail} and, where domains were named, \verb{$domains}. \code{detail} has one
+row per indicator (per indicator and domain with domains) with the
+row's requirement \code{.n}, \code{.cv_target}, \code{.binding}, and the target as
+stated, \code{.target_scale} and \code{.target}. Without domains it also has
+\code{.cv_achieved} at the continuous optimum, and \code{operational} holds
+\code{cv_by_target}, each row's cv at the field design, and \code{binding}, the
+row with the largest ratio of that cv to its target. That row need not
+be the one with the worst cv. With domains, \verb{$domains$.cv} is the worst
+cv of each domain and \code{.binding} marks each domain's binding row at its
+field design. \code{binding_cause} is \code{"precision"}, or \code{"min_n_domain"}
+when that floor sets the binding domain, which only the joint
+allocation can do. The class does not depend on
+which optional arguments were supplied.
 }
 \description{
 Compute optimal per-stage sample sizes for a multistage cluster
@@ -228,15 +242,14 @@ variance for a given budget.
 
 A typical 2-stage household survey workflow:
 \enumerate{
-\item \strong{Decide what you know.} You need the cost per cluster visit
-(\code{stage_cost[1]}, e.g. travel + logistics) and the cost per
-interview (\code{stage_cost[2]}), plus an estimate of within-cluster
-homogeneity (\code{icc}). Estimate icc from a pilot or previous
-survey with \code{\link[=varcomp]{varcomp()}}, or use a plausible range (0.01--0.10
-for most household indicators).
-\item \strong{Choose a mode.} If you have a target precision, set \code{cv}. If you
-have a fixed budget, set \code{budget}. Never set both.
-\item \strong{Fix stages or let the optimizer decide.} In MICS/DHS-style
+\item Start from the cost per cluster visit (\code{stage_cost[1]}, e.g.
+travel + logistics), the cost per interview (\code{stage_cost[2]}), and an
+estimate of within-cluster homogeneity (\code{icc}). Estimate icc from a
+pilot or previous survey with \code{\link[=varcomp]{varcomp()}}, or use a plausible range
+(0.01 to 0.10 for most household indicators).
+\item Choose the mode by setting \code{cv} for a target precision or \code{budget}
+for a fixed budget, never both.
+\item Fix a stage, or leave both stages to the optimizer. In MICS/DHS-style
 designs, the number of households per cluster is fixed by
 fieldwork logistics (e.g. \code{n_per_psu = 20}). The optimizer then
 solves for how many clusters (\code{n_psu}) to visit. If no stage is
@@ -298,7 +311,8 @@ to 1, and three-stage \code{var_ratio_ssu} is derived as
 size or drawn proportional to size (see \code{\link[=design_effect]{design_effect()}}). On a ratio row \code{icc_psu},
 \code{icc_ssu} and the stage variance ratios describe the linearized variable
 \code{e = y - r * x}, not either component. The remaining columns follow
-\code{\link[=n_multi]{n_multi()}}.
+\code{\link[=n_multi]{n_multi()}}. A \code{name} column, when given, needs a name on every row,
+unique within a domain.
 
 Nonresponse is still named for the stage it acts on. \code{resp_rate_psu},
 \code{resp_rate_ssu} and \code{resp_rate} are the defaults used where a row's own
@@ -328,13 +342,17 @@ minimize the worst precision ratio, and \code{min_n_domain} sets a floor.
 
 With a stage size fixed, the remaining problem is solved from the
 closed-form cluster optimum. With all stage sizes free, the objective is a
-maximum over indicator requirements, which is not smooth, and it is
-minimized by a bounded quasi-Newton search. That search warns when it fails
-to converge or lands on a bound, but it carries no global-optimality or KKT
-certificate, so a successful return means the best design this search
-found, not a proven minimum-cost one. The \verb{$operational} allocation can
-always be checked against its own precision or budget constraint, which is
-a separate and exact statement. \code{\link[=n_alloc]{n_alloc()}} gives the stronger guarantee
+maximum over indicator requirements. It is not smooth where two
+indicators bind together, but each requirement times the cost is convex in
+the logarithms of the takes, and so is their maximum. One-dimensional
+searches over the takes, nested at three stages, therefore find the
+optimum within the search range, which allows at least 1000 units per
+stage. The fit warns when the optimum reaches that limit. A joint split
+gives every domain the same worst ratio, except a domain that its least
+budget, a floor or its whole population holds below that ratio. The
+\verb{$operational} allocation can always be checked against its own precision
+or budget constraint, which is a separate and exact statement.
+\code{\link[=n_alloc]{n_alloc()}} gives the stronger guarantee
 where it applies, returning feasibility and KKT diagnostics for its convex
 continuous problem.
 }

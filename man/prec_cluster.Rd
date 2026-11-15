@@ -153,7 +153,7 @@ printed as given.
 
 Stage count is determined by \code{length(n)}.
 
-\strong{2-stage} (Valliant et al., 2018, Eq. 9.2.23):
+\strong{2-stage} (Valliant et al., 2018, Eq. 9.23):
 \deqn{CV = \sqrt{\frac{V \cdot k}{n_1 \cdot n_2} (1 + \delta (n_2 - 1))}}{CV = sqrt((V * k)/(n_1 * n_2) (1 + delta (n_2 - 1)))}
 
 \strong{3-stage}:

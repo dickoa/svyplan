@@ -8,8 +8,8 @@
 #'
 #' @param x A `svyplan` result to read design features from: a
 #'   [n_cluster()] or [prec_cluster()] allocation, a [varcomp()] estimate,
-#'   or an [n_alloc()] allocation. `NULL` (default) builds the design
-#'   effect from the component arguments below.
+#'   or an [n_alloc()] or [prec_alloc()] allocation. `NULL` (default) builds
+#'   the design effect from the component arguments below.
 #' @param ... Additional arguments passed to methods. Unused arguments are
 #'   rejected.
 #'

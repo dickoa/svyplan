@@ -60,7 +60,8 @@ A published DEFT is squared first. See \code{\link[=varcomp]{varcomp()}} for tha
 removing the published survey's weighting loss.}
 
 \item{resp_rate}{Expected response rate among eligible units, in (0, 1].
-Default 1 (no adjustment). The effective sample size is \code{n * resp_rate}.
+Default 1 (no adjustment). The net sample is
+\code{n * resp_rate * eligibility_rate * eligible_per_unit}.
 See the nonresponse section of \link{svyplan-package} for what the rate counts.}
 
 \item{eligibility_rate}{Share of issued units in scope, such as dwellings
@@ -86,10 +87,11 @@ interval quantile from normal to t under every method. \code{NULL}
 \value{
 A \code{svyplan_prec} object with \code{type = "proportion"}:
 \describe{
-\item{\code{se}}{Sampling standard error of the planned estimate, computed
-on the net sample \code{n * resp_rate}. It describes the estimator, so it
-is the same under all four methods and moves only with \code{p}, \code{n},
-\code{deff}, \code{N}, and \code{resp_rate}.}
+\item{\code{se}}{Sampling standard error of the planned estimate, computed on
+the net sample \code{n * resp_rate * eligibility_rate * eligible_per_unit}. It
+describes the estimator, so it is the same under all four methods and
+moves only with \code{p}, \code{n}, \code{deff}, \code{N}, and the factors of the net
+sample.}
 \item{\code{moe}}{Half the length of the interval the chosen \code{method}
 builds at that standard error. Only under \code{"wald"} is this
 \code{q * se}, with \code{q} defined in \code{\link[=n_prop]{n_prop()}}. Where \code{\link[=confint]{confint()}}

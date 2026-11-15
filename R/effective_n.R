@@ -1,22 +1,23 @@
 #' Effective sample size
 #'
-#' Convert a planned sample size into the simple-random-sample size that
-#' would give the same precision, `n * resp_rate / deff`. This is the
-#' mirror of [design_effect()] and takes the same arguments.
+#' Convert a planned sample size into the simple-random-sample size that would
+#' give the same precision, `n * resp_rate * eligibility_rate / deff`. This is
+#' the mirror of [design_effect()] and takes the same arguments.
 #'
 #' @param x A `svyplan_deff` from [design_effect()], a [n_cluster()] or
-#'   [prec_cluster()] allocation, a [varcomp()] estimate, an [n_alloc()]
-#'   allocation, or `NULL` (default) to build the design effect from the
-#'   component arguments. A [n_prop()] or [n_mean()] result is not one of
-#'   these, since its design effect is the `deff` you supplied rather than
+#'   [prec_cluster()] allocation, a [varcomp()] estimate, an [n_alloc()] or
+#'   [prec_alloc()] allocation, or `NULL` (default) to build the design effect
+#'   from the component arguments. A [n_prop()] or [n_mean()] result is not one
+#'   of these, since its design effect is the `deff` you supplied rather than
 #'   something to be derived, so pass the two directly as
 #'   `effective_n(n = x$n, deff = x$params$deff)`.
 #' @param ... Additional arguments passed to methods. Unused arguments are
 #'   rejected.
 #'
 #' @return A numeric scalar: the effective sample size,
-#'   `n * resp_rate / deff`. It is not rounded, and it can exceed `n` when
-#'   the design effect is below 1 (a stratification gain, for instance).
+#'   `n * resp_rate * eligibility_rate / deff`. It is not rounded, and it can
+#'   exceed `n` when the design effect is below 1 (a stratification gain, for
+#'   instance).
 #'
 #' @details
 #' The design effect is built exactly as in [design_effect()], from
@@ -26,13 +27,14 @@
 #' `strata$n`, or the total of the plan you pass as `x`), and must be given
 #' explicitly otherwise.
 #'
-#' Sizes are counted as units **issued**, so nonresponse has to be taken
-#' off before the design effect is applied. A design that issues `n` and
-#' analyzes `n * resp_rate` of them carries the information of
-#' `n * resp_rate / deff` simple random draws. This is the identity the
-#' allocation and precision functions plan on, and the one reported in the
-#' `n_eff` column of an [n_alloc()] table. Passing a plan as `x` picks up
-#' the response rate it was built with, so `effective_n(plan)` and that
+#' Sizes are counted as units **issued**, so nonresponse and units out of
+#' scope have to be taken off before the design effect is applied. A design
+#' that issues `n` and analyzes `n * resp_rate * eligibility_rate` of them
+#' carries the information of `n * resp_rate * eligibility_rate / deff`
+#' simple random draws. This is the identity the allocation and precision
+#' functions plan on, and the one reported in the `n_eff` column of an
+#' [n_alloc()] table. Passing a plan as `x` picks up the response and
+#' eligibility rates it was built with, so `effective_n(plan)` and that
 #' column agree. Supply `resp_rate` yourself when you pass a bare `n` that
 #' has not already been netted down.
 #'

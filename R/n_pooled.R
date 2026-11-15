@@ -77,59 +77,65 @@
 #'   will have, available from [design_df()]. It switches the interval
 #'   quantile from normal to t. `NULL` (default) applies no adjustment.
 #' @param plan Optional [svyplan()] object providing design defaults.
-#' @param .overlap_basis Internal. Records whether a stored `overlap`
-#'   profile was resolved from a [design_overlap()] object (`"issued"`) or
-#'   supplied as respondent overlap (`"respondent"`), so that a round trip
-#'   or a grid meets the same refusal the first call would have. Set from
-#'   the result being re-read, and there is no reason to pass it by hand.
 #'
 #' @return A `svyplan_n` object with `type = "pooled"`:
 #' \describe{
 #'   \item{`n`}{Required size per occasion, continuous and gross. It already
-#'     carries `deff` and the `1 / resp_rate` inflation, so it counts the
-#'     units to release on each occasion, not the completed interviews. `$n`
-#'     and `as.double()` keep the unrounded value, which is what makes the
-#'     round trip through [prec_pooled()] exact, whereas `print()` rounds
-#'     up. This
-#'     is not a count of distinct frame units: `overlap` is measured among
-#'     respondents, so it says how often a respondent is measured again and
-#'     leaves the issued sample's own overlap unstated. At full response the
-#'     two coincide and the series consumes fewer than `occasions * n`
-#'     distinct units. Below it, how many is a question this function has
-#'     not been told enough to answer.}
+#'     carries `deff` and the `1 / (resp_rate * eligibility_rate)` inflation, so
+#'     it counts the units to release on each occasion, not the completed
+#'     interviews. `$n` and `as.double()` keep the unrounded value, which is
+#'     what makes the round trip through [prec_pooled()] exact, whereas
+#'     `print()` rounds up. This is not a count of distinct frame units:
+#'     `overlap` is measured among respondents, so it says how often a
+#'     respondent is measured again and leaves the issued sample's own overlap
+#'     unstated. At full response the two coincide and the series consumes fewer
+#'     than `occasions * n` distinct units. Below it, how many is a question
+#'     this function has not been told enough to answer.}
 #'   \item{`se`, `moe`, `cv`, `rmoe`}{Precision the design achieves at that
 #'     size, the same values [prec_pooled()] reports for the same inputs.
-#'     `cv` and `rmoe` are `NA` unless the level is known.}
+#'     `cv` and `rmoe` are `NA` unless the level is known and non-zero.}
 #'   \item{`params`}{The validated inputs, including whichever of `moe`,
 #'     `cv`, or `rmoe` was the target, `overlap` and `overlap_cor` as
-#'     resolved vectors of one entry per lag, and the `overlap_basis` they
-#'     were resolved under. A ratio keeps `r`, its three moments and its
+#'     resolved vectors of one entry per lag, the `overlap_basis` they were
+#'     resolved under, and a [design_overlap()] object as
+#'     `overlap_rotation`. A ratio keeps `r`, its three moments and its
 #'     `unit_relvar`, `var` then being the variance of its linearized
 #'     variable.}
 #' }
 #'
 #' @details
-#' A required size must fit the finite frame at each positive-overlap lag:
-#' `(2 - overlap[lag]) * n * resp_rate <= N`. A target violating a pairwise
-#' bound is rejected, as is a size producing an invalid covariance matrix.
+#' A required size must fit the finite frame at each positive-overlap lag,
+#' `(2 - overlap[lag]) * n * resp_rate <= N`, and at each lag of a
+#' [design_overlap()] object that shares no unit, as [prec_pooled()]
+#' describes, where the rotation and bare readings are compared. A target violating a
+#' pairwise bound is rejected, as is a size producing an invalid covariance
+#' matrix. The whole size `ceiling(n)` that `print()` and `as.integer()`
+#' report must meet the same conditions, and a target whose continuous size
+#' meets them but whose whole size does not is refused, since no whole size
+#' then reaches it.
 #' See [prec_pooled()] for these necessary feasibility conditions.
 #'
 #' The pooled variance is \eqn{deff\{A/(n r) + B\}}{deff (A/(n r) + B)} in the gross size per
 #' occasion, with \eqn{r} the response rate times the eligibility rate,
 #' \eqn{N} the population in scope, `N * eligibility_rate`, \eqn{T} the
-#' number of occasions and
+#' number of occasions and, under `overlap_draw = "fixed"`,
 #'
 #' \deqn{A = \frac{S^2}{T^2}\Big[T + 2\sum_{m=1}^{T-1}(T-m)\rho_m o_m\Big],
 #'       \qquad
 #'       B = -\frac{S^2}{NT^2}\Big[T + 2\sum_{m=1}^{T-1}(T-m)\rho_m
-#'       \mathbb{1}\{o_m > 0\}\Big],}{A = (S^2/T^2) [T + 2 sum_m (T - m) rho_m o_m],   B = -(S^2/(N T^2)) [T + 2 sum_m (T - m) rho_m 1\{o_m > 0\}],}
+#'       c_m\Big],}{A = (S^2/T^2) [T + 2 sum_m (T - m) rho_m o_m],   B = -(S^2/(N T^2)) [T + 2 sum_m (T - m) rho_m c_m],}
 #'
-#' so the target inverts in closed form,
+#' where \eqn{c_m = 1\{o_m > 0\}}{c_m = 1\{o_m > 0\}} for a bare `overlap`
+#' and \eqn{c_m = 1} at every lag of a [design_overlap()] object, whose lags
+#' that share no unit keep the population term of two disjoint samples.
+#' Under `overlap_draw = "independent"` the population terms in \eqn{B}
+#' carry the factors [prec_pooled()] describes for independent draws
+#' instead. In both cases the target inverts in closed form,
 #'
 #' \deqn{n = \frac{deff\,A}{r\,(se^2 - deff\,B)}.}{n = deff A / (r (se^2 - deff B)).}
 #'
 #' \eqn{B \le 0} always under the nonnegative correlation contract, since its
-#' bracket is at least \eqn{T}, so the divisor cannot vanish and no target is
+#' bracket is positive, so the divisor cannot vanish and no target is
 #' out of reach for want of precision however much the occasions overlap.
 #' Overlap raises the size a target needs, but it does not put a floor under
 #' the precision. The size can still exceed \eqn{N}, which is the ordinary
@@ -250,8 +256,7 @@ n_pooled.default <- function(
   cor_decay = NULL,
   overlap_draw = c("fixed", "independent"),
   df = NULL,
-  plan = NULL,
-  .overlap_basis = NULL
+  plan = NULL
 ) {
   .plan <- .merge_plan_args(plan, n_pooled.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(n_pooled.default, c(.plan, list(...))))
@@ -269,7 +274,7 @@ n_pooled.default <- function(
   check_resp_rate(resp_rate)
   rate <- resp_rate * eligibility_rate
   if (!is.null(df)) check_df(df)
-  ov <- .resolve_lag_overlap(overlap, occasions, resp_rate, .overlap_basis)
+  ov <- .resolve_lag_overlap(overlap, occasions, resp_rate)
   rho <- .resolve_lag_cor(overlap_cor, cor_decay, occasions - 1L)
   overlap_draw <- match.arg(overlap_draw)
   .check_pooled_draw(overlap_draw, ov$overlap, occasions)
@@ -296,14 +301,18 @@ n_pooled.default <- function(
 
   n <- .n_pooled_from_se(
     target_se, inputs$var, N_elig, deff, rate, occasions, ov$overlap, rho,
-    overlap_draw
+    overlap_draw, rotation = ov$rotation
   )
   n <- .census_size(n, N)
   .check_attainable(n, N, resp_rate, eligibility_rate)
+  .check_whole_size(n, function(whole) {
+    .pooled_var(whole, inputs$var, N_elig, deff, rate, occasions, ov$overlap,
+                rho, overlap_draw, rotation = ov$rotation)
+  }, " per occasion")
 
   prec <- .prec_engine_pooled(
     n, inputs$var, inputs$mu, N_elig, deff, rate, occasions, ov$overlap, rho,
-    overlap_draw, alpha, df
+    overlap_draw, alpha, df, rotation = ov$rotation
   )
   # The inversion is closed form on n <= N, so a mismatch here means the
   # linear form and the variance it inverts have drifted apart, not that
@@ -328,6 +337,8 @@ n_pooled.default <- function(
     overlap_draw = overlap_draw,
     df = df
   )
+  # The object itself, not a flag: a new horizon re-derives its lags.
+  params$overlap_rotation <- ov$rotation
   if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
   if (!is.null(inputs$p)) params$p <- inputs$p
   params <- .add_ratio_params(params, inputs$ratio)
@@ -375,11 +386,9 @@ n_pooled.svyplan_prec <- function(var, ..., moe = NULL, cv = NULL,
     deff = par$deff,
     resp_rate = par$resp_rate,
     eligibility_rate = par[["eligibility_rate"]] %||% 1,
-    overlap = par$overlap,
     overlap_cor = par$overlap_cor,
     overlap_draw = par$overlap_draw,
-    df = par$df,
-    .overlap_basis = par$overlap_basis
-  ))
+    df = par$df
+  ), .stored_overlap_args(par, "overlap" %in% names(list(...))))
   do.call(n_pooled.default, .roundtrip_args(args, list(...), n_pooled.default))
 }

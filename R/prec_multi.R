@@ -77,14 +77,15 @@
 #'
 #' \describe{
 #'   \item{`name`}{Indicator label (optional).}
-#'   \item{`p`}{Expected proportion, in (0, 1). One of `p` or `var`
+#'   \item{`p`}{Expected proportion, in (0, 1). One of `p`, `var` or `r`
 #'     per row (see [n_multi()]).}
 #'   \item{`var`}{Population variance. One of `p`, `var` or `r` per row.}
 #'   \item{`mu`}{Population mean. Required for CV output when `var`
 #'     is specified, because CV = SE / mean.}
 #'   \item{`r`}{Anticipated ratio of two totals, marking a ratio row. It
-#'     requires `cv_num`, `cv_den` and `component_cor` alongside it, and no
-#'     `unit_relvar`, which the moments derive. See [prec_ratio()].}
+#'     requires `cv_num`, `cv_den` and `component_cor` alongside it. Its
+#'     `unit_relvar` comes from those moments, and a value given in that
+#'     column must agree with them. See [prec_ratio()].}
 #'   \item{`cv_num`, `cv_den`}{Coefficients of variation of a ratio row's
 #'     numerator and denominator, strictly positive.}
 #'   \item{`component_cor`}{Correlation between a ratio row's numerator and
@@ -106,6 +107,8 @@
 #'   \item{`resp_rate`}{Expected response rate at the ultimate unit
 #'     (default 1). A cluster design spends a rate at stage 1 too, and
 #'     [prec_cluster()] names that column `resp_rate_psu`.}
+#'   \item{`eligibility_rate`}{Share of the row's issued units in scope, in
+#'     (0, 1\]. `NA` takes the `eligibility_rate` argument.}
 #'   \item{`eligible_per_unit`}{Eligible units per sampled unit for the row's
 #'     estimate, as in [prec_prop()] and [prec_mean()]. Proportion and mean
 #'     rows. The
@@ -410,8 +413,8 @@ prec_multi.default <- function(
   }
   if ("mu" %in% names(indicators)) {
     mu_vals <- indicators$mu[!is.na(indicators$mu)]
-    if (any(mu_vals == 0) || any(!is.finite(mu_vals))) {
-      stop("'mu' values must be finite and non-zero", call. = FALSE)
+    if (any(!is.finite(mu_vals))) {
+      stop("'mu' values must be finite", call. = FALSE)
     }
   }
   method_vals <- indicators$prop_method[!is.na(indicators$prop_method)]
@@ -495,7 +498,8 @@ prec_multi.default <- function(
       name = labels,
       .se = se_vec,
       .moe = moe_vec,
-      .rmoe = .rmoe_from_moe(moe_vec, .indicator_estimand(indicators, nr)),
+      .rmoe = .rmoe_from_moe(moe_vec, .indicator_estimand(indicators, nr),
+                             at_zero = NA_real_),
       .cv = cv_vec
     ),
     indicators,
@@ -745,7 +749,8 @@ prec_multi.default <- function(
       name = labels,
       .se = se_vec,
       .moe = moe_vec,
-      .rmoe = .rmoe_from_moe(moe_vec, .indicator_estimand(indicators, nr)),
+      .rmoe = .rmoe_from_moe(moe_vec, .indicator_estimand(indicators, nr),
+                             at_zero = NA_real_),
       .cv = cv_vec
     ),
     indicators,
@@ -777,8 +782,17 @@ prec_multi.default <- function(
 #' @rdname prec_multi
 #' @export
 prec_multi.svyplan_n <- function(indicators, ...) {
-  x <- indicators
-  dots <- list(...)
+  .prec_multi_from_fit(indicators, list(...))
+}
+
+#' Read a multi-indicator size back as precision
+#'
+#' At the size the fit chose, or with `field = TRUE` at the size it fields:
+#' the whole total, each separate quota ceiled, or the whole total times
+#' each domain's share under natural incidence.
+#' @keywords internal
+#' @noRd
+.prec_multi_from_fit <- function(x, dots, field = FALSE) {
   if (x$type != "multi") {
     stop("prec_multi requires a svyplan_n of type 'multi'", call. = FALSE)
   }
@@ -801,7 +815,8 @@ prec_multi.svyplan_n <- function(indicators, ...) {
   tgt <- tgt[!.floor_only_rows(tgt), , drop = FALSE]
   tgt$min_cases <- NULL
   tgt$min_respondents <- NULL
-  tgt$n <- x$n
+  total <- if (field) .whole_count(x$n) else x$n
+  tgt$n <- total
   tgt$moe <- NULL
   tgt$cv <- NULL
   dom_cols <- x$params$domain_cols %||% character(0)
@@ -811,7 +826,9 @@ prec_multi.svyplan_n <- function(indicators, ...) {
     dom_key <- .domain_key(dom, dom_cols)
     dom_idx <- match(tgt_key, dom_key)
     tgt$n <- if (".share" %in% names(dom)) {
-      x$n * dom$.share[dom_idx]
+      total * dom$.share[dom_idx]
+    } else if (field) {
+      .whole_count(dom$.n[dom_idx])
     } else {
       dom$.n[dom_idx]
     }

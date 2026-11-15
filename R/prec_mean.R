@@ -11,7 +11,8 @@
 #'   published survey reports usually quote standard deviations.
 #' @param n Sample size, measured as gross units drawn and bounded by a
 #'   finite `N`.
-#' @param mu Population mean. Required for the CV component.
+#' @param mu Population mean. Required for the CV component. It may be zero,
+#'   and `cv` and `rmoe` are then `NA`.
 #' @param cv Target relative standard error, supplied instead of `mu` to solve
 #'   for the smallest mean the design measures that precisely. Supply at most
 #'   one of `mu` or `cv`. Omitting both leaves `cv` undefined, as before.
@@ -23,12 +24,9 @@
 #'   A published DEFT is squared first. See [varcomp()] for that and for
 #'   removing the published survey's weighting loss.
 #' @param resp_rate Expected response rate among eligible units, in (0, 1\].
-#'   Default 1 (no adjustment). The effective sample size is `n * resp_rate`. A
-#'   rate of eligible units per sampled unit at or below 1, such as 0.41
-#'   married women per household, folds in here as
-#'   `resp_rate * eligible_per_unit`. With a finite `N` this errs slightly
-#'   conservative. See the nonresponse section of [svyplan-package] for what
-#'   the rate counts.
+#'   Default 1 (no adjustment). The net sample is
+#'   `n * resp_rate * eligibility_rate * eligible_per_unit`. See the
+#'   nonresponse section of [svyplan-package] for what the rate counts.
 #' @param eligibility_rate Share of issued units in scope, such as dwellings
 #'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
 #'   in scope is `N * eligibility_rate`. See the nonresponse section of
@@ -50,13 +48,15 @@
 #' @return A `svyplan_prec` object with `type = "mean"`:
 #' \describe{
 #'   \item{`se`}{Standard error of the planned estimate, computed on the
-#'     net sample `n * resp_rate`.}
+#'     net sample `n * resp_rate * eligibility_rate * eligible_per_unit`.}
 #'   \item{`moe`}{Margin of error, `q * se`, with `q` defined in Details. The
 #'     interval is symmetric, so the limits are `mu - moe` and
 #'     `mu + moe`.}
 #'   \item{`cv`}{Relative standard error, `se / abs(mu)`. `NA` when `mu` is
-#'     not supplied, since a relative standard error needs a mean to be
-#'     relative to.}
+#'     not supplied or is zero, since a relative standard error needs a
+#'     mean to be relative to.}
+#'   \item{`rmoe`}{Margin of error relative to the mean, `moe / abs(mu)`.
+#'     `NA` exactly when `cv` is.}
 #'   \item{`solved`}{`"mu"` when the mean was solved for, and absent
 #'     otherwise. The solved value is in `params$mu`.}
 #'   \item{`params`}{The validated inputs (`var`, `n`, `alpha`, `N`,
@@ -67,8 +67,8 @@
 #' }
 #'
 #' Nothing here is rounded: `n` is taken as given, so passing a
-#' continuous `n` back from [n_mean()] reproduces its `se`, `moe` and
-#' `cv` exactly.
+#' continuous `n` back from [n_mean()] reproduces its `se`, `moe`, `cv`
+#' and `rmoe` exactly.
 #' The print shows `n` as evaluated, and for a fit it says that `n` is
 #' the continuous optimum. For a fit `res`, the whole sample to field is
 #' `ceiling(res$n)`, and `prec_mean(res, n = ceiling(res$n))` gives its
@@ -77,7 +77,8 @@
 #' @details
 #' Computes the standard error for the given sample size and design
 #' parameters, then derives the margin of error and coefficient of
-#' variation. The effective sample size is `n * resp_rate / deff`, with
+#' variation. The effective sample size is
+#' `n * resp_rate * eligibility_rate * eligible_per_unit / deff`, with
 #' optional finite population correction.
 #' The quantile `q` is `qnorm(1 - alpha / 2)` by default and
 #' `qt(1 - alpha / 2, df)` when `df` is supplied.
@@ -190,7 +191,7 @@ prec_mean.default <- function(
     stop("specify at most one of 'mu' or 'cv'", call. = FALSE)
   }
   if (!is.null(mu)) {
-    check_mu(mu)
+    check_mu(mu, zero_ok = TRUE)
   }
 
   if (!is.null(df)) check_df(df)

@@ -147,6 +147,8 @@ Positive overlap is checked within each arm across its two waves:
 and unequal treatment/control sizes are allowed. The allocation ratio
 does not constrain the within-arm overlap. Supplied sizes must fit these
 bounds, and sample-size searches stop at the most restrictive arm bound.
+A solved size is refused when its whole size \code{ceiling(n)} breaks an arm's
+bound.
 Zero overlap retains the independent-wave convention.
 
 The DiD estimand is

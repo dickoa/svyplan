@@ -279,7 +279,9 @@
 #'   share, and the strata held at their minimum leave less for the others.
 #'   To give every stratum its minimum and share the rest on top of it,
 #'   allocate `n - sum(min_n_stratum)` and add the minimums, as in the
-#'   examples.
+#'   examples. Without a floor a stratum can receive one unit, which leaves
+#'   no within-stratum variance to estimate, so `min_n_stratum = 2` is the
+#'   usual choice when variances will be estimated stratum by stratum.
 #' @param min_n_domain Optional floor on each domain's total sample, in the
 #'   units `n` counts, such as a publication minimum of 400 households per
 #'   province. One number applies to every domain. A data frame with columns
@@ -358,7 +360,8 @@
 #'       Details describes, and `$detail` carries `n_step`.}
 #'     \item{`weight`}{Base weight `N / n` of the issued sample, before
 #'       nonresponse or calibration adjustment.}
-#'     \item{`n_eff`}{Effective sample size `n * resp_rate / deff`.}
+#'     \item{`n_eff`}{Effective sample size
+#'       `n * resp_rate * eligibility_rate / deff`.}
 #'     \item{`.lower`, `.upper`}{Bounds applied to the stratum
 #'       (from `min_n_stratum`, `max_weight`, `take_all`, `N_psu`, or
 #'       `N`).}
@@ -929,8 +932,9 @@
 #' the responding sample it holds proportional to \eqn{N_h}.
 #'
 #' Stratum allocations are rounded to integers using the ORIC method
-#' (Cont and Heidari, 2015). Constraints (`min_n_stratum`, `max_weight`, `take_all`)
-#' are enforced via recursive Neyman allocation (RNA, Wesolowski et al., 2021).
+#' (Cont and Heidari, 2014). Constraints (`min_n_stratum`, `max_weight`,
+#' `take_all`) are enforced via recursive Neyman allocation (RNA,
+#' Weso\enc{ł}{l}owski et al., 2022).
 #'
 #' When `budget` is specified, the algorithm finds the maximum affordable
 #' allocation under unit costs.
@@ -964,7 +968,7 @@
 #' Cont, R. and Heidari, M. (2014). Optimal rounding under integer
 #' constraints. *arXiv preprint* arXiv:1501.00014.
 #'
-#' Wes\enc{ł}{l}owski, J., Wieczorkowski, R., and W\enc{ó}{o}jciak, W.
+#' Weso\enc{ł}{l}owski, J., Wieczorkowski, R., and W\enc{ó}{o}jciak, W.
 #' (2022). Optimality of the recursive Neyman allocation. *Journal of Survey
 #' Statistics and Methodology*, 10(5), 1263--1275.
 #'
@@ -2182,7 +2186,7 @@ n_alloc.svyplan_prec <- function(
 #' built from those totals, holding the fit's certainty PSUs.
 #'
 #' @return A `svyplan_prec` object with `type = "alloc"`. Top-level `se`,
-#'   `moe`, and `cv` describe the whole population. `$detail` carries the
+#'   `moe`, `cv`, and `rmoe` describe the whole population. `$detail` carries the
 #'   stratum table documented in [n_alloc()], including per-stratum `.se`,
 #'   `.moe`, `.rmoe`, `.cv`, and the variance `.share`. When `domains` is
 #'   given, `$domains` reports `.n`, `.se`, `.moe`, `.rmoe`, `.cv`, and
@@ -3770,11 +3774,10 @@ prec_alloc.svyplan_n <- function(frame, ...) {
 #' `a_h = W_h^2 S_h^2 deff_h / resp_h` and `c_h = W_h^2 S_h^2 deff_h / N_h`,
 #' so a cv target is one column. It is measured from the upper bounds `hi`,
 #' `sum_h a_h (1 / n_h - 1 / hi_h) <= (cv ybar)^2 - V(hi)`, so a census
-#' loads exactly zero however small the target, and held strictly so the
-#' reported cv never passes the target, except that a target within a
-#' relative 1e-12 of the variance at the upper bounds, a matter of
-#' rounding, is met there. `"optimal"`
-#' minimizes cost and `"neyman"` the sample. Under a budget `"optimal"`
+#' loads exactly zero however small the target. A plan meets the target
+#' when its variance is within a relative 1e-12 of it, a matter of rounding,
+#' so the design whose cv was read back as the target is attainable.
+#' `"optimal"` minimizes cost and `"neyman"` the sample. Under a budget `"optimal"`
 #' minimizes the variance, with cost over the budget as the column. A
 #' stratum without variance takes its lower bound. Returns the whole sizes,
 #' the search's status and its record.
@@ -3822,7 +3825,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
     }
     # Measured from the upper bounds, so a census loads exactly zero however
     # small the target.
-    g2 <- a[on] / k / room * (1 + 2e-9)
+    g2 <- a[on] / k / room * .whole_target_scale()
     q <- .whole_problem(cost[on] * k, 0, 0, g2, lo, hi, g0 = -(g2 / hi))
     r <- .whole_search(q, grain = .menu_grain(cost[on] * k),
                        max_nodes = max_nodes, gap = gap)
@@ -4035,7 +4038,7 @@ prec_alloc.svyplan_n <- function(frame, ...) {
                     status = "optimal",
                     search = .whole_record(r_s, "whole units", max_nodes)))
       }
-      m <- (1 + 2e-9) / room
+      m <- .whole_target_scale() / room
     }
     rows <- lapply(seq_len(H), function(h) {
       t <- terms(h, takes(h, w))

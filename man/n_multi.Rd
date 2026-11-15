@@ -34,8 +34,10 @@ See the Details section for the full column reference. At minimum,
 each row needs:
 \itemize{
 \item \strong{What to measure}: \code{p} for a proportion (e.g. 0.30 for
-30\% stunting) \strong{or} \code{var} for a continuous variable's
-population variance. Each row must use exactly one.
+30\% stunting), \code{var} for a continuous variable's population
+variance, \strong{or} \code{r} for a ratio of two means, with its moments
+\code{cv_num}, \code{cv_den} and \code{component_cor}. Each row must use exactly
+one.
 \item \strong{How precise}: \code{moe} (margin of error), \code{rmoe} (margin of
 error relative to the estimand) \strong{or} \code{cv} (coefficient of
 variation). Each row must specify exactly one.
@@ -76,7 +78,8 @@ sample sizes are floored to \code{min_n_domain}.}
 \code{\link[=n_prop]{n_prop()}} for proportion rows and ignored for mean rows.
 An optional \code{prop_method} column in \code{indicators} overrides this default
 on a per-row basis. \code{"wilson"}, \code{"logodds"} and \code{"beta"} size from an
-interval half-width, so those rows need \code{moe} rather than \code{cv}.}
+interval half-width, so those rows need \code{moe} or \code{rmoe} rather than
+\code{cv}.}
 
 \item{resp_rate}{Default expected response rate among eligible ultimate
 units, in (0, 1]. Used for rows whose \code{resp_rate} column is absent or
@@ -105,8 +108,16 @@ domains.
 \strong{Without domains}, the object contains:
 \describe{
 \item{\code{n}}{The sample size required by the binding indicator.}
-\item{\code{detail}}{Per-indicator sample-size results.}
+\item{\code{detail}}{One row per indicator: \code{name}, its requirement \code{.n},
+\code{.cv_target}, \code{.cv_achieved} at \code{n}, \code{.cv_field} at \code{ceiling(n)},
+\code{.binding}, \code{.constraint} (what sets the row's requirement:
+\code{"precision"}, \code{"min_cases"} or \code{"min_respondents"}), and the
+target as stated, \code{.target_scale} (\code{"moe"}, \code{"rmoe"} or \code{"cv"})
+and \code{.target}. A row with only a respondent floor has \code{NA}
+precision.}
 \item{\code{binding}}{Name or index of the binding (most demanding) indicator.}
+\item{\code{binding_cause}}{What made it bind, one of the \code{.constraint}
+values.}
 \item{\code{indicators}}{The input indicators data frame.}
 }
 
@@ -127,6 +138,14 @@ largest share-adjusted requirement under \code{"natural"}. Use
 \item{\code{domains}}{Data frame with one row per domain, including
 domain variables, \code{.n}, \code{.binding}, and \code{.share} under
 \code{"natural"}.}
+\item{\code{detail}}{One row per indicator and domain, the domain
+variables first, then \code{name}, \code{.n}, \code{.cv_target}, \code{.binding},
+\code{.constraint}, \code{.target_scale} and \code{.target}. These are each
+domain's own requirements, before \code{min_n_domain} or natural
+incidence raises its size. \code{\link[=summary]{summary()}} reads what each row achieves
+at the fielded size.}
+\item{\code{binding_cause}}{As without domains, or \code{"min_n_domain"} when
+that floor sets the binding domain's quota.}
 }
 }
 \description{
@@ -141,9 +160,10 @@ Each row of \code{indicators} represents one survey indicator. The two key
 decisions per row are:
 \enumerate{
 \item \strong{Type of indicator}: is it a proportion (binary variable like
-"stunted yes/no") or a mean (continuous variable like "household
-expenditure")? This determines whether you fill the \code{p} or \code{var}
-column.
+"stunted yes/no"), a mean (continuous variable like "household
+expenditure"), or a ratio of two means (such as expenditure per
+adult equivalent)? This determines whether you fill the \code{p}, \code{var}
+or \code{r} column.
 \item \strong{Precision target}: do you want an absolute margin of error
 (\code{moe}, e.g. +/- 5 percentage points), the same margin stated
 relative to the estimand (\code{rmoe}, e.g. 12 percent of the
@@ -161,9 +181,9 @@ A minimal example for three health indicators:
 )
 }\if{html}{\out{</div>}}
 
-Rows with \code{p} are treated as proportions, whereas rows with \code{var} (and
-\code{p = NA}) are treated as means. You cannot have both \code{p} and \code{var} non-\code{NA}
-in the same row.
+Rows with \code{p} are treated as proportions, rows with \code{var} (and
+\code{p = NA}) as means, and rows with \code{r} as ratios. A row carries only one
+of \code{p}, \code{var} and \code{r}.
 
 A row may instead carry only a floor on the number of respondents,
 \code{min_respondents}, with no \code{p}, \code{var} or target. It stands for an
@@ -177,18 +197,28 @@ estimate and a target.
 \subsection{Column reference}{
 
 \describe{
-\item{\code{name}}{Indicator label (optional). If omitted, row numbers
-are used in output.}
+\item{\code{name}}{Indicator label (optional). If omitted, each row is
+labeled by its row number in \code{indicators}, with domains as without.
+When given, every row needs a name, unique within a domain.}
 \item{\code{p}}{Expected proportion, in (0, 1). Use this for binary
 indicators such as prevalences or coverage rates. The value is
 your best prior guess (e.g. from a previous survey or literature).
-One of \code{p} or \code{var} per row.}
+One of \code{p}, \code{var} or \code{r} per row.}
 \item{\code{var}}{Population variance of a continuous indicator. Use
-this for means (e.g. income, expenditure, weight). One of \code{p}
-or \code{var} per row.}
-\item{\code{mu}}{Population mean, finite and non-zero. It may be
-negative. It is required when \code{var} is used with \code{cv} because
-CV = SE / abs(mean).}
+this for means (e.g. income, expenditure, weight). One of \code{p},
+\code{var} or \code{r} per row.}
+\item{\code{r}}{Anticipated ratio of two means, marking a ratio row, sized
+as \code{\link[=n_ratio]{n_ratio()}} sizes it. It requires \code{cv_num}, \code{cv_den} and
+\code{component_cor} alongside it. One of \code{p}, \code{var} or \code{r} per row.}
+\item{\code{cv_num}, \code{cv_den}}{Coefficients of variation of a ratio row's
+numerator and denominator, strictly positive.}
+\item{\code{component_cor}}{Correlation between a ratio row's numerator and
+denominator across units, in \eqn{[-1, 1]}.}
+\item{\code{mu}}{Population mean, finite. It may be negative. It is
+required when \code{var} is used with \code{cv} because CV = SE / abs(mean),
+and it must then be non-zero, as it must in multistage mode, which
+works on the cv scale. With a \code{moe} target a zero mean is accepted
+and the row's \code{cv} and \code{rmoe} are \code{NA}.}
 \item{\code{moe}}{Margin of error, the half-width of the confidence
 interval you want. For proportions, this is on the probability
 scale (e.g. 0.05 for +/- 5 percentage points). For means,
@@ -243,7 +273,8 @@ above. \code{NA} (the default) sets no floor. Single-stage \code{n_multi()}
 only, as for \code{min_cases}.}
 \item{\code{unit_relvar}}{Unit relvariance. If omitted, derived
 automatically from \code{p} (as \code{(1 - p) / p}) or from
-\code{var} / \code{mu^2}.}
+\code{var} / \code{mu^2}. A ratio row derives it from its moments, and a value
+given there must agree with them.}
 \item{\code{resp_rate}}{Expected response rate at the ultimate unit, in
 (0, 1]. Default 1 (no adjustment). A value of 0.90 inflates the
 sample size by \code{1 / 0.90} to compensate for 10 percent
@@ -252,6 +283,10 @@ non-response. It means the same thing in a cluster design, where
 that cannot be worked and \code{resp_rate_ssu} for second-stage units in a
 three-stage design. Naming a stage the design does not have is an
 error rather than a column carried along and ignored.}
+\item{\code{eligibility_rate}}{Share of the row's issued units in scope, in
+(0, 1]. It inflates the row's size by \code{1 / eligibility_rate}, and
+with a finite \code{N} the population in scope is \code{N * eligibility_rate}.
+\code{NA} takes the \code{eligibility_rate} argument.}
 \item{\code{eligible_per_unit}}{Eligible units per sampled unit for the row's
 estimate, such as married women or children aged 12 to 23 months per
 household. The row is sized as \code{\link[=n_prop]{n_prop()}} or \code{\link[=n_mean]{n_mean()}} size it with
@@ -292,8 +327,8 @@ in the same table is an error rather than a preference. \code{sd} is squared
 on the way in and everything downstream reads \code{var}.
 
 \code{n_multi()} computes sample size per indicator by delegating proportion
-rows to \code{\link[=n_prop]{n_prop()}} and mean rows to \code{\link[=n_mean]{n_mean()}},
-then takes the maximum per domain. Use \code{prop_method} or a
+rows to \code{\link[=n_prop]{n_prop()}}, mean rows to \code{\link[=n_mean]{n_mean()}} and ratio rows to
+\code{\link[=n_ratio]{n_ratio()}}, then takes the maximum per domain. Use \code{prop_method} or a
 \code{indicators$prop_method} column to choose \code{"wald"}, \code{"wilson"},
 \code{"logodds"} or \code{"beta"} for proportion rows.
 }

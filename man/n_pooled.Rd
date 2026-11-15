@@ -32,8 +32,7 @@ n_pooled(var = NULL, ...)
   cor_decay = NULL,
   overlap_draw = c("fixed", "independent"),
   df = NULL,
-  plan = NULL,
-  .overlap_basis = NULL
+  plan = NULL
 )
 
 \method{n_pooled}{svyplan_prec}(var, ..., moe = NULL, cv = NULL, rmoe = NULL)
@@ -132,35 +131,29 @@ will have, available from \code{\link[=design_df]{design_df()}}. It switches the
 quantile from normal to t. \code{NULL} (default) applies no adjustment.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
-
-\item{.overlap_basis}{Internal. Records whether a stored \code{overlap}
-profile was resolved from a \code{\link[=design_overlap]{design_overlap()}} object (\code{"issued"}) or
-supplied as respondent overlap (\code{"respondent"}), so that a round trip
-or a grid meets the same refusal the first call would have. Set from
-the result being re-read, and there is no reason to pass it by hand.}
 }
 \value{
 A \code{svyplan_n} object with \code{type = "pooled"}:
 \describe{
 \item{\code{n}}{Required size per occasion, continuous and gross. It already
-carries \code{deff} and the \code{1 / resp_rate} inflation, so it counts the
-units to release on each occasion, not the completed interviews. \verb{$n}
-and \code{as.double()} keep the unrounded value, which is what makes the
-round trip through \code{\link[=prec_pooled]{prec_pooled()}} exact, whereas \code{print()} rounds
-up. This
-is not a count of distinct frame units: \code{overlap} is measured among
-respondents, so it says how often a respondent is measured again and
-leaves the issued sample's own overlap unstated. At full response the
-two coincide and the series consumes fewer than \code{occasions * n}
-distinct units. Below it, how many is a question this function has
-not been told enough to answer.}
+carries \code{deff} and the \code{1 / (resp_rate * eligibility_rate)} inflation, so
+it counts the units to release on each occasion, not the completed
+interviews. \verb{$n} and \code{as.double()} keep the unrounded value, which is
+what makes the round trip through \code{\link[=prec_pooled]{prec_pooled()}} exact, whereas
+\code{print()} rounds up. This is not a count of distinct frame units:
+\code{overlap} is measured among respondents, so it says how often a
+respondent is measured again and leaves the issued sample's own overlap
+unstated. At full response the two coincide and the series consumes fewer
+than \code{occasions * n} distinct units. Below it, how many is a question
+this function has not been told enough to answer.}
 \item{\code{se}, \code{moe}, \code{cv}, \code{rmoe}}{Precision the design achieves at that
 size, the same values \code{\link[=prec_pooled]{prec_pooled()}} reports for the same inputs.
-\code{cv} and \code{rmoe} are \code{NA} unless the level is known.}
+\code{cv} and \code{rmoe} are \code{NA} unless the level is known and non-zero.}
 \item{\code{params}}{The validated inputs, including whichever of \code{moe},
 \code{cv}, or \code{rmoe} was the target, \code{overlap} and \code{overlap_cor} as
-resolved vectors of one entry per lag, and the \code{overlap_basis} they
-were resolved under. A ratio keeps \code{r}, its three moments and its
+resolved vectors of one entry per lag, the \code{overlap_basis} they were
+resolved under, and a \code{\link[=design_overlap]{design_overlap()}} object as
+\code{overlap_rotation}. A ratio keeps \code{r}, its three moments and its
 \code{unit_relvar}, \code{var} then being the variance of its linearized
 variable.}
 }
@@ -174,27 +167,38 @@ from quarterly rounds is the ordinary case, and that average is what
 "pooled" names here. This is the inverse of \code{\link[=prec_pooled]{prec_pooled()}}.
 }
 \details{
-A required size must fit the finite frame at each positive-overlap lag:
-\code{(2 - overlap[lag]) * n * resp_rate <= N}. A target violating a pairwise
-bound is rejected, as is a size producing an invalid covariance matrix.
+A required size must fit the finite frame at each positive-overlap lag,
+\code{(2 - overlap[lag]) * n * resp_rate <= N}, and at each lag of a
+\code{\link[=design_overlap]{design_overlap()}} object that shares no unit, as \code{\link[=prec_pooled]{prec_pooled()}}
+describes, where the rotation and bare readings are compared. A target violating a
+pairwise bound is rejected, as is a size producing an invalid covariance
+matrix. The whole size \code{ceiling(n)} that \code{print()} and \code{as.integer()}
+report must meet the same conditions, and a target whose continuous size
+meets them but whose whole size does not is refused, since no whole size
+then reaches it.
 See \code{\link[=prec_pooled]{prec_pooled()}} for these necessary feasibility conditions.
 
 The pooled variance is \eqn{deff\{A/(n r) + B\}}{deff (A/(n r) + B)} in the gross size per
 occasion, with \eqn{r} the response rate times the eligibility rate,
 \eqn{N} the population in scope, \code{N * eligibility_rate}, \eqn{T} the
-number of occasions and
+number of occasions and, under \code{overlap_draw = "fixed"},
 
 \deqn{A = \frac{S^2}{T^2}\Big[T + 2\sum_{m=1}^{T-1}(T-m)\rho_m o_m\Big],
       \qquad
       B = -\frac{S^2}{NT^2}\Big[T + 2\sum_{m=1}^{T-1}(T-m)\rho_m
-      \mathbb{1}\{o_m > 0\}\Big],}{A = (S^2/T^2) [T + 2 sum_m (T - m) rho_m o_m],   B = -(S^2/(N T^2)) [T + 2 sum_m (T - m) rho_m 1\{o_m > 0\}],}
+      c_m\Big],}{A = (S^2/T^2) [T + 2 sum_m (T - m) rho_m o_m],   B = -(S^2/(N T^2)) [T + 2 sum_m (T - m) rho_m c_m],}
 
-so the target inverts in closed form,
+where \eqn{c_m = 1\{o_m > 0\}}{c_m = 1\{o_m > 0\}} for a bare \code{overlap}
+and \eqn{c_m = 1} at every lag of a \code{\link[=design_overlap]{design_overlap()}} object, whose lags
+that share no unit keep the population term of two disjoint samples.
+Under \code{overlap_draw = "independent"} the population terms in \eqn{B}
+carry the factors \code{\link[=prec_pooled]{prec_pooled()}} describes for independent draws
+instead. In both cases the target inverts in closed form,
 
 \deqn{n = \frac{deff\,A}{r\,(se^2 - deff\,B)}.}{n = deff A / (r (se^2 - deff B)).}
 
 \eqn{B \le 0} always under the nonnegative correlation contract, since its
-bracket is at least \eqn{T}, so the divisor cannot vanish and no target is
+bracket is positive, so the divisor cannot vanish and no target is
 out of reach for want of precision however much the occasions overlap.
 Overlap raises the size a target needs, but it does not put a floor under
 the precision. The size can still exceed \eqn{N}, which is the ordinary

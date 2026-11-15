@@ -177,7 +177,8 @@ test_that("active allocation bounds are named in the summary", {
   expect_true(any(grepl("take_all", out, fixed = TRUE)))
 })
 
-test_that("summary fallback remains unchanged for non-allocation results", {
-  ordinary <- n_prop(p = 0.3, moe = 0.05)
-  expect_s3_class(summary(ordinary), "summaryDefault")
+test_that("summary of a non-allocation result is not an allocation summary", {
+  expect_s3_class(summary(n_prop(p = 0.3, moe = 0.05)), "summary.svyplan_n")
+  ordinary <- n_pooled(var = 100, moe = 1, occasions = 4)
+  expect_identical(summary(ordinary), ordinary)
 })

@@ -521,10 +521,10 @@ test_that("confint reads the design's own df", {
 })
 
 test_that("df is validated wherever it is accepted", {
-  expect_error(n_prop(p = 0.3, moe = 0.05, df = 0.5), "must be a number >= 1")
-  expect_error(prec_prop(p = 0.3, n = 100, df = -1), "must be a number >= 1")
-  expect_error(n_mean(var = 100, moe = 1, df = 0), "must be a number >= 1")
-  expect_error(prec_mean(var = 100, n = 100, df = NA), "must be a number >= 1")
+  expect_error(n_prop(p = 0.3, moe = 0.05, df = 0.5), "must be a single number >= 1")
+  expect_error(prec_prop(p = 0.3, n = 100, df = -1), "must be a single number >= 1")
+  expect_error(n_mean(var = 100, moe = 1, df = 0), "must be a single number >= 1")
+  expect_error(prec_mean(var = 100, n = 100, df = NA), "must be a single number >= 1")
 })
 
 test_that("the power functions refuse df and say why", {
@@ -554,7 +554,7 @@ test_that("a plan carries df into the sizing functions", {
     n_mean(var = 100, moe = 1, deff = 1.8,
            df = as.double(design_df(alloc)))$n
   )
-  expect_error(svyplan(df = 0.5), "must be a number >= 1")
+  expect_error(svyplan(df = 0.5), "must be a single number >= 1")
 })
 
 test_that("per-domain df feeds an indicators table row by row", {

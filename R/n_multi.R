@@ -14,8 +14,10 @@
 #'   each row needs:
 #'   \itemize{
 #'     \item **What to measure**: `p` for a proportion (e.g. 0.30 for
-#'       30% stunting) **or** `var` for a continuous variable's
-#'       population variance. Each row must use exactly one.
+#'       30% stunting), `var` for a continuous variable's population
+#'       variance, **or** `r` for a ratio of two means, with its moments
+#'       `cv_num`, `cv_den` and `component_cor`. Each row must use exactly
+#'       one.
 #'     \item **How precise**: `moe` (margin of error), `rmoe` (margin of
 #'       error relative to the estimand) **or** `cv` (coefficient of
 #'       variation). Each row must specify exactly one.
@@ -51,7 +53,8 @@
 #'   [n_prop()] for proportion rows and ignored for mean rows.
 #'   An optional `prop_method` column in `indicators` overrides this default
 #'   on a per-row basis. `"wilson"`, `"logodds"` and `"beta"` size from an
-#'   interval half-width, so those rows need `moe` rather than `cv`.
+#'   interval half-width, so those rows need `moe` or `rmoe` rather than
+#'   `cv`.
 #' @param resp_rate Default expected response rate among eligible ultimate
 #'   units, in (0, 1\]. Used for rows whose `resp_rate` column is absent or
 #'   `NA`, and a non-missing row value overrides it. See the nonresponse
@@ -75,8 +78,16 @@
 #'   **Without domains**, the object contains:
 #'   \describe{
 #'     \item{`n`}{The sample size required by the binding indicator.}
-#'     \item{`detail`}{Per-indicator sample-size results.}
+#'     \item{`detail`}{One row per indicator: `name`, its requirement `.n`,
+#'       `.cv_target`, `.cv_achieved` at `n`, `.cv_field` at `ceiling(n)`,
+#'       `.binding`, `.constraint` (what sets the row's requirement:
+#'       `"precision"`, `"min_cases"` or `"min_respondents"`), and the
+#'       target as stated, `.target_scale` (`"moe"`, `"rmoe"` or `"cv"`)
+#'       and `.target`. A row with only a respondent floor has `NA`
+#'       precision.}
 #'     \item{`binding`}{Name or index of the binding (most demanding) indicator.}
+#'     \item{`binding_cause`}{What made it bind, one of the `.constraint`
+#'       values.}
 #'     \item{`indicators`}{The input indicators data frame.}
 #'   }
 #'
@@ -97,6 +108,14 @@
 #'     \item{`domains`}{Data frame with one row per domain, including
 #'       domain variables, `.n`, `.binding`, and `.share` under
 #'       `"natural"`.}
+#'     \item{`detail`}{One row per indicator and domain, the domain
+#'       variables first, then `name`, `.n`, `.cv_target`, `.binding`,
+#'       `.constraint`, `.target_scale` and `.target`. These are each
+#'       domain's own requirements, before `min_n_domain` or natural
+#'       incidence raises its size. [summary()] reads what each row achieves
+#'       at the fielded size.}
+#'     \item{`binding_cause`}{As without domains, or `"min_n_domain"` when
+#'       that floor sets the binding domain's quota.}
 #'   }
 #'
 #' @details
@@ -106,9 +125,10 @@
 #' decisions per row are:
 #'
 #' 1. **Type of indicator**: is it a proportion (binary variable like
-#'    "stunted yes/no") or a mean (continuous variable like "household
-#'    expenditure")? This determines whether you fill the `p` or `var`
-#'    column.
+#'    "stunted yes/no"), a mean (continuous variable like "household
+#'    expenditure"), or a ratio of two means (such as expenditure per
+#'    adult equivalent)? This determines whether you fill the `p`, `var`
+#'    or `r` column.
 #' 2. **Precision target**: do you want an absolute margin of error
 #'    (`moe`, e.g. +/- 5 percentage points), the same margin stated
 #'    relative to the estimand (`rmoe`, e.g. 12 percent of the
@@ -126,9 +146,9 @@
 #' )
 #' ```
 #'
-#' Rows with `p` are treated as proportions, whereas rows with `var` (and
-#' `p = NA`) are treated as means. You cannot have both `p` and `var` non-`NA`
-#' in the same row.
+#' Rows with `p` are treated as proportions, rows with `var` (and
+#' `p = NA`) as means, and rows with `r` as ratios. A row carries only one
+#' of `p`, `var` and `r`.
 #'
 #' A row may instead carry only a floor on the number of respondents,
 #' `min_respondents`, with no `p`, `var` or target. It stands for an
@@ -141,18 +161,28 @@
 #' ## Column reference
 #'
 #' \describe{
-#'   \item{`name`}{Indicator label (optional). If omitted, row numbers
-#'     are used in output.}
+#'   \item{`name`}{Indicator label (optional). If omitted, each row is
+#'     labeled by its row number in `indicators`, with domains as without.
+#'     When given, every row needs a name, unique within a domain.}
 #'   \item{`p`}{Expected proportion, in (0, 1). Use this for binary
 #'     indicators such as prevalences or coverage rates. The value is
 #'     your best prior guess (e.g. from a previous survey or literature).
-#'     One of `p` or `var` per row.}
+#'     One of `p`, `var` or `r` per row.}
 #'   \item{`var`}{Population variance of a continuous indicator. Use
-#'     this for means (e.g. income, expenditure, weight). One of `p`
-#'     or `var` per row.}
-#'   \item{`mu`}{Population mean, finite and non-zero. It may be
-#'     negative. It is required when `var` is used with `cv` because
-#'     CV = SE / abs(mean).}
+#'     this for means (e.g. income, expenditure, weight). One of `p`,
+#'     `var` or `r` per row.}
+#'   \item{`r`}{Anticipated ratio of two means, marking a ratio row, sized
+#'     as [n_ratio()] sizes it. It requires `cv_num`, `cv_den` and
+#'     `component_cor` alongside it. One of `p`, `var` or `r` per row.}
+#'   \item{`cv_num`, `cv_den`}{Coefficients of variation of a ratio row's
+#'     numerator and denominator, strictly positive.}
+#'   \item{`component_cor`}{Correlation between a ratio row's numerator and
+#'     denominator across units, in \eqn{[-1, 1]}.}
+#'   \item{`mu`}{Population mean, finite. It may be negative. It is
+#'     required when `var` is used with `cv` because CV = SE / abs(mean),
+#'     and it must then be non-zero, as it must in multistage mode, which
+#'     works on the cv scale. With a `moe` target a zero mean is accepted
+#'     and the row's `cv` and `rmoe` are `NA`.}
 #'   \item{`moe`}{Margin of error, the half-width of the confidence
 #'     interval you want. For proportions, this is on the probability
 #'     scale (e.g. 0.05 for +/- 5 percentage points). For means,
@@ -207,7 +237,8 @@
 #'     only, as for `min_cases`.}
 #'   \item{`unit_relvar`}{Unit relvariance. If omitted, derived
 #'     automatically from `p` (as `(1 - p) / p`) or from
-#'     `var` / `mu^2`.}
+#'     `var` / `mu^2`. A ratio row derives it from its moments, and a value
+#'     given there must agree with them.}
 #'   \item{`resp_rate`}{Expected response rate at the ultimate unit, in
 #'     (0, 1\]. Default 1 (no adjustment). A value of 0.90 inflates the
 #'     sample size by `1 / 0.90` to compensate for 10 percent
@@ -216,6 +247,10 @@
 #'     that cannot be worked and `resp_rate_ssu` for second-stage units in a
 #'     three-stage design. Naming a stage the design does not have is an
 #'     error rather than a column carried along and ignored.}
+#'   \item{`eligibility_rate`}{Share of the row's issued units in scope, in
+#'     (0, 1\]. It inflates the row's size by `1 / eligibility_rate`, and
+#'     with a finite `N` the population in scope is `N * eligibility_rate`.
+#'     `NA` takes the `eligibility_rate` argument.}
 #'   \item{`eligible_per_unit`}{Eligible units per sampled unit for the row's
 #'     estimate, such as married women or children aged 12 to 23 months per
 #'     household. The row is sized as [n_prop()] or [n_mean()] size it with
@@ -256,8 +291,8 @@
 #' on the way in and everything downstream reads `var`.
 #'
 #' `n_multi()` computes sample size per indicator by delegating proportion
-#' rows to [n_prop()] and mean rows to [n_mean()],
-#' then takes the maximum per domain. Use `prop_method` or a
+#' rows to [n_prop()], mean rows to [n_mean()] and ratio rows to
+#' [n_ratio()], then takes the maximum per domain. Use `prop_method` or a
 #' `indicators$prop_method` column to choose `"wald"`, `"wilson"`,
 #' `"logodds"` or `"beta"` for proportion rows.
 #'
@@ -447,7 +482,9 @@ n_multi.default <- function(
   }
 
   indicators <- .indicators_var_from_sd(indicators, domains)
+  provenance <- .target_provenance(indicators)
   indicators <- .indicators_moe_from_rmoe(indicators, domains)
+  .check_unique_indicators(indicators, domains)
   floor_only <- .floor_only_rows(indicators)
   .check_respondent_floors(indicators, floor_only, domains)
   .validate_common_columns(indicators)
@@ -479,7 +516,7 @@ n_multi.default <- function(
     "cv"
   }
 
-  if (length(domain_cols) == 0L) {
+  res <- if (length(domain_cols) == 0L) {
     .n_multi_simple(
       indicators,
       domain_cols = domain_cols,
@@ -504,6 +541,47 @@ n_multi.default <- function(
       domain_sampling = domain_sampling
     )
   }
+  .attach_target_provenance(res, provenance, indicators, domain_cols)
+}
+
+#' The target each row was stated with, before normalization
+#'
+#' Normalization rewrites an `rmoe` target as a `moe`, so the scale the user
+#' wrote is recorded first for the summary to report it.
+#' @keywords internal
+#' @noRd
+.target_provenance <- function(indicators) {
+  nr <- nrow(indicators)
+  scale <- rep(NA_character_, nr)
+  value <- rep(NA_real_, nr)
+  for (col in intersect(c("cv", "moe", "rmoe"), names(indicators))) {
+    set <- !is.na(indicators[[col]])
+    scale[set] <- col
+    value[set] <- indicators[[col]][set]
+  }
+  list(scale = scale, value = value)
+}
+
+#' Write the stated targets onto the per-row detail
+#'
+#' With domains the detail stacks the domains in the order the solver split
+#' them, so the rows are reordered the same way.
+#' @keywords internal
+#' @noRd
+.attach_target_provenance <- function(res, provenance, indicators,
+                                      domain_cols) {
+  if (is.null(res$detail)) {
+    return(res)
+  }
+  ord <- seq_len(nrow(indicators))
+  if (length(domain_cols) > 0L) {
+    key <- .domain_key(indicators, domain_cols)
+    ord <- unlist(split(ord, factor(key, levels = unique(key))),
+                  use.names = FALSE)
+  }
+  res$detail$.target_scale <- provenance$scale[ord]
+  res$detail$.target <- provenance$value[ord]
+  res
 }
 
 #' Cluster allocation from a table of indicators
@@ -588,6 +666,7 @@ n_multi.default <- function(
   check_fixed_cost(fixed_cost, budget)
 
   indicators <- .indicators_var_from_sd(indicators, domains)
+  provenance <- .target_provenance(indicators)
   indicators <- .indicators_moe_from_rmoe(indicators, domains)
   info <- .validate_targets(
     indicators,
@@ -683,7 +762,10 @@ n_multi.default <- function(
     res$indicators$resp_rate <- given_resp
     res$params$eligibility_rate <- eligibility_rate
   }
-  res
+  if (length(domain_cols) == 0L) {
+    res$binding_cause <- "precision"
+  }
+  .attach_target_provenance(res, provenance, indicators, domain_cols)
 }
 
 #' Per-row eligibility rate, materialized only when one is set
@@ -982,8 +1064,28 @@ n_multi.default <- function(
 
   if ("mu" %in% names(indicators)) {
     mu_vals <- indicators$mu[!is.na(indicators$mu)]
-    if (any(mu_vals == 0) || any(!is.finite(mu_vals))) {
-      stop("'mu' values must be finite and non-zero", call. = FALSE)
+    if (any(!is.finite(mu_vals))) {
+      stop("'mu' values must be finite", call. = FALSE)
+    }
+    # A zero level serves an absolute target. A cv target, and the cv a
+    # multistage solve converts every target to, have no scale there.
+    zero <- !is.na(indicators$mu) & indicators$mu == 0
+    relative <- if (multistage) {
+      rep(TRUE, nrow(indicators))
+    } else if (has_cv) {
+      !is.na(indicators$cv)
+    } else {
+      rep(FALSE, nrow(indicators))
+    }
+    if (any(zero & relative)) {
+      stop(
+        if (multistage) {
+          "'mu' must be non-zero for a mean indicator in multistage mode, which works on the cv scale"
+        } else {
+          "'mu' must be non-zero on a row with a 'cv' target"
+        },
+        call. = FALSE
+      )
     }
   }
 
@@ -1149,7 +1251,9 @@ n_multi.default <- function(
     } else if (has_p && !is.na(indicators$p[i])) {
       rv[i] <- (1 - indicators$p[i]) / indicators$p[i]
     } else if (has_var && !is.na(indicators$var[i])) {
-      if (has_mu && !is.na(indicators$mu[i])) {
+      # A zero mean has no relvariance. Only an absolute target reaches
+      # here with one, and that target reads 'var' directly.
+      if (has_mu && !is.na(indicators$mu[i]) && indicators$mu[i] != 0) {
         rv[i] <- indicators$var[i] / indicators$mu[i]^2
       } else if (require_all) {
         stop(
@@ -1258,12 +1362,17 @@ n_multi.default <- function(
   # A case floor raises the row's own size, so the binding row is chosen
   # among sizes that already satisfy both constraints. `.cv_target` keeps
   # its precision meaning; `.cv_achieved` is read at the size that wins.
+  constraint <- rep("precision", nrow(indicators))
   floor_n <- .multi_min_cases_n(indicators)
   if (!is.null(floor_n)) {
+    constraint[!is.na(floor_n) & (is.na(n_vec) | floor_n > n_vec)] <-
+      "min_cases"
     n_vec <- pmax(n_vec, floor_n, na.rm = TRUE)
   }
   resp_floor_n <- .multi_min_respondents_n(indicators)
   if (!is.null(resp_floor_n)) {
+    constraint[!is.na(resp_floor_n) &
+                 (is.na(n_vec) | resp_floor_n > n_vec)] <- "min_respondents"
     n_vec <- pmax(n_vec, resp_floor_n, na.rm = TRUE)
   }
 
@@ -1284,7 +1393,7 @@ n_multi.default <- function(
   elig <- .indicator_rate(indicators, "eligible_per_unit", nrow(indicators))
   scope <- .indicator_rate(indicators, "eligibility_rate", nrow(indicators))
   floor_only <- .floor_only_rows(indicators)
-  cv_achieved_vec <- vapply(
+  cv_at <- function(n_eval) vapply(
     seq_len(nrow(indicators)),
     function(i) {
       if (floor_only[i]) {
@@ -1294,7 +1403,7 @@ n_multi.default <- function(
         .prec_engine_ratio(
           indicators$r[i],
           indicators$unit_relvar[i],
-          n_max,
+          n_eval,
           indicators$alpha[i],
           indicators$N[i] * scope[i],
           indicators$deff[i],
@@ -1304,7 +1413,7 @@ n_multi.default <- function(
       } else if (has_p && !is.na(indicators$p[i])) {
         .prec_engine_prop(
           indicators$p[i],
-          n_max,
+          n_eval,
           indicators$alpha[i],
           indicators$N[i] * scope[i] * elig[i],
           indicators$deff[i],
@@ -1316,7 +1425,7 @@ n_multi.default <- function(
         .prec_engine_mean(
           indicators$var[i],
           if (has_mu) indicators$mu[i] else NULL,
-          n_max,
+          n_eval,
           indicators$alpha[i],
           indicators$N[i] * scope[i] * elig[i],
           indicators$deff[i],
@@ -1329,15 +1438,19 @@ n_multi.default <- function(
     numeric(1L)
   )
 
+  cv_achieved <- cv_at(n_max)
   detail <- data.frame(
     name = labels,
     .n = n_vec,
     .cv_target = cv_target_vec,
-    .cv_achieved = cv_achieved_vec,
-    .binding = seq_len(nrow(indicators)) == idx
+    .cv_achieved = cv_achieved,
+    .cv_field = if (.whole_count(n_max) == n_max) cv_achieved else
+      cv_at(.whole_count(n_max)),
+    .binding = seq_len(nrow(indicators)) == idx,
+    .constraint = constraint
   )
 
-  .new_svyplan_n(
+  res <- .new_svyplan_n(
     n = n_max,
     type = "multi",
     params = list(
@@ -1349,6 +1462,8 @@ n_multi.default <- function(
     detail = detail,
     binding = binding_name
   )
+  res$binding_cause <- constraint[idx]
+  res
 }
 
 #' Compute per-indicator n by delegating to the single-indicator engines
@@ -1539,6 +1654,7 @@ n_multi.default <- function(
     )
   }
 
+  operational$binding <- .field_binding(operational, st$labels, st$cv_t)
   n_vec <- if (stages == 2L) {
     c(n_psu = a, n_per_psu = b)
   } else {
@@ -1574,7 +1690,7 @@ n_multi.default <- function(
     n = n_vec,
     stages = stages,
     total_n = prod(n_vec),
-    cv = fit$cv_achieved[fit$binding_idx],
+    cv = max(fit$cv_achieved),
     cost = fixed_cost + fit$cost,
     params = params,
     indicators = indicators,
@@ -1657,6 +1773,43 @@ n_multi.default <- function(
   xs <- c(opt$minimum, lo, hi)
   j <- which.min(vals)
   list(x = xs[j], value = vals[j])
+}
+
+#' `.best_over()` on the log scale of a positive interval
+#'
+#' An end that wins is returned exactly, not as `exp(log(end))`.
+#' @keywords internal
+#' @noRd
+.best_over_log <- function(f, lo, hi) {
+  hit <- .best_over(function(x) f(exp(x)), log(lo), log(hi))
+  x <- if (hit$x <= log(lo)) lo else if (hit$x >= log(hi)) hi else exp(hit$x)
+  list(x = x, value = f(x))
+}
+
+#' The least cost of a design over its two free takes
+#'
+#' Minimizes `(C1 + C2 m + C3 m q) * max(alpha + beta / m + gamma / (m q))`
+#' over the box `lower <= c(m, q) <= upper`. With nonnegative coefficients
+#' each row is a posynomial, so the objective is convex in `(log m, log q)`
+#' although its maximum has a kink where two rows bind together. The search
+#' over `log q` at each `log m`, and the search over `log m` it leaves, are
+#' each one-dimensional and convex, so the nested search finds the minimum
+#' on the box. The variable cost at a CV target and the squared worst ratio
+#' under a budget, times that budget, are both this objective.
+#' @keywords internal
+#' @noRd
+.min_two_takes <- function(coef, stage_cost, lower, upper) {
+  C1 <- stage_cost[1L]
+  C2 <- stage_cost[2L]
+  C3 <- stage_cost[3L]
+  obj <- function(m, q) {
+    (C1 + C2 * m + C3 * m * q) *
+      max(coef$alpha + coef$beta / m + coef$gamma / (m * q))
+  }
+  inner <- function(m) .best_over_log(function(q) obj(m, q), lower[2L], upper[2L])
+  hit <- .best_over_log(function(m) inner(m)$value, lower[1L], upper[1L])
+  q <- inner(hit$x)$x
+  list(n_per_psu = hit$x, n_per_ssu = q, value = obj(hit$x, q))
 }
 
 #' Refusal of a continuous design below a joint domain floor
@@ -1818,7 +1971,8 @@ n_multi.default <- function(
     } else {
       c_box[2L]
     }
-    if (spend(c_box[1L]) < b_box[1L] * (1 - 1e-12) || c_hi < c_box[1L]) {
+    if (spend(c_box[1L]) < b_box[1L] * (1 - 1e-12) ||
+        c_hi < c_box[1L] * (1 - 1e-12)) {
       stop(
         sprintf(
           "'budget' is too small for any realizable design: %s at the smallest takes costs %.4g plus fixed_cost = %.4g",
@@ -1828,6 +1982,7 @@ n_multi.default <- function(
         call. = FALSE
       )
     }
+    c_hi <- max(c_hi, c_box[1L])
     worst <- function(a, b, cc) max((G(b, cc) / a - co$kappa) / cv_t^2)
     m <- min_total
     if (!is.null(a_set)) {
@@ -1887,7 +2042,7 @@ n_multi.default <- function(
   floor = 1L
 ) {
   if (!is.null(fixed)) {
-    return(max(floor, as.integer(round(fixed))))
+    return(as.integer(.whole_take(fixed, floor)))
   }
   upper_i <- if (is.finite(upper)) {
     max(1L, as.integer(floor(upper + 1e-9)))
@@ -1942,7 +2097,7 @@ n_multi.default <- function(
   upper_m <- if (is.null(variable_budget)) {
     Inf
   } else if (!is.null(n_psu)) {
-    (variable_budget / max(1L, as.integer(round(n_psu))) - C1) / C2
+    (variable_budget / .whole_psu(n_psu) - C1) / C2
   } else {
     (variable_budget - C1) / C2
   }
@@ -1958,7 +2113,7 @@ n_multi.default <- function(
 
   if (!is.null(budget)) {
     a <- if (!is.null(n_psu)) {
-      rep(max(1L, as.integer(round(n_psu))), length(m_cand))
+      rep(as.integer(.whole_psu(n_psu)), length(m_cand))
     } else {
       # A share that pays a whole design up to float noise keeps it, with
       # the tolerance of the cost check below.
@@ -1988,7 +2143,7 @@ n_multi.default <- function(
   } else {
     need <- vapply(m_cand, function(m) max(n1_required(m)), numeric(1L))
     if (!is.null(n_psu)) {
-      a <- rep(max(1L, as.integer(round(n_psu))), length(m_cand))
+      a <- rep(as.integer(.whole_psu(n_psu)), length(m_cand))
       keep <- a + 1e-9 >= need
       if (!any(keep)) {
         stop(
@@ -2051,7 +2206,7 @@ n_multi.default <- function(
   C2 <- stage_cost[2L]
   C3 <- stage_cost[3L]
   variable_budget <- if (is.null(budget)) NULL else budget - fixed_cost
-  a_fixed <- if (is.null(n_psu)) NULL else max(1L, as.integer(round(n_psu)))
+  a_fixed <- if (is.null(n_psu)) NULL else as.integer(.whole_psu(n_psu))
   a_min <- a_fixed %||% 1L
 
   upper_m <- if (is.null(variable_budget)) {
@@ -2099,6 +2254,16 @@ n_multi.default <- function(
     cv = max(cvs),
     cv_by_target = cvs
   )
+}
+
+#' The indicator the field design binds on
+#'
+#' The row with the largest ratio of cv to target, read from the whole-unit
+#' cvs. The worst absolute cv can belong to another row.
+#' @keywords internal
+#' @noRd
+.field_binding <- function(operational, labels, cv_t) {
+  labels[which.max(operational$cv_by_target / cv_t)]
 }
 
 #' 2-stage multi-indicator optimization
@@ -2256,6 +2421,7 @@ n_multi.default <- function(
     m_floor = .take_floor(ru),
     min_total = min_total
   )
+  operational$binding <- .field_binding(operational, labels, cv_t)
 
   n1_per <- n1_required(n_per_psu_opt)
   n_per <- n1_per * n_per_psu_opt
@@ -2291,7 +2457,7 @@ n_multi.default <- function(
     n = n_vec,
     stages = 2L,
     total_n = total_n,
-    cv = cv_achieved[binding_idx],
+    cv = max(cv_achieved),
     cost = total_cost,
     params = params,
     indicators = indicators,
@@ -2418,37 +2584,14 @@ n_multi.default <- function(
 
   if (is.null(budget)) {
     if (n_free == 3L) {
-      cost_fn <- function(par) {
-        ps <- par[1L]
-        ss <- par[2L]
-        n1 <- max(n1_required(ps, ss))
-        n1 * (C1 + C2 * ps + C3 * ps * ss)
-      }
-
       lower <- c(.take_bound(rs), .take_bound(ru))
-      init_n_per_ssu <- max(2, sqrt(C2 / C3), lower[2L])
-      init_n_per_psu <- max(2, sqrt(C1 / C2), lower[1L])
-      upper_ps <- max(1000, 10 * init_n_per_psu)
-      upper_ss <- max(1000, 10 * init_n_per_ssu)
-      opt <- optim(
-        par = c(init_n_per_psu, init_n_per_ssu),
-        fn = cost_fn,
-        method = "L-BFGS-B",
-        lower = lower,
-        upper = c(upper_ps, upper_ss)
-      )
-      if (opt$convergence != 0L) {
-        warning(
-          "L-BFGS-B did not converge (code ",
-          opt$convergence,
-          "): ",
-          "allocation may be approximate",
-          call. = FALSE
-        )
-      }
+      upper_ps <- max(1000, 10 * max(2, sqrt(C1 / C2), lower[1L]))
+      upper_ss <- max(1000, 10 * max(2, sqrt(C2 / C3), lower[2L]))
+      hit <- .min_two_takes(search_coef, stage_cost, lower,
+                            c(upper_ps, upper_ss))
       if (
-        opt$par[1L] >= upper_ps * (1 - 1e-6) ||
-          opt$par[2L] >= upper_ss * (1 - 1e-6)
+        hit$n_per_psu >= upper_ps * (1 - 1e-6) ||
+          hit$n_per_ssu >= upper_ss * (1 - 1e-6)
       ) {
         warning(
           sprintf(
@@ -2460,8 +2603,8 @@ n_multi.default <- function(
         )
       }
 
-      n_per_psu_opt <- opt$par[1L]
-      n_per_ssu_opt <- opt$par[2L]
+      n_per_psu_opt <- hit$n_per_psu
+      n_per_ssu_opt <- hit$n_per_ssu
       n1_vals <- n1_required(n_per_psu_opt, n_per_ssu_opt)
       n1_opt <- max(n1_vals)
       total_cost <- fixed_cost +
@@ -2782,6 +2925,7 @@ n_multi.default <- function(
     q_floor = .take_floor(ru),
     min_total = min_total
   )
+  operational$binding <- .field_binding(operational, labels, cv_t)
 
   n1_per <- n1_required(n_per_psu_opt, n_per_ssu_opt)
   n_per <- n1_per * n_per_psu_opt * n_per_ssu_opt
@@ -2820,7 +2964,7 @@ n_multi.default <- function(
     n = n_vec,
     stages = 3L,
     total_n = total_n,
-    cv = cv_achieved[binding_idx],
+    cv = max(cv_achieved),
     cost = total_cost,
     params = params,
     indicators = indicators,
@@ -2878,7 +3022,8 @@ n_multi.default <- function(
     rows <- split_idx[[lev]]
     sub <- indicators[rows, , drop = FALSE]
     # Drop domain columns for inner solve
-    sub_inner <- sub[, !names(sub) %in% domain_cols, drop = FALSE]
+    sub_inner <- .label_by_row(sub[, !names(sub) %in% domain_cols,
+                                   drop = FALSE], rows)
     if (multistage && !is.null(row_pops)) {
       .n_multi_cluster_stage(
         sub_inner, stage_cost, budget, n_psu, n_per_psu, n_per_ssu,
@@ -3028,13 +3173,13 @@ n_multi.default <- function(
   }
 
   n_domain_max <- max(domains$.n)
-  binding_label <- domains$.binding[which.max(domains$.n)]
+  binding_domain <- which.max(domains$.n)
 
   if (identical(domain_sampling, "natural")) {
     domains$.share <- .domain_shares(indicators, domain_levels, split_idx)
     yields <- domains$.n / domains$.share
     n_overall <- max(yields)
-    binding_label <- domains$.binding[which.max(yields)]
+    binding_domain <- which.max(yields)
     for (d in seq_along(domain_levels)) {
       .check_multi_attainable(
         n_overall * domains$.share[d],
@@ -3048,6 +3193,12 @@ n_multi.default <- function(
   } else {
     n_overall <- sum(domains$.n)
   }
+  binding_label <- domains$.binding[binding_domain]
+  binding_cause <- if (identical(binding_label, "(min_n_domain)")) {
+    "min_n_domain"
+  } else {
+    results[[domain_levels[binding_domain]]]$binding_cause
+  }
 
   res <- .new_svyplan_n(
     n = n_overall,
@@ -3059,15 +3210,63 @@ n_multi.default <- function(
       domain_sampling = domain_sampling
     ),
     indicators = indicators,
-    detail = NULL,
+    detail = .stack_domain_detail(results, indicators, domain_cols,
+                                  domain_levels, split_idx),
     binding = binding_label,
     domains = domains
   )
+  res$binding_cause <- binding_cause
   res$n_domain_max <- n_domain_max
   if (!is.null(min_n_domain)) {
     res$params$min_n_domain <- min_n_domain
   }
   res
+}
+
+#' Per-row requirements of every domain, stacked
+#'
+#' Each domain's own solve, before `min_n_domain` or natural incidence
+#' raises its size. What the rows achieve at the fielded size is a
+#' precision result and is not stored here.
+#' @keywords internal
+#' @noRd
+.stack_domain_detail <- function(results, indicators, domain_cols,
+                                 domain_levels, split_idx) {
+  keep <- c("name", ".n", ".cv_target", ".binding", ".constraint")
+  rows <- lapply(domain_levels, function(lev) {
+    d <- results[[lev]]$detail
+    d <- d[, intersect(keep, names(d)), drop = FALSE]
+    cbind(indicators[split_idx[[lev]], domain_cols, drop = FALSE], d)
+  })
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}
+
+#' Label unnamed indicator rows by their row in the input
+#'
+#' A domain is solved on its own rows, which would otherwise be numbered
+#' from 1 within the domain, so two domains would both report a row "1" and
+#' neither label would say which input row it is.
+#' @keywords internal
+#' @noRd
+.label_by_row <- function(sub, rows) {
+  if (!"name" %in% names(sub)) sub$name <- rows
+  sub
+}
+
+#' Which cluster domains sit at their size floor
+#'
+#' Only the joint route holds a domain at `min_n_domain`. The separate route
+#' warns about a domain below the floor and leaves it at its precision
+#' design, so no domain there is set by the floor.
+#' @keywords internal
+#' @noRd
+.cluster_domain_floored <- function(total_n, min_n_domain, joint) {
+  if (!isTRUE(joint) || is.null(min_n_domain)) {
+    return(rep(FALSE, length(total_n)))
+  }
+  total_n <= min_n_domain * (1 + 1e-8)
 }
 
 #' Aggregate multistage domain results
@@ -3088,7 +3287,8 @@ n_multi.default <- function(
   fixed_cost = 0,
   mode = "cv",
   prop_method = "wald",
-  domain_sampling = "separate"
+  domain_sampling = "separate",
+  joint = FALSE
 ) {
   if (identical(domain_sampling, "natural")) {
     stop(
@@ -3196,7 +3396,16 @@ n_multi.default <- function(
     params$fixed_cost <- fixed_cost
   }
 
-  .new_svyplan_cluster(
+  for (lev in domain_levels) {
+    op <- results[[lev]]$operational
+    d <- results[[lev]]$detail
+    d$.binding <- seq_len(nrow(d)) == which.max(op$cv_by_target / d$.cv_target)
+    results[[lev]]$detail <- d
+  }
+  floored <- .cluster_domain_floored(domains$.total_n[worst_cv_idx],
+                                     min_n_domain, joint)
+
+  res <- .new_svyplan_cluster(
     n = n_vec,
     stages = stages,
     total_n = total_n,
@@ -3204,11 +3413,184 @@ n_multi.default <- function(
     cost = total_cost,
     params = params,
     indicators = indicators,
-    detail = NULL,
+    detail = .stack_domain_detail(results, indicators, domain_cols,
+                                  domain_levels, split_idx),
     binding = domains$.binding[worst_cv_idx],
     domains = domains,
     operational = operational
   )
+  res$binding_cause <- if (floored) "min_n_domain" else "precision"
+  res
+}
+
+#' Least root of a falling function inside a bracket
+#'
+#' `f(lo) > 0 >= f(hi)`. The Illinois form of regula falsi, with a
+#' bisection whenever three steps leave the bracket more than half as wide,
+#' which also covers a flat or jumping `f`. Stops when the bracket is
+#' narrower than `tol`, or when `f(hi)` is within `ftol` below zero, and
+#' returns the side where `f <= 0`. `NULL` when `max_iter` steps do not.
+#' @keywords internal
+#' @noRd
+.falling_root <- function(f, lo, hi, f_lo, f_hi, tol, ftol = 0,
+                          max_iter = 200L) {
+  side <- 0L
+  width <- hi - lo
+  for (i in seq_len(max_iter)) {
+    if (hi - lo <= tol || -f_hi <= ftol) {
+      return(list(x = hi, f = f_hi))
+    }
+    halve <- i %% 3L == 0L && hi - lo > width / 2
+    if (i %% 3L == 0L) width <- hi - lo
+    x <- if (!halve && is.finite(f_lo) && f_lo > f_hi) {
+      lo + f_lo * (hi - lo) / (f_lo - f_hi)
+    } else {
+      NA_real_
+    }
+    if (is.na(x) || x <= lo || x >= hi) x <- (lo + hi) / 2
+    fx <- f(x)
+    if (fx > 0) {
+      lo <- x
+      f_lo <- fx
+      if (side < 0L) f_hi <- f_hi / 2
+      side <- -1L
+    } else {
+      hi <- x
+      f_hi <- fx
+      if (side > 0L) f_lo <- f_lo / 2
+      side <- 1L
+    }
+  }
+  NULL
+}
+
+#' Split a budget to minimize the worst of several falling ratios
+#'
+#' `ratio(d, b)` is domain `d`'s worst achieved-to-target ratio at budget
+#' `b`, never rising with `b`, and `Inf` where `b` reaches no design.
+#' Every domain gets at least `lower[d]`. A worst ratio `t` is reachable
+#' when the least budgets `h_d(t)` at which each domain reaches it fit in
+#' `total`, so the optimum is the least such `t`, found by a bracketed root
+#' search on `sum(h_d(t)) - total` with each `h_d(t)` found the same way
+#' from the evaluations already made. No root of `ratio(d, b) = t` is
+#' assumed unique, since a ratio is flat once a domain takes its whole
+#' population.
+#'
+#' With `scaling`, each ratio is taken to fall as `1 / sqrt(b)`, which holds
+#' without a stage correction, a fixed PSU count or a size floor. The split
+#' is then proportional to `b r_d(b)^2` above the lower budgets, and it is
+#' kept only when the ratios it gives agree.
+#'
+#' Money left once every domain reaches `t` goes to the domains above their
+#' lower budget, since more never raises a ratio.
+#' @keywords internal
+#' @noRd
+.joint_split <- function(ratio, lower, total, labels, scaling = FALSE) {
+  nd <- length(lower)
+  if (total - sum(lower) <= 1e-12 * total) {
+    return(lower * total / sum(lower))
+  }
+  upper <- total - (sum(lower) - lower)
+  seen <- lapply(seq_len(nd), function(d) list(b = numeric(0), r = numeric(0)))
+  r_at <- function(d, b) {
+    k <- match(b, seen[[d]]$b)
+    if (!is.na(k)) {
+      return(seen[[d]]$r[k])
+    }
+    v <- ratio(d, b)
+    seen[[d]]$b <<- c(seen[[d]]$b, b)
+    seen[[d]]$r <<- c(seen[[d]]$r, v)
+    v
+  }
+  agree <- function(b, tol) {
+    r <- vapply(seq_len(nd), function(d) r_at(d, b[d]), numeric(1L))
+    free <- b > lower * (1 + 1e-12)
+    if (!any(free) || !all(is.finite(r))) {
+      return(FALSE)
+    }
+    t <- max(r[free])
+    all(r[free] >= t * (1 - tol)) && all(r[!free] <= t * (1 + tol))
+  }
+
+  ## The split proportional to b r_d(b)^2 is exact when each ratio falls as
+  ## 1 / sqrt(b). Otherwise its worst ratio still bounds the optimum above.
+  propose <- NULL
+  K <- vapply(seq_len(nd), function(d) upper[d] * r_at(d, upper[d])^2,
+              numeric(1L))
+  if (all(is.finite(K)) && all(K > 0)) {
+    held <- rep(FALSE, nd)
+    repeat {
+      b <- lower
+      rest <- total - sum(lower[held])
+      b[!held] <- rest * K[!held] / sum(K[!held])
+      low <- !held & b < lower
+      if (!any(low)) break
+      held <- held | low
+    }
+    b[held] <- lower[held]
+    if (scaling && agree(b, 1e-9)) {
+      return(b)
+    }
+    propose <- b
+  }
+
+  ## The least budget in [lower, upper] reaching t, NA when upper does not.
+  need <- function(d, t) {
+    if (r_at(d, lower[d]) <= t) {
+      return(lower[d])
+    }
+    if (r_at(d, upper[d]) > t) {
+      return(NA_real_)
+    }
+    b <- seen[[d]]$b
+    r <- seen[[d]]$r
+    lo <- max(b[r > t])
+    hi <- min(b[r <= t])
+    hit <- .falling_root(function(x) r_at(d, x) - t, lo, hi,
+                         r_at(d, lo) - t, r_at(d, hi) - t,
+                         tol = 1e-10 * upper[d], ftol = 1e-12 * t)
+    if (is.null(hit)) {
+      stop(sprintf("the joint split found no budget for domain '%s' at a worst ratio of %.6g",
+                   labels[d], t), call. = FALSE)
+    }
+    hit$x
+  }
+  over <- function(t) {
+    h <- vapply(seq_len(nd), function(d) need(d, t), numeric(1L))
+    if (anyNA(h)) Inf else sum(h) - total
+  }
+
+  start <- lower + (total - sum(lower)) / nd
+  t_hi <- max(vapply(seq_len(nd), function(d) r_at(d, start[d]), numeric(1L)))
+  if (!is.null(propose)) {
+    t_hi <- min(t_hi, max(vapply(seq_len(nd), function(d) r_at(d, propose[d]),
+                                 numeric(1L))))
+  }
+  t_lo <- max(vapply(seq_len(nd), function(d) r_at(d, upper[d]), numeric(1L)))
+  if (!is.finite(t_hi)) {
+    stop("the joint split found no design for every domain at an equal share of the budget",
+         call. = FALSE)
+  }
+  g_lo <- over(t_lo)
+  t <- if (g_lo <= 0) {
+    t_lo
+  } else {
+    hit <- .falling_root(over, t_lo, t_hi, g_lo, over(t_hi),
+                         tol = 1e-9 * t_hi, ftol = 1e-10 * total)
+    if (is.null(hit)) {
+      stop(sprintf("the joint split did not settle between worst ratios %.6g and %.6g",
+                   t_lo, t_hi), call. = FALSE)
+    }
+    hit$x
+  }
+  b <- vapply(seq_len(nd), function(d) need(d, t), numeric(1L))
+  left <- total - sum(b)
+  if (left > 0) {
+    up <- b > lower * (1 + 1e-12)
+    if (!any(up)) up <- rep(TRUE, nd)
+    b[up] <- b[up] + left * b[up] / sum(b[up])
+  }
+  b
 }
 
 #' @keywords internal
@@ -3337,61 +3719,106 @@ n_multi.default <- function(
   }
 
   lower_bounds <- rep(1e-4, nd)
-  # A domain is solvable only above the cost of its cheapest field design
-  # when its PSU count cannot fall below one, under the stage correction or
-  # at a fixed n_psu. Searching from these shares keeps the search off a
-  # flat penalty that can hide a narrow feasible interval.
-  floor_cost <- rep(0, nd)
-  if (!is.null(row_pops) || !is.null(n_psu)) {
-    floor_cost <- vapply(seq_len(nd), function(d) {
-      p <- domain_params[[d]]
-      b <- n_per_psu %||% .take_bound(if (stages == 2L) p$resp_rate else
-        p$resp_rate_ssu)
-      cc <- if (stages == 3L) n_per_ssu %||% .take_bound(p$resp_rate) else 0
-      (n_psu %||% 1) * (C1 + C2 * b + (C3 %||% 0) * b * cc)
-    }, numeric(1L))
-    if (sum(floor_cost) > var_budget * (1 + 1e-12)) {
-      stop(
-        sprintf(
-          "'budget' is too small for a joint allocation: the cheapest design of every domain together costs %.4g plus fixed_cost = %.4g",
-          sum(floor_cost), fixed_cost
-        ),
-        call. = FALSE
-      )
-    }
-    lower_bounds <- pmax(lower_bounds, floor_cost / var_budget)
+  # Each share must pay for both designs. The whole solve that follows
+  # fields whole PSUs and takes, its cheapest one PSU or the whole fixed
+  # count at the least whole takes. The continuous evaluator needs the exact
+  # fixed sizes at the continuous take bounds, which costs more when a fixed
+  # size rounds down (264 against 220 at n_psu = 2.4 and costs 100 and 10).
+  # With free PSUs and no stage correction it takes any positive share.
+  costs <- c(C1, C2, C3 %||% 0)
+  H <- function(b, cc) costs[1L] + costs[2L] * b + costs[3L] * b * cc
+  # The whole sizes and take bounds of domain d, as the whole solve rounds
+  # and caps them.
+  whole_sizes <- function(d) {
+    p <- domain_params[[d]]
+    pop <- if (!is.null(row_pops)) row_pops[[split_idx[[domain_levels[d]]][1L]]]
+    b_cap <- if (is.null(pop)) Inf else
+      floor((if (stages == 2L) pop$M_take else pop$Q) + 1e-9)
+    c_cap <- if (is.null(pop) || stages == 2L) Inf else floor(pop$C_take + 1e-9)
+    b_floor <- .take_floor(if (stages == 2L) p$resp_rate else p$resp_rate_ssu)
+    c_floor <- if (stages == 2L) 1 else .take_floor(p$resp_rate)
+    list(
+      a = if (!is.null(n_psu)) .whole_psu(n_psu),
+      b = if (is.null(n_per_psu)) c(b_floor, b_cap) else
+        rep(.whole_take(n_per_psu, b_floor, b_cap), 2L),
+      c = if (stages == 2L) c(1, 1) else if (is.null(n_per_ssu))
+        c(c_floor, c_cap) else rep(.whole_take(n_per_ssu, c_floor, c_cap), 2L)
+    )
   }
+  # The continuous take boxes of domain d.
+  cont_boxes <- function(d) {
+    if (!is.null(stage_setups)) {
+      st <- stage_setups[[d]]
+      return(list(a_hi = n_psu %||% st$A, b = st$b_box, c = st$c_box))
+    }
+    p <- domain_params[[d]]
+    b_rate <- if (stages == 2L) p$resp_rate else p$resp_rate_ssu
+    list(
+      a_hi = n_psu %||% Inf,
+      b = if (!is.null(n_per_psu)) rep(n_per_psu, 2L) else
+        c(.take_bound(b_rate), Inf),
+      c = if (stages == 2L) c(1, 1) else if (!is.null(n_per_ssu))
+        rep(n_per_ssu, 2L) else c(.take_bound(p$resp_rate), Inf)
+    )
+  }
+  # The least share the continuous evaluator accepts: one PSU at the least
+  # takes under the stage correction, the fixed count at a fixed n_psu.
+  cont_entry <- function(d) {
+    bx <- cont_boxes(d)
+    if (!is.null(n_psu)) {
+      n_psu * H(bx$b[1L], bx$c[1L])
+    } else if (!is.null(stage_setups)) {
+      H(bx$b[1L], bx$c[1L])
+    } else {
+      0
+    }
+  }
+  floor_cost <- vapply(seq_len(nd), function(d) {
+    w <- whole_sizes(d)
+    max((w$a %||% 1) * H(w$b[1L], w$c[1L]), cont_entry(d))
+  }, numeric(1L))
+  if (sum(floor_cost) > var_budget * (1 + 1e-12)) {
+    stop(
+      sprintf(
+        "'budget' is too small for a joint allocation: the cheapest design of every domain together costs %.4g plus fixed_cost = %.4g, counting each domain at the larger cost of its whole and its continuous design",
+        sum(floor_cost), fixed_cost
+      ),
+      call. = FALSE
+    )
+  }
+  lower_bounds <- pmax(lower_bounds, floor_cost / var_budget)
 
   floor_tol <- 1e-8
   if (!is.null(min_n_domain)) {
     # The least budget of a design reaching the floor, with the takes free
     # to rise above the precision-optimal ones.
     floor_budget <- vapply(seq_len(nd), function(d) {
-      p <- domain_params[[d]]
-      if (!is.null(stage_setups)) {
-        st <- stage_setups[[d]]
-        costs <- st$costs
-        a_hi <- n_psu %||% st$A
-        b_box <- st$b_box
-        c_box <- st$c_box
+      m <- min_n_domain
+      w <- whole_sizes(d)
+      bx <- cont_boxes(d)
+      a_whole <- if (is.null(w$a)) c(1, bx$a_hi) else rep(w$a, 2L)
+      whole <- .floor_least_whole_cost(m, costs, a_whole[1L], a_whole[2L],
+                                       w$b, w$c)
+      # Free PSUs stay at one or more under the stage correction and go
+      # below one without it, where the least is the share at which the
+      # largest takes reach m.
+      continuous <- if (!is.null(n_psu)) {
+        .floor_least_cost(m, costs, n_psu, n_psu, bx$b, bx$c)
+      } else if (!is.null(stage_setups)) {
+        .floor_least_cost(m, costs, 1, bx$a_hi, bx$b, bx$c)
       } else {
-        costs <- c(C1, C2, C3 %||% 0)
-        a_hi <- n_psu %||% Inf
-        b_rate <- if (stages == 2L) p$resp_rate else p$resp_rate_ssu
-        b_box <- if (!is.null(n_per_psu)) rep(n_per_psu, 2L) else
-          c(.take_bound(b_rate), Inf)
-        c_box <- if (stages == 2L) c(1, 1) else if (!is.null(n_per_ssu))
-          rep(n_per_ssu, 2L) else c(.take_bound(p$resp_rate), Inf)
+        b <- bx$b[2L]
+        cc <- bx$c[2L]
+        m * (costs[1L] / (b * cc) + costs[2L] / cc + costs[3L])
       }
-      # The whole solve that follows fields whole PSUs and takes, so the
-      # share it gets must hold a whole design, not only a continuous one.
-      least <- .floor_least_whole_cost(min_n_domain, costs, n_psu %||% 1,
-                                       a_hi, b_box, c_box)
+      least <- max(whole, continuous)
       if (!is.finite(least)) {
+        largest <- min(bx$a_hi * bx$b[2L] * bx$c[2L],
+                       a_whole[2L] * w$b[2L] * w$c[2L])
         stop(
           sprintf(
             "min_n_domain = %g not achievable for domain '%s': its largest design within the population has total_n = %.0f",
-            min_n_domain, domain_label(d), a_hi * b_box[2L] * c_box[2L]
+            min_n_domain, domain_label(d), largest
           ),
           call. = FALSE
         )
@@ -3419,75 +3846,38 @@ n_multi.default <- function(
     lower_bounds <- pmax(lower_bounds, floor_budget / var_budget)
   }
 
-  outer_obj <- function(w) {
-    w_last <- 1 - sum(w)
-    if (w_last < lower_bounds[nd]) {
-      return(1e12)
-    }
-    fracs <- c(w, w_last)
-    tryCatch(
-      {
-        vals <- vapply(
-          seq_len(nd),
-          function(d) {
-            bres <- eval_domain(d, fracs[d] * var_budget)
-            if (!is.null(min_n_domain) &&
-                total_n_for(bres) < min_n_domain * (1 - floor_tol)) {
-              return(1e12)
-            }
-            bres$ratio
-          },
-          numeric(1L)
-        )
-        max(vals)
-      },
-      error = function(e) 1e12
+  ratio_at <- function(d, b) {
+    bres <- tryCatch(
+      eval_domain(d, b),
+      error = function(e) {
+        stop(sprintf("domain '%s' at a budget of %.6g: %s", domain_label(d),
+                     b, conditionMessage(e)), call. = FALSE)
+      }
     )
+    if (!is.null(min_n_domain) &&
+        total_n_for(bres) < min_n_domain * (1 - floor_tol)) {
+      return(Inf)
+    }
+    bres$ratio
   }
-
-  slack <- 1 - sum(lower_bounds)
-  if (slack < -1e-12) {
+  if (sum(lower_bounds) > 1 + 1e-12) {
     stop(
       "cumulative lower bounds exceed 1; joint allocation is infeasible",
       call. = FALSE
     )
   }
-  if (slack <= 1e-12) {
-    # The budget pays exactly for every domain's least design.
-    w_opt <- lower_bounds / sum(lower_bounds)
-  } else if (nd == 2L) {
-    opt <- optimize(
-      function(w1) outer_obj(w1),
-      interval = c(lower_bounds[1], 1 - lower_bounds[2])
-    )
-    w_opt <- c(opt$minimum, 1 - opt$minimum)
-  } else {
-    init_w <- lower_bounds[-nd] + slack / nd
-    opt <- optim(
-      par = init_w,
-      fn = outer_obj,
-      method = "L-BFGS-B",
-      lower = lower_bounds[-nd],
-      upper = rep(1 - lower_bounds[nd], nd - 1L)
-    )
-    if (opt$convergence != 0L) {
-      warning(
-        "L-BFGS-B did not converge (code ",
-        opt$convergence,
-        "): ",
-        "allocation may be approximate",
-        call. = FALSE
-      )
-    }
-    w_opt <- c(opt$par, 1 - sum(opt$par))
-  }
-
-  budgets <- w_opt * var_budget
+  budgets <- .joint_split(
+    ratio_at, lower_bounds * var_budget, var_budget,
+    vapply(seq_len(nd), domain_label, character(1L)),
+    scaling = is.null(row_pops) && is.null(n_psu) && is.null(min_n_domain)
+  )
   # Each share is solved as a single population would be, so a domain
   # carries the same whole design as the scalar path at that budget.
   results <- lapply(seq_len(nd), function(d) {
     rows <- split_idx[[domain_levels[d]]]
-    sub <- indicators[rows, !names(indicators) %in% domain_cols, drop = FALSE]
+    sub <- .label_by_row(
+      indicators[rows, !names(indicators) %in% domain_cols, drop = FALSE], rows
+    )
     min_total <- min_n_domain %||% 0
     fit <- tryCatch(
       if (!is.null(row_pops)) {
@@ -3534,7 +3924,8 @@ n_multi.default <- function(
     min_n_domain,
     fixed_cost,
     mode = mode,
-    prop_method = prop_method
+    prop_method = prop_method,
+    joint = TRUE
   )
   res$params$joint <- TRUE
   if (!is.null(row_pops)) {
@@ -3702,28 +4093,18 @@ n_multi.default <- function(
       max(cv_fn(n1, ps, ss) / cv_t)
     }
     lower <- c(.take_bound(resp_rate_ssu), .take_bound(resp_rate))
-    init_ps <- max(2, sqrt(C1 / C2), lower[1L])
-    init_ss <- max(2, sqrt(C2 / C3), lower[2L])
-    upper_ps <- max(1000, 10 * init_ps)
-    upper_ss <- max(1000, 10 * init_ss)
-    opt <- optim(
-      par = c(init_ps, init_ss),
-      fn = obj_fn_2d,
-      method = "L-BFGS-B",
-      lower = lower,
-      upper = c(upper_ps, upper_ss)
+    upper_ps <- max(1000, 10 * max(2, sqrt(C1 / C2), lower[1L]))
+    upper_ss <- max(1000, 10 * max(2, sqrt(C2 / C3), lower[2L]))
+    co <- .stage3_coef(icc_psu, icc_ssu, unit_relvar, var_ratio_psu,
+                       var_ratio_ssu, resp_rate_psu, resp_rate_ssu, resp_rate,
+                       pop = list(A = Inf, Q = Inf, C = Inf))
+    hit <- .min_two_takes(
+      lapply(co[c("alpha", "beta", "gamma")], function(x) x / cv_t^2),
+      c(C1, C2, C3), lower, c(upper_ps, upper_ss)
     )
-    if (opt$convergence != 0L) {
-      warning(
-        "L-BFGS-B did not converge (code ",
-        opt$convergence,
-        "): allocation may be approximate",
-        call. = FALSE
-      )
-    }
     if (
-      opt$par[1L] >= upper_ps * (1 - 1e-6) ||
-        opt$par[2L] >= upper_ss * (1 - 1e-6)
+      hit$n_per_psu >= upper_ps * (1 - 1e-6) ||
+        hit$n_per_ssu >= upper_ss * (1 - 1e-6)
     ) {
       warning(
         sprintf(
@@ -3734,8 +4115,8 @@ n_multi.default <- function(
         call. = FALSE
       )
     }
-    n_per_psu_opt <- opt$par[1L]
-    n_per_ssu_opt <- opt$par[2L]
+    n_per_psu_opt <- hit$n_per_psu
+    n_per_ssu_opt <- hit$n_per_ssu
     n1_opt <- budget /
       (C1 + C2 * n_per_psu_opt + C3 * n_per_psu_opt * n_per_ssu_opt)
     if (below(n1_opt, n_per_psu_opt, n_per_ssu_opt)) {

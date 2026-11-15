@@ -13,7 +13,9 @@
 #'   `var`. Supply exactly one of `var` or `sd`. Stratum frames and
 #'   published survey reports usually quote standard deviations.
 #' @param mu Population mean. Required when `cv` or `rmoe` is
-#'   specified, both being defined against the mean.
+#'   specified, both being defined against the mean, and then non-zero. With
+#'   a `moe` target it may be zero, as for a centered outcome or a net flow,
+#'   and the result's `cv` and `rmoe` are then `NA`.
 #' @param moe Desired margin of error, the half-width of the confidence
 #'   interval, in the same units as the variable. For example, if
 #'   measuring income in dollars, `moe = 50` means the 95 percent CI
@@ -43,10 +45,8 @@
 #' @param resp_rate Expected response rate among eligible units, in (0, 1\].
 #'   Default 1 (no adjustment). The required sample size is inflated by
 #'   `1 / resp_rate`. See the nonresponse section of [svyplan-package] for what
-#'   the rate counts and what this adjustment does and does not claim. A rate
-#'   of eligible units per sampled unit at or below 1, such as 0.41 married
-#'   women per household, folds in here as `resp_rate * eligible_per_unit`.
-#'   With a finite `N` this errs slightly conservative.
+#'   the rate counts and what this adjustment does and does not claim. A
+#'   count of eligible units per sampled unit goes in `eligible_per_unit`.
 #' @param eligibility_rate Share of issued units in scope, such as dwellings
 #'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
 #'   in scope is `N * eligibility_rate`. See the nonresponse section of
@@ -77,8 +77,8 @@
 #'   \item{`se`, `moe`, `cv`, `rmoe`}{Precision the design achieves at that
 #'     `n`, the same values [prec_mean()] reports for the same inputs.
 #'     `moe` is `q * se`, with `q` defined in Details, and the interval is symmetric
-#'     about the mean. `cv` and `rmoe` are `NA` unless `mu` was supplied,
-#'     both needing a mean to be relative to.}
+#'     about the mean. `cv` and `rmoe` are `NA` unless a non-zero `mu` was
+#'     supplied, both needing a mean to be relative to.}
 #'   \item{`params`}{The validated inputs (`var`, `alpha`, `N`, `deff`,
 #'     `resp_rate`, `df`, `mu` when given, and whichever of `moe`, `cv`, or
 #'     `rmoe` was the target). Dispersion is always stored as `var`, including when
@@ -210,7 +210,10 @@ n_mean.default <- function(
     stop("'mu' is required when 'cv' is specified", call. = FALSE)
   }
   if (!is.null(mu)) {
-    check_mu(mu)
+    check_mu(mu, zero_ok = TRUE)
+    if (!is.null(cv) && mu == 0) {
+      stop("'cv' is undefined at 'mu' = 0", call. = FALSE)
+    }
   }
 
   if (!is.null(df)) {

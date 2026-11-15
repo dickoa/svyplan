@@ -60,7 +60,8 @@ precision belongs to the pooled period.}
 
 \item{assurance}{Probability in (0, 1), or \code{NULL} (default). Reports the
 recruitment the target would need at that level, which is what the
-supplied \code{n_recruit} can then be read against.}
+supplied \code{n_recruit} can then be read against. Not available when the
+target has \code{eligible_per_unit} other than 1, as in \code{\link[=n_panel]{n_panel()}}.}
 
 \item{start}{\code{"gradual"}, \code{"immediate"} or \code{NULL}. See \code{\link[=n_panel]{n_panel()}}. On a
 stored plan this may be overridden, unlike \code{design}. It selects which
@@ -75,7 +76,7 @@ stored quantity.}
 \value{
 A \code{svyplan_panel} object, the class \code{\link[=n_panel]{n_panel()}} returns, with
 \verb{$solved} absent because nothing was solved for. \verb{$n_resp} and the
-headline \code{se}, \code{moe} and \code{cv} describe the supplied recruitment, and
+headline \code{se}, \code{moe}, \code{cv} and \code{rmoe} describe the supplied recruitment, and
 \verb{$n_target} the requirement it is being compared against, so a
 recruitment below the requirement reports a \code{moe} above the target's.
 }

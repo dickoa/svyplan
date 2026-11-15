@@ -88,9 +88,10 @@ since units can only be shared by samples drawn from one population.}
 the change rather than to either occasion separately.}
 
 \item{resp_rate}{Expected response rate among eligible units, in (0, 1].
-Default 1 (no adjustment). It applies to both occasions, and nets each
-size down to \code{n * resp_rate} before the variance is formed. It is a single
-round's response, not attrition across a panel. See the nonresponse
+Default 1 (no adjustment). It applies to both occasions, and with
+\code{eligibility_rate} nets each size down to
+\code{n * resp_rate * eligibility_rate} before the variance is formed. It is a
+single round's response, not attrition across a panel. See the nonresponse
 section of \link{svyplan-package} for what the rate counts.}
 
 \item{eligibility_rate}{Share of issued units in scope, in (0, 1].
@@ -134,14 +135,16 @@ will have, typically sampled PSUs minus strata, and available from
 A \code{svyplan_prec} object with \code{type = "change"}:
 \describe{
 \item{\code{se}}{Standard error of the estimated change, computed on the net
-sizes \code{n * resp_rate}.}
+sizes \code{n * resp_rate * eligibility_rate}.}
 \item{\code{moe}}{Margin of error, \code{q * se}, with \code{q} defined in Details. The interval
 is symmetric about the change, so the limits are \code{change - moe} and
 \code{change + moe}.}
 \item{\code{cv}}{Standard error relative to the change, \code{se / abs(change)}.
-\code{NA} when \code{change} is neither supplied nor determined by \code{p}. A
-change near zero makes it large by construction, which is a statement
-about the estimand and not about the design.}
+\code{NA} when \code{change} is neither supplied nor determined by \code{p}, or is
+zero. A change near zero makes it large by construction, which is a
+statement about the estimand and not about the design.}
+\item{\code{rmoe}}{Margin of error relative to the change,
+\code{moe / abs(change)}, \code{NA} exactly when \code{cv} is.}
 \item{\code{params}}{The validated inputs. Dispersion is always stored as
 \code{var}, a pair, including when you supplied \code{sd} or \code{p}. \code{p} is kept as
 well when the proportion scale was used, and it is what the
@@ -151,7 +154,7 @@ then being the variance of its linearized variable.}
 }
 
 Nothing here is rounded, so passing a continuous \code{n} back from
-\code{\link[=n_change]{n_change()}} reproduces its \code{se}, \code{moe} and \code{cv} exactly.
+\code{\link[=n_change]{n_change()}} reproduces its \code{se}, \code{moe}, \code{cv} and \code{rmoe} exactly.
 The print shows \code{n} per occasion as evaluated, and for a fit it says
 that \code{n} is the continuous optimum. For a fit \code{res}, the whole sample
 to field on each occasion is \code{ceiling(res$n)}, and \code{prec_change(res, n = ceiling(res$n))}
@@ -190,7 +193,11 @@ eligibility, and \eqn{k} for the shared units, the expression is piecewise
 in \code{overlap}. \eqn{N}, \eqn{N_1} and \eqn{N_2} are the populations in
 scope, \code{N * eligibility_rate}. At
 \code{overlap = 0} the two occasions are treated as independent, which is what
-also lets them come from different populations:
+also lets them come from different populations. Two cohorts of one
+rotation that share no unit are disjoint rather than independent, and
+their change variance is larger than this by
+\eqn{2\rho\sqrt{v_1v_2}/N}{2 rho sqrt(v_1v_2)/N}, which matters only at a
+sizable sampling fraction:
 
 \deqn{V = \frac{v_1}{n_1}\Big(1 - \frac{n_1}{N_1}\Big)
         + \frac{v_2}{n_2}\Big(1 - \frac{n_2}{N_2}\Big).}{V = v_1/n_1 (1 - n_1/N_1 ) + v_2/n_2 (1 - n_2/N_2 ).}

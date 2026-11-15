@@ -2,14 +2,11 @@
 % Please edit documentation in R/print.R
 \name{summary.svyplan_alloc}
 \alias{summary.svyplan_alloc}
-\alias{summary.svyplan_n}
 \alias{summary.svyplan_prec}
 \alias{print.summary.svyplan_bethel}
 \alias{print.summary.svyplan_alloc}
 \title{Summarize stratified allocation results}
 \usage{
-\method{summary}{svyplan_n}(object, ...)
-
 \method{summary}{svyplan_prec}(object, ...)
 
 \method{print}{summary.svyplan_bethel}(x, ...)
@@ -19,9 +16,7 @@
 \arguments{
 \item{object}{An allocation result from \code{\link[=n_alloc]{n_alloc()}} or \code{\link[=prec_alloc]{prec_alloc()}}.}
 
-\item{...}{Additional arguments are not supported for allocation summaries.
-For other \code{svyplan_n} and \code{svyplan_prec} results they are passed to the
-default summary method.}
+\item{...}{Additional arguments are not supported.}
 
 \item{x}{A \code{summary.svyplan_alloc} or \code{summary.svyplan_bethel} object.}
 }
@@ -32,7 +27,10 @@ For a classic allocation, \code{summary()} returns a
 \code{domains}, and \code{assumptions}. For a generalized allocation it returns the
 \code{summary.svyplan_bethel} fields described in Details. Numeric quantities
 remain unformatted. Formatting is applied only by the summary print
-methods. \code{print()} returns the summary invisibly.
+methods. \code{print()} returns the summary invisibly. The summaries of
+other \code{svyplan_n} results are described in \link{summary.svyplan_n}. Any
+other \code{svyplan_prec} result has no structured summary yet, and
+\code{summary()} returns the result itself, which prints as \code{print()} does.
 }
 \description{
 \code{summary()} separates a classic \code{\link[=n_alloc]{n_alloc()}} or \code{\link[=prec_alloc]{prec_alloc()}} result into

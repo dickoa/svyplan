@@ -109,7 +109,8 @@
 #'   `"separate"` (default, each domain sized on its own) or `"joint"` (one
 #'   budget split across domains to minimize the worst precision ratio).
 #'   `"joint"` applies only when `indicators`, `domains` and `budget` are all
-#'   supplied.
+#'   supplied. Each domain gets at least the cost of its cheapest whole
+#'   design, one PSU (or `n_psu`) at the least whole takes.
 #' @param domain_sampling How the per-domain requirements combine into the
 #'   one overall size. Only `"separate"` (the default) is available for a
 #'   cluster design, so the domains are quotas fielded in their own right and
@@ -124,7 +125,7 @@
 #'   design falls short takes more units per PSU or SSU, so the floor is
 #'   refused only when no design within the budget or the population reaches
 #'   it. With domains solved separately, domains below the floor produce a
-#'   warning.
+#'   warning and keep their precision design.
 #' @param plan Optional [svyplan()] object providing design defaults
 #'   (including `stage_cost`, `icc`, `unit_relvar`, `var_ratio`, `resp_rate_psu`, `fixed_cost`).
 #'   In the several-indicators mode a profile supplies only the defaults that
@@ -138,7 +139,9 @@
 #'     optimum.}
 #'   \item{`stages`}{Number of stages (2 or 3).}
 #'   \item{`total_n`}{Continuous total sample size (`prod(n)`).}
-#'   \item{`cv`}{Coefficient of variation of the continuous optimum.}
+#'   \item{`cv`}{Coefficient of variation of the continuous optimum. With
+#'     `indicators` it is the largest achieved cv over the rows (and the
+#'     domains), which need not be the binding row's.}
 #'   \item{`cost`}{Cost of the continuous optimum.}
 #'   \item{`operational`}{The whole-unit field design, found by a
 #'     discrete search: `n` (named integer stage sizes), `total_n`,
@@ -153,23 +156,33 @@
 #'   \item{`params`}{List of input parameters.}
 #' }
 #'   With `indicators`, the same class carries `$indicators`, the per-row
-#'   `$detail` and, where domains were named, `$domains`. The class does not
-#'   depend on which optional arguments were supplied.
+#'   `$detail` and, where domains were named, `$domains`. `detail` has one
+#'   row per indicator (per indicator and domain with domains) with the
+#'   row's requirement `.n`, `.cv_target`, `.binding`, and the target as
+#'   stated, `.target_scale` and `.target`. Without domains it also has
+#'   `.cv_achieved` at the continuous optimum, and `operational` holds
+#'   `cv_by_target`, each row's cv at the field design, and `binding`, the
+#'   row with the largest ratio of that cv to its target. That row need not
+#'   be the one with the worst cv. With domains, `$domains$.cv` is the worst
+#'   cv of each domain and `.binding` marks each domain's binding row at its
+#'   field design. `binding_cause` is `"precision"`, or `"min_n_domain"`
+#'   when that floor sets the binding domain, which only the joint
+#'   allocation can do. The class does not depend on
+#'   which optional arguments were supplied.
 #'
 #' @details
 #' ## Getting started
 #'
 #' A typical 2-stage household survey workflow:
 #'
-#' 1. **Decide what you know.** You need the cost per cluster visit
-#'    (`stage_cost[1]`, e.g. travel + logistics) and the cost per
-#'    interview (`stage_cost[2]`), plus an estimate of within-cluster
-#'    homogeneity (`icc`). Estimate icc from a pilot or previous
-#'    survey with [varcomp()], or use a plausible range (0.01--0.10
-#'    for most household indicators).
-#' 2. **Choose a mode.** If you have a target precision, set `cv`. If you
-#'    have a fixed budget, set `budget`. Never set both.
-#' 3. **Fix stages or let the optimizer decide.** In MICS/DHS-style
+#' 1. Start from the cost per cluster visit (`stage_cost[1]`, e.g.
+#'    travel + logistics), the cost per interview (`stage_cost[2]`), and an
+#'    estimate of within-cluster homogeneity (`icc`). Estimate icc from a
+#'    pilot or previous survey with [varcomp()], or use a plausible range
+#'    (0.01 to 0.10 for most household indicators).
+#' 2. Choose the mode by setting `cv` for a target precision or `budget`
+#'    for a fixed budget, never both.
+#' 3. Fix a stage, or leave both stages to the optimizer. In MICS/DHS-style
 #'    designs, the number of households per cluster is fixed by
 #'    fieldwork logistics (e.g. `n_per_psu = 20`). The optimizer then
 #'    solves for how many clusters (`n_psu`) to visit. If no stage is
@@ -223,7 +236,8 @@
 #' size or drawn proportional to size (see [design_effect()]). On a ratio row `icc_psu`,
 #' `icc_ssu` and the stage variance ratios describe the linearized variable
 #' `e = y - r * x`, not either component. The remaining columns follow
-#' [n_multi()].
+#' [n_multi()]. A `name` column, when given, needs a name on every row,
+#' unique within a domain.
 #'
 #' Nonresponse is still named for the stage it acts on. `resp_rate_psu`,
 #' `resp_rate_ssu` and `resp_rate` are the defaults used where a row's own
@@ -252,13 +266,17 @@
 #'
 #' With a stage size fixed, the remaining problem is solved from the
 #' closed-form cluster optimum. With all stage sizes free, the objective is a
-#' maximum over indicator requirements, which is not smooth, and it is
-#' minimized by a bounded quasi-Newton search. That search warns when it fails
-#' to converge or lands on a bound, but it carries no global-optimality or KKT
-#' certificate, so a successful return means the best design this search
-#' found, not a proven minimum-cost one. The `$operational` allocation can
-#' always be checked against its own precision or budget constraint, which is
-#' a separate and exact statement. [n_alloc()] gives the stronger guarantee
+#' maximum over indicator requirements. It is not smooth where two
+#' indicators bind together, but each requirement times the cost is convex in
+#' the logarithms of the takes, and so is their maximum. One-dimensional
+#' searches over the takes, nested at three stages, therefore find the
+#' optimum within the search range, which allows at least 1000 units per
+#' stage. The fit warns when the optimum reaches that limit. A joint split
+#' gives every domain the same worst ratio, except a domain that its least
+#' budget, a floor or its whole population holds below that ratio. The
+#' `$operational` allocation can always be checked against its own precision
+#' or budget constraint, which is a separate and exact statement.
+#' [n_alloc()] gives the stronger guarantee
 #' where it applies, returning feasibility and KKT diagnostics for its convex
 #' continuous problem.
 #'
@@ -884,7 +902,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 
   m_floor <- .take_floor(resp_rate)
   m_cand <- if (!is.null(n_per_psu)) {
-    max(m_floor, as.integer(round(n_per_psu)))
+    as.integer(.whole_take(n_per_psu, m_floor))
   } else {
     seq.int(
       m_floor,
@@ -894,7 +912,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 
   if (!is.null(budget)) {
     if (!is.null(n_psu)) {
-      a <- max(1L, as.integer(round(n_psu)))
+      a <- as.integer(.whole_psu(n_psu))
       m <- as.integer(floor((vb / a - C1) / C2))
       if (m < m_floor) {
         stop(
@@ -923,7 +941,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     a_best <- a_cand
   } else {
     if (!is.null(n_psu)) {
-      a_best <- max(1L, as.integer(round(n_psu)))
+      a_best <- as.integer(.whole_psu(n_psu))
       need <- unit_relvar * var_ratio * (1 - icc) /
         (cv^2 * a_best * resp_rate_psu - unit_relvar * var_ratio * icc)
       if (!is.finite(need) || need <= 0) {
@@ -1014,8 +1032,8 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
   nm <- length(m_cand)
   nj <- length(alpha)
   budget_mode <- !is.null(variable_budget)
-  a_fixed <- if (is.null(n_psu)) NULL else max(1, round(n_psu))
-  q_fixed <- if (is.null(n_per_ssu)) NULL else max(q_floor, round(n_per_ssu))
+  a_fixed <- if (is.null(n_psu)) NULL else .whole_psu(n_psu)
+  q_fixed <- if (is.null(n_per_ssu)) NULL else .whole_take(n_per_ssu, q_floor)
 
   need_at <- function(m, q) {
     out <- alpha[1L] + beta[1L] / m + gamma[1L] / (m * q)
@@ -1227,7 +1245,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 
   m_floor <- .take_floor(resp_rate_ssu)
   m_cand <- if (!is.null(n_per_psu)) {
-    max(m_floor, as.integer(round(n_per_psu)))
+    as.integer(.whole_take(n_per_psu, m_floor))
   } else {
     seq.int(
       m_floor,
@@ -1902,7 +1920,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     )
   }
   m_cand <- if (!is.null(n_per_psu)) {
-    min(m_max, max(m_floor, as.integer(round(n_per_psu))))
+    as.integer(.whole_take(n_per_psu, m_floor, m_max))
   } else {
     seq.int(
       m_floor,
@@ -1913,7 +1931,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
 
   if (!is.null(budget)) {
     if (!is.null(n_psu)) {
-      a_best <- min(A, max(1L, as.integer(round(n_psu))))
+      a_best <- min(A, as.integer(.whole_psu(n_psu)))
       m_best <- min(m_max, as.integer(floor((vb / a_best - C1) / C2)))
       if (m_best < m_floor) {
         stop(
@@ -1938,7 +1956,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     }
   } else {
     if (!is.null(n_psu)) {
-      a_best <- min(A, max(1L, as.integer(round(n_psu))))
+      a_best <- min(A, as.integer(.whole_psu(n_psu)))
       need <- b_for(a_best)
       if (!is.finite(need) || need <= 0 || ceiling(need - 1e-9) > m_max) {
         stop(
@@ -2307,7 +2325,7 @@ n_cluster.svyplan_prec <- function(stage_cost, ..., cv = NULL, budget = NULL) {
     )
   }
   m_cand <- if (!is.null(n_per_psu)) {
-    min(m_max, max(m_floor, as.integer(round(n_per_psu))))
+    as.integer(.whole_take(n_per_psu, m_floor, m_max))
   } else {
     .multi_stage_candidates(NULL, cont_m, upper = m_max, base_limit = 400L,
                             floor = m_floor)

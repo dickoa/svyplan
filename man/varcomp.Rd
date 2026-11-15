@@ -310,6 +310,8 @@ Where the report gives a standard error instead of a design effect,
 \code{se} with the quantity it refers to forms the design effect against the
 simple random sample of the same size, \eqn{D = s^2 / (pq/n)} for a
 proportion and \eqn{D = s^2 / (S^2/n)} for a mean.
+}
+
 \subsection{Which take identifies the icc}{
 
 The \eqn{b} in the identity is the \strong{size-weighted} average number of
@@ -380,8 +382,6 @@ not model it. A \code{deff} column in its \code{frame} can carry it.
 A published standard error carries the same loss. To remove it, form the
 design effect and divide, \code{deff = se^2 / (p * (1 - p) / n) / kish},
 rather than passing \code{se}.
-}
-
 }
 
 \subsection{Component estimands}{

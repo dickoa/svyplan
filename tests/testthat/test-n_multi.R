@@ -283,9 +283,10 @@ test_that("detail schema: simple and multistage share unified columns", {
   res_s <- nm(df_simple)
   res_m <- nm(df_multi, stage_cost = c(500, 50))
 
-  expected <- c("name", ".n", ".cv_target", ".cv_achieved", ".binding")
-  expect_setequal(names(res_s$detail), expected)
-  expect_setequal(names(res_m$detail), expected)
+  shared <- c("name", ".n", ".cv_target", ".cv_achieved", ".binding",
+              ".target_scale", ".target")
+  expect_setequal(names(res_s$detail), c(shared, ".cv_field", ".constraint"))
+  expect_setequal(names(res_m$detail), shared)
 })
 
 test_that("detail simple: .cv_achieved equals target at binding, below elsewhere", {
@@ -1660,7 +1661,7 @@ test_that("n_multi rejects negative var", {
 test_that("n_multi rejects a zero mu and plans for a negative one", {
   # a CV has no scale at a mean of zero
   df <- data.frame(var = 10, mu = 0, cv = 0.1)
-  expect_error(nm(df), "must be finite and non-zero")
+  expect_error(nm(df), "must be non-zero on a row with a 'cv' target")
   # but the sign of a mean is immaterial to a relative target
   negative <- nm(data.frame(var = 10, mu = -5, cv = 0.1))
   positive <- nm(data.frame(var = 10, mu = 5, cv = 0.1))
@@ -2512,4 +2513,106 @@ test_that("the floor-only domain check reads multi-column keys exactly", {
                     min_respondents = c(NA, 800))
   expect_error(n_multi(ind, domains = c("a", "b")),
                "'a = A, b = B/C' carry only 'min_respondents'")
+})
+
+## The search over two free takes
+
+.kink_rows <- function() {
+  data.frame(
+    name = c("stunting", "anemia", "vacc"), p = c(0.3, 0.1, 0.7),
+    moe = c(0.05, 0.03, 0.05), icc_psu = c(0.05, 0.02, 0.1),
+    icc_ssu = c(0.1, 0.2, 0.05), var_ratio_psu = c(1, 1.1, 0.9),
+    resp_rate_psu = c(0.95, 0.9, 1), resp_rate_ssu = c(0.9, 0.95, 1),
+    resp_rate = c(0.9, 0.8, 0.85), alpha = c(0.05, 0.1, 0.05)
+  )
+}
+
+## PSUs each row needs at takes m and q, as a + b / m + g / (m q).
+.kink_coef <- function(rows) {
+  cv <- rows$moe / (qnorm(1 - rows$alpha / 2) * rows$p)
+  v <- (1 - rows$p) / rows$p / cv^2
+  k2 <- rows$var_ratio_psu * (1 - rows$icc_psu)
+  r1 <- rows$resp_rate_psu
+  r2 <- rows$resp_rate_ssu
+  list(a = v * rows$var_ratio_psu * rows$icc_psu / r1,
+       b = v * k2 * rows$icc_ssu / (r1 * r2),
+       g = v * k2 * (1 - rows$icc_ssu) / (r1 * r2 * rows$resp_rate))
+}
+
+test_that("free takes reach the optimum where two rows bind together", {
+  rows <- .kink_rows()
+  co <- .kink_coef(rows)
+  cost <- c(500, 100, 20)
+  need <- function(m, q) co$a + co$b / m + co$g / (m * q)
+  ## On the curve where rows 2 and 3 need the same PSUs, q is closed form.
+  q_on <- function(m) -(co$g[2] - co$g[3]) / (m * (co$a[2] - co$a[3]) +
+                                                 (co$b[2] - co$b[3]))
+  along <- function(m) {
+    q <- q_on(m)
+    (cost[1] + cost[2] * m + cost[3] * m * q) * need(m, q)[2]
+  }
+  best <- optimize(along, c(2, 4), tol = 1e-12)
+  fit <- n_cluster(stage_cost = cost, indicators = rows)
+  expect_equal(fit$cost, best$objective, tolerance = 1e-8)
+  m <- fit$n[["n_per_psu"]]
+  q <- fit$n[["n_per_ssu"]]
+  ## The cost is flat in the takes near the optimum, so they agree less
+  ## closely than the cost does.
+  expect_equal(m, best$minimum, tolerance = 1e-4)
+  expect_equal(q, q_on(best$minimum), tolerance = 1e-4)
+  req <- need(m, q)
+  expect_equal(req[2], req[3], tolerance = 1e-6)
+  expect_lt(req[1], req[2])
+  expect_equal(fit$n[["n_psu"]], req[2], tolerance = 1e-6)
+
+  ## The budget that pays for this design reaches every target at once.
+  under <- n_cluster(stage_cost = cost, indicators = rows,
+                     budget = best$objective)
+  expect_equal(unname(under$n[c("n_per_psu", "n_per_ssu")]), c(m, q),
+               tolerance = 1e-4)
+  expect_equal(max(under$detail$.cv_achieved / under$detail$.cv_target), 1,
+               tolerance = 1e-8)
+})
+
+test_that("a take whose optimum is below its response bound sits on it", {
+  rows <- data.frame(name = c("a", "b"), p = c(0.3, 0.2), cv = c(0.1, 0.12),
+                     icc_psu = c(0.05, 0.08), icc_ssu = c(0.5, 0.6),
+                     resp_rate = 0.8)
+  fit <- n_cluster(stage_cost = c(500, 100, 200), indicators = rows)
+  expect_identical(fit$n[["n_per_ssu"]], 1.25)
+  under <- n_cluster(stage_cost = c(500, 100, 200), indicators = rows,
+                     budget = fit$cost)
+  expect_identical(under$n[["n_per_ssu"]], 1.25)
+})
+
+test_that("an optimum past the search range warns in both modes", {
+  rows <- data.frame(name = c("a", "b"), p = c(0.3, 0.2), cv = c(0.01, 0.012),
+                     icc_psu = 0.001, icc_ssu = c(0.5, 0.6), resp_rate = 0.8)
+  expect_warning(n_cluster(stage_cost = c(500, 0.001, 0.001),
+                           indicators = rows),
+                 "search upper bound \\(n_per_psu <= 7071")
+  expect_warning(n_cluster(stage_cost = c(500, 0.001, 0.001),
+                           indicators = rows, budget = 1e5),
+                 "search upper bound \\(n_per_psu <= 7071")
+})
+
+test_that("a joint split over three free stages returns for 3 and 4 domains", {
+  base <- data.frame(name = c("a", "b"), p = c(0.3, 0.1),
+                     moe = c(0.05, 0.03), icc_psu = c(0.05, 0.02),
+                     icc_ssu = c(0.1, 0.2))
+  for (nd in 3:4) {
+    rows <- do.call(rbind, lapply(seq_len(nd), function(d) {
+      x <- base
+      x$region <- LETTERS[d]
+      x$name <- paste0(x$name, LETTERS[d])
+      x$p <- x$p * seq(0.8, 1.2, length.out = nd)[d]
+      x
+    }))
+    fit <- n_cluster(stage_cost = c(500, 100, 20), indicators = rows,
+                     domains = "region", budget = 3e5, allocation = "joint")
+    expect_identical(nrow(fit$domains), nd)
+    expect_lte(sum(fit$domains$.cost), 3e5 * (1 + 1e-9))
+    expect_true(all(is.finite(fit$domains$.cv)))
+    expect_lte(sum(fit$operational$domains$.cost), 3e5)
+  }
 })

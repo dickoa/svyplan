@@ -111,14 +111,15 @@ See \code{\link[=n_multi]{n_multi()}} for a detailed guide on constructing indic
 
 \describe{
 \item{\code{name}}{Indicator label (optional).}
-\item{\code{p}}{Expected proportion, in (0, 1). One of \code{p} or \code{var}
+\item{\code{p}}{Expected proportion, in (0, 1). One of \code{p}, \code{var} or \code{r}
 per row (see \code{\link[=n_multi]{n_multi()}}).}
 \item{\code{var}}{Population variance. One of \code{p}, \code{var} or \code{r} per row.}
 \item{\code{mu}}{Population mean. Required for CV output when \code{var}
 is specified, because CV = SE / mean.}
 \item{\code{r}}{Anticipated ratio of two totals, marking a ratio row. It
-requires \code{cv_num}, \code{cv_den} and \code{component_cor} alongside it, and no
-\code{unit_relvar}, which the moments derive. See \code{\link[=prec_ratio]{prec_ratio()}}.}
+requires \code{cv_num}, \code{cv_den} and \code{component_cor} alongside it. Its
+\code{unit_relvar} comes from those moments, and a value given in that
+column must agree with them. See \code{\link[=prec_ratio]{prec_ratio()}}.}
 \item{\code{cv_num}, \code{cv_den}}{Coefficients of variation of a ratio row's
 numerator and denominator, strictly positive.}
 \item{\code{component_cor}}{Correlation between a ratio row's numerator and
@@ -140,6 +141,8 @@ no adjustment.}
 \item{\code{resp_rate}}{Expected response rate at the ultimate unit
 (default 1). A cluster design spends a rate at stage 1 too, and
 \code{\link[=prec_cluster]{prec_cluster()}} names that column \code{resp_rate_psu}.}
+\item{\code{eligibility_rate}}{Share of the row's issued units in scope, in
+(0, 1]. \code{NA} takes the \code{eligibility_rate} argument.}
 \item{\code{eligible_per_unit}}{Eligible units per sampled unit for the row's
 estimate, as in \code{\link[=prec_prop]{prec_prop()}} and \code{\link[=prec_mean]{prec_mean()}}. Proportion and mean
 rows. The

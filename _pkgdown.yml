@@ -115,6 +115,7 @@ reference:
   - print.svyplan_panel
   - print.svyplan_rotation
   - print.svyplan_schedule
+  - summary.svyplan_n
   - summary.svyplan_alloc
   - summary.svyplan_twophase
 

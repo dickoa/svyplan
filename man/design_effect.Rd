@@ -43,8 +43,8 @@ design_effect(x = NULL, ...)
 \arguments{
 \item{x}{A \code{svyplan} result to read design features from: a
 \code{\link[=n_cluster]{n_cluster()}} or \code{\link[=prec_cluster]{prec_cluster()}} allocation, a \code{\link[=varcomp]{varcomp()}} estimate,
-or an \code{\link[=n_alloc]{n_alloc()}} allocation. \code{NULL} (default) builds the design
-effect from the component arguments below.}
+or an \code{\link[=n_alloc]{n_alloc()}} or \code{\link[=prec_alloc]{prec_alloc()}} allocation. \code{NULL} (default) builds
+the design effect from the component arguments below.}
 
 \item{...}{Additional arguments passed to methods. Unused arguments are
 rejected.}

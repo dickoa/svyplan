@@ -34,7 +34,7 @@ For \code{svyplan_n} objects: a sample size result from \code{\link[=n_ratio]{n_
 \item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
 
 \item{n}{Sample size to evaluate, gross of nonresponse. The responding
-sample is \code{n * resp_rate}.}
+sample is \code{n * resp_rate * eligibility_rate}.}
 
 \item{cv_num}{Coefficient of variation of the numerator variable,
 strictly positive.}
@@ -81,7 +81,7 @@ A \code{svyplan_prec} object with \code{type = "ratio"} and
 }
 
 Nothing here is rounded, so passing a continuous \code{n} back from
-\code{\link[=n_ratio]{n_ratio()}} reproduces its \code{se}, \code{moe} and \code{cv} exactly.
+\code{\link[=n_ratio]{n_ratio()}} reproduces its \code{se}, \code{moe}, \code{cv} and \code{rmoe} exactly.
 The print shows \code{n} as evaluated, and for a fit it says that \code{n} is
 the continuous optimum. For a fit \code{size}, the whole sample to field is
 \code{ceiling(size$n)}, and \code{prec_ratio(size, n = ceiling(size$n))} gives its
@@ -92,8 +92,9 @@ Evaluate the standard error, margin of error, and coefficient of variation
 a planned design achieves for a ratio of two population totals.
 }
 \details{
-At a gross sample \code{n}, with \code{n_net = n * resp_rate} and
-\code{n_eff = n_net / deff},
+At a gross sample \code{n}, with \code{n_net = n * resp_rate * eligibility_rate},
+\code{n_eff = n_net / deff}, and \eqn{N} the population in scope,
+\code{N * eligibility_rate},
 
 \deqn{SE(\hat{R}) = |R| \sqrt{L_R (1 - n_{net}/N) / n_{eff}}}{SE(Rhat) = abs(R) * sqrt(L_R * (1 - n_net/N) / n_eff)}
 

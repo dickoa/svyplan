@@ -379,7 +379,7 @@ design_df.svyplan_n <- function(x, ..., method = c("nominal", "satterthwaite")) 
         call. = FALSE
       )
     }
-    units <- ceiling(x$n)
+    units <- .whole_count(x$n)
     return(.df_result(units - 1, units, 1L, "element"))
   }
   if (!is.null(x$psu[[".zone"]])) {
@@ -487,12 +487,12 @@ design_df.svyplan_twophase <- function(x, ...) {
   cluster <- any(c("n_psu_draw", "n_psu_int", "n_psu") %in% names(detail))
   if (cluster) {
     units <- as.numeric(detail[["n_psu_draw"]] %||%
-                          detail[["n_psu_int"]] %||% ceiling(detail$n_psu))
+                          detail[["n_psu_int"]] %||% .whole_count(detail$n_psu))
     # take_all is an element-level census inside the stratum and leaves the
     # PSU stage sampling, so no stratum drops out at this stage.
     census <- rep(FALSE, nrow(detail))
   } else {
-    units <- as.numeric(detail[["n_int"]] %||% ceiling(detail$n))
+    units <- as.numeric(detail[["n_int"]] %||% .whole_count(detail$n))
     census <- .df_take_all(detail)
   }
   list(

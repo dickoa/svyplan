@@ -146,7 +146,9 @@ Recruitment response and eligibility multiply every \eqn{q_s} and
 cancel, so at retention 1 this is the issued overlap whatever \code{resp_rate}
 is. Retention below 1 lowers it, and more at long lags. The result can be
 passed as the \code{overlap} of \code{\link[=n_pooled]{n_pooled()}} and \code{\link[=prec_pooled]{prec_pooled()}} at any
-\code{resp_rate}, and one lag of it to \code{\link[=n_change]{n_change()}} and \code{\link[=prec_change]{prec_change()}}. It
+\code{resp_rate}, and one lag of it to \code{\link[=n_change]{n_change()}} and \code{\link[=prec_change]{prec_change()}}. Passed
+whole, it tells \code{\link[=prec_pooled]{prec_pooled()}} and \code{\link[=n_pooled]{n_pooled()}} that the occasions are
+cohorts of one rotation, which \code{as.numeric()} discards. It
 describes equal cohorts at equilibrium and does not model response that
 recovers after a loss, nor units joining a sampled dwelling.
 }

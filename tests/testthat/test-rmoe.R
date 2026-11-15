@@ -124,7 +124,14 @@ test_that("an rmoe column is normalized to moe at ingestion", {
     moe = c(0.12 * 0.25, 0.10 * 0.40), deff = 1.5
   )
   expect_identical(n_multi(by_rmoe)$n, n_multi(by_moe)$n)
-  expect_equal(n_multi(by_rmoe)$detail, n_multi(by_moe)$detail)
+  stated <- c(".target_scale", ".target")
+  rmoe_detail <- n_multi(by_rmoe)$detail
+  moe_detail <- n_multi(by_moe)$detail
+  expect_equal(rmoe_detail[setdiff(names(rmoe_detail), stated)],
+               moe_detail[setdiff(names(moe_detail), stated)])
+  expect_identical(rmoe_detail$.target_scale, c("rmoe", "rmoe"))
+  expect_identical(rmoe_detail$.target, c(0.12, 0.10))
+  expect_identical(moe_detail$.target_scale, c("moe", "moe"))
 })
 
 test_that("an rmoe column works in the cluster path and reads the row method", {
@@ -356,4 +363,18 @@ test_that("naming no target still implies the achieved moe", {
   expect_equal(n_prop(prec_prop(p = 0.3, n = 400))$n, 400, tolerance = 1e-9)
   expect_equal(n_mean(prec_mean(var = 100, n = 400, mu = 50), cv = 0.05)$cv,
                0.05, tolerance = 1e-10)
+})
+
+test_that("an allocation keeps Inf at a zero overall mean", {
+  # Size-weighted mean (1000 * -30 + 2000 * 15) / 3000 = 0. Allocations
+  # rank designs by cv, so the relative measures stay Inf there, unlike the
+  # single-estimand families, which report NA.
+  a <- n_alloc(
+    data.frame(stratum = c("a", "b"), N = c(1000, 2000), sd = c(5, 8),
+               mean = c(-30, 15)),
+    n = 300
+  )
+  expect_identical(a$cv, Inf)
+  expect_identical(a$rmoe, Inf)
+  expect_true(is.na(prec_mean(var = 4, n = 100, mu = 0)$rmoe))
 })

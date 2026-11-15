@@ -54,7 +54,8 @@ coverage <- n_prop(
 coverage
 #> Sample size for proportion (wald)
 #> n = 570 gross (net: 485) (p = 0.70, moe = 0.050, deff = 1.50, resp_rate = 0.85)
-#> expected cases = 338.8
+#> expected cases = 339.1
+#> # summary() for the precision at the field size and the derived sizes
 ```
 
 The reported sample is the number of eligible people to approach. The
@@ -98,14 +99,14 @@ predict(
 | Planning task | Functions | Book chapter |
 |:---|:---|:---|
 | Start with sample size and precision | `n_prop()`, `n_mean()`, `prec_prop()`, `prec_mean()` | `vignette("svyplan")` |
-| Choose a precision target or ratio estimand | `n_prop()`, `n_mean()`, `n_ratio()` | [Precision targets and sample size](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/sample-size.html) |
-| Combine indicators or domain requirements | `n_multi()`, `prec_multi()` | [Several indicators and a floor](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/sample-size.html#several-indicators-and-a-floor) |
-| Construct strata and allocate a sample | `strata_bound()`, `n_alloc()`, `prec_alloc()` | [Allocation across domains and strata](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/stratum-allocation.html) |
-| Meet several allocation constraints | `n_alloc()` | [Two targets at once](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/stratum-allocation.html#two-targets-at-once) |
-| Plan a clustered survey | `varcomp()`, `n_cluster()`, `design_effect()`, `effective_n()`, `design_df()` | [Clusters, take size and cost](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/clusters-take.html) |
-| Plan screening or nonresponse follow-up | `n_twophase()`, `prec_twophase()` | [Two-phase designs and subsamples](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/two-phase.html) |
-| Plan changes, averages, panels, and rotations | `n_change()`, `n_pooled()`, `n_panel()`, `design_rotation()`, `design_schedule()` | [Rotating panels and master samples](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/panels-master-samples.html) |
-| Plan a detectable comparison | `power_prop()`, `power_mean()`, `power_did()` | [Power for evaluation surveys](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/evaluation-power.html) |
+| Choose a precision target or ratio estimand | `n_prop()`, `n_mean()`, `n_ratio()` | [Precision targets and sample size](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/08-sample-size.html) |
+| Combine indicators or domain requirements | `n_multi()`, `prec_multi()` | [Several indicators and a floor](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/08-sample-size.html#several-indicators-and-a-floor) |
+| Construct strata and allocate a sample | `strata_bound()`, `n_alloc()`, `prec_alloc()` | [Allocation across domains and strata](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/10-stratum-allocation.html) |
+| Meet several allocation constraints | `n_alloc()` | [Two targets at once](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/10-stratum-allocation.html#two-targets-at-once) |
+| Plan a clustered survey | `varcomp()`, `n_cluster()`, `design_effect()`, `effective_n()`, `design_df()` | [Clusters, take size and cost](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/09-clusters-take.html) |
+| Plan screening or nonresponse follow-up | `n_twophase()`, `prec_twophase()` | [Two-phase designs and subsamples](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/22-two-phase.html) |
+| Plan changes, averages, panels, and rotations | `n_change()`, `n_pooled()`, `n_panel()`, `design_rotation()`, `design_schedule()` | [Rotating panels and master samples](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/20-panels-master-samples.html) |
+| Plan a detectable comparison | `power_prop()`, `power_mean()`, `power_did()` | [Power for evaluation surveys](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/24-evaluation-power.html) |
 
 `vignette("svyplan")` walks through a first plan. The book [Survey
 Sampling Design with

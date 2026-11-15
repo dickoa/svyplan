@@ -41,7 +41,13 @@ before it is passed to the other. Columns:
 \item{\code{N}}{Stratum size (\strong{required}). Only relative size matters,
 since the stratum weights are \code{N / sum(N)}.}
 \item{\code{sd}}{Within-stratum standard deviation of the variable of
-interest (\strong{required}).}
+interest (\strong{required}). A stratum with \code{sd = 0} still takes one
+phase-2 unit, since the estimator needs its mean and a planning
+value of zero says the stratum is homogeneous, not that its level
+is known. A level phase 1 already records, such as a screened-out
+group whose value is zero by definition, is a \code{take_all} stratum
+with \code{unit_cost = 0}. Estimating a stratum's variance from the
+survey takes at least two units there.}
 \item{\code{mean}}{Stratum mean. Supply it to let the between-stratum
 component be derived, which is what makes stratifying worthwhile.
 Omit it, or pass \code{between = 0}, when the strata are not expected
@@ -271,6 +277,20 @@ stratum is "take-all" once it keeps all of those, not all of \eqn{N_h}.
 Strata are pinned one at a time in decreasing \eqn{S_h/\sqrt{c_h}}{S_h/sqrt(c_h)},
 because pinning lowers the multiplier and can bring others back below
 the cap.
+\subsection{A stratum without variance}{
+
+The optimum sends \eqn{\nu_h}{nu_h} to zero as \eqn{S_h}{S_h} does, but
+the estimator \eqn{\sum_h w_h \bar y_h}{sum_h w_h ybar_h} needs a phase-2
+mean in every stratum phase 1 populates, so a zero fraction is outside the
+model rather than its limit (Cochran, 1977, Sect. 12.2). A stratum with
+\code{sd = 0} therefore takes one phase-2 unit, which costs \eqn{c_h}{c_h} and
+adds no variance, and the optimum over the other strata is unchanged. In
+the whole-unit design it needs a pool of at least one unit, as every
+subsampled stratum does. When every stratum has \code{sd = 0} and the strata
+share one mean, nothing is traded, and the result is the smallest design
+that observes every stratum, with cv 0 and a warning.
+}
+
 \subsection{The finite population correction}{
 
 With \code{N} set, the correction applies component by component and not to
@@ -418,6 +438,9 @@ n_twophase(nrfu, phase1_cost = 50, budget = 100000, mu = 1,
 
 }
 \references{
+Cochran, W. G. (1977). \emph{Sampling Techniques}, 3rd ed. Wiley. Sections
+12.2 to 12.4.
+
 Fuller, W. A. (2009). \emph{Sampling Statistics}. Wiley. Section 3.3.
 
 Neyman, J. (1938). Contribution to the theory of sampling human

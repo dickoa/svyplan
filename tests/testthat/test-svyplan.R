@@ -742,8 +742,9 @@ test_that("a plan default reaches n_multi without disturbing prop_method", {
     n_multi(targets, domains = "region", min_n_domain = 300)$n
   )
   expect_equal(
-    n_multi(targets, plan = svyplan(prop_method = "wilson"))$n,
-    n_multi(targets, prop_method = "wilson")$n
+    n_multi(targets, domains = "region",
+            plan = svyplan(prop_method = "wilson"))$n,
+    n_multi(targets, domains = "region", prop_method = "wilson")$n
   )
   n_targets <- transform(targets, n = 500, moe = NULL)
   expect_equal(

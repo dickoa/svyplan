@@ -354,7 +354,7 @@ test_that("the beta method honours deff, N, resp_rate and df", {
   expect_gt(n_prop(p = 0.3, moe = 0.05, method = "wilson", df = 10)$n,
             n_prop(p = 0.3, moe = 0.05, method = "wilson")$n)
   expect_error(prec_prop(p = 0.3, n = 100, method = "beta", df = 0.5),
-               "'df' must be a number >= 1")
+               "'df' must be a single number >= 1")
 })
 
 test_that("reported moe equals the confint half-width for every method", {
@@ -558,4 +558,30 @@ test_that("finite-N interval sizing never reads the near-census endpoint early",
   expect_lt(n, 1000)
   expect_equal(prec_prop(0.3, n, N = 1000, method = "beta")$moe, 0.001,
                tolerance = 1e-8)
+})
+
+## Degrees of freedom are one number at the scalar entry points
+
+test_that("a vector or empty df is refused at every scalar entry point", {
+  msg <- "'df' must be a single number >= 1"
+  for (df in list(c(1, 100), numeric(0))) {
+    expect_error(n_prop(0.5, moe = 0.05, df = df), msg)
+    expect_error(n_prop(0.5, moe = 0.05, method = "beta", df = df), msg)
+    expect_error(prec_prop(0.5, n = 100, df = df), msg)
+    expect_error(prec_prop(0.5, n = 100, method = "beta", df = df), msg)
+    expect_error(n_mean(var = 100, moe = 2, df = df), msg)
+    expect_error(prec_mean(var = 100, n = 100, df = df), msg)
+    expect_error(n_ratio(r = 0.5, cv_num = 0.3, cv_den = 0.2,
+                         component_cor = 0.5, moe = 0.05, df = df), msg)
+    expect_error(prec_ratio(r = 0.5, cv_num = 0.3, cv_den = 0.2,
+                            component_cor = 0.5, n = 100, df = df), msg)
+    expect_error(n_change(p = c(0.3, 0.35), moe = 0.05, df = df), msg)
+    expect_error(prec_change(p = c(0.3, 0.35), n = 100, df = df), msg)
+    expect_error(n_pooled(var = 100, moe = 1, occasions = 4, df = df), msg)
+    expect_error(prec_pooled(var = 100, n = 100, occasions = 4, df = df),
+                 msg)
+    expect_error(svyplan(df = df), msg)
+  }
+  expect_equal(n_prop(0.5, moe = 0.05, df = Inf)$n,
+               n_prop(0.5, moe = 0.05)$n)
 })

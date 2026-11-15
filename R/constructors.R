@@ -95,7 +95,9 @@
     alloc = .alloc_estimand(params$frame),
     NULL
   )
-  .rmoe_from_moe(moe, estimand)
+  # Allocations supply their own rmoe, Inf at a zero stratum mean as
+  # their cv is. Every result that reaches here reports NA at a zero level.
+  .rmoe_from_moe(moe, estimand, at_zero = NA_real_)
 }
 
 #' The population mean an allocation's overall margin of error refers to

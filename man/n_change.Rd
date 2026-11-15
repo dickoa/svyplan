@@ -154,12 +154,12 @@ will have, typically sampled PSUs minus strata, and available from
 A \code{svyplan_n} object with \code{type = "change"}:
 \describe{
 \item{\code{n}}{Required size per occasion, continuous and gross. It already
-carries \code{deff} and the \code{1 / resp_rate} inflation, so it counts the
-units to release on each occasion, not the completed interviews. A
-single value when \code{ratio = 1}, otherwise one per occasion. \verb{$n} and
-\code{as.double()} keep the unrounded value, which is what makes the round
-trip through \code{\link[=prec_change]{prec_change()}} exact, whereas \code{print()} rounds up to the
-whole units you would field. A positive overlap means the occasions
+carries \code{deff} and the \code{1 / (resp_rate * eligibility_rate)} inflation, so
+it counts the units to release on each occasion, not the completed
+interviews. A single value when \code{ratio = 1}, otherwise one per occasion.
+\verb{$n} and \code{as.double()} keep the unrounded value, which is what makes the
+round trip through \code{\link[=prec_change]{prec_change()}} exact, whereas \code{print()} rounds up to
+the whole units you would field. A positive overlap means the occasions
 are not disjoint, so the number of distinct units sampled is less than
 the sum. The number of interviews is not, since a shared unit is
 interviewed on both occasions.}
@@ -243,8 +243,9 @@ cross-occasion correlations of the two components where those are known.
 At positive overlap, the two responding samples must fit their shared
 finite population. A target whose required sizes violate
 \code{n1_net + n2_net - overlap * n1_net <= N} is unattainable at the stated
-overlap, even if each individual sample fits. Increase overlap or relax
-the precision target. See \code{\link[=prec_change]{prec_change()}} for the variance and bound.
+overlap, even if each individual sample fits, and so is one whose whole
+size \code{ceiling(n)} breaks the bound. Increase overlap or relax the
+precision target. See \code{\link[=prec_change]{prec_change()}} for the variance and bound.
 
 Two boundaries are worth knowing before reading a result. Full overlap
 with unit correlation at equal sizes and variances leaves the change with

@@ -74,6 +74,17 @@
 
 .whole_feasible <- function(q, plan) all(.whole_load(q, plan) <= 1 + 1e-9)
 
+#' Factor that puts a target at the search's acceptance line
+#'
+#' `.whole_feasible()` accepts a load up to `1 + 1e-9`. A load measured as a
+#' share of a target and multiplied by this factor is accepted when it is at
+#' most `1 + 1e-12` of the target, the rounding at which a target counts as
+#' met. A plan whose precision equals the target, such as one whose cv was
+#' read back from a `prec_*()` call, is then one the search can return.
+#' @keywords internal
+#' @noRd
+.whole_target_scale <- function() (1 + 1e-9) / (1 + 1e-12)
+
 #' A plan from multipliers, doubled until the best states fit, or `NULL`
 #' @keywords internal
 #' @noRd

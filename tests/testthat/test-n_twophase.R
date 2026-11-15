@@ -106,7 +106,10 @@ test_that("take_all strata are pinned and cost nothing extra when free", {
 
 test_that("degenerate strata behave", {
   zero_sd <- transform(frame4, sd = c(12, 0, 8, 40))
-  expect_equal(n_twophase(zero_sd, phase1_cost = 1, budget = 50000)$detail$nu[2], 0)
+  fit <- n_twophase(zero_sd, phase1_cost = 1, budget = 50000)
+  # One expected phase-2 unit, nu * share * n1 = 1.
+  expect_equal(fit$detail$nu[2] * 0.25 * fit$n[["n_phase1"]], 1)
+  expect_equal(fit$operational$n_int[2], 1)
   free_zero_cost <- transform(frame4, unit_cost = c(2, 0, 1, 9))
   expect_equal(n_twophase(free_zero_cost, phase1_cost = 1, budget = 50000)$detail$nu[2], 1)
 })
@@ -507,7 +510,9 @@ test_that("a stratum the phase-1 pool cannot reach is reported, not hidden", {
   expect_true(is.infinite(fit$operational$cv))
 })
 
-test_that("a stratum with no variance needs no phase-2 sample", {
+test_that("a stratum with no variance the pool cannot reach is reported", {
+  # Its mean is still to be observed, so an empty pool leaves the design as
+  # unestimable as it does for a stratum with variance.
   fr <- data.frame(
     stratum   = c("a", "b"),
     N         = c(999, 1),
@@ -515,9 +520,12 @@ test_that("a stratum with no variance needs no phase-2 sample", {
     mean      = c(50, 80),
     unit_cost = 1
   )
-  fit <- n_twophase(fr, phase1_cost = 1, budget = 100)
+  expect_warning(
+    fit <- n_twophase(fr, phase1_cost = 1, budget = 100),
+    "rounds to zero units in 'b'"
+  )
   expect_equal(fit$operational$n_int[2], 0)
-  expect_true(is.finite(fit$operational$cv))
+  expect_true(is.infinite(fit$operational$cv))
   expect_true(is.finite(fit$cv))
 })
 
@@ -1067,9 +1075,11 @@ test_that("a cheap screener searches a wide phase-1 range quickly", {
   best <- NULL
   for (n1 in seq_len(N)) {
     cap <- floor(resp_rate * spec$W * n1)
+    # A stratum without variance takes exactly one unit: more add cost and
+    # no precision, none leaves its mean unobserved.
     sizes <- lapply(seq_along(cap), function(h) {
-      if (spec$pinned[h]) cap[h] else if (term[h] == 0) 0 else
-        if (cap[h] >= 1) seq_len(cap[h]) else integer(0)
+      if (spec$pinned[h]) cap[h] else if (cap[h] < 1) integer(0) else
+        if (term[h] == 0) 1L else seq_len(cap[h])
     })
     if (any(lengths(sizes) == 0L)) next
     g <- as.matrix(expand.grid(sizes))
@@ -1253,4 +1263,123 @@ test_that("a pinned stratum keeps its pool while the cv repair grows phase 1", {
   o <- fit$operational
   expect_equal(o$n_int[1], floor(fit$detail$share[1] * o$n[["n_phase1"]]))
   expect_equal(o$cost, .tp_brute(frame, 0.3, 78, cv = 0.0746)$value)
+})
+
+## A stratum without variance takes one phase-2 unit
+
+test_that("a frame with no variability returns its smallest design in both forms", {
+  const <- data.frame(stratum = c("a", "b"), N = c(50, 50), sd = 0,
+                      mean = 2, unit_cost = 3)
+  checked <- character(0)
+  for (args in list(list(cv = 0.05), list(budget = 100))) {
+    expect_warning(
+      fit <- do.call(n_twophase, c(list(const, phase1_cost = 1), args)),
+      "no variability to plan for"
+    )
+    # Two phase-1 units populate both pools, one phase-2 unit observes each.
+    expect_equal(unname(fit$n), c(2, 2))
+    expect_equal(fit$cv, 0)
+    expect_equal(fit$cost, 2 * 1 + 2 * 3)
+    o <- fit$operational
+    expect_equal(unname(o$n), c(2, 2))
+    expect_equal(o$n_int, c(1, 1))
+    expect_equal(o$cv, 0)
+    expect_equal(o$cost, fit$cost)
+    checked <- c(checked, names(args))
+  }
+  expect_setequal(checked, c("cv", "budget"))
+  expect_error(
+    suppressWarnings(n_twophase(const, phase1_cost = 1, budget = 5)),
+    "does not cover the smallest design"
+  )
+})
+
+test_that("strata without variance but different means take one unit each", {
+  fr <- data.frame(stratum = c("a", "b"), N = c(50, 50), sd = 0,
+                   mean = c(2, 5), unit_cost = 1)
+  for (args in list(list(cv = 0.05), list(budget = 100))) {
+    # No stray warning from a bound evaluated over no strata.
+    expect_no_warning(
+      fit <- do.call(n_twophase, c(list(fr, phase1_cost = 1, N = 100), args))
+    )
+    expect_equal(fit$operational$n_int, c(1, 1))
+    expect_equal(fit$n[["n_phase2"]], 2)
+    oracle <- do.call(.tp_brute, c(list(fr, 1, 100), args))
+    expect_equal(fit$operational$n_int, oracle$n_int)
+    expect_equal(if (is.null(args$budget)) fit$operational$cost else
+      fit$operational$cv, oracle$value)
+  }
+})
+
+test_that("a mixed frame matches the brute-force oracle with the floor", {
+  # Oracle: exhaustive whole designs on a 40-unit frame, one unit forced in
+  # the zero-variance stratum.
+  fr <- data.frame(stratum = c("A", "B", "C"), N = c(16, 12, 12),
+                   sd = c(2, 0, 1.2), mean = c(10, 20, 14),
+                   unit_cost = c(3, 5, 1))
+  for (args in list(list(budget = 60), list(cv = 0.06))) {
+    fit <- do.call(n_twophase, c(list(fr, phase1_cost = 1, N = 40), args))
+    o <- fit$operational
+    oracle <- do.call(.tp_brute, c(list(fr, 1, 40), args))
+    expect_equal(o$n_int[2], 1)
+    expect_equal(o$n_int, oracle$n_int)
+    expect_equal(if (is.null(args$budget)) o$cost else o$cv, oracle$value)
+  }
+})
+
+test_that("the floor leaves the other strata's optimum unchanged", {
+  # Closed form: the floor is a fixed cost c_h, so at a fixed phase-1 size
+  # the other fractions are the ones the frame without that stratum's cost
+  # gives, and in cv mode the phase-1 size does not move at all.
+  z <- transform(frame4, sd = c(12, 0, 8, 40))
+  a <- n_twophase(z, phase1_cost = 1, cv = 0.02)
+  b <- n_twophase(transform(z, unit_cost = c(2, 0, 1, 9)), phase1_cost = 1,
+                  cv = 0.02)
+  expect_equal(a$n[["n_phase1"]], b$n[["n_phase1"]])
+  expect_equal(a$detail$nu[-2], b$detail$nu[-2])
+  expect_equal(a$cost - b$cost, 5)
+  # With a fixed phase 1 and spare budget, nothing is spent on the stratum
+  # beyond its one unit.
+  f <- n_twophase(z, phase1_cost = 1, budget = 50000, n_phase1 = 8000)
+  expect_equal(f$operational$n_int[2], 1)
+  # Every other stratum is carried whole, and the floored one is not
+  # reported as carried whole.
+  expect_equal(f$detail$take_all, c(TRUE, FALSE, TRUE, TRUE))
+  expect_equal(f$detail$nu[2] * 0.25 * 8000, 1)
+})
+
+test_that("a known level is a take_all stratum at no cost", {
+  fr <- data.frame(stratum = c("screened_out", "eligible"), N = c(600, 400),
+                   sd = c(0, 3), mean = c(0, 12), unit_cost = c(0, 4),
+                   take_all = c(TRUE, FALSE))
+  fit <- n_twophase(fr, phase1_cost = 1, cv = 0.05)
+  # Carried whole at no cost, not one unit at a cost.
+  expect_equal(fit$detail$nu[1], 1)
+  expect_equal(fit$operational$n_int[1],
+               floor(0.6 * fit$operational$n[["n_phase1"]]))
+  expect_true(is.finite(fit$operational$cv))
+})
+
+test_that("prec_twophase() reads a fit with a stratum without variance", {
+  z <- transform(frame4, sd = c(12, 0, 8, 40))
+  fit <- n_twophase(z, phase1_cost = 1, budget = 50000)
+  pr <- prec_twophase(fit)
+  expect_equal(pr$cv, fit$cv, tolerance = 1e-10)
+  expect_equal(pr$params$cost, fit$cost, tolerance = 1e-8)
+})
+
+test_that("a budget too small for every stratum keeps the floored unit", {
+  # Two phase-1 units leave stratum b an empty pool, so the design is the
+  # starting one and is reported unestimable, but stratum a still holds the
+  # one unit its mean needs. Found by comparing random frames against the
+  # code without the floor in the starting design.
+  fr <- data.frame(stratum = c("a", "b"), N = c(39, 14), sd = c(0, 2.671),
+                   mean = c(13.6, 3.72), unit_cost = 0.5)
+  expect_warning(
+    fit <- n_twophase(fr, phase1_cost = 2, N = 53, budget = 5),
+    "rounds to zero units in 'b'"
+  )
+  expect_equal(fit$operational$n[["n_phase1"]], 2)
+  expect_equal(fit$operational$n_int, c(1, 0))
+  expect_true(is.infinite(fit$operational$cv))
 })

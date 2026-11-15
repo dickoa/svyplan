@@ -42,7 +42,9 @@ For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_mean]
 published survey reports usually quote standard deviations.}
 
 \item{mu}{Population mean. Required when \code{cv} or \code{rmoe} is
-specified, both being defined against the mean.}
+specified, both being defined against the mean, and then non-zero. With
+a \code{moe} target it may be zero, as for a centered outcome or a net flow,
+and the result's \code{cv} and \code{rmoe} are then \code{NA}.}
 
 \item{moe}{Desired margin of error, the half-width of the confidence
 interval, in the same units as the variable. For example, if
@@ -79,10 +81,8 @@ removing the published survey's weighting loss.}
 \item{resp_rate}{Expected response rate among eligible units, in (0, 1].
 Default 1 (no adjustment). The required sample size is inflated by
 \code{1 / resp_rate}. See the nonresponse section of \link{svyplan-package} for what
-the rate counts and what this adjustment does and does not claim. A rate
-of eligible units per sampled unit at or below 1, such as 0.41 married
-women per household, folds in here as \code{resp_rate * eligible_per_unit}.
-With a finite \code{N} this errs slightly conservative.}
+the rate counts and what this adjustment does and does not claim. A
+count of eligible units per sampled unit goes in \code{eligible_per_unit}.}
 
 \item{eligibility_rate}{Share of issued units in scope, such as dwellings
 found occupied, in (0, 1]. Default 1. With a finite \code{N}, the population
@@ -118,8 +118,8 @@ Take the field figure from \code{as.integer()} rather than from \verb{$n}.}
 \item{\code{se}, \code{moe}, \code{cv}, \code{rmoe}}{Precision the design achieves at that
 \code{n}, the same values \code{\link[=prec_mean]{prec_mean()}} reports for the same inputs.
 \code{moe} is \code{q * se}, with \code{q} defined in Details, and the interval is symmetric
-about the mean. \code{cv} and \code{rmoe} are \code{NA} unless \code{mu} was supplied,
-both needing a mean to be relative to.}
+about the mean. \code{cv} and \code{rmoe} are \code{NA} unless a non-zero \code{mu} was
+supplied, both needing a mean to be relative to.}
 \item{\code{params}}{The validated inputs (\code{var}, \code{alpha}, \code{N}, \code{deff},
 \code{resp_rate}, \code{df}, \code{mu} when given, and whichever of \code{moe}, \code{cv}, or
 \code{rmoe} was the target). Dispersion is always stored as \code{var}, including when

@@ -95,9 +95,9 @@ A \code{svyplan_n} object with \code{type = "ratio"} and
 \code{method = "linearization"}:
 \describe{
 \item{\code{n}}{Required sample size, continuous and gross. It carries \code{deff}
-and the \code{1 / resp_rate} inflation, so it counts units to release
-rather than completed interviews. \code{print()} and \code{as.integer()} round
-it up.}
+and the \code{1 / (resp_rate * eligibility_rate)} inflation, so it counts
+units to release rather than completed interviews. \code{print()} and
+\code{as.integer()} round it up.}
 \item{\code{se}, \code{moe}, \code{cv}, \code{rmoe}}{Precision achieved at that \code{n}, on the
 ratio scale.}
 \item{\code{params}}{The inputs, plus \code{unit_relvar}, the coefficient
@@ -125,8 +125,9 @@ The required responding sample for a target relative standard error
 
 \deqn{n = \frac{\mathrm{deff} \cdot L_R}{c^2 + \mathrm{deff} \cdot L_R / N}}{n = deff * L_R / (c^2 + deff * L_R / N)}
 
-and the gross sample is that divided by \code{resp_rate}. A margin of error
-converts to \eqn{c} exactly, as
+and the gross sample is that divided by \code{resp_rate * eligibility_rate}.
+Here \eqn{N} is the population in scope, \code{N * eligibility_rate}. A
+margin of error converts to \eqn{c} exactly, as
 \eqn{c = \mathrm{moe} / (q |R|)}{c = moe / (q * abs(R))}.
 
 The method is first order. It omits the ratio estimator's

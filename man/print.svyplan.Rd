@@ -31,6 +31,12 @@
 \alias{as.integer.svyplan_strata}
 \alias{as.double.svyplan_strata}
 \alias{print.svyplan_twophase}
+\alias{summary.svyplan}
+\alias{summary.svyplan_power}
+\alias{summary.svyplan_strata}
+\alias{summary.svyplan_varcomp}
+\alias{summary.svyplan_overlap}
+\alias{summary.svyplan_rotation}
 \title{Print svyplan objects}
 \usage{
 \method{print}{svyplan_n}(x, ...)
@@ -139,6 +145,18 @@
 \method{as.double}{svyplan_strata}(x, ...)
 
 \method{print}{svyplan_twophase}(x, ...)
+
+\method{summary}{svyplan}(object, ...)
+
+\method{summary}{svyplan_power}(object, ...)
+
+\method{summary}{svyplan_strata}(object, ...)
+
+\method{summary}{svyplan_varcomp}(object, ...)
+
+\method{summary}{svyplan_overlap}(object, ...)
+
+\method{summary}{svyplan_rotation}(object, ...)
 }
 \arguments{
 \item{x}{A svyplan object.}
@@ -152,12 +170,16 @@ is converted through \code{\link[=data.frame]{data.frame()}}.}
 
 \item{validRN}{Logical. Accepted for compatibility with \code{\link[=data.frame]{data.frame()}} in
 R 4.7.0 and later. Svyplan results already have valid row names.}
+
+\item{object}{A svyplan object, for \code{summary()}.}
 }
 \value{
 \code{print()} returns \code{x} invisibly. \code{format()} returns a character
 vector, \code{as.integer()} and \code{as.double()} return numeric vectors, and
 \code{as.data.frame()} returns a data frame. The shapes are described under
-Details.
+Details. \code{summary()} of a size or a cluster design is described in
+\link{summary.svyplan_n}. A result type with no structured summary yet
+returns itself from \code{summary()}, so it prints as \code{print()} does.
 }
 \description{
 Display and coercion methods shared by every result the package returns.
@@ -172,15 +194,16 @@ Constrained designs (\code{n_cluster()}, \code{n_alloc()})
 carry two representations: the continuous design in the top-level
 fields (\code{n}, \code{cv}, \code{cost}, ...) and the whole-unit field design in
 \verb{$operational}, whose cost and precision are recomputed from the
-integer design. \code{print()} leads with the field design and shows the
-continuous one as a diagnostic. For \code{n_cluster()} the continuous design
-is the continuous optimum. For \code{n_alloc()} it is the allocation rule's,
-which a two-stage frame with a finite population correction can improve
-on (see \code{\link[=n_alloc]{n_alloc()}}).
+integer design. \code{print()} shows the field design. For \code{n_cluster()} the
+continuous optimum is read in \code{summary()} (see \link{summary.svyplan_n}). For
+\code{n_alloc()} the print also shows the allocation rule's continuous design
+as a diagnostic, which a two-stage frame with a finite population
+correction can improve on (see \code{\link[=n_alloc]{n_alloc()}}).
 
 \code{as.integer(x)} returns the operational design in the same shape as
 \code{x$n}: the named integer stage vector for \code{svyplan_cluster} objects,
-the operational total for allocation results, and the ceiled scalar
+the operational total for allocation results, the sum of the ceiled
+quotas for \code{n_multi()} with separate domain quotas, and the ceiled scalar
 otherwise. \code{as.double(x)} returns the continuous counterpart of the
 same shape. For \code{svyplan_strata}, both coercions return the total sample
 size. Boundary cutpoints remain available in \verb{$boundaries}.

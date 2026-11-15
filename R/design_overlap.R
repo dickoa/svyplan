@@ -135,7 +135,9 @@
 #' cancel, so at retention 1 this is the issued overlap whatever `resp_rate`
 #' is. Retention below 1 lowers it, and more at long lags. The result can be
 #' passed as the `overlap` of [n_pooled()] and [prec_pooled()] at any
-#' `resp_rate`, and one lag of it to [n_change()] and [prec_change()]. It
+#' `resp_rate`, and one lag of it to [n_change()] and [prec_change()]. Passed
+#' whole, it tells [prec_pooled()] and [n_pooled()] that the occasions are
+#' cohorts of one rotation, which `as.numeric()` discards. It
 #' describes equal cohorts at equilibrium and does not model response that
 #' recovers after a loss, nor units joining a sampled dwelling.
 #'

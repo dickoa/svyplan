@@ -72,10 +72,10 @@ effective_n(x = NULL, ...)
 }
 \arguments{
 \item{x}{A \code{svyplan_deff} from \code{\link[=design_effect]{design_effect()}}, a \code{\link[=n_cluster]{n_cluster()}} or
-\code{\link[=prec_cluster]{prec_cluster()}} allocation, a \code{\link[=varcomp]{varcomp()}} estimate, an \code{\link[=n_alloc]{n_alloc()}}
-allocation, or \code{NULL} (default) to build the design effect from the
-component arguments. A \code{\link[=n_prop]{n_prop()}} or \code{\link[=n_mean]{n_mean()}} result is not one of
-these, since its design effect is the \code{deff} you supplied rather than
+\code{\link[=prec_cluster]{prec_cluster()}} allocation, a \code{\link[=varcomp]{varcomp()}} estimate, an \code{\link[=n_alloc]{n_alloc()}} or
+\code{\link[=prec_alloc]{prec_alloc()}} allocation, or \code{NULL} (default) to build the design effect
+from the component arguments. A \code{\link[=n_prop]{n_prop()}} or \code{\link[=n_mean]{n_mean()}} result is not one
+of these, since its design effect is the \code{deff} you supplied rather than
 something to be derived, so pass the two directly as
 \code{effective_n(n = x$n, deff = x$params$deff)}.}
 
@@ -110,13 +110,14 @@ the same meaning as in \code{\link[=design_effect]{design_effect()}}.}
 }
 \value{
 A numeric scalar: the effective sample size,
-\code{n * resp_rate / deff}. It is not rounded, and it can exceed \code{n} when
-the design effect is below 1 (a stratification gain, for instance).
+\code{n * resp_rate * eligibility_rate / deff}. It is not rounded, and it can
+exceed \code{n} when the design effect is below 1 (a stratification gain, for
+instance).
 }
 \description{
-Convert a planned sample size into the simple-random-sample size that
-would give the same precision, \code{n * resp_rate / deff}. This is the
-mirror of \code{\link[=design_effect]{design_effect()}} and takes the same arguments.
+Convert a planned sample size into the simple-random-sample size that would
+give the same precision, \code{n * resp_rate * eligibility_rate / deff}. This is
+the mirror of \code{\link[=design_effect]{design_effect()}} and takes the same arguments.
 }
 \details{
 The design effect is built exactly as in \code{\link[=design_effect]{design_effect()}}, from
@@ -126,13 +127,14 @@ arguments when it can be (the length of \code{weights}, the total of
 \code{strata$n}, or the total of the plan you pass as \code{x}), and must be given
 explicitly otherwise.
 
-Sizes are counted as units \strong{issued}, so nonresponse has to be taken
-off before the design effect is applied. A design that issues \code{n} and
-analyzes \code{n * resp_rate} of them carries the information of
-\code{n * resp_rate / deff} simple random draws. This is the identity the
-allocation and precision functions plan on, and the one reported in the
-\code{n_eff} column of an \code{\link[=n_alloc]{n_alloc()}} table. Passing a plan as \code{x} picks up
-the response rate it was built with, so \code{effective_n(plan)} and that
+Sizes are counted as units \strong{issued}, so nonresponse and units out of
+scope have to be taken off before the design effect is applied. A design
+that issues \code{n} and analyzes \code{n * resp_rate * eligibility_rate} of them
+carries the information of \code{n * resp_rate * eligibility_rate / deff}
+simple random draws. This is the identity the allocation and precision
+functions plan on, and the one reported in the \code{n_eff} column of an
+\code{\link[=n_alloc]{n_alloc()}} table. Passing a plan as \code{x} picks up the response and
+eligibility rates it was built with, so \code{effective_n(plan)} and that
 column agree. Supply \code{resp_rate} yourself when you pass a bare \code{n} that
 has not already been netted down.
 

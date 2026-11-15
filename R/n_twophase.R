@@ -26,7 +26,13 @@
 #'     \item{`N`}{Stratum size (**required**). Only relative size matters,
 #'       since the stratum weights are `N / sum(N)`.}
 #'     \item{`sd`}{Within-stratum standard deviation of the variable of
-#'       interest (**required**).}
+#'       interest (**required**). A stratum with `sd = 0` still takes one
+#'       phase-2 unit, since the estimator needs its mean and a planning
+#'       value of zero says the stratum is homogeneous, not that its level
+#'       is known. A level phase 1 already records, such as a screened-out
+#'       group whose value is zero by definition, is a `take_all` stratum
+#'       with `unit_cost = 0`. Estimating a stratum's variance from the
+#'       survey takes at least two units there.}
 #'     \item{`mean`}{Stratum mean. Supply it to let the between-stratum
 #'       component be derived, which is what makes stratifying worthwhile.
 #'       Omit it, or pass `between = 0`, when the strata are not expected
@@ -223,6 +229,19 @@
 #' because pinning lowers the multiplier and can bring others back below
 #' the cap.
 #'
+#' ## A stratum without variance
+#'
+#' The optimum sends \eqn{\nu_h}{nu_h} to zero as \eqn{S_h}{S_h} does, but
+#' the estimator \eqn{\sum_h w_h \bar y_h}{sum_h w_h ybar_h} needs a phase-2
+#' mean in every stratum phase 1 populates, so a zero fraction is outside the
+#' model rather than its limit (Cochran, 1977, Sect. 12.2). A stratum with
+#' `sd = 0` therefore takes one phase-2 unit, which costs \eqn{c_h}{c_h} and
+#' adds no variance, and the optimum over the other strata is unchanged. In
+#' the whole-unit design it needs a pool of at least one unit, as every
+#' subsampled stratum does. When every stratum has `sd = 0` and the strata
+#' share one mean, nothing is traded, and the result is the smallest design
+#' that observes every stratum, with cv 0 and a warning.
+#'
 #' ## The finite population correction
 #'
 #' With `N` set, the correction applies component by component and not to
@@ -316,6 +335,9 @@
 #' \eqn{\theta}, which is the standard result.
 #'
 #' @references
+#' Cochran, W. G. (1977). *Sampling Techniques*, 3rd ed. Wiley. Sections
+#' 12.2 to 12.4.
+#'
 #' Fuller, W. A. (2009). \emph{Sampling Statistics}. Wiley. Section 3.3.
 #'
 #' Neyman, J. (1938). Contribution to the theory of sampling human
@@ -470,11 +492,19 @@ n_twophase.default <- function(
   # at nu_max rather than 1, the floor no amount of subsampling can beat
   var_floor <- a_eff + sum(d2_eff * spec$W * spec$S^2 / resp_rate)
 
+  # A stratum without variance still needs its mean observed, so it takes
+  # one phase-2 unit, more buying no precision. Below one unit of phase-1
+  # yield it takes what the pool holds. That count is a fixed cost, so the
+  # optimum over the other strata is unchanged.
+  zero <- spec$S == 0 & !spec$pinned
+  floor_count <- function(n1) pmin(1, resp_rate * spec$W[zero] * n1)
+  floor_cost <- function(n1) sum(spec$cost[zero] * floor_count(n1))
+
   # The multiplier at a fixed phase-1 size, which the caller's 'n_phase1'
   # sets, or the census a free phase 1 is capped at.
   fixed_lambda <- function(n1, census = FALSE) {
     if (!is.null(budget)) {
-      allocatable <- (budget - fixed_cost) / n1
+      allocatable <- (budget - fixed_cost - floor_cost(n1)) / n1
       # take-all strata must be measured whatever is left, so their cost is
       # as mandatory as the screening itself
       mandatory <- phase1_cost +
@@ -513,7 +543,8 @@ n_twophase.default <- function(
   }
   solve_nu <- function(lambda_fn) {
     .twophase_nu(spec$W, spec$S, spec$cost, d2_eff, phase1_cost, a_eff,
-                 spec$pinned, nu_max = resp_rate, lambda_fn = lambda_fn)
+                 spec$pinned, nu_max = resp_rate, lambda_fn = lambda_fn,
+                 skip = zero)
   }
   unit_terms <- function(nu) {
     list(
@@ -522,12 +553,34 @@ n_twophase.default <- function(
     )
   }
 
-  fit <- solve_nu(if (!is.null(n_phase1)) fixed_lambda(n_phase1))
-  n1 <- n_phase1
+  degenerate <- var_pop == 0
+  if (degenerate) {
+    # No variance anywhere, so every design has cv 0 and nothing is traded.
+    # The smallest admissible design populates every stratum's pool and
+    # observes each once.
+    warning(paste("every stratum has 'sd' = 0 and the strata share one",
+                  "mean, so the outcome has no variability to plan for. The",
+                  "smallest design that observes it in every stratum is",
+                  "returned"), call. = FALSE)
+    n1 <- n_phase1 %||% max(1, ceiling(1 / (resp_rate * min(spec$W[zero])) -
+                                         1e-9))
+    fit <- list(nu = ifelse(spec$pinned, resp_rate, 0), pinned = spec$pinned)
+  } else {
+    fit <- solve_nu(if (!is.null(n_phase1)) fixed_lambda(n_phase1))
+    n1 <- n_phase1
+  }
   if (is.null(n1)) {
     u <- unit_terms(fit$nu)
     n1 <- if (!is.null(budget)) {
-      (budget - fixed_cost) / u$cost
+      room <- budget - fixed_cost
+      if (any(zero) && room > 0 && u$cost > 0) {
+        # Spend equals room where n1 * u$cost + floor_cost(n1) does, an
+        # increasing function of n1.
+        stats::uniroot(function(m) m * u$cost + floor_cost(m) - room,
+                       c(0, room / u$cost), tol = 1e-10)$root
+      } else {
+        room / u$cost
+      }
     } else {
       u$var / ((cv * spec$mu)^2 + var_pop / N)
     }
@@ -543,9 +596,9 @@ n_twophase.default <- function(
     }
   }
   nu <- fit$nu
-  # a stratum with no variance to measure is legitimately left at zero; any
-  # other non-positive fraction means the constraints could not be met
-  if (any(!is.finite(nu)) || any(nu < 0) || any(nu[spec$S > 0] <= 0)) {
+  nu[zero] <- floor_count(n1) / (spec$W[zero] * n1)
+  # any non-positive fraction means the constraints could not be met
+  if (any(!is.finite(nu)) || any(nu <= 0)) {
     stop(paste("the constraints imply a non-positive subsampling fraction, so",
                "there is no feasible allocation; check 'budget' or 'n_phase1'",
                "against the cost of the take-all strata"), call. = FALSE)
@@ -554,6 +607,12 @@ n_twophase.default <- function(
   var_unit <- u$var
   cost_unit <- u$cost
   cost <- fixed_cost + n1 * cost_unit
+  if (!is.null(budget) && cost > budget * (1 + 1e-9)) {
+    stop(sprintf(
+      paste("the budget does not cover the smallest design that observes",
+            "every stratum, which costs %s"),
+      format(round(cost, 2))), call. = FALSE)
+  }
 
   cv_out <- .twophase_cv(n1, var_unit, spec$mu, N, var_pop)
   if (!is.null(cv) && is.finite(cv_out) && cv_out > cv * (1 + 1e-6)) {
@@ -750,7 +809,7 @@ n_twophase.default <- function(
 #' @keywords internal
 #' @noRd
 .twophase_nu <- function(W, S, cost, d2, phase1_cost, A, pinned, nu_max = 1,
-                         lambda_fn = NULL) {
+                         lambda_fn = NULL, skip = rep(FALSE, length(W))) {
   key <- ifelse(cost > 0, S * sqrt(d2 / cost), Inf)
   if (is.null(lambda_fn)) {
     lambda_fn <- function(a_eff, c_eff, free) {
@@ -760,9 +819,12 @@ n_twophase.default <- function(
   repeat {
     a_eff <- A + sum(d2[pinned] * W[pinned] * S[pinned]^2 / nu_max)
     c_eff <- phase1_cost + sum(cost[pinned] * W[pinned] * nu_max)
-    free <- !pinned
+    free <- !pinned & !skip
     lambda <- lambda_fn(a_eff, c_eff, free)
     nu <- rep(nu_max, length(W))
+    # `skip` strata are set by the caller, so they neither take a share of
+    # the multiplier nor get pinned when it is infinite.
+    nu[skip] <- 0
     nu[free] <- if (is.finite(lambda)) key[free] * lambda else Inf
     over <- free & nu > nu_max
     if (!any(over)) {
@@ -815,12 +877,16 @@ n_twophase.default <- function(
   measured <- spec$S > 0
   # the strata the caller pinned take their whole pool at any phase-1 size
   pinned <- spec$pinned
+  # a stratum without variance takes one unit, its mean still to observe
+  zero <- !measured & !pinned
+  needs <- measured | zero
   search <- NULL
   if (identical(mode, "budget")) {
     n1_int <- floor(min(n1, N))
     cap <- floor(nu_max * W * n1_int)
     n_int <- pmin(floor(nu * W * n1_int), cap)
     n_int[pinned] <- cap[pinned]
+    n_int[zero] <- pmin(1, cap[zero])
     spent <- fixed_cost + phase1_cost * n1_int + sum(spec$cost * n_int)
     repeat {
       room <- n_int < cap & spec$cost > 0 & measured & !pinned &
@@ -842,7 +908,7 @@ n_twophase.default <- function(
       spent <- spent + spec$cost[h]
     }
     term <- d2_eff * W^2 * spec$S^2
-    held <- measured & n_int == 0
+    held <- needs & n_int == 0
     incumbent <- if (any(held)) Inf else
       a_eff / n1_int + sum(term[measured] / n_int[measured])
     room <- budget - fixed_cost
@@ -850,7 +916,7 @@ n_twophase.default <- function(
       "budget", term, spec$cost, W, nu_max, phase1_cost, a_eff,
       budget = room, incumbent = incumbent, pinned = pinned,
       n1_range = if (n1_fixed) c(n1_int, n1_int) else
-        c(1, floor(min(N, (room - sum(spec$cost[measured])) / phase1_cost)))
+        c(1, floor(min(N, (room - sum(spec$cost[needs])) / phase1_cost)))
     )
     search <- found$search
     found <- found$found
@@ -865,6 +931,8 @@ n_twophase.default <- function(
     cap <- floor(nu_max * W * n1_int)
     n_int <- pmin(ceiling(nu * W * n1_int), cap)
     n_int[pinned] <- cap[pinned]
+    # Exactly one: the ceiling of an expected count of one can round past it.
+    n_int[zero] <- pmin(1, cap[zero])
     if (!is.null(target_cv)) {
       # Capping a phase-2 size at its pool can leave the design short of the
       # target. Repair by the move that removes the most variance per unit
@@ -873,7 +941,7 @@ n_twophase.default <- function(
       term <- d2_eff * W^2 * spec$S^2
       cv_at <- function(n1_int, n_int) {
         contrib <- ifelse(n_int > 0, term * n1_int / n_int,
-                          ifelse(measured, Inf, 0))
+                          ifelse(needs, Inf, 0))
         .twophase_cv(n1_int, a_eff + sum(contrib), mu, N, var_pop)
       }
       repeat {
@@ -902,6 +970,7 @@ n_twophase.default <- function(
           n1_int <- n1_int + 1
           cap <- floor(nu_max * W * n1_int)
           n_int[pinned] <- cap[pinned]
+          n_int[zero] <- pmin(1, cap[zero])
         }
       }
       target <- (target_cv * mu)^2 + if (is.finite(N)) var_pop / N else 0
@@ -909,8 +978,13 @@ n_twophase.default <- function(
       # However large phase 1 is, phase 2 costs at least its continuous
       # least cost at the full target, so phase 1 is bounded above.
       on <- term > 0
-      tail <- .twophase_cost_bound(term[on], spec$cost[on], target,
-                                   matrix(.Machine$double.xmax, 1L, sum(on)))
+      tail <- if (any(on)) {
+        .twophase_cost_bound(term[on], spec$cost[on], target,
+                             matrix(.Machine$double.xmax, 1L, sum(on)))
+      } else {
+        0
+      }
+      tail <- tail + sum(spec$cost[zero])
       found <- .twophase_search(
         "cv", term, spec$cost, W, nu_max, phase1_cost, a_eff,
         target = target, incumbent = incumbent, pinned = pinned,
@@ -926,7 +1000,7 @@ n_twophase.default <- function(
     }
     spent <- fixed_cost + phase1_cost * n1_int + sum(spec$cost * n_int)
   }
-  starved <- measured & nu > 0 & n_int == 0
+  starved <- needs & n_int == 0
   if (any(starved)) {
     warning(sprintf(
       paste("the phase-1 pool rounds to zero units in %s, so the operational",
@@ -936,10 +1010,10 @@ n_twophase.default <- function(
       if (sum(starved) > 1L) "those strata" else "that stratum"),
       call. = FALSE)
   }
-  # a stratum with no variance needs no sample; one that has variance and no
-  # sample leaves the mean unestimable
+  # a stratum left without its phase-2 unit leaves its mean unestimable,
+  # with or without variance; a pinned one with an empty pool holds no units
   contrib <- ifelse(n_int > 0, d2_eff * W^2 * spec$S^2 * n1_int / n_int,
-                    ifelse(measured, Inf, 0))
+                    ifelse(needs, Inf, 0))
   var_unit <- a_eff + sum(contrib)
   list(
     n = c(n_phase1 = n1_int, n_phase2 = sum(n_int)),
@@ -960,7 +1034,8 @@ n_twophase.default <- function(
 #' bound is computed for every candidate at once, the candidates are solved
 #' in order of that bound, and the search stops once no remaining bound can
 #' beat the best design. The greedy design is the starting incumbent, so the
-#' search never returns a worse one. Strata without variance take no units.
+#' search never returns a worse one. A stratum without variance takes one
+#' unit, its mean still having to be observed.
 #' @return A list of `found`, `NULL` when nothing beats `incumbent` and
 #'   otherwise `n1` and `n_int`, and `search`, the record of the search: its
 #'   `status` (`"optimal"`, or `"limit"` when the solve or node limit stopped
@@ -976,6 +1051,10 @@ n_twophase.default <- function(
   c_on <- cost[on]
   W_on <- W[on]
   H <- length(term)
+  # A stratum without variance takes one unit at any phase-1 size that gives
+  # it a pool, so its cost is a constant of every candidate.
+  zero <- term == 0 & !pinned
+  z_cost <- sum(cost[zero])
   # A pinned stratum takes its whole pool at every phase-1 size, so its cost
   # and variance are known exactly per candidate and join the phase-1 terms.
   t_pin <- term[pinned]
@@ -986,11 +1065,12 @@ n_twophase.default <- function(
     tm <- matrix(t_pin, nrow(cap), length(t_pin), byrow = TRUE)
     list(
       cap = cap,
-      cost = as.vector(cap %*% c_pin),
+      cost = as.vector(cap %*% c_pin) + z_cost,
       var = rowSums(ifelse(tm > 0, tm / cap, 0))
     )
   }
-  n1_lo <- max(n1_range[1L], ceiling(1 / (nu_max * W[term > 0]) - 1e-9))
+  n1_lo <- max(n1_range[1L],
+               ceiling(1 / (nu_max * W[term > 0 | zero]) - 1e-9))
   n1_hi <- n1_range[2L]
   # A solve limit leaves candidates whose bound could still win, so the
   # design is the best found, within the gap to the least of those bounds.
@@ -1081,6 +1161,7 @@ n_twophase.default <- function(
         n_int <- numeric(H)
         n_int[on] <- x
         n_int[pinned] <- pin$cap
+        n_int[zero] <- 1
         out <<- list(n1 = n1, n_int = n_int)
       }
     }
@@ -1211,7 +1292,8 @@ n_twophase.default <- function(
     if (room <= 0 || sum(t / hi) > room * (1 + 1e-12)) {
       return(none)
     }
-    q <- .whole_problem(c, 0, 0, t / room * (1 + 2e-9), rep(1, length(t)), hi)
+    q <- .whole_problem(c, 0, 0, t / room * .whole_target_scale(),
+                        rep(1, length(t)), hi)
     r <- .whole_search(q, grain = .menu_grain(c), max_nodes = 5000L)
   } else {
     if (budget < sum(c) - 1e-9) {

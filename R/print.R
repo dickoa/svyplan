@@ -6,6 +6,7 @@
 #' downstream package can consume.
 #'
 #' @param x A svyplan object.
+#' @param object A svyplan object, for `summary()`.
 #' @param row.names,optional Standard [as.data.frame()] arguments.
 #' @param stringsAsFactors Logical. Retained for compatibility when a result
 #'   is converted through [data.frame()].
@@ -16,7 +17,9 @@
 #' @return `print()` returns `x` invisibly. `format()` returns a character
 #'   vector, `as.integer()` and `as.double()` return numeric vectors, and
 #'   `as.data.frame()` returns a data frame. The shapes are described under
-#'   Details.
+#'   Details. `summary()` of a size or a cluster design is described in
+#'   [summary.svyplan_n]. A result type with no structured summary yet
+#'   returns itself from `summary()`, so it prints as `print()` does.
 #'
 #' @details
 #' ## Print and coercion
@@ -25,15 +28,16 @@
 #' carry two representations: the continuous design in the top-level
 #' fields (`n`, `cv`, `cost`, ...) and the whole-unit field design in
 #' `$operational`, whose cost and precision are recomputed from the
-#' integer design. `print()` leads with the field design and shows the
-#' continuous one as a diagnostic. For `n_cluster()` the continuous design
-#' is the continuous optimum. For `n_alloc()` it is the allocation rule's,
-#' which a two-stage frame with a finite population correction can improve
-#' on (see [n_alloc()]).
+#' integer design. `print()` shows the field design. For `n_cluster()` the
+#' continuous optimum is read in `summary()` (see [summary.svyplan_n]). For
+#' `n_alloc()` the print also shows the allocation rule's continuous design
+#' as a diagnostic, which a two-stage frame with a finite population
+#' correction can improve on (see [n_alloc()]).
 #'
 #' `as.integer(x)` returns the operational design in the same shape as
 #' `x$n`: the named integer stage vector for `svyplan_cluster` objects,
-#' the operational total for allocation results, and the ceiled scalar
+#' the operational total for allocation results, the sum of the ceiled
+#' quotas for `n_multi()` with separate domain quotas, and the ceiled scalar
 #' otherwise. `as.double(x)` returns the continuous counterpart of the
 #' same shape. For `svyplan_strata`, both coercions return the total sample
 #' size. Boundary cutpoints remain available in `$boundaries`.
@@ -210,9 +214,9 @@ print.svyplan_n <- function(x, ...) {
 .print_pooled_n <- function(x) {
   p <- x$params
   cat(sprintf("Sample size for pooled estimate (%s)\n", .pooled_scale_label(p)))
-  cat(sprintf("n = %s per occasion", .fmt_count_n(ceiling(x$n))))
+  cat(sprintf("n = %s per occasion", .fmt_count_n(.whole_count(x$n))))
   if (.net_rate(p) < 1) {
-    cat(sprintf(" (net: %s)", .fmt_count_n(ceiling(x$n * .net_rate(p)))))
+    cat(sprintf(" (net: %s)", .fmt_count_n(.whole_count(x$n * .net_rate(p)))))
   }
   cat(sprintf(", %d occasions", p$occasions))
   parts <- c(.fmt_pooled_estimand(p), .fmt_deff(p$deff))
@@ -276,9 +280,19 @@ print.svyplan_n <- function(x, ...) {
 .fmt_lag_overlap <- function(p) {
   ov <- p$overlap %||% 0
   rho <- p$overlap_cor %||% 0
-  if (all(ov * rho == 0)) {
+  rotation_term <- .pooled_coupled(p[["overlap_rotation"]],
+                                   p$overlap_draw %||% "fixed") &&
+    all(is.finite(p$N %||% Inf)) && any(rho[ov == 0] > 0)
+  if (all(ov * rho == 0) && !rotation_term) {
     return(sprintf(
       "No between-occasion covariance (overlap x overlap_cor = 0)%s\n",
+      .fmt_overlap_draw(p)
+    ))
+  }
+  if (!any(ov > 0)) {
+    return(sprintf(
+      "overlap = 0 at every lag, overlap_cor = %.3g at lag 1, disjoint cohorts%s\n",
+      rho[1L],
       .fmt_overlap_draw(p)
     ))
   }
@@ -349,7 +363,7 @@ print.svyplan_n <- function(x, ...) {
   fmt_n <- if (exact) {
     .evaluated_n_formatter(n)
   } else {
-    function(v) .fmt_count_n(ceiling(v))
+    function(v) .fmt_count_n(.whole_count(v))
   }
   if (length(n) == 1L) {
     out <- sprintf("n = %s per occasion", fmt_n(n))
@@ -441,22 +455,23 @@ print.svyplan_n <- function(x, ...) {
   resp_rate <- p$resp_rate
   eligibility_rate <- p[["eligibility_rate"]]
   eligible_per_unit <- p[["eligible_per_unit"]]
+  field <- .whole_count(x$n)
   if (!is.null(eligible_per_unit)) {
     cat(sprintf(
       "n = %s gross (eligible respondents: %s)",
-      .fmt_count_n(ceiling(x$n)),
-      .fmt_count_n(ceiling(x$n * (resp_rate %||% 1) * .params_yield(p)))
+      .fmt_count_n(field),
+      .fmt_count_n(.whole_count(field * (resp_rate %||% 1) * .params_yield(p)))
     ))
   } else if (!is.null(eligibility_rate) ||
              (!is.null(resp_rate) && resp_rate < 1)) {
-    net_n <- ceiling(x$n * (resp_rate %||% 1) * (eligibility_rate %||% 1))
+    net_n <- .whole_count(field * (resp_rate %||% 1) * (eligibility_rate %||% 1))
     cat(sprintf(
       "n = %s gross (net: %s)",
-      .fmt_count_n(ceiling(x$n)),
+      .fmt_count_n(field),
       .fmt_count_n(net_n)
     ))
   } else {
-    cat(sprintf("n = %s", .fmt_count_n(ceiling(x$n))))
+    cat(sprintf("n = %s", .fmt_count_n(field)))
   }
 
   parts <- character(0L)
@@ -498,10 +513,10 @@ print.svyplan_n <- function(x, ...) {
   }
   cat("\n")
 
-  .print_expected_cases(x$expected_cases, x$binding, p$min_cases)
-
-  if (!is.null(x$domains)) {
-    cat(sprintf("Domains: %d\n", nrow(x$domains)))
+  cases <- if (!is.null(x$expected_cases)) x$expected_cases * field / x$n
+  .print_expected_cases(cases, x$binding, p$min_cases)
+  if (x$type %in% c("proportion", "mean", "ratio")) {
+    cat("# summary() for the precision at the field size and the derived sizes\n")
   }
 }
 
@@ -556,7 +571,7 @@ print.svyplan_n <- function(x, ...) {
 #' @noRd
 .evaluated_n_formatter <- function(n) {
   if (all(n == floor(n))) {
-    function(v) .fmt_count_n(ceiling(v))
+    function(v) .fmt_count_n(.whole_count(v))
   } else {
     .fmt_continuous_n
   }
@@ -582,6 +597,20 @@ print.svyplan_n <- function(x, ...) {
   format(x, trim = TRUE, scientific = FALSE)
 }
 
+#' Field size of a multi-indicator result
+#'
+#' Separate quotas are fielded one by one, so the total is the sum of the
+#' whole quotas, which can exceed the rounded continuous total.
+#' @keywords internal
+#' @noRd
+.multi_field_n <- function(x) {
+  dom <- x$domains
+  if (!is.null(dom) && !identical(x$params$domain_sampling, "natural")) {
+    return(sum(.whole_count(dom$.n)))
+  }
+  .whole_count(x$n)
+}
+
 #' @keywords internal
 #' @noRd
 .print_multi_n <- function(x) {
@@ -602,33 +631,55 @@ print.svyplan_n <- function(x, ...) {
     # single domain is a different quantity and was once printed as 'n'.
     cat(sprintf(
       "n = %s (%s)\n",
-      .fmt_count_n(ceiling(x$n)),
+      .fmt_count_n(.multi_field_n(x)),
       if (natural) "largest quota / share" else "sum of domain quotas"
     ))
     if (!is.null(x$n_domain_max)) {
       cat(sprintf(
         "Largest single domain = %s (binding: %s)\n",
-        .fmt_count_n(ceiling(x$n_domain_max)),
-        x$binding
+        .fmt_count_n(.whole_count(x$n_domain_max)),
+        .summary_label(x$binding)
       ))
     }
     cat("\n")
-    dom <- x$domains
-    dom$.n <- ceiling(dom$.n)
+    dom <- .truncate_labels(x$domains, c(x$params$domain_cols, ".binding"))
+    dom$.n <- .whole_count(dom$.n)
     print(dom, row.names = FALSE, right = FALSE)
   } else {
     cat(sprintf("Multi-indicator sample size\n"))
     cat(sprintf(
       "n = %s (binding: %s)\n",
-      .fmt_count_n(ceiling(x$n)),
-      x$binding
+      .fmt_count_n(.multi_field_n(x)),
+      .summary_label(x$binding)
     ))
     cat("\n")
-    d <- x$detail
-    d$.n <- ceiling(d$.n)
-    d$.binding <- ifelse(d$.binding, "*", "")
+    d <- .truncate_labels(x$detail[, c("name", ".n", ".cv_target"),
+                                   drop = FALSE], "name")
+    d$.n <- .whole_count(d$.n)
+    d$.cv_target <- .fmt_cv_column(d$.cv_target)
+    d$.cv_achieved <- .fmt_cv_column(x$detail$.cv_field %||%
+                                       x$detail$.cv_achieved)
+    d$.binding <- ifelse(x$detail$.binding, "*", "")
     print(d, row.names = FALSE, right = FALSE)
   }
+  cat("\n# summary() for each indicator at the field size\n")
+}
+
+#' Shorten the label columns of a printed table
+#' @keywords internal
+#' @noRd
+.truncate_labels <- function(df, cols) {
+  for (col in intersect(cols, names(df))) {
+    df[[col]] <- .summary_label(df[[col]])
+  }
+  df
+}
+
+#' Four-decimal cv column, blank where a row has no precision
+#' @keywords internal
+#' @noRd
+.fmt_cv_column <- function(v) {
+  ifelse(is.na(v), "", sprintf("%.4f", v))
 }
 
 #' @rdname print.svyplan
@@ -648,7 +699,7 @@ print.svyplan_cluster <- function(x, ...) {
 .print_single_cluster <- function(x) {
   cat(sprintf("Optimal %d-stage allocation\n", x$stages))
   op <- x$operational
-  n_display <- if (!is.null(op)) op$n else ceiling(x$n)
+  n_display <- if (!is.null(op)) op$n else .whole_count(x$n)
   total_display <- if (!is.null(op)) op$total_n else prod(n_display)
   stage_labels <- names(x$n)
   if (is.null(stage_labels)) {
@@ -674,10 +725,10 @@ print.svyplan_cluster <- function(x, ...) {
     cat(sprintf(
       " -> total n = %s (eligible respondents: %s)\n",
       .fmt_count_n(total_display),
-      .fmt_count_n(ceiling(total_display * resp_rate * eligible_per_unit))
+      .fmt_count_n(.whole_count(total_display * resp_rate * eligible_per_unit))
     ))
   } else if (resp_rate < 1) {
-    net_total <- ceiling(total_display * resp_rate)
+    net_total <- .whole_count(total_display * resp_rate)
     cat(sprintf(
       " -> total n = %s (net: %s)\n",
       .fmt_count_n(total_display),
@@ -696,24 +747,8 @@ print.svyplan_cluster <- function(x, ...) {
   } else {
     cat(sprintf("cv = %.4f, cost = %.0f\n", op_cv, op_cost))
   }
-  cont_parts <- vapply(
-    seq_along(x$n),
-    function(i) {
-      sprintf("%s = %s", stage_labels[i], .fmt_continuous_n(x$n[i]))
-    },
-    character(1L)
-  )
-  cat(sprintf(
-    "continuous optimum: %s (cv = %.4f, cost = %.0f)\n",
-    paste(cont_parts, collapse = " | "),
-    x$cv,
-    x$cost
-  ))
   .print_design_df(x)
-
-  if (!is.null(x$domains)) {
-    cat(sprintf("Domains: %d\n", nrow(x$domains)))
-  }
+  cat("# summary() for the continuous optimum, the design effect and costs\n")
 }
 
 #' @keywords internal
@@ -741,7 +776,7 @@ print.svyplan_cluster <- function(x, ...) {
       dom <- x$domains
       stage_cols <- names(x$n)
       for (col in stage_cols) {
-        dom[[col]] <- ceiling(dom[[col]])
+        dom[[col]] <- .whole_count(dom[[col]])
       }
       dom$.total_n <- apply(
         dom[, stage_cols, drop = FALSE],
@@ -750,21 +785,19 @@ print.svyplan_cluster <- function(x, ...) {
       )
       cost_display <- x$cost
     }
-    unrounded <- .fmt_continuous_n(x$total_n)
     fc <- x$params$fixed_cost
     if (!is.null(fc) && fc > 0) {
       cat(sprintf(
-        "Total n = %s (unrounded: %s), cost = %.0f (fixed: %.0f)\n",
+        "Total n = %s, cost = %.0f (fixed: %.0f)\n",
         .fmt_count_n(sum(dom$.total_n)),
-        unrounded,
         cost_display,
         fc
       ))
     } else {
       cat(sprintf(
-        "Total n = %s (unrounded: %s)\n",
+        "Total n = %s, cost = %.0f\n",
         .fmt_count_n(sum(dom$.total_n)),
-        unrounded
+        cost_display
       ))
     }
     if (!isTRUE(x$params$joint) && !is.null(x$params$budget)) {
@@ -776,12 +809,14 @@ print.svyplan_cluster <- function(x, ...) {
     .print_stage_fpc(x$params)
     dom$.cv <- sprintf("%.4f", dom$.cv)
     dom$.cost <- sprintf("%.0f", dom$.cost)
+    dom <- .truncate_labels(dom, c(x$params$domain_cols, ".binding"))
     cat("\n")
     print(dom, row.names = FALSE, right = FALSE)
+    cat("\n# summary() for each indicator's precision at the field design\n")
   } else {
     cat(sprintf("Multi-indicator optimal allocation (%d-stage)\n", x$stages))
     op <- x$operational
-    n_display <- if (!is.null(op)) op$n else ceiling(x$n)
+    n_display <- if (!is.null(op)) op$n else .whole_count(x$n)
     total_display <- if (!is.null(op)) op$total_n else prod(n_display)
     stage_labels <- names(x$n)
     if (is.null(stage_labels)) {
@@ -798,43 +833,42 @@ print.svyplan_cluster <- function(x, ...) {
     cat(paste(stage_parts, collapse = " | "))
     cat(sprintf(" -> total n = %s\n", .fmt_count_n(total_display)))
     .print_stage_fpc(x$params)
-    op_cv <- if (!is.null(op)) op$cv else x$cv
+    d <- x$detail
+    cv_field <- op$cv_by_target %||% d$.cv_achieved
     op_cost <- if (!is.null(op)) op$cost else x$cost
     fc <- x$params$fixed_cost
-    if (!is.null(fc) && fc > 0) {
-      cat(sprintf(
-        "worst cv = %.4f, cost = %.0f (fixed: %.0f, binding: %s)\n",
-        op_cv,
-        op_cost,
-        fc,
-        x$binding
-      ))
+    cost_label <- if (!is.null(fc) && fc > 0) {
+      sprintf("%.0f (fixed: %.0f)", op_cost, fc)
     } else {
+      sprintf("%.0f", op_cost)
+    }
+    worst <- which.max(cv_field)
+    bind <- if (!is.null(op$binding)) {
+      match(op$binding, d$name)
+    } else {
+      which.max(cv_field / d$.cv_target)
+    }
+    cat(sprintf(
+      "worst cv = %.4f (%s), cost = %s\n",
+      cv_field[worst], .summary_label(d$name[worst]), cost_label
+    ))
+    cat(sprintf("binding: %s\n", .summary_label(d$name[bind])))
+    short <- cv_field > d$.cv_target * (1 + 1e-9)
+    if (any(short)) {
       cat(sprintf(
-        "worst cv = %.4f, cost = %.0f (binding: %s)\n",
-        op_cv,
-        op_cost,
-        x$binding
+        "short of target: %s\n",
+        paste(.summary_label(d$name[short]), collapse = ", ")
       ))
     }
-    cont_parts <- vapply(
-      seq_along(x$n),
-      function(i) {
-        sprintf("%s = %s", stage_labels[i], .fmt_continuous_n(x$n[i]))
-      },
-      character(1L)
-    )
-    cat(sprintf(
-      "continuous optimum: %s (cv = %.4f, cost = %.0f)\n",
-      paste(cont_parts, collapse = " | "),
-      x$cv,
-      x$cost
-    ))
     cat("\n")
-    d <- x$detail
-    d$.cv_achieved <- sprintf("%.4f", d$.cv_achieved)
-    d$.binding <- ifelse(d$.binding, "*", "")
+    d <- .truncate_labels(d[, c("name", ".n", ".cv_target"), drop = FALSE],
+                          "name")
+    d$.n <- .whole_count(d$.n)
+    d$.cv_target <- sprintf("%.4f", d$.cv_target)
+    d$.cv_achieved <- sprintf("%.4f", cv_field)
+    d$.binding <- ifelse(seq_len(nrow(d)) == bind, "*", "")
     print(d, row.names = FALSE, right = FALSE)
+    cat("\n# summary() for the continuous optimum and each indicator's precision\n")
   }
 }
 
@@ -1201,8 +1235,8 @@ print.svyplan_power <- function(x, ...) {
 
   is_did <- startsWith(x$type, "did")
   if (length(x$n) == 2L) {
-    n1 <- ceiling(x$n[1])
-    n2 <- ceiling(x$n[2])
+    n1 <- .whole_count(x$n[1])
+    n2 <- .whole_count(x$n[2])
     lab1 <- if (is_did) "n_treat" else "n1"
     lab2 <- if (is_did) "n_control" else "n2"
     if (show_net) {
@@ -1214,7 +1248,7 @@ print.svyplan_power <- function(x, ...) {
         .fmt_count_n(n2),
         .fmt_count_n(n1 + n2),
         net_label,
-        .fmt_count_n(ceiling((n1 + n2) * rate_all)),
+        .fmt_count_n(.whole_count((n1 + n2) * rate_all)),
         x$power,
         x$effect
       ))
@@ -1231,10 +1265,10 @@ print.svyplan_power <- function(x, ...) {
       ))
     }
   } else if (show_net) {
-    net_n <- ceiling(x$n * rate_all)
+    net_n <- .whole_count(x$n * rate_all)
     cat(sprintf(
       "n = %s (%s: %s, per group), power = %.3f, effect = %.4f\n",
-      .fmt_count_n(ceiling(x$n)),
+      .fmt_count_n(.whole_count(x$n)),
       net_label,
       .fmt_count_n(net_n),
       x$power,
@@ -1243,7 +1277,7 @@ print.svyplan_power <- function(x, ...) {
   } else {
     cat(sprintf(
       "n = %s (per group), power = %.3f, effect = %.4f\n",
-      .fmt_count_n(ceiling(x$n)),
+      .fmt_count_n(.whole_count(x$n)),
       x$power,
       x$effect
     ))
@@ -1324,7 +1358,8 @@ print.svyplan_power <- function(x, ...) {
 #' @export
 format.svyplan_n <- function(x, ...) {
   .check_unused_dots(...)
-  paste0("svyplan_n [n=", paste(ceiling(x$n), collapse = " then "), ", ",
+  n_field <- if (identical(x$type, "multi")) .multi_field_n(x) else .whole_count(x$n)
+  paste0("svyplan_n [n=", paste(n_field, collapse = " then "), ", ",
          x$type, "]")
 }
 
@@ -1335,7 +1370,7 @@ format.svyplan_cluster <- function(x, ...) {
   total <- if (!is.null(x$operational)) {
     x$operational$total_n
   } else {
-    prod(ceiling(x$n))
+    prod(.whole_count(x$n))
   }
   paste0(
     "svyplan_cluster [",
@@ -1390,9 +1425,9 @@ format.svyplan_varcomp <- function(x, ...) {
 format.svyplan_power <- function(x, ...) {
   .check_unused_dots(...)
   n_str <- if (length(x$n) == 2L) {
-    paste0(ceiling(x$n[1]), ",", ceiling(x$n[2]))
+    paste0(.whole_count(x$n[1]), ",", .whole_count(x$n[2]))
   } else {
-    as.character(ceiling(x$n))
+    as.character(.whole_count(x$n))
   }
   paste0("svyplan_power [", x$type, ", ", x$solved, ", n=", n_str, "]")
 }
@@ -1694,7 +1729,10 @@ as.integer.svyplan_n <- function(x, ...) {
   if (!is.null(x$operational)) {
     return(as.integer(x$operational$n))
   }
-  as.integer(ceiling(x$n))
+  if (identical(x$type, "multi")) {
+    return(as.integer(.multi_field_n(x)))
+  }
+  as.integer(.whole_count(x$n))
 }
 
 #' @rdname print.svyplan
@@ -1708,7 +1746,7 @@ as.double.svyplan_n <- function(x, ...) {
 #' @export
 as.integer.svyplan_cluster <- function(x, ...) {
   .check_unused_dots(...)
-  n <- if (!is.null(x$operational)) x$operational$n else ceiling(x$n)
+  n <- if (!is.null(x$operational)) x$operational$n else .whole_count(x$n)
   setNames(as.integer(n), names(n))
 }
 
@@ -1737,7 +1775,7 @@ as.data.frame.svyplan_n <- function(
   } else {
     out <- data.frame(
       n = x$n,
-      n_int = as.integer(ceiling(x$n)),
+      n_int = as.integer(.whole_count(x$n)),
       se = x$se,
       moe = x$moe,
       cv = x$cv,
@@ -1887,7 +1925,7 @@ as.data.frame.svyplan_cluster <- function(
 #' @export
 as.integer.svyplan_power <- function(x, ...) {
   .check_unused_dots(...)
-  as.integer(ceiling(x$n))
+  as.integer(.whole_count(x$n))
 }
 
 #' @rdname print.svyplan
@@ -1912,8 +1950,8 @@ as.data.frame.svyplan_power <- function(
   out <- data.frame(
     n1 = unname(n_pair[1L]),
     n2 = unname(n_pair[2L]),
-    n1_int = as.integer(ceiling(n_pair[1L])),
-    n2_int = as.integer(ceiling(n_pair[2L])),
+    n1_int = as.integer(.whole_count(n_pair[1L])),
+    n2_int = as.integer(.whole_count(n_pair[2L])),
     power = x$power,
     effect = x$effect,
     type = x$type,
@@ -2239,7 +2277,7 @@ print.svyplan_strata <- function(x, ...) {
   } else {
     ""
   }
-  cat(sprintf("n = %d, cv = %.4f%s\n", ceiling(x$n), x$cv, alloc))
+  cat(sprintf("n = %d, cv = %.4f%s\n", .whole_count(x$n), x$cv, alloc))
   .print_search_limit(x$search)
   df <- x$strata
   df$lower <- .fmt_boundary(df$lower)
@@ -2317,7 +2355,7 @@ print.svyplan_strata <- function(x, ...) {
     }
     cat("\n")
   } else {
-    cat(sprintf("n = %d", ceiling(x$n)))
+    cat(sprintf("n = %d", .whole_count(x$n)))
     if (cluster) {
       cat(sprintf(", n_psu = %d", sum(detail$n_psu_int)))
     }
@@ -2694,9 +2732,7 @@ print.svyplan_strata <- function(x, ...) {
 #'
 #' @param object An allocation result from [n_alloc()] or [prec_alloc()].
 #' @param x A `summary.svyplan_alloc` or `summary.svyplan_bethel` object.
-#' @param ... Additional arguments are not supported for allocation summaries.
-#'   For other `svyplan_n` and `svyplan_prec` results they are passed to the
-#'   default summary method.
+#' @param ... Additional arguments are not supported.
 #'
 #' @return For a classic allocation, `summary()` returns a
 #'   `summary.svyplan_alloc` object with fields `kind`, `question`, `method`,
@@ -2704,7 +2740,10 @@ print.svyplan_strata <- function(x, ...) {
 #'   `domains`, and `assumptions`. For a generalized allocation it returns the
 #'   `summary.svyplan_bethel` fields described in Details. Numeric quantities
 #'   remain unformatted. Formatting is applied only by the summary print
-#'   methods. `print()` returns the summary invisibly.
+#'   methods. `print()` returns the summary invisibly. The summaries of
+#'   other `svyplan_n` results are described in [summary.svyplan_n]. Any
+#'   other `svyplan_prec` result has no structured summary yet, and
+#'   `summary()` returns the result itself, which prints as `print()` does.
 #'
 #' @details
 #' For `n_alloc()`, `overall`, `allocation`, `precision`, and `domains`
@@ -2756,19 +2795,6 @@ NULL
 
 #' @rdname summary.svyplan_alloc
 #' @export
-summary.svyplan_n <- function(object, ...) {
-  if (identical(object$type, "alloc")) {
-    .check_unused_dots(...)
-    if (identical(object$method, "bethel")) {
-      return(.summary_bethel_alloc(object, kind = "design"))
-    }
-    return(.summary_classic_alloc(object, kind = "design"))
-  }
-  base::summary.default(object, ...)
-}
-
-#' @rdname summary.svyplan_alloc
-#' @export
 summary.svyplan_prec <- function(object, ...) {
   if (identical(object$type, "alloc")) {
     .check_unused_dots(...)
@@ -2777,7 +2803,7 @@ summary.svyplan_prec <- function(object, ...) {
     }
     return(.summary_classic_alloc(object, kind = "assessment"))
   }
-  base::summary.default(object, ...)
+  .summary_as_print(object, ...)
 }
 
 #' Stages of the planned design, not of the solve
@@ -4477,7 +4503,7 @@ format.svyplan_strata <- function(x, ...) {
     ", ",
     x$n_strata,
     " strata, n=",
-    ceiling(x$n),
+    .whole_count(x$n),
     "]"
   )
 }
@@ -4500,7 +4526,7 @@ as.data.frame.svyplan_strata <- function(
 #' @export
 as.integer.svyplan_strata <- function(x, ...) {
   .check_unused_dots(...)
-  as.integer(ceiling(x$n))
+  as.integer(.whole_count(x$n))
 }
 
 #' @rdname print.svyplan
@@ -5903,7 +5929,7 @@ print.summary.svyplan_panel <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .panel_operational <- function(x) {
-  recruit <- ceiling(.panel_recruit(x))
+  recruit <- .whole_count(.panel_recruit(x))
   if (recruit == .panel_recruit(x)) {
     return(structure(x, whole = TRUE))
   }
@@ -5921,7 +5947,7 @@ print.summary.svyplan_panel <- function(x, ...) {
   if (isTRUE(shown$whole)) {
     return("")
   }
-  whole <- ceiling(.panel_recruit(x))
+  whole <- .whole_count(.panel_recruit(x))
   held <- if (identical(x$design, "fixed")) whole else whole * length(x$rotation)
   sprintf(
     "whole units: %s %s hold %s, above N = %s, so these are continuous\n",
@@ -5957,18 +5983,45 @@ print.summary.svyplan_panel <- function(x, ...) {
   } else {
     sprintf("entrants: %s per period", count)
   }
-  need <- ceiling(x$n_target)
-  sprintf(
-    "%s -> %s responding%s%s\n",
-    lead,
-    .fmt_count_n(round(shown$head)),
-    where,
-    if (round(shown$head) < need) {
-      sprintf(", short of the %s the target needs", .fmt_count_n(need))
-    } else {
-      ""
+  short <- shown$head < x$n_target * (1 - 1e-9)
+  have <- round(shown$head)
+  need <- .whole_count(x$n_target)
+  # Integers that collide would print a shortfall between equal numbers, so
+  # take the fewest decimals at which the two differ.
+  if (short && have >= need) {
+    d <- 1L
+    while (d < 6L && round(shown$head, d) >= round(x$n_target, d)) {
+      d <- d + 1L
     }
+    have <- format(round(shown$head, d), nsmall = d)
+    need <- format(round(x$n_target, d), nsmall = d)
+  } else {
+    have <- .fmt_count_n(have)
+    need <- .fmt_count_n(need)
+  }
+  sprintf(
+    "%s -> %s responding%s%s%s\n",
+    lead,
+    have,
+    .fmt_panel_eligible(x, shown$head),
+    where,
+    if (short) sprintf(", short of the %s the target needs", need) else ""
   )
+}
+
+#' Name the eligible count a yield per unit implies
+#'
+#' The headline counts sampled units, and with several eligible units per
+#' unit, or fewer than one, the precision beside it is computed on another
+#' count. Shown only when the two differ.
+#' @keywords internal
+#' @noRd
+.fmt_panel_eligible <- function(x, head) {
+  epu <- x$target$params[["eligible_per_unit"]] %||% 1
+  if (isTRUE(all.equal(epu, 1))) {
+    return("")
+  }
+  sprintf(" (%s eligible)", .fmt_count_n(round(head * epu)))
 }
 
 #' Name the standing sample a rotating design carries
@@ -6041,7 +6094,7 @@ print.summary.svyplan_panel <- function(x, ...) {
   sprintf(
     "assured (%s): %s %s%s\n",
     .fmt_prob(x$params$assurance),
-    .fmt_count_n(ceiling(x$n_assured)),
+    .fmt_count_n(.whole_count(x$n_assured)),
     if (identical(x$design, "fixed")) "issued" else "entrants per period",
     if (isFALSE(x$assured_feasible)) {
       sprintf(", beyond the population of %s", .fmt_count_n(x$target$params$N))
@@ -6207,7 +6260,7 @@ as.integer.svyplan_panel <- function(x, ...) {
   # The assured count, when one was asked for, stays in $n_assured: which
   # number to field is the planner's call and must not turn on whether an
   # argument was set.
-  as.integer(ceiling(.panel_recruit(x)))
+  as.integer(.whole_count(.panel_recruit(x)))
 }
 
 #' @rdname print.svyplan_panel
@@ -6284,3 +6337,38 @@ as.data.frame.svyplan_panel <- function(
 `[[<-.svyplan_df` <- function(x, i, value) {
   .no_replacement("design degrees of freedom", "design_df()")
 }
+
+#' The result itself, for a type with no structured summary yet
+#'
+#' A list inventory from `summary.default()` says nothing about a design,
+#' so these types print as `print()` does until a summary is written.
+#' @keywords internal
+#' @noRd
+.summary_as_print <- function(object, ...) {
+  .check_unused_dots(...)
+  object
+}
+
+#' @rdname print.svyplan
+#' @export
+summary.svyplan <- function(object, ...) .summary_as_print(object, ...)
+
+#' @rdname print.svyplan
+#' @export
+summary.svyplan_power <- function(object, ...) .summary_as_print(object, ...)
+
+#' @rdname print.svyplan
+#' @export
+summary.svyplan_strata <- function(object, ...) .summary_as_print(object, ...)
+
+#' @rdname print.svyplan
+#' @export
+summary.svyplan_varcomp <- function(object, ...) .summary_as_print(object, ...)
+
+#' @rdname print.svyplan
+#' @export
+summary.svyplan_overlap <- function(object, ...) .summary_as_print(object, ...)
+
+#' @rdname print.svyplan
+#' @export
+summary.svyplan_rotation <- function(object, ...) .summary_as_print(object, ...)

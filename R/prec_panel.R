@@ -40,11 +40,12 @@
 #'   stored quantity.
 #' @param assurance Probability in (0, 1), or `NULL` (default). Reports the
 #'   recruitment the target would need at that level, which is what the
-#'   supplied `n_recruit` can then be read against.
+#'   supplied `n_recruit` can then be read against. Not available when the
+#'   target has `eligible_per_unit` other than 1, as in [n_panel()].
 #'
 #' @return A `svyplan_panel` object, the class [n_panel()] returns, with
 #'   `$solved` absent because nothing was solved for. `$n_resp` and the
-#'   headline `se`, `moe` and `cv` describe the supplied recruitment, and
+#'   headline `se`, `moe`, `cv` and `rmoe` describe the supplied recruitment, and
 #'   `$n_target` the requirement it is being compared against, so a
 #'   recruitment below the requirement reports a `moe` above the target's.
 #'

@@ -40,7 +40,8 @@ finite \code{N}.}
 \code{var}. Supply exactly one of \code{var} or \code{sd}. Stratum frames and
 published survey reports usually quote standard deviations.}
 
-\item{mu}{Population mean. Required for the CV component.}
+\item{mu}{Population mean. Required for the CV component. It may be zero,
+and \code{cv} and \code{rmoe} are then \code{NA}.}
 
 \item{cv}{Target relative standard error, supplied instead of \code{mu} to solve
 for the smallest mean the design measures that precisely. Supply at most
@@ -57,12 +58,9 @@ A published DEFT is squared first. See \code{\link[=varcomp]{varcomp()}} for tha
 removing the published survey's weighting loss.}
 
 \item{resp_rate}{Expected response rate among eligible units, in (0, 1].
-Default 1 (no adjustment). The effective sample size is \code{n * resp_rate}. A
-rate of eligible units per sampled unit at or below 1, such as 0.41
-married women per household, folds in here as
-\code{resp_rate * eligible_per_unit}. With a finite \code{N} this errs slightly
-conservative. See the nonresponse section of \link{svyplan-package} for what
-the rate counts.}
+Default 1 (no adjustment). The net sample is
+\code{n * resp_rate * eligibility_rate * eligible_per_unit}. See the
+nonresponse section of \link{svyplan-package} for what the rate counts.}
 
 \item{eligibility_rate}{Share of issued units in scope, such as dwellings
 found occupied, in (0, 1]. Default 1. With a finite \code{N}, the population
@@ -89,13 +87,15 @@ account.}
 A \code{svyplan_prec} object with \code{type = "mean"}:
 \describe{
 \item{\code{se}}{Standard error of the planned estimate, computed on the
-net sample \code{n * resp_rate}.}
+net sample \code{n * resp_rate * eligibility_rate * eligible_per_unit}.}
 \item{\code{moe}}{Margin of error, \code{q * se}, with \code{q} defined in Details. The
 interval is symmetric, so the limits are \code{mu - moe} and
 \code{mu + moe}.}
 \item{\code{cv}}{Relative standard error, \code{se / abs(mu)}. \code{NA} when \code{mu} is
-not supplied, since a relative standard error needs a mean to be
-relative to.}
+not supplied or is zero, since a relative standard error needs a
+mean to be relative to.}
+\item{\code{rmoe}}{Margin of error relative to the mean, \code{moe / abs(mu)}.
+\code{NA} exactly when \code{cv} is.}
 \item{\code{solved}}{\code{"mu"} when the mean was solved for, and absent
 otherwise. The solved value is in \code{params$mu}.}
 \item{\code{params}}{The validated inputs (\code{var}, \code{n}, \code{alpha}, \code{N},
@@ -106,8 +106,8 @@ design back from here.}
 }
 
 Nothing here is rounded: \code{n} is taken as given, so passing a
-continuous \code{n} back from \code{\link[=n_mean]{n_mean()}} reproduces its \code{se}, \code{moe} and
-\code{cv} exactly.
+continuous \code{n} back from \code{\link[=n_mean]{n_mean()}} reproduces its \code{se}, \code{moe}, \code{cv}
+and \code{rmoe} exactly.
 The print shows \code{n} as evaluated, and for a fit it says that \code{n} is
 the continuous optimum. For a fit \code{res}, the whole sample to field is
 \code{ceiling(res$n)}, and \code{prec_mean(res, n = ceiling(res$n))} gives its
@@ -120,7 +120,8 @@ population mean given a sample size. This is the inverse of \code{\link[=n_mean]
 \details{
 Computes the standard error for the given sample size and design
 parameters, then derives the margin of error and coefficient of
-variation. The effective sample size is \code{n * resp_rate / deff}, with
+variation. The effective sample size is
+\code{n * resp_rate * eligibility_rate * eligible_per_unit / deff}, with
 optional finite population correction.
 The quantile \code{q} is \code{qnorm(1 - alpha / 2)} by default and
 \code{qt(1 - alpha / 2, df)} when \code{df} is supplied.

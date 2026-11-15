@@ -443,3 +443,27 @@ test_that("cv() and SE() read every result class", {
   expect_true(is.na(survey::SE(twophase)))
   expect_true(is.na(survey::SE(strata)))
 })
+
+## summary() without a structured method prints as print() does
+
+test_that("summary() of a result with no structured summary is the result", {
+  checked <- character(0)
+  for (case in list(
+    list("n_change", n_change(var = 100, moe = 2)),
+    list("prec_mean", prec_mean(var = 4, n = 100, mu = 2)),
+    list("power_prop", power_prop(p1 = 0.30, p2 = 0.35)),
+    list("prec_multi", prec_multi(data.frame(name = c("a", "b"),
+                                             p = c(0.3, 0.1), n = 400)))
+  )) {
+    x <- case[[2]]
+    s <- summary(x)
+    expect_identical(s, x, info = case[[1]])
+    out <- capture.output(print(s))
+    expect_identical(out, capture.output(print(x)), info = case[[1]])
+    expect_false(any(grepl("Length", out)), info = case[[1]])
+    checked <- c(checked, case[[1]])
+  }
+  expect_setequal(checked, c("n_change", "prec_mean", "power_prop",
+                             "prec_multi"))
+  expect_error(summary(n_prop(0.3, moe = 0.05), digits = 3), "unused argument")
+})

@@ -376,7 +376,7 @@ design_schedule <- function(
   per_panel <- entrant_issue / (.schedule_unit(take) * subrounds)
   # Whole-valued doubles remain exact far beyond R's 32-bit integer range.
   # Operational counts are counts by value, not storage-mode integers.
-  panel_issue <- ceiling(per_panel)
+  panel_issue <- .whole_count(per_panel)
   panels <- plan$panels * subrounds
   selections <- data.frame(
     selection = plan$selection,
@@ -1153,7 +1153,7 @@ design_schedule <- function(
     fail("the selection manifest is inconsistent")
   }
   per_panel <- x$n_entrants / (unit * s)
-  expected_panel_issue <- rep(ceiling(per_panel), nrow(selections))
+  expected_panel_issue <- rep(.whole_count(per_panel), nrow(selections))
   if (!same(selections$planned_issue, per_panel * expected_panels) ||
       !same(selections$panel_issue, expected_panel_issue) ||
       !same(

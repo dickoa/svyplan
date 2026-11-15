@@ -52,24 +52,32 @@ test_that("power evaluation and MDE reject contradictory frame overlaps", {
 })
 
 test_that("power sizing brackets only feasible sizes including the endpoint", {
-  # Maximum size under half overlap is 100/1.5, not the census of 100.
-  n_max <- 100/1.5
+  # Maximum size under half overlap is 99/1.5 = 66, not the census of 99.
+  n_max <- 99/1.5
   for (alternative in c("one.sided", "two.sided")) {
     at_bound <- power_mean(var=1, effect=.2, n=n_max, power=NULL,
-                           N=100, overlap=.5, overlap_cor=1,
+                           N=99, overlap=.5, overlap_cor=1,
                            alternative=alternative)
     fit <- power_mean(var=1, effect=.2, power=at_bound$power,
-                      N=100, overlap=.5, overlap_cor=1,
+                      N=99, overlap=.5, overlap_cor=1,
                       alternative=alternative)
     expect_equal(fit$n, n_max)
-    expect_error(power_mean(var=1,effect=.2,power=.8,N=100,
+    expect_error(power_mean(var=1,effect=.2,power=.8,N=99,
                             overlap=.5,overlap_cor=1,alternative=alternative),
                  "unattainable.*overlap")
-    prop <- power_prop(.3,p2=.4,n=n_max,power=NULL,N=100,
+    prop <- power_prop(.3,p2=.4,n=n_max,power=NULL,N=99,
                        overlap=.5,overlap_cor=.3,alternative=alternative)
-    back <- power_prop(.3,p2=.4,power=prop$power,N=100,
+    back <- power_prop(.3,p2=.4,power=prop$power,N=99,
                        overlap=.5,overlap_cor=.3,alternative=alternative)
     expect_equal(back$n,n_max)
+    # At N = 100 the endpoint 100/1.5 fits only before rounding up, since
+    # the whole size 67 needs 100.5 distinct units.
+    edge <- power_mean(var=1, effect=.2, n=100/1.5, power=NULL, N=100,
+                       overlap=.5, overlap_cor=1, alternative=alternative)
+    expect_error(power_mean(var=1, effect=.2, power=edge$power, N=100,
+                            overlap=.5, overlap_cor=1,
+                            alternative=alternative),
+                 "only before rounding up")
   }
   # Even a huge effect cannot justify the n=2 floor if the union cannot fit.
   expect_error(power_mean(var=1,effect=100,power=.8,N=2,overlap=.5),

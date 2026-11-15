@@ -100,12 +100,12 @@
 #' @return A `svyplan_n` object with `type = "change"`:
 #' \describe{
 #'   \item{`n`}{Required size per occasion, continuous and gross. It already
-#'     carries `deff` and the `1 / resp_rate` inflation, so it counts the
-#'     units to release on each occasion, not the completed interviews. A
-#'     single value when `ratio = 1`, otherwise one per occasion. `$n` and
-#'     `as.double()` keep the unrounded value, which is what makes the round
-#'     trip through [prec_change()] exact, whereas `print()` rounds up to the
-#'     whole units you would field. A positive overlap means the occasions
+#'     carries `deff` and the `1 / (resp_rate * eligibility_rate)` inflation, so
+#'     it counts the units to release on each occasion, not the completed
+#'     interviews. A single value when `ratio = 1`, otherwise one per occasion.
+#'     `$n` and `as.double()` keep the unrounded value, which is what makes the
+#'     round trip through [prec_change()] exact, whereas `print()` rounds up to
+#'     the whole units you would field. A positive overlap means the occasions
 #'     are not disjoint, so the number of distinct units sampled is less than
 #'     the sum. The number of interviews is not, since a shared unit is
 #'     interviewed on both occasions.}
@@ -180,8 +180,9 @@
 #' At positive overlap, the two responding samples must fit their shared
 #' finite population. A target whose required sizes violate
 #' `n1_net + n2_net - overlap * n1_net <= N` is unattainable at the stated
-#' overlap, even if each individual sample fits. Increase overlap or relax
-#' the precision target. See [prec_change()] for the variance and bound.
+#' overlap, even if each individual sample fits, and so is one whose whole
+#' size `ceiling(n)` breaks the bound. Increase overlap or relax the
+#' precision target. See [prec_change()] for the variance and bound.
 #'
 #' Two boundaries are worth knowing before reading a result. Full overlap
 #' with unit correlation at equal sizes and variances leaves the change with
@@ -349,6 +350,11 @@ n_change.default <- function(
   n_vec <- if (length(n) == 1L) c(n, n) else n
   .check_attainable(n_vec[1L], N_frame[1L], resp_rate, eligibility_rate)
   .check_attainable(n_vec[2L], N_frame[2L], resp_rate, eligibility_rate)
+  .check_whole_size(n, function(whole) {
+    net <- rep_len(whole, 2L) * rate
+    .check_overlap_frame(net[1L], net[2L], N_pair[1L],
+                         .frame_overlap(overlap, overlap_draw))
+  }, " per occasion")
 
   prec <- .prec_engine_change(
     n, inputs$var_pair, inputs$change, N_pair, deff, rate,

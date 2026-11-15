@@ -960,7 +960,7 @@
   }
   df_row <- as.double(t_df)
   if (!is.null(df)) t_df[is.na(t_df)] <- as.double(df)
-  check_df(t_df[!is.na(t_df)], "targets$df")
+  check_df(t_df[!is.na(t_df)], "targets$df", scalar = FALSE)
   requirement_key <- .bethel_key(
     t_name, domain, ifelse(is.na(level), "<overall>", level), metric
   )

@@ -105,7 +105,7 @@ check_scalar <- function(x, name, positive = TRUE) {
 #' the value with no relative scale, and that is what is rejected.
 #' @keywords internal
 #' @noRd
-check_mu <- function(mu, name = "mu") {
+check_mu <- function(mu, name = "mu", zero_ok = FALSE) {
   if (!is.numeric(mu) || length(mu) != 1L) {
     stop(sprintf("'%s' must be a numeric scalar", name), call. = FALSE)
   }
@@ -115,7 +115,7 @@ check_mu <- function(mu, name = "mu") {
   if (!is.finite(mu)) {
     stop(sprintf("'%s' must be finite", name), call. = FALSE)
   }
-  if (mu == 0) {
+  if (mu == 0 && !zero_ok) {
     stop(sprintf(
       "'%s' must not be zero: a coefficient of variation has no scale there",
       name), call. = FALSE)
@@ -244,11 +244,29 @@ check_precision <- function(moe, cv, rmoe = NULL) {
 #' division, so neither is special-cased.
 #' @keywords internal
 #' @noRd
-.rmoe_from_moe <- function(moe, estimand) {
+.rmoe_from_moe <- function(moe, estimand, at_zero = Inf) {
   if (is.null(estimand) || length(estimand) == 0L) {
     return(rep(NA_real_, length(moe)))
   }
-  moe / abs(estimand)
+  out <- moe / abs(estimand)
+  # Allocations keep Inf at a zero stratum mean, as their .cv does. The
+  # single-estimand families report NA there, a level with no scale.
+  out[!is.na(estimand) & estimand == 0] <- at_zero
+  out
+}
+
+#' Standard error relative to a level, NA where there is no level
+#'
+#' Absent or zero, the level gives a relative error no scale, so the answer
+#' is `NA` rather than `Inf`, the state `.rmoe_from_moe()` returns for the
+#' same families.
+#' @keywords internal
+#' @noRd
+.cv_of <- function(se, level) {
+  if (is.null(level) || is.na(level) || level == 0) {
+    return(NA_real_)
+  }
+  se / abs(level)
 }
 
 #' Refuse an expected take the planning approximation cannot carry
@@ -288,6 +306,23 @@ check_precision <- function(moe, cv, rmoe = NULL) {
 #' @noRd
 .take_floor <- function(rate) {
   max(1L, as.integer(ceiling(.take_bound(rate) - 1e-9)))
+}
+
+#' The whole PSU count a fixed `n_psu` fields
+#' @keywords internal
+#' @noRd
+.whole_psu <- function(n_psu) {
+  max(1, round(n_psu))
+}
+
+#' The whole take a fixed take fields
+#'
+#' Capped at the whole population cap first, then rounded, and never below
+#' the take floor of the response rates.
+#' @keywords internal
+#' @noRd
+.whole_take <- function(fixed, floor, cap = Inf) {
+  max(floor, round(min(fixed, cap)))
 }
 
 #' The smallest continuous gross take with one expected respondent
@@ -1332,22 +1367,27 @@ check_resp_rate <- function(resp_rate, name = "resp_rate") {
   }
   df <- rep_len(as.double(df), length(alpha))
   use <- !is.na(df)
-  check_df(df[use])
+  check_df(df[use], scalar = FALSE)
   q[use] <- stats::qt(1 - alpha[use] / 2, df[use])
   q
 }
 
 #' Check degrees of freedom for an interval quantile
 #'
-#' Below one degree of freedom the t quantile is undefined and no interval
-#' is identified from the design at all.
+#' Student's t exists for every positive df. The package asks for at least
+#' one because a design-based variance estimator with less than one degree
+#' of freedom is not a design a planner can field. `Inf` is admitted and
+#' gives the normal quantile. Entry points take one value, `scalar = FALSE`
+#' serves the per-row columns of a targets table.
 #' @keywords internal
 #' @noRd
-check_df <- function(df, name = "df") {
-  # Inf is admitted and is the identity: qt at infinite df is the normal
-  # quantile, which is the same statement as treating the variance as known.
-  if (!is.numeric(df) || anyNA(df) || any(df < 1)) {
-    stop(sprintf("'%s' must be a number >= 1", name), call. = FALSE)
+check_df <- function(df, name = "df", scalar = TRUE) {
+  if (scalar) {
+    if (!is.numeric(df) || length(df) != 1L || is.na(df) || df < 1) {
+      stop(sprintf("'%s' must be a single number >= 1", name), call. = FALSE)
+    }
+  } else if (!is.numeric(df) || anyNA(df) || any(df < 1)) {
+    stop(sprintf("'%s' values must be numbers >= 1", name), call. = FALSE)
   }
   invisible(TRUE)
 }
@@ -1391,7 +1431,7 @@ check_df <- function(df, name = "df") {
       call. = FALSE
     )
   }
-  if (any(N <= 1 & !is.infinite(N))) {
+  if (any(N <= 1)) {
     stop("'N' values must be greater than 1 (or Inf)", call. = FALSE)
   }
   if (length(N) == 1L) c(N, N) else N
@@ -1488,11 +1528,20 @@ check_df <- function(df, name = "df") {
     }
   }
 
-  uniroot(
+  root <- uniroot(
     function(n2) power_fn(n2) - target_power,
     interval = c(lo, hi),
     tol = tol
   )$root
+  # The root is found to within tol, either side, so a target that a whole
+  # size reaches exactly comes back a fraction above or below it. The whole
+  # size is returned when it reaches the target to within rounding.
+  k <- round(root)
+  if (k >= lo && k <= hi && abs(root - k) <= 2 * tol &&
+        power_fn(k) >= target_power - 32 * .Machine$double.eps) {
+    return(k)
+  }
+  root
 }
 
 #' Validate a power target used for inversion
@@ -1877,8 +1926,7 @@ check_df <- function(df, name = "df") {
   fpc <- if (is.infinite(N)) 1 else 1 - n_net / N
   fpc <- .clamp_fpc(fpc, n_net, N)
   se <- sqrt(var * fpc / n_eff)
-  list(se = se, moe = q * se,
-       cv = if (!is.null(mu)) se / abs(mu) else NA_real_)
+  list(se = se, moe = q * se, cv = .cv_of(se, mu))
 }
 
 #' Collision-free key for domain grouping and matching
@@ -2157,9 +2205,10 @@ check_df <- function(df, name = "df") {
 #' lags), not the union of an entire rotation schedule.
 #' @keywords internal
 #' @noRd
-.check_overlap_frame <- function(n1_net, n2_net, N, overlap) {
+.check_overlap_frame <- function(n1_net, n2_net, N, overlap,
+                                 coupled = FALSE) {
   distinct <- n2_net + (1 - overlap) * n1_net
-  bad <- which(overlap > 0 & is.finite(N) &
+  bad <- which((overlap > 0 | coupled) & is.finite(N) &
                  distinct > N + 32 * .Machine$double.eps * pmax(1, N))
   if (length(bad)) {
     j <- bad[1L]
@@ -2171,6 +2220,50 @@ check_df <- function(df, name = "df") {
       counts, population
     ), call. = FALSE)
   }
+  invisible(NULL)
+}
+
+#' The whole count a continuous size rounds up to
+#'
+#' A size solved by inverting a precision lands within rounding of a whole
+#' number whenever that number is the size the precision came from, often a
+#' step above it, so a raw `ceiling()` reports one unit more than the
+#' design that meets the target. A value within a relative 1e-12, at most
+#' 1e-6, of a positive whole number is taken as that number before rounding
+#' up. Round trips stray by a few rounding steps, under 1e-15 relative, so
+#' a real fraction still rounds up, a whole number keeps its value, and a
+#' positive size below 1 still takes a unit.
+#' @keywords internal
+#' @noRd
+.whole_count <- function(x) {
+  k <- round(x)
+  snap <- !is.na(x) & is.finite(x) & k >= 1 &
+    abs(x - k) <= pmin(1e-12 * pmax(1, abs(x)), 1e-6)
+  x[snap] <- k[snap]
+  ceiling(x)
+}
+
+#' A solved size must fit the frame once rounded up
+#'
+#' The frame and covariance checks run on the continuous size, while
+#' `print()` and `as.integer()` report `ceiling(n)`, which can need more
+#' distinct units than the frame holds. `check` runs on the whole sizes the
+#' checks a supplied size meets, and a failure means no whole size reaches
+#' the target, since a smaller one misses it.
+#' @keywords internal
+#' @noRd
+.check_whole_size <- function(n, check, unit = "") {
+  whole <- .whole_count(n)
+  if (all(whole == n)) {
+    return(invisible(NULL))
+  }
+  tryCatch(check(whole), error = function(e) {
+    stop(sprintf(
+      "the target needs n = %s%s, which the frame holds only before rounding up. At the whole size %s, %s",
+      paste(format(signif(n, 7)), collapse = " and "), unit,
+      paste(whole, collapse = " and "), conditionMessage(e)
+    ), call. = FALSE)
+  })
   invisible(NULL)
 }
 
@@ -2597,7 +2690,7 @@ check_df <- function(df, name = "df") {
   list(
     se = se,
     moe = .q_alpha(alpha, df) * se,
-    cv = if (!is.null(change)) se / abs(change) else NA_real_
+    cv = .cv_of(se, change)
   )
 }
 
@@ -2690,8 +2783,7 @@ check_df <- function(df, name = "df") {
 #' beyond the life nothing is shared.
 #' @keywords internal
 #' @noRd
-.resolve_lag_overlap <- function(overlap, occasions, resp_rate,
-                                 basis = NULL) {
+.resolve_lag_overlap <- function(overlap, occasions, resp_rate) {
   max_lag <- occasions - 1L
   if (inherits(overlap, "svyplan_overlap")) {
     ov_basis <- .overlap_basis(overlap)
@@ -2701,7 +2793,8 @@ check_df <- function(df, name = "df") {
       seq_len(max_lag),
       attr(overlap, "response", exact = TRUE)
     )
-    return(list(overlap = prof$shared / prof$in_sample, basis = ov_basis))
+    return(list(overlap = prof$shared / prof$in_sample, basis = ov_basis,
+                rotation = overlap))
   }
   if (
     !is.numeric(overlap) || anyNA(overlap) || any(overlap < 0) ||
@@ -2709,13 +2802,12 @@ check_df <- function(df, name = "df") {
   ) {
     stop("'overlap' must be numbers in [0, 1]", call. = FALSE)
   }
-  # A stored profile carries the basis it was resolved under, so a round
-  # trip that lowers the response rate meets the same refusal the first
-  # call would have.
-  basis <- basis %||% "respondent"
-  .check_overlap_basis(basis, resp_rate)
+  # An issued profile reaches here only as its object, which round trips
+  # and grids pass back whole, so a bare number is respondent overlap.
+  basis <- "respondent"
   if (length(overlap) == 1L) {
-    return(list(overlap = rep(overlap, max_lag), basis = basis))
+    return(list(overlap = rep(overlap, max_lag), basis = basis,
+                rotation = NULL))
   }
   if (length(overlap) != max_lag) {
     stop(
@@ -2726,7 +2818,7 @@ check_df <- function(df, name = "df") {
       call. = FALSE
     )
   }
-  list(overlap = overlap, basis = basis)
+  list(overlap = overlap, basis = basis, rotation = NULL)
 }
 
 #' An issued overlap is only a respondent overlap at full response
@@ -2822,27 +2914,65 @@ check_df <- function(df, name = "df") {
   invisible(TRUE)
 }
 
+#' The overlap a stored pooled result passes back
+#'
+#' The rotation object when the result was built from one, so its zero lags
+#' stay disjoint cohorts and a new horizon re-derives every lag from the
+#' rotation. A caller who replaces `overlap` decides by the replacement's
+#' type, and a bare number then clears the rotation. The object carries
+#' its own basis, so a round trip that lowers the response rate meets the
+#' refusal the first call met.
+#' @keywords internal
+#' @noRd
+.stored_overlap_args <- function(par, replaced = FALSE) {
+  if (replaced) {
+    return(list(overlap = par$overlap))
+  }
+  rot <- par[["overlap_rotation"]]
+  if (!is.null(rot)) {
+    return(list(overlap = rot))
+  }
+  list(overlap = par$overlap)
+}
+
+#' Whether the occasions are cohorts of one rotation
+#'
+#' Decided by the input's type, never by its values. A [design_overlap()]
+#' object describes a rotation, whose cohorts are drawn without replacement
+#' from each other, so under a fixed draw a lag that shares no unit still
+#' carries the population term of two disjoint samples, whatever the
+#' horizon. A bare number describes overlap only, and zero means independent
+#' draws, which keeps `V_level / occasions` exact for fresh samples.
+#' Reading the relationship from positive lags instead made a pair's
+#' covariance depend on how many occasions were requested.
+#' @keywords internal
+#' @noRd
+.pooled_coupled <- function(rotation, overlap_draw) {
+  !is.null(rotation) && overlap_draw == "fixed"
+}
+
 #' Covariance between two occasion means at each lag
 #'
 #' The kernel `.diff_var_fpc()` already commits the package to, read at a
-#' general lag. A lag whose overlap is zero contributes exactly zero,
-#' population term included, which is the same piecewise rule
-#' `prec_change()` applies at `overlap = 0` and the only one under which a
-#' fresh sample each round pools to `V_level / occasions` exactly.
+#' general lag. A zero lag contributes exactly zero, population term
+#' included, unless the occasions are cohorts of one rotation
+#' (`.pooled_coupled()`), where it keeps \eqn{-\rho_m S^2/N}.
 #' @keywords internal
 #' @noRd
-.pooled_lag_cov <- function(var, n_net, N, ov, rho, overlap_draw) {
+.pooled_lag_cov <- function(var, n_net, N, ov, rho, overlap_draw,
+                            rotation = NULL) {
   pop <- if (is.infinite(N)) 0 else 1 / N
   shared <- .pooled_pop_factors(ov, overlap_draw)$shared
   out <- rho * var * (ov / n_net - shared * pop)
-  out[ov <= 0] <- 0
+  if (!.pooled_coupled(rotation, overlap_draw)) out[ov <= 0] <- 0
   out
 }
 
 #' The occasion-by-occasion covariance a rotation implies
 #' @keywords internal
 #' @noRd
-.pooled_kernel <- function(var, n_net, N, occasions, ov, rho, overlap_draw) {
+.pooled_kernel <- function(var, n_net, N, occasions, ov, rho, overlap_draw,
+                           rotation = NULL) {
   c0 <- if (overlap_draw == "fixed") {
     var * .fpc_factor(n_net, N) / n_net
   } else {
@@ -2851,7 +2981,8 @@ check_df <- function(df, name = "df") {
   }
   lag <- abs(outer(seq_len(occasions), seq_len(occasions), "-"))
   matrix(
-    c(c0, .pooled_lag_cov(var, n_net, N, ov, rho, overlap_draw))[lag + 1L],
+    c(c0, .pooled_lag_cov(var, n_net, N, ov, rho, overlap_draw,
+                          rotation))[lag + 1L],
     occasions, occasions
   )
 }
@@ -2870,7 +3001,7 @@ check_df <- function(df, name = "df") {
 #' @keywords internal
 #' @noRd
 .check_lag_psd <- function(K, n_gross, n_net, N, ov, rho, occasions,
-                           overlap_draw) {
+                           overlap_draw, rotation = NULL) {
   ev <- eigen(K, symmetric = TRUE, only.values = TRUE)$values
   diag_term <- K[1L, 1L]
   # Relative to the spectrum: an absolute floor would tie the verdict to the
@@ -2879,7 +3010,7 @@ check_df <- function(df, name = "df") {
   if (min(ev) >= -sqrt(.Machine$double.eps) * scale) {
     return(invisible(NULL))
   }
-  cov_m <- .pooled_lag_cov(1, n_net, N, ov, rho, overlap_draw)
+  cov_m <- .pooled_lag_cov(1, n_net, N, ov, rho, overlap_draw, rotation)
   neg <- which(cov_m < 0)
   msg <- sprintf(
     "the assembled between-occasion covariance is not a valid covariance (minimum eigenvalue %.3g against a diagonal of %.3g)",
@@ -2896,8 +3027,14 @@ check_df <- function(df, name = "df") {
   }
   # Interviews per cohort, not calendar span. Incomplete inside the horizon,
   # where the diagnostic is dropped.
-  complete <- length(ov) > 0L && ov[length(ov)] == 0
-  interviews <- 1 + 2 * sum(ov)
+  if (!is.null(rotation)) {
+    # The object knows its interviews whatever the horizon.
+    complete <- TRUE
+    interviews <- sum(as.double(.overlap_rotation(rotation)) > 0)
+  } else {
+    complete <- length(ov) > 0L && ov[length(ov)] == 0
+    interviews <- 1 + 2 * sum(ov)
+  }
   if (complete && !is.infinite(N) && interviews > 0 &&
         occasions * n_gross / interviews > N) {
     msg <- paste0(
@@ -2921,11 +3058,13 @@ check_df <- function(df, name = "df") {
 #' @keywords internal
 #' @noRd
 .pooled_var <- function(n, var, N, deff, resp_rate, occasions, ov, rho,
-                        overlap_draw) {
+                        overlap_draw, rotation = NULL) {
   n_net <- n * resp_rate
-  K <- .pooled_kernel(var, n_net, N, occasions, ov, rho, overlap_draw)
-  .check_lag_psd(K, n, n_net, N, ov, rho, occasions, overlap_draw)
-  .check_overlap_frame(n_net, n_net, N, .frame_overlap(ov, overlap_draw))
+  K <- .pooled_kernel(var, n_net, N, occasions, ov, rho, overlap_draw,
+                      rotation)
+  .check_lag_psd(K, n, n_net, N, ov, rho, occasions, overlap_draw, rotation)
+  .check_overlap_frame(n_net, n_net, N, .frame_overlap(ov, overlap_draw),
+                       coupled = .pooled_coupled(rotation, overlap_draw))
   .safe_variance(deff * sum(K) / occasions^2, "pooled variance")
 }
 
@@ -2933,13 +3072,14 @@ check_df <- function(df, name = "df") {
 #' @keywords internal
 #' @noRd
 .prec_engine_pooled <- function(n, var, mu, N, deff, resp_rate, occasions,
-                                ov, rho, overlap_draw, alpha, df = NULL) {
+                                ov, rho, overlap_draw, alpha, df = NULL,
+                                rotation = NULL) {
   se <- sqrt(.pooled_var(n, var, N, deff, resp_rate, occasions, ov, rho,
-                         overlap_draw))
+                         overlap_draw, rotation))
   list(
     se = se,
     moe = .q_alpha(alpha, df) * se,
-    cv = if (!is.null(mu)) se / abs(mu) else NA_real_
+    cv = .cv_of(se, mu)
   )
 }
 
@@ -2956,10 +3096,10 @@ check_df <- function(df, name = "df") {
 #' @keywords internal
 #' @noRd
 .n_pooled_from_se <- function(target_se, var, N, deff, resp_rate, occasions,
-                              ov, rho, overlap_draw) {
+                              ov, rho, overlap_draw, rotation = NULL) {
   m <- seq_len(occasions - 1L)
   w <- 2 * (occasions - m)
-  pos <- ov > 0
+  pos <- ov > 0 | .pooled_coupled(rotation, overlap_draw)
   f <- .pooled_pop_factors(ov, overlap_draw)
   A <- var * (occasions + sum(w[pos] * rho[pos] * ov[pos])) / occasions^2
   B <- if (is.infinite(N)) {
@@ -3417,6 +3557,46 @@ check_df <- function(df, name = "df") {
   if (!eligible && "eligibility_rate" %in% nms) {
     stop(
       "an 'eligibility_rate' column applies to n_multi() and prec_multi(). With cluster stages, give the argument 'eligibility_rate', which applies to every row",
+      call. = FALSE
+    )
+  }
+  .check_unique_indicators(indicators, domains)
+  invisible(TRUE)
+}
+
+#' Refuse a missing indicator name, or one that labels two rows of a domain
+#'
+#' Results name rows by `name`, as the binding indicator and as the key of
+#' every per-row table, so a missing name or one repeated within a domain
+#' makes them ambiguous. Domain columns that are absent are left to their
+#' own check.
+#' @keywords internal
+#' @noRd
+.check_unique_indicators <- function(indicators, domains = NULL) {
+  if (!"name" %in% names(indicators)) {
+    return(invisible(TRUE))
+  }
+  name <- as.character(indicators$name)
+  missing_name <- which(is.na(name) | !nzchar(trimws(name)))
+  if (length(missing_name) > 0L) {
+    stop(
+      sprintf(
+        "indicator name missing on row(s) %s. Give each row a 'name', or drop the column to number rows",
+        paste(missing_name, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  domain_cols <- intersect(as.character(domains), names(indicators))
+  key <- indicators[c("name", domain_cols)]
+  repeated <- unique(as.character(key$name[duplicated(key)]))
+  if (length(repeated) > 0L) {
+    stop(
+      sprintf(
+        "indicator name(s) %s label more than one row%s. Give each row its own 'name'",
+        paste(sQuote(repeated), collapse = ", "),
+        if (length(domain_cols) > 0L) " of the same domain" else ""
+      ),
       call. = FALSE
     )
   }

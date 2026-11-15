@@ -67,6 +67,7 @@
 #'   \item{`n`}{Per-group sample size (scalar or length-2 for unequal groups).}
 #'   \item{`power`}{Achieved power.}
 #'   \item{`effect`}{Effect size (difference in means).}
+#'   \item{`type`}{`"mean"`.}
 #'   \item{`solved`}{Which quantity was solved for
 #'     (`"n"`, `"power"`, or `"mde"`).}
 #'   \item{`params`}{List of input parameters.}
@@ -75,7 +76,8 @@
 #' @details
 #' At positive overlap on a finite frame, the responding samples must obey
 #' `n1_net + n2_net - overlap * n1_net <= N`. This bound applies to supplied
-#' sizes and to the sample-size search, independently of `overlap_cor`.
+#' sizes and to the sample-size search, independently of `overlap_cor`, and
+#' a solved size is refused when its whole size `ceiling(n)` breaks it.
 #' A target requiring a larger union is unattainable at that overlap.
 #' Zero overlap retains the independent-samples convention.
 #'
@@ -264,6 +266,11 @@ power_mean.default <- function(var = NULL, ..., sd = NULL, effect = NULL, n = NU
       )
     }
     n0 <- if (r == 1) n2 else c(r * n2, n2)
+    .check_whole_size(n0, function(whole) {
+      net <- rep_len(whole, 2L) * rate
+      .check_overlap_frame(net[1L], net[2L], N_pair[1L],
+                           .frame_overlap(overlap, overlap_draw))
+    }, " per group")
     achieved_power <- power_n2(n2)
 
     .new_svyplan_power(n = n0, power = achieved_power, effect = effect,

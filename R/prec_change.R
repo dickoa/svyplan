@@ -47,9 +47,10 @@
 #' @param deff Design effect multiplier (> 0), applied to the variance of
 #'   the change rather than to either occasion separately.
 #' @param resp_rate Expected response rate among eligible units, in (0, 1\].
-#'   Default 1 (no adjustment). It applies to both occasions, and nets each
-#'   size down to `n * resp_rate` before the variance is formed. It is a single
-#'   round's response, not attrition across a panel. See the nonresponse
+#'   Default 1 (no adjustment). It applies to both occasions, and with
+#'   `eligibility_rate` nets each size down to
+#'   `n * resp_rate * eligibility_rate` before the variance is formed. It is a
+#'   single round's response, not attrition across a panel. See the nonresponse
 #'   section of [svyplan-package] for what the rate counts.
 #' @param eligibility_rate Share of issued units in scope, in (0, 1\].
 #'   Default 1. It applies to both occasions, and with a finite `N` the
@@ -86,14 +87,16 @@
 #' @return A `svyplan_prec` object with `type = "change"`:
 #' \describe{
 #'   \item{`se`}{Standard error of the estimated change, computed on the net
-#'     sizes `n * resp_rate`.}
+#'     sizes `n * resp_rate * eligibility_rate`.}
 #'   \item{`moe`}{Margin of error, `q * se`, with `q` defined in Details. The interval
 #'     is symmetric about the change, so the limits are `change - moe` and
 #'     `change + moe`.}
 #'   \item{`cv`}{Standard error relative to the change, `se / abs(change)`.
-#'     `NA` when `change` is neither supplied nor determined by `p`. A
-#'     change near zero makes it large by construction, which is a statement
-#'     about the estimand and not about the design.}
+#'     `NA` when `change` is neither supplied nor determined by `p`, or is
+#'     zero. A change near zero makes it large by construction, which is a
+#'     statement about the estimand and not about the design.}
+#'   \item{`rmoe`}{Margin of error relative to the change,
+#'     `moe / abs(change)`, `NA` exactly when `cv` is.}
 #'   \item{`params`}{The validated inputs. Dispersion is always stored as
 #'     `var`, a pair, including when you supplied `sd` or `p`. `p` is kept as
 #'     well when the proportion scale was used, and it is what the
@@ -103,7 +106,7 @@
 #' }
 #'
 #' Nothing here is rounded, so passing a continuous `n` back from
-#' [n_change()] reproduces its `se`, `moe` and `cv` exactly.
+#' [n_change()] reproduces its `se`, `moe`, `cv` and `rmoe` exactly.
 #' The print shows `n` per occasion as evaluated, and for a fit it says
 #' that `n` is the continuous optimum. For a fit `res`, the whole sample
 #' to field on each occasion is `ceiling(res$n)`, and `prec_change(res, n = ceiling(res$n))`
@@ -135,7 +138,11 @@
 #' in `overlap`. \eqn{N}, \eqn{N_1} and \eqn{N_2} are the populations in
 #' scope, `N * eligibility_rate`. At
 #' `overlap = 0` the two occasions are treated as independent, which is what
-#' also lets them come from different populations:
+#' also lets them come from different populations. Two cohorts of one
+#' rotation that share no unit are disjoint rather than independent, and
+#' their change variance is larger than this by
+#' \eqn{2\rho\sqrt{v_1v_2}/N}{2 rho sqrt(v_1v_2)/N}, which matters only at a
+#' sizable sampling fraction:
 #'
 #' \deqn{V = \frac{v_1}{n_1}\Big(1 - \frac{n_1}{N_1}\Big)
 #'         + \frac{v_2}{n_2}\Big(1 - \frac{n_2}{N_2}\Big).}{V = v_1/n_1 (1 - n_1/N_1 ) + v_2/n_2 (1 - n_2/N_2 ).}

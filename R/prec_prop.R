@@ -28,7 +28,8 @@
 #'   A published DEFT is squared first. See [varcomp()] for that and for
 #'   removing the published survey's weighting loss.
 #' @param resp_rate Expected response rate among eligible units, in (0, 1\].
-#'   Default 1 (no adjustment). The effective sample size is `n * resp_rate`.
+#'   Default 1 (no adjustment). The net sample is
+#'   `n * resp_rate * eligibility_rate * eligible_per_unit`.
 #'   See the nonresponse section of [svyplan-package] for what the rate counts.
 #' @param eligibility_rate Share of issued units in scope, such as dwellings
 #'   found occupied, in (0, 1\]. Default 1. With a finite `N`, the population
@@ -48,10 +49,11 @@
 #'
 #' @return A `svyplan_prec` object with `type = "proportion"`:
 #' \describe{
-#'   \item{`se`}{Sampling standard error of the planned estimate, computed
-#'     on the net sample `n * resp_rate`. It describes the estimator, so it
-#'     is the same under all four methods and moves only with `p`, `n`,
-#'     `deff`, `N`, and `resp_rate`.}
+#'   \item{`se`}{Sampling standard error of the planned estimate, computed on
+#'     the net sample `n * resp_rate * eligibility_rate * eligible_per_unit`. It
+#'     describes the estimator, so it is the same under all four methods and
+#'     moves only with `p`, `n`, `deff`, `N`, and the factors of the net
+#'     sample.}
 #'   \item{`moe`}{Half the length of the interval the chosen `method`
 #'     builds at that standard error. Only under `"wald"` is this
 #'     `q * se`, with `q` defined in [n_prop()]. Where [confint()]

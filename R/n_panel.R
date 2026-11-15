@@ -53,7 +53,8 @@
 #'   guarantee that the target will be reached. The shortfall probability
 #'   depends on the response distribution and integer rounding. Supplying a level reports, next
 #'   to it, the recruitment for which the required respondents arrive with
-#'   at least that probability. See Details.
+#'   at least that probability. Not available when the target has
+#'   `eligible_per_unit` other than 1. See Details.
 #'
 #' @param start How a rotating design's cohorts are brought in, or `NULL`
 #'   (default). `"gradual"` recruits one cohort a period, so the design
@@ -91,11 +92,14 @@
 #'     included, and the rotation they follow. `n_held` equals
 #'     `n_in_sample` for a life without a break, and it is what a finite
 #'     population has to supply.}
-#'   \item{`n_target`}{The responding sample the target requires.}
+#'   \item{`n_target`}{The responding sample the target requires. Counts
+#'     sampled units, as `n_resp` and the per-wave `n_resp` do. A target with
+#'     `eligible_per_unit` holds that many eligible units per responding
+#'     unit on average, and its precision is computed on that product.}
 #'   \item{`n_resp`}{The responding sample the design delivers where the
 #'     target is stated: at `target_wave` for a fixed panel, pooled across
-#'     the live cohorts for a rotating one. It is what `se`, `moe` and `cv`
-#'     are computed on.}
+#'     the live cohorts for a rotating one. It is what `se`, `moe`, `cv` and
+#'     `rmoe` are computed on.}
 #'   \item{`n_assured`, `assured_feasible`}{Recruitment meeting the target
 #'     with probability at least `assurance`, when a level was given, and
 #'     whether a finite population can supply it. See Details.}
@@ -222,6 +226,13 @@
 #' so the distribution is Poisson-binomial rather than binomial. It is
 #' assembled exactly, by convolving one distribution per cohort, rather than
 #' approximated by a binomial on their mean rate.
+#'
+#' The level counts responding sampled units. It is refused for a target
+#' with `eligible_per_unit` other than 1, since a mean yield per unit does
+#' not give the distribution of eligible respondents. When each sampled unit
+#' holds one eligible unit or none, independently, size the target in
+#' eligible units and pass that share as `eligibility_rate`, which the
+#' binomial carries.
 #'
 #' The level is marginal. For a rotating design it holds at one period,
 #' and consecutive periods share cohorts, so the chance that every
@@ -739,7 +750,7 @@ n_panel <- function(
 #' @keywords internal
 #' @noRd
 .panel_units <- function(n_recruit, design, k) {
-  if (identical(design, "fixed")) ceiling(n_recruit) else k * ceiling(n_recruit)
+  if (identical(design, "fixed")) .whole_count(n_recruit) else k * .whole_count(n_recruit)
 }
 
 #' Report a whole-unit design a continuous one fits inside
@@ -827,6 +838,29 @@ n_panel <- function(
   invisible(FALSE)
 }
 
+#' Refuse an assurance the target's yield leaves undetermined
+#'
+#' The assured recruitment is a binomial in responding sampled units. A
+#' mean number of eligible units per sampled unit does not give the
+#' distribution of eligible respondents, so no probability of reaching the
+#' target follows from it. One eligible unit or none, independently, is the
+#' panel's `eligibility_rate`, which the binomial does carry.
+#' @keywords internal
+#' @noRd
+.check_panel_assurance_yield <- function(assurance, params) {
+  epu <- params[["eligible_per_unit"]] %||% 1
+  if (is.null(assurance) || isTRUE(all.equal(epu, 1))) {
+    return(invisible(NULL))
+  }
+  stop(
+    sprintf(
+      "'assurance' is not available for a target with eligible_per_unit = %.3g. The assured recruitment counts responding sampled units, and a mean yield per unit does not give the distribution of eligible respondents. If each sampled unit holds one eligible unit or none, independently, size the target in eligible units and pass that share to the panel as 'eligibility_rate'",
+      epu
+    ),
+    call. = FALSE
+  )
+}
+
 #' Assemble a panel from a recruitment size
 #'
 #' Shared by both directions: `n_panel()` solves the size from the target
@@ -840,6 +874,7 @@ n_panel <- function(
                           eligibility_rate = 1) {
   k <- length(q)
   tgt$eligibility_rate <- eligibility_rate
+  .check_panel_assurance_yield(assurance, tgt$params)
   if (!is.numeric(n_recruit) || length(n_recruit) != 1L ||
       !is.finite(n_recruit) || n_recruit <= 0) {
     stop("'n_recruit' must be a single positive size", call. = FALSE)
@@ -1050,7 +1085,7 @@ n_panel <- function(
 #' @keywords internal
 #' @noRd
 .panel_assure_rotating <- function(need, q, level) {
-  need <- ceiling(need)
+  need <- .whole_count(need)
   if (need <= 0) {
     return(0)
   }

@@ -30,8 +30,7 @@ prec_pooled(var = NULL, ...)
   cor_decay = NULL,
   overlap_draw = c("fixed", "independent"),
   df = NULL,
-  plan = NULL,
-  .overlap_basis = NULL
+  plan = NULL
 )
 
 \method{prec_pooled}{svyplan_n}(var, ...)
@@ -83,9 +82,10 @@ correction.}
 the pooled estimate rather than to any one occasion. See Details.}
 
 \item{resp_rate}{Expected response rate among eligible units, in (0, 1].
-Default 1 (no adjustment). It applies to every occasion and nets each size
-down to \code{n * resp_rate} before the covariance is formed. It is a single
-round's response, not attrition across a panel. See the nonresponse
+Default 1 (no adjustment). It applies to every occasion and with
+\code{eligibility_rate} nets each size down to
+\code{n * resp_rate * eligibility_rate} before the covariance is formed. It is a
+single round's response, not attrition across a panel. See the nonresponse
 section of \link{svyplan-package} for what the rate counts.}
 
 \item{eligibility_rate}{Share of issued units in scope, in (0, 1].
@@ -127,31 +127,29 @@ will have, typically sampled PSUs minus strata, and available from
 \code{NULL} (default) applies no adjustment.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
-
-\item{.overlap_basis}{Internal. Records whether a stored \code{overlap}
-profile was resolved from a \code{\link[=design_overlap]{design_overlap()}} object (\code{"issued"}) or
-supplied as respondent overlap (\code{"respondent"}), so that a round trip
-or a grid meets the same refusal the first call would have. Set from
-the result being re-read, and there is no reason to pass it by hand.}
 }
 \value{
 A \code{svyplan_prec} object with \code{type = "pooled"}:
 \describe{
 \item{\code{se}}{Standard error of the pooled estimate, computed on the net
-sizes \code{n * resp_rate}.}
+sizes \code{n * resp_rate * eligibility_rate}.}
 \item{\code{moe}}{Margin of error, \code{q * se}, with \code{q} defined in Details.}
 \item{\code{cv}}{Standard error relative to the level, \code{se / abs(mu)}. \code{NA}
-when \code{mu} is neither supplied nor determined by \code{p}.}
+when \code{mu} is neither supplied nor determined by \code{p}, or is zero.}
+\item{\code{rmoe}}{Margin of error relative to the level, \code{moe / abs(mu)},
+\code{NA} exactly when \code{cv} is.}
 \item{\code{params}}{The validated inputs. Dispersion is always stored as
 \code{var}, and \code{overlap} and \code{overlap_cor} as resolved vectors of one
 entry per lag, whatever form they were supplied in, alongside the
-\code{overlap_basis} they were resolved under. A ratio keeps \code{r}, its
+\code{overlap_basis} they were resolved under and, when \code{overlap} was a
+\code{\link[=design_overlap]{design_overlap()}} object, that object as \code{overlap_rotation}. A
+ratio keeps \code{r}, its
 three moments and its \code{unit_relvar}, \code{var} then being the variance of
 its linearized variable.}
 }
 
 Nothing here is rounded, so passing a continuous \code{n} back from
-\code{\link[=n_pooled]{n_pooled()}} reproduces its \code{se}, \code{moe} and \code{cv} exactly.
+\code{\link[=n_pooled]{n_pooled()}} reproduces its \code{se}, \code{moe}, \code{cv} and \code{rmoe} exactly.
 The print shows \code{n} per occasion as evaluated, and for a fit it says
 that \code{n} is the continuous optimum. For a fit \code{res}, the whole sample
 to field on each occasion is \code{ceiling(res$n)}, and \code{prec_pooled(res, n = ceiling(res$n))}
@@ -190,9 +188,7 @@ them has
 \deqn{V = \frac{1}{T^2}\Big[\,T\,Var(\bar y_t)
       + 2\sum_{m=1}^{T-1}(T-m)\,Cov_m\Big].}{V = (1/T^2) [ T Var(ybar_t) + 2 sum_m (T - m) Cov_m ].}
 
-A lag whose overlap is zero contributes exactly zero, which is the rule
-\code{\link[=prec_change]{prec_change()}} applies at \code{overlap = 0} read lag by lag. Two boundaries
-fix the whole. A fresh sample each occasion pools to
+Two boundaries fix the whole. A fresh sample each occasion pools to
 \eqn{Var(\bar y_t)/T}{Var(ybar_t)/T}, independent averaging, and a full
 panel measured with correlation 1 pools to
 \eqn{Var(\bar y_t)}{Var(ybar_t)}, the same units every time and averaging
@@ -200,6 +196,33 @@ buys nothing.
 
 \code{deff} multiplies the assembled variance. It is the design effect of the
 pooled estimate, which is not in general any one occasion's.
+\subsection{A rotation against a bare overlap}{
+
+A lag that shares no unit enters according to the type of \code{overlap},
+never its values. A bare number describes overlap only, and a zero lag
+contributes exactly zero, population term included, as for independent
+draws. This is the rule \code{\link[=prec_change]{prec_change()}} applies at \code{overlap = 0}, and
+under it a fresh sample each occasion pools to
+\eqn{Var(\bar y_t)/T}{Var(ybar_t)/T}. A \code{\link[=design_overlap]{design_overlap()}} object
+describes a rotation, whose cohorts are drawn without replacement from
+each other. Under \code{overlap_draw = "fixed"} its lags that share no unit
+keep the population term \eqn{-\rho_m S^2/N}{-rho_m S^2/N} of two
+disjoint samples, whatever the horizon, which covers the gap of a
+rotation such as \code{"2-2-2"}, lags past a cohort's life, and a horizon so
+short that no lag shares a unit. No unit is then taken twice within the
+horizon.
+
+The two readings differ on a small frame. With \code{N = 8}, \code{n = 4}, three
+occasions and \code{overlap_cor = 1}, the object \code{design_overlap("2-2-2")}
+gives a pooled variance of 1/12, the value an enumeration of the rotation
+gives under this sampling and covariance model, while the bare
+\code{c(0.5, 0)} it resolves to gives 0.25. \code{as.numeric()} on the object
+discards the rotation, and the result is then the bare reading. The
+object is stored as \code{params$overlap_rotation} and passed back by
+\code{\link[=n_pooled]{n_pooled()}}, \code{\link[=prec_pooled]{prec_pooled()}} and \code{\link[=predict]{predict()}} unless \code{overlap} is
+replaced, in which case the replacement's type decides.
+}
+
 \subsection{A ratio of totals}{
 
 A ratio \eqn{R = \bar Y / \bar X}{R = Ybar / Xbar} enters through its
@@ -278,7 +301,8 @@ Each positive-overlap lag must also satisfy
 cannot require more distinct units than the frame contains. This bound
 applies even at zero outcome correlation, and not at all under
 \code{overlap_draw = "independent"}, where each part fits the frame on its
-own. Zero-overlap lags retain the independent-samples convention. These
+own. A lag of a rotation object that shares no unit is checked too, its
+two disjoint samples needing \code{2 * n * resp_rate <= N}. These
 pairwise bounds and the covariance check below are necessary conditions,
 not a proof that an arbitrary overlap vector can be realized by a
 complete multi-occasion schedule.

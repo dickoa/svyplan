@@ -98,8 +98,8 @@ test_that("a CV target is planned on the magnitude of the mean", {
   expect_gt(prec_mean(sd = 10, mu = -20, n = 100)$cv, 0)
 
   # zero is the value with no relative scale
-  expect_error(n_mean(sd = 10, mu = 0, cv = 0.1), "must not be zero")
-  expect_error(prec_mean(sd = 10, mu = 0, n = 100), "must not be zero")
+  expect_error(n_mean(sd = 10, mu = 0, cv = 0.1), "'cv' is undefined at 'mu' = 0")
+  expect_true(is.na(prec_mean(sd = 10, mu = 0, n = 100)$cv))
 
   # and the frame paths agree with the scalar ones
   frame <- data.frame(stratum = c("A", "B"), N = c(100, 100), sd = c(1, 2),
@@ -127,4 +127,53 @@ test_that("a tiny target gives the census rather than a size that misses it", {
   expect_lt(fit$n, 1000)
   expect_equal(prec_mean(var = 4, n = fit$n, N = 1000, deff = 2)$moe, 1e-3,
                tolerance = 1e-8)
+})
+
+## A zero mean serves an absolute target
+
+test_that("a zero mean is accepted with an absolute target, its relative measures NA", {
+  # Closed form: the size and se do not involve mu at all.
+  plain <- n_mean(var = 4, moe = 1)
+  zero <- n_mean(var = 4, mu = 0, moe = 1)
+  expect_equal(zero$n, plain$n)
+  expect_true(is.na(zero$cv))
+  expect_true(is.na(zero$rmoe))
+  p <- prec_mean(var = 4, mu = 0, n = 100)
+  expect_equal(p$se, sqrt(4 / 100))
+  expect_true(is.na(p$cv))
+  expect_true(is.na(p$rmoe))
+  expect_true(is.na(prec_mean(zero)$cv))
+  expect_error(n_mean(var = 4, mu = 0, cv = 0.1),
+               "'cv' is undefined at 'mu' = 0")
+  expect_error(n_mean(var = 4, mu = 0, rmoe = 0.1),
+               "'rmoe' is undefined at 'mu' = 0")
+})
+
+test_that("pooled and change results give NA, not Inf, at a zero level", {
+  checked <- character(0)
+  for (case in list(
+    list("pooled", prec_pooled(var = 4, n = 100, occasions = 2, mu = 0)),
+    list("pooled_n", n_pooled(var = 4, moe = 1, occasions = 2, mu = 0)),
+    list("change", prec_change(var = 4, n = 100, change = 0))
+  )) {
+    expect_true(is.na(case[[2]]$cv), info = case[[1]])
+    expect_true(is.na(case[[2]]$rmoe), info = case[[1]])
+    checked <- c(checked, case[[1]])
+  }
+  expect_setequal(checked, c("pooled", "pooled_n", "change"))
+})
+
+test_that("n_multi takes a zero mean on a moe row and refuses it on a cv row", {
+  m <- n_multi(data.frame(name = c("a", "b"), var = 4, mu = c(0, 5),
+                          moe = 1))
+  expect_equal(m$detail$.n[1], n_mean(var = 4, moe = 1)$n)
+  expect_true(is.na(m$detail$.cv_achieved[1]))
+  expect_error(n_multi(data.frame(var = 4, mu = 0, cv = 0.1)),
+               "must be non-zero on a row with a 'cv' target")
+  expect_error(
+    n_cluster(indicators = data.frame(var = 4, mu = 0, moe = 1,
+                                      icc_psu = 0.05),
+              stage_cost = c(500, 50)),
+    "multistage mode"
+  )
 })
