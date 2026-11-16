@@ -310,8 +310,7 @@
 #' those totals vary with size as well as with content, so `var_ratio_ssu`
 #' rises above the `var_ratio_psu * (1 - icc_psu)` that planning functions
 #' derive when it is not supplied, and the more so the smaller the unit
-#' relvariance. On a frame of census tracts and block groups this ranged
-#' from 1.2 to 3.2 against derived values near 1. A second-stage `prob`
+#' relvariance. A second-stage `prob`
 #' (one-draw probabilities of the SSUs within their PSU, usually their size
 #' share) describes selection proportional to size instead. The size effect
 #' then cancels, and `var_ratio_ssu` comes close to the derived value.
