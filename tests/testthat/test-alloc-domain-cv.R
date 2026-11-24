@@ -34,7 +34,7 @@ test_that("each domain sits at its own smallest total", {
 test_that("the domain minimum is the joint mode's minimum", {
   fr <- ten_regions()
   fit <- n_alloc(fr, domains = "region", cv = 0.05)
-  joint <- n_alloc(fr[, c("stratum", "region", "N")],
+  joint <- n_alloc_joint(fr[, c("stratum", "region", "N")],
                    measures = data.frame(stratum = fr$stratum, name = "y",
                                          p = fr$p),
                    targets = data.frame(name = "y", domain = "region",
@@ -70,9 +70,9 @@ test_that("a floor raises only the domains the target leaves below it", {
 test_that("a domain that cannot reach the target is named", {
   # A census always reaches a target, so the cap here is the PSU universe.
   fr <- data.frame(stratum = c("a", "b", "c"), region = c("N", "N", "S"),
-                   N = c(3000, 5000, 2000), N_psu = c(100, 100, 3),
-                   p = c(0.2, 0.4, 0.3), icc_psu = 0.1, n_per_psu = 10,
-                   cost_psu = 300, cost_ssu = 20)
+                   N = c(3000, 5000, 2000), N_1 = c(100, 100, 3),
+                   p = c(0.2, 0.4, 0.3), icc_1 = 0.1, take_2 = 10,
+                   cost_1 = 300, cost_2 = 20)
   expect_error(suppressWarnings(n_alloc(fr, domains = "region", cv = 0.05)),
                "unattainable in domain")
 })
@@ -82,10 +82,10 @@ test_that("a cluster frame takes each domain's minimum", {
                                    c("u", "r")),
                    province = rep(c("A", "B", "C"), each = 2),
                    N = c(20000, 30000, 8000, 12000, 3000, 4000),
-                   N_psu = c(200, 300, 80, 120, 30, 40),
+                   N_1 = c(200, 300, 80, 120, 30, 40),
                    p = c(0.2, 0.35, 0.25, 0.4, 0.3, 0.45),
-                   icc_psu = 0.05, n_per_psu = 12, cost_psu = 300,
-                   cost_ssu = 20)
+                   icc_1 = 0.05, take_2 = 12, cost_1 = 300,
+                   cost_2 = 20)
   fit <- suppressWarnings(n_alloc(fr, domains = "province", cv = 0.09))
   own <- vapply(split(fr, fr$province), function(f) {
     suppressWarnings(n_alloc(f, cv = 0.09))$n
@@ -141,12 +141,12 @@ cluster_regions <- function(free_take = FALSE) {
                    area = rep(c("urban", "rural"), R))
   fr$stratum <- paste(fr$region, fr$area)
   fr$N <- round(rep(c(1e5, 5e4, 2e4), each = 2) * rep(c(0.4, 0.6), R))
-  fr$N_psu <- round(fr$N / 120)
+  fr$N_1 <- round(fr$N / 120)
   fr$p <- round(runif(2 * R, 0.15, 0.6), 2)
-  fr$icc_psu <- round(runif(2 * R, 0.02, 0.15), 3)
-  if (!free_take) fr$n_per_psu <- 15
-  fr$cost_psu <- round(runif(2 * R, 200, 600))
-  fr$cost_ssu <- round(runif(2 * R, 10, 30))
+  fr$icc_1 <- round(runif(2 * R, 0.02, 0.15), 3)
+  if (!free_take) fr$take_2 <- 15
+  fr$cost_1 <- round(runif(2 * R, 200, 600))
+  fr$cost_2 <- round(runif(2 * R, 10, 30))
   fr
 }
 
@@ -156,10 +156,10 @@ expect_domains_searched <- function(fr, cv, alloc) {
   for (r in unique(fr$region)) {
     idx <- which(fr$region == r)
     own <- suppressWarnings(n_alloc(fr[idx, ], cv = cv, alloc = alloc))
-    expect_identical(fit$detail$n_psu_int[idx], own$detail$n_psu_int,
+    expect_identical(fit$detail$n_1_int[idx], own$detail$n_1_int,
                      info = paste(alloc, r))
-    expect_identical(fit$detail$n_per_psu_int[idx],
-                     own$detail$n_per_psu_int, info = paste(alloc, r))
+    expect_identical(fit$detail$take_2_int[idx],
+                     own$detail$take_2_int, info = paste(alloc, r))
   }
   expect_named(fit$optimization$domains, names(fit$params$domain_idx))
   fit
@@ -169,22 +169,22 @@ test_that("each domain's whole cluster design is the one it gets alone", {
   for (alloc in c("neyman", "optimal")) {
     expect_domains_searched(cluster_regions(), 0.08, alloc)
   }
-  # A free take under "optimal" may rise past N_psu * n_per_psu, as the
+  # A free take under "optimal" may rise past N_1 * take_2, as the
   # national search lets it.
   expect_domains_searched(cluster_regions(free_take = TRUE), 0.06, "optimal")
 })
 
-test_that("a free take rises past N_psu * n_per_psu in a domain search", {
+test_that("a free take rises past N_1 * take_2 in a domain search", {
   fr <- cluster_regions(free_take = TRUE)
-  fr$N_psu <- c(12, 15, 8, 10, 5, 6)
+  fr$N_1 <- c(12, 15, 8, 10, 5, 6)
   fit <- expect_domains_searched(fr, 0.05, "optimal")
   # The PSU universe binds, so the take rises above the rule's take.
-  expect_true(any(fit$detail$n_psu_int == fr$N_psu))
+  expect_true(any(fit$detail$n_1_int == fr$N_1))
 })
 
 test_that("a domain mixing fixed and free takes is searched as one", {
   fr <- cluster_regions(free_take = TRUE)
-  fr$n_per_psu <- c(15, NA, NA, 20, NA, NA)
+  fr$take_2 <- c(15, NA, NA, 20, NA, NA)
   expect_domains_searched(fr, 0.06, "optimal")
 })
 
@@ -199,11 +199,11 @@ test_that("a floor still holds the cluster domains it binds", {
   expect_identical(held$domains$.floor_binding, low)
   # A domain the floor leaves alone keeps its searched design.
   keep <- which(fr$region %in% unique(fr$region)[!low])
-  expect_identical(held$detail$n_psu_int[keep], free$detail$n_psu_int[keep])
+  expect_identical(held$detail$n_1_int[keep], free$detail$n_1_int[keep])
   # A held domain keeps the rule's shares at the floor, each stratum within
   # one PSU of its continuous size.
   floored <- which(fr$region %in% unique(fr$region)[low])
   d <- held$detail[floored, ]
-  expect_true(all(abs(d$n_psu_int * d$n_per_psu_int - d$n) <=
-                    d$n_per_psu_int + 1e-9))
+  expect_true(all(abs(d$n_1_int * d$take_2_int - d$n) <=
+                    d$take_2_int + 1e-9))
 })

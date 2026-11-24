@@ -17,7 +17,7 @@
 #'   it must exceed `alpha`, the power at zero effect. Leave `NULL` to solve
 #'   for power.
 #' @param alpha Significance level, default 0.05.
-#' @param N Population size for finite-population correction. A scalar applies
+#' @param N Population size for finite population correction. A scalar applies
 #'   to both groups. A length-2 vector `c(N1, N2)` sets group-specific
 #'   population sizes. `Inf` disables FPC for the corresponding group.
 #' @param deff Design effect multiplier (> 0). Values < 1 are valid for
@@ -58,7 +58,7 @@
 #'   `"logodds"`. The arcsine square-root transform is variance-stabilizing.
 #'   The log-odds transform is not, because its variance still depends on the
 #'   proportion. Both provide alternatives to the Wald calculation near a
-#'   boundary (Valliant, 2018, sections 4.3.4--4.3.5).
+#'   boundary (Valliant, 2018, sections 4.3.4 and 4.3.5).
 #' @param plan Optional [svyplan()] object providing design defaults.
 #' @param ... Additional arguments passed to methods. Unused arguments are rejected.
 #'
@@ -85,7 +85,7 @@
 #'
 #' \describe{
 #'   \item{`"wald"` (default)}{Standard Wald test. Appropriate for
-#'     proportions in the 0.2--0.8 range. The only method that
+#'     proportions from 0.2 to 0.8. The only method that
 #'     supports panel `overlap`.}
 #'   \item{`"arcsine"`}{Arcsine-transformed test. The arcsine variance
 #'     \eqn{1/(4n)} is approximately constant in \eqn{p}, making it
@@ -95,7 +95,7 @@
 #'     proportions. Uses Valliant Eq (4.23)/(4.24).}
 #' }
 #'
-#' For proportions in the 0.2--0.8 range, all three methods give similar
+#' For proportions from 0.2 to 0.8, all three methods give similar
 #' results. Near a boundary, the arcsine and log-odds calculations avoid
 #' relying on the untransformed Wald scale. Their operating characteristics
 #' still depend on the design and the planning values supplied.
@@ -162,7 +162,13 @@
 #' lets `deff`, a finite `N`, and `resp_rate` enter the variance directly.
 #' The choice of `method` addresses accuracy in \eqn{p}, not in \eqn{n}:
 #' `"arcsine"` and `"logodds"` improve the normal approximation for an
-#' extreme proportion, but none of the three is exact at small `n`.
+#' extreme proportion, but none of the three is exact at small `n`. Under
+#' `"logodds"` the alternative variance grows without bound as `p2`
+#' approaches 0 or 1 while the null variance stays bounded. Two-sided power
+#' then climbs toward 1 at a small `n`, carried by rejections in the wrong
+#' direction: `n = 5`, `p1 = 0.5`, `p2 = 0.9999` reports 0.95. Read such
+#' a result as the limit of the approximation, which holds only when
+#' `n * p2 * (1 - p2)` is not small.
 #'
 #' The `df` argument that [n_prop()], [n_mean()] and [n_alloc()] accept has
 #' no counterpart here, and its absence is a decision rather than an
@@ -439,25 +445,29 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
   roots <- list()
   feasible <- .bernoulli_cor_interval(p1, overlap_cor, overlap)
 
-  up_lo <- p1 + eps; up_hi <- min(1 - eps, feasible[2L])
+  ## At p1 power is alpha, below any target, so the brackets start there and
+  ## reach an alternative however close a large sample puts it.
+  up_lo <- p1; up_hi <- min(1 - eps, feasible[2L])
   if (up_lo < up_hi) {
     f_lo <- target_fn(up_lo); f_hi <- target_fn(up_hi)
     if (is.finite(f_lo) && is.finite(f_hi)) {
       if (f_lo == 0) roots <- c(roots, list(up_lo))
       else if (f_hi == 0) roots <- c(roots, list(up_hi))
       else if (sign(f_lo) != sign(f_hi))
-        roots <- c(roots, list(uniroot(target_fn, c(up_lo, up_hi), tol = eps)$root))
+        roots <- c(roots, list(uniroot(target_fn, c(up_lo, up_hi),
+                                       tol = 1e-15)$root))
     }
   }
 
-  dn_lo <- max(eps, feasible[1L]); dn_hi <- p1 - eps
+  dn_lo <- max(eps, feasible[1L]); dn_hi <- p1
   if (dn_lo < dn_hi) {
     f_lo <- target_fn(dn_lo); f_hi <- target_fn(dn_hi)
     if (is.finite(f_lo) && is.finite(f_hi)) {
       if (f_hi == 0) roots <- c(roots, list(dn_hi))
       else if (f_lo == 0) roots <- c(roots, list(dn_lo))
       else if (sign(f_lo) != sign(f_hi))
-        roots <- c(roots, list(uniroot(target_fn, c(dn_lo, dn_hi), tol = eps)$root))
+        roots <- c(roots, list(uniroot(target_fn, c(dn_lo, dn_hi),
+                                       tol = 1e-15)$root))
     }
   }
 
@@ -623,8 +633,10 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
 
   # Power along p2 is not monotone. The variance under the alternative grows
   # without bound toward 0 and 1 while the null variance stays bounded, so
-  # power rises from p1, peaks, and falls back toward 1/2 at the edge. Each
-  # side is bracketed between p1 and its peak, where the rise is monotone.
+  # one-sided power rises from p1, peaks, and falls back toward 1/2 at the
+  # edge, and two-sided power, whose two tails then approach 1/2 each,
+  # climbs back toward 1. Each side is bracketed between p1 and its peak,
+  # where the rise is monotone.
   side_root <- function(near, far) {
     if (abs(far - near) <= eps) {
       return(NULL)
@@ -636,10 +648,10 @@ power_prop.default <- function(p1, ..., p2 = NULL, n = NULL, power = 0.80,
     if (!is.finite(f_near) || !is.finite(f_top) || f_near >= 0 || f_top < 0) {
       return(NULL)
     }
-    uniroot(target_fn, sort(c(near, top)), tol = eps)$root
+    uniroot(target_fn, sort(c(near, top)), tol = 1e-15)$root
   }
-  roots <- c(roots, list(side_root(p1 + eps, 1 - eps)),
-             list(side_root(p1 - eps, eps)))
+  roots <- c(roots, list(side_root(p1, 1 - eps)),
+             list(side_root(p1, eps)))
   roots <- Filter(Negate(is.null), roots)
 
   if (length(roots) == 0L)

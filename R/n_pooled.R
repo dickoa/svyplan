@@ -224,6 +224,7 @@
 #' @export
 n_pooled <- function(var = NULL, ...) {
   if (!is.null(var)) {
+    .refuse_result_as_input(var, "var", "n_pooled")
     .res <- .dispatch_plan(var, "var", n_pooled.default, ...)
     if (!is.null(.res)) return(.res)
   }
@@ -263,6 +264,8 @@ n_pooled.default <- function(
   .check_unused_dots(...)
   check_population_size(N)
   check_resp_rate(eligibility_rate, "eligibility_rate")
+  check_eligible_population(N, 1, eligibility_rate,
+                            label = "N * eligibility_rate")
   N_elig <- N * eligibility_rate
   .check_occasions(occasions)
   inputs <- .pooled_inputs(var, sd, p, mu, N_elig, r, cv_num, cv_den,
@@ -303,6 +306,7 @@ n_pooled.default <- function(
     target_se, inputs$var, N_elig, deff, rate, occasions, ov$overlap, rho,
     overlap_draw, rotation = ov$rotation
   )
+  solved <- n
   n <- .census_size(n, N)
   .check_attainable(n, N, resp_rate, eligibility_rate)
   .check_whole_size(n, function(whole) {
@@ -317,7 +321,10 @@ n_pooled.default <- function(
   # The inversion is closed form on n <= N, so a mismatch here means the
   # linear form and the variance it inverts have drifted apart, not that
   # the inputs were unusual.
-  if (abs(prec$se - target_se) > 1e-6 * max(1, target_se)) {
+  ## A size snapped to the census beats the target rather than meeting it.
+  snapped <- any(n != solved)
+  off <- if (snapped) prec$se - target_se else abs(prec$se - target_se)
+  if (off > 1e-6 * max(1, target_se)) {
     stop(
       "internal error: solved size does not reproduce the target standard error",
       call. = FALSE
@@ -339,6 +346,11 @@ n_pooled.default <- function(
   )
   # The object itself, not a flag: a new horizon re-derives its lags.
   params$overlap_rotation <- ov$rotation
+  ## The lag inputs as given, so a round trip at another horizon or with
+  ## the other correlation form rebuilds the profile.
+  if (is.null(ov$rotation)) params$overlap_input <- overlap
+  params$overlap_cor_input <- overlap_cor
+  params$cor_decay <- cor_decay
   if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
   if (!is.null(inputs$p)) params$p <- inputs$p
   params <- .add_ratio_params(params, inputs$ratio)
@@ -386,9 +398,9 @@ n_pooled.svyplan_prec <- function(var, ..., moe = NULL, cv = NULL,
     deff = par$deff,
     resp_rate = par$resp_rate,
     eligibility_rate = par[["eligibility_rate"]] %||% 1,
-    overlap_cor = par$overlap_cor,
     overlap_draw = par$overlap_draw,
     df = par$df
-  ), .stored_overlap_args(par, "overlap" %in% names(list(...))))
+  ), .stored_overlap_args(par, "overlap" %in% names(list(...))),
+  .stored_lag_cor_args(par, names(list(...))))
   do.call(n_pooled.default, .roundtrip_args(args, list(...), n_pooled.default))
 }

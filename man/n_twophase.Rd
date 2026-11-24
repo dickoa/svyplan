@@ -21,6 +21,7 @@ n_twophase(frame, ...)
   assurance = NULL,
   phase1_deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   single_deff = 1,
   single_resp_rate = 1,
   single_cost = NULL,
@@ -31,27 +32,22 @@ n_twophase(frame, ...)
 \method{n_twophase}{svyplan_prec}(frame, ..., cv = NULL, budget = NULL)
 }
 \arguments{
-\item{frame}{For the default method: a data frame with one row per
-phase-2 stratum, in the \code{\link[=n_alloc]{n_alloc()}} column vocabulary (\code{N}, \code{sd},
-\code{mean}, \code{unit_cost}, \code{take_all}) but on a narrower contract. \code{sd} is
-required where \code{\link[=n_alloc]{n_alloc()}} also accepts \code{var}, and the cost and
-\code{p}/\code{mean} rules differ, so a table built for one may need adjusting
-before it is passed to the other. Columns:
+\item{frame}{For the default method, a data frame with one row per
+phase-2 stratum, using the \code{\link[=n_alloc]{n_alloc()}} column vocabulary (\code{N}, \code{sd},
+\code{var}, \code{mean}, \code{p}, \code{unit_cost}, \code{take_all}). Columns:
 \describe{
 \item{\code{N}}{Stratum size (\strong{required}). Only relative size matters,
 since the stratum weights are \code{N / sum(N)}.}
-\item{\code{sd}}{Within-stratum standard deviation of the variable of
-interest (\strong{required}). A stratum with \code{sd = 0} still takes one
-phase-2 unit, since the estimator needs its mean and a planning
-value of zero says the stratum is homogeneous, not that its level
-is known. A level phase 1 already records, such as a screened-out
-group whose value is zero by definition, is a \code{take_all} stratum
-with \code{unit_cost = 0}. Estimating a stratum's variance from the
-survey takes at least two units there.}
-\item{\code{mean}}{Stratum mean. Supply it to let the between-stratum
-component be derived, which is what makes stratifying worthwhile.
-Omit it, or pass \code{between = 0}, when the strata are not expected
-to differ in level, as in nonresponse follow-up.}
+\item{\code{sd} or \code{var}}{Within-stratum spread of the variable of interest.
+Supply \code{sd}, \code{var}, or \code{p} (binary proportion in \verb{[0, 1]}). Do not
+supply both \code{sd} and \code{var}. When \code{p} is supplied without \code{sd} or
+\code{var}, within-stratum SD is derived as \code{sqrt(p * (1 - p))}. A
+stratum with \code{sd = 0} still takes one phase-2 unit, since the
+estimator needs its mean.}
+\item{\code{mean} or \code{p}}{Stratum mean or proportion (in \verb{[0, 1]}). Do not
+supply both. Supply one to derive the between-stratum variance
+component and overall \code{mu}. Omit them, or pass \code{between = 0}, when
+strata are not expected to differ in level.}
 \item{\code{unit_cost}}{Incremental phase-2 cost per unit. Default 1.
 Zero means the stratum is already measured, which with
 \code{take_all = TRUE} is exactly a phase-1 respondent group.}
@@ -66,10 +62,11 @@ contribution to the variance, so a stratum that responds poorly
 is treated as carrying less information per issued unit.}
 \item{\code{take_all}}{Logical. \code{TRUE} carries every unit phase 1
 successfully classified into phase 2. On the issued-unit scale
-\code{nu} is measured on, that is \code{nu = resp_rate}, the phase-1
-classification rate, and not 1. Among classified units the
-fraction is one. The two coincide only when phase 1 classifies
-everyone. Default \code{FALSE}.}
+\code{nu} is measured on, that is \code{nu = r_1}, the phase-1
+classification yield from the \code{resp_rate} and \code{eligibility_rate}
+arguments, and not 1. Among classified units the fraction is
+one. The two coincide only when phase 1 classifies every issued
+unit. Default \code{FALSE}.}
 \item{\code{stratum}}{Optional label.}
 }
 For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_twophase]{prec_twophase()}}.}
@@ -112,7 +109,7 @@ The budget may not reach phase 2 once phase 1 and any \code{take_all}
 strata are paid for. Or the target \code{cv} may sit below the floor left
 when phase 2 carries every classified unit through, the
 between-stratum component \verb{d_1 A / r_1} plus the phase-2 residual at
-\code{nu_h = resp_rate}, which no amount of subsampling can beat.}
+\code{nu_h = r_1}, which no amount of subsampling can beat.}
 
 \item{assurance}{Probability in (0, 1), or \code{NULL} (default). Planning at
 the expected respondent count does not guarantee that the target will
@@ -121,9 +118,9 @@ and integer rounding. Supplying a level reports, alongside the expected design, 
 issued sizes for which the required respondents arrive with at least
 that probability, from the binomial distribution of respondents.
 
-The level is \strong{marginal}, holding stratum by stratum. Every stratum
-clearing its target at once has the product probability and so is
-lower, materially so with many strata, since three strata at 0.95 give
+The level is \strong{marginal}, holding stratum by stratum. When units
+respond independently, every stratum clearing its target at once has
+the product probability and so is lower, materially so with many strata, since three strata at 0.95 give
 about 0.86 together. Raise the level for a familywise guarantee. It is
 also conditional on the phase-1 pool. The assured phase-2 issue is
 compared against what phase 1 supplies, and a stratum needing more
@@ -138,13 +135,17 @@ variance phase 1 is responsible for. Set it above 1 when phase 1 is
 clustered, as an area screener is.}
 
 \item{resp_rate}{Expected phase-1 response, screening or successful
-classification rate, in (0, 1], default 1. It divides the
-between-stratum component and, because phase 2 can only draw from
-the units phase 1 actually classified, it also caps every
-subsampling fraction at \code{resp_rate}. In a nonresponse follow-up
-frame leave it at 1, because there the strata \emph{are} response status, so
-classification succeeds for every unit and setting it again would
-count the same loss twice.}
+classification rate among eligible units, in (0, 1], default 1. It is
+a different rate from the frame's \code{resp_rate} column, which is the
+phase-2 completion rate.}
+
+\item{eligibility_rate}{Share of issued phase-1 units in scope, in (0, 1],
+default 1. Its product with \code{resp_rate},
+\code{r_1 = resp_rate * eligibility_rate}, is the expected share of issued
+phase-1 units that phase 1 classifies. It divides the between-stratum
+component and caps every \code{nu}, since phase 2 can only draw from the
+units phase 1 classified. The eligible population in the finite
+population correction is \code{N * eligibility_rate}.}
 
 \item{single_deff}{Design effect of the single-phase comparator,
 default 1. It is a separate number from the stratum \code{deff} column
@@ -183,14 +184,14 @@ different design effects.}
 \item{\code{cost}}{Total cost, including \code{fixed_cost}.}
 \item{\code{detail}}{Per-stratum table: \code{stratum}, \code{N}, \code{share}, \code{sd},
 \code{unit_cost}, \code{deff}, \code{resp_rate}, \code{nu} (the subsampling fraction,
-as a share of the phase-1 units \emph{issued}, and with \code{resp_rate} below 1
-it is capped there, since phase 2 can only draw from the units
-phase 1 classified, and the fraction taken among those classified
-units is \code{nu / resp_rate}),
+as a share of the stratum's expected issued phase-1 units
+\code{W_h * n_phase1}. With \code{r_1} below 1 it is capped there, since
+phase 2 can only draw from the units phase 1 classified, and the
+fraction taken among those classified units is \code{nu / r_1}),
 \code{n_issued}, \code{n_resp} (its expected responding part), and
 \code{take_all}, which is \code{TRUE}
 for strata that were supplied pinned \strong{and} for those the
-allocator truncated at the classification rate.}
+allocator truncated at \code{r_1}.}
 \item{\code{single_phase}}{The design that skips phase 1 and measures the
 variable of interest directly, as \code{c(n = , cv = , cost = )}, its
 whole-unit form \code{n_int}, \code{cv_int} and \code{cost_int} (the units the
@@ -219,8 +220,12 @@ unexplored. The print shows a line only in that case. Cv mode
 stops with an error when no unit can be added. In budget mode a
 stratum whose expected phase-1
 yield rounds below one unit is left unsampled with a warning, and the
-operational \code{cv} is then \code{Inf}. With \code{assurance} set it also carries \code{assured},
-\code{assured_phase1}, \code{pool} and \code{assured_cost}.}
+operational \code{cv} is then \code{Inf}. With \code{assurance} set it also carries
+\code{assured}, the phase-2 issue per stratum at which the planned
+respondents arrive with that probability, \code{assured_phase1}, the
+phase-1 size at which the planned classified count \verb{r_1 n_phase1}
+arrives with that probability, \code{pool}, the expected classified units
+per stratum at that size, and \code{assured_cost}.}
 \item{\code{params}}{Validated inputs, read back by \code{\link[=prec_twophase]{prec_twophase()}}. They
 include the design decisions a stratum table cannot express, so that
 \code{n_twophase(prec_twophase(fit))} rebuilds this problem rather than a
@@ -271,7 +276,7 @@ where \eqn{P} is the set of pinned strata. The shape is Neyman-like,
 
 Any \eqn{\nu_h} above the cap is truncated there and the stratum joins
 \eqn{P}, which changes \eqn{\tilde A}{Atilde} and \eqn{\tilde c_a}{ctilde_a} and so the
-remaining strata are re-solved. The cap is \code{resp_rate} rather than 1.
+remaining strata are re-solved. The cap is \code{r_1} rather than 1.
 Phase 2 can only subsample the units phase 1 succeeded in classifying, so a
 stratum is "take-all" once it keeps all of those, not all of \eqn{N_h}.
 Strata are pinned one at a time in decreasing \eqn{S_h/\sqrt{c_h}}{S_h/sqrt(c_h)},

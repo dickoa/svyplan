@@ -585,3 +585,16 @@ test_that("a vector or empty df is refused at every scalar entry point", {
   expect_equal(n_prop(0.5, moe = 0.05, df = Inf)$n,
                n_prop(0.5, moe = 0.05)$n)
 })
+
+## Counts past the integer range
+
+test_that("a data frame keeps a count past the integer range", {
+  x <- n_prop(p = 0.5, moe = 1e-5)
+  expect_no_warning(d <- as.data.frame(x))
+  expect_equal(d$n_int, 9603647052)
+  expect_no_warning(d <- as.data.frame(power_prop(p1 = 0.5, p2 = 0.50001,
+                                                 power = 0.8)))
+  expect_equal(d$n1_int, d$n2_int)
+  expect_gt(d$n1_int, .Machine$integer.max)
+  expect_type(as.data.frame(n_prop(p = 0.3, moe = 0.05))$n_int, "integer")
+})

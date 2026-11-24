@@ -112,8 +112,8 @@ test_that("a cluster summary reads the field design against closed forms", {
                  eligibility_rate = 0.95, resp_rate = 0.9)
   s <- summary(x)
   expect_s3_class(s, c("summary.svyplan_cluster", "list"), exact = TRUE)
-  a <- x$operational$n[["n_psu"]]
-  m <- x$operational$n[["n_per_psu"]]
+  a <- x$operational$n[["stage_1"]]
+  m <- x$operational$n[["stage_2"]]
   m_r <- m * 0.9 * 0.95
   d <- s$design
   expect_equal(d$field[d$row == "cv"], cluster_cv(1, 0.05, a, m_r),
@@ -125,7 +125,7 @@ test_that("a cluster summary reads the field design against closed forms", {
   expect_equal(s$field[["effective"]],
                a * m_r / (1 + 0.05 * (m_r - 1)), tolerance = 1e-10)
   expect_equal(s$field[["df"]], a - 1)
-  expect_equal(s$cost, c(PSUs = a * 500, Units = a * m * 50))
+  expect_equal(s$cost, c(stage_1 = a * 500, stage_2 = a * m * 50))
   expect_equal(sum(s$cost), x$operational$cost)
 })
 
@@ -134,10 +134,11 @@ test_that("the cost by stage adds up on every cluster route", {
     two_stage_fixed = n_cluster(stage_cost = c(500, 50), icc = 0.05,
                                 budget = 1e5, fixed_cost = 5000),
     three_stage = n_cluster(stage_cost = c(500, 100, 50),
-                            icc = c(0.01, 0.05), budget = 5e5, n_psu = 50),
+                            icc = c(0.01, 0.05), budget = 5e5,
+                            stage_n = c(50, NA, NA)),
     stage_fpc = n_cluster(stage_cost = c(12, 3), icc = 5 / 54,
                           unit_relvar = 0.54, budget = 1000, fpc = "stage",
-                          N = 4900, N_psu = 100)
+                          N = c(100, 4900))
   )
   seen <- character(0)
   for (route in names(fits)) {
@@ -146,14 +147,14 @@ test_that("the cost by stage adds up on every cluster route", {
     seen <- c(seen, route)
   }
   expect_setequal(seen, names(fits))
-  expect_named(summary(fits$three_stage)$cost, c("PSUs", "SSUs", "Units"))
+  expect_named(summary(fits$three_stage)$cost, c("stage_1", "stage_2", "stage_3"))
 })
 
 test_that("the design effect under stage correction is the planning one", {
   x <- n_cluster(stage_cost = c(12, 3), icc = 5 / 54, unit_relvar = 0.54,
-                 budget = 1000, fpc = "stage", N = 4900, N_psu = 100)
+                 budget = 1000, fpc = "stage", N = c(100, 4900))
   s <- summary(x)
-  m <- x$operational$n[["n_per_psu"]]
+  m <- x$operational$n[["stage_2"]]
   expect_equal(s$field[["deff"]], 1 + 5 / 54 * (m - 1), tolerance = 1e-10)
   srs_cv2 <- 0.54 / x$operational$total_n
   expect_false(isTRUE(all.equal(s$field[["deff"]],
@@ -256,11 +257,11 @@ test_that("row-specific rates are reported per row, common ones once", {
 
 test_that("a multi-indicator cluster summary reports worst cv and binding apart", {
   ab <- data.frame(name = c("a", "b"), p = c(0.35, 0.40), cv = c(0.15, 0.03),
-                   icc_psu = 0.05)
-  x <- n_cluster(stage_cost = c(500, 50), indicators = ab, budget = 1e5)
+                   icc_1 = 0.05)
+  x <- n_cluster(ab, stage_cost = c(500, 50), budget = 1e5)
   s <- summary(x)
-  a <- x$operational$n[["n_psu"]]
-  m <- x$operational$n[["n_per_psu"]]
+  a <- x$operational$n[["stage_1"]]
+  m <- x$operational$n[["stage_2"]]
   cv <- cluster_cv((1 - ab$p) / ab$p, 0.05, a, m)
   expect_equal(s$indicators$achieved, cv, tolerance = 1e-10)
   expect_identical(s$worst$name, "a")
@@ -277,12 +278,12 @@ test_that("a multi-indicator cluster summary reports worst cv and binding apart"
 
 test_that("moe targets read moe at the field design", {
   ci <- data.frame(name = c("stunting", "anemia"), p = c(0.30, 0.10),
-                   moe = c(0.05, 0.03), icc_psu = c(0.02, 0.05))
-  x <- n_cluster(stage_cost = c(500, 50), indicators = ci, budget = 1e5)
+                   moe = c(0.05, 0.03), icc_1 = c(0.02, 0.05))
+  x <- n_cluster(ci, stage_cost = c(500, 50), budget = 1e5)
   s <- summary(x)
-  a <- x$operational$n[["n_psu"]]
-  m <- x$operational$n[["n_per_psu"]]
-  cv <- cluster_cv((1 - ci$p) / ci$p, ci$icc_psu, a, m)
+  a <- x$operational$n[["stage_1"]]
+  m <- x$operational$n[["stage_2"]]
+  cv <- cluster_cv((1 - ci$p) / ci$p, ci$icc_1, a, m)
   expect_identical(s$indicators$target_scale, c("moe", "moe"))
   expect_equal(s$indicators$achieved, z975 * ci$p * cv, tolerance = 1e-10)
   expect_equal(s$indicators$cv, x$operational$cv_by_target,
@@ -293,17 +294,17 @@ test_that("cluster domains are read at each domain's whole design", {
   cd <- data.frame(name = c("st", "an", "st", "an"),
                    region = c("N", "N", "S", "S"),
                    p = c(0.30, 0.10, 0.32, 0.12), cv = c(0.08, 0.15),
-                   icc_psu = 0.05)
+                   icc_1 = 0.05)
   for (fit in list(
-    n_cluster(stage_cost = c(500, 50), indicators = cd, domains = "region"),
-    n_cluster(stage_cost = c(500, 50), indicators = cd, domains = "region",
+    n_cluster(cd, stage_cost = c(500, 50), domains = "region"),
+    n_cluster(cd, stage_cost = c(500, 50), domains = "region",
               budget = 2e5, allocation = "joint")
   )) {
     s <- summary(fit)
     od <- fit$operational$domains
     row <- match(cd$region, od$region)
-    cv <- cluster_cv((1 - cd$p) / cd$p, 0.05, od$n_psu[row],
-                     od$n_per_psu[row])
+    cv <- cluster_cv((1 - cd$p) / cd$p, 0.05, od$stage_1[row],
+                     od$stage_2[row])
     expect_equal(s$indicators$achieved, cv, tolerance = 1e-10)
     expect_identical(s$domains$binding, od$.binding)
     expect_identical(nrow(fit$detail), 4L)
@@ -328,7 +329,7 @@ test_that("every new print and summary fits 80 columns", {
                     resp_rate = 0.85),
     mixed = n_multi(data.frame(
       name = c(long, "spend", "floor"), p = c(0.3, NA, NA),
-      var = c(NA, 250000, NA), mu = c(NA, 1200, NA),
+      var = c(NA, 250000, NA), mean = c(NA, 1200, NA),
       moe = c(0.05, NA, NA), cv = c(NA, 0.05, NA),
       min_cases = c(30, NA, NA), min_respondents = c(NA, NA, 900),
       resp_rate = c(0.9, 0.8, 0.7), deff = c(1.5, 2, 1)
@@ -338,21 +339,18 @@ test_that("every new print and summary fits 80 columns", {
                                  p = c(0.3, 0.2), moe = 0.05),
                       domains = "region"),
     cluster3 = n_cluster(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-                         budget = 5e5, n_psu = 50, fixed_cost = 5000),
+                         budget = 5e5, stage_n = c(50, NA, NA),
+                         fixed_cost = 5000),
     cluster_ind3 = n_cluster(
-      stage_cost = c(500, 100, 50), budget = 2e5, fpc = "stage", N = 60000,
-      N_psu = 300, N_ssu = 3000,
-      indicators = data.frame(name = c(long, "anemia"), p = c(0.3, 0.1),
-                              moe = c(0.05, 0.03), icc_psu = c(0.02, 0.05),
-                              icc_ssu = c(0.05, 0.1))
-    ),
+      data.frame(name = c(long, "anemia"), p = c(0.3, 0.1),
+                              moe = c(0.05, 0.03), icc_1 = c(0.02, 0.05),
+                              icc_2 = c(0.05, 0.1)), stage_cost = c(500, 100, 50), budget = 2e5, fpc = "stage",
+      N = c(300, 3000, 60000)),
     cluster_joint = n_cluster(
-      stage_cost = c(500, 50), domains = "region", budget = 2e5,
-      allocation = "joint",
-      indicators = data.frame(name = c(long, "an"), region = rep(c(region, "b"), each = 2),
+      data.frame(name = c(long, "an"), region = rep(c(region, "b"), each = 2),
                               p = c(0.3, 0.1), cv = c(0.08, 0.15),
-                              icc_psu = 0.05)
-    )
+                              icc_1 = 0.05), stage_cost = c(500, 50), domains = "region", budget = 2e5,
+      allocation = "joint")
   )
   seen <- character(0)
   for (nm in names(cases)) {
@@ -390,9 +388,8 @@ test_that("prints carry field counts, field cvs and the summary pointer", {
 
   for (fit in list(
     n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05),
-    n_cluster(stage_cost = c(500, 50), budget = 1e5,
-              indicators = data.frame(name = c("a", "b"), p = c(0.3, 0.1),
-                                      moe = c(0.05, 0.03), icc_psu = 0.05))
+    n_cluster(data.frame(name = c("a", "b"), p = c(0.3, 0.1),
+                                      moe = c(0.05, 0.03), icc_1 = 0.05), stage_cost = c(500, 50), budget = 1e5)
   )) {
     out <- capture.output(print(fit))
     expect_false(any(grepl("^continuous optimum:", out)))
@@ -403,10 +400,10 @@ test_that("prints carry field counts, field cvs and the summary pointer", {
 ## Field binding where rounding moves it
 
 flip <- data.frame(name = c("a", "b"), p = c(0.33, 0.20),
-                   cv = c(0.110, 0.111), icc_psu = c(0.099, 0.019))
+                   cv = c(0.110, 0.111), icc_1 = c(0.099, 0.019))
 
 test_that("the summary names the field binding, not the continuous one", {
-  x <- n_cluster(stage_cost = c(500, 50), indicators = flip)
+  x <- n_cluster(flip, stage_cost = c(500, 50))
   expect_identical(x$binding, "a")
   expect_identical(x$operational$binding, "b")
   s <- summary(x)
@@ -415,11 +412,13 @@ test_that("the summary names the field binding, not the continuous one", {
   expect_true("binding: b (precision)" %in% capture.output(print(s)))
 })
 
-test_that("each cluster domain marks its field binding", {
+test_that("each cluster domain keeps its continuous and its field binding", {
   both <- rbind(transform(flip, region = "N"), transform(flip, region = "S"))
-  x <- n_cluster(stage_cost = c(500, 50), indicators = both,
+  x <- n_cluster(both, stage_cost = c(500, 50),
                  domains = "region")
-  expect_identical(x$detail$name[x$detail$.binding], c("b", "b"))
+  expect_identical(x$detail$name[x$detail$.binding], c("a", "a"))
+  expect_identical(x$domains$.binding, c("a", "a"))
+  expect_identical(x$operational$domains$.binding, c("b", "b"))
 })
 
 test_that("stated targets follow their rows when domains interleave", {
@@ -492,22 +491,22 @@ test_that("an unnamed indicator's precision and rates are its own row's", {
 test_that("unnamed cluster indicators are read at their own domain's design", {
   cd <- data.frame(p = c(0.2, 0.5, 0.3, 0.6), cv = c(0.08, 0.1, 0.09, 0.07),
                    region = c("a", "b", "a", "b"),
-                   icc_psu = c(0.02, 0.05, 0.08, 0.03))
+                   icc_1 = c(0.02, 0.05, 0.08, 0.03))
   seen <- character(0)
   for (route in c("separate", "joint")) {
     fit <- if (route == "joint") {
-      n_cluster(stage_cost = c(500, 50), indicators = cd, domains = "region",
+      n_cluster(cd, stage_cost = c(500, 50), domains = "region",
                 budget = 2e5, allocation = "joint")
     } else {
-      n_cluster(stage_cost = c(500, 50), indicators = cd, domains = "region")
+      n_cluster(cd, stage_cost = c(500, 50), domains = "region")
     }
     s <- summary(fit)$indicators
     row <- as.integer(s$name)
     expect_identical(cd$region[row], s$domain, label = route)
     od <- fit$operational$domains
     at <- match(cd$region[row], od$region)
-    cv <- cluster_cv((1 - cd$p[row]) / cd$p[row], cd$icc_psu[row],
-                     od$n_psu[at], od$n_per_psu[at])
+    cv <- cluster_cv((1 - cd$p[row]) / cd$p[row], cd$icc_1[row],
+                     od$stage_1[at], od$stage_2[at])
     expect_equal(s$achieved, cv, tolerance = 1e-10, label = route)
     seen <- c(seen, route)
   }
@@ -530,7 +529,7 @@ test_that("domain values holding the label separator stay apart", {
 test_that("a name column with a missing or empty name is refused", {
   base <- data.frame(p = c(0.3, 0.1), moe = c(0.05, 0.03))
   cl <- data.frame(p = c(0.33, 0.20), cv = c(0.110, 0.111),
-                   icc_psu = c(0.099, 0.019))
+                   icc_1 = c(0.099, 0.019))
   seen <- character(0)
   for (nm in list(c(NA, NA), c("a", NA), c("a", ""), c("a", " "))) {
     bad <- transform(base, name = nm)
@@ -541,8 +540,7 @@ test_that("a name column with a missing or empty name is refused", {
                                transform(bad, region = "S")),
                          domains = "region"),
                  "indicator name missing on row\\(s\\) ")
-    expect_error(n_cluster(stage_cost = c(500, 50),
-                           indicators = transform(cl, name = nm)),
+    expect_error(n_cluster(transform(cl, name = nm), stage_cost = c(500, 50)),
                  "indicator name missing on row\\(s\\) ")
     seen <- c(seen, paste(nm, collapse = "|"))
   }
@@ -570,10 +568,10 @@ test_that("the headline binding of cluster domains is the field one", {
   seen <- character(0)
   for (mode in c("cv", "budget")) {
     x <- if (mode == "budget") {
-      n_cluster(stage_cost = c(500, 50), indicators = both,
+      n_cluster(both, stage_cost = c(500, 50),
                 domains = "region", budget = 2e5)
     } else {
-      n_cluster(stage_cost = c(500, 50), indicators = both,
+      n_cluster(both, stage_cost = c(500, 50),
                 domains = "region")
     }
     expect_identical(x$binding, "a", label = mode)
@@ -592,7 +590,7 @@ test_that("only the joint route reports a domain set by its floor", {
   loose <- rbind(transform(flip, region = "N"),
                  transform(flip, cv = c(0.3, 0.3), region = "S"))
   expect_warning(
-    sep <- n_cluster(stage_cost = c(500, 50), indicators = loose,
+    sep <- n_cluster(loose, stage_cost = c(500, 50),
                      domains = "region", min_n_domain = 300),
     "below min_n_domain = 300"
   )
@@ -600,14 +598,14 @@ test_that("only the joint route reports a domain set by its floor", {
   expect_identical(sep$binding_cause, "precision")
   expect_identical(summary(sep)$binding_cause, "precision")
 
-  joint <- n_cluster(stage_cost = c(500, 50), indicators = loose,
+  joint <- n_cluster(loose, stage_cost = c(500, 50),
                      domains = "region", min_n_domain = 600, budget = 2e5,
                      allocation = "joint")
   expect_equal(joint$domains$.total_n[2L], 600, tolerance = 1e-8)
   expect_identical(joint$binding_cause, "min_n_domain")
   expect_identical(summary(joint)$binding_cause, "min_n_domain")
 
-  free <- n_cluster(stage_cost = c(500, 50), indicators = loose,
+  free <- n_cluster(loose, stage_cost = c(500, 50),
                     domains = "region", budget = 2e5, allocation = "joint")
   expect_identical(free$binding_cause, "precision")
 })
@@ -616,13 +614,12 @@ test_that("only the joint route reports a domain set by its floor", {
 
 test_that("domains whose pasted values collide print apart", {
   rows <- data.frame(name = "a", r1 = c("x/y", "x"), r2 = c("z", "y/z"),
-                     p = c(0.3, 0.2), moe = 0.05, cv = 0.2, icc_psu = 0.05)
+                     p = c(0.3, 0.2), moe = 0.05, cv = 0.2, icc_1 = 0.05)
   fits <- list(
     multi = n_multi(rows[c("name", "r1", "r2", "p", "moe")],
                     domains = c("r1", "r2")),
-    cluster = n_cluster(stage_cost = c(500, 50),
-                        indicators = rows[c("name", "r1", "r2", "p", "cv",
-                                            "icc_psu")],
+    cluster = n_cluster(rows[c("name", "r1", "r2", "p", "cv",
+                                            "icc_1")], stage_cost = c(500, 50),
                         domains = c("r1", "r2"))
   )
   seen <- character(0)
@@ -674,47 +671,47 @@ test_that("long domain values keep their sections apart", {
 ## Design quantities of a multi-indicator cluster summary
 
 test_that("per-row design quantities follow the inputs", {
-  x <- n_cluster(stage_cost = c(500, 50), indicators = flip,
+  x <- n_cluster(flip, stage_cost = c(500, 50),
                  resp_rate = 0.9, eligibility_rate = 0.8)
   s <- summary(x)
   ind <- s$indicators
-  expect_equal(ind$icc_psu, flip$icc_psu)
+  expect_equal(ind$icc_1, flip$icc_1)
   expect_equal(ind$unit_relvar, (1 - flip$p) / flip$p, tolerance = 1e-12)
   expect_equal(ind$resp_rate, c(0.9, 0.9))
-  expect_false(any(c("icc_ssu", "var_ratio_ssu", "resp_rate_ssu",
+  expect_false(any(c("icc_2", "var_ratio_2", "resp_rate_2",
                      "alpha") %in% names(ind)))
   a <- s$assumptions
-  expect_null(a$icc_psu)
+  expect_null(a$icc_1)
   expect_null(a$unit_relvar)
-  expect_null(a$resp_rate_psu)
-  expect_identical(a$var_ratio_psu, 1)
+  expect_null(a$resp_rate_1)
+  expect_identical(a$var_ratio_1, 1)
   expect_identical(a$resp_rate, 0.9)
   expect_identical(a$eligibility_rate, 0.8)
   expect_identical(a$prop_method, "wald")
   out <- capture.output(print(s))
   at <- match("Assumptions by indicator", out)
   expect_false(is.na(at))
-  expect_true(any(grepl("^ Indicator +icc_psu +unit_relvar$", out)))
+  expect_true(any(grepl("^ Indicator +icc_1 +unit_relvar$", out)))
   expect_true(any(grepl("^ a +0\\.099 +2\\.03$", out)))
-  expect_true("  var_ratio_psu: 1" %in% out)
+  expect_true("  var_ratio_1: 1" %in% out)
   expect_true("  eligibility rate: 0.8" %in% out)
 })
 
 test_that("a three-stage table of varying quantities wraps within 80 columns", {
   rows <- data.frame(
     name = c("stunting", "anemia", "vacc"), p = c(0.3, 0.1, 0.7),
-    moe = c(0.05, 0.03, 0.05), icc_psu = c(0.05, 0.02, 0.1),
-    icc_ssu = c(0.1, 0.2, 0.05), var_ratio_psu = c(1, 1.1, 0.9),
-    resp_rate_psu = c(0.95, 0.9, 1), resp_rate_ssu = c(0.9, 0.95, 1),
+    moe = c(0.05, 0.03, 0.05), icc_1 = c(0.05, 0.02, 0.1),
+    icc_2 = c(0.1, 0.2, 0.05), var_ratio_1 = c(1, 1.1, 0.9),
+    resp_rate_1 = c(0.95, 0.9, 1), resp_rate_2 = c(0.9, 0.95, 1),
     resp_rate = c(0.9, 0.8, 0.85), alpha = c(0.05, 0.1, 0.05)
   )
-  s <- summary(n_cluster(stage_cost = c(400, 80, 10), indicators = rows))
+  s <- summary(n_cluster(rows, stage_cost = c(400, 80, 10)))
   ind <- s$indicators
-  for (col in c("icc_psu", "icc_ssu", "var_ratio_psu", "resp_rate_psu",
-                "resp_rate_ssu", "resp_rate", "alpha")) {
+  for (col in c("icc_1", "icc_2", "var_ratio_1", "resp_rate_1",
+                "resp_rate_2", "resp_rate", "alpha")) {
     expect_equal(ind[[col]], rows[[col]], label = col)
   }
-  expect_equal(ind$var_ratio_ssu, rows$var_ratio_psu * (1 - rows$icc_psu),
+  expect_equal(ind$var_ratio_2, rows$var_ratio_1 * (1 - rows$icc_1),
                tolerance = 1e-12)
   out <- capture.output(print(s))
   expect_lte(max(nchar(out, type = "width")), 80L)
@@ -723,8 +720,8 @@ test_that("a three-stage table of varying quantities wraps within 80 columns", {
   shown <- unlist(strsplit(trimws(grep("^ Indicator ", tail_out,
                                        value = TRUE)), " +"))
   expect_setequal(setdiff(shown, "Indicator"),
-                  c("icc_psu", "icc_ssu", "unit_relvar", "var_ratio_psu",
-                    "var_ratio_ssu", "resp_rate_psu", "resp_rate_ssu",
+                  c("icc_1", "icc_2", "unit_relvar", "var_ratio_1",
+                    "var_ratio_2", "resp_rate_1", "resp_rate_2",
                     "resp_rate", "alpha"))
 })
 
@@ -732,53 +729,90 @@ test_that("design quantities follow their rows across domains", {
   rows <- data.frame(name = c("a", "b", "a", "b"),
                      region = c("N", "N", "S", "S"),
                      p = c(0.3, 0.2, 0.35, 0.25), cv = 0.12,
-                     icc_psu = c(0.05, 0.02, 0.08, 0.03))
-  s <- summary(n_cluster(stage_cost = c(500, 50), indicators = rows,
+                     icc_1 = c(0.05, 0.02, 0.08, 0.03))
+  s <- summary(n_cluster(rows, stage_cost = c(500, 50),
                          domains = "region"))
   ind <- s$indicators
   at <- match(paste(ind$domain, ind$name), paste(rows$region, rows$name))
-  expect_equal(ind$icc_psu, rows$icc_psu[at])
+  expect_equal(ind$icc_1, rows$icc_1[at])
   expect_equal(ind$unit_relvar, (1 - rows$p[at]) / rows$p[at],
                tolerance = 1e-12)
   out <- capture.output(print(s))
-  expect_true(any(grepl("^ Domain +Indicator +icc_psu +unit_relvar$", out)))
+  expect_true(any(grepl("^ Domain +Indicator +icc_1 +unit_relvar$", out)))
   expect_true(any(grepl("^ S +a +0\\.08 ", out)))
 })
 
 test_that("design quantities of unnamed rows are read from their input rows", {
   rows <- data.frame(p = c(0.3, 0.1), cv = c(0.1, 0.1),
-                     icc_psu = c(0.02, 0.05), resp_rate = c(0.8, 0.9))
-  ind <- summary(n_cluster(stage_cost = c(500, 50), indicators = rows))$indicators
+                     icc_1 = c(0.02, 0.05), resp_rate = c(0.8, 0.9))
+  ind <- summary(n_cluster(rows, stage_cost = c(500, 50)))$indicators
   expect_identical(ind$name, c("1", "2"))
-  expect_equal(ind$icc_psu, rows$icc_psu)
+  expect_equal(ind$icc_1, rows$icc_1)
   expect_equal(ind$unit_relvar, (1 - rows$p) / rows$p, tolerance = 1e-12)
   expect_equal(ind$resp_rate, rows$resp_rate)
-  expect_equal(ind$var_ratio_psu, c(1, 1))
+  expect_equal(ind$var_ratio_1, c(1, 1))
 })
 
 test_that("design quantities of unnamed rows follow them across interleaved domains", {
   rows <- data.frame(p = c(0.3, 0.2, 0.1, 0.4), cv = 0.1,
-                     icc_psu = c(0.02, 0.03, 0.04, 0.05),
+                     icc_1 = c(0.02, 0.03, 0.04, 0.05),
                      resp_rate = c(0.7, 0.8, 0.9, 0.6),
                      region = c("A", "B", "A", "B"))
-  ind <- summary(n_cluster(stage_cost = c(500, 50), indicators = rows,
+  ind <- summary(n_cluster(rows, stage_cost = c(500, 50),
                            domains = "region"))$indicators
   at <- as.integer(ind$name)
   expect_identical(ind$domain, rows$region[at])
   expect_identical(at, c(1L, 3L, 2L, 4L))
-  expect_equal(ind$icc_psu, rows$icc_psu[at])
+  expect_equal(ind$icc_1, rows$icc_1[at])
   expect_equal(ind$unit_relvar, (1 - rows$p[at]) / rows$p[at],
                tolerance = 1e-12)
   expect_equal(ind$resp_rate, rows$resp_rate[at])
 })
 
 test_that("third-stage quantities of unnamed rows are read from their input rows", {
-  rows <- data.frame(p = c(0.3, 0.1), cv = 0.1, icc_psu = c(0.02, 0.05),
-                     icc_ssu = c(0.1, 0.2), resp_rate_ssu = c(0.9, 0.8))
-  ind <- summary(n_cluster(stage_cost = c(500, 100, 20),
-                           indicators = rows))$indicators
-  expect_equal(ind$icc_psu, rows$icc_psu)
-  expect_equal(ind$icc_ssu, rows$icc_ssu)
-  expect_equal(ind$resp_rate_ssu, rows$resp_rate_ssu)
+  rows <- data.frame(p = c(0.3, 0.1), cv = 0.1, icc_1 = c(0.02, 0.05),
+                     icc_2 = c(0.1, 0.2), resp_rate_2 = c(0.9, 0.8))
+  ind <- summary(n_cluster(rows, stage_cost = c(500, 100, 20)))$indicators
+  expect_equal(ind$icc_1, rows$icc_1)
+  expect_equal(ind$icc_2, rows$icc_2)
+  expect_equal(ind$resp_rate_2, rows$resp_rate_2)
   expect_equal(ind$resp_rate, c(1, 1))
+})
+
+test_that("summary() produces structured summaries for n_change() and n_pooled()", {
+  ch <- n_change(p = c(0.30, 0.35), moe = 0.03, overlap = 0.5,
+                 overlap_cor = 0.6, resp_rate = 0.85)
+  sch <- summary(ch)
+  expect_s3_class(sch, "summary.svyplan_n")
+  expect_identical(sch$kind, "change")
+  expect_equal(sch$n$field, ceiling(ch$n))
+  expect_lte(sch$precision[["moe"]], 0.03 + 1e-9)
+  out_ch <- capture.output(print(sch))
+  expect_true(any(grepl("change between two occasions", out_ch)))
+  expect_true(any(grepl("Precision at the field size", out_ch)))
+
+  pl <- n_pooled(p = 0.30, moe = 0.02, occasions = 4, overlap = 0.75,
+                 cor_decay = 0.6, resp_rate = 0.9)
+  spl <- summary(pl)
+  expect_s3_class(spl, "summary.svyplan_n")
+  expect_identical(spl$kind, "pooled")
+  expect_identical(spl$occasions, 4L)
+  expect_equal(spl$sizes[["total_field"]], ceiling(pl$n) * 4)
+  expect_lte(spl$precision[["moe"]], 0.02 + 1e-9)
+  out_pl <- capture.output(print(spl))
+  expect_true(any(grepl("pooled estimate \\(4 occasions\\)", out_pl)))
+  expect_true(any(grepl("Total field", out_pl)))
+})
+
+## Multi-indicator summaries carry the yields
+
+test_that("multi-indicator summaries show eligibility and eligible units", {
+  ind <- data.frame(name = c("a", "b"), p = c(0.3, 0.4), cv = 0.1)
+  s <- capture.output(summary(n_multi(ind, eligibility_rate = 0.8,
+                                      eligible_per_unit = 2)))
+  expect_true(any(grepl("eligibility rate: 0.8", s)))
+  expect_true(any(grepl("eligible per unit: 2", s)))
+  cl <- n_cluster(transform(ind, icc_1 = 0.05), stage_cost = c(100, 10),
+                  eligible_per_unit = 2)
+  expect_true(any(grepl("eligible per unit: 2", capture.output(summary(cl)))))
 })

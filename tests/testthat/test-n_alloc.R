@@ -4,7 +4,7 @@ test_that("n_alloc: neyman allocation correctness", {
     sd = c(10, 20, 15)
   )
   res <- n_alloc(frame, n = 600)
-  expect_s3_class(res, "svyplan_n")
+  expect_s3_class(res, "svyplan_alloc")
   expect_equal(res$type, "alloc")
   expect_equal(res$method, "neyman")
   expect_true(!is.null(res$detail))
@@ -134,7 +134,7 @@ test_that("n_alloc: budget mode", {
     unit_cost = c(1, 2, 1.5)
   )
   res <- n_alloc(frame, budget = 500)
-  expect_s3_class(res, "svyplan_n")
+  expect_s3_class(res, "svyplan_alloc")
   total_cost <- sum(res$detail$n * frame$unit_cost)
   expect_true(abs(total_cost - 500) < 1)
 })
@@ -298,7 +298,7 @@ test_that("n_alloc: same stratum label across domains is allowed", {
     mean = c(50, 60)
   )
   res <- n_alloc(frame, domains = "region", cv = 0.05)
-  expect_s3_class(res, "svyplan_n")
+  expect_s3_class(res, "svyplan_alloc")
 })
 
 test_that("n_alloc: max_weight < 1 rejected", {
@@ -413,7 +413,7 @@ test_that("n_alloc: var column alternative to sd", {
     mean = c(50, 70, 60)
   )
   res <- n_alloc(frame, n = 600)
-  expect_s3_class(res, "svyplan_n")
+  expect_s3_class(res, "svyplan_alloc")
 })
 
 test_that("n_alloc: p column alternative to mean", {
@@ -439,7 +439,7 @@ test_that("prec_alloc: basic usage", {
   expect_true(!is.na(res$cv))
   expect_identical(names(formals(prec_alloc))[1L], "frame")
   expect_identical(names(formals(prec_alloc.default))[1L], "frame")
-  expect_identical(names(formals(prec_alloc.svyplan_n))[1L], "frame")
+  expect_identical(names(formals(prec_alloc.svyplan_alloc))[1L], "frame")
 })
 
 test_that("prec_alloc: round-trip from n_alloc", {
@@ -547,13 +547,13 @@ test_that("n_alloc: extra columns ignored when domains is NULL", {
 test_that("cluster mode matches n_cluster closed forms for one stratum", {
   fr <- data.frame(
     stratum = "A", N = 1e9, sd = 0.458, mean = 0.3,
-    icc_psu = 0.05, cost_psu = 500, cost_ssu = 50
+    icc_1 = 0.05, cost_1 = 500, cost_2 = 50
   )
   res <- n_alloc(fr, cv = 0.05)
   nc <- n_cluster(cv = 0.05, icc = 0.05, unit_relvar = (0.458 / 0.3)^2,
                   stage_cost = c(500, 50))
-  expect_equal(res$detail$n_per_psu, nc$n[["n_per_psu"]], tolerance = 1e-6)
-  expect_equal(res$detail$n_psu, nc$n[["n_psu"]], tolerance = 1e-4)
+  expect_equal(res$detail$take_2, nc$n[["stage_2"]], tolerance = 1e-6)
+  expect_equal(res$detail$n_1, nc$n[["stage_1"]], tolerance = 1e-4)
   expect_equal(res$n, nc$total_n, tolerance = 1e-4)
 
   resb <- n_alloc(fr, budget = 100000)
@@ -568,36 +568,36 @@ test_that("cluster mode aggregate CV matches the hand formula", {
     N = c(50000, 150000),
     sd = c(0.45, 0.48),
     mean = c(0.35, 0.25),
-    icc_psu = c(0.03, 0.08),
-    cost_psu = c(300, 600),
-    cost_ssu = c(40, 60)
+    icc_1 = c(0.03, 0.08),
+    cost_1 = c(300, 600),
+    cost_2 = c(40, 60)
   )
   res <- n_alloc(fr, cv = 0.05)
   d <- res$detail
   W <- fr$N / sum(fr$N)
-  S_eff <- fr$sd * sqrt(1 + fr$icc_psu * (d$n_per_psu - 1))
+  S_eff <- fr$sd * sqrt(1 + fr$icc_1 * (d$take_2 - 1))
   V <- sum(W^2 * S_eff^2 * (1 - d$n_eff / fr$N) / d$n_eff)
   expect_equal(sqrt(V) / sum(W * fr$mean), 0.05, tolerance = 1e-8)
   expect_equal(res$cv, 0.05, tolerance = 1e-8)
-  expect_true(all(c("n_per_psu", "n_psu", "n_psu_int") %in% names(d)))
+  expect_true(all(c("take_2", "n_1", "n_1_int") %in% names(d)))
   expect_equal(d$sd, fr$sd)
 })
 
-test_that("cluster mode respects a fixed n_per_psu column", {
+test_that("cluster mode respects a fixed take_2 column", {
   fr <- data.frame(
     stratum = c("A", "B"), N = c(4e4, 6e4), sd = c(10, 14),
-    mean = c(50, 60), icc_psu = c(0.05, 0.05),
-    n_per_psu = c(20, 10)
+    mean = c(50, 60), icc_1 = c(0.05, 0.05),
+    take_2 = c(20, 10)
   )
   res <- n_alloc(fr, cv = 0.02)
-  expect_equal(res$detail$n_per_psu, c(20, 10))
+  expect_equal(res$detail$take_2, c(20, 10))
 
-  fr$n_per_psu <- c(20, NA)
-  fr$cost_psu <- c(300, 300)
-  fr$cost_ssu <- c(30, 30)
+  fr$take_2 <- c(20, NA)
+  fr$cost_1 <- c(300, 300)
+  fr$cost_2 <- c(30, 30)
   res2 <- n_alloc(fr, cv = 0.02)
-  expect_equal(res2$detail$n_per_psu[1], 20)
-  expect_equal(res2$detail$n_per_psu[2],
+  expect_equal(res2$detail$take_2[1], 20)
+  expect_equal(res2$detail$take_2[2],
                sqrt(300 / 30 * 0.95 / 0.05), tolerance = 1e-8)
 })
 
@@ -605,20 +605,20 @@ test_that("cluster mode works with constraints and n mode", {
   fr <- data.frame(
     stratum = c("A", "B", "C"), N = c(2e4, 3e4, 5e4),
     sd = c(8, 12, 10), mean = c(40, 55, 48),
-    icc_psu = rep(0.05, 3), n_per_psu = rep(12, 3),
+    icc_1 = rep(0.05, 3), take_2 = rep(12, 3),
     take_all = c(FALSE, FALSE, FALSE)
   )
   res <- n_alloc(fr, n = 3000, min_n_stratum = 500)
   expect_equal(sum(res$detail$n), 3000, tolerance = 1e-6)
   expect_true(all(res$detail$n >= 500 - 1e-8))
-  expect_equal(res$detail$n_psu, res$detail$n / 12)
+  expect_equal(res$detail$n_1, res$detail$n / 12)
 })
 
 test_that("cluster mode round-trips through prec_alloc", {
   fr <- data.frame(
     stratum = c("A", "B"), N = c(5e4, 1.5e5), sd = c(0.45, 0.48),
-    mean = c(0.35, 0.25), icc_psu = c(0.03, 0.08),
-    cost_psu = c(300, 600), cost_ssu = c(40, 60)
+    mean = c(0.35, 0.25), icc_1 = c(0.03, 0.08),
+    cost_1 = c(300, 600), cost_2 = c(40, 60)
   )
   res <- n_alloc(fr, cv = 0.05)
   prec <- prec_alloc(res)
@@ -629,27 +629,27 @@ test_that("cluster mode round-trips through prec_alloc", {
 
 test_that("cluster mode validates its columns", {
   fr <- data.frame(stratum = "A", N = 1e4, sd = 10, mean = 50,
-                   icc_psu = 0.05)
+                   icc_1 = 0.05)
   expect_error(n_alloc(fr, cv = 0.02),
-               "'cost_psu' and 'cost_ssu' are required")
-  fr$cost_psu <- 300
+               "'cost_1', 'cost_2' are required")
+  fr$cost_1 <- 300
   expect_error(n_alloc(fr, cv = 0.02), "supplied together")
-  fr$cost_ssu <- 30
+  fr$cost_2 <- 30
   fr$unit_cost <- 5
   expect_error(n_alloc(fr, cv = 0.02), "instead of 'unit_cost'")
   fr$unit_cost <- NULL
   expect_error(n_alloc(fr, cv = 0.02, unit_cost = 5), "instead of 'unit_cost'")
-  fr$icc_psu <- 1.5
+  fr$icc_1 <- 1.5
   expect_error(n_alloc(fr, cv = 0.02), "icc")
-  fr$icc_psu <- 0.05
-  fr$n_per_psu <- 0.5
-  expect_error(n_alloc(fr, cv = 0.02), "n_per_psu")
+  fr$icc_1 <- 0.05
+  fr$take_2 <- 0.5
+  expect_error(n_alloc(fr, cv = 0.02), "take_2")
 })
 
-test_that("cluster mode var_ratio_psu requires an exact column name", {
+test_that("cluster mode var_ratio_1 requires an exact column name", {
   fr <- data.frame(
     stratum = c("a", "b"), N = c(5000, 8000), sd = c(10, 12),
-    mean = c(50, 60), icc_psu = c(0.05, 0.05), n_per_psu = c(12, 12)
+    mean = c(50, 60), icc_1 = c(0.05, 0.05), take_2 = c(12, 12)
   )
   base <- n_alloc(fr, n = 600)
   fr$var_ratio_psu_backup <- c(2, 9)
@@ -657,10 +657,10 @@ test_that("cluster mode var_ratio_psu requires an exact column name", {
   expect_equal(same$detail$n, base$detail$n)
 
   fr$var_ratio_psu_backup <- NULL
-  fr$var_ratio_psu <- c(2, 9)
+  fr$var_ratio_1 <- c(2, 9)
   with_k <- n_alloc(fr, n = 600)
   expect_false(isTRUE(all.equal(with_k$cv, base$cv)))
-  S_eff <- fr$sd * sqrt(fr$var_ratio_psu * (1 + fr$icc_psu * (fr$n_per_psu - 1)))
+  S_eff <- fr$sd * sqrt(fr$var_ratio_1 * (1 + fr$icc_1 * (fr$take_2 - 1)))
   d <- with_k$detail
   W <- fr$N / sum(fr$N)
   V <- sum(W^2 * S_eff^2 * (1 - d$n_eff / fr$N) / d$n_eff)
@@ -670,46 +670,46 @@ test_that("cluster mode var_ratio_psu requires an exact column name", {
 test_that("cluster mode budget solve requires stage costs", {
   fr <- data.frame(
     stratum = c("a", "b"), N = c(5000, 8000), sd = c(10, 12),
-    mean = c(50, 60), icc_psu = c(0.05, 0.05), n_per_psu = c(12, 12)
+    mean = c(50, 60), icc_1 = c(0.05, 0.05), take_2 = c(12, 12)
   )
   expect_error(n_alloc(fr, budget = 10000),
-               "requires 'cost_psu' and 'cost_ssu'")
-  fr$cost_psu <- 300
-  fr$cost_ssu <- 30
+               "requires stage cost columns 'cost_1', 'cost_2'")
+  fr$cost_1 <- 300
+  fr$cost_2 <- 30
   expect_silent(n_alloc(fr, budget = 100000))
 })
 
-test_that("cluster columns without icc_psu are rejected", {
+test_that("cluster columns without icc_1 are rejected", {
   fr <- data.frame(
     stratum = c("a", "b"), N = c(5000, 8000), sd = c(10, 12),
-    cost_psu = c(300, 300), cost_ssu = c(30, 30)
+    cost_1 = c(300, 300), cost_2 = c(30, 30)
   )
-  expect_error(n_alloc(fr, n = 500), "require a 'icc_psu' column")
+  expect_error(n_alloc(fr, n = 500), "require an 'icc_1' column")
   fr2 <- data.frame(
     stratum = c("a", "b"), N = c(5000, 8000), sd = c(10, 12),
-    var_ratio_psu = c(1, 2)
+    var_ratio_1 = c(1, 2)
   )
-  expect_error(n_alloc(fr2, n = 500), "require a 'icc_psu' column")
+  expect_error(n_alloc(fr2, n = 500), "require an 'icc_1' column")
 })
 
-test_that("cluster mode guards n_per_psu against the stratum population", {
+test_that("cluster mode guards take_2 against the stratum population", {
   fr <- data.frame(
     stratum = c("a", "b"), N = c(300, 8000), sd = c(10, 12),
-    mean = c(50, 60), icc_psu = c(0.05, 0.05), n_per_psu = c(500, 12)
+    mean = c(50, 60), icc_1 = c(0.05, 0.05), take_2 = c(500, 12)
   )
   expect_error(n_alloc(fr, n = 200), "exceeds the stratum population")
 
-  fr$n_per_psu <- c(NA, 12)
-  fr$icc_psu <- c(1e-6, 0.05)
-  fr$cost_psu <- c(30000, 300)
-  fr$cost_ssu <- c(3, 30)
+  fr$take_2 <- c(NA, 12)
+  fr$icc_1 <- c(1e-6, 0.05)
+  fr$cost_1 <- c(30000, 300)
+  fr$cost_2 <- c(3, 30)
   # the frame also drives one stratum to a single PSU, which warns in its
   # own right, so both conditions are caught here
   expect_warning(
     expect_warning(res <- n_alloc(fr, n = 200), "clamped to 'N'"),
     "single PSU"
   )
-  expect_equal(res$detail$n_per_psu[1], 300)
+  expect_equal(res$detail$take_2[1], 300)
 })
 
 test_that("budget-mode integer allocation stays within budget", {
@@ -779,17 +779,17 @@ test_that("operational element metrics match the integer allocation", {
 })
 
 test_that("cluster-mode operational design uses whole PSUs within budget", {
-  fr <- data.frame(N = 1000, sd = 10, mean = 50, icc_psu = 0.05,
-                   cost_psu = 500, cost_ssu = 50)
+  fr <- data.frame(N = 1000, sd = 10, mean = 50, icc_1 = 0.05,
+                   cost_1 = 500, cost_2 = 50)
   # a budget this small buys one PSU, which warns
   expect_warning(x <- n_alloc(fr, budget = 1200), "single PSU")
   d <- x$detail
   op <- x$operational
-  expect_true(all(d$n_psu_int == round(d$n_psu_int)))
-  expect_true(all(d$n_per_psu_int == round(d$n_per_psu_int)))
-  expect_equal(d$n_int, d$n_psu_int * d$n_per_psu_int)
+  expect_true(all(d$n_1_int == round(d$n_1_int)))
+  expect_true(all(d$take_2_int == round(d$take_2_int)))
+  expect_equal(d$n_int, d$n_1_int * d$take_2_int)
   expect_equal(op$cost,
-               sum(d$n_psu_int * (fr$cost_psu + fr$cost_ssu * d$n_per_psu_int)))
+               sum(d$n_1_int * (fr$cost_1 + fr$cost_2 * d$take_2_int)))
   expect_lte(op$cost, 1200)
   expect_error(n_alloc(fr, budget = 500), "cannot fund one whole PSU")
 })
@@ -797,19 +797,19 @@ test_that("cluster-mode operational design uses whole PSUs within budget", {
 test_that("cluster-mode operational cv design meets the target", {
   fr <- data.frame(stratum = c("U", "R"), N = c(50000, 150000),
                    sd = c(0.45, 0.48), mean = c(0.35, 0.25),
-                   icc_psu = c(0.03, 0.08), cost_psu = c(300, 600),
-                   cost_ssu = c(40, 60))
+                   icc_1 = c(0.03, 0.08), cost_1 = c(300, 600),
+                   cost_2 = c(40, 60))
   x <- n_alloc(fr, cv = 0.05)
   op <- x$operational
   expect_lte(op$cv, 0.05 + 1e-10)
   d <- x$detail
-  expect_equal(d$n_int, d$n_psu_int * d$n_per_psu_int)
+  expect_equal(d$n_int, d$n_1_int * d$take_2_int)
 })
 
 test_that("cluster operational designs enforce lower and take-all bounds", {
   constrained <- data.frame(
-    N = 80, sd = 1, mean = 1, icc_psu = 0.1, n_per_psu = 7,
-    cost_psu = 500, cost_ssu = 50
+    N = 80, sd = 1, mean = 1, icc_1 = 0.1, take_2 = 7,
+    cost_1 = 500, cost_2 = 50
   )
   expect_error(
     n_alloc(constrained, budget = 2200, min_n_stratum = 17),
@@ -819,8 +819,8 @@ test_that("cluster operational designs enforce lower and take-all bounds", {
   # take_all claimed an ultimate-unit census with a within-PSU take of 2 still
   # in force, and reported cv = 0 for it. Taking every PSU is not a census.
   census <- data.frame(
-    N = 5, sd = 1, mean = 1, icc_psu = 0.05,
-    n_per_psu = 2, take_all = TRUE
+    N = 5, sd = 1, mean = 1, icc_1 = 0.05,
+    take_2 = 2, take_all = TRUE
   )
   expect_error(n_alloc(census, n = 5), "does not imply an ultimate-unit census")
 })
@@ -829,18 +829,18 @@ test_that("cluster n-mode comes as close to the total as whole takes allow", {
   fr <- data.frame(
     stratum = c("a", "b", "c"), N = c(61, 83, 97),
     sd = c(1, 2, 3), mean = c(4, 5, 6),
-    icc_psu = c(0.03, 0.08, 0.12),
-    cost_psu = 500, cost_ssu = 50
+    icc_1 = c(0.03, 0.08, 0.12),
+    cost_1 = 500, cost_2 = 50
   )
   expect_warning(x <- n_alloc(fr, n = 73, min_n_stratum = 8), "single PSU")
   d <- x$detail
 
   gap <- abs(73 - sum(d$n_int))
-  up <- d$n_int + d$n_per_psu_int <= floor(d$.upper + 1e-9)
-  down <- d$n_int - d$n_per_psu_int >= ceiling(d$.lower - 1e-9)
-  expect_true(all(abs(73 - sum(d$n_int) - d$n_per_psu_int[up]) >= gap))
-  expect_true(all(abs(73 - sum(d$n_int) + d$n_per_psu_int[down]) >= gap))
-  expect_equal(d$n_int, d$n_psu_int * d$n_per_psu_int)
+  up <- d$n_int + d$take_2_int <= floor(d$.upper + 1e-9)
+  down <- d$n_int - d$take_2_int >= ceiling(d$.lower - 1e-9)
+  expect_true(all(abs(73 - sum(d$n_int) - d$take_2_int[up]) >= gap))
+  expect_true(all(abs(73 - sum(d$n_int) + d$take_2_int[down]) >= gap))
+  expect_equal(d$n_int, d$n_1_int * d$take_2_int)
   expect_true(all(d$n_int >= ceiling(d$.lower - 1e-9)))
   expect_true(all(d$n_int <= floor(d$.upper + 1e-9)))
 })
@@ -849,14 +849,14 @@ test_that("cluster n-mode keeps a fixed take fixed and moves the total instead",
   fr <- data.frame(
     stratum = c("a", "b", "c"), N = c(61, 83, 97),
     sd = c(1, 2, 3), mean = c(4, 5, 6),
-    icc_psu = c(0.03, 0.08, 0.12), n_per_psu = c(7, 9, 11)
+    icc_1 = c(0.03, 0.08, 0.12), take_2 = c(7, 9, 11)
   )
   x <- n_alloc(fr, n = 73, min_n_stratum = 8)
   d <- x$detail
 
   # the take is what was asked for, in every stratum
-  expect_equal(d$n_per_psu_int, c(7L, 9L, 11L))
-  expect_equal(d$n_int, d$n_psu_int * d$n_per_psu_int)
+  expect_equal(d$take_2_int, c(7L, 9L, 11L))
+  expect_equal(d$n_int, d$n_1_int * d$take_2_int)
   expect_true(all(d$n_int >= ceiling(d$.lower - 1e-9)))
   expect_true(all(d$n_int <= floor(d$.upper + 1e-9)))
   # the total is the price of that, and it stays close
@@ -868,12 +868,12 @@ test_that("a fixed take survives a stratum total with no useful divisor", {
   # divisor, which is 1, and field 601 clusters of one element each
   fr <- data.frame(
     stratum = "a", N = 4000, sd = 10, mean = 50,
-    icc_psu = 0.05, n_per_psu = 10, cost_psu = 500, cost_ssu = 50
+    icc_1 = 0.05, take_2 = 10, cost_1 = 500, cost_2 = 50
   )
   x <- n_alloc(fr, n = 601)
 
-  expect_equal(x$detail$n_per_psu_int, 10L)
-  expect_equal(x$detail$n_psu_int, 60L)
+  expect_equal(x$detail$take_2_int, 10L)
+  expect_equal(x$detail$n_1_int, 60L)
   expect_equal(x$detail$n_int, 600L)
 })
 
@@ -911,15 +911,15 @@ test_that("randomized clustered operational invariants hold", {
       N = sample(30:500, H),
       sd = runif(H, 0.2, 3),
       mean = runif(H, 2, 10),
-      icc_psu = runif(H, 0.01, 0.25),
-      n_per_psu = sample(2:12, H, replace = TRUE),
-      cost_psu = runif(H, 100, 600),
-      cost_ssu = runif(H, 5, 60)
+      icc_1 = runif(H, 0.01, 0.25),
+      take_2 = sample(2:12, H, replace = TRUE),
+      cost_1 = runif(H, 100, 600),
+      cost_2 = runif(H, 5, 60)
     )
     min_n_stratum <- sample(1:min(15, min(fr$N)), 1)
     min_cost <- sum(
-      ceiling(min_n_stratum / fr$n_per_psu) *
-        (fr$cost_psu + fr$cost_ssu * fr$n_per_psu)
+      ceiling(min_n_stratum / fr$take_2) *
+        (fr$cost_1 + fr$cost_2 * fr$take_2)
     )
     budget <- min_cost * runif(1, 1, 3)
     # random budgets leave some strata on a single PSU, which warns; the
@@ -932,7 +932,7 @@ test_that("randomized clustered operational invariants hold", {
       d <- x$detail
       expect_true(all(d$n_int >= ceiling(d$.lower - 1e-9)))
       expect_true(all(d$n_int <= floor(d$.upper + 1e-9)))
-      expect_equal(d$n_int, d$n_psu_int * d$n_per_psu_int)
+      expect_equal(d$n_int, d$n_1_int * d$take_2_int)
       expect_lte(x$operational$cost, budget + 1e-8)
     }
   }
@@ -956,10 +956,10 @@ test_that("prec_alloc min_n_stratum matches the fitted path and is joint-only", 
   )
   adopted <- c(90, 150, 120)
 
-  direct <- prec_alloc(frame, n = adopted, measures = measures,
+  direct <- prec_alloc_joint(frame, n = adopted, measures = measures,
                        targets = targets, min_n_stratum = 100)
-  fitted <- prec_alloc(
-    n_alloc(frame, measures = measures, targets = targets, min_n_stratum = 100),
+  fitted <- prec_alloc_joint(
+    n_alloc_joint(frame, measures = measures, targets = targets, min_n_stratum = 100),
     n = adopted
   )
   expect_equal(direct$bounds, fitted$bounds)
@@ -968,14 +968,14 @@ test_that("prec_alloc min_n_stratum matches the fitted path and is joint-only", 
   expect_false(direct$bounds$.pass[1L])
 
   # Without the floor the same allocation clears its bounds.
-  loose <- prec_alloc(frame, n = adopted, measures = measures,
+  loose <- prec_alloc_joint(frame, n = adopted, measures = measures,
                       targets = targets)
   expect_true(all(loose$bounds$.pass))
 
   expect_error(
     prec_alloc(data.frame(N = c(100, 200), sd = c(1, 2)), n = c(10, 20),
                min_n_stratum = 5),
-    "applies to joint precision assessment"
+    "unused argument: 'min_n_stratum'"
   )
 })
 
@@ -1169,57 +1169,61 @@ test_that("effective_n nets a per-stratum response rate to one overall rate", {
 
 ## Classic cluster mode: the PSU universe as a feasibility bound
 
-test_that("N_psu bounds the classic cluster allocation and its integerization", {
+test_that("N_1 bounds the classic cluster allocation and its integerization", {
   fr <- data.frame(
     stratum = c("A", "B"), N = c(50000, 60000), sd = c(10, 12),
-    icc_psu = c(0.05, 0.05), n_per_psu = c(10, 10),
-    cost_psu = c(500, 500), cost_ssu = c(10, 10), N_psu = c(60, 600)
+    icc_1 = c(0.05, 0.05), take_2 = c(10, 10),
+    cost_1 = c(500, 500), cost_2 = c(10, 10), N_1 = c(60, 600)
   )
   res <- n_alloc(fr, n = 2000)
   d <- res$detail
 
   # Unbounded, stratum A wanted about 82 PSUs from a universe of 60.
-  expect_true(all(d$n_psu <= d$N_psu + 1e-8))
-  expect_true(all(d$n_psu_int <= d$N_psu))
+  expect_true(all(d$n_1 <= d$N_1 + 1e-8))
+  expect_true(all(d$n_1_int <= d$N_1))
   expect_equal(d$.upper[1], 60 * 10)
   expect_true(d$.binding[1])
-  expect_equal(d$.bound_source[1], "N_psu")
-  expect_equal(d$.psu_frac, d$n_psu / d$N_psu)
+  expect_equal(d$.bound_source[1], "N_1")
+  expect_equal(d$.frac_1, d$n_1 / d$N_1)
+
+  odd <- n_alloc(fr, n = 1995)$detail
+  expect_true(any(odd$n_1 != odd$n_1_int))
+  expect_equal(odd$.frac_1, odd$n_1 / odd$N_1)
 })
 
-test_that("a missing N_psu leaves the unbounded approximation alone", {
+test_that("a missing N_1 leaves the unbounded approximation alone", {
   fr <- data.frame(
     stratum = c("A", "B"), N = c(50000, 60000), sd = c(10, 12),
-    icc_psu = c(0.05, 0.05), n_per_psu = c(10, 10),
-    cost_psu = c(500, 500), cost_ssu = c(10, 10)
+    icc_1 = c(0.05, 0.05), take_2 = c(10, 10),
+    cost_1 = c(500, 500), cost_2 = c(10, 10)
   )
   d <- n_alloc(fr, n = 2000)$detail
   expect_equal(d$n, c(819.6721, 1180.3279), tolerance = 1e-4)
-  expect_false(".psu_frac" %in% names(d))
+  expect_false(".frac_1" %in% names(d))
   expect_true(all(is.na(d$.bound_source)))
 })
 
-test_that("N_psu is validated and requires icc_psu", {
+test_that("N_1 is validated and requires icc_1", {
   base <- data.frame(
     stratum = c("A", "B"), N = c(5000, 6000), sd = c(10, 12),
-    icc_psu = c(0.05, 0.05), n_per_psu = c(10, 10)
+    icc_1 = c(0.05, 0.05), take_2 = c(10, 10)
   )
-  bad <- base; bad$N_psu <- c(60.5, 600)
+  bad <- base; bad$N_1 <- c(60.5, 600)
   expect_error(n_alloc(bad, n = 200), "positive whole numbers")
 
-  too_many <- base; too_many$N_psu <- c(50000, 600)
+  too_many <- base; too_many$N_1 <- c(50000, 600)
   expect_error(n_alloc(too_many, n = 200), "must not exceed")
 
   orphan <- data.frame(stratum = c("A", "B"), N = c(500, 600),
-                       sd = c(10, 12), N_psu = c(5, 6))
-  expect_error(n_alloc(orphan, n = 200), "require a 'icc_psu' column")
+                       sd = c(10, 12), N_1 = c(5, 6))
+  expect_error(n_alloc(orphan, n = 200), "require an 'icc_1' column")
 })
 
 test_that("an unreachable total blames the PSU universe, not the population", {
   fr <- data.frame(
     stratum = c("A", "B"), N = c(50000, 60000), sd = c(10, 12),
-    icc_psu = c(0.05, 0.05), n_per_psu = c(10, 10),
-    cost_psu = c(500, 500), cost_ssu = c(10, 10), N_psu = c(60, 600)
+    icc_1 = c(0.05, 0.05), take_2 = c(10, 10),
+    cost_1 = c(500, 500), cost_2 = c(10, 10), N_1 = c(60, 600)
   )
   # 6600 ultimate units are reachable, far short of the 50000 + 60000 frame.
   err <- tryCatch(n_alloc(fr, n = 8000), error = conditionMessage)
@@ -1230,43 +1234,44 @@ test_that("an unreachable total blames the PSU universe, not the population", {
 
 test_that("a PSU universe below the lower bound is a distinct message", {
   fr <- data.frame(
-    stratum = "A", N = 5000, sd = 10, icc_psu = 0.05, n_per_psu = 10,
-    N_psu = 3
+    stratum = "A", N = 5000, sd = 10, icc_1 = 0.05, take_2 = 10,
+    N_1 = 3
   )
   expect_error(n_alloc(fr, n = 30, min_n_stratum = 100),
-               "PSU universe 'N_psu' caps the stratum below its own lower bound")
+               "PSU universe 'N_1' caps the stratum below its own lower bound")
 })
 
 test_that("an appreciable PSU sampling fraction is disclosed, not warned about", {
   fr <- data.frame(
     stratum = c("A", "B"), N = c(50000, 60000), sd = c(10, 12),
-    icc_psu = c(0.05, 0.05), n_per_psu = c(10, 10),
-    cost_psu = c(500, 500), cost_ssu = c(10, 10), N_psu = c(60, 600)
+    icc_1 = c(0.05, 0.05), take_2 = c(10, 10),
+    cost_1 = c(500, 500), cost_2 = c(10, 10), N_1 = c(60, 600)
   )
   expect_no_warning(res <- n_alloc(fr, n = 2000))
   expect_output(print(res), "with-replacement first stage")
   expect_output(print(res), "bound active in A")
 
-  fr$N_psu <- c(6000, 6000)
+  ## 10 and 12 units per PSU still hold the fixed take of 10.
+  fr$N_1 <- c(5000, 5000)
   expect_silent(out <- capture.output(print(n_alloc(fr, n = 2000))))
   expect_false(any(grepl("with-replacement first stage", out)))
 })
 
-test_that("integerization is bounded by N_psu independently of the element bound", {
+test_that("integerization is bounded by N_1 independently of the element bound", {
   # The element bound counts ultimate units, and the whole-unit take the
   # operational search settles on need not be the fractional cost-optimal one
   # that set it. Here the element bound is met exactly (19 * 5 = 95) by a
   # design that would draw 19 PSUs from a universe of 10, so the PSU count
   # has to be bounded in its own right.
   fr <- data.frame(
-    stratum = "A", N = 5000, sd = 10, mean = 50, icc_psu = 0.05,
-    cost_psu = 475, cost_ssu = 100, N_psu = 10
+    stratum = "A", N = 5000, sd = 10, mean = 50, icc_1 = 0.05,
+    cost_1 = 475, cost_2 = 100, N_1 = 10
   )
   d <- n_alloc(fr, n = 95)$detail
-  expect_equal(d$n_per_psu, 9.5, tolerance = 1e-9)
+  expect_equal(d$take_2, 9.5, tolerance = 1e-9)
   expect_equal(d$.upper, 95)
-  expect_lte(d$n_psu_int, d$N_psu)
-  expect_equal(d$n_psu_int, 10L)
+  expect_lte(d$n_1_int, d$N_1)
+  expect_equal(d$n_1_int, 10L)
 })
 
 ## The whole-unit budget design stays inside the budget. Lifting a stratum to
@@ -1365,19 +1370,19 @@ test_that("joint allocation honors a floor per stratum", {
   measures <- data.frame(stratum = frame$stratum, name = "coverage",
                          p = c(0.5, 0.4, 0.6))
   targets <- data.frame(name = "coverage", cv = 0.06)
-  base <- n_alloc(frame, measures = measures, targets = targets)
+  base <- n_alloc_joint(frame, measures = measures, targets = targets)
   lift <- base$detail$n[1] + 50
-  fl <- n_alloc(frame, measures = measures, targets = targets,
+  fl <- n_alloc_joint(frame, measures = measures, targets = targets,
                 min_n_stratum = c(lift, NA, NA))
   expect_gte(fl$detail$n[1], lift - 1e-8)
   expect_equal(
     fl$detail$n,
-    n_alloc(transform(frame, min_n_stratum = c(lift, NA, NA)),
+    n_alloc_joint(transform(frame, min_n_stratum = c(lift, NA, NA)),
             measures = measures, targets = targets)$detail$n
   )
   expect_equal(
-    prec_alloc(fl)$detail$.achieved,
-    prec_alloc(frame, n = fl$detail$n, measures = measures,
+    prec_alloc_joint(fl)$detail$.achieved,
+    prec_alloc_joint(frame, n = fl$detail$n, measures = measures,
                targets = targets)$detail$.achieved
   )
 })
@@ -1394,7 +1399,7 @@ test_that("joint prec_alloc() sums domain variances with eligible weights", {
                      resp_rate = c(0.84, 0.91, 0.88),
                      eligible_per_unit = c(0.59, 1.23, 2.30))
   n <- c(850, 1525, 975)
-  res <- prec_alloc(regions, n = n, measures = mcpr,
+  res <- prec_alloc_joint(regions, n = n, measures = mcpr,
                     targets = data.frame(name = "mcpr",
                                          domain = c(".overall", "region"),
                                          cv = 0.10))
@@ -1418,16 +1423,16 @@ test_that("an all-NA min_n_stratum overrides a frame floor in joint mode", {
                       min_n_stratum = c(500, NA))
   measures <- data.frame(stratum = frame$stratum, name = "p", p = 0.5)
   targets <- data.frame(name = "p", cv = 0.1)
-  none <- n_alloc(frame, measures = measures, targets = targets,
+  none <- n_alloc_joint(frame, measures = measures, targets = targets,
                   min_n_stratum = c(NA, NA))
-  bare <- n_alloc(frame[, 1:2], measures = measures, targets = targets)
+  bare <- n_alloc_joint(frame[, 1:2], measures = measures, targets = targets)
   expect_equal(none$detail$n, bare$detail$n)
-  floored <- n_alloc(frame, measures = measures, targets = targets)
+  floored <- n_alloc_joint(frame, measures = measures, targets = targets)
   expect_equal(floored$detail$n[1], 500)
-  pa <- prec_alloc(frame, n = c(100, 100), measures = measures,
+  pa <- prec_alloc_joint(frame, n = c(100, 100), measures = measures,
                    targets = targets, min_n_stratum = c(NA, NA))
   expect_false(any(pa$bounds$.lower_violation))
-  expect_true(prec_alloc(frame, n = c(100, 100), measures = measures,
+  expect_true(prec_alloc_joint(frame, n = c(100, 100), measures = measures,
                          targets = targets)$bounds$.lower_violation[1])
 })
 
@@ -1438,9 +1443,9 @@ test_that("a one-stratum NA floor means no floor, classic and joint", {
   expect_output(print(classic), "continuous design")
   m <- data.frame(stratum = "A", name = "p", p = 0.5)
   t <- data.frame(name = "p", cv = 0.1)
-  expect_equal(n_alloc(one, measures = m, targets = t)$detail$n,
-               n_alloc(one[, 1:2], measures = m, targets = t)$detail$n)
-  expect_no_error(prec_alloc(one, n = 50, measures = m, targets = t))
+  expect_equal(n_alloc_joint(one, measures = m, targets = t)$detail$n,
+               n_alloc_joint(one[, 1:2], measures = m, targets = t)$detail$n)
+  expect_no_error(prec_alloc_joint(one, n = 50, measures = m, targets = t))
   two <- data.frame(stratum = c("A", "B"), N = c(1000, 2000))
   expect_equal(
     n_alloc(two, n = 100, alloc = "proportional",
@@ -1459,7 +1464,7 @@ test_that("a one-stratum NA floor means no floor, classic and joint", {
 test_that("classic and joint read the same variance from p at one stage", {
   f <- .p_frame()
   n <- c(400, 300, 100)
-  joint <- prec_alloc(
+  joint <- prec_alloc_joint(
     f[c("stratum", "N")], n = n,
     measures = data.frame(stratum = f$stratum, name = "p", p = f$p),
     targets = data.frame(name = "p", cv = 0.05)
@@ -1475,10 +1480,10 @@ test_that("classic and joint read the same variance from p at one stage", {
 })
 
 test_that("classic and joint read the same variance from p at two stages", {
-  cl <- transform(.p_frame(), icc_psu = 0.1, n_per_psu = 10,
-                  N_psu = c(380, 250, 25), cost_psu = 10, cost_ssu = 1)
+  cl <- transform(.p_frame(), icc_1 = 0.1, take_2 = 10,
+                  N_1 = c(380, 250, 25), cost_1 = 10, cost_2 = 1)
   n <- c(400, 300, 100)
-  joint <- prec_alloc(
+  joint <- prec_alloc_joint(
     cl[setdiff(names(cl), "p")], n = n,
     measures = data.frame(stratum = cl$stratum, name = "p", p = cl$p),
     targets = data.frame(name = "p", cv = 0.05)
@@ -1519,7 +1524,7 @@ test_that("p alone needs more than one unit per stratum at one stage", {
 
 test_that("the PSU fraction note is printed only without the stage correction", {
   island <- data.frame(stratum = "Island", N = 2892, p = 0.314,
-                       icc_psu = 0.23, n_per_psu = 16, N_psu = 16)
+                       icc_1 = 0.23, take_2 = 16, N_1 = 16)
   cv <- 0.10 / (qnorm(0.975) * 0.314)
   staged <- capture.output(print(n_alloc(island, cv = cv, fpc = "stage")))
   expect_false(any(grepl("available PSUs", staged)))
@@ -1538,4 +1543,103 @@ test_that("an allocation's rmoe divides by the mean of the population in scope",
     expect_equal(prec_alloc(fit)$rmoe, fit$rmoe)
   }
   expect_equal(as_column$rmoe, 0.07785942, tolerance = 1e-6)
+})
+
+test_that("n_alloc() supports moe and rmoe targets across element, cluster, and domain frames", {
+  frame <- data.frame(
+    stratum = c("A", "B", "C"),
+    N = c(4000, 3000, 3000),
+    sd = c(10, 15, 8),
+    mean = c(50, 60, 55),
+    unit_cost = c(1, 1.5, 1)
+  )
+  fit_moe <- n_alloc(frame, moe = 1.5, alloc = "optimal")
+  expect_s3_class(fit_moe, "svyplan_alloc")
+  expect_equal(fit_moe$moe, 1.5, tolerance = 1e-6)
+  expect_lte(fit_moe$operational$moe, 1.5 + 1e-6)
+  expect_equal(prec_alloc(fit_moe)$moe, 1.5, tolerance = 1e-6)
+  expect_equal(n_alloc(prec_alloc(fit_moe), moe = 1.5)$n, fit_moe$n, tolerance = 1e-6)
+
+  fit_rmoe <- n_alloc(frame, rmoe = 0.03, alloc = "neyman")
+  expect_equal(fit_rmoe$rmoe, 0.03, tolerance = 1e-6)
+  expect_lte(fit_rmoe$operational$rmoe, 0.03 + 1e-6)
+  # rmoe = z * cv, so rmoe = z * 0.02 matches cv = 0.02
+  z <- stats::qnorm(0.975)
+  expect_equal(
+    n_alloc(frame, rmoe = z * 0.02)$detail$n,
+    n_alloc(frame, cv = 0.02)$detail$n,
+    tolerance = 1e-6
+  )
+
+  # Domain moe target holds inside every domain
+  fd <- data.frame(
+    province = c("North", "North", "South", "South"),
+    stratum = c("Urban", "Rural", "Urban", "Rural"),
+    N = c(2000, 3000, 1800, 3200),
+    sd = c(12, 18, 10, 16),
+    mean = c(55, 48, 58, 50)
+  )
+  dom_moe <- n_alloc(fd, domains = "province", moe = 2.0)
+  expect_true(all(dom_moe$domains$.moe <= 2.0 + 1e-6))
+  expect_true(all(dom_moe$operational$domains$.moe <= 2.0 + 1e-6))
+
+  # Cluster frame with moe target
+  fc <- data.frame(
+    stratum = c("Urban", "Rural"),
+    N = c(50000, 150000),
+    sd = c(0.45, 0.48),
+    mean = c(0.35, 0.25),
+    icc_1 = c(0.03, 0.08),
+    cost_1 = c(300, 600),
+    cost_2 = c(40, 60)
+  )
+  cl_moe <- n_alloc(fc, moe = 0.025, alloc = "optimal")
+  expect_equal(cl_moe$moe, 0.025, tolerance = 1e-6)
+  expect_lte(cl_moe$operational$moe, 0.025 + 1e-6)
+
+  # predict() can vary moe and rmoe
+  grid <- predict(fit_moe, data.frame(moe = c(1.0, 1.5, 2.0)))
+  expect_equal(grid$moe, c(1.0, 1.5, 2.0), tolerance = 1e-6)
+  expect_true(all(diff(grid$n) < 0))
+})
+
+test_that("classic n_alloc(), n_alloc_joint(), and n_multi() accept strict data.frame subclasses", {
+  fr_df <- data.frame(
+    stratum = c("A", "B", "C"),
+    N = c(4000, 3000, 3000),
+    sd = c(10, 15, 8),
+    mean = c(50, 60, 55)
+  )
+  fr_tbl <- .strict_df(fr_df)
+  expect_no_warning(
+    expect_equal(n_alloc(fr_tbl, cv = 0.03)$detail$n,
+                 n_alloc(fr_df, cv = 0.03)$detail$n)
+  )
+  expect_no_warning(
+    expect_equal(prec_alloc(fr_tbl, n = c(100, 120, 80))$se,
+                 prec_alloc(fr_df, n = c(100, 120, 80))$se)
+  )
+
+  ms_df <- data.frame(
+    stratum = rep(fr_df$stratum, 2),
+    name = rep(c("p1", "m1"), each = 3),
+    p = c(0.3, 0.4, 0.5, NA, NA, NA),
+    mean = c(NA, NA, NA, 50, 60, 55),
+    sd = c(NA, NA, NA, 10, 15, 8)
+  )
+  tg_df <- data.frame(name = c("p1", "m1"), cv = c(0.06, 0.04))
+  expect_no_warning(
+    expect_equal(
+      n_alloc_joint(.strict_df(fr_df[, c("stratum", "N")]),
+                    .strict_df(ms_df),
+                    targets = .strict_df(tg_df))$detail$n,
+      n_alloc_joint(fr_df[, c("stratum", "N")], ms_df, targets = tg_df)$detail$n
+    )
+  )
+
+  ind_df <- data.frame(name = c("p1", "m1"), p = c(0.3, NA),
+                       var = c(NA, 100), mean = c(NA, 50), cv = c(0.05, 0.04))
+  expect_no_warning(
+    expect_equal(n_multi(.strict_df(ind_df))$n, n_multi(ind_df)$n)
+  )
 })

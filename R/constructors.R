@@ -73,6 +73,143 @@
   structure(out, class = c("svyplan_n", "list"))
 }
 
+#' Construct a svyplan_multi object
+#' @keywords internal
+#' @noRd
+.new_svyplan_multi <- function(
+  n,
+  method = NULL,
+  params = list(),
+  indicators = NULL,
+  detail = NULL,
+  binding = NULL,
+  domains = NULL
+) {
+  out <- .new_svyplan_n(
+    n = n,
+    type = "multi",
+    method = method,
+    params = params,
+    se = NA_real_,
+    moe = NA_real_,
+    cv = NA_real_,
+    indicators = indicators,
+    detail = detail,
+    binding = binding,
+    domains = domains
+  )
+  class(out) <- c("svyplan_multi", "svyplan_n", "list")
+  out
+}
+
+#' Construct a svyplan_alloc object (classic stratified allocation)
+#' @keywords internal
+#' @noRd
+.new_svyplan_alloc <- function(
+  n,
+  method = NULL,
+  stages = 1L,
+  params = list(),
+  se = NA_real_,
+  moe = NA_real_,
+  cv = NA_real_,
+  rmoe = NULL,
+  detail = NULL,
+  rates = NULL,
+  binding = NULL,
+  domains = NULL,
+  operational = NULL,
+  optimization = NULL
+) {
+  stopifnot(
+    is.numeric(n),
+    is.numeric(stages),
+    length(stages) == 1L,
+    is.list(params),
+    is.null(detail) || is.data.frame(detail),
+    is.null(domains) || is.data.frame(domains),
+    is.null(rates) || is.data.frame(rates),
+    is.null(operational) || is.list(operational),
+    is.null(optimization) || is.list(optimization),
+    is.numeric(se),
+    is.numeric(moe),
+    is.numeric(cv)
+  )
+  out <- list(
+    n = n,
+    stages = as.integer(stages),
+    type = "alloc",
+    method = method,
+    params = params,
+    se = se,
+    moe = moe,
+    cv = cv,
+    rmoe = rmoe %||% .rmoe_for_result(moe, "alloc", params),
+    detail = detail,
+    binding = binding,
+    domains = domains,
+    operational = operational
+  )
+  if (!is.null(rates)) out$rates <- rates
+  if (!is.null(optimization)) out$optimization <- optimization
+  structure(out, class = c("svyplan_alloc", "list"))
+}
+
+#' Construct a svyplan_alloc_joint object (joint constrained allocation)
+#' @keywords internal
+#' @noRd
+.new_svyplan_alloc_joint <- function(
+  n,
+  stages = 1L,
+  params = list(),
+  targets = NULL,
+  detail = NULL,
+  rates = NULL,
+  binding = NULL,
+  operational = NULL,
+  constraints = NULL,
+  optimization = NULL,
+  objective = NULL,
+  objective_value = NULL
+) {
+  stopifnot(
+    is.numeric(n),
+    is.numeric(stages),
+    length(stages) == 1L,
+    is.list(params),
+    is.null(detail) || is.data.frame(detail),
+    is.null(rates) || is.data.frame(rates),
+    is.null(operational) || is.list(operational),
+    is.null(constraints) || is.data.frame(constraints),
+    is.null(optimization) || is.list(optimization),
+    is.null(objective) || is.data.frame(objective),
+    is.null(objective_value) ||
+      (is.numeric(objective_value) && length(objective_value) == 1L)
+  )
+  out <- list(
+    n = n,
+    stages = as.integer(stages),
+    type = "alloc_joint",
+    method = "bethel",
+    params = params,
+    se = NA_real_,
+    moe = NA_real_,
+    cv = NA_real_,
+    rmoe = NA_real_,
+    targets = targets,
+    detail = detail,
+    binding = binding,
+    domains = NULL,
+    operational = operational
+  )
+  if (!is.null(rates)) out$rates <- rates
+  if (!is.null(constraints)) out$constraints <- constraints
+  if (!is.null(optimization)) out$optimization <- optimization
+  if (!is.null(objective)) out$objective <- objective
+  if (!is.null(objective_value)) out$objective_value <- objective_value
+  structure(out, class = c("svyplan_alloc_joint", "svyplan_alloc", "list"))
+}
+
 #' The achieved margin of error on the estimand's own scale
 #'
 #' Reported wherever `moe` is, so a target stated as `rmoe` reads back in
@@ -92,6 +229,9 @@
     pooled = params$mu,
     twophase = params$mu,
     multi = .indicator_estimand(params$indicators, length(moe)),
+    cluster = if (!is.null(params$indicators)) {
+      .indicator_estimand(params$indicators, length(moe))
+    },
     alloc = .alloc_estimand(params$frame),
     NULL
   )

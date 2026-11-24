@@ -3,12 +3,13 @@
 #' Summarize sample size and cluster results
 #'
 #' `print()` gives the answer of [n_prop()], [n_mean()], [n_ratio()],
-#' [n_multi()] and [n_cluster()]. `summary()` gives what follows from it,
+#' [n_multi()], [n_cluster()], [n_change()], and [n_pooled()]. `summary()` gives
+#' what follows from it,
 #' read at the design that is fielded: the whole sample size or the whole
 #' stage sizes in `$operational`, beside the continuous solution they round.
 #'
 #' @param object A result of [n_prop()], [n_mean()], [n_ratio()],
-#'   [n_multi()] or [n_cluster()].
+#'   [n_multi()], [n_cluster()], [n_change()], or [n_pooled()].
 #' @param x A `summary.svyplan_n` or `summary.svyplan_cluster` object.
 #' @param ... Additional arguments are not supported and produce an error.
 #'
@@ -26,7 +27,10 @@
 #'   and `assumptions`. A multi-indicator cluster size has `kind = "multi"`
 #'   and the fields `stages`, `question`, `design`, `domains`,
 #'   `domain_values`, `total`, `worst`, `binding`, `binding_cause`,
-#'   `indicators`, `cost` and `assumptions`.
+#'   `indicators`, `cost` and `assumptions`. A change summary has
+#'   `kind = "change"` and sizes in `n`. A pooled summary has
+#'   `kind = "pooled"` and sizes in `sizes`. Both report the
+#'   target, precision at the whole size, and assumptions.
 #'
 #' @details
 #' ## Field size
@@ -52,7 +56,7 @@
 #'
 #' Expected respondents are the field size times the response and
 #' eligibility rates, and eligible respondents multiply that by
-#' `eligible_per_unit`. The effective size divides the units analysed by the
+#' `eligible_per_unit`. The effective size divides the units analyzed by the
 #' design effect. For a cluster design the design effect and the effective
 #' size are the planning quantities of [design_effect()] and
 #' [effective_n()], which leave out finite population corrections. A
@@ -79,17 +83,15 @@
 #'
 #' ## Assumptions of a multi-indicator cluster design
 #'
-#' The `indicators` table carries each row's design quantities: `icc_psu`,
-#' `unit_relvar`, `var_ratio_psu` and the response rates, with `icc_ssu`,
-#' `var_ratio_ssu` and `resp_rate_ssu` at three stages, and `alpha` when a
-#' row states a `moe` or `rmoe`. A quantity equal on every row is also
+#' The `indicators` table carries each row's design quantities:
+#' `unit_relvar`, `icc_1` through `icc_{S-1}`, `var_ratio_1` through
+#' `var_ratio_{S-1}`, and the response rates, with `alpha` when a row
+#' states a `moe` or `rmoe`. A quantity equal on every row is also
 #' listed in `assumptions`, and the print shows the ones that vary in a
 #' table of their own.
 #'
 #' Results of [n_alloc()] have their own summary, described in
-#' [summary.svyplan_alloc]. Other sizes, such as those of [n_change()] and
-#' [n_pooled()], have no structured summary yet, and `summary()` returns the
-#' result itself, which prints as `print()` does.
+#' [summary.svyplan_alloc].
 #'
 #' @examples
 #' summary(n_prop(p = 0.3, moe = 0.05, deff = 1.5, resp_rate = 0.8,
@@ -114,29 +116,42 @@
 #'   name    = c("a", "b"),
 #'   p       = c(0.35, 0.40),
 #'   cv      = c(0.15, 0.03),
-#'   icc_psu = 0.05
+#'   icc_1 = 0.05
 #' )
-#' summary(n_cluster(stage_cost = c(500, 50), indicators = cluster_rows,
-#'                   budget = 1e5))
+#' summary(n_cluster(cluster_rows, stage_cost = c(500, 50), budget = 1e5))
 #'
 #' @seealso [print.svyplan] for the compact display, and
 #'   [summary.svyplan_alloc] for stratified allocations.
 #' @export
 summary.svyplan_n <- function(object, ...) {
   .check_unused_dots(...)
-  if (identical(object$type, "alloc")) {
-    if (identical(object$method, "bethel")) {
-      return(.summary_bethel_alloc(object, kind = "design"))
-    }
-    return(.summary_classic_alloc(object, kind = "design"))
-  }
   if (object$type %in% c("proportion", "mean", "ratio")) {
     return(.summary_scalar_n(object))
   }
   if (identical(object$type, "multi")) {
     return(.summary_multi_n(object))
   }
+  if (identical(object$type, "change")) {
+    return(.summary_change_n(object))
+  }
+  if (identical(object$type, "pooled")) {
+    return(.summary_pooled_n(object))
+  }
   object
+}
+
+#' @rdname summary.svyplan_alloc
+#' @export
+summary.svyplan_alloc <- function(object, ...) {
+  .check_unused_dots(...)
+  .summary_classic_alloc(object, kind = "design")
+}
+
+#' @rdname summary.svyplan_alloc
+#' @export
+summary.svyplan_alloc_joint <- function(object, ...) {
+  .check_unused_dots(...)
+  .summary_bethel_alloc(object, kind = "design")
 }
 
 #' @rdname summary.svyplan_n
@@ -250,6 +265,94 @@ summary.svyplan_cluster <- function(object, ...) {
   )
 }
 
+#' Structured summary of a change sample size
+#' @keywords internal
+#' @noRd
+.summary_change_n <- function(object) {
+  p <- object$params
+  field <- .whole_count(object$n)
+  fp <- prec_change(object, n = field)
+  resp <- (p[["resp_rate"]] %||% 1) * (p[["eligibility_rate"]] %||% 1)
+  deff <- p[["deff"]] %||% 1
+
+  assumptions <- list(
+    alpha = p[["alpha"]],
+    deff = deff,
+    resp_rate = p[["resp_rate"]] %||% 1,
+    eligibility_rate = p[["eligibility_rate"]],
+    overlap = p[["overlap"]],
+    overlap_cor = p[["overlap_cor"]],
+    N = if (is.finite(p[["N"]] %||% Inf)) p[["N"]],
+    df = p[["df"]]
+  )
+
+  structure(
+    list(
+      kind = "change",
+      type = "change",
+      method = object$method,
+      target = .summary_target(p),
+      n = list(
+        continuous = object$n,
+        field = field,
+        respondents = if (any(resp < 1)) field * resp else NULL,
+        effective = field * resp / deff
+      ),
+      precision = c(se = fp$se, moe = fp$moe, rmoe = fp$rmoe %||% NA_real_,
+                    cv = fp$cv),
+      assumptions = assumptions
+    ),
+    class = c("summary.svyplan_n", "list")
+  )
+}
+
+#' Structured summary of a pooled-occasions sample size
+#' @keywords internal
+#' @noRd
+.summary_pooled_n <- function(object) {
+  p <- object$params
+  field <- .whole_count(object$n)
+  fp <- prec_pooled(object, n = field)
+  resp <- (p[["resp_rate"]] %||% 1) * (p[["eligibility_rate"]] %||% 1)
+  deff <- p[["deff"]] %||% 1
+  occ <- as.integer(p[["occasions"]])
+
+  sizes <- c(continuous = object$n, field = field, total_field = field * occ)
+  if (resp < 1) {
+    sizes[["respondents"]] <- field * resp
+  }
+  sizes[["effective"]] <- field * resp / deff
+
+  assumptions <- list(
+    occasions = occ,
+    alpha = p[["alpha"]],
+    deff = deff,
+    resp_rate = p[["resp_rate"]] %||% 1,
+    eligibility_rate = p[["eligibility_rate"]],
+    overlap = p[["overlap"]],
+    overlap_cor = p[["overlap_cor"]],
+    cor_decay = p[["cor_decay"]],
+    N = if (is.finite(p[["N"]] %||% Inf)) p[["N"]],
+    df = p[["df"]]
+  )
+
+  structure(
+    list(
+      kind = "pooled",
+      type = "pooled",
+      method = object$method,
+      occasions = occ,
+      target = .summary_target(p),
+      sizes = sizes,
+      overlap_line = .fmt_lag_overlap(p),
+      precision = c(se = fp$se, moe = fp$moe, rmoe = fp$rmoe %||% NA_real_,
+                    cv = fp$cv),
+      assumptions = assumptions
+    ),
+    class = c("summary.svyplan_n", "list")
+  )
+}
+
 #' Domain label of each row, from its domain columns
 #'
 #' One domain column gives its bare value. Several give `col=value` pairs
@@ -346,7 +449,11 @@ summary.svyplan_cluster <- function(object, ...) {
 .summary_label_rows <- function(object) {
   if (!"name" %in% names(object$indicators)) {
     object$indicators$name <- as.character(seq_len(nrow(object$indicators)))
-    object$detail$name <- as.character(object$detail$name)
+    if ("name" %in% names(object$detail)) {
+      object$detail$name <- as.character(object$detail$name)
+    } else {
+      object$detail$name <- as.character(seq_len(nrow(object$detail)))
+    }
   }
   object
 }
@@ -419,6 +526,8 @@ summary.svyplan_cluster <- function(object, ...) {
     resp_rate = if (length(unique(rate("resp_rate"))) == 1L) {
       rate("resp_rate")[1L]
     },
+    eligibility_rate = .summary_constant_rate(rate("eligibility_rate")),
+    eligible_per_unit = .summary_constant_rate(rate("eligible_per_unit")),
     prop_method = if ("p" %in% names(ind) && any(!is.na(ind$p))) {
       object$params$prop_method
     },
@@ -450,7 +559,7 @@ summary.svyplan_cluster <- function(object, ...) {
 .summary_stage_cost <- function(n, stage_cost, fixed_cost = 0) {
   units <- cumprod(n)
   out <- c(units * stage_cost)
-  names(out) <- c("PSUs", if (length(n) == 3L) "SSUs", "Units")
+  names(out) <- names(n) %||% paste0("stage_", seq_along(n))
   if (!is.null(fixed_cost) && fixed_cost > 0) {
     out[["Fixed"]] <- fixed_cost
   }
@@ -471,12 +580,15 @@ summary.svyplan_cluster <- function(object, ...) {
     sprintf("the cheapest design that gives %s = %s", target$scale,
             format(target$value))
   }
-  fixed <- c(n_psu = p$n_psu, n_per_psu = p$n_per_psu,
-             n_per_ssu = p$n_per_ssu)
-  if (length(fixed) > 0L) {
-    base <- paste0(base, ", with ", paste(sprintf("%s fixed at %s",
-                                                  names(fixed), fixed),
-                                          collapse = " and "))
+  sn <- p[["stage_n"]]
+  if (!is.null(sn)) {
+    fixed <- sn[!is.na(sn)]
+    if (length(fixed) > 0L) {
+      fnms <- names(fixed) %||% paste0("stage_", which(!is.na(sn)))
+      base <- paste0(base, ", with ", paste(sprintf("%s fixed at %s",
+                                                    fnms, fixed),
+                                            collapse = " and "))
+    }
   }
   base
 }
@@ -500,16 +612,16 @@ summary.svyplan_cluster <- function(object, ...) {
   p <- object$params
   op <- object$operational
   fp <- .prec_cluster_from_fit(object, list(), field = TRUE)
-  resp_psu <- p$resp_rate_psu %||% 1
-  resp_all <- resp_psu * (p$resp_rate_ssu %||% 1) * (p$resp_rate %||% 1) *
-    (p[["eligibility_rate"]] %||% 1)
+  rr <- unname(p[["resp_rate"]] %||% rep(1, object$stages))
+  resp_1 <- if (length(rr) == object$stages) rr[1L] else 1
+  resp_all <- prod(rr) * (p[["eligibility_rate"]] %||% 1)
   epu <- p[["eligible_per_unit"]]
   respondents <- op$total_n * resp_all * (epu %||% 1)
   df <- tryCatch(as.double(suppressWarnings(design_df(object))),
                  error = function(e) NULL)
 
   field <- c(respondents = respondents,
-             net_take = respondents / (op$n[[1L]] * resp_psu),
+             net_take = respondents / (op$n[[1L]] * resp_1),
              deff = as.double(design_effect(fp)),
              effective = as.double(effective_n(fp)))
   if (!is.null(df)) {
@@ -518,17 +630,20 @@ summary.svyplan_cluster <- function(object, ...) {
 
   assumptions <- c(as.list(p$icc), list(unit_relvar = p$unit_relvar),
                    as.list(p$var_ratio))
-  assumptions$resp_rate_psu <- if (resp_psu < 1) resp_psu
-  assumptions$resp_rate_ssu <- if ((p$resp_rate_ssu %||% 1) < 1) {
-    p$resp_rate_ssu
+  assumptions$resp_rate <- if (length(rr) == object$stages &&
+                               all(rr[-object$stages] == 1)) {
+    rr[object$stages]
+  } else {
+    rr
   }
-  assumptions$resp_rate <- p$resp_rate %||% 1
   assumptions$eligibility_rate <- p[["eligibility_rate"]]
   assumptions$eligible_per_unit <- epu
   if (identical(p[["fpc"]], "stage")) {
-    assumptions$N <- p[["N"]]
-    assumptions$N_psu <- p[["N_psu"]]
-    assumptions$N_ssu <- p[["N_ssu"]]
+    N <- p[["N"]]
+    if (length(N) == object$stages) {
+      names(N) <- .stage_names(object$stages, names(p$stage_cost))
+    }
+    assumptions$N <- N
   }
 
   structure(
@@ -540,7 +655,9 @@ summary.svyplan_cluster <- function(object, ...) {
       field = field,
       eligible = !is.null(epu),
       cost = .summary_stage_cost(op$n, p$stage_cost, p$fixed_cost),
-      assumptions = assumptions
+      assumptions = assumptions,
+      search = op$search,
+      mode = .cluster_mode(p)
     ),
     class = c("summary.svyplan_cluster", "list")
   )
@@ -568,7 +685,11 @@ summary.svyplan_cluster <- function(object, ...) {
     cv_target = detail$.cv_target,
     needs = detail$.n,
     binding = if (length(dom_cols) > 0L) {
-      detail$.binding
+      field <- op$domains$.binding[match(
+        .summary_domain_label(detail, dom_cols),
+        .summary_domain_label(op$domains, dom_cols)
+      )]
+      as.character(detail$name) == as.character(field)
     } else {
       as.character(detail$name) == as.character(op$binding)
     }
@@ -629,6 +750,7 @@ summary.svyplan_cluster <- function(object, ...) {
         .summary_constant_assumptions(indicators),
         list(
           eligibility_rate = p[["eligibility_rate"]],
+          eligible_per_unit = p[["eligible_per_unit"]],
           prop_method = if ("p" %in% names(object$indicators) &&
                             any(!is.na(object$indicators$p))) {
             p[["prop_method"]]
@@ -639,10 +761,23 @@ summary.svyplan_cluster <- function(object, ...) {
           min_n_domain = p[["min_n_domain"]],
           fpc = if (identical(p[["fpc"]], "stage")) "stage"
         )
-      )
+      ),
+      search = object$operational$search,
+      mode = .cluster_mode(p)
     ),
     class = c("summary.svyplan_cluster", "list")
   )
+}
+
+#' Identify domains held at their min_n_domain floor
+#' @keywords internal
+#' @noRd
+.cluster_domain_floored <- function(total_n, min_n_domain, joint = FALSE) {
+  if (is.null(min_n_domain)) {
+    return(rep(FALSE, length(total_n)))
+  }
+  floors <- rep_len(as.numeric(min_n_domain), length(total_n))
+  !is.na(floors) & abs(total_n - floors) <= 1e-6 * pmax(1, floors)
 }
 
 #' Per-row design quantities of a multi-indicator cluster fit
@@ -654,10 +789,11 @@ summary.svyplan_cluster <- function(object, ...) {
 #' @noRd
 .summary_cluster_row_assumptions <- function(object, detail, dom_cols) {
   ind <- object$indicators
-  three <- identical(as.integer(object$stages), 3L)
-  cols <- c("icc_psu", if (three) "icc_ssu", "unit_relvar", "var_ratio_psu",
-            if (three) "var_ratio_ssu", "resp_rate_psu",
-            if (three) "resp_rate_ssu", "resp_rate")
+  n_b <- as.integer(object$stages) - 1L
+  icc_cols <- paste0("icc_", seq_len(n_b))
+  vr_cols <- paste0("var_ratio_", seq_len(n_b))
+  rr_cols <- c(paste0("resp_rate_", seq_len(n_b)), "resp_rate")
+  cols <- c(icc_cols, "unit_relvar", vr_cols, rr_cols)
   if (any(detail$.target_scale %in% c("moe", "rmoe"))) {
     cols <- c(cols, "alpha")
   }
@@ -667,8 +803,7 @@ summary.svyplan_cluster <- function(object, ...) {
   row <- match(.summary_row_key(detail, dom_cols),
                .summary_row_key(ind, dom_cols))
   out <- lapply(cols, function(col) {
-    if (col %in% c("resp_rate_psu", "resp_rate_ssu", "resp_rate",
-                   "var_ratio_psu", "var_ratio_ssu") && !col %in% names(ind)) {
+    if (col %in% c(rr_cols, vr_cols) && !col %in% names(ind)) {
       return(rep(1, nrow(detail)))
     }
     ind[[col]][row]
@@ -681,15 +816,16 @@ summary.svyplan_cluster <- function(object, ...) {
 #' @keywords internal
 #' @noRd
 .summary_row_assumption_cols <- function(ind) {
-  intersect(c("icc_psu", "icc_ssu", "unit_relvar", "var_ratio_psu",
-              "var_ratio_ssu", "resp_rate_psu", "resp_rate_ssu", "resp_rate",
-              "alpha", "df"), names(ind))
+  c(
+    grep("^icc_[0-9]+$", names(ind), value = TRUE),
+    intersect("unit_relvar", names(ind)),
+    grep("^var_ratio_[0-9]+$", names(ind), value = TRUE),
+    grep("^resp_rate_[0-9]+$", names(ind), value = TRUE),
+    intersect(c("resp_rate", "alpha", "df"), names(ind))
+  )
 }
 
 #' Per-row design quantities equal on every row
-#'
-#' A stage response rate of 1 is left out, as the single-indicator summary
-#' leaves it out. Quantities that vary stay in the indicator table only.
 #' @keywords internal
 #' @noRd
 .summary_constant_assumptions <- function(ind) {
@@ -699,7 +835,7 @@ summary.svyplan_cluster <- function(object, ...) {
     if (!.summary_is_constant(v)) {
       next
     }
-    if (col %in% c("resp_rate_psu", "resp_rate_ssu") && isTRUE(v[1L] == 1)) {
+    if (grepl("^resp_rate_[0-9]+$", col) && isTRUE(v[1L] == 1)) {
       next
     }
     out[[col]] <- v[1L]
@@ -752,14 +888,14 @@ summary.svyplan_cluster <- function(object, ...) {
 .print_summary_assumptions <- function(a) {
   labels <- c(
     alpha = "alpha", deff = "design effect", resp_rate = "response rate",
-    resp_rate_psu = "PSU response rate", resp_rate_ssu = "SSU response rate",
     eligibility_rate = "eligibility rate",
     eligible_per_unit = "eligible per unit", N = "population size",
-    N_psu = "PSUs in the population", N_ssu = "SSUs in the population",
     df = "design df", prop_method = "proportion method",
     domain_sampling = "domain sampling", min_n_domain = "min_n_domain",
     stage_cost = "stage cost", fixed_cost = "fixed cost",
-    allocation = "allocation", fpc = "finite population correction"
+    allocation = "allocation", fpc = "finite population correction",
+    occasions = "occasions", overlap = "overlap",
+    overlap_cor = "overlap correlation", cor_decay = "correlation decay"
   )
   a <- a[!vapply(a, is.null, logical(1L))]
   if (length(a) == 0L) {
@@ -770,14 +906,26 @@ summary.svyplan_cluster <- function(object, ...) {
     v <- a[[nm]]
     shown <- if (is.character(v)) {
       paste(v, collapse = ", ")
-    } else if (nm %in% c("N", "N_psu", "N_ssu", "stage_cost", "fixed_cost")) {
-      paste(format(v, big.mark = "", scientific = FALSE, trim = TRUE),
-            collapse = ", ")
+    } else if (nm %in% c("N", "stage_cost", "fixed_cost") ||
+               grepl("^N_[0-9]+$", nm)) {
+      shown_v <- format(v, big.mark = "", scientific = FALSE, trim = TRUE)
+      if (identical(nm, "N") && !is.null(names(v))) {
+        shown_v <- paste(names(v), "=", shown_v)
+      }
+      paste(shown_v, collapse = ", ")
     } else {
       paste(sprintf("%.4g", v), collapse = ", ")
     }
-    cat(sprintf("  %s: %s\n", if (nm %in% names(labels)) labels[[nm]] else nm,
-                shown))
+    lbl <- if (nm %in% names(labels)) {
+      labels[[nm]]
+    } else if (grepl("^resp_rate_([0-9]+)$", nm)) {
+      sprintf("stage %s response rate", sub("^resp_rate_", "", nm))
+    } else if (grepl("^N_([0-9]+)$", nm)) {
+      sprintf("stage %s population size", sub("^N_", "", nm))
+    } else {
+      nm
+    }
+    cat(sprintf("  %s: %s\n", lbl, shown))
   }
   invisible(NULL)
 }
@@ -812,10 +960,92 @@ print.summary.svyplan_n <- function(x, ...) {
   .check_unused_dots(...)
   if (identical(x$kind, "multi")) {
     .print_summary_multi_n(x)
+  } else if (identical(x$kind, "change")) {
+    .print_summary_change_n(x)
+  } else if (identical(x$kind, "pooled")) {
+    .print_summary_pooled_n(x)
   } else {
     .print_summary_scalar_n(x)
   }
   invisible(x)
+}
+
+#' @keywords internal
+#' @noRd
+.print_summary_change_n <- function(x) {
+  cat("Sample size for change between two occasions\n\n")
+  if (!is.null(x$target)) {
+    cat(sprintf("Question: per-occasion n for %s = %.4g\n",
+                x$target$scale, x$target$value))
+  }
+  fmt_pair <- function(v) {
+    if (length(v) == 2L) {
+      paste(.fmt_summary_size(v[1L]), "then", .fmt_summary_size(v[2L]))
+    } else {
+      paste(.fmt_summary_size(v[1L]), "per occasion")
+    }
+  }
+  rows <- c(
+    Continuous = fmt_pair(x$n$continuous),
+    Field = fmt_pair(x$n$field)
+  )
+  if (!is.null(x$n$respondents)) {
+    rows[["Expected respondents"]] <- paste(sprintf("%.1f", x$n$respondents),
+                                            collapse = " then ")
+  }
+  rows[["Effective (n / deff)"]] <- paste(sprintf("%.1f", x$n$effective),
+                                          collapse = " then ")
+  cat("\n")
+  .print_summary_block(rows, "Sizes")
+
+  pr <- x$precision
+  labels <- c(se = "SE", moe = "MOE", rmoe = "Relative MOE", cv = "CV")
+  prows <- character(0)
+  for (nm in names(labels)) {
+    if (!is.na(pr[[nm]])) {
+      prows[[labels[[nm]]]] <- sprintf("%.4g", pr[[nm]])
+    }
+  }
+  cat("\n")
+  .print_summary_block(prows, "Precision at the field size")
+  .print_summary_assumptions(x$assumptions)
+}
+
+#' @keywords internal
+#' @noRd
+.print_summary_pooled_n <- function(x) {
+  cat(sprintf("Sample size for pooled estimate (%d occasions)\n\n", x$occasions))
+  if (!is.null(x$target)) {
+    cat(sprintf("Question: per-occasion n for %s = %.4g\n",
+                x$target$scale, x$target$value))
+  }
+  s <- x$sizes
+  rows <- c(
+    "Continuous (per occasion)" = .fmt_summary_size(s[["continuous"]]),
+    "Field (per occasion)" = .fmt_summary_size(s[["field"]]),
+    "Total field (all occasions)" = .fmt_summary_size(s[["total_field"]])
+  )
+  if (!is.na(s["respondents"])) {
+    rows[["Expected respondents"]] <- sprintf("%.1f per occasion", s[["respondents"]])
+  }
+  rows[["Effective (n / deff)"]] <- sprintf("%.1f per occasion", s[["effective"]])
+  cat("\n")
+  .print_summary_block(rows, "Sizes")
+  if (!is.null(x$overlap_line) && nzchar(x$overlap_line)) {
+    cat("\n", x$overlap_line, sep = "")
+  }
+
+  pr <- x$precision
+  labels <- c(se = "SE", moe = "MOE", rmoe = "Relative MOE", cv = "CV")
+  prows <- character(0)
+  for (nm in names(labels)) {
+    if (!is.na(pr[[nm]])) {
+      prows[[labels[[nm]]]] <- sprintf("%.4g", pr[[nm]])
+    }
+  }
+  cat("\n")
+  .print_summary_block(prows, "Precision at the field size")
+  .print_summary_assumptions(x$assumptions)
 }
 
 #' @keywords internal
@@ -923,10 +1153,13 @@ print.summary.svyplan_n <- function(x, ...) {
 #' @export
 print.summary.svyplan_cluster <- function(x, ...) {
   .check_unused_dots(...)
-  cat(sprintf("%s %d-stage allocation\n\n",
-              if (identical(x$kind, "multi")) "Multi-indicator optimal" else
-                "Optimal", x$stages))
-  cat(sprintf("Question: %s\n", x$question))
+  heading <- sub(" ?[Aa]llocation$", "",
+                 .cluster_heading(x$search, multi = identical(x$kind, "multi")))
+  cat(trimws(sprintf("%s %d-stage allocation", heading, x$stages)), "\n\n",
+      sep = "")
+  cat(paste(strwrap(sprintf("Question: %s", x$question), width = 80L,
+                    exdent = 2L), collapse = "\n"), "\n", sep = "")
+  .print_stage_search(x$search, mode = x$mode)
 
   if (!is.null(x$design)) {
     d <- x$design
@@ -1117,4 +1350,12 @@ print.summary.svyplan_cluster <- function(x, ...) {
     .print_summary_table(tab[row_domain == lev, , drop = FALSE], left = left)
   }
   invisible(NULL)
+}
+
+#' A rate shared by every row, shown only when it differs from 1
+#' @keywords internal
+#' @noRd
+.summary_constant_rate <- function(v) {
+  u <- unique(v)
+  if (length(u) == 1L && !isTRUE(all.equal(u, 1))) u else NULL
 }

@@ -66,8 +66,9 @@
 #' @param alpha Significance level, default 0.05.
 #' @param N Population size, in the units the ratio is observed on. `Inf`
 #'   (default) means no finite population correction.
-#' @param deff Design effect of the ratio estimator (> 0). See the section
-#'   above, which is the one place this differs from [n_mean()]. A
+#' @param deff Design effect of the ratio estimator (> 0). See the section on
+#'   design effect and clustering below, the one place this differs from
+#'   [n_mean()]. A
 #'   published DEFT is squared first. See [varcomp()] for that and for
 #'   removing the published survey's weighting loss.
 #' @param resp_rate Expected response rate among eligible units, in (0, 1\].
@@ -171,6 +172,7 @@
 #' @export
 n_ratio <- function(r = NULL, ...) {
   if (!is.null(r)) {
+    .refuse_result_as_input(r, "r", "n_ratio")
     .res <- .dispatch_plan(r, "r", n_ratio.default, ...)
     if (!is.null(.res)) return(.res)
   }
@@ -208,6 +210,8 @@ n_ratio.default <- function(
   check_deff(deff)
   check_resp_rate(resp_rate)
   check_resp_rate(eligibility_rate, "eligibility_rate")
+  check_eligible_population(N, 1, eligibility_rate,
+                            label = "N * eligibility_rate")
   if (!is.null(df)) {
     check_df(df)
   }

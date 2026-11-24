@@ -761,7 +761,7 @@ test_that("the strata table is a valid n_alloc frame", {
   expect_equal(sb$strata$mean, as.numeric(tapply(x, bins, mean)))
 
   # The handoff runs without the caller reconstructing anything.
-  expect_s3_class(n_alloc(sb$strata, cv = 0.05), "svyplan_n")
+  expect_s3_class(n_alloc(sb$strata, cv = 0.05), "svyplan_alloc")
 })
 
 test_that("strata_bound and n_alloc agree on the same design", {
@@ -942,4 +942,79 @@ test_that("a sample larger than the population is refused before the search", {
     strata_bound(x, n_strata = 3, n = 500, method = "kozak"),
     "maximum feasible is 200"
   )
+})
+
+## Unequal unit costs and take-all nonresponse
+
+test_that("optimal boundaries with unequal unit costs minimize the cost", {
+  cost_of <- function(x, bk, uc, cv) {
+    g <- findInterval(x, c(-Inf, bk, Inf))
+    if (any(tabulate(g, 3) < 2)) return(Inf)
+    fr <- data.frame(stratum = 1:3, N = tabulate(g, 3),
+                     sd = vapply(1:3, function(h) sd(x[g == h]), 1),
+                     mean = vapply(1:3, function(h) mean(x[g == h]), 1),
+                     unit_cost = uc)
+    r <- tryCatch(n_alloc(fr, cv = cv, alloc = "optimal"),
+                  error = function(e) NULL)
+    if (is.null(r)) Inf else sum(r$detail$n * uc)
+  }
+  uc <- c(1, 4, 16)
+  for (seed in 1:2) {
+    set.seed(seed)
+    x <- rlnorm(1500, 4, 0.9)
+    sb <- strata_bound(x, n_strata = 3, cv = 0.03, alloc = "optimal",
+                       unit_cost = uc)
+    found <- cost_of(x, sb$strata$upper[1:2], uc, 0.03)
+    qs <- quantile(x, seq(0.05, 0.95, by = 0.05))
+    grid <- Inf
+    for (i in seq_along(qs)) {
+      for (j in seq_along(qs)) {
+        if (j > i) grid <- min(grid, cost_of(x, qs[c(i, j)], uc, 0.03))
+      }
+    }
+    expect_lte(found, grid * 1.01)
+  }
+})
+
+test_that("a take-all stratum too variable for the target is named", {
+  set.seed(11)
+  x <- rlnorm(3000, 4, 1)
+  ta <- quantile(x, 0.99)
+  expect_error(
+    strata_bound(x, n_strata = 4, cv = 0.009, take_all_above = ta,
+                 resp_rate = 0.3),
+    "the take-all stratum alone gives cv"
+  )
+  fit <- strata_bound(x, n_strata = 4, cv = 0.02, take_all_above = ta,
+                      resp_rate = 0.6)
+  st <- fit$strata
+  fr <- data.frame(stratum = seq_len(nrow(st)), N = st$N, sd = st$sd,
+                   mean = st$mean, take_all = st$take_all)
+  expect_lte(prec_alloc(fr, n = st$n, resp_rate = 0.6)$cv, 0.02 + 1e-8)
+})
+
+## A histogram end never becomes a cumrootf boundary
+
+test_that("cumrootf keeps its cuts inside the data", {
+  x1 <- c(rep(1, 5), 2:10, rep(89, 500), 90, 91, 92)
+  expect_error(suppressWarnings(strata_bound(x1, n_strata = 4,
+                                             method = "cumrootf",
+                                             take_all_above = 90)),
+               "at least two population units")
+  x2 <- c(rep(1, 5), 2:10, rep(89, 500), 89.5, 89.6, 89.7, 91, 92)
+  expect_error(suppressWarnings(strata_bound(x2, n_strata = 4,
+                                             method = "cumrootf",
+                                             take_all_above = 89.5)),
+               "at least two population units")
+  s3 <- suppressWarnings(strata_bound(c(1:20, rep(89, 500)), n_strata = 3,
+                                      method = "cumrootf"))
+  expect_equal(s3$boundaries, c(14.5, 54.5))
+  expect_lt(max(suppressWarnings(.strata_cumrootf(c(1:20, rep(89, 500)), 3))),
+            89)
+})
+
+test_that("a cv target with a take-all stratum is refused at a zero mean", {
+  expect_error(strata_bound(c(-30, -10:10, 30), n_strata = 3, cv = 0.1,
+                            take_all_above = 30),
+               "undefined when 'x' has mean zero")
 })

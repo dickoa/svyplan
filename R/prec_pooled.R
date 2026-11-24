@@ -211,7 +211,7 @@
 #' The level at a single occasion is unaffected either way, being a function
 #' of that occasion's size alone, so it is a reference line rather than a
 #' third position. What trades off is the change against the pooled
-#' estimate. `?prec_change` and this page size the two arms.
+#' estimate. [prec_change()] and this page size the two arms.
 #'
 #' ## Issued overlap and respondent overlap
 #'
@@ -361,15 +361,18 @@ prec_pooled.default <- function(
   df = NULL,
   plan = NULL
 ) {
+  .refuse_alloc_object(var, "prec_pooled", "pooled")
   .plan <- .merge_plan_args(plan, prec_pooled.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_pooled.default, c(.plan, list(...))))
   .check_unused_dots(...)
   check_population_size(N)
   check_resp_rate(eligibility_rate, "eligibility_rate")
+  check_eligible_population(N, 1, eligibility_rate,
+                            label = "N * eligibility_rate")
   N_elig <- N * eligibility_rate
   .check_occasions(occasions)
   inputs <- .pooled_inputs(var, sd, p, mu, N_elig, r, cv_num, cv_den,
-                           component_cor)
+                           component_cor, sizing = FALSE)
   s <- inputs$scale
   check_scalar(n, "n")
   check_alpha(alpha)
@@ -404,6 +407,11 @@ prec_pooled.default <- function(
   )
   # The object itself, not a flag: a new horizon re-derives its lags.
   params$overlap_rotation <- ov$rotation
+  ## The lag inputs as given, so a round trip at another horizon or with
+  ## the other correlation form rebuilds the profile.
+  if (is.null(ov$rotation)) params$overlap_input <- overlap
+  params$overlap_cor_input <- overlap_cor
+  params$cor_decay <- cor_decay
   if (eligibility_rate != 1) params$eligibility_rate <- eligibility_rate
   if (!is.null(inputs$p)) params$p <- inputs$p
   params <- .add_ratio_params(params, inputs$ratio)
@@ -434,10 +442,10 @@ prec_pooled.svyplan_n <- function(var, ...) {
     deff = par$deff,
     resp_rate = par$resp_rate %||% 1,
     eligibility_rate = par[["eligibility_rate"]] %||% 1,
-    overlap_cor = par$overlap_cor,
     overlap_draw = par$overlap_draw,
     df = par$df
-  ), .stored_overlap_args(par, "overlap" %in% names(list(...))))
+  ), .stored_overlap_args(par, "overlap" %in% names(list(...))),
+  .stored_lag_cor_args(par, names(list(...))))
   out <- do.call(prec_pooled.default, .roundtrip_args(args, list(...), prec_pooled.default))
   .mark_continuous_optimum(out, list(...))
 }

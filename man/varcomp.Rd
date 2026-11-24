@@ -32,8 +32,7 @@ varcomp(x, ...)
   p = NULL,
   var = NULL,
   n = NULL,
-  n_per_psu = NULL,
-  n_per_ssu = NULL,
+  take = NULL,
   cv_take = NULL,
   var_ratio = NULL
 )
@@ -78,7 +77,7 @@ from a sample rather than a frame: a one-sided formula (e.g.,
 \code{~w}) when using the formula interface, or a numeric vector with
 one positive value per observation. Within each cluster the
 summed weights must estimate the cluster population size. For a
-multi-stage sample use the within-cluster weights, not the full
+multistage sample use the within-cluster weights, not the full
 design weight (see Details). For a three-stage sample, two columns
 (\code{~w2 + w3}, or a two-column matrix or data frame) give the stage-2
 and stage-3 conditional weights separately, which the element-stage
@@ -96,7 +95,7 @@ Details. Not used on the back-out.}
 Length determines the number of stage boundaries (stages - 1).}
 
 \item{deff}{A published design effect to back an \code{icc} out of, with \code{x}
-unset. Requires \code{n_per_psu}. A published DEFT is squared first, and
+unset. Requires \code{take}. A published DEFT is squared first, and
 the published survey's weighting loss may need dividing out. See
 Details.}
 
@@ -109,17 +108,14 @@ same back-out. Requires \code{n} and one of \code{p} or \code{var}.}
 
 \item{n}{Sample size the published \code{se} was computed on.}
 
-\item{n_per_psu}{Take per PSU the published design effect refers to,
+\item{take}{Take per PSU the published design effect refers to,
 counted in the units the estimate was computed on. For a person-level
 estimate it is the responding eligible persons per cluster, not the
 households per cluster. Give the size-weighted average take, a vector
 of realized takes, or a nominal take with \code{cv_take}. See Details.}
 
-\item{n_per_ssu}{Units per SSU. Not accepted on the back-out, which a
-scalar design effect does not identify.}
-
 \item{cv_take}{Coefficient of variation of the realized takes, when
-\code{n_per_psu} is their nominal mean.}
+\code{take} is their nominal mean.}
 
 \item{var_ratio}{Ratio of the clustered component's unit variance to the
 analysis variable's, 1 when unset. See \code{\link[=design_effect]{design_effect()}}.}
@@ -127,24 +123,24 @@ analysis variable's, 1 when unset. See \code{\link[=design_effect]{design_effect
 \value{
 A \code{svyplan_varcomp} object with components:
 \describe{
-\item{\code{varb}}{Between-PSU variance (scalar).}
-\item{\code{varw}}{Within-PSU variance. Scalar for 2-stage, length-2
-vector (\code{varw_psu}, \code{varw_ssu}) for 3-stage.}
-\item{\code{icc}}{Measure of homogeneity. Length 1 for 2-stage,
-length 2 (\code{icc_psu}, \code{icc_ssu}) for 3-stage.}
+\item{\code{varb}}{Between-stage-1 (PSU) variance (scalar).}
+\item{\code{varw}}{Within-stage-1 variance. Scalar for 2-stage, length \code{stages - 1}
+vector (\code{varw_1}, ..., \verb{varw_\{S-1\}}) for 3+ stages.}
+\item{\code{icc}}{Measure of homogeneity. Scalar for 2-stage, length \code{stages - 1}
+vector (\code{icc_1}, ..., \verb{icc_\{S-1\}}) for 3+ stages.}
 \item{\code{var_ratio}}{Ratio parameter(s), same length as \code{icc}
-(\code{var_ratio_psu}, \code{var_ratio_ssu} for 3-stage).}
+(\code{var_ratio_1}, ..., \verb{var_ratio_\{S-1\}} for 3+ stages).}
 \item{\code{unit_relvar}}{Unit relvariance (scalar).}
-\item{\code{stages}}{Number of stages (2 or 3).}
+\item{\code{stages}}{Number of stages (2 or more).}
 \item{\code{strata}}{Per-stratum component table when \code{strata} is
 supplied, otherwise \code{NULL} (see Details).}
 \item{\code{source}}{\code{"data"} when the components were estimated, \code{"deff"}
 when \code{icc} was backed out of a design effect.}
 \item{\code{params}}{The take that identifies a backed-out \code{icc},
-\code{n_per_psu} alongside the nominal \code{n_per_psu_nominal}. Empty on the
+\code{take} alongside the nominal \code{take_nominal}. Empty on the
 estimated path, where the take is a later design choice.}
 \item{\code{selection}}{How each sampled stage above the units is drawn,
-\code{"srs"} or \code{"pps"}, named \code{psu} and, at three stages, \code{ssu}. \code{NA}
+\code{"srs"} or \code{"pps"}, named \code{stage_1}, ..., \verb{stage_\{S-1\}}. \code{NA}
 for a backed-out \code{icc}, where the design effect does not say.}
 \item{\code{input}}{What the components were computed from: \code{"frame"},
 \code{"weighted"} (a sample with within-cluster weights), \code{"deff"} or
@@ -153,10 +149,9 @@ for a backed-out \code{icc}, where the design effect does not say.}
 \code{"expansion"} or \code{"ratio"}. \code{NA} for a backed-out \code{icc}.}
 }
 The result can be exported with \code{\link[=as.data.frame]{as.data.frame()}}. Unstratified results
-become a one-row two- or three-stage component table. Stratified results
-return the table stored in \verb{$strata}. A backed-out result adds
-\code{n_per_psu} and \code{source} to that row, and carries \code{NA} in the three
-fields a design effect does not identify.
+become a one-row component table. Stratified results return the table stored
+in \verb{$strata}. A backed-out result adds \code{take} and \code{source} to that row, and
+carries \code{NA} in the three fields a design effect does not identify.
 }
 \description{
 Estimate variance components for multistage sampling from frame or
@@ -190,10 +185,13 @@ inclusion probabilities. Cluster sizes and totals are estimated by
 summed weights, and the estimation variance of the weighted cluster
 totals is subtracted from the between-stage variance terms, so
 unequal-probability samples from a previous round give approximately
-design-unbiased components. Unit weights recover the frame formulas
-exactly. The weight \emph{scale} matters. Within each cluster the summed
+design-unbiased components. With an SRS first stage, unit weights
+recover the frame formulas exactly. With \code{prob}, supplied weights, unit
+ones included, mark the PSUs as a PPS sample, and the components are
+the Hansen-Hurwitz estimates described with \code{prob} below. The weight
+\emph{scale} matters. Within each cluster the summed
 weights should estimate the cluster population size, since the
-implied sampling fraction drives the correction. For a multi-stage
+implied sampling fraction drives the correction. For a multistage
 sample this means the \emph{within-cluster} weights (the product of the
 stage-2 and later weights), not the full design weight, whose
 stage-1 factor would overstate every cluster size. The correction
@@ -202,18 +200,18 @@ Informative within-cluster sampling remains approximate. In the
 3-stage weighted case the between-PSU correction removes
 element-stage estimation noise but not SSU-stage subsampling noise,
 so when few SSUs are sampled per PSU the between-PSU component (and
-\code{icc_psu}) is conservative: biased upward, never downward.
+\code{icc_1}) is conservative: biased upward, never downward.
 
 The element-stage noise in a 3-stage sample depends on the share of
 each SSU's elements that was sampled, \eqn{f_3 = n_{ij} / N_{ij}}{f3 =
 n_ij / N_ij}. Only the stage-3 weight sums to \eqn{N_{ij}}{N_ij}, so a
 single within-cluster weight column reads the fraction as
 \eqn{f_2 f_3}{f2 * f3} and removes too much noise from the SSU totals,
-which understates \code{varw_psu} and \code{icc_ssu}. The difference is small when
+which understates \code{varw_1} and \code{icc_2}. The difference is small when
 \eqn{f_3}{f3} is small, the usual case of a few households listed from
 many. When it is not, pass the stage-2 and stage-3 weights as two
 columns. At \eqn{f_2 = 0.2}{f2 = 0.2} and \eqn{f_3 = 0.5}{f3 = 0.5}
-one column understates \code{varw_psu} by about a fifth.
+one column understates \code{varw_1} by about a fifth.
 
 A sample passed without \code{weights} is read as the frame, and that
 overstates \code{icc}. Each sampled PSU's mean carries the noise of its own
@@ -237,6 +235,16 @@ SSU totals carry no element-stage noise. A design built with \verb{weights=} sto
 weight per element however many stages \code{ids} names, and the stage-1
 factor cannot be divided back out of it.
 
+The stage count comes from the same information. When the last \code{ids}
+column has one row per value and the design stores as many probability
+columns as \code{ids} columns, no draw sits below that ID, so it names the
+elements and the design has one stage fewer than its \code{ids}. A further
+probability column records a draw inside that unit and keeps it a stage.
+Two \code{weights} columns, the stage-2 and stage-3 conditional weights,
+declare the second of two \code{ids} columns an SSU in the same way, unit
+columns included. One combined design weight says neither, so the last
+ID is then read as a stage and a warning names the ambiguity.
+
 Unit weights describe a frame and pass straight through. Any other
 single-column weight is refused rather than guessed at, because a design
 declared as \code{ids = ~psu} carrying a full design weight is equally
@@ -249,9 +257,19 @@ variable or as a numeric vector.
 When \code{prob} is \code{NULL}, SRS first-stage is assumed. When provided, PPS
 variance estimation is used. \code{prob} must sum to 1 across the PSUs
 present in the data. On a complete frame these are the one-draw
-selection probabilities themselves. In a sample containing only some
-of the PSUs, renormalize over the sampled PSUs:
-\code{prob = pp[sampled] / sum(pp[sampled])}. For a fixed-size PPS design
+selection probabilities themselves, and the frame formulas apply. A
+sample, marked by \code{weights} or by the survey.design method, is read as
+\eqn{m} draws with replacement. With \eqn{z_i = \hat t_i / q_i}{z_i =
+t_i / q_i}, the between component is estimated by the variance of the
+\eqn{z_i} less the mean of their estimation variances over
+\eqn{q_i^2}{q_i^2}, the within component by the mean of
+\eqn{\hat N_i^2 s_i^2 / q_i^2}{N_i^2 s_i^2 / q_i^2}, and the total by
+the mean of the \eqn{z_i}. Renormalize over the draws,
+\code{prob = pp[drawn] / sum(pp[drawn])}, and give each draw its own PSU
+label, so that a PSU drawn twice enters twice. The common factor cancels
+from every component. A PPS design without replacement is read as one
+with replacement, which is close when few PSUs are taken from many. In a
+three-stage sample \code{prob} describes the first stage only. For a fixed-size PPS design
 the stage-1 inclusion probabilities are proportional to the one-draw
 probabilities, so shares derived from inverse stage-1 weights,
 \code{pi1 / sum(pi1)}, are identical and can be used when the frame is
@@ -260,7 +278,7 @@ path, contributing no between-PSU variance and needing to be treated
 as separate strata, with \code{prob} renormalized over the remaining
 PSUs.
 
-Planning from a complete PSU register, as \code{\link[=n_alloc]{n_alloc()}} does with \code{psu}, is
+Planning from a complete PSU register, as \code{\link[=n_alloc_joint]{n_alloc_joint()}} does with \code{psu}, is
 the exception. The certainty PSUs are not known until the allocation is,
 so use every PSU of the stratum, with \code{prob} equal to each PSU's share of
 the stratum's units. The \code{icc} returned is then the size-weighted
@@ -294,7 +312,7 @@ inverts the two-stage clustering identity used by \code{\link[=design_effect]{de
 and returns the \code{icc} in a \code{svyplan_varcomp} the cluster functions
 accept:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{vc <- varcomp(deff = 1.8, n_per_psu = 20)
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{vc <- varcomp(deff = 1.8, take = 20)
 n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5)
 }\if{html}{\out{</div>}}
 
@@ -329,9 +347,9 @@ about 9 percent at a 30 percent coefficient of variation (0.0421 against
 figure, which is the one a reader reaches for, so supply the realized
 takes or their coefficient of variation where they are known:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{varcomp(deff = 1.8, n_per_psu = 20)                  # constant take
-varcomp(deff = 1.8, n_per_psu = takes)               # realized takes
-varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)   # summary form
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{varcomp(deff = 1.8, take = 20)                  # constant take
+varcomp(deff = 1.8, take = takes)               # realized takes
+varcomp(deff = 1.8, take = 20, cv_take = 0.3)   # summary form
 }\if{html}{\out{</div>}}
 
 The take is stored in \verb{$params} as provenance, since the same \code{icc}
@@ -355,7 +373,7 @@ With that survey's final weights \code{w}, Kish's factor from
 \code{\link[=design_effect]{design_effect()}} divides it out:
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{kish <- design_effect(weights = w)
-vc <- varcomp(deff = deft^2 / kish, n_per_psu = b)
+vc <- varcomp(deff = deft^2 / kish, take = b)
 }\if{html}{\out{</div>}}
 
 This is the decomposition Kalton, Brick and L\enc{ê}{e} (2005) use to
@@ -374,7 +392,7 @@ allocation itself, so the old factor is divided out, or it would count
 twice. A scalar \code{deff} in \code{\link[=n_prop]{n_prop()}} or \code{\link[=n_mean]{n_mean()}} carries no allocation.
 For a new design as disproportionate as the old one, multiply its
 expected weighting factor back in,
-\code{deff = design_effect(vc, n_per_psu = b_new) * kish_new}, or the sample
+\code{deff = design_effect(vc, take = b_new) * kish_new}, or the sample
 comes out too small. Weight variation within strata, from nonresponse
 adjustment for instance, recurs in the new survey and \code{\link[=n_alloc]{n_alloc()}} does
 not model it. A \code{deff} column in its \code{frame} can carry it.
@@ -417,25 +435,25 @@ planning a total.
 
 For three stages, \code{varb} uses the between-PSU expression above that
 matches the first stage, the SRS one without \code{prob} and the PPS one with
-it. \code{varw_psu} scales the variance of SSU totals within each PSU by the
-inverse draw probability \eqn{1/p_i}, which is \eqn{M} without \code{prob}, and \code{varw_ssu} aggregates the within-SSU ultimate-unit
+it. \code{varw_1} scales the variance of SSU totals within each PSU by the
+inverse draw probability \eqn{1/p_i}, which is \eqn{M} without \code{prob}, and \code{varw_2} aggregates the within-SSU ultimate-unit
 variances. The returned PSU homogeneity compares the between-PSU component
 with the element-level variance aggregated within PSUs. The SSU
-homogeneity is \code{varw_psu / (varw_psu + varw_ssu)}. This distinction is why
+homogeneity is \code{varw_1 / (varw_1 + varw_2)}. This distinction is why
 the first \code{icc} is not generally \code{varb / sum(c(varb, varw))} for a
 three-stage result.
 
 The two \code{var_ratio} values are estimated from their own stage
-decompositions, and \code{var_ratio_ssu} depends on how SSUs are drawn. By
+decompositions, and \code{var_ratio_2} depends on how SSUs are drawn. By
 default SSUs are taken by simple random sampling within each PSU and
 their totals are expanded by the number of SSUs. When SSU sizes vary,
-those totals vary with size as well as with content, so \code{var_ratio_ssu}
-rises above the \code{var_ratio_psu * (1 - icc_psu)} that planning functions
+those totals vary with size as well as with content, so \code{var_ratio_2}
+rises above the \code{var_ratio_1 * (1 - icc_1)} that planning functions
 derive when it is not supplied, and the more so the smaller the unit
 relvariance. A second-stage \code{prob}
 (one-draw probabilities of the SSUs within their PSU, usually their size
 share) describes selection proportional to size instead. The size effect
-then cancels, and \code{var_ratio_ssu} comes close to the derived value.
+then cancels, and \code{var_ratio_2} comes close to the derived value.
 Use the \code{prob} that matches the design being planned. Passing a
 \code{svyplan_varcomp} to a planning function uses the estimated pair as
 given.
@@ -454,7 +472,7 @@ mean variance of the remaining clusters.
 With \code{strata}, components are estimated separately within each
 stratum and returned as a per-stratum table in \verb{$strata} (also via
 \code{as.data.frame()}). The pooled fields (\code{varb}, \code{icc}, ...) are not
-filled. The table's columns (\code{sd}, \code{mean}, \code{icc_psu}, \code{var_ratio_psu})
+filled. The table's columns (\code{sd}, \code{mean}, \code{icc_1}, \code{var_ratio_1})
 match the \code{\link[=n_alloc]{n_alloc()}} frame contract, so after adding stratum \code{N}
 it feeds a stratified two-stage allocation directly. When \code{prob} is
 combined with \code{strata}, supply one value per observation, summing
@@ -506,17 +524,19 @@ as.data.frame(vc2)
 # Feed into n_cluster
 n_cluster(stage_cost = c(500, 50), icc = vc2, budget = 100000)
 
-# Estimate components from a two-stage sample: within-cluster
-# weights (summing to each cluster's population size) and, for a
-# PPS first stage, one-draw probabilities renormalized over the
-# sampled clusters
-sampled <- unlist(lapply(split(seq_len(200), frame2$district)[1:8],
-                         sample, size = 4))
-samp <- frame2[sampled, ]
-samp$w <- 10 / 4
-pp <- rep(1 / 20, 8)
-varcomp(income ~ district, data = samp, weights = ~w,
-        prob = pp / sum(pp))
+# Estimate components from a two-stage PPS sample: 8 districts drawn
+# with replacement in proportion to a size measure, 4 of 10 units taken
+# in each draw. Each draw is its own PSU, so a district drawn twice
+# enters twice. The weights sum to each district's population, and the
+# one-draw probabilities are renormalized over the draws
+pp_all <- (1:20) / sum(1:20)
+draws <- sample(20, 8, replace = TRUE, prob = pp_all)
+samp <- do.call(rbind, lapply(seq_along(draws), function(j) {
+  rows <- sample(which(frame2$district == draws[j]), 4)
+  data.frame(frame2[rows, ], draw = j, w = 10 / 4)
+}))
+samp$q <- pp_all[draws[samp$draw]] / sum(pp_all[draws])
+varcomp(income ~ draw, data = samp, weights = ~w, prob = ~q)
 
 # Per-stratum components for a stratified two-stage plan
 set.seed(2718)
@@ -556,7 +576,7 @@ frame3$pp <- rep(1 / 20, 400)
 vc3_pps <- varcomp(income ~ district/village, data = frame3, prob = ~pp)
 
 # Villages of unequal size. Drawn by SRS, their totals vary with size
-# and var_ratio_ssu is large. Drawn proportional to size (each
+# and var_ratio_2 is large. Drawn proportional to size (each
 # village's share of its district), it is close to the derived value.
 set.seed(42)
 sizes <- rpois(100, 8) + 2
@@ -581,31 +601,31 @@ varcomp(frame3$income,
         stage_id = list(frame3$district, frame3$village))
 
 # Back an icc out of a previous round's published design effect
-vc <- varcomp(deff = 1.8, n_per_psu = 20)
+vc <- varcomp(deff = 1.8, take = 20)
 vc
 
 # Re-plan at a different take: the reason to back the icc out
-design_effect(vc, n_per_psu = 12)
+design_effect(vc, take = 12)
 
 # Realized takes varied around a nominal 20
-varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)
+varcomp(deff = 1.8, take = 20, cv_take = 0.3)
 
 # From a published standard error instead
-varcomp(se = 0.021, p = 0.30, n = 1200, n_per_psu = 20)
+varcomp(se = 0.021, p = 0.30, n = 1200, take = 20)
 
 # A DHS appendix publishes DEFT, the ratio of standard errors
 deft <- 1.582
-varcomp(deff = deft^2, n_per_psu = 12.3)
+varcomp(deff = deft^2, take = 12.3)
 
 # Divide out the weighting loss of the survey that published it
 w_old <- rep(c(1, 4), c(300, 100))
 kish <- design_effect(weights = w_old)
-vc_dhs <- varcomp(deff = deft^2 / kish, n_per_psu = 12.3)
+vc_dhs <- varcomp(deff = deft^2 / kish, take = 12.3)
 vc_dhs
 
 # A scalar deff for an equally disproportionate design puts it back
 n_prop(p = 0.28, cv = 0.05,
-       deff = design_effect(vc_dhs, n_per_psu = 15) * kish)
+       deff = design_effect(vc_dhs, take = 15) * kish)
 
 }
 \references{

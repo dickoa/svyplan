@@ -66,24 +66,24 @@ test_that("prec_alloc, rebuilds and domains carry the labels", {
 
 test_that("cluster, joint and register allocations carry the labels", {
   fr <- .label_frame()
-  cl <- transform(fr, N_psu = c(200, 100, 60, 120), n_per_psu = 10,
-                  icc_psu = 0.05)
+  cl <- transform(fr, N_1 = c(200, 100, 60, 120), take_2 = 10,
+                  icc_1 = 0.05)
   expect_identical(n_alloc(cl, n = 400)$detail$region, fr$region)
 
   jf <- data.frame(stratum = paste(fr$region, fr$residence),
                    region = fr$region, residence = fr$residence, N = fr$N)
   jm <- data.frame(stratum = jf$stratum, name = "y", p = 0.3)
   tg <- data.frame(name = "y", cv = 0.05)
-  joint <- n_alloc(jf, measures = jm, targets = tg)
+  joint <- n_alloc_joint(jf, measures = jm, targets = tg)
   expect_identical(joint$detail$residence, fr$residence)
   expect_identical(joint$params$strata_keys, c("region", "residence"))
 
-  jf$n_per_psu <- 10
-  jf$cost_psu <- 20
-  jf$cost_ssu <- 1
+  jf$take_2 <- 10
+  jf$cost_1 <- 20
+  jf$cost_2 <- 1
   reg <- data.frame(stratum = rep(jf$stratum, each = 20),
                     N = rep(jf$N / 20, each = 20))
-  register <- n_alloc(jf, measures = transform(jm, icc_psu = 0.05),
+  register <- n_alloc_joint(jf, measures = transform(jm, icc_1 = 0.05),
                       targets = tg, psu = reg)
   expect_identical(register$detail$region, fr$region)
   expect_true("n_psu_certain" %in% names(register$detail))

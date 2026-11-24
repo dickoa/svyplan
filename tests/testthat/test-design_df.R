@@ -1,20 +1,20 @@
 ## T1. Counting rules, one per design shape
 
 test_that("certainty PSU allocations cannot be counted as element samples", {
-  frame <- data.frame(stratum = "S", N = 1000, n_per_psu = 10)
+  frame <- data.frame(stratum = "S", N = 1000, take_2 = 10)
   psu <- data.frame(stratum = "S", psu_id = 1:10, N = c(550, rep(50, 9)))
-  measures <- data.frame(stratum = "S", name = "y", p = .3, icc_psu = .08)
-  fit <- n_alloc(frame, measures = measures,
+  measures <- data.frame(stratum = "S", name = "y", p = .3, icc_1 = .08)
+  fit <- n_alloc_joint(frame, measures = measures,
                  targets = data.frame(name = "y", cv = .2), psu = psu)
   expect_true(any(fit$psu$certainty))
   expect_error(design_df(fit), "refuses allocations containing certainty PSUs")
 })
 
 test_that("PSU registers without certainty units count operational PSUs", {
-  frame <- data.frame(stratum = "S", N = 1000, n_per_psu = 10)
+  frame <- data.frame(stratum = "S", N = 1000, take_2 = 10)
   psu <- data.frame(stratum = "S", psu_id = 1:20, N = 50)
-  measures <- data.frame(stratum = "S", name = "y", p = .3, icc_psu = .08)
-  fit <- n_alloc(frame, measures = measures,
+  measures <- data.frame(stratum = "S", name = "y", p = .3, icc_1 = .08)
+  fit <- n_alloc_joint(frame, measures = measures,
                  targets = data.frame(name = "y", cv = .2), psu = psu)
   expect_false(any(fit$psu$certainty))
   expect_equal(fit$detail$n_psu_draw, 10)
@@ -26,12 +26,12 @@ test_that("PSU registers without certainty units count operational PSUs", {
 })
 
 test_that("PSU-register counts subtract one constraint per stratum", {
-  frame <- data.frame(stratum = c("A", "B"), N = 1000, n_per_psu = 10)
+  frame <- data.frame(stratum = c("A", "B"), N = 1000, take_2 = 10)
   psu <- data.frame(stratum = rep(c("A", "B"), each = 20), psu_id = 1:40, N = 50)
   measures <- data.frame(stratum = c("A", "B"), name = "y", p = .3,
-                         icc_psu = .08)
+                         icc_1 = .08)
   targets <- data.frame(name = "y", cv = .2, domain = "stratum", level = c("A", "B"))
-  fit <- n_alloc(frame, measures = measures, targets = targets, psu = psu)
+  fit <- n_alloc_joint(frame, measures = measures, targets = targets, psu = psu)
   expect_false(any(fit$psu$certainty))
   d <- design_df(fit)
   expect_equal(d$strata$n_units, c(10, 10))
@@ -46,7 +46,7 @@ test_that("PSU-register counts subtract one constraint per stratum", {
   drawn <- do.call(rbind, lapply(
     split(tab, paste(tab$stratum, tab$.zone)), function(z) z[seq_len(m), ]
   ))
-  drawn$group <- if (m == 1L) drawn$.pair else paste(drawn$stratum, drawn$.zone)
+  drawn$group <- if (m == 1L) drawn$.variance_group else paste(drawn$stratum, drawn$.zone)
   design <- survey::svydesign(ids = ~id, strata = ~group,
                               weights = rep(1, nrow(drawn)), data = drawn)
   survey::degf(design)
@@ -54,12 +54,12 @@ test_that("PSU-register counts subtract one constraint per stratum", {
 
 test_that("a zoned register counts its variance groups", {
   skip_if_not_installed("survey")
-  frame <- data.frame(stratum = "A", N = 100000, n_per_psu = 10)
+  frame <- data.frame(stratum = "A", N = 100000, take_2 = 10)
   psu <- data.frame(stratum = "A", N = rep(1000, 100))
-  measures <- data.frame(stratum = "A", name = "y", p = 0.5, icc_psu = 0.05)
+  measures <- data.frame(stratum = "A", name = "y", p = 0.5, icc_1 = 0.05)
   targets <- data.frame(name = "y", cv = 0.08)
   for (m in 1:2) {
-    fit <- n_alloc(frame, measures = measures, targets = targets, psu = psu,
+    fit <- n_alloc_joint(frame, measures = measures, targets = targets, psu = psu,
                    n_psu_per_zone = m)
     expect_false(any(fit$psu$certainty))
     d <- design_df(fit)
@@ -73,7 +73,7 @@ test_that("a zoned register counts its variance groups", {
 test_that("zones pooled across strata leave a stratum no df of its own", {
   skip_if_not_installed("survey")
   z <- .psu_wide_register(11)
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
                  psu = z$psu, n_psu_per_zone = 1)
   expect_false(any(fit$psu$certainty))
   d <- design_df(fit)
@@ -81,22 +81,22 @@ test_that("zones pooled across strata leave a stratum no df of its own", {
   expect_identical(d$strata$.status, c("ok", "ok", "pooled"))
   # Each stratum keeps its zones less the variance groups they fall in, and
   # the stratum whose single zone joins another's group keeps none.
-  groups <- tapply(fit$psu$.pair, fit$psu$stratum,
+  groups <- tapply(fit$psu$.variance_group, fit$psu$stratum,
                    function(x) length(unique(x[!is.na(x)])))
   expect_equal(d$strata$df,
                fit$detail$n_zone - as.numeric(groups[fit$detail$stratum]))
   expect_identical(d$strata$df[3], 0)
-  expect_equal(d$n_strata, length(unique(fit$psu$.pair[!is.na(fit$psu$.pair)])))
+  expect_equal(d$n_strata, length(unique(fit$psu$.variance_group[!is.na(fit$psu$.variance_group)])))
 })
 
 test_that("two PSUs per zone give one df per zone in each stratum", {
-  frame <- data.frame(stratum = c("A", "B"), N = 1000, n_per_psu = 10)
+  frame <- data.frame(stratum = c("A", "B"), N = 1000, take_2 = 10)
   psu <- data.frame(stratum = rep(c("A", "B"), each = 20), N = 50)
   measures <- data.frame(stratum = c("A", "B"), name = "y", p = .3,
-                         icc_psu = .08)
+                         icc_1 = .08)
   targets <- data.frame(name = "y", cv = .2, domain = "stratum",
                         level = c("A", "B"))
-  fit <- n_alloc(frame, measures = measures, targets = targets, psu = psu,
+  fit <- n_alloc_joint(frame, measures = measures, targets = targets, psu = psu,
                  n_psu_per_zone = 2)
   d <- design_df(fit)
   expect_equal(d$strata$df, fit$detail$n_zone)
@@ -110,8 +110,8 @@ alloc_cluster_frame <- function() {
     N = c(12000, 30000, 8000),
     sd = c(5, 8, 3),
     mean = c(10, 20, 5),
-    icc_psu = 0.05,
-    n_per_psu = 12
+    icc_1 = 0.05,
+    take_2 = 12
   )
 }
 
@@ -138,10 +138,10 @@ test_that("an unstratified element design counts its units", {
 test_that("an unstratified cluster design counts its whole PSUs", {
   plan <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
   d <- design_df(plan)
-  expect_equal(as.double(d), plan$operational$n[["n_psu"]] - 1)
+  expect_equal(as.double(d), plan$operational$n[["stage_1"]] - 1)
   expect_identical(d$stage, "psu")
   # the whole-unit count, never the continuous optimum
-  expect_false(isTRUE(all.equal(as.double(d), plan$n[["n_psu"]] - 1)))
+  expect_false(isTRUE(all.equal(as.double(d), plan$n[["stage_1"]] - 1)))
 })
 
 test_that("a stratified element allocation counts units minus strata", {
@@ -154,9 +154,9 @@ test_that("a stratified element allocation counts units minus strata", {
 test_that("a stratified cluster allocation counts PSUs minus strata", {
   alloc <- n_alloc(alloc_cluster_frame(), n = 3000)
   d <- design_df(alloc)
-  expect_equal(as.double(d), sum(alloc$detail$n_psu_int) - 3)
+  expect_equal(as.double(d), sum(alloc$detail$n_1_int) - 3)
   expect_identical(d$stage, "psu")
-  expect_equal(d$n_units, sum(alloc$detail$n_psu_int))
+  expect_equal(d$n_units, sum(alloc$detail$n_1_int))
 })
 
 test_that("a stratification counts its allocation", {
@@ -260,7 +260,7 @@ test_that("cluster strata contribute their PSUs minus one to design df", {
   alloc <- n_alloc(frame, n = 3000)
   d <- design_df(alloc)
   expect_false(any(d$strata$.status == "census"))
-  expect_equal(as.double(d), sum(alloc$detail$n_psu_int) - 3)
+  expect_equal(as.double(d), sum(alloc$detail$n_1_int) - 3)
 })
 
 ## T3. Singleton strata
@@ -269,7 +269,7 @@ test_that("a one-PSU stratum is marked and warns naming the stratum", {
   frame <- data.frame(
     stratum = c("a", "b", "c"), N = c(200, 60000, 8000),
     sd = c(1, 20, 3), mean = c(10, 20, 5),
-    icc_psu = 0.05, n_per_psu = 40
+    icc_1 = 0.05, take_2 = 40
   )
   expect_warning(alloc <- n_alloc(frame, n = 3000), "single PSU")
   expect_warning(d <- design_df(alloc), "'a', 'c'")
@@ -288,7 +288,7 @@ test_that("a whole design on a single PSU warns at construction", {
   )
   expect_warning(
     n_cluster(
-      indicators = data.frame(name = "a", p = 0.3, cv = 0.5, icc_psu = 0.05),
+      data.frame(name = "a", p = 0.3, cv = 0.5, icc_1 = 0.05),
       stage_cost = c(5000, 50), budget = 9000
     ),
     "single PSU"
@@ -298,7 +298,7 @@ test_that("a whole design on a single PSU warns at construction", {
 test_that("a small but positive df is reported, never warned about", {
   frame <- data.frame(
     stratum = c("a", "b"), N = c(4000, 6000), sd = c(5, 8),
-    mean = c(10, 20), icc_psu = 0.05, n_per_psu = 30
+    mean = c(10, 20), icc_1 = 0.05, take_2 = 30
   )
   alloc <- n_alloc(frame, n = 300)
   expect_silent(d <- design_df(alloc))
@@ -311,7 +311,7 @@ test_that("a small but positive df is reported, never warned about", {
 test_that("svyplan_df is drop-in numeric", {
   alloc <- n_alloc(alloc_cluster_frame(), n = 3000)
   d <- design_df(alloc)
-  value <- sum(alloc$detail$n_psu_int) - 3
+  value <- sum(alloc$detail$n_1_int) - 3
 
   expect_true(is.numeric(d))
   expect_length(d, 1L)
@@ -335,7 +335,7 @@ test_that("svyplan_df fields are reached by name and unknown ones error", {
 
   df_row <- as.data.frame(d)
   expect_identical(nrow(df_row), 1L)
-  expect_identical(names(df_row), c("df", "n_units", "n_strata", "stage"))
+  expect_identical(names(df_row), c("df", "n_units", "n_strata", "stage", "method", "nominal"))
   expect_match(format(d), "svyplan_df \\[psu, 280\\]")
 })
 
@@ -629,10 +629,10 @@ test_that("a small stratum carrying the variance pulls the value down", {
 })
 
 test_that("a cluster allocation counts PSUs in each stratum's df", {
-  frame <- transform(.sat_frame, icc_psu = 0.05, n_per_psu = 10)
+  frame <- transform(.sat_frame, icc_1 = 0.05, take_2 = 10)
   fit <- n_alloc(frame, n = 3000)
   got <- design_df(fit, method = "satterthwaite")
-  nu <- fit$detail$n_psu_int - 1
+  nu <- fit$detail$n_1_int - 1
   share <- fit$detail$.share
   expect_equal(as.double(got), 1 / sum(share^2 / nu), tolerance = 1e-12)
   expect_identical(attr(got, "stage"), "psu")
@@ -646,9 +646,9 @@ test_that("satterthwaite prints beside its nominal count", {
 
 test_that("satterthwaite is refused without one share per stratum", {
   register <- data.frame(stratum = "A", N = rep(1000, 100))
-  zoned <- n_alloc(
-    data.frame(stratum = "A", N = 100000, n_per_psu = 10),
-    measures = data.frame(stratum = "A", name = "y", p = 0.5, icc_psu = 0.05),
+  zoned <- n_alloc_joint(
+    data.frame(stratum = "A", N = 100000, take_2 = 10),
+    measures = data.frame(stratum = "A", name = "y", p = 0.5, icc_1 = 0.05),
     targets = data.frame(name = "y", cv = 0.08),
     psu = register, n_psu_per_zone = 2
   )
@@ -714,30 +714,30 @@ test_that("change and pooled sizes are refused, ratio sizes counted", {
 })
 
 test_that("a cluster plan with domains counts each domain as a stratum", {
-  tab <- data.frame(name = "y", p = 0.3, cv = 0.1, icc_psu = 0.05,
+  tab <- data.frame(name = "y", p = 0.3, cv = 0.1, icc_1 = 0.05,
                     region = c("A", "B"))
-  x <- n_cluster(indicators = tab, stage_cost = c(100, 10),
+  x <- n_cluster(tab, stage_cost = c(100, 10),
                  domains = "region")
   op <- x$operational$domains
   d <- design_df(x)
-  expect_equal(as.double(d), sum(op$n_psu) - 2)
+  expect_equal(as.double(d), sum(op$stage_1) - 2)
   expect_equal(d$domains$region, c("A", "B"))
-  expect_equal(d$domains$.df, op$n_psu - 1)
+  expect_equal(d$domains$.df, op$stage_1 - 1)
   expect_equal(sum(d$domains$.df), as.double(d))
-  three <- n_cluster(indicators = transform(tab, icc_ssu = 0.02),
+  three <- n_cluster(transform(tab, icc_2 = 0.02),
                      stage_cost = c(100, 30, 10), domains = "region")
   expect_equal(as.double(design_df(three)),
-               sum(three$operational$domains$n_psu) - 2)
+               sum(three$operational$domains$stage_1) - 2)
 })
 
 test_that("a prec_alloc() result without a fielded count table is refused", {
   fr <- data.frame(stratum = c("A", "B"), N = c(1000, 2000))
-  generalized <- prec_alloc(
+  generalized <- prec_alloc_joint(
     fr, n = c(50, 60),
     measures = data.frame(stratum = c("A", "B"), name = "y", p = c(0.3, 0.4)),
     targets = data.frame(name = "y", cv = 0.1)
   )
-  expect_error(design_df(generalized), "generalized prec_alloc\\(\\) result")
+  expect_error(design_df(generalized), "joint prec_alloc_joint\\(\\) result")
 
   el <- data.frame(stratum = c("a", "b"), N = c(1000, 2000),
                    mean = c(10, 20), sd = c(5, 10))
@@ -745,13 +745,48 @@ test_that("a prec_alloc() result without a fielded count table is refused", {
                "stratum counts that are not whole")
 
   cl <- data.frame(stratum = c("a", "b"), N = c(400, 900), mean = c(10, 20),
-                   sd = c(5, 10), icc_psu = c(0.05, 0.1),
-                   cost_psu = c(100, 150), cost_ssu = 10)
+                   sd = c(5, 10), icc_1 = c(0.05, 0.1),
+                   cost_1 = c(100, 150), cost_2 = 10)
   plan <- n_alloc(cl, cv = 0.05)
   expect_error(design_df(prec_alloc(plan)), "PSU counts that are not whole")
-  fixed <- transform(cl, n_per_psu = 10, cost_psu = NULL, cost_ssu = NULL)
+  fixed <- transform(cl, take_2 = 10, cost_1 = NULL, cost_2 = NULL)
   d <- design_df(prec_alloc(fixed, n = c(30, 120)))
   expect_equal(as.double(d), 3 + 12 - 2)
   expect_error(design_df(prec_alloc(fixed, n = c(35, 120))),
                "PSU counts that are not whole")
+})
+
+## The df accessors carry the method
+
+test_that("as.list and as.data.frame carry the method and the nominal count", {
+  a <- n_alloc(data.frame(stratum = c("A", "B"), N = c(1000, 2000), sd = c(1, 2)),
+               n = 300)
+  ds <- design_df(a, method = "satterthwaite")
+  expect_identical(as.list(ds)$method, "satterthwaite")
+  expect_equal(as.data.frame(ds)$nominal, as.double(design_df(a)))
+  expect_identical(as.data.frame(design_df(a))$method, "nominal")
+  expect_true(is.na(as.data.frame(design_df(a))$nominal))
+})
+
+## A stratum the design leaves empty
+
+test_that("an empty stratum is unsampled, not a singleton", {
+  f <- data.frame(stratum = c("A", "B"), N = c(1, 99), sd = 10, mean = 50,
+                  unit_cost = 1)
+  z <- suppressWarnings(n_twophase(f, phase1_cost = 1, budget = 60))
+  expect_no_warning(d <- design_df(z))
+  st <- attr(d, "strata")
+  expect_identical(st$.status[st$n_units == 0], "unsampled")
+  expect_equal(attr(d, "n_strata"), 1L)
+  expect_equal(as.double(d), sum(st$n_units) - 1)
+})
+
+test_that("the Satterthwaite count needs the variance shares only up to scale", {
+  a <- n_alloc(data.frame(stratum = c("A", "B", "C"), N = c(1000, 2000, 500),
+                          sd = c(1, 2, 3)), n = 300)
+  nominal <- design_df(a)
+  share <- c(0.2, 0.3, 0.5)
+  census <- rep(FALSE, 3)
+  expect_equal(as.double(.df_satterthwaite(nominal, share, census)),
+               as.double(.df_satterthwaite(nominal, 2 * share, census)))
 })

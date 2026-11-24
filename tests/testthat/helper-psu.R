@@ -2,7 +2,7 @@
   frame <- data.frame(
     stratum = c("A", "B", "C", "D"),
     N = c(60000, 40000, 25000, 15000),
-    n_per_psu = take,
+    take_2 = take,
     stringsAsFactors = FALSE
   )
   set.seed(seed)
@@ -23,7 +23,7 @@
     p = c(0.62, 0.55, 0.48, 0.41, rep(NA_real_, 4)),
     mean = c(rep(NA_real_, 4), 520, 430, 380, 310),
     sd = c(rep(NA_real_, 4), 210, 180, 160, 140),
-    icc_psu = rep(c(0.05, 0.08), each = nrow(frame)),
+    icc_1 = rep(c(0.05, 0.08), each = nrow(frame)),
     stringsAsFactors = FALSE
   )
   targets <- data.frame(name = c("literacy", "income"), cv = c(0.04, 0.05))
@@ -45,11 +45,11 @@
     frame <- data.frame(
       stratum = LETTERS[seq_len(H)],
       N = as.numeric(tapply(psu$N, psu$stratum, sum)[LETTERS[seq_len(H)]]),
-      n_per_psu = take
+      take_2 = take
     )
     measures <- data.frame(
       stratum = frame$stratum, name = "y", p = runif(H, 0.1, 0.6),
-      icc_psu = runif(H, 0, 0.15)
+      icc_1 = runif(H, 0, 0.15)
     )
     targets <- data.frame(name = "y", cv = runif(1, 0.02, 0.12))
   }
@@ -70,11 +70,11 @@
   frame <- data.frame(
     stratum = LETTERS[seq_len(H)],
     N = as.numeric(tapply(psu$N, psu$stratum, sum)[LETTERS[seq_len(H)]]),
-    n_per_psu = take
+    take_2 = take
   )
   measures <- data.frame(
     stratum = frame$stratum, name = "y", p = runif(H, 0.1, 0.6),
-    icc_psu = runif(H, 0, 0.3)
+    icc_1 = runif(H, 0, 0.3)
   )
   targets <- data.frame(name = "y", cv = runif(1, 0.02, 0.15))
   list(frame = frame, psu = psu, measures = measures, targets = targets)

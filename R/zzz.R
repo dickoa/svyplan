@@ -1,56 +1,37 @@
-.onLoad <- function(libname, pkgname) {
-  if (requireNamespace("survey", quietly = TRUE)) {
-    ns <- asNamespace("survey")
-    registerS3method("SE", "svyplan_n", SE.svyplan_n, envir = ns)
-    registerS3method("SE", "svyplan_prec", SE.svyplan_prec, envir = ns)
-    registerS3method("SE", "svyplan_cluster", SE.svyplan_cluster, envir = ns)
-    registerS3method("cv", "svyplan_n", cv.svyplan_n, envir = ns)
-    registerS3method("cv", "svyplan_prec", cv.svyplan_prec, envir = ns)
-    registerS3method("cv", "svyplan_cluster", cv.svyplan_cluster, envir = ns)
-    for (cls in c("svyplan_twophase", "svyplan_panel", "svyplan_strata")) {
-      registerS3method("SE", cls, .svyplan_se, envir = ns)
-      registerS3method("cv", cls, .svyplan_cv, envir = ns)
-    }
-  }
-}
+## The survey generics are registered when survey's namespace loads, so
+## loading svyplan never loads survey.
 
-#' @keywords internal
-#' @noRd
+#' @exportS3Method survey::SE
 SE.svyplan_n <- function(object, ...) {
   .check_unused_dots(...)
   object$se
 }
 
-#' @keywords internal
-#' @noRd
+#' @exportS3Method survey::SE
 SE.svyplan_prec <- function(object, ...) {
   .check_unused_dots(...)
   object$se
 }
 
-#' @keywords internal
-#' @noRd
+#' @exportS3Method survey::SE
 SE.svyplan_cluster <- function(object, ...) {
   .check_unused_dots(...)
   object$se
 }
 
-#' @keywords internal
-#' @noRd
+#' @exportS3Method survey::cv
 cv.svyplan_n <- function(object, ...) {
   .check_unused_dots(...)
   object$cv
 }
 
-#' @keywords internal
-#' @noRd
+#' @exportS3Method survey::cv
 cv.svyplan_prec <- function(object, ...) {
   .check_unused_dots(...)
   object$cv
 }
 
-#' @keywords internal
-#' @noRd
+#' @exportS3Method survey::cv
 cv.svyplan_cluster <- function(object, ...) {
   .check_unused_dots(...)
   object$cv
@@ -74,3 +55,27 @@ cv.svyplan_cluster <- function(object, ...) {
   .check_unused_dots(...)
   object[["cv"]] %||% NA_real_
 }
+
+#' @exportS3Method survey::SE
+SE.svyplan_alloc <- function(object, ...) .svyplan_se(object, ...)
+
+#' @exportS3Method survey::SE
+SE.svyplan_twophase <- function(object, ...) .svyplan_se(object, ...)
+
+#' @exportS3Method survey::SE
+SE.svyplan_panel <- function(object, ...) .svyplan_se(object, ...)
+
+#' @exportS3Method survey::SE
+SE.svyplan_strata <- function(object, ...) .svyplan_se(object, ...)
+
+#' @exportS3Method survey::cv
+cv.svyplan_alloc <- function(object, ...) .svyplan_cv(object, ...)
+
+#' @exportS3Method survey::cv
+cv.svyplan_twophase <- function(object, ...) .svyplan_cv(object, ...)
+
+#' @exportS3Method survey::cv
+cv.svyplan_panel <- function(object, ...) .svyplan_cv(object, ...)
+
+#' @exportS3Method survey::cv
+cv.svyplan_strata <- function(object, ...) .svyplan_cv(object, ...)

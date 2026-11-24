@@ -69,8 +69,9 @@ exactly one of \code{moe}, \code{cv}, or \code{rmoe}.}
 \item{N}{Population size, in the units the ratio is observed on. \code{Inf}
 (default) means no finite population correction.}
 
-\item{deff}{Design effect of the ratio estimator (> 0). See the section
-above, which is the one place this differs from \code{\link[=n_mean]{n_mean()}}. A
+\item{deff}{Design effect of the ratio estimator (> 0). See the section on
+design effect and clustering below, the one place this differs from
+\code{\link[=n_mean]{n_mean()}}. A
 published DEFT is squared first. See \code{\link[=varcomp]{varcomp()}} for that and for
 removing the published survey's weighting loss.}
 

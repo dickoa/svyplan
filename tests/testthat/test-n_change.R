@@ -263,3 +263,15 @@ test_that("a tiny target gives the census rather than a size that misses it", {
   expect_equal(suppressWarnings(n_change(var = 4, moe = 1e-9, N = 1000))$n,
                1000)
 })
+
+## A size snapped to the census beats the target
+
+test_that("a target only a census meets returns the census", {
+  z <- n_change(var = 10000, moe = 0.005, N = 100)
+  expect_equal(z$n, 100)
+  expect_equal(z$se, 0)
+  near <- n_change(var = 10000, moe = 0.5, N = 100)
+  expect_lt(near$n, 100)
+  expect_equal(near$se, 0.5 / qnorm(0.975), tolerance = 1e-8)
+  expect_equal(n_change(var = c(10000, 12000), moe = 0.005, N = 100)$n, 100)
+})

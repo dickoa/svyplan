@@ -4,25 +4,32 @@
 #' Returns a data frame with the varied parameters and resulting
 #' quantities, suitable for sensitivity analysis or plotting.
 #'
-#' @param object A svyplan object (`svyplan_n`, `svyplan_cluster`,
-#'   `svyplan_power`, or `svyplan_prec`). For `svyplan_prec`, the types
-#'   `"proportion"`, `"mean"`, `"ratio"`, `"change"`, `"pooled"` and
-#'   `"alloc"` are supported. Types `"cluster"` and `"multi"`, and the
-#'   precision of a PSU register allocation, are not.
+#' @param object A svyplan object (`svyplan_n`, `svyplan_multi`,
+#'   `svyplan_alloc`, `svyplan_alloc_joint`, `svyplan_cluster`,
+#'   `svyplan_power`, or `svyplan_prec`). For `svyplan_prec`, types
+#'   `"proportion"`, `"mean"`, `"ratio"`, `"change"`, `"pooled"`, `"alloc"`,
+#'   and `"alloc_joint"` (including PSU register allocations) are supported.
+#'   Types `"cluster"` and `"multi"` are not.
 #' @param newdata A data frame of parameter combinations to evaluate.
 #'   Column names must be valid parameters for the object type (see
 #'   Details). Parameters not in `newdata` stay at their original
 #'   values from the object.
 #' @param ... Additional arguments are not supported and produce an error.
+#' @param control For a [n_cluster()] result only, the whole-unit search
+#'   settings of each refit, as in [n_cluster()]. Defaults to the fit's own.
 #'
 #' @return A data frame with `newdata` columns followed by result
 #'   columns. The result columns depend on the object type:
 #'
 #'   - `svyplan_n`: `n`, `se`, `moe`, `cv`, `rmoe`, except for a
 #'     `type = "change"` result, which reports one size per occasion as
-#'     `n1` and `n2` in place of `n`, and a joint constrained allocation,
-#'     which reports the design and cost columns described under Details
-#'   - `svyplan_cluster`: `n_psu`, `n_per_psu`, (opt. `n_per_ssu`), `total_n`, `cv`, `cost`
+#'     `n1` and `n2` in place of `n`
+#'   - `svyplan_alloc` from [n_alloc()]: `n` (the total), `se`, `moe`,
+#'     `cv`, `rmoe` and `cost`
+#'   - `svyplan_alloc_joint` from [n_alloc_joint()]: the design and cost
+#'     columns described under Details
+#'   - `svyplan_multi`: `n` and `binding`, the name of the binding indicator
+#'   - `svyplan_cluster`: stage counts (`stage_1`, `stage_2`, ..., or custom stage names), `total_n`, `cv`, `cost`
 #'   - `svyplan_power`: `n`, `power`, `effect`
 #'   - `svyplan_prec`: `se`, `moe`, `cv`, `rmoe`, except for an allocation.
 #'     A classic allocation reports `n` (the total), `se`, `moe`, `cv`,
@@ -37,7 +44,7 @@
 #'   `.rmoe_achieved` or `.power_achieved`. It equals the target unless a
 #'   floor such as `min_cases` or `min_n_stratum` binds and carries the
 #'   precision past it. A result column that repeats an input set in
-#'   `newdata`, such as `n` or `n_per_psu`, is not shown twice.
+#'   `newdata`, such as `n` or `take_2`, is not shown twice.
 #'
 #' @details
 #' Valid parameters for `newdata` by object type:
@@ -65,14 +72,21 @@
 #'   The lag profiles themselves cannot be varied, a grid row having nowhere
 #'   to hold a vector. `cor_decay` can, being one number that replaces the
 #'   correlation profile, whatever the overlap's shape.
-#' - **`n_cluster`**: `cv`, `budget`, `unit_relvar`, `resp_rate`,
-#'   `resp_rate_psu`, `resp_rate_ssu`, `eligibility_rate`, `eligible_per_unit`,
-#'   `fixed_cost`, the
-#'   fixed sizes `n_psu`, `n_per_psu` and `n_per_ssu`,
-#'   stage deltas (`icc` or `icc_psu`, plus `icc_ssu` for 3-stage),
-#'   stage ratios (`var_ratio` or `var_ratio_psu`, plus `var_ratio_ssu` for 3-stage),
-#'   and stage costs (`cost_psu`, `cost_ssu`, `cost_tsu`). For 2-stage
-#'   designs, `cost_tsu` aliases `cost_ssu`.
+#' - **`n_multi`**: `target_mult` (multiplier on all `cv`, `moe`, `rmoe`
+#'   targets), `deff`, `resp_rate`, `eligibility_rate`, `eligible_per_unit`,
+#'   `alpha`, `df`.
+#' - **`n_cluster`** (single-indicator): `cv`, `budget`, `unit_relvar`,
+#'   `resp_rate`, stage response rates (`resp_rate_1`, ..., `resp_rate_{S-1}`),
+#'   `eligibility_rate`, `eligible_per_unit`, `fixed_cost`, fixed stage
+#'   sizes (`n_1`, `take_2`, ..., `take_S`), stage deltas (`icc` for 2-stage
+#'   or `icc_1`, ..., `icc_{S-1}`), stage ratios (`var_ratio` for 2-stage or
+#'   `var_ratio_1`, ..., `var_ratio_{S-1}`), and stage costs (`cost_1`, ...,
+#'   `cost_S`). Fits with stage-by-stage finite population correction also
+#'   accept `N_1`, ..., `N_{S-1}`, and `N`.
+#' - **`n_cluster`** (multi-indicator `indicators` table): `target_mult`,
+#'   `cost_mult`, `icc_mult`, `budget`, `resp_rate`, `eligibility_rate`,
+#'   `eligible_per_unit`, `fixed_cost`. `cost_mult` scales the stage costs
+#'   and leaves `fixed_cost` as it is, which its own column varies.
 #' - **`power_prop`**: `p1`, `p2`, `n`, `power`, `alpha`, `N`, `deff`,
 #'   `alternative`, `overlap`, `overlap_cor`, `resp_rate`, `eligibility_rate`,
 #'   `eligible_per_unit` (excluding the solved-for parameter). Not supported
@@ -81,8 +95,9 @@
 #'   `deff`, `alternative`, `overlap`, `overlap_cor`, `resp_rate`,
 #'   `eligibility_rate`, `eligible_per_unit` (excluding the solved-for
 #'   parameter). Not supported for objects with vector `n`.
-#' - **`n_alloc`** (classic modes): `n`, `cv`, `budget`, `alpha`, `deff`,
-#'   `resp_rate`, `eligibility_rate`, `df`, `min_n_stratum`, `alloc_q`. A joint
+#' - **`n_alloc`** (classic modes): `n`, `cv`, `moe`, `rmoe`, `budget`,
+#'   `alpha`, `deff`, `resp_rate`, `eligibility_rate`, `eligible_per_unit`,
+#'   `df`, `min_n_stratum`, `alloc_q`. A joint
 #'   constrained allocation varies other controls, described below.
 #' - **`power_did`**: `effect`, `n`, `power`, `alpha`, `N`, `deff`,
 #'   `resp_rate`, `eligibility_rate`, `eligible_per_unit`, `alternative`,
@@ -108,10 +123,16 @@
 #'   whatever the overlap's shape, since it replaces the correlation
 #'   profile.
 #' - **`prec_alloc`**: `n`, `alpha`, `deff`, `resp_rate`,
-#'   `eligibility_rate`, `df`, and for a joint allocation
-#'   `eligible_per_unit`. A number in `n` rescales the stratum sizes to that
-#'   total and keeps their shares. A list column `n` gives each row its own
-#'   stratum sizes, one per row of the frame, to compare allocations.
+#'   `eligibility_rate`, `eligible_per_unit`, `df`. A number in `n` rescales
+#'   the stratum sizes to that total and keeps their shares. A list column `n`
+#'   gives each row its own stratum sizes, one per row of the frame, to
+#'   compare allocations. Takes held by the assessment after a whole-design
+#'   search also apply to each scenario.
+#' - **`prec_alloc_joint`**: fixed-design robustness sweeps over `alpha`,
+#'   `deff`, `resp_rate`, `eligibility_rate`, `df`, `var_mult`, `cost_mult`,
+#'   plus `icc_mult` (for multistage and PSU register fits) and `n` and
+#'   `eligible_per_unit` (when `psu` is not used). The sample allocation is
+#'   held fixed while assessment inputs vary.
 #'
 #' For `svyplan_n` objects, `moe`, `rmoe`, and `cv` are mutually exclusive
 #' in `newdata`. If one appears, that mode is used. If none appears, the
@@ -120,36 +141,38 @@
 #' Similarly, for `svyplan_cluster` objects, `cv` and `budget` are
 #' mutually exclusive.
 #'
-#' Multi-indicator (`n_multi`) and multi-indicator cluster results are
-#' not supported. Use the underlying single-indicator functions instead.
-#'
-#' A joint constrained allocation ([n_alloc()] with `measures` and `targets`)
-#' varies two controls, and each grid row re-solves the stored problem.
+#' A joint constrained allocation ([n_alloc_joint()]) re-solves the stored
+#' problem at each scenario row. Valid columns include `target_mult` (when
+#' targets are present), `cost_mult`, `deff`, `resp_rate`, `eligibility_rate`,
+#' `alpha`, and `df`, `eligible_per_unit` without a PSU register, plus
+#' `budget` in budget mode, `take_2`, ..., `take_S`
+#' and `icc_mult` for multistage and register fits, `take_2_min` and `take_2_max`
+#' for free-take fits, and `certainty_cutoff` and `n_psu_per_zone` for PSU
+#' register fits.
 #'
 #' A fixed-budget objective fit varies `budget`, tracing the
 #' cost-versus-objective frontier. A fixed-take multistage fit varies the
-#' takes, `n_per_psu` for a two-stage design and either `n_per_psu` or
-#' `n_per_ssu` for a three-stage one, tracing what the fieldwork decision
+#' takes (`take_2`, ..., `take_S`), tracing what the fieldwork decision
 #' costs. A scalar take applies to every stratum, so the per-stratum takes the
 #' fit was built from are replaced rather than scaled. Sweep them
-#' asymmetrically by editing `frame` and calling [n_alloc()] per point. Both
+#' asymmetrically by editing `frame` and calling [n_alloc_joint()] per point. Both
 #' controls may appear together on a budget-objective fit, one row per
 #' combination.
 #'
 #' The result reports the continuous `n` and `cost`, the operational `n_int`
 #' and `cost_int`, and `.feasible`. A multistage fit adds the PSU counts
-#' `n_psu` and `n_psu_int`, and budget mode adds `objective_value`, its
-#' equivalent `cv`, and whether the budget binds. A row the solver cannot
-#' satisfy, a budget too small to fund the hard targets or a take that exceeds
-#' the stage populations, gives an all-`NA` row with `.feasible = FALSE` and a
-#' warning, so one infeasible point does not discard the rest of the grid. A
-#' take that is not a positive whole number is a malformed grid rather than an
-#' infeasible design point, and stops.
+#' `n_1` and `n_1_int`, and budget mode adds `objective_value`, its
+#' equivalent `cv`, and whether the budget binds. On grids without a PSU
+#' register, a rejected scenario or a failed solve returns missing results,
+#' `.feasible = FALSE`, and a warning. Read the warning to distinguish a
+#' failed solve from proven infeasibility. The grid checks before solving
+#' that each requested take is a positive whole number.
 #'
-#' A certainty-aware fit ([n_alloc()] with `psu`) varies `n_per_psu` too,
-#' and reports `n_psu_certain` and `n_psu_draw` in place of the PSU counts. This is how the take is priced. It
-#' also sets the certainty threshold, so a larger take leaves fewer certainty
-#' PSUs and costs more sample, and the resulting cost curve has a minimum
+#' A certainty-aware fit ([n_alloc_joint()] with `psu`) varies `take_2` too,
+#' and splits the PSU count `n_1_int` into `n_psu_certain` and `n_psu_draw`.
+#' This is how the take is priced. It also sets the certainty threshold, so
+#' a larger take leaves fewer certainty PSUs and costs more sample, and the
+#' resulting cost curve has a minimum
 #' worth finding rather than assuming. Such a fit also varies
 #' `certainty_cutoff`, one value per row applied to every stratum, to price
 #' a relaxed certainty rule the same way, and `n_psu_per_zone`, with `NA` for
@@ -166,9 +189,10 @@
 #' takes that plan, which fits its budget, so the objective never worsens
 #' as the budget grows. Its status reads `"limit"`.
 #'
-#' Precision targets stay out of reach of the grid. A one-stage minimum-cost
-#' fit therefore has nothing to vary. Modify `targets` and call [n_alloc()]
-#' again.
+#' A cluster grid from [n_cluster()] adds `.status` and `.nodes`, the
+#' status and node count of each row's whole-unit search. A row whose
+#' search stopped before finding a design reads `"unknown"`, with its
+#' sizes missing.
 #'
 #' If evaluation fails for a particular row (e.g. invalid parameter
 #' combinations), that row's result columns are `NA` and a warning is
@@ -195,6 +219,21 @@
 #' cl <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
 #' predict(cl, data.frame(icc = c(0.01, 0.03, 0.05, 0.10, 0.15)))
 #'
+#' # Indicator names repeated across domains: each domain is sized on its
+#' # own, and the identity row target_mult = 1 returns the fitted n
+#' dtab <- data.frame(region = rep(c("N", "S"), each = 2),
+#'                    name = rep(c("y1", "y2"), 2),
+#'                    p = c(0.3, 0.5, 0.35, 0.45), cv = 0.1)
+#' dm <- n_multi(dtab, domains = "region")
+#' predict(dm, data.frame(target_mult = c(1, 1.5)))
+#'
+#' # Stage costs 20% higher, the fixed cost of 10000 unchanged
+#' tab <- data.frame(name = c("a", "b"), p = c(0.3, 0.4), cv = 0.05,
+#'                   icc_1 = c(0.05, 0.1))
+#' fit <- n_cluster(tab, stage_cost = c(500, 50), budget = 1e5,
+#'                  fixed_cost = 1e4)
+#' predict(fit, data.frame(cost_mult = c(1, 1.2)))
+#'
 #' # Allocation: how does the CV change with sample size?
 #' frame <- data.frame(
 #'   N    = c(4000, 3000, 3000),
@@ -220,12 +259,12 @@
 #'
 #' # Two-stage joint allocation: what does the per-PSU take cost?
 #' cluster_frame <- data.frame(
-#'   stratum  = c("Urban", "Rural"),
-#'   N        = c(60000, 40000),
-#'   N_psu    = c(600, 500),
-#'   n_per_psu = c(10, 10),
-#'   cost_psu = c(400, 550),
-#'   cost_ssu = c(20, 25)
+#'   stratum = c("Urban", "Rural"),
+#'   N       = c(60000, 40000),
+#'   N_1     = c(600, 500),
+#'   take_2  = c(10, 10),
+#'   cost_1  = c(400, 550),
+#'   cost_2  = c(20, 25)
 #' )
 #' cluster_measures <- data.frame(
 #'   stratum = rep(cluster_frame$stratum, 2),
@@ -233,15 +272,15 @@
 #'   p       = c(0.62, 0.48, NA, NA),
 #'   mean    = c(NA, NA, 520, 380),
 #'   sd      = c(NA, NA, 210, 160),
-#'   icc_psu = rep(c(0.04, 0.07), 2)
+#'   icc_1   = rep(c(0.04, 0.07), 2)
 #' )
 #' cluster_targets <- data.frame(
 #'   name = c("literacy", "income"),
 #'   cv   = c(0.03, 0.04)
 #' )
-#' joint <- n_alloc(cluster_frame, measures = cluster_measures,
-#'                  targets = cluster_targets)
-#' predict(joint, data.frame(n_per_psu = c(6, 10, 14, 20)))
+#' joint <- n_alloc_joint(cluster_frame, measures = cluster_measures,
+#'                        targets = cluster_targets)
+#' predict(joint, data.frame(take_2 = c(6, 10, 14, 20)))
 #'
 #' @seealso [plot.svyplan] to draw a one-parameter grid, and
 #'   [confint.svyplan] for the interval implied by a single result.
@@ -253,9 +292,6 @@ NULL
 #' @export
 predict.svyplan_n <- function(object, newdata, ...) {
   .check_unused_dots(...)
-  if (identical(object$method, "bethel")) {
-    return(.predict_bethel(object, newdata))
-  }
   if (!is.null(object$indicators)) {
     stop(
       "predict() is not supported for multi-indicator results; ",
@@ -359,11 +395,8 @@ predict.svyplan_n <- function(object, newdata, ...) {
 
   } else if (object$type == "pooled") {
     base <- object$params
-    # An issued profile is a respondent one only at full response.
-    if (identical(base$overlap_basis, "issued") &&
-          "resp_rate" %in% names(newdata)) {
-      .check_overlap_basis("issued", min(newdata[["resp_rate"]]))
-    }
+    # An issued profile is a respondent one only at full response. The
+    # stored rotation carries that basis, so each row is checked on its own.
     flat <- length(unique(base$overlap)) == 1L &&
       length(unique(base$overlap_cor)) == 1L
     allowed <- c("moe", "cv", "rmoe", "alpha", "N", "deff", "resp_rate",
@@ -378,6 +411,10 @@ predict.svyplan_n <- function(object, newdata, ...) {
       base$overlap <- base$overlap[1L]
       base$overlap_cor <- base$overlap_cor[1L]
     }
+    ## The grid varies the expanded lags, not the inputs a round trip reads.
+    base$overlap_input <- NULL
+    base$overlap_cor_input <- NULL
+    if (!"cor_decay" %in% names(newdata)) base$cor_decay <- NULL
     if ("cor_decay" %in% names(newdata)) {
       base$overlap_cor <- NULL
     }
@@ -390,78 +427,9 @@ predict.svyplan_n <- function(object, newdata, ...) {
         eligibility_rate = p[["eligibility_rate"]] %||% 1,
         overlap_cor = p$overlap_cor,
         cor_decay = p$cor_decay, overlap_draw = p$overlap_draw, df = p$df
-      ), .stored_overlap_args(p, "overlap" %in% names(newdata))))
+      ), .stored_overlap_args(p)))
       data.frame(n = res$n, se = res$se, moe = res$moe, cv = res$cv,
                  rmoe = res$rmoe)
-    })
-
-  } else if (object$type == "alloc") {
-    allowed <- c("n", "cv", "budget", "alpha", "deff", "resp_rate",
-                 "eligibility_rate", "df", "min_n_stratum", "alloc_q")
-    base <- object$params
-    base_small <- list(
-      n = base[["n"]], cv = base[["cv"]], budget = base[["budget"]],
-      alpha = base$alpha, deff = base$deff, resp_rate = base$resp_rate,
-      eligibility_rate = base[["eligibility_rate"]] %||% 1,
-      df = base$df,
-      min_n_stratum = base$min_n_stratum, alloc_q = base$alloc_q %||% 0.5
-    )
-
-    .validate_newdata(newdata, allowed)
-
-    has_n <- "n" %in% names(newdata)
-    has_cv <- "cv" %in% names(newdata)
-    has_budget <- "budget" %in% names(newdata)
-    if ((has_n + has_cv + has_budget) > 1L) {
-      stop("newdata can vary at most one of 'n', 'cv', or 'budget'",
-           call. = FALSE)
-    }
-    if (has_n) {
-      base_small$cv <- NULL
-      base_small$budget <- NULL
-    } else if (has_cv) {
-      base_small$n <- NULL
-      base_small$budget <- NULL
-    } else if (has_budget) {
-      base_small$n <- NULL
-      base_small$cv <- NULL
-    }
-
-    .predict_grid(newdata, base_small, function(p) {
-      count_mode <- (!is.null(p$n)) + (!is.null(p$cv)) + (!is.null(p$budget))
-      if (count_mode != 1L) {
-        stop("each predict row must define exactly one of n/cv/budget",
-             call. = FALSE)
-      }
-      alloc_args <- list(
-        frame = base$frame,
-        domains = base$domain_cols,
-        n = p$n, cv = p$cv, budget = p$budget,
-        alloc = base$alloc %||% "neyman",
-        alpha = p$alpha,
-        deff = p$deff,
-        resp_rate = p$resp_rate,
-        eligibility_rate = p[["eligibility_rate"]] %||% 1,
-        df = p$df,
-        min_n_stratum = p$min_n_stratum,
-        min_n_domain = base[["min_n_domain"]],
-        alloc_q = p$alloc_q
-      )
-      row_mode <- if (!is.null(p$n)) "n" else if (!is.null(p$cv)) "cv" else
-        "budget"
-      if (.classic_searched(alloc_args$alloc, row_mode,
-                            length(base$domain_cols) > 0L)) {
-        alloc_args$control <- base[["control"]]
-      }
-      if (!.alloc_is_cluster(base$frame)) {
-        alloc_args$unit_cost <- base$cost_h
-      }
-      alloc_args$fpc <- base$fpc %||% "unit"
-      res <- do.call(n_alloc.default, alloc_args)
-      data.frame(
-        n = res$n, se = res$se, moe = res$moe, cv = res$cv, rmoe = res$rmoe,
-        cost = res$params$achieved$cost
-      )
     })
 
   } else {
@@ -477,26 +445,173 @@ predict.svyplan_n <- function(object, newdata, ...) {
 
 #' @rdname predict.svyplan
 #' @export
-predict.svyplan_cluster <- function(object, newdata, ...) {
+predict.svyplan_alloc <- function(object, newdata, ...) {
   .check_unused_dots(...)
-  if (!is.null(object$indicators)) {
+  allowed <- c("n", "cv", "moe", "rmoe", "budget", "alpha", "deff", "resp_rate",
+               "eligibility_rate", "eligible_per_unit", "df", "min_n_stratum",
+               "alloc_q")
+  base <- object$params
+  base_small <- list(
+    n = base[["n"]], cv = base[["cv"]], moe = base[["moe"]],
+    rmoe = base[["rmoe"]], budget = base[["budget"]],
+    alpha = base$alpha, deff = base$deff, resp_rate = base$resp_rate,
+    eligibility_rate = base[["eligibility_rate"]] %||% 1,
+    eligible_per_unit = base[["eligible_per_unit"]] %||% 1,
+    df = base$df,
+    min_n_stratum = base$min_n_stratum, alloc_q = base$alloc_q %||% 0.5
+  )
+
+  .validate_newdata(newdata, allowed)
+
+  mode_cols <- c("n", "cv", "moe", "rmoe", "budget")
+  present <- mode_cols[mode_cols %in% names(newdata)]
+  if (length(present) > 1L) {
     stop(
-      "predict() is not supported for a several-indicators cluster result. ",
-      "Re-solve with n_cluster(indicators = ) at the inputs you want",
+      "newdata can vary at most one of 'n', 'cv', 'moe', 'rmoe', or 'budget'",
       call. = FALSE
     )
+  }
+  if (length(present) == 1L) {
+    for (col in setdiff(mode_cols, present)) base_small[[col]] <- NULL
+  }
+
+  .predict_grid(newdata, base_small, function(p) {
+    count_mode <- (!is.null(p$n)) + (!is.null(p$cv)) + (!is.null(p$moe)) +
+      (!is.null(p$rmoe)) + (!is.null(p$budget))
+    if (count_mode != 1L) {
+      stop("each predict row must define exactly one of n/cv/moe/rmoe/budget",
+           call. = FALSE)
+    }
+    frame_i <- base$frame
+    for (col in intersect(
+      c("resp_rate", "deff", "eligibility_rate", "eligible_per_unit"),
+      names(newdata)
+    )) {
+      frame_i[[col]] <- NULL
+    }
+    alloc_args <- list(
+      frame = frame_i,
+      domains = base$domain_cols,
+      n = p$n, cv = p$cv, moe = p$moe, rmoe = p$rmoe, budget = p$budget,
+      alloc = base$alloc %||% "neyman",
+      alpha = p$alpha,
+      deff = p$deff,
+      resp_rate = p$resp_rate,
+      eligibility_rate = p[["eligibility_rate"]] %||% 1,
+      eligible_per_unit = p[["eligible_per_unit"]] %||% 1,
+      df = p$df,
+      min_n_stratum = p$min_n_stratum,
+      min_n_domain = base[["min_n_domain"]],
+      alloc_q = p$alloc_q
+    )
+    row_mode <- if (!is.null(p$n)) {
+      "n"
+    } else if (!is.null(p$cv) || !is.null(p$moe) || !is.null(p$rmoe)) {
+      "cv"
+    } else {
+      "budget"
+    }
+    if (.classic_searched(alloc_args$alloc, row_mode,
+                          length(base$domain_cols) > 0L)) {
+      alloc_args$control <- base[["control"]]
+    }
+    if (!.alloc_is_cluster(base$frame)) {
+      alloc_args$unit_cost <- base$cost_h
+    }
+    alloc_args$fpc <- base$fpc %||% "unit"
+    res <- do.call(n_alloc.default, alloc_args)
+    data.frame(
+      n = res$n, se = res$se, moe = res$moe, cv = res$cv, rmoe = res$rmoe,
+      cost = res$params$achieved$cost
+    )
+  })
+}
+
+#' @rdname predict.svyplan
+#' @export
+predict.svyplan_multi <- function(object, newdata, ...) {
+  .check_unused_dots(...)
+  allowed <- c("target_mult", "deff", "resp_rate", "eligibility_rate",
+               "eligible_per_unit", "alpha", "df")
+  .validate_newdata(newdata, allowed)
+  p <- object$params
+  ind_base <- object$indicators
+  base <- list(
+    target_mult = 1,
+    deff = 1,
+    resp_rate = p$resp_rate %||% 1,
+    eligibility_rate = p[["eligibility_rate"]] %||% 1,
+    eligible_per_unit = p[["eligible_per_unit"]] %||% 1,
+    alpha = 0.05,
+    df = NA_real_
+  )
+  varied <- names(newdata)
+  dom_cols <- .predict_domain_cols(object)
+  .predict_grid(newdata, base, function(r) {
+    tbl <- .predict_scale_targets(ind_base, r$target_mult)
+    if ("deff" %in% varied) tbl$deff <- r$deff
+    if ("alpha" %in% varied) tbl$alpha <- r$alpha
+    if ("df" %in% varied) tbl$df <- r$df
+    if ("resp_rate" %in% varied && "resp_rate" %in% names(tbl)) tbl$resp_rate <- NULL
+    if ("eligibility_rate" %in% varied && "eligibility_rate" %in% names(tbl)) {
+      tbl$eligibility_rate <- NULL
+    }
+    if ("eligible_per_unit" %in% varied && "eligible_per_unit" %in% names(tbl)) {
+      tbl$eligible_per_unit <- NULL
+    }
+    res <- n_multi.default(
+      indicators = tbl,
+      domains = dom_cols,
+      domain_sampling = p[["domain_sampling"]] %||% "separate",
+      min_n_domain = p[["min_n_domain"]],
+      prop_method = p[["prop_method"]] %||% "wald",
+      resp_rate = r$resp_rate,
+      eligibility_rate = r$eligibility_rate,
+      eligible_per_unit = r$eligible_per_unit
+    )
+    data.frame(
+      n = res$n,
+      binding = paste(res$binding, collapse = ", "),
+      stringsAsFactors = FALSE
+    )
+  })
+}
+
+#' @rdname predict.svyplan
+#' @export
+predict.svyplan_alloc_joint <- function(object, newdata, ...) {
+  .check_unused_dots(...)
+  .predict_bethel(object, newdata)
+}
+
+#' @rdname predict.svyplan
+#' @export
+predict.svyplan_cluster <- function(object, newdata, ..., control = NULL) {
+  .check_unused_dots(...)
+  control <- control %||% object$params[["control"]]
+  .stage_max_nodes(control)
+  if (!is.null(object$indicators)) {
+    return(.predict_cluster_multi(object, newdata, control))
   }
 
   stages <- length(object$params$stage_cost)
-  if (stages == 3L && "icc" %in% names(newdata)) {
+  if (stages > 2L && "icc" %in% names(newdata)) {
     stop(
-      "for 3-stage cluster predict, vary 'icc_psu' and 'icc_ssu' instead of 'icc'",
+      sprintf(
+        "for %d-stage cluster predict, vary %s instead of 'icc'",
+        stages,
+        paste(sQuote(paste0("icc_", seq_len(stages - 1L))), collapse = ", ")
+      ),
       call. = FALSE
     )
   }
-  if (stages == 3L && "var_ratio" %in% names(newdata)) {
+  if (stages > 2L && "var_ratio" %in% names(newdata)) {
     stop(
-      "for 3-stage cluster predict, vary 'var_ratio_psu' and 'var_ratio_ssu' instead of 'var_ratio'",
+      sprintf(
+        "for %d-stage cluster predict, vary %s instead of 'var_ratio'",
+        stages,
+        paste(sQuote(paste0("var_ratio_", seq_len(stages - 1L))), collapse = ", ")
+      ),
       call. = FALSE
     )
   }
@@ -514,14 +629,15 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
     stage_count = stages - 1L,
     allow_scalar_alias = stages == 2L
   )
+  rr_stage_cols <- paste0("resp_rate_", seq_len(stages - 1L))
+  sn_cols <- c("n_1", paste0("take_", 2L:stages))
+  N_stage_cols <- c(paste0("N_", seq_len(stages - 1L)), "N")
 
   allowed <- unique(c(
-    "cv", "budget", "unit_relvar", "resp_rate_psu", "resp_rate_ssu",
-    "resp_rate", "eligibility_rate", "eligible_per_unit", "fixed_cost",
-    "n_psu", "n_per_psu", "n_per_ssu",
-    if (identical(object$params[["fpc"]], "stage")) {
-      c("N", "N_psu", if (stages == 3L) "N_ssu")
-    },
+    "cv", "budget", "unit_relvar",
+    rr_stage_cols, "resp_rate", "eligibility_rate", "eligible_per_unit",
+    "fixed_cost", sn_cols,
+    if (identical(object$params[["fpc"]], "stage")) N_stage_cols,
     icc_meta$allowed, k_meta$allowed, cost_meta$allowed
   ))
   .validate_newdata(newdata, allowed)
@@ -533,16 +649,16 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
     stop("newdata cannot contain both 'cv' and 'budget'", call. = FALSE)
   }
 
+  base_rr <- .expand_stage_resp_rate(p[["resp_rate"]] %||% 1, stages)
+  base_sn <- p[["stage_n"]] %||% rep(NA_real_, stages)
+  base_N <- p[["N"]]
+
   base <- list(
     stage_cost = p$stage_cost, icc = p$icc, unit_relvar = p$unit_relvar,
-    var_ratio = p$var_ratio, resp_rate_psu = p$resp_rate_psu %||% 1,
-    resp_rate_ssu = p$resp_rate_ssu %||% 1, resp_rate = p$resp_rate %||% 1,
+    var_ratio = p[["var_ratio_input"]] %||% p$var_ratio,
     eligibility_rate = p[["eligibility_rate"]] %||% 1,
-    eligible_per_unit = p$eligible_per_unit %||% 1,
-    n_psu = p$n_psu,
-    n_per_psu = p$n_per_psu, n_per_ssu = p$n_per_ssu,
-    fixed_cost = p$fixed_cost %||% 0,
-    N = p[["N"]], N_psu = p[["N_psu"]], N_ssu = p[["N_ssu"]]
+    eligible_per_unit = p[["eligible_per_unit"]] %||% 1,
+    fixed_cost = p$fixed_cost %||% 0
   )
 
   if (has_cv_col) {
@@ -560,37 +676,71 @@ predict.svyplan_cluster <- function(object, newdata, ...) {
   .predict_grid(newdata, base, function(params) {
     row_cost <- .apply_cluster_cost_cols(base$stage_cost, params, cost_meta$map)
     row_icc <- .apply_cluster_stage_cols(
-      base$icc,
-      params,
-      icc_meta$map,
-      icc_meta$canonical
+      base$icc, params, icc_meta$map, icc_meta$canonical
     )
     row_k <- .apply_cluster_stage_cols(
-      base$var_ratio,
-      params,
-      k_meta$map,
-      k_meta$canonical
+      base$var_ratio, params, k_meta$map, k_meta$canonical
     )
-    res <- n_cluster.default(
+    row_rr <- base_rr
+    for (s in seq_len(stages - 1L)) {
+      if (rr_stage_cols[s] %in% names(newdata)) {
+        row_rr[s] <- params[[rr_stage_cols[s]]]
+      }
+    }
+    if ("resp_rate" %in% names(newdata)) {
+      row_rr[stages] <- params[["resp_rate"]]
+    }
+    row_sn <- base_sn
+    for (s in seq_len(stages)) {
+      if (sn_cols[s] %in% names(newdata)) {
+        row_sn[s] <- params[[sn_cols[s]]]
+      }
+    }
+    if (all(is.na(row_sn))) row_sn <- NULL
+    row_N <- base_N
+    if (!is.null(row_N)) {
+      for (s in seq_len(stages)) {
+        if (N_stage_cols[s] %in% names(newdata)) {
+          row_N[s] <- params[[N_stage_cols[s]]]
+        }
+      }
+    }
+    res <- tryCatch(n_cluster.default(
       stage_cost = row_cost, icc = row_icc,
       unit_relvar = params$unit_relvar, var_ratio = row_k,
       cv = params$cv, budget = params$budget,
-      n_psu = params$n_psu, n_per_psu = params$n_per_psu,
-      n_per_ssu = params$n_per_ssu, resp_rate_psu = params$resp_rate_psu,
-      resp_rate_ssu = params$resp_rate_ssu %||% 1,
-      resp_rate = params$resp_rate %||% 1,
+      stage_n = row_sn,
+      resp_rate = row_rr,
       eligibility_rate = params[["eligibility_rate"]] %||% 1,
-      eligible_per_unit = params$eligible_per_unit %||% 1,
+      eligible_per_unit = params[["eligible_per_unit"]] %||% 1,
       fixed_cost = params$fixed_cost,
-      fpc = p[["fpc"]] %||% "none",
-      N = params[["N"]], N_psu = params[["N_psu"]], N_ssu = params[["N_ssu"]]
-    )
+      fpc = p[["fpc"]] %||% "auto",
+      N = row_N,
+      control = control
+    ), svyplan_plan_unknown = function(e) NULL)
+    if (is.null(res)) {
+      return(.predict_cluster_unknown(names(object$n), c("total_n", "cv", "cost")))
+    }
     out <- as.list(res$n)
     out$total_n <- res$total_n
     out$cv <- res$cv
     out$cost <- res$cost
+    out$.status <- res$operational$search$status %||% NA_character_
+    out$.nodes <- res$operational$search$nodes %||% NA_real_
     as.data.frame(out)
   })
+}
+
+#' A scenario row whose whole search found no design within its node limit
+#' @keywords internal
+#' @noRd
+.predict_cluster_unknown <- function(stage_names, cols, text = character(0)) {
+  out <- as.list(rep(NA_real_, length(stage_names) + length(cols)))
+  names(out) <- c(stage_names, cols)
+  for (nm in text) out[[nm]] <- NA_character_
+  out$.status <- "unknown"
+  out$.nodes <- NA_real_
+  as.data.frame(out, stringsAsFactors = FALSE)
 }
 
 #' @rdname predict.svyplan
@@ -791,7 +941,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
     .predict_prec_pooled(object, newdata)
   } else if (object$type == "change") {
     .predict_prec_change(object, newdata)
-  } else if (object$type == "alloc") {
+  } else if (object$type %in% c("alloc", "alloc_joint")) {
     .predict_prec_alloc(object, newdata)
   } else {
     stop(
@@ -804,6 +954,20 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   }
 }
 
+#' A varied response rate replaces the final stage's rate only
+#'
+#' A stored per-stage vector keeps its earlier stages, as the
+#' single-indicator method does.
+#' @keywords internal
+#' @noRd
+.predict_final_rate <- function(stored, value, varied) {
+  if (!varied || length(stored) < 2L || length(value) != 1L) {
+    return(value)
+  }
+  stored[length(stored)] <- value
+  stored
+}
+
 #' Grid exploration for a pooled precision
 #'
 #' A flat lag profile is one number, so it can be varied, along with the
@@ -814,10 +978,6 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 #' @noRd
 .predict_prec_pooled <- function(object, newdata) {
   base <- object$params
-  if (identical(base$overlap_basis, "issued") &&
-        "resp_rate" %in% names(newdata)) {
-    .check_overlap_basis("issued", min(newdata[["resp_rate"]]))
-  }
   flat_ov <- length(unique(base$overlap)) == 1L
   flat_cor <- length(unique(base$overlap_cor)) == 1L
   allowed <- c("n", "alpha", "N", "deff", "resp_rate", "eligibility_rate",
@@ -831,6 +991,10 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   .validate_newdata(newdata, allowed)
   if (flat_ov) base$overlap <- base$overlap[1L]
   if (flat_cor) base$overlap_cor <- base$overlap_cor[1L]
+  ## The grid varies the expanded lags, not the inputs a round trip reads.
+  base$overlap_input <- NULL
+  base$overlap_cor_input <- NULL
+  if (!"cor_decay" %in% names(newdata)) base$cor_decay <- NULL
   if ("cor_decay" %in% names(newdata)) {
     if ("overlap_cor" %in% names(newdata)) {
       stop("newdata cannot contain both 'overlap_cor' and 'cor_decay'",
@@ -898,18 +1062,37 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 #' @noRd
 .predict_prec_alloc <- function(object, newdata) {
   p <- object$params
-  joint <- identical(object$method, "bethel")
-  if (!is.null(p[["psu"]])) {
+  joint <- identical(object$type, "alloc_joint") || identical(object$method, "bethel")
+  is_psu <- !is.null(p[["psu"]])
+  stages <- p$stages %||% 1L
+  if (is_psu && "n" %in% names(newdata)) {
     stop(
-      "predict() is not supported for the precision of a PSU register allocation; call prec_alloc() with each design to compare",
+      "cannot vary 'n' on a PSU register precision result; vary assessment inputs such as 'icc_mult', 'var_mult', 'cost_mult', 'deff', 'resp_rate', or 'alpha'",
       call. = FALSE
     )
   }
-  allowed <- c("n", "alpha", "deff", "resp_rate", "eligibility_rate", "df",
-               if (joint) "eligible_per_unit")
+  allowed <- if (joint) {
+    c(
+      if (!is_psu) "n",
+      "alpha", "deff", "resp_rate", "eligibility_rate",
+      if (!is_psu) "eligible_per_unit",
+      "df", "var_mult", "cost_mult",
+      if (stages >= 2L || is_psu) "icc_mult"
+    )
+  } else {
+    c("n", "alpha", "deff", "resp_rate", "eligibility_rate",
+      "eligible_per_unit", "df")
+  }
   .validate_newdata(newdata, allowed, allowed_list = "n")
   H <- length(p$n)
-  given_n <- "n" %in% names(newdata)
+  varied <- names(newdata)
+  if ("icc_mult" %in% varied) {
+    for (m in newdata$icc_mult) {
+      .predict_scale_icc(p$measures, m)
+      .predict_scale_icc(p$frame, m)
+    }
+  }
+  given_n <- "n" %in% varied
   list_n <- given_n && is.list(newdata[["n"]])
   if (list_n) {
     ok <- vapply(newdata[["n"]], function(v) {
@@ -928,8 +1111,10 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   base <- list(
     n = p$n, alpha = p$alpha, deff = p$deff, resp_rate = p$resp_rate,
     eligibility_rate = p[["eligibility_rate"]] %||% 1, df = p$df,
-    eligible_per_unit = p[["eligible_per_unit"]] %||% 1
+    eligible_per_unit = p[["eligible_per_unit"]] %||% 1,
+    var_mult = 1, cost_mult = 1, icc_mult = 1
   )
+  if (!joint) assessment_frame <- .alloc_frame_at_takes(p$frame, p$searched_takes)
 
   .predict_grid(newdata, base, function(r) {
     n_h <- if (list_n) {
@@ -939,40 +1124,148 @@ predict.svyplan_prec <- function(object, newdata, ...) {
     } else {
       p$n
     }
-    args <- list(
-      frame = p$frame, n = n_h, alpha = r$alpha, deff = r$deff,
-      resp_rate = r$resp_rate, eligibility_rate = r$eligibility_rate,
-      df = r$df, fpc = p$fpc %||% "unit"
-    )
-    if (joint) {
-      args <- c(args, list(
-        measures = p$measures, targets = p$targets,
-        objective = p$objective, budget = p$budget,
-        eligible_per_unit = r$eligible_per_unit,
-        unit_cost = p$unit_cost, min_n_stratum = p$min_n_stratum
-      ))
-    } else {
-      args$domains <- p$domain_cols
-      if (!.alloc_is_cluster(p$frame)) args$unit_cost <- p$cost_h
-    }
-    res <- do.call(prec_alloc.default, args)
-    total <- res$params$achieved$n
-    if (joint) {
-      out <- data.frame(n = total, cost = res$params$achieved$cost)
-      if (!is.null(res$objective_value)) {
-        out$objective_value <- res$objective_value
-        out$cv <- sqrt(res$objective_value)
+    if (!joint) {
+      frame_i <- assessment_frame
+      for (col in intersect(
+        c("resp_rate", "deff", "eligibility_rate", "eligible_per_unit"), varied
+      )) {
+        frame_i[[col]] <- NULL
       }
-      out$.max_ratio <- max(res$detail$.ratio, na.rm = TRUE)
-      out$.n_fail <- sum(!res$detail$.pass, na.rm = TRUE)
-      out$.feasible <- all(res$detail$.pass, na.rm = TRUE) &&
-        all(res$bounds$.pass, na.rm = TRUE)
-    } else {
+      args <- list(
+        frame = frame_i, n = n_h, alpha = r$alpha, deff = r$deff,
+        resp_rate = r$resp_rate, eligibility_rate = r$eligibility_rate,
+        df = r$df, fpc = p$fpc %||% "unit",
+        domains = p$domain_cols,
+        eligible_per_unit = r$eligible_per_unit
+      )
+      if (!.alloc_is_cluster(p$frame)) args$unit_cost <- p$cost_h
+      res <- do.call(prec_alloc.default, args)
+      total <- res$params$achieved$n
       out <- data.frame(n = total, se = res$se, moe = res$moe, cv = res$cv,
                         rmoe = res$rmoe, cost = res$params$achieved$cost)
       if (!is.null(res$domains)) {
         out$.max_domain_cv <- max(res$domains$.cv, na.rm = TRUE)
       }
+      if (list_n) names(out)[1L] <- "total_n"
+      return(out)
+    }
+
+    frame_i <- p$frame
+    measures_i <- p$measures
+    unit_cost_i <- p$unit_cost
+    deff_i <- r$deff
+    if ("deff" %in% varied) {
+      if ("deff" %in% names(frame_i)) frame_i$deff <- NULL
+      if ("deff" %in% names(measures_i)) measures_i$deff <- NULL
+    }
+    if ("resp_rate" %in% varied) {
+      if ("resp_rate" %in% names(frame_i)) frame_i$resp_rate <- NULL
+      if ("resp_rate" %in% names(measures_i)) measures_i$resp_rate <- NULL
+    }
+    if ("eligibility_rate" %in% varied) {
+      if ("eligibility_rate" %in% names(frame_i)) frame_i$eligibility_rate <- NULL
+      if ("eligibility_rate" %in% names(measures_i)) measures_i$eligibility_rate <- NULL
+    }
+    if ("eligible_per_unit" %in% varied) {
+      if ("eligible_per_unit" %in% names(frame_i)) frame_i$eligible_per_unit <- NULL
+      if ("eligible_per_unit" %in% names(measures_i)) measures_i$eligible_per_unit <- NULL
+    }
+    if ("var_mult" %in% varied) {
+      scaled_v <- .predict_scale_deff(deff_i, frame_i, measures_i, r$var_mult)
+      deff_i <- scaled_v$deff
+      frame_i <- scaled_v$frame
+      measures_i <- scaled_v$measures
+    }
+    if ("cost_mult" %in% varied) {
+      scaled_c <- .predict_scale_costs(frame_i, unit_cost_i, r$cost_mult)
+      frame_i <- scaled_c$frame
+      unit_cost_i <- scaled_c$unit_cost
+    }
+    if ("icc_mult" %in% varied) {
+      measures_i <- .predict_scale_icc(measures_i, r$icc_mult)
+      frame_i <- .predict_scale_icc(frame_i, r$icc_mult)
+    }
+
+    if (is_psu) {
+      if (!is.null(object$psu) && !is.null(p$certainty$n_psu_draw)) {
+        stratum <- as.character(frame_i[["stratum"]] %||% seq_len(nrow(frame_i)))
+        idx_of <- split(seq_len(nrow(p$psu)),
+                        factor(as.character(p$psu$stratum), levels = stratum))
+        certain <- object$psu$certainty
+        per_psu <- lapply(idx_of, function(i) object$psu[["take_2"]][i][certain[i]])
+        n_psu_draw <- p$certainty$n_psu_draw
+        take_ov <- if (isTRUE(p$free_take)) p[["take_2_int"]] else NULL
+        res <- .psu_field_assess(
+          frame = frame_i, psu = p$psu, measures = measures_i,
+          targets = p$targets, unit_cost = unit_cost_i, alpha = r$alpha,
+          deff = deff_i, resp_rate = r$resp_rate,
+          min_n_stratum = p$min_n_stratum, objective = p$objective,
+          budget = p$budget, df = r$df, certain = certain, per_psu = per_psu,
+          n_psu_draw = n_psu_draw, eligibility_rate = r$eligibility_rate,
+          take_override = take_ov
+        )
+        if (all(c("cost_1", "cost_2") %in% names(frame_i))) {
+          n_cert <- vapply(idx_of, function(i) sum(certain[i]), numeric(1))
+          take_use <- take_ov %||% .psu_take(frame_i, p$psu, stratum)
+          n_int <- vapply(per_psu, sum, numeric(1)) + n_psu_draw * take_use
+          res$params$achieved$cost <- sum(
+            (n_cert + n_psu_draw) * as.numeric(frame_i$cost_1) +
+              n_int * as.numeric(frame_i$cost_2)
+          )
+        }
+      } else {
+        held <- p$psu
+        if (!is.null(object$psu)) held$certainty <- object$psu$certainty
+        res <- .prec_alloc_psu(
+          frame = frame_i, psu = held, n = p$n, measures = measures_i,
+          targets = p$targets, objective = p$objective, budget = p$budget,
+          unit_cost = unit_cost_i, alpha = r$alpha, deff = deff_i,
+          resp_rate = r$resp_rate, min_n_stratum = p$min_n_stratum,
+          df = r$df, certainty_cutoff = p$certainty_cutoff,
+          n_psu_per_zone = p$n_psu_per_zone,
+          eligibility_rate = r$eligibility_rate
+        )
+      }
+    } else if (isTRUE(p$free_take)) {
+      res <- .prec_alloc_freetake(
+        frame = frame_i, n = n_h, take_2 = p$take_2_h,
+        measures = measures_i, targets = p$targets,
+        alpha = r$alpha, deff = deff_i, resp_rate = r$resp_rate,
+        min_n_stratum = p$min_n_stratum, objective = p$objective,
+        budget = p$budget, df = r$df, fpc = p$fpc %||% "unit",
+        eligible_per_unit = r$eligible_per_unit,
+        eligibility_rate = r$eligibility_rate,
+        take_2_min = p[["take_2_min"]], take_2_max = p[["take_2_max"]], take_2_step = p[["take_2_step"]]
+      )
+    } else {
+      res <- .prec_alloc_bethel(
+        frame = frame_i, n = n_h, measures = measures_i,
+        targets = p$targets, objective = p$objective, budget = p$budget,
+        unit_cost = unit_cost_i, alpha = r$alpha, deff = deff_i,
+        resp_rate = r$resp_rate, eligible_per_unit = r$eligible_per_unit,
+        eligibility_rate = r$eligibility_rate,
+        min_n_stratum = .resolve_min_n_stratum(p$min_n_stratum, frame_i),
+        df = r$df, fpc = p$fpc %||% "unit",
+        .allow_fractional_stages = !list_n,
+        .finite_prop_var = TRUE
+      )
+    }
+
+    total <- res$params$achieved$n
+    out <- data.frame(n = total, cost = res$params$achieved$cost)
+    if (!is.null(res$objective_value)) {
+      out$objective_value <- res$objective_value
+      out$cv <- sqrt(res$objective_value)
+    }
+    if (nrow(res$detail) > 0L) {
+      out$.max_ratio <- max(res$detail$.ratio, na.rm = TRUE)
+      out$.n_fail <- sum(!res$detail$.pass, na.rm = TRUE)
+      out$.feasible <- all(res$detail$.pass, na.rm = TRUE) &&
+        all(res$bounds$.pass, na.rm = TRUE)
+    } else {
+      out$.max_ratio <- NA_real_
+      out$.n_fail <- 0L
+      out$.feasible <- all(res$bounds$.pass, na.rm = TRUE)
     }
     if (list_n) names(out)[1L] <- "total_n"
     out
@@ -1081,10 +1374,8 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   }
 
   template <- results[[which(ok)[1L]]]
-  result_names <- names(template)
-  na_vals <- as.list(rep(NA_real_, length(result_names)))
-  names(na_vals) <- result_names
-  na_row <- as.data.frame(na_vals)
+  ## Indexing by NA keeps each column's type, logical and integer included.
+  na_row <- template[NA_integer_, , drop = FALSE]
 
   result_df <- do.call(rbind, lapply(results, function(r) {
     if (is.null(r)) na_row else r
@@ -1103,20 +1394,180 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   out
 }
 
-#' Grid exploration for a joint constrained allocation
-#'
-#' Re-solves the stored problem once per grid row. Two controls can be varied.
-#' A budget-objective fit varies `budget`, tracing the cost-versus-objective
-#' frontier. The root search already sweeps the minimum-cost problem across
-#' objective bounds, so the frontier costs little beyond the solves. A
-#' multistage fit varies the fixed takes, tracing how the PSU count, the
-#' ultimate sample and the cost respond. The cost curve over the take is
-#' U-shaped and its minimum is not evident in advance.
-#'
-#' A row the solver cannot satisfy yields an all-`NA` row with
-#' `.feasible = FALSE` rather than aborting the grid. A take that is not a
-#' positive whole number is a malformed grid rather than an infeasible design
-#' point, so it aborts.
+#' Scale target columns (`cv`, `moe`, `rmoe`) by a positive multiplier
+#' @keywords internal
+#' @noRd
+.predict_scale_targets <- function(tbl, mult) {
+  if (is.null(tbl) || nrow(tbl) == 0L) return(tbl)
+  if (!is.numeric(mult) || length(mult) != 1L || is.na(mult) ||
+      !is.finite(mult) || mult <= 0) {
+    stop("'target_mult' must be positive and finite", call. = FALSE)
+  }
+  if (mult == 1) return(tbl)
+  for (col in intersect(c("cv", "moe", "rmoe"), names(tbl))) {
+    idx <- !is.na(tbl[[col]])
+    tbl[[col]][idx] <- tbl[[col]][idx] * mult
+  }
+  tbl
+}
+
+#' Scale ICC columns in a table by a non-negative multiplier
+#' @keywords internal
+#' @noRd
+.predict_scale_icc <- function(tbl, mult) {
+  if (is.null(tbl) || !is.data.frame(tbl)) return(tbl)
+  if (!is.numeric(mult) || length(mult) != 1L || is.na(mult) ||
+      !is.finite(mult) || mult < 0) {
+    stop("'icc_mult' must be non-negative and finite", call. = FALSE)
+  }
+  if (mult == 1) return(tbl)
+  cols <- grep("^icc(_[0-9]+)?$", names(tbl), value = TRUE)
+  for (col in cols) {
+    idx <- !is.na(tbl[[col]])
+    scaled <- tbl[[col]][idx] * mult
+    if (any(scaled > 1)) {
+      stop(sprintf("scaled '%s' exceeds 1 under 'icc_mult = %g'", col, mult),
+           call. = FALSE)
+    }
+    tbl[[col]][idx] <- scaled
+  }
+  tbl
+}
+
+#' Scale stratum/stage costs by a positive multiplier
+#' @keywords internal
+#' @noRd
+.predict_scale_costs <- function(frame, unit_cost, mult) {
+  if (!is.numeric(mult) || length(mult) != 1L || is.na(mult) ||
+      !is.finite(mult) || mult <= 0) {
+    stop("'cost_mult' must be positive and finite", call. = FALSE)
+  }
+  if (mult == 1) return(list(frame = frame, unit_cost = unit_cost))
+  cost_cols <- grep("^cost_[0-9]+$", names(frame), value = TRUE)
+  if (length(cost_cols) > 0L) {
+    for (col in cost_cols) frame[[col]] <- frame[[col]] * mult
+  } else if (!is.null(unit_cost)) {
+    unit_cost <- unit_cost * mult
+  } else if ("unit_cost" %in% names(frame)) {
+    frame$unit_cost <- frame$unit_cost * mult
+  } else {
+    unit_cost <- mult
+  }
+  list(frame = frame, unit_cost = unit_cost)
+}
+
+#' Scale variance via design effect multiplier across scalar/frame/measures
+#' @keywords internal
+#' @noRd
+.predict_scale_deff <- function(deff, frame, measures, mult) {
+  if (!is.numeric(mult) || length(mult) != 1L || is.na(mult) ||
+      !is.finite(mult) || mult <= 0) {
+    stop("'var_mult' must be positive and finite", call. = FALSE)
+  }
+  if (mult == 1) return(list(deff = deff, frame = frame, measures = measures))
+  deff <- deff * mult
+  if ("deff" %in% names(frame)) {
+    idx <- !is.na(frame$deff)
+    frame$deff[idx] <- frame$deff[idx] * mult
+  }
+  if ("deff" %in% names(measures)) {
+    idx <- !is.na(measures$deff)
+    measures$deff[idx] <- measures$deff[idx] * mult
+  }
+  list(deff = deff, frame = frame, measures = measures)
+}
+
+#' Domain columns of a fit, refused when its domains cannot be rebuilt
+#' @keywords internal
+#' @noRd
+.predict_domain_cols <- function(object) {
+  cols <- object$params[["domain_cols"]]
+  if (!is.null(object$domains) && length(cols) == 0L) {
+    stop("this result has domains but records no domain columns, so ",
+         "predict() cannot refit it", call. = FALSE)
+  }
+  cols
+}
+
+#' Scenario grid for multi-indicator cluster results (`n_cluster(indicators, ...)`)
+#' @keywords internal
+#' @noRd
+.predict_cluster_multi <- function(object, newdata, control = NULL) {
+  p <- object$params
+  ind_base <- p[["indicators_input"]] %||% object$indicators
+  allowed <- c("target_mult", "cost_mult", "icc_mult", "budget",
+               "resp_rate", "eligibility_rate", "eligible_per_unit",
+               "fixed_cost")
+  .validate_newdata(newdata, allowed)
+  varied <- names(newdata)
+  dom_cols <- .predict_domain_cols(object)
+  if ("icc_mult" %in% varied) {
+    for (m in newdata$icc_mult) .predict_scale_icc(ind_base, m)
+  }
+  base <- list(
+    target_mult = 1,
+    cost_mult = 1,
+    icc_mult = 1,
+    budget = p$budget,
+    resp_rate = p$resp_rate %||% 1,
+    eligibility_rate = p[["eligibility_rate"]] %||% 1,
+    eligible_per_unit = p[["eligible_per_unit"]] %||% 1,
+    fixed_cost = p$fixed_cost %||% 0
+  )
+  .predict_grid(newdata, base, function(r) {
+    ind <- .predict_scale_targets(ind_base, r$target_mult)
+    ind <- .predict_scale_icc(ind, r$icc_mult)
+    if (!is.numeric(r$cost_mult) || is.na(r$cost_mult) ||
+        !is.finite(r$cost_mult) || r$cost_mult <= 0) {
+      stop("'cost_mult' must be positive and finite", call. = FALSE)
+    }
+    sc <- p$stage_cost * r$cost_mult
+    if ("resp_rate" %in% varied && "resp_rate" %in% names(ind)) {
+      ind$resp_rate <- NULL
+    }
+    if ("eligibility_rate" %in% varied && "eligibility_rate" %in% names(ind)) {
+      ind$eligibility_rate <- NULL
+    }
+    if ("eligible_per_unit" %in% varied && "eligible_per_unit" %in% names(ind)) {
+      ind$eligible_per_unit <- NULL
+    }
+    res <- tryCatch(n_cluster.data.frame(
+      x = ind,
+      stage_cost = sc,
+      domains = dom_cols,
+      budget = if ("budget" %in% varied) r$budget else p[["budget"]],
+      stage_n = p[["stage_n"]],
+      allocation = p[["allocation"]] %||% "separate",
+      domain_sampling = p[["domain_sampling"]] %||% "separate",
+      min_n_domain = p[["min_n_domain"]],
+      fixed_cost = r$fixed_cost,
+      resp_rate = .predict_final_rate(p$resp_rate %||% 1, r$resp_rate,
+                                      "resp_rate" %in% varied),
+      eligibility_rate = r$eligibility_rate,
+      eligible_per_unit = r$eligible_per_unit,
+      N = p$N,
+      fpc = p$fpc %||% "auto",
+      control = control
+    ), svyplan_plan_unknown = function(e) NULL)
+    if (is.null(res)) {
+      return(.predict_cluster_unknown(names(object$n), c("total_n", "cost"),
+                                      text = "binding"))
+    }
+    out <- if (!is.null(res$n) && !is.null(names(res$n))) {
+      as.list(res$n)
+    } else {
+      list()
+    }
+    out$total_n <- res$total_n
+    out$cost <- res$cost
+    out$binding <- paste(res$binding, collapse = ", ")
+    out$.status <- res$operational$search$status %||% NA_character_
+    out$.nodes <- res$operational$search$nodes %||% NA_real_
+    as.data.frame(out, stringsAsFactors = FALSE)
+  })
+}
+
+#' Grid exploration for joint constrained allocations
 #' @keywords internal
 #' @noRd
 .predict_bethel <- function(object, newdata) {
@@ -1126,24 +1577,31 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   # A certainty fit is one-stage to the solver, so `stages` cannot find the
   # take, but it is still a frame column and still worth sweeping.
   certainty <- !is.null(object$params$psu)
+  free_take <- isTRUE(p$free_take)
   take_cols <- if (certainty) {
-    "n_per_psu"
+    "take_2"
+  } else if (stages >= 2L) {
+    paste0("take_", 2L:stages)
   } else {
-    c(if (stages >= 2L) "n_per_psu", if (stages == 3L) "n_per_ssu")
+    character(0)
   }
+  targets <- if (is.null(p$targets) || nrow(p$targets) == 0L) NULL else
+    p$targets
   allowed <- c(
-    if (budget_mode) "budget", take_cols,
-    if (certainty) c("certainty_cutoff", "n_psu_per_zone")
+    if (budget_mode) "budget",
+    take_cols,
+    if (free_take) c("take_2_min", "take_2_max"),
+    if (certainty) c("certainty_cutoff", "n_psu_per_zone"),
+    if (!is.null(targets)) "target_mult",
+    "cost_mult",
+    if (stages >= 2L || certainty) "icc_mult",
+    "deff", "resp_rate", "eligibility_rate",
+    if (!certainty) "eligible_per_unit", "alpha", "df"
   )
-  if (length(allowed) == 0L) {
-    stop(
-      "predict() is not supported for joint constrained allocations; modify 'targets' and rerun n_alloc()",
-      call. = FALSE
-    )
-  }
   .validate_newdata(newdata, allowed)
+  varied <- names(newdata)
 
-  varied_takes <- intersect(take_cols, names(newdata))
+  varied_takes <- intersect(take_cols, varied)
   for (nm in varied_takes) {
     value <- newdata[[nm]]
     if (anyNA(value) || any(!is.finite(value)) || any(value < 1) ||
@@ -1152,9 +1610,42 @@ predict.svyplan_prec <- function(object, newdata, ...) {
            call. = FALSE)
     }
   }
+  for (nm in intersect(c("take_2_min", "take_2_max"), varied)) {
+    value <- newdata[[nm]]
+    if (anyNA(value) || any(!is.finite(value)) || any(value < 1) ||
+          any(abs(value - round(value)) > 1e-8)) {
+      stop(sprintf("newdata '%s' must contain positive whole numbers", nm),
+           call. = FALSE)
+    }
+  }
+  if ("target_mult" %in% varied) {
+    value <- newdata$target_mult
+    if (anyNA(value) || any(!is.finite(value)) || any(value <= 0)) {
+      stop("newdata 'target_mult' must contain positive finite values",
+           call. = FALSE)
+    }
+  }
+  if ("cost_mult" %in% varied) {
+    value <- newdata$cost_mult
+    if (anyNA(value) || any(!is.finite(value)) || any(value <= 0)) {
+      stop("newdata 'cost_mult' must contain positive finite values",
+           call. = FALSE)
+    }
+  }
+  if ("icc_mult" %in% varied) {
+    value <- newdata$icc_mult
+    if (anyNA(value) || any(!is.finite(value)) || any(value < 0)) {
+      stop("newdata 'icc_mult' must contain non-negative finite values",
+           call. = FALSE)
+    }
+    for (m in value) {
+      .predict_scale_icc(p$measures, m)
+      .predict_scale_icc(p$frame, m)
+    }
+  }
   # One value per row applies to every stratum. A per-stratum cutoff is a
   # frame column, as for any other stratum input.
-  if ("certainty_cutoff" %in% names(newdata)) {
+  if ("certainty_cutoff" %in% varied) {
     value <- newdata$certainty_cutoff
     if (!is.numeric(value) || anyNA(value) || any(!is.finite(value)) ||
           any(value <= 0 | value > 1)) {
@@ -1164,58 +1655,133 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   }
 
   # NA is the design without zones, which NULL means to n_alloc().
-  if ("n_psu_per_zone" %in% names(newdata)) {
+  if ("n_psu_per_zone" %in% varied) {
     value <- newdata$n_psu_per_zone
     if (any(!is.na(value) & !value %in% c(1, 2))) {
       stop("newdata 'n_psu_per_zone' must contain NA, 1 or 2", call. = FALSE)
     }
   }
 
-  targets <- if (is.null(p$targets) || nrow(p$targets) == 0L) NULL else
-    p$targets
   zoned <- certainty &&
-    ("n_psu_per_zone" %in% names(newdata) || !is.null(p$n_psu_per_zone))
+    ("n_psu_per_zone" %in% varied || !is.null(p$n_psu_per_zone))
   cols <- .bethel_predict_cols(budget_mode, stages, certainty, zoned)
 
   rows <- lapply(seq_len(nrow(newdata)), function(i) {
     frame <- p$frame
+    measures <- p$measures
+    targets_i <- targets
+    unit_cost_i <- p$unit_cost
+    deff_i <- if ("deff" %in% varied) newdata$deff[i] else p$deff
+    resp_i <- if ("resp_rate" %in% varied) newdata$resp_rate[i] else p$resp_rate
+    elig_r_i <- if ("eligibility_rate" %in% varied) {
+      newdata$eligibility_rate[i]
+    } else {
+      p[["eligibility_rate"]] %||% 1
+    }
+    epu_i <- if ("eligible_per_unit" %in% varied) {
+      newdata$eligible_per_unit[i]
+    } else {
+      p$eligible_per_unit %||% 1
+    }
+    alpha_i <- if ("alpha" %in% varied) newdata$alpha[i] else p$alpha
+    df_i <- if ("df" %in% varied) newdata$df[i] else p$df
+
     for (nm in varied_takes) frame[[nm]] <- round(newdata[[nm]][i])
+    if ("target_mult" %in% varied) {
+      targets_i <- .predict_scale_targets(targets_i, newdata$target_mult[i])
+    }
+    if ("cost_mult" %in% varied) {
+      sc <- .predict_scale_costs(frame, unit_cost_i, newdata$cost_mult[i])
+      frame <- sc$frame
+      unit_cost_i <- sc$unit_cost
+    }
+    if ("icc_mult" %in% varied) {
+      measures <- .predict_scale_icc(measures, newdata$icc_mult[i])
+      frame <- .predict_scale_icc(frame, newdata$icc_mult[i])
+    }
+    if ("deff" %in% varied) {
+      if ("deff" %in% names(frame)) frame$deff <- NULL
+      if ("deff" %in% names(measures)) measures$deff <- NULL
+    }
+    if ("resp_rate" %in% varied) {
+      if ("resp_rate" %in% names(frame)) frame$resp_rate <- NULL
+      if ("resp_rate" %in% names(measures)) measures$resp_rate <- NULL
+    }
+    if ("eligibility_rate" %in% varied) {
+      if ("eligibility_rate" %in% names(frame)) frame$eligibility_rate <- NULL
+      if ("eligibility_rate" %in% names(measures)) measures$eligibility_rate <- NULL
+    }
+    if ("eligible_per_unit" %in% varied) {
+      if ("eligible_per_unit" %in% names(frame)) frame$eligible_per_unit <- NULL
+      if ("eligible_per_unit" %in% names(measures)) {
+        measures$eligible_per_unit <- NULL
+      }
+    }
+    if ("alpha" %in% varied && !is.null(targets_i) && "alpha" %in% names(targets_i)) {
+      targets_i$alpha <- NA_real_
+    }
+    if ("df" %in% varied && !is.null(targets_i) && "df" %in% names(targets_i)) {
+      targets_i$df <- NA_real_
+    }
+
+    # If fixed take_2 is varied on a free-take fit, drop take bounds so fixed-take runs
+    use_ft <- free_take && !("take_2" %in% varied_takes)
+    t_min_i <- if (!use_ft) NULL else if ("take_2_min" %in% varied) {
+      round(newdata[["take_2_min"]][i])
+    } else {
+      p[["take_2_min"]]
+    }
+    t_max_i <- if (!use_ft) NULL else if ("take_2_max" %in% varied) {
+      round(newdata[["take_2_max"]][i])
+    } else {
+      p[["take_2_max"]]
+    }
+    t_step_i <- if (!use_ft) NULL else p[["take_2_step"]]
+    if (!use_ft) {
+      frame <- frame[, setdiff(names(frame),
+                               c("take_2_min", "take_2_max", "take_2_step")),
+                     drop = FALSE]
+    }
+
     budget <- if (!budget_mode) {
       NULL
-    } else if ("budget" %in% names(newdata)) {
+    } else if ("budget" %in% varied) {
       newdata$budget[i]
     } else {
       p$budget
     }
-    cutoff <- if ("certainty_cutoff" %in% names(newdata)) {
+    cutoff <- if ("certainty_cutoff" %in% varied) {
       newdata$certainty_cutoff[i]
     } else {
       p$certainty_cutoff
     }
-    zone_m <- if ("n_psu_per_zone" %in% names(newdata)) {
+    zone_m <- if ("n_psu_per_zone" %in% varied) {
       if (is.na(newdata$n_psu_per_zone[i])) NULL else newdata$n_psu_per_zone[i]
     } else {
       p$n_psu_per_zone
     }
     fit <- tryCatch(
-      n_alloc.default(
+      n_alloc_joint.default(
         frame = frame,
-        measures = p$measures,
-        targets = targets,
+        measures = measures,
+        targets = targets_i,
         psu = p$psu,
         certainty_cutoff = cutoff,
         n_psu_per_zone = zone_m,
         control = p[["control"]],
         objective = p$objective,
         budget = budget,
-        unit_cost = p$unit_cost,
-        alpha = p$alpha,
-        deff = p$deff,
-        resp_rate = p$resp_rate,
-        eligibility_rate = p[["eligibility_rate"]] %||% 1,
-        eligible_per_unit = p$eligible_per_unit %||% 1,
-        df = p$df,
+        unit_cost = unit_cost_i,
+        alpha = alpha_i,
+        deff = deff_i,
+        resp_rate = resp_i,
+        eligibility_rate = elig_r_i,
+        eligible_per_unit = epu_i,
+        df = df_i,
         min_n_stratum = p$min_n_stratum,
+        take_2_min = t_min_i,
+        take_2_max = t_max_i,
+        take_2_step = t_step_i,
         fpc = p$fpc %||% "unit"
       ),
       error = function(e) e
@@ -1279,7 +1845,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   }
   field <- intersect(
     c("n_psu_certain", "n_psu_draw", "n_zone", "objective_value", "cv",
-      "n_int", "cost_int", ".status", ".feasible"),
+      "n_1_int", "n_int", "cost_int", ".status", ".feasible"),
     names(values)
   )
   planned <- function(r) values$.status[r] %in% c("optimal", "gap", "limit")
@@ -1312,15 +1878,15 @@ predict.svyplan_prec <- function(object, newdata, ...) {
     return(c(
       "n_psu_certain", "n_psu_draw", if (zoned) "n_zone", "n", "cost",
       if (budget_mode) c("objective_value", "cv"),
-      "n_int", "cost_int", if (budget_mode) ".binding", ".status",
+      "n_1_int", "n_int", "cost_int", if (budget_mode) ".binding", ".status",
       ".feasible"
     ))
   }
   c(
-    if (stages > 1L) "n_psu",
+    if (stages > 1L) "n_1",
     "n", "cost",
     if (budget_mode) c("objective_value", "cv"),
-    if (stages > 1L) "n_psu_int",
+    if (stages > 1L) "n_1_int",
     "n_int", "cost_int",
     if (budget_mode) ".binding",
     ".feasible"
@@ -1348,7 +1914,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   value_of <- function(name) {
     switch(
       name,
-      n_psu = sum(fit$detail$n_psu),
+      n_1 = sum(fit$detail$n_1),
       n_psu_certain = sum(fit$detail$n_psu_certain),
       n_psu_draw = sum(fit$detail$n_psu_draw),
       n_zone = sum(fit$detail$n_zone %||% 0),
@@ -1356,7 +1922,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       cost = fit$params$achieved$cost,
       objective_value = objective,
       cv = sqrt(objective),
-      n_psu_int = sum(fit$detail$n_psu_int),
+      n_1_int = sum(fit$detail$n_1_int),
       n_int = as.numeric(fit$operational$n),
       cost_int = fit$operational$cost,
       .binding = isTRUE(fit$optimization$budget_binding),

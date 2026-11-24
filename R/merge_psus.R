@@ -3,9 +3,9 @@
 #' @description
 #' `merge_psus()` recodes primary sampling unit (PSU) ids so that every PSU
 #' holds at least `min_size` units, merging small PSUs with their neighbors
-#' in the current row order. A PSU register for [n_alloc()] must not hold a
-#' PSU smaller than its stratum's take, and merging small enumeration areas
-#' before the register is built is the usual remedy.
+#' in the current row order. A PSU register for [n_alloc_joint()] must not
+#' hold a PSU smaller than its stratum's take, and merging small enumeration
+#' areas before the register is built is the usual remedy.
 #'
 #' It is a vector function. Apply it within each stratum, after sorting the
 #' frame so that neighbors in row order are neighbors on the ground, and
@@ -14,7 +14,7 @@
 #'
 #' @param id The PSU id of each row. Any atomic type.
 #' @param min_size The smallest size a PSU may have, a positive number.
-#'   Usually the largest take `n_per_psu`.
+#'   Usually the largest take `take_2`.
 #' @param size The size each row contributes, for a frame with one row per
 #'   PSU or with weighted rows. `NULL` (default) counts rows.
 #'
@@ -29,7 +29,7 @@
 #' `min_size`, and a remainder below `min_size` at the end of the run joins
 #' the merged PSU before it. A run that is below `min_size` in total joins
 #' the PSU before it, or the one after it when it opens the stratum. A
-#' stratum below `min_size` in total becomes one PSU, which [n_alloc()]
+#' stratum below `min_size` in total becomes one PSU, which [n_alloc_joint()]
 #' refuses as smaller than its take unless the register flags it as
 #' certainty.
 #'
@@ -41,13 +41,14 @@
 #' Called on a whole frame, `merge_psus()` sees one stratum and can merge
 #' PSUs of different strata. Apply it per stratum, with `split()` or a
 #' grouped `dplyr::mutate()`. A merge that crosses strata gives one id to
-#' PSUs of two strata, which [n_alloc()] refuses as a duplicated `psu_id`.
+#' PSUs of two strata, which [n_alloc_joint()] refuses as a duplicated `psu_id`.
 #'
 #' @references
 #' Valliant, R., Dever, J. A., and Kreuter, F. (2018). *Practical Tools for
 #' Designing and Weighting Survey Samples*, 2nd ed. Springer. Section 10.3.
 #'
-#' @seealso [n_alloc()] for the register the merged ids feed.
+#' @family stratified design functions
+#' @seealso [n_alloc_joint()] for the register the merged ids feed.
 #'
 #' @examples
 #' listing <- data.frame(
@@ -63,7 +64,7 @@
 #' }), listing$stratum)
 #' listing
 #'
-#' # The register n_alloc() reads
+#' # The register n_alloc_joint() reads
 #' aggregate(households ~ stratum + psu_id, listing, sum)
 #'
 #' @export

@@ -85,6 +85,11 @@
 #' @noRd
 .whole_target_scale <- function() (1 + 1e-9) / (1 + 1e-12)
 
+#' A cost's load against a monetary cap, accepted when the cost is at most the cap
+#' @keywords internal
+#' @noRd
+.whole_budget_load <- function(cost, cap) cost * (1 + 1e-9) / cap
+
 #' A plan from multipliers, doubled until the best states fit, or `NULL`
 #' @keywords internal
 #' @noRd
@@ -105,23 +110,32 @@
 #' `NULL`. With one column the dual is maximized exactly by `.dual_one()`.
 #' @keywords internal
 #' @noRd
-.whole_subgradient <- function(q, start = NULL, iters = 1500L) {
+.whole_subgradient <- function(q, start = NULL, iters = 1500L, lambda = NULL) {
   at_lo <- abs(sum(q$o0 + q$o1 * q$lo + q$o2 / q$lo)) * q$H / q$B
   if (q$K == 1L) {
     one <- .whole_subgradient_one(q, start, at_lo)
     if (!is.null(one)) return(one)
   }
-  lambda <- rep(at_lo / q$K + 1e-12, q$K)
+  warm <- !is.null(lambda) && length(lambda) == q$K &&
+    all(is.finite(lambda)) && all(lambda >= 0)
+  if (!warm) {
+    lambda <- rep(at_lo / q$K + 1e-12, q$K)
+  }
   pick <- .whole_plan_from(q, lambda)
   if (!is.null(start) &&
         (is.null(pick) || .whole_cost(q, start) < .whole_cost(q, pick))) {
     pick <- start
   }
-  if (is.null(pick)) return(list(lambda = lambda, L = -Inf, pick = NULL))
-  ub <- .whole_cost(q, pick)
+  # With no plan yet the steps aim at a cost every plan stays below.
+  ceiling_cost <- .whole_ceiling_cost(q)
+  if (is.null(pick) && !is.finite(ceiling_cost)) {
+    return(list(lambda = lambda, L = -Inf, pick = NULL))
+  }
+  ub <- if (is.null(pick)) Inf else .whole_cost(q, pick)
   best_L <- -Inf
   best_lambda <- lambda
-  theta <- 2
+  theta <- if (warm) 0.5 else 2
+  patience <- if (warm) 15L else 25L
   stall <- 0L
   for (i in seq_len(iters)) {
     l <- .whole_lagrangian(q, lambda)
@@ -129,7 +143,7 @@
       best_L <- l$L
       best_lambda <- lambda
       stall <- 0L
-    } else if ((stall <- stall + 1L) >= 25L) {
+    } else if ((stall <- stall + 1L) >= patience) {
       theta <- theta / 2
       stall <- 0L
     }
@@ -137,18 +151,41 @@
       ub <- .whole_cost(q, l$plan)
       pick <- l$plan
     }
-    if (theta < 1e-6 || ub - best_L <= 1e-12 * abs(ub)) break
+    if (theta < 1e-6 || (is.finite(ub) && ub - best_L <= 1e-12 * abs(ub))) {
+      break
+    }
     g <- l$g
     g[lambda <= 0 & g < 0] <- 0
     if (sum(g^2) == 0) break
-    lambda <- pmax(0, lambda + theta * (ub - l$L) / sum(g^2) * g)
+    lambda <- pmax(0, lambda + theta * (min(ub, ceiling_cost) - l$L) /
+                     sum(g^2) * g)
   }
   cand <- .whole_plan_from(q, best_lambda)
   if (!is.null(cand) && .whole_cost(q, cand) < ub) {
     ub <- .whole_cost(q, cand)
     pick <- cand
   }
+  if (is.null(pick)) return(list(lambda = best_lambda, L = best_L, pick = NULL))
   list(lambda = best_lambda, L = best_L, ub = ub, pick = pick)
+}
+
+#' A cost above every plan's, `Inf` when a branch is unbounded
+#'
+#' Each branch's cost is convex in `x`, so its largest value is at an end.
+#' @keywords internal
+#' @noRd
+.whole_ceiling_cost <- function(q) {
+  at <- function(x) q$o0 + q$o1 * x + q$o2 / x
+  top <- pmax(at(q$lo), at(q$hi))
+  if (any(!is.finite(top))) return(Inf)
+  -sum(.menu_group_min(-top, q$ends)$min) + abs(sum(top)) + 1
+}
+
+#' The smaller root of `a x^2 - top x + b`, without cancellation
+#' @keywords internal
+#' @noRd
+.whole_small_root <- function(a, b, top, d) {
+  ifelse(top + d > 0, 2 * b / (top + d), (top - d) / (2 * a))
 }
 
 #' `.whole_subgradient()` with one column, or `NULL`
@@ -198,7 +235,7 @@
   hi <- q$hi
   both <- a > 0 & b > 0
   d <- sqrt(pmax(top^2 - 4 * a * b, 0))
-  lo[both] <- pmax(lo, ceiling((top - d) / (2 * a) - 1e-9))[both]
+  lo[both] <- pmax(lo, ceiling(.whole_small_root(a, b, top, d) - 1e-9))[both]
   hi[both] <- pmin(hi, floor((top + d) / (2 * a) + 1e-9))[both]
   only_a <- a > 0 & !(b > 0)
   hi[only_a] <- pmin(hi, floor(top / a + 1e-9))[only_a]
@@ -235,7 +272,7 @@
 #' @keywords internal
 #' @noRd
 .whole_search <- function(q, start = NULL, grain = 0, max_nodes = 5000,
-                          gap = 0) {
+                          gap = 0, lambda = NULL) {
   if (is.numeric(start)) start <- .whole_plan(q, start)
   none <- list(x = NULL, branch = NULL, value = Inf, bound = Inf,
                status = "infeasible", nodes = 0, states = 0, kept = 0)
@@ -245,7 +282,7 @@
     floor_load <- .menu_group_min(q$g0 + q$g2 / q$hi, q$ends)$min
     if (any(colSums(matrix(floor_load, q$H)) > 1 + 1e-9)) return(none)
   }
-  sg <- .whole_subgradient(q, start)
+  sg <- .whole_subgradient(q, start, lambda = lambda)
   if (is.null(sg$pick)) {
     none$status <- "limit"
     none$bound <- sg$L
@@ -304,6 +341,71 @@
   )
 }
 
+#' The status and record that speak for a whole design searched by domain
+#' @keywords internal
+#' @noRd
+.whole_domains_summary <- function(records) {
+  status <- vapply(records, function(r) r$status, character(1))
+  measured <- Filter(function(r) is.numeric(r$gap), records)
+  worst <- if (length(measured)) {
+    measured[[which.max(vapply(measured, function(r) r$gap, numeric(1)))]]
+  } else {
+    records[[1L]]
+  }
+  list(
+    status = if (any(status == "heuristic")) {
+      "heuristic"
+    } else if (all(status == "optimal")) {
+      "optimal"
+    } else {
+      worst$status
+    },
+    search = worst,
+    domains = records
+  )
+}
+
+#' Mark the searched domains whose design a floor repair changed
+#' @keywords internal
+#' @noRd
+.whole_repaired <- function(records, domain_idx, before, after) {
+  for (d in seq_along(domain_idx)) {
+    nm <- names(domain_idx)[d]
+    idx <- domain_idx[[d]]
+    if (!identical(records[[nm]]$status, "heuristic") &&
+          any(before[idx] != after[idx])) {
+      records[[nm]] <- list(status = "heuristic", reason = "floor repair",
+                            search = records[[nm]])
+    }
+  }
+  records
+}
+
+#' `as.integer()` of a whole count, refused past the integer range
+#' @keywords internal
+#' @noRd
+.as_count <- function(x, what, where) {
+  if (any(x > .Machine$integer.max, na.rm = TRUE)) .stop_count_range(what, where)
+  as.integer(x)
+}
+
+#' The integer form of a result's count, refused when it has none
+#' @keywords internal
+#' @noRd
+.coerce_count <- function(x) {
+  if (any(x > .Machine$integer.max, na.rm = TRUE)) {
+    stop(structure(
+      list(message = sprintf(
+        "the count %s is past the integer range (%s), so it has no integer form. Read it as a double, from $operational$n where the result has a field design",
+        format(max(x, na.rm = TRUE), big.mark = ",", scientific = FALSE),
+        format(.Machine$integer.max, big.mark = ",")
+      ), call = NULL),
+      class = c("svyplan_count_range", "error", "condition")
+    ))
+  }
+  as.integer(x)
+}
+
 #' The search settings of `control`, with their defaults filled in
 #' @keywords internal
 #' @noRd
@@ -334,4 +436,28 @@
     stop("'control$gap' must be one number in [0, 1)", call. = FALSE)
   }
   list(max_nodes = round(nodes), gap = gap)
+}
+
+#' Whole counts kept as doubles, exact up to 2^53
+#' @keywords internal
+#' @noRd
+.whole_storage <- function(x) {
+  if (any(abs(x) > 2^53)) {
+    stop("a whole count exceeds 2^53, where doubles stop being exact",
+         call. = FALSE)
+  }
+  round(as.numeric(x))
+}
+
+#' Refuse counts past the integer range of a search that counts in integers
+#' @keywords internal
+#' @noRd
+.stop_count_range <- function(what, where) {
+  stop(
+    sprintf(
+      "%s counts at most %s units %s, and this design needs more. Plan with fewer units there",
+      what, format(.Machine$integer.max, big.mark = ","), where
+    ),
+    call. = FALSE
+  )
 }

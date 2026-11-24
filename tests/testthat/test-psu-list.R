@@ -13,7 +13,7 @@ list_register <- function(seed) {
   frame <- data.frame(
     stratum = LETTERS[seq_len(H)],
     N = as.numeric(tapply(psu$N, psu$stratum, sum)),
-    n_per_psu = take
+    take_2 = take
   )
   m <- c(0L, 1L, 2L)[seed %% 3 + 1]
   if (m > 0 && seed %% 4 == 0) psu$zone_order <- sample(nrow(psu))
@@ -21,15 +21,15 @@ list_register <- function(seed) {
     psu$certainty <- seq_len(nrow(psu)) %in% sample(nrow(psu), H)
   }
   if (seed %% 2 == 0) {
-    frame$cost_psu <- 50
-    frame$cost_ssu <- 5
+    frame$cost_1 <- 50
+    frame$cost_2 <- 5
   }
   if (seed %% 6 == 1) frame$max_weight <- c(4, rep(NA, H - 1))
   z <- list(
     frame = frame, psu = psu,
     measures = data.frame(stratum = frame$stratum, name = "y",
                           p = stats::runif(H, 0.1, 0.6),
-                          icc_psu = stats::runif(H, 0.02, 0.2)),
+                          icc_1 = stats::runif(H, 0.02, 0.2)),
     targets = data.frame(name = "y", cv = 0.1)
   )
   ev <- .psu_setup(
@@ -142,8 +142,8 @@ test_that("the stop rule holds for objective rows and a budget price", {
                                  function(d) d[1:12, ]))
   z$frame <- z$frame[3:4, ]
   z$frame$N <- as.numeric(tapply(z$psu$N, z$psu$stratum, sum))
-  z$frame$cost_psu <- 80
-  z$frame$cost_ssu <- 8
+  z$frame$cost_1 <- 80
+  z$frame$cost_2 <- 8
   z$measures <- z$measures[z$measures$stratum %in% c("C", "D"), ]
   ev <- .psu_setup(z$frame, z$psu, z$measures, z$targets,
                    objective = c("literacy", "income"))
@@ -162,12 +162,12 @@ test_that("the stop rule holds for objective rows and a budget price", {
 test_that("a stratum the caller holds whole carries no remainder visit", {
   # One flagged PSU takes j units at f = j / M, so its variance is the
   # stratum-rate one and the bound is exact there.
-  frame <- data.frame(stratum = c("A", "B"), N = c(400, 900), n_per_psu = 50,
-                      cost_psu = 60, cost_ssu = 1)
+  frame <- data.frame(stratum = c("A", "B"), N = c(400, 900), take_2 = 50,
+                      cost_1 = 60, cost_2 = 1)
   psu <- data.frame(stratum = c("A", "B", "B"), N = c(400, 600, 300),
                     certainty = c(TRUE, FALSE, FALSE))
   measures <- data.frame(stratum = c("A", "B"), name = "y", p = 0.3,
-                         icc_psu = 0.1)
+                         icc_1 = 0.1)
   ev <- .psu_setup(frame, psu, measures, data.frame(name = "y", cv = 0.1))
   weights <- list(price = 1, mu = 0.05, obj = 0)
   full <- .psu_menu_round(.psu_menu_new(ev), ev, weights, c(Inf, Inf))

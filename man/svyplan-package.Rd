@@ -70,8 +70,9 @@ sizing model.
 \strong{I want to size, or evaluate} \tab \strong{Functions} \cr
 a proportion, a mean or a ratio of two totals \tab \code{n_prop()}/\code{prec_prop()}, \code{n_mean()}/\code{prec_mean()}, \code{n_ratio()}/\code{prec_ratio()} \cr
 several indicators at once, taking the most demanding \tab \code{n_multi()}/\code{prec_multi()} \cr
-a two- or three-stage cluster design, for one indicator or a table of them \tab \code{n_cluster()}/\code{prec_cluster()} \cr
-an allocation across strata or domains, under a budget or a CV target \tab \code{n_alloc()}/\code{prec_alloc()}, \code{strata_bound()} \cr
+a multistage cluster design (two or more stages), for one indicator or a table of them \tab \code{n_cluster()}/\code{prec_cluster()} \cr
+a classic stratum allocation across strata or domains, under a budget, total \code{n}, or target \tab \code{n_alloc()}/\code{prec_alloc()}, \code{strata_bound()} \cr
+a joint allocation for multiple indicators, overlapping domains, or a PSU register \tab \code{n_alloc_joint()}/\code{prec_alloc_joint()} \cr
 a two-phase design that screens or follows up \tab \code{n_twophase()}/\code{prec_twophase()} \cr
 a change between two occasions of a repeated survey \tab \code{n_change()}/\code{prec_change()} \cr
 the average of several occasions of a repeated survey \tab \code{n_pooled()}/\code{prec_pooled()} \cr
@@ -101,10 +102,9 @@ variance to the analysis variable's. Defaults to 1. \cr
 \code{unit_relvar} \tab \eqn{V} \tab Unit relvariance, \eqn{S^2/\bar{y}^2}{S^2/ybar^2},
 that is the squared population coefficient of variation. \cr
 \code{deff} \tab \eqn{DEFF} \tab Design effect. \cr
-\code{n_psu} \tab \eqn{n_1} \tab Number of PSUs selected. \cr
-\code{n_per_psu} \tab \eqn{n_2} \tab Units selected \emph{per} PSU, which is
-a sample take, not the PSU's population size. \cr
-\code{n_per_ssu} \tab \eqn{n_3} \tab Units selected per SSU. \cr
+\code{n_1} \tab \eqn{n_1} \tab Number of PSUs selected at stage 1. \cr
+\code{take_2}, ..., \code{take_S} \tab \eqn{n_2, \ldots, n_S} \tab Units selected
+\emph{per} parent unit at stages 2 through \eqn{S}. \cr
 \code{moe} \tab \eqn{e} \tab Margin of error, the half-width of the
 confidence interval. \cr
 \code{cv} \tab \eqn{CV} \tab Coefficient of variation, the relative standard
@@ -118,9 +118,7 @@ when \code{alloc = "power"}. It is unrelated to statistical power. \cr
 }
 
 Dispersion may be given as either \code{var} or \code{sd} wherever a mean is being
-planned, and exactly one is required. The exception is \code{\link[=n_twophase]{n_twophase()}},
-whose frame
-takes \code{sd} only.
+planned, and exactly one is required.
 }
 
 \references{

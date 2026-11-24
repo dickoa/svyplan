@@ -7,6 +7,7 @@
 \alias{effective_n.svyplan_cluster}
 \alias{effective_n.svyplan_prec}
 \alias{effective_n.svyplan_varcomp}
+\alias{effective_n.svyplan_alloc}
 \alias{effective_n.svyplan_n}
 \title{Effective sample size}
 \usage{
@@ -20,11 +21,11 @@ effective_n(x = NULL, ...)
   resp_rate = 1,
   eligibility_rate = 1,
   icc = NULL,
-  n_per_psu = NULL,
-  n_per_ssu = NULL,
+  take = NULL,
   var_ratio = 1,
   weights = NULL,
-  strata = NULL
+  strata = NULL,
+  aux_r2 = NULL
 )
 
 \method{effective_n}{svyplan_deff}(x, ..., n = NULL, resp_rate = 1, eligibility_rate = 1)
@@ -36,7 +37,8 @@ effective_n(x = NULL, ...)
   resp_rate = NULL,
   eligibility_rate = NULL,
   weights = NULL,
-  strata = NULL
+  strata = NULL,
+  aux_r2 = NULL
 )
 
 \method{effective_n}{svyplan_prec}(
@@ -46,7 +48,8 @@ effective_n(x = NULL, ...)
   resp_rate = NULL,
   eligibility_rate = NULL,
   weights = NULL,
-  strata = NULL
+  strata = NULL,
+  aux_r2 = NULL
 )
 
 \method{effective_n}{svyplan_varcomp}(
@@ -55,10 +58,20 @@ effective_n(x = NULL, ...)
   n = NULL,
   resp_rate = 1,
   eligibility_rate = 1,
-  n_per_psu = NULL,
-  n_per_ssu = NULL,
+  take = NULL,
   weights = NULL,
-  strata = NULL
+  strata = NULL,
+  aux_r2 = NULL
+)
+
+\method{effective_n}{svyplan_alloc}(
+  x,
+  ...,
+  n = NULL,
+  resp_rate = NULL,
+  eligibility_rate = NULL,
+  weights = NULL,
+  aux_r2 = NULL
 )
 
 \method{effective_n}{svyplan_n}(
@@ -67,7 +80,8 @@ effective_n(x = NULL, ...)
   n = NULL,
   resp_rate = NULL,
   eligibility_rate = NULL,
-  weights = NULL
+  weights = NULL,
+  aux_r2 = NULL
 )
 }
 \arguments{
@@ -105,8 +119,9 @@ own value is used unless you override it here. An override re-evaluates
 the plan, so on an allocation the population weights and the population
 variance follow it too.}
 
-\item{icc, n_per_psu, n_per_ssu, var_ratio, weights, strata}{Design components, with
-the same meaning as in \code{\link[=design_effect]{design_effect()}}.}
+\item{icc, take, var_ratio, weights, strata, aux_r2}{Design components, with
+the same meaning as in \code{\link[=design_effect]{design_effect()}}. \code{aux_r2} is refused beside
+\code{deff}, which already carries any calibration gain.}
 }
 \value{
 A numeric scalar: the effective sample size,
@@ -121,8 +136,8 @@ the mirror of \code{\link[=design_effect]{design_effect()}} and takes the same a
 }
 \details{
 The design effect is built exactly as in \code{\link[=design_effect]{design_effect()}}, from
-whichever of the clustering, weighting, and stratification components
-you supply. \code{n} is the gross planned sample size. It is taken from the
+whichever of the clustering, weighting, stratification, and auxiliary
+calibration components you supply. \code{n} is the gross planned sample size. It is taken from the
 arguments when it can be (the length of \code{weights}, the total of
 \code{strata$n}, or the total of the plan you pass as \code{x}), and must be given
 explicitly otherwise.
@@ -142,9 +157,9 @@ The design effect it divides by is a without-FPC planning quantity, so
 for an \code{\link[=n_alloc]{n_alloc()}} result the effective size inherits that scale. It
 answers how many simple random draws carry the same information under
 the planning model, not how many the finite-population variance from
-\code{\link[=prec_alloc]{prec_alloc()}} would imply once sampling fractions are material. A
-generalized allocation has no single design effect and is refused here
-for the same reason it is in \code{\link[=design_effect]{design_effect()}}.
+\code{\link[=prec_alloc]{prec_alloc()}} would imply once sampling fractions are material. For
+a joint design from \code{\link[=n_alloc_joint]{n_alloc_joint()}}, use \code{\link[=prec_alloc_joint]{prec_alloc_joint()}} for
+measure-specific precision.
 
 \code{effective_n()} is a planning tool. To compute the effective sample size
 realized by collected data, use \code{survey::svymean(..., deff = TRUE)} with
@@ -172,7 +187,7 @@ supplied rather than one to be derived, and are rejected.
 \item \code{effective_n(svyplan_varcomp)}: Use the design features of a \code{\link[=varcomp]{varcomp()}}
 estimate. \code{n} and the stage takes are your design choice.
 
-\item \code{effective_n(svyplan_n)}: Use the total and design features of an
+\item \code{effective_n(svyplan_alloc)}: Use the total and design features of an
 \code{\link[=n_alloc]{n_alloc()}} allocation, dividing by the allocation's own variance
 ratio. The frame needs \code{mean} alongside \code{N} and \code{sd}, since without
 the stratum means the population variance that ratio divides by is
@@ -185,13 +200,19 @@ stratum shares. To evaluate the whole stratum counts, pass
 sizes alone reads its whole counts throughout, as its design effect
 does.
 
+\item \code{effective_n(svyplan_n)}: Single-indicator sizing results carry the \code{deff}
+supplied at creation rather than deriving one, and are rejected.
+
 }}
 \examples{
 # From a design effect you already built
-effective_n(design_effect(icc = 0.05, n_per_psu = 25), n = 1200)
+effective_n(design_effect(icc = 0.05, take = 25), n = 1200)
 
 # Straight from the components
-effective_n(n = 1200, icc = 0.05, n_per_psu = 25)
+effective_n(n = 1200, icc = 0.05, take = 25)
+
+# Include the anticipated calibration gain once
+effective_n(n = 1200, icc = 0.05, take = 25, aux_r2 = 0.25)
 
 # From planned weights, where n is the number of units
 effective_n(weights = rep(c(1, 4), c(300, 100)))

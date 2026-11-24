@@ -97,7 +97,8 @@ n_prop(
 )
 ```
 
-The single-stage `n_*()` and `prec_*()` functions share these arguments:
+The single-stage sizing and precision functions share most of these
+arguments. Check the help for the inputs supported by your estimand.
 
 | Argument | Meaning | Default |
 |:---|:---|:---|
@@ -106,12 +107,15 @@ The single-stage `n_*()` and `prec_*()` functions share these arguments:
 | `alpha` | Significance level of `moe` and `rmoe` targets and of intervals | 0.05 |
 | `resp_rate` | Expected response rate among eligible units, as a survey report publishes it | 1 |
 | `eligibility_rate` | Share of issued units in scope, such as dwellings found occupied. The issued sample is the respondent sample divided by it and by `resp_rate` | 1 |
+| `eligible_per_unit` | For functions that accept it, the average number of eligible people per sampled unit in scope. This can exceed 1, for example when a household survey measures eligible people | 1 |
 
 Any `deff > 0` is accepted. A design effect below 1 describes a design more
 efficient than simple random sampling, such as a well-stratified sample.
-`n_cluster()` takes `icc` and stage costs in place of `deff`, and `N`
-with `N_psu` for a finite population. It accepts a response rate for each
-stage.
+See `?svyplan-package` for the response and eligibility definitions and
+the notation used in the help. `n_cluster()` takes `icc` and
+`stage_cost` in place of `deff`, and a
+stage-indexed `N` vector for a finite population. It accepts a scalar or
+stage-indexed `resp_rate` vector.
 
 ## Check expected precision
 
@@ -211,8 +215,9 @@ paired `prec_` function evaluates precision under the same sizing model.
 |:---|:---|
 | a proportion, a mean or a ratio of two totals | `n_prop()`/`prec_prop()`, `n_mean()`/`prec_mean()`, `n_ratio()`/`prec_ratio()` |
 | several indicators at once, taking the most demanding | `n_multi()`/`prec_multi()` |
-| a two- or three-stage cluster design, for one indicator or a table of them | `n_cluster()`/`prec_cluster()` |
-| an allocation across strata or domains, under a budget or a CV target | `n_alloc()`/`prec_alloc()`, `strata_bound()` |
+| a multistage cluster design (two or more stages), for one indicator or a table of them | `n_cluster()`/`prec_cluster()` |
+| a classic stratum allocation across strata or domains, under a budget, total `n`, or target | `n_alloc()`/`prec_alloc()`, `strata_bound()` |
+| a joint allocation for multiple indicators, overlapping domains, or a PSU register | `n_alloc_joint()`/`prec_alloc_joint()` |
 | a two-phase design that screens or follows up | `n_twophase()`/`prec_twophase()` |
 | a change between two occasions of a repeated survey | `n_change()`/`prec_change()` |
 | the average of several occasions of a repeated survey | `n_pooled()`/`prec_pooled()` |
@@ -225,22 +230,10 @@ Sizing for a regression coefficient is not implemented, and there is no
 `n_reg()`. The survey-specific part of that calculation, the variance
 inflation from a complex design, is the `deff` argument.
 
-## Choose the next function
-
-The package supports several estimands and design structures. Start from the
-question your plan must answer. The chapters are in the book
+For targets that share one allocation, work through
+[Joint allocation](joint-allocation.html), also available as
+`vignette("joint-allocation")`. For design context and worked surveys, see
 [Survey Sampling Design with R](https://www.ahmadoudicko.com/sampling-design-r-book/).
-
-| Planning question | Help pages | Book chapter |
-|:---|:---|:---|
-| Which precision target or interval method should I use? | `?n_prop`, `?n_mean`, `?n_ratio`, `?prec_prop` | [Precision targets and sample size](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/08-sample-size.html) |
-| How do several indicators or domains determine one sample? | `?n_multi`, `?prec_multi` | [Several indicators and a floor](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/08-sample-size.html#several-indicators-and-a-floor) |
-| How should I construct strata or allocate a sample? | `?strata_bound`, `?n_alloc`, `?prec_alloc` | [Allocation across domains and strata](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/10-stratum-allocation.html) |
-| How do I satisfy several allocation requirements together? | `?n_alloc` | [Two targets at once](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/10-stratum-allocation.html#two-targets-at-once) |
-| How many clusters and units per cluster do I need? | `?varcomp`, `?n_cluster`, `?design_effect` | [Clusters, take size and cost](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/09-clusters-take.html) |
-| How do I plan screening or nonresponse follow-up? | `?n_twophase`, `?prec_twophase` | [Two-phase designs and subsamples](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/22-two-phase.html) |
-| How do overlap, attrition, and rotation affect repeated surveys? | `?n_change`, `?n_pooled`, `?n_panel`, `?design_rotation`, `?design_schedule` | [Rotating panels and master samples](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/20-panels-master-samples.html) |
-| Can the design detect a group difference or change? | `?power_prop`, `?power_mean`, `?power_did` | [Power for evaluation surveys](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/24-evaluation-power.html) |
 
 Sample-size planning depends on anticipated variances and on the sample design
 [@cochran1977; @valliant2018]. Treat those inputs as documented assumptions and

@@ -6,8 +6,8 @@ test_that("n_cluster 2-stage budget mode", {
   n1_opt <- 100000 / (500 + 50 * n2_opt)
   cv_expected <- sqrt(1 / (n1_opt * n2_opt) * 1 * (1 + 0.05 * (n2_opt - 1)))
 
-  expect_equal(result$n[["n_per_psu"]], n2_opt, tolerance = 1e-6)
-  expect_equal(result$n[["n_psu"]], n1_opt, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], n2_opt, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], n1_opt, tolerance = 1e-6)
   expect_equal(result$cv, cv_expected, tolerance = 1e-6)
   expect_equal(result$cost, 100000)
   expect_equal(result$stages, 2L)
@@ -20,8 +20,8 @@ test_that("n_cluster 2-stage CV mode", {
   n1_opt <- 1 * 1 * (1 + 0.05 * (n2_opt - 1)) / (n2_opt * 0.05^2)
   cost_expected <- 500 * n1_opt + 50 * n1_opt * n2_opt
 
-  expect_equal(result$n[["n_per_psu"]], n2_opt, tolerance = 1e-6)
-  expect_equal(result$n[["n_psu"]], n1_opt, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], n2_opt, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], n1_opt, tolerance = 1e-6)
   expect_equal(result$cost, cost_expected, tolerance = 1e-4)
 })
 
@@ -30,7 +30,7 @@ test_that("n_cluster 2-stage fixed m budget mode", {
     stage_cost = c(500, 50),
     icc = 0.05,
     budget = 100000,
-    n_psu = 40
+    stage_n = c(40, NA)
   )
 
   n2_expected <- (100000 - 500 * 40) / (50 * 40)
@@ -38,19 +38,21 @@ test_that("n_cluster 2-stage fixed m budget mode", {
     1 * 1 / (40 * n2_expected) * (1 + 0.05 * (n2_expected - 1))
   )
 
-  expect_equal(result$n[["n_psu"]], 40, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_psu"]], n2_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], 40, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], n2_expected, tolerance = 1e-6)
   expect_equal(result$cv, cv_expected, tolerance = 1e-6)
 })
 
 test_that("n_cluster 2-stage fixed m CV mode", {
-  result <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05, n_psu = 40)
+  result <- n_cluster(
+    stage_cost = c(500, 50), icc = 0.05, cv = 0.05, stage_n = c(40, NA)
+  )
 
   n2_expected <- (1 - 0.05) / (0.05^2 * 40 / (1 * 1) - 0.05)
   cost_expected <- 500 * 40 + 50 * 40 * n2_expected
 
-  expect_equal(result$n[["n_psu"]], 40, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_psu"]], n2_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], 40, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], n2_expected, tolerance = 1e-6)
   expect_equal(result$cost, cost_expected, tolerance = 1e-4)
 })
 
@@ -66,9 +68,9 @@ test_that("n_cluster 3-stage budget mode", {
   n2_opt <- 1 / n3_opt * sqrt((1 - 0.05) / 0.01 * 500 / 50 * k2 / 1)
   n1_opt <- 500000 / (500 + 100 * n2_opt + 50 * n2_opt * n3_opt)
 
-  expect_equal(result$n[["n_per_ssu"]], n3_opt, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_psu"]], n2_opt, tolerance = 1e-6)
-  expect_equal(result$n[["n_psu"]], n1_opt, tolerance = 1e-6)
+  expect_equal(result$n[["stage_3"]], n3_opt, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], n2_opt, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], n1_opt, tolerance = 1e-6)
   expect_equal(result$stages, 3L)
 })
 
@@ -82,9 +84,9 @@ test_that("n_cluster 3-stage CV mode", {
     (0.05^2 * n2_opt * n3_opt) *
     (1 * 0.01 * n2_opt * n3_opt + k2 * (1 + 0.05 * (n3_opt - 1)))
 
-  expect_equal(result$n[["n_per_ssu"]], n3_opt, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_psu"]], n2_opt, tolerance = 1e-6)
-  expect_equal(result$n[["n_psu"]], n1_opt, tolerance = 1e-6)
+  expect_equal(result$n[["stage_3"]], n3_opt, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], n2_opt, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], n1_opt, tolerance = 1e-6)
 })
 
 test_that("n_cluster accepts svyplan_varcomp", {
@@ -157,14 +159,14 @@ test_that("n_cluster validates inputs", {
     n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05, budget = 100000),
     "specify exactly one"
   )
-  expect_error(
-    n_cluster(
-      stage_cost = c(500, 50, 20, 10),
-      icc = c(0.01, 0.02, 0.03),
-      budget = 100000
-    ),
-    "fold deeper stages"
+  res4 <- n_cluster(
+    stage_cost = c(500, 50, 20, 10),
+    icc = c(0.01, 0.02, 0.03),
+    budget = 100000
   )
+  expect_s3_class(res4, "svyplan_cluster")
+  expect_equal(res4$stages, 4L)
+  expect_length(res4$n, 4L)
 })
 
 test_that("n_cluster is an S3 generic", {
@@ -178,20 +180,22 @@ test_that("n_cluster params store cv in CV mode", {
   res <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
   expect_equal(res$params$cv, 0.05)
   expect_null(res$params$budget)
-  expect_null(res$params$n_psu)
+  expect_null(res$params$stage_n)
 })
 
-test_that("n_cluster params store budget and m", {
-  res <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000, n_psu = 40)
+test_that("n_cluster params store budget and stage_n", {
+  res <- n_cluster(
+    stage_cost = c(500, 50), icc = 0.05, budget = 100000, stage_n = c(40, NA)
+  )
   expect_equal(res$params$budget, 100000)
-  expect_equal(res$params$n_psu, 40)
+  expect_equal(unname(res$params$stage_n), c(40, NA))
   expect_null(res$params$cv)
 })
 
-test_that("n_cluster params store budget without m", {
+test_that("n_cluster params store budget without stage_n", {
   res <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   expect_equal(res$params$budget, 100000)
-  expect_null(res$params$n_psu)
+  expect_null(res$params$stage_n)
 })
 
 test_that("n_cluster 3-stage params store cv", {
@@ -200,15 +204,15 @@ test_that("n_cluster 3-stage params store cv", {
   expect_null(res$params$budget)
 })
 
-test_that("n_cluster 3-stage params store budget and m", {
+test_that("n_cluster 3-stage params store budget and stage_n", {
   res <- n_cluster(
     stage_cost = c(500, 100, 50),
     icc = c(0.01, 0.05),
     budget = 500000,
-    n_psu = 50
+    stage_n = c(50, NA, NA)
   )
   expect_equal(res$params$budget, 500000)
-  expect_equal(res$params$n_psu, 50)
+  expect_equal(unname(res$params$stage_n), c(50, NA, NA))
 })
 
 test_that("svyplan_cluster has se/moe/cv fields", {
@@ -262,19 +266,21 @@ test_that("n_cluster rejects invalid var_ratio", {
 
 test_that("n_cluster fixed-m CV error reports actionable floor diagnostic", {
   expect_error(
-    n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.001, n_psu = 5),
+    n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.001,
+              stage_n = c(5, NA)),
     "below the achievable floor"
   )
   expect_error(
-    n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.001, n_psu = 5),
-    "increase n_psu to at least"
+    n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.001,
+              stage_n = c(5, NA)),
+    "achievable floor"
   )
   expect_error(
     n_cluster(
       stage_cost = c(500, 100, 50),
       icc = c(0.01, 0.05),
       cv = 0.001,
-      n_psu = 5
+      stage_n = c(5, NA, NA)
     ),
     "below the achievable floor"
   )
@@ -301,8 +307,8 @@ test_that("fixed_cost 2-stage budget mode reduces n1, n2 unchanged", {
     budget = 100000,
     fixed_cost = 5000
   )
-  expect_equal(fc$n[["n_per_psu"]], base$n[["n_per_psu"]], tolerance = 1e-10)
-  expect_true(fc$n[["n_psu"]] < base$n[["n_psu"]])
+  expect_equal(fc$n[["stage_2"]], base$n[["stage_2"]], tolerance = 1e-10)
+  expect_true(fc$n[["stage_1"]] < base$n[["stage_1"]])
   expect_equal(fc$cost, 100000)
   expect_equal(fc$params$fixed_cost, 5000)
 })
@@ -326,9 +332,9 @@ test_that("fixed_cost 3-stage budget mode reduces n1", {
     budget = 500000,
     fixed_cost = 10000
   )
-  expect_equal(fc$n[["n_per_psu"]], base$n[["n_per_psu"]], tolerance = 1e-10)
-  expect_equal(fc$n[["n_per_ssu"]], base$n[["n_per_ssu"]], tolerance = 1e-10)
-  expect_true(fc$n[["n_psu"]] < base$n[["n_psu"]])
+  expect_equal(fc$n[["stage_2"]], base$n[["stage_2"]], tolerance = 1e-10)
+  expect_equal(fc$n[["stage_3"]], base$n[["stage_3"]], tolerance = 1e-10)
+  expect_true(fc$n[["stage_1"]] < base$n[["stage_1"]])
   expect_equal(fc$cost, 500000)
 })
 
@@ -381,7 +387,7 @@ test_that("as.integer returns the operational stage vector", {
   res <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   expect_identical(as.integer(res),
                    setNames(as.integer(res$operational$n), names(res$operational$n)))
-  expect_named(res$operational$n, c("n_psu", "n_per_psu"))
+  expect_named(res$operational$n, c("stage_1", "stage_2"))
 })
 
 test_that("fixed_cost round-trip n_cluster -> prec_cluster -> n_cluster", {
@@ -411,7 +417,7 @@ test_that("n_cluster accepts named icc vector in correct order", {
   ref <- n_cluster(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05), cv = 0.05)
   named <- n_cluster(
     stage_cost = c(500, 100, 50),
-    icc = c(icc_psu = 0.01, icc_ssu = 0.05),
+    icc = c(icc_1 = 0.01, icc_2 = 0.05),
     cv = 0.05
   )
   expect_equal(named$n, ref$n)
@@ -422,7 +428,7 @@ test_that("n_cluster reorders named icc vector", {
   ref <- n_cluster(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05), cv = 0.05)
   swapped <- n_cluster(
     stage_cost = c(500, 100, 50),
-    icc = c(icc_ssu = 0.05, icc_psu = 0.01),
+    icc = c(icc_2 = 0.05, icc_1 = 0.01),
     cv = 0.05
   )
   expect_equal(swapped$n, ref$n)
@@ -446,7 +452,7 @@ test_that("n_cluster accepts named var_ratio vector", {
   swapped <- n_cluster(
     stage_cost = c(500, 100, 50),
     icc = c(0.01, 0.05),
-    var_ratio = c(var_ratio_ssu = 1.2 * 0.99, var_ratio_psu = 1.2),
+    var_ratio = c(var_ratio_2 = 1.2 * 0.99, var_ratio_1 = 1.2),
     cv = 0.05
   )
   expect_equal(swapped$n, ref$n)
@@ -455,21 +461,22 @@ test_that("n_cluster accepts named var_ratio vector", {
 test_that("n_cluster accepts named cost vectors and reorders", {
   ref2 <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
   named2 <- n_cluster(
-    stage_cost = c(cost_ssu = 50, cost_psu = 500),
+    stage_cost = c(cost_2 = 50, cost_1 = 500),
     icc = 0.05,
     cv = 0.05
   )
-  alias2 <- n_cluster(
-    stage_cost = c(cost_tsu = 50, cost_psu = 500),
+  custom2 <- n_cluster(
+    stage_cost = c(ea = 500, hh = 50),
     icc = 0.05,
     cv = 0.05
   )
   expect_equal(named2$n, ref2$n)
-  expect_equal(alias2$n, ref2$n)
+  expect_equal(unname(custom2$n), unname(ref2$n))
+  expect_named(custom2$n, c("ea", "hh"))
 
   ref3 <- n_cluster(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05), cv = 0.05)
   named3 <- n_cluster(
-    stage_cost = c(cost_tsu = 50, cost_psu = 500, cost_ssu = 100),
+    stage_cost = c(cost_3 = 50, cost_1 = 500, cost_2 = 100),
     icc = c(0.01, 0.05),
     cv = 0.05
   )
@@ -478,18 +485,18 @@ test_that("n_cluster accepts named cost vectors and reorders", {
 
 test_that("n_cluster rejects bad names in cost", {
   expect_error(
-    n_cluster(stage_cost = c(foo = 500, bar = 50), icc = 0.05, cv = 0.05),
-    "unrecognized names"
+    n_cluster(stage_cost = c(a = 500, a = 50), icc = 0.05, cv = 0.05),
+    "duplicate names"
   )
   expect_error(
-    n_cluster(stage_cost = c(cost1 = 500, cost2 = 50), icc = 0.05, cv = 0.05),
-    "unrecognized names"
+    n_cluster(stage_cost = c(a = 500, 50), icc = 0.05, cv = 0.05),
+    "non-empty"
   )
 })
 
 test_that("n_cluster stores stage-named cost in params (2-stage)", {
   x <- n_cluster(stage_cost = c(750, 100), icc = 0.05, budget = 1e5)
-  expect_equal(names(x$params$stage_cost), c("cost_psu", "cost_ssu"))
+  expect_equal(names(x$params$stage_cost), c("stage_1", "stage_2"))
   expect_equal(unname(x$params$stage_cost), c(750, 100))
 })
 
@@ -498,81 +505,81 @@ test_that("n_cluster stores stage-named cost/icc/var_ratio in params (3-stage)",
     stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
     var_ratio = c(1.2, 1.2 * 0.99), cv = 0.05
   )
-  expect_equal(names(x$params$stage_cost), c("cost_psu", "cost_ssu", "cost_tsu"))
-  expect_equal(names(x$params$icc), c("icc_psu", "icc_ssu"))
-  expect_equal(names(x$params$var_ratio), c("var_ratio_psu", "var_ratio_ssu"))
+  expect_equal(names(x$params$stage_cost), c("stage_1", "stage_2", "stage_3"))
+  expect_equal(names(x$params$icc), c("icc_1", "icc_2"))
+  expect_equal(names(x$params$var_ratio), c("var_ratio_1", "var_ratio_2"))
 })
 
 test_that("cost names survive prec_cluster round-trip", {
   x <- n_cluster(stage_cost = c(750, 100), icc = 0.05, budget = 1e5)
   pr <- prec_cluster(x)
   x2 <- n_cluster(pr, budget = 1e5)
-  expect_equal(names(x2$params$stage_cost), c("cost_psu", "cost_ssu"))
+  expect_equal(names(x2$params$stage_cost), c("stage_1", "stage_2"))
   expect_equal(x2$n, x$n, tolerance = 1e-6)
 })
 
-test_that("n_cluster 2-stage fixed n_per_psu budget mode", {
+test_that("n_cluster 2-stage fixed stage_2 budget mode", {
   result <- n_cluster(
     stage_cost = c(500, 50),
     icc = 0.05,
     budget = 100000,
-    n_per_psu = 20
+    stage_n = c(NA, 20)
   )
 
   n1_expected <- 100000 / (500 + 50 * 20)
   n1_eff <- n1_expected * 1
   cv_expected <- sqrt(1 * 1 / (n1_eff * 20) * (1 + 0.05 * (20 - 1)))
 
-  expect_equal(result$n[["n_per_psu"]], 20, tolerance = 1e-6)
-  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], 20, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], n1_expected, tolerance = 1e-6)
   expect_equal(result$cv, cv_expected, tolerance = 1e-6)
   expect_equal(result$cost, 100000)
 })
 
-test_that("n_cluster 2-stage fixed n_per_psu CV mode", {
+test_that("n_cluster 2-stage fixed stage_2 CV mode", {
   result <- n_cluster(
     stage_cost = c(500, 50),
     icc = 0.05,
     cv = 0.05,
-    n_per_psu = 20
+    stage_n = c(NA, 20)
   )
 
   n1_expected <- 1 * 1 * (1 + 0.05 * (20 - 1)) / (20 * 0.05^2)
   cost_expected <- 500 * n1_expected + 50 * n1_expected * 20
 
-  expect_equal(result$n[["n_per_psu"]], 20, tolerance = 1e-6)
-  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], 20, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], n1_expected, tolerance = 1e-6)
   expect_equal(result$cv, 0.05, tolerance = 1e-6)
   expect_equal(result$cost, cost_expected, tolerance = 1e-4)
 })
 
 # Conditional on a fixed middle take, the final-stage optimum is not the
-# unrestricted sqrt((1 - icc_ssu) / icc_ssu * C2 / C3): that take ignores both
-# the fixed n_per_psu and the per-PSU cost C1. These two tests previously
+# unrestricted sqrt((1 - icc_2) / icc_2 * C2 / C3): that take ignores both
+# the fixed stage_2 and the per-PSU cost C1. These two tests previously
 # asserted the unrestricted formula, which is the defect rather than the
 # contract.
-n3_conditional <- function(n2, icc_psu, icc_ssu, stage_cost) {
-  k2 <- 1 - icc_psu
-  a <- icc_psu + k2 * icc_ssu / n2
-  g <- k2 * (1 - icc_ssu) / n2
+n3_conditional <- function(n2, icc_1, icc_2, stage_cost) {
+  k2 <- 1 - icc_1
+  a <- icc_1 + k2 * icc_2 / n2
+  g <- k2 * (1 - icc_2) / n2
   sqrt(g * (stage_cost[1L] + stage_cost[2L] * n2) /
          (a * stage_cost[3L] * n2))
 }
 
-test_that("n_cluster 3-stage fixed n_per_psu budget mode", {
+test_that("n_cluster 3-stage fixed stage_2 budget mode", {
   result <- n_cluster(
     stage_cost = c(500, 100, 50),
     icc = c(0.01, 0.05),
     budget = 500000,
-    n_per_psu = 10
+    stage_n = c(NA, 10, NA)
   )
 
   n3_opt <- n3_conditional(10, 0.01, 0.05, c(500, 100, 50))
   n1_expected <- 500000 / (500 + 100 * 10 + 50 * 10 * n3_opt)
 
-  expect_equal(result$n[["n_per_psu"]], 10, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_ssu"]], n3_opt, tolerance = 1e-6)
-  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], 10, tolerance = 1e-6)
+  expect_equal(result$n[["stage_3"]], n3_opt, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], n1_expected, tolerance = 1e-6)
   expect_equal(result$cost, 500000)
 
   # The property the formula exists for: no other final take buys more
@@ -581,17 +588,17 @@ test_that("n_cluster 3-stage fixed n_per_psu budget mode", {
     n1 <- 500000 / (500 + 100 * 10 + 50 * 10 * q)
     prec_cluster(n = c(n1, 10, q), icc = c(0.01, 0.05))$cv
   }
-  expect_equal(result$n[["n_per_ssu"]],
+  expect_equal(result$n[["stage_3"]],
                stats::optimize(cv_at, c(1.0001, 200), tol = 1e-10)$minimum,
                tolerance = 1e-5)
 })
 
-test_that("n_cluster 3-stage fixed n_per_psu CV mode", {
+test_that("n_cluster 3-stage fixed stage_2 CV mode", {
   result <- n_cluster(
     stage_cost = c(500, 100, 50),
     icc = c(0.01, 0.05),
     cv = 0.05,
-    n_per_psu = 10
+    stage_n = c(NA, 10, NA)
   )
 
   k2 <- 1 - 0.01
@@ -600,9 +607,9 @@ test_that("n_cluster 3-stage fixed n_per_psu CV mode", {
     (0.05^2 * 10 * n3_opt) *
     (1 * 0.01 * 10 * n3_opt + k2 * (1 + 0.05 * (n3_opt - 1)))
 
-  expect_equal(result$n[["n_per_psu"]], 10, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_ssu"]], n3_opt, tolerance = 1e-6)
-  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], 10, tolerance = 1e-6)
+  expect_equal(result$n[["stage_3"]], n3_opt, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], n1_expected, tolerance = 1e-6)
   expect_equal(result$cv, 0.05, tolerance = 1e-6)
 
   # And no other final take reaches that CV more cheaply.
@@ -610,7 +617,7 @@ test_that("n_cluster 3-stage fixed n_per_psu CV mode", {
     p <- prec_cluster(n = c(1, 10, q), icc = c(0.01, 0.05))
     (p$cv / 0.05)^2 * (500 + 100 * 10 + 50 * 10 * q)
   }
-  expect_equal(result$n[["n_per_ssu"]],
+  expect_equal(result$n[["stage_3"]],
                stats::optimize(cost_at, c(1.0001, 200), tol = 1e-10)$minimum,
                tolerance = 1e-5)
   expect_lt(result$cost,
@@ -624,19 +631,19 @@ test_that("n_cluster rejects all stages fixed (2-stage)", {
   expect_error(
     n_cluster(
       stage_cost = c(500, 50), icc = 0.05, budget = 100000,
-      n_psu = 40, n_per_psu = 20
+      stage_n = c(40, 20)
     ),
-    "cannot fix all stages"
+    "cannot fix all stages|at least one stage"
   )
 })
 
-test_that("n_cluster rejects n_per_ssu for 2-stage", {
+test_that("n_cluster rejects wrong-length stage_n for 2-stage", {
   expect_error(
     n_cluster(
       stage_cost = c(500, 50), icc = 0.05, budget = 100000,
-      n_per_ssu = 8
+      stage_n = c(NA, NA, 8)
     ),
-    "not applicable"
+    "stage_n"
   )
 })
 
@@ -644,51 +651,50 @@ test_that("n_cluster rejects all stages fixed (3-stage)", {
   expect_error(
     n_cluster(
       stage_cost = c(500, 100, 50), icc = c(0.01, 0.05), budget = 500000,
-      n_psu = 50, n_per_psu = 10, n_per_ssu = 8
+      stage_n = c(50, 10, 8)
     ),
-    "cannot fix all stages"
+    "cannot fix all stages|at least one stage"
   )
 })
 
-test_that("n_cluster params store n_per_psu", {
+test_that("n_cluster params store stage_n (2-stage)", {
   res <- n_cluster(
-    stage_cost = c(500, 50), icc = 0.05, budget = 100000, n_per_psu = 20
+    stage_cost = c(500, 50), icc = 0.05, budget = 100000, stage_n = c(NA, 20)
   )
-  expect_equal(res$params$n_per_psu, 20)
-  expect_null(res$params$n_psu)
+  expect_equal(unname(res$params$stage_n), c(NA, 20))
 })
 
-test_that("n_per_psu round-trip n_cluster -> prec_cluster -> n_cluster", {
+test_that("stage_n round-trip n_cluster -> prec_cluster -> n_cluster", {
   orig <- n_cluster(
     stage_cost = c(500, 50),
     icc = 0.05,
     cv = 0.05,
-    n_per_psu = 20
+    stage_n = c(NA, 20)
   )
   prec <- prec_cluster(orig)
-  expect_equal(prec$params$n_per_psu, 20)
+  expect_equal(unname(prec$params$stage_n), c(NA, 20))
   back <- n_cluster(prec)
   expect_equal(unname(back$n), unname(orig$n), tolerance = 1e-4)
-  expect_equal(back$params$n_per_psu, 20)
+  expect_equal(unname(back$params$stage_n), c(NA, 20))
 })
 
-test_that("fixed_cost with n_per_psu 2-stage budget mode reduces n1", {
+test_that("fixed_cost with stage_n 2-stage budget mode reduces n1", {
   base <- n_cluster(
-    stage_cost = c(500, 50), icc = 0.05, budget = 100000, n_per_psu = 20
+    stage_cost = c(500, 50), icc = 0.05, budget = 100000, stage_n = c(NA, 20)
   )
   fc <- n_cluster(
     stage_cost = c(500, 50), icc = 0.05, budget = 100000,
-    n_per_psu = 20, fixed_cost = 5000
+    stage_n = c(NA, 20), fixed_cost = 5000
   )
-  expect_equal(fc$n[["n_per_psu"]], 20, tolerance = 1e-10)
-  expect_true(fc$n[["n_psu"]] < base$n[["n_psu"]])
+  expect_equal(fc$n[["stage_2"]], 20, tolerance = 1e-10)
+  expect_true(fc$n[["stage_1"]] < base$n[["stage_1"]])
   expect_equal(fc$cost, 100000)
 })
 
-test_that("n_cluster 3-stage n_per_ssu only budget mode", {
+test_that("n_cluster 3-stage stage_3 only budget mode", {
   result <- n_cluster(
     stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    budget = 500000, n_per_ssu = 8
+    budget = 500000, stage_n = c(NA, NA, 8)
   )
   k2 <- 1 - 0.01
   n3 <- 8
@@ -698,16 +704,16 @@ test_that("n_cluster 3-stage n_per_ssu only budget mode", {
   )
   n1_expected <- 500000 / (500 + 100 * n2_expected + 50 * n2_expected * n3)
 
-  expect_equal(result$n[["n_per_ssu"]], 8, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_psu"]], n2_expected, tolerance = 1e-6)
-  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_3"]], 8, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], n2_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], n1_expected, tolerance = 1e-6)
   expect_equal(result$cost, 500000)
 })
 
-test_that("n_cluster 3-stage n_per_ssu only CV mode", {
+test_that("n_cluster 3-stage stage_3 only CV mode", {
   result <- n_cluster(
     stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    cv = 0.05, n_per_ssu = 8
+    cv = 0.05, stage_n = c(NA, NA, 8)
   )
   k2 <- 1 - 0.01
   n3 <- 8
@@ -718,30 +724,30 @@ test_that("n_cluster 3-stage n_per_ssu only CV mode", {
   n1_expected <- 1 / (0.05^2 * n2 * n3) *
     (1 * 0.01 * n2 * n3 + k2 * (1 + 0.05 * (n3 - 1)))
 
-  expect_equal(result$n[["n_per_ssu"]], 8, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_psu"]], n2, tolerance = 1e-6)
-  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_3"]], 8, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], n2, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], n1_expected, tolerance = 1e-6)
   expect_equal(result$cv, 0.05, tolerance = 1e-6)
 })
 
-test_that("n_cluster 3-stage n_psu + n_per_ssu budget mode", {
+test_that("n_cluster 3-stage stage_1 + stage_3 budget mode", {
   result <- n_cluster(
     stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    budget = 500000, n_psu = 50, n_per_ssu = 8
+    budget = 500000, stage_n = c(50, NA, 8)
   )
   n3 <- 8
   n2_expected <- (500000 / 50 - 500) / (100 + 50 * n3)
 
-  expect_equal(result$n[["n_psu"]], 50, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_ssu"]], 8, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_psu"]], n2_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], 50, tolerance = 1e-6)
+  expect_equal(result$n[["stage_3"]], 8, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], n2_expected, tolerance = 1e-6)
   expect_equal(result$cost, 500000)
 })
 
-test_that("n_cluster 3-stage n_psu + n_per_ssu CV mode", {
+test_that("n_cluster 3-stage stage_1 + stage_3 CV mode", {
   result <- n_cluster(
     stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    cv = 0.05, n_psu = 50, n_per_ssu = 8
+    cv = 0.05, stage_n = c(50, NA, 8)
   )
   k2 <- 1 - 0.01
   n3 <- 8
@@ -749,99 +755,96 @@ test_that("n_cluster 3-stage n_psu + n_per_ssu CV mode", {
   n2_expected <- k2 * (1 + 0.05 * (n3 - 1)) /
     (n3 * (0.05^2 * n1_eff / 1 - 1 * 0.01))
 
-  expect_equal(result$n[["n_psu"]], 50, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_ssu"]], 8, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_psu"]], n2_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], 50, tolerance = 1e-6)
+  expect_equal(result$n[["stage_3"]], 8, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], n2_expected, tolerance = 1e-6)
   expect_equal(result$cv, 0.05, tolerance = 1e-6)
 })
 
-test_that("n_cluster 3-stage n_per_psu + n_per_ssu budget mode", {
+test_that("n_cluster 3-stage stage_2 + stage_3 budget mode", {
   result <- n_cluster(
     stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    budget = 500000, n_per_psu = 10, n_per_ssu = 8
+    budget = 500000, stage_n = c(NA, 10, 8)
   )
   n1_expected <- 500000 / (500 + 100 * 10 + 50 * 10 * 8)
 
-  expect_equal(result$n[["n_per_psu"]], 10, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_ssu"]], 8, tolerance = 1e-6)
-  expect_equal(result$n[["n_psu"]], n1_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], 10, tolerance = 1e-6)
+  expect_equal(result$n[["stage_3"]], 8, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], n1_expected, tolerance = 1e-6)
   expect_equal(result$cost, 500000)
 })
 
-test_that("n_cluster 3-stage n_per_psu + n_per_ssu CV mode", {
+test_that("n_cluster 3-stage stage_2 + stage_3 CV mode", {
   result <- n_cluster(
     stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    cv = 0.05, n_per_psu = 10, n_per_ssu = 8
+    cv = 0.05, stage_n = c(NA, 10, 8)
   )
   k2 <- 1 - 0.01
   n1_eff_expected <- 1 / (0.05^2 * 10 * 8) *
     (1 * 0.01 * 10 * 8 + k2 * (1 + 0.05 * (8 - 1)))
 
-  expect_equal(result$n[["n_per_psu"]], 10, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_ssu"]], 8, tolerance = 1e-6)
-  expect_equal(result$n[["n_psu"]], n1_eff_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], 10, tolerance = 1e-6)
+  expect_equal(result$n[["stage_3"]], 8, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], n1_eff_expected, tolerance = 1e-6)
   expect_equal(result$cv, 0.05, tolerance = 1e-6)
 })
 
-test_that("n_cluster 3-stage n_psu + n_per_psu budget mode", {
+test_that("n_cluster 3-stage stage_1 + stage_2 budget mode", {
   result <- n_cluster(
     stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    budget = 500000, n_psu = 50, n_per_psu = 10
+    budget = 500000, stage_n = c(50, 10, NA)
   )
   n3_expected <- (500000 - 500 * 50 - 100 * 50 * 10) / (50 * 50 * 10)
 
-  expect_equal(result$n[["n_psu"]], 50, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_psu"]], 10, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_ssu"]], n3_expected, tolerance = 1e-6)
+  expect_equal(result$n[["stage_1"]], 50, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], 10, tolerance = 1e-6)
+  expect_equal(result$n[["stage_3"]], n3_expected, tolerance = 1e-6)
   expect_equal(result$cost, 500000)
 })
 
-test_that("n_cluster 3-stage n_psu + n_per_psu CV mode", {
+test_that("n_cluster 3-stage stage_1 + stage_2 CV mode", {
   result <- n_cluster(
     stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    cv = 0.0465, n_psu = 50, n_per_psu = 10
+    cv = 0.0465, stage_n = c(50, 10, NA)
   )
   k2 <- 1 - 0.01
   n1_eff <- 50
   denom <- 10 * (0.0465^2 * n1_eff / 1 - 1 * 0.01) - k2 * 0.05
   n3_expected <- k2 * (1 - 0.05) / denom
 
-  expect_equal(result$n[["n_psu"]], 50, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_psu"]], 10, tolerance = 1e-6)
-  expect_equal(result$n[["n_per_ssu"]], n3_expected, tolerance = 1e-6)
-  expect_gte(result$n[["n_per_ssu"]], 1)
+  expect_equal(result$n[["stage_1"]], 50, tolerance = 1e-6)
+  expect_equal(result$n[["stage_2"]], 10, tolerance = 1e-6)
+  expect_equal(result$n[["stage_3"]], n3_expected, tolerance = 1e-6)
+  expect_gte(result$n[["stage_3"]], 1)
   expect_equal(result$cv, 0.0465, tolerance = 1e-6)
 })
 
 test_that("n_cluster clamps sub-unit stage sizes to 1 and reports achieved cv", {
   result <- n_cluster(
     stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    cv = 0.05, n_psu = 50, n_per_psu = 10
+    cv = 0.05, stage_n = c(50, 10, NA)
   )
-  expect_equal(result$n[["n_per_ssu"]], 1)
+  expect_equal(result$n[["stage_3"]], 1)
   cv_expected <- sqrt(1 / (50 * 10) * (0.01 * 10 + (1 - 0.01)))
   expect_equal(result$cv, cv_expected, tolerance = 1e-8)
   expect_lt(result$cv, 0.05)
 })
 
-test_that("n_cluster params store n_per_ssu", {
+test_that("n_cluster params store stage_n (3-stage)", {
   res <- n_cluster(
     stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    budget = 500000, n_per_ssu = 8
+    budget = 500000, stage_n = c(NA, NA, 8)
   )
-  expect_equal(res$params$n_per_ssu, 8)
-  expect_null(res$params$n_psu)
-  expect_null(res$params$n_per_psu)
+  expect_equal(unname(res$params$stage_n), c(NA, NA, 8))
 })
 
-test_that("n_per_ssu round-trip n_cluster -> prec_cluster -> n_cluster", {
+test_that("stage_n 3-stage round-trip n_cluster -> prec_cluster -> n_cluster", {
   orig <- n_cluster(
     stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    cv = 0.05, n_psu = 50, n_per_ssu = 8
+    cv = 0.05, stage_n = c(50, NA, 8)
   )
   prec <- prec_cluster(orig)
-  expect_equal(prec$params$n_per_ssu, 8)
-  expect_equal(prec$params$n_psu, 50)
+  expect_equal(unname(prec$params$stage_n), c(50, NA, 8))
   back <- n_cluster(prec)
   expect_equal(unname(back$n), unname(orig$n), tolerance = 1e-4)
 })
@@ -853,20 +856,20 @@ test_that("n_cluster 3-stage all combos verify against prec_cluster", {
     expect_equal(cv_check, res$cv, tolerance = 1e-6)
   }
   verify(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    budget = 500000, n_per_ssu = 8)
+    budget = 500000, stage_n = c(NA, NA, 8))
   verify(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    budget = 500000, n_psu = 50, n_per_ssu = 8)
+    budget = 500000, stage_n = c(50, NA, 8))
   verify(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    budget = 500000, n_per_psu = 10, n_per_ssu = 8)
+    budget = 500000, stage_n = c(NA, 10, 8))
   verify(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05),
-    budget = 500000, n_psu = 50, n_per_psu = 10)
+    budget = 500000, stage_n = c(50, 10, NA))
 })
 
 test_that("prec_cluster accepts named icc and reorders", {
   ref <- prec_cluster(n = c(50, 12, 8), icc = c(0.01, 0.05))
   swapped <- prec_cluster(
     n = c(50, 12, 8),
-    icc = c(icc_ssu = 0.05, icc_psu = 0.01)
+    icc = c(icc_2 = 0.05, icc_1 = 0.01)
   )
   expect_equal(swapped$cv, ref$cv)
 })
@@ -886,7 +889,7 @@ test_that("the cheapest budget design takes enough units for one respondent", {
   expect_error(
     n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 560,
               resp_rate = 0.5),
-    "one respondent, n_per_psu = 2, costs 600"
+    "cheapest design costs 600"
   )
   fit <- suppressWarnings(
     n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 620,
@@ -896,23 +899,23 @@ test_that("the cheapest budget design takes enough units for one respondent", {
   expect_error(
     n_cluster(stage_cost = c(500, 100, 50), icc = c(0.05, 0.1), budget = 640,
               resp_rate = 0.5),
-    "n_per_psu = 1 and n_per_ssu = 2, costs 700"
+    "cheapest design costs 700"
   )
 })
 
-test_that("cost-optimal n_per_psu below 1 is clamped with a warning", {
+test_that("cost-optimal stage_2 below 1 is clamped with a warning", {
   expect_warning(
     res <- n_cluster(stage_cost = c(1, 1000), icc = 0.9, budget = 5000),
     "clamped to 1"
   )
-  expect_equal(res$n[["n_per_psu"]], 1)
-  expect_gte(res$n[["n_psu"]], 1)
+  expect_equal(res$n[["stage_2"]], 1)
+  expect_gte(res$n[["stage_1"]], 1)
 })
 
 test_that("fixed stage sizes below 1 are rejected", {
   expect_error(n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
-                         n_per_psu = 0.5),
-               "'n_per_psu' must be at least 1")
+                         stage_n = c(NA, 0.5)),
+               ">= 1")
 })
 
 test_that("operational budget designs never exceed the budget", {
@@ -1009,10 +1012,10 @@ test_that("the three-stage search finds the whole-unit optimum a q window misses
   # a tight ceiling, about half that take.
   k <- unname(x$params$var_ratio)
   expect_equal(
-    x$n[["n_per_ssu"]],
+    x$n[["stage_3"]],
     sqrt(k[2] * (1 - 0.0005) * 1200 / ((k[1] * 0.02 + k[2] * 0.0005) * 0.02))
   )
-  expect_gt(op$n[["n_per_ssu"]], 400)
+  expect_gt(op$n[["stage_3"]], 400)
 })
 
 test_that("three-stage cv designs match an exhaustive whole-unit search", {
@@ -1057,7 +1060,7 @@ test_that("a cheap final stage buys a take past any window on the continuous one
   x <- suppressWarnings(n_cluster(budget = 5e4, stage_cost = c(1000, 200, 0.02),
                                   icc = c(0.02, 0.0005)))
   op <- x$operational
-  expect_gt(op$n[["n_per_ssu"]], 400)
+  expect_gt(op$n[["stage_3"]], 400)
   expect_lte(op$cost, 5e4 + 1e-8)
   ref <- op3_reference(c(1000, 200, 0.02), c(0.02, 0.0005), c(1, 1 - 0.02),
                        budget = 5e4, q_max = 6000L)
@@ -1069,16 +1072,19 @@ test_that("the three-stage search is exact with stages fixed", {
   icc <- c(0.01, 0.03)
   vr <- c(1, 1 - 0.01)
   combos <- list(
-    list(n_psu = 40), list(n_per_psu = 6), list(n_per_ssu = 4),
-    list(n_psu = 40, n_per_psu = 6), list(n_psu = 40, n_per_ssu = 4),
-    list(n_per_psu = 6, n_per_ssu = 4)
+    list(stage_n = c(40, NA, NA), ref = list(n_psu = 40)),
+    list(stage_n = c(NA, 6, NA), ref = list(n_per_psu = 6)),
+    list(stage_n = c(NA, NA, 4), ref = list(n_per_ssu = 4)),
+    list(stage_n = c(40, 6, NA), ref = list(n_psu = 40, n_per_psu = 6)),
+    list(stage_n = c(40, NA, 4), ref = list(n_psu = 40, n_per_ssu = 4)),
+    list(stage_n = c(NA, 6, 4), ref = list(n_per_psu = 6, n_per_ssu = 4))
   )
   for (fix in combos) {
     for (mode in list(list(cv = 0.05), list(budget = 3e5))) {
-      args <- c(list(stage_cost = cost, icc = icc), fix, mode)
+      args <- c(list(stage_cost = cost, icc = icc, stage_n = fix$stage_n), mode)
       x <- suppressWarnings(do.call(n_cluster, args))
       ref <- do.call(op3_reference, c(
-        list(cost, icc, vr), fix, mode, list(q_max = 5000L)
+        list(cost, icc, vr), fix$ref, mode, list(q_max = 5000L)
       ))
       if (is.null(mode$budget)) {
         expect_lte(x$operational$cv, 0.05 + 1e-12)
@@ -1096,8 +1102,7 @@ test_that("stage response rates keep the three-stage search exact", {
   icc <- c(0.02, 0.01)
   vr <- c(1, 1 - 0.02)
   x <- suppressWarnings(n_cluster(
-    cv = 0.06, stage_cost = cost, icc = icc, resp_rate_psu = 0.9,
-    resp_rate_ssu = 0.85, resp_rate = 0.8
+    cv = 0.06, stage_cost = cost, icc = icc, resp_rate = c(0.9, 0.85, 0.8)
   ))
   ref <- op3_reference(cost, icc, vr, cv = 0.06, resp_rate_psu = 0.9,
                        resp_rate_ssu = 0.85, resp_rate = 0.8)
@@ -1109,7 +1114,7 @@ test_that("a loose target settles on a single PSU rather than below one", {
   x <- suppressWarnings(n_cluster(cv = 0.4, stage_cost = c(500, 100, 20),
                                   icc = c(0.005, 0.02)))
   op <- x$operational
-  expect_identical(op$n[["n_psu"]], 1L)
+  expect_identical(op$n[["stage_1"]], 1L)
   expect_lte(op$cv, 0.4 + 1e-12)
   ref <- op3_reference(c(500, 100, 20), c(0.005, 0.02), c(1, 1 - 0.005),
                        cv = 0.4)
@@ -1117,20 +1122,20 @@ test_that("a loose target settles on a single PSU rather than below one", {
 })
 
 test_that("one indicator row reaches the same three-stage design", {
-  ind <- data.frame(name = "x", var = 1.5, mu = 1, cv = 0.05,
-                    icc_psu = 0.02, icc_ssu = 0.0005)
+  ind <- data.frame(name = "x", var = 1.5, mean = 1, cv = 0.05,
+                    icc_1 = 0.02, icc_2 = 0.0005)
   nc <- suppressWarnings(n_cluster(cv = 0.05, icc = c(0.02, 0.0005),
                                    unit_relvar = 1.5,
                                    stage_cost = c(1000, 200, 0.02)))
-  nm <- suppressWarnings(n_cluster(indicators = ind, stage_cost = c(1000, 200, 0.02)))
+  nm <- suppressWarnings(n_cluster(ind, stage_cost = c(1000, 200, 0.02)))
   expect_identical(as.integer(nm$operational$n), as.integer(nc$operational$n))
   expect_equal(nm$operational$cost, nc$operational$cost)
 
   ncb <- suppressWarnings(n_cluster(budget = 2e5, icc = c(0.02, 0.005),
                                     stage_cost = c(500, 100, 20)))
   nmb <- suppressWarnings(n_cluster(
-    indicators = data.frame(name = "x", var = 1, mu = 1, cv = 0.05,
-               icc_psu = 0.02, icc_ssu = 0.005),
+    data.frame(name = "x", var = 1, mean = 1, cv = 0.05,
+               icc_1 = 0.02, icc_2 = 0.005),
     stage_cost = c(500, 100, 20), budget = 2e5
   ))
   expect_identical(as.integer(nmb$operational$n), as.integer(ncb$operational$n))
@@ -1138,11 +1143,11 @@ test_that("one indicator row reaches the same three-stage design", {
 
 test_that("the binding indicator drives the multi-indicator three-stage search", {
   ind <- data.frame(
-    name = c("loose", "tight"), var = c(1, 1.5), mu = c(1, 1),
-    cv = c(0.2, 0.05), icc_psu = c(0.01, 0.02), icc_ssu = c(0.02, 0.0005)
+    name = c("loose", "tight"), var = c(1, 1.5), mean = c(1, 1),
+    cv = c(0.2, 0.05), icc_1 = c(0.01, 0.02), icc_2 = c(0.02, 0.0005)
   )
-  nm <- suppressWarnings(n_cluster(indicators = ind, stage_cost = c(1000, 200, 0.02)))
-  tight <- suppressWarnings(n_cluster(indicators = ind[2, ],
+  nm <- suppressWarnings(n_cluster(ind, stage_cost = c(1000, 200, 0.02)))
+  tight <- suppressWarnings(n_cluster(ind[2, ],
                                             stage_cost = c(1000, 200, 0.02)))
   expect_identical(as.integer(nm$operational$n),
                    as.integer(tight$operational$n))
@@ -1157,13 +1162,13 @@ test_that("the binding indicator drives the multi-indicator three-stage search",
 ## would plan a design nobody asked for.
 
 test_that("the several-indicators mode refuses the scalar design inputs", {
-  ind <- data.frame(name = "y", p = 0.3, cv = 0.05, icc_psu = 0.05)
-  base <- list(indicators = ind, stage_cost = c(500, 50))
+  ind <- data.frame(name = "y", p = 0.3, cv = 0.05, icc_1 = 0.05)
+  base <- list(x = ind, stage_cost = c(500, 50))
   refused <- list(
     icc = 0.05, unit_relvar = 2, var_ratio = 1.2, cv = 0.05
   )
-  columns <- c(icc = "icc_psu", unit_relvar = "unit_relvar",
-               var_ratio = "var_ratio_psu", cv = "cv")
+  columns <- c(icc = "icc_1", unit_relvar = "unit_relvar",
+               var_ratio = "var_ratio_1", cv = "cv")
   for (nm in names(refused)) {
     expect_error(
       do.call(n_cluster, c(base, refused[nm])),
@@ -1174,7 +1179,7 @@ test_that("the several-indicators mode refuses the scalar design inputs", {
   }
   expect_error(
     do.call(n_cluster, c(base, refused[c("icc", "cv")])),
-    "'icc', 'cv' are carried by the 'indicators' columns 'icc_psu', 'cv'"
+    "'icc', 'cv' are carried by the 'indicators' columns 'icc_1', 'cv'"
   )
 })
 
@@ -1187,21 +1192,21 @@ test_that("the scalar mode refuses the several-indicators arguments", {
   for (nm in names(refused)) {
     expect_error(
       do.call(n_cluster, c(base, refused[nm])),
-      sprintf("'%s' applies to 'indicators'", nm),
+      sprintf("'%s' applies only when the first argument to n_cluster\\(\\) is an indicator data frame", nm),
       info = nm
     )
   }
   expect_error(
     do.call(n_cluster, c(base, refused[c("domains", "min_n_domain")])),
-    "'domains', 'min_n_domain' apply to 'indicators'"
+    "'domains', 'min_n_domain' apply only when the first argument to n_cluster\\(\\) is an indicator data frame"
   )
 })
 
 test_that("a profile supplies only the defaults the entry mode accepts", {
   plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, unit_relvar = 7 / 3)
-  ind <- data.frame(name = "y", p = 0.3, cv = 0.05, icc_psu = 0.05)
-  from_plan <- n_cluster(indicators = ind, plan = plan)
-  direct <- n_cluster(indicators = ind, stage_cost = c(500, 50))
+  ind <- data.frame(name = "y", p = 0.3, cv = 0.05, icc_1 = 0.05)
+  from_plan <- n_cluster(ind, plan = plan)
+  direct <- n_cluster(ind, stage_cost = c(500, 50))
   expect_equal(from_plan$n, direct$n)
 
   scalar_plan <- svyplan(stage_cost = c(500, 50), min_n_domain = 100)
@@ -1211,11 +1216,15 @@ test_that("a profile supplies only the defaults the entry mode accepts", {
   )
 })
 
-test_that("an indicator table handed to the first slot is named", {
-  ind <- data.frame(name = "y", p = 0.3, cv = 0.05, icc_psu = 0.05)
+test_that("n_cluster.data.frame() rejects scalar icc/cv and indicators= directs to first argument", {
+  ind <- data.frame(name = "y", p = 0.3, cv = 0.05, icc_1 = 0.05)
   expect_error(
     n_cluster(ind, icc = 0.05, cv = 0.05),
-    "table of indicators goes to 'indicators'"
+    "carried by the 'indicators' columns"
+  )
+  expect_error(
+    n_cluster(indicators = ind, stage_cost = c(500, 50)),
+    "pass the indicator table as the first argument"
   )
 })
 
@@ -1245,12 +1254,12 @@ test_that("a budget below the cheapest PSU is refused with that cost", {
   expect_error(
     n_cluster(stage_cost = c(2000, 2), icc = 0.002, unit_relvar = 1,
               budget = 1500),
-    "cheapest design, one PSU with one unit, costs 2002"
+    "cheapest design costs 2002"
   )
   expect_error(
     n_cluster(stage_cost = c(1610, 3, 5), icc = c(0.0015, 0.29),
               unit_relvar = 0.5, budget = 1600),
-    "cheapest design, one PSU with one SSU and one unit, costs 1618"
+    "cheapest design costs 1618"
   )
 })
 
@@ -1269,58 +1278,58 @@ three_stage_takes <- function(a, cv, icc, k, cost, m = seq_len(30000)) {
 test_that("a fixed PSU count finds the cheapest take, however large", {
   # Two PSUs reach the target only above 500 SSUs each.
   args <- list(stage_cost = c(500, 1, 1), icc = c(0.0049, 0.05), cv = 0.05,
-               n_psu = 2)
+               stage_n = c(2, NA, NA))
   fit <- do.call(n_cluster, args)
   all <- three_stage_takes(2, 0.05, args$icc, fit$params$var_ratio,
                            args$stage_cost)
   expect_equal(fit$operational$cost, min(all$cost))
   expect_lte(fit$operational$cv, 0.05 + 1e-12)
-  expect_gt(fit$operational$n[["n_per_psu"]], 500)
+  expect_gt(fit$operational$n[["stage_2"]], 500)
   multi <- n_cluster(
-    indicators = data.frame(name = "y", var = 1, mu = 1, cv = 0.05,
-                            icc_psu = 0.0049, icc_ssu = 0.05),
-    stage_cost = args$stage_cost, n_psu = 2
+    data.frame(name = "y", var = 1, mean = 1, cv = 0.05,
+                            icc_1 = 0.0049, icc_2 = 0.05),
+    stage_cost = args$stage_cost, stage_n = c(2, NA, NA)
   )
   expect_identical(as.integer(multi$operational$n),
                    as.integer(fit$operational$n))
   expect_error(
     n_cluster(stage_cost = c(500, 1, 1), icc = c(0.03, 0.05), cv = 0.05,
-              n_psu = 2),
+              stage_n = c(2, NA, NA)),
     "below the achievable floor"
   )
 })
 
 test_that("a fixed PSU count under a budget searches every affordable take", {
   fit <- n_cluster(stage_cost = c(500, 1, 1), icc = c(0.0049, 0.05),
-                   budget = 50000, n_psu = 2)
+                   budget = 50000, stage_n = c(2, NA, NA))
   k <- fit$params$var_ratio
   m <- seq_len(floor((50000 / 2 - 500) / 2))
   q <- floor((50000 / 2 - 500 - m) / m)
   cv <- sqrt(1 / (2 * m * q) *
                (k[1] * 0.0049 * m * q + k[2] * (1 + 0.05 * (q - 1))))
   expect_equal(fit$operational$cv, min(cv[q >= 1]), tolerance = 1e-12)
-  expect_gt(fit$operational$n[["n_per_psu"]], 400)
+  expect_gt(fit$operational$n[["stage_2"]], 400)
 })
 
 test_that("a fixed PSU count and ultimate take leave the SSU take free", {
   icc <- c(0.0049, 0.05)
   fit <- n_cluster(stage_cost = c(500, 1, 1), icc = icc, cv = 0.05,
-                   n_psu = 2, n_per_ssu = 19)
+                   stage_n = c(2, NA, 19))
   k <- fit$params$var_ratio
   m <- seq_len(30000)
   cv <- sqrt(1 / (2 * m * 19) * (k[1] * icc[1] * m * 19 +
                                    k[2] * (1 + icc[2] * 18)))
-  expect_identical(fit$operational$n[["n_per_psu"]],
+  expect_identical(fit$operational$n[["stage_2"]],
                    as.integer(min(m[cv <= 0.05 + 1e-12])))
   bud <- n_cluster(stage_cost = c(500, 1, 1), icc = icc, budget = 41000,
-                   n_psu = 2, n_per_ssu = 19)
-  expect_identical(bud$operational$n[["n_per_psu"]], 1000L)
+                   stage_n = c(2, NA, 19))
+  expect_identical(bud$operational$n[["stage_2"]], 1000L)
   expect_equal(bud$operational$cost, 41000)
   for (args in list(list(cv = 0.05), list(budget = 41000))) {
     multi <- do.call(n_cluster, c(list(
-      indicators = data.frame(name = "y", var = 1, mu = 1, cv = 0.05,
-                              icc_psu = icc[1], icc_ssu = icc[2]),
-      stage_cost = c(500, 1, 1), n_psu = 2, n_per_ssu = 19
+      x = data.frame(name = "y", var = 1, mean = 1, cv = 0.05,
+                              icc_1 = icc[1], icc_2 = icc[2]),
+      stage_cost = c(500, 1, 1), stage_n = c(2, NA, 19)
     ), if (!is.null(args$budget)) list(budget = args$budget)))
     scalar <- if (is.null(args$budget)) fit else bud
     expect_identical(as.integer(multi$operational$n),
@@ -1332,55 +1341,60 @@ test_that("a clamped three-stage take leaves the other at its restricted optimum
   free_psu <- suppressWarnings(n_cluster(stage_cost = c(500, 50, 5),
     icc = c(0.8, 0.1), cv = 0.05, unit_relvar = 7 / 3))
   fixed_psu <- n_cluster(stage_cost = c(500, 50, 5), icc = c(0.8, 0.1),
-    cv = 0.05, unit_relvar = 7 / 3, n_per_psu = 1)
+    cv = 0.05, unit_relvar = 7 / 3, stage_n = c(NA, 1, NA))
   expect_equal(free_psu$n, fixed_psu$n)
   expect_equal(free_psu$cost, fixed_psu$cost)
 
   free_ssu <- suppressWarnings(n_cluster(stage_cost = c(500, 50, 500),
     icc = c(0.05, 0.8), cv = 0.05))
   fixed_ssu <- n_cluster(stage_cost = c(500, 50, 500), icc = c(0.05, 0.8),
-    cv = 0.05, n_per_ssu = 1)
+    cv = 0.05, stage_n = c(NA, NA, 1))
   expect_equal(free_ssu$n, fixed_ssu$n)
   expect_equal(free_ssu$cost, fixed_ssu$cost)
   expect_lt(free_ssu$cost, 337910)
 
-  table <- n_cluster(indicators = data.frame(var = 1, mu = 1, cv = 0.05,
-    icc_psu = 0.05, icc_ssu = 0.8), stage_cost = c(500, 50, 500))
+  table <- n_cluster(data.frame(var = 1, mean = 1, cv = 0.05,
+    icc_1 = 0.05, icc_2 = 0.8), stage_cost = c(500, 50, 500))
   expect_equal(unname(table$n), unname(free_ssu$n), tolerance = 1e-6)
 })
 
 ## A name on a scalar argument stays out of the stage names
 
 test_that("named scalar arguments give the unnamed design", {
-  i3 <- data.frame(name = "p", p = 0.5, cv = 0.12, icc_psu = 0.2,
-                   icc_ssu = 0.7, resp_rate = 0.42, resp_rate_ssu = 0.42,
-                   resp_rate_psu = 0.8)
-  i2 <- i3[c("name", "p", "cv", "icc_psu", "resp_rate")]
+  i3 <- data.frame(name = "p", p = 0.5, cv = 0.12, icc_1 = 0.2,
+                   icc_2 = 0.7, resp_rate = 0.42, resp_rate_2 = 0.42,
+                   resp_rate_1 = 0.8)
+  i2 <- i3[c("name", "p", "cv", "icc_1", "resp_rate")]
   scalar3 <- list(stage_cost = c(50, 5, 20), icc = c(0.2, 0.7),
-                  unit_relvar = 1, resp_rate = 0.42, resp_rate_ssu = 0.42,
-                  resp_rate_psu = 0.8)
+                  unit_relvar = 1, resp_rate = c(0.8, 0.42, 0.42))
   scalar2 <- list(stage_cost = c(50, 5), icc = 0.2, unit_relvar = 1,
                   resp_rate = 0.42)
   calls <- list(
-    table3 = list(indicators = i3, stage_cost = c(50, 5, 20)),
+    table3 = list(x = i3, stage_cost = c(50, 5, 20)),
     scalar3 = scalar3,
-    table2 = list(indicators = i2, stage_cost = c(50, 5)),
+    table2 = list(x = i2, stage_cost = c(50, 5)),
     scalar2 = scalar2
   )
-  fixed <- list(n_psu = 60, n_per_psu = 2.6, n_per_ssu = 3)
+  fixed3 <- list(
+    s1 = c(60, NA, NA), s2 = c(NA, 2.6, NA), s3 = c(NA, NA, 3)
+  )
+  fixed2 <- list(s1 = c(60, NA), s2 = c(NA, 2.6))
   for (call in names(calls)) {
+    fixed <- if (grepl("2$", call)) fixed2 else fixed3
     for (arg in names(fixed)) {
-      if (arg == "n_per_ssu" && grepl("2$", call)) next
       for (mode in c("cv", "budget")) {
         base <- calls[[call]]
         if (mode == "budget") base$budget <- 2e4
         if (mode == "cv" && grepl("^scalar", call)) base$cv <- 0.12
         info <- paste(call, arg, mode)
+        sn_bare <- fixed[[arg]]
+        sn_named <- rev(setNames(sn_bare,
+                                 paste0("stage_", seq_along(sn_bare))))
         bare <- tryCatch(suppressWarnings(do.call(
-          n_cluster, c(base, setNames(list(fixed[[arg]]), arg))
+          n_cluster, c(base, list(stage_n = sn_bare))
         )), error = function(e) conditionMessage(e))
         named <- tryCatch(suppressWarnings(do.call(
-          n_cluster, c(base, setNames(list(c(take = fixed[[arg]])), arg))
+          n_cluster, c(base, list(stage_n = sn_named))
         )), error = function(e) conditionMessage(e))
         if (is.character(bare)) {
           expect_identical(named, bare, info = info)
@@ -1396,10 +1410,49 @@ test_that("named scalar arguments give the unnamed design", {
 
 test_that("a named target or budget keeps the stage names", {
   x <- n_cluster(stage_cost = c(50, 5), icc = 0.2, cv = c(target = 0.05))
-  expect_named(x$n, c("n_psu", "n_per_psu"))
+  expect_named(x$n, c("stage_1", "stage_2"))
   expect_no_error(prec_cluster(x))
   y <- n_cluster(stage_cost = c(50, 5), icc = 0.2, budget = c(b = 2e4),
-                 n_psu = c(k = 90))
-  expect_named(y$n, c("n_psu", "n_per_psu"))
+                 stage_n = c(stage_1 = 90, stage_2 = NA))
+  expect_named(y$n, c("stage_1", "stage_2"))
   expect_no_error(prec_cluster(y))
+})
+
+## The whole stage search returns the least feasible take
+
+test_that("an exact integer take comes back as the least feasible take", {
+  takes <- c(10000:10050, 100000:100050)
+  for (m in takes) {
+    p <- prec_cluster(c(10, m), icc = 0.5)
+    got <- unname(n_cluster(c(500, 50), icc = 0.5, cv = p$cv,
+                            stage_n = c(10, NA))$operational$n[2])
+    meets <- function(k) prec_cluster(c(10, k), icc = 0.5)$cv^2 <=
+      p$cv^2 * (1 + 1e-9)
+    expect_lte(got, m)
+    expect_true(meets(got))
+    expect_false(meets(got - 1))
+  }
+  for (icc in c(0.05, 0.9)) {
+    p <- prec_cluster(c(10, 501), icc = icc)
+    expect_equal(unname(n_cluster(c(500, 50), icc = icc, cv = p$cv,
+                                  stage_n = c(10, NA))$operational$n[2]), 501)
+  }
+})
+
+test_that("a joint minimax search stops at a census it can reach", {
+  tab <- data.frame(name = "y", p = 0.3, cv = 0.1, icc_1 = 0.05,
+                    region = c("a", "b"), N = 50, N_1 = 5)
+  args <- NULL
+  real <- .joint_whole_minimax
+  local_mocked_bindings(.joint_whole_minimax = function(...) {
+    args <<- list(...)
+    real(...)
+  })
+  n_cluster(tab, stage_cost = c(100, 10), domains = "region", budget = 2000,
+            allocation = "joint", fpc = "stage")
+  args[[5]] <- list(c(4, 10), c(4, 10))
+  r <- do.call(real, args)
+  expect_equal(r$ratio, 0)
+  expect_identical(r$status, "optimal")
+  expect_equal(r$trials, 1L)
 })

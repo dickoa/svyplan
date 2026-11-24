@@ -539,7 +539,8 @@
   .pre = NULL,
   deff = 1,
   resp_rate = 1,
-  target_V = NULL
+  target_V = NULL,
+  objective = "n"
 ) {
   if (is.unsorted(bk)) {
     return(Inf)
@@ -599,8 +600,28 @@
     m_h[take_all_idx] <- N_h[take_all_idx]
   }
 
-  .strata_size_for_target(W_h, S_h, N_h, a_h, m_h, M_h, target_V,
-                          deff, resp_rate)
+  size <- .strata_size_for_target(W_h, S_h, N_h, a_h, m_h, M_h, target_V,
+                                  deff, resp_rate)
+  if (identical(objective, "cost")) {
+    .strata_cost_at(size, a_h, m_h, M_h, cost_h)
+  } else {
+    size
+  }
+}
+
+#' Whether a cv-mode boundary search minimizes cost rather than the sample
+#' @keywords internal
+#' @noRd
+.strata_by_cost <- function(alloc, cost_h) {
+  identical(alloc, "optimal") && length(unique(cost_h)) > 1L
+}
+
+#' Cost of the allocation of a total over the strata
+#' @keywords internal
+#' @noRd
+.strata_cost_at <- function(size, a_h, m_h, M_h, cost_h) {
+  if (!is.finite(size)) return(Inf)
+  sum(cost_h * .rna_alloc(a_h, size, m_h, M_h))
 }
 
 #' Dalenius-Hodges cumulative sqrt(f) rule
@@ -618,6 +639,8 @@
   idx <- vapply(targets, function(t) which.min(abs(csf - t)), integer(1L))
   idx <- pmin(idx, length(h$breaks) - 1L)
   bk <- unique(h$breaks[idx + 1L])
+  ## A histogram end sits at or beyond the data and cannot cut it.
+  bk <- bk[bk > min(x) & bk < max(x)]
   if (length(bk) < L - 1L) {
     bk <- .strata_cumrootf_discrete(x, L, warn = warn)
   }
@@ -717,7 +740,8 @@
         .pre = pre,
         deff = deff,
         resp_rate = resp_rate,
-        target_V = target_V
+        target_V = target_V,
+        objective = if (.strata_by_cost(alloc, cost_h)) "cost" else "n"
       )
     }
   } else {
@@ -884,6 +908,7 @@
   pre <- .strata_precompute(x_sort)
   N <- pre$n
   use_cv <- !is.null(target_cv)
+  by_cost <- .strata_by_cost(alloc, cost_h)
 
   # Map each unique value to its rightmost position in x_sort (prefix index)
   uniq_pidx <- findInterval(x_uniq, x_sort)
@@ -915,8 +940,9 @@
       } else {
         target_V
       }
-      .strata_size_for_target(W_h, S_h, N_h, a_h, m_h, M_h, tgt_V,
-                              deff, resp_rate)
+      size <- .strata_size_for_target(W_h, S_h, N_h, a_h, m_h, M_h, tgt_V,
+                                      deff, resp_rate)
+      if (by_cost) .strata_cost_at(size, a_h, m_h, M_h, cost_h) else size
     } else {
       if (n_total < sum(m_h) || n_total > sum(M_h)) return(Inf)
       n_h <- .rna_alloc(a_h, n_total, m_h, M_h)

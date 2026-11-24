@@ -136,8 +136,8 @@ SEXP C_menu_step_down(SEXP cost, SEXP C, SEXP ends, SEXP pick, SEXP ld) {
   for (int h = 0; h < H; h++) {
     R_xlen_t lo = h == 0 ? 0 : e[h - 1];
     if (e[h] <= lo || e[h] > rows) Rf_error("'ends' must increase within 'C'");
-    if (ip[h] == NA_INTEGER || ip[h] < 1 || ip[h] > rows) {
-      Rf_error("'pick' must index rows of 'C'");
+    if (ip[h] == NA_INTEGER || ip[h] <= lo || ip[h] > e[h]) {
+      Rf_error("'pick' must index a row of its own group");
     }
   }
   const double *pc = REAL(C), *pcost = REAL(cost);

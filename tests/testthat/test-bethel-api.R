@@ -1,11 +1,12 @@
 test_that("joint constrained allocation has stable public result semantics", {
   z <- .bethel_fixture()
-  fit <- n_alloc(
+  fit <- n_alloc_joint(
     z$frame, measures = z$measures, targets = z$targets, min_n_stratum = 2
   )
 
-  expect_s3_class(fit, "svyplan_n")
-  expect_identical(fit$type, "alloc")
+  expect_s3_class(fit, "svyplan_alloc_joint")
+  expect_s3_class(fit, "svyplan_alloc")
+  expect_identical(fit$type, "alloc_joint")
   expect_identical(fit$method, "bethel")
   expect_true(all(is.na(c(fit$se, fit$moe, fit$cv))))
   expect_true(all(c("n", "n_int", ".lower", ".upper") %in%
@@ -24,43 +25,43 @@ test_that("joint constrained allocation has stable public result semantics", {
 test_that("joint constrained allocation dispatch is strict", {
   z <- .bethel_fixture()
   expect_error(
-    n_alloc(z$frame, measures = z$measures),
+    n_alloc_joint(z$frame, measures = z$measures),
     "supplied together"
   )
   expect_error(
-    n_alloc(z$frame, measures = z$measures, targets = z$targets, n = 100),
-    "cannot be combined"
+    n_alloc_joint(z$frame, measures = z$measures, targets = z$targets, n = 100),
+    "belongs to n_alloc\\(\\)"
   )
   expect_error(
-    n_alloc(
+    n_alloc_joint(
       z$frame, measures = z$measures, targets = z$targets,
       domains = "region"
     ),
-    "targets\\$domain"
+    "belongs to n_alloc\\(\\)"
   )
   expect_error(
-    n_alloc(
+    n_alloc_joint(
       z$frame, measures = z$measures, targets = z$targets,
       alloc = "neyman"
     ),
-    "not used"
+    "belongs to n_alloc\\(\\)"
   )
   expect_error(
-    n_alloc(
+    n_alloc_joint(
       z$frame, measures = z$measures, targets = z$targets,
       alloc_q = 0.3
     ),
-    "alloc_q.*not used"
+    "belongs to n_alloc\\(\\)"
   )
 })
 
 test_that("joint allocation honors plan defaults without exposing a method", {
   z <- .bethel_fixture()
-  direct <- n_alloc(
+  direct <- n_alloc_joint(
     z$frame, measures = z$measures, targets = z$targets,
     deff = 1.5, resp_rate = 0.8, min_n_stratum = 3
   )
-  planned <- n_alloc(
+  planned <- n_alloc_joint(
     z$frame, measures = z$measures, targets = z$targets,
     plan = svyplan(deff = 1.5, resp_rate = 0.8, min_n_stratum = 3)
   )
@@ -69,32 +70,32 @@ test_that("joint allocation honors plan defaults without exposing a method", {
 
 test_that("joint allocation print and predict methods are deliberate", {
   z <- .bethel_fixture()
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+  fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
   output <- capture.output(print(fit))
   expect_true(any(grepl("Joint constrained allocation", output)))
   expect_true(any(grepl("continuous optimum", output)))
   expect_true(any(grepl("field design", output)))
   expect_error(
     predict(fit, data.frame(cv = 0.1)),
-    "modify 'targets'"
+    "unknown parameter"
   )
 })
 
 test_that("incomplete generalized multistage contracts are rejected", {
   z <- .bethel_fixture()
-  z$frame$n_per_psu <- 10
+  z$frame$take_2 <- 10
   expect_error(
-    n_alloc(z$frame, measures = z$measures, targets = z$targets),
+    n_alloc_joint(z$frame, measures = z$measures, targets = z$targets),
     "fixed-take 2-stage.*must contain"
   )
 })
 
 test_that("adopted allocations report planning-bound violations", {
   z <- .bethel_fixture()
-  fit <- n_alloc(
+  fit <- n_alloc_joint(
     z$frame, measures = z$measures, targets = z$targets, min_n_stratum = 20
   )
-  assessed <- prec_alloc(
+  assessed <- prec_alloc_joint(
     fit,
     n = stats::setNames(rep(5, nrow(z$frame)), z$frame$stratum)
   )
@@ -129,8 +130,8 @@ test_that("an all-cv Bethel problem is bit-identical with and without df", {
     cv = c(0.05, 0.04)
   )
 
-  plain <- n_alloc(frame, measures = measures, targets = targets)
-  with_df <- n_alloc(frame, measures = measures, targets = targets, df = 30)
+  plain <- n_alloc_joint(frame, measures = measures, targets = targets)
+  with_df <- n_alloc_joint(frame, measures = measures, targets = targets, df = 30)
 
   # a cv-metric constraint sets its variance ceiling with no quantile in it,
   # so nothing the solver sees can move
@@ -167,8 +168,8 @@ test_that("a moe-metric constraint reads df in its ceiling and its sensitivity",
     name = "y1", domain = ".overall", level = NA_character_, moe = 0.03
   )
 
-  plain <- n_alloc(frame, measures = measures, targets = targets)
-  with_df <- n_alloc(frame, measures = measures, targets = targets, df = 12)
+  plain <- n_alloc_joint(frame, measures = measures, targets = targets)
+  with_df <- n_alloc_joint(frame, measures = measures, targets = targets, df = 12)
 
   # a t quantile widens the interval, so holding the same moe costs sample
   expect_gt(with_df$n, plain$n)
@@ -199,9 +200,9 @@ test_that("a per-target df column beats the scalar argument", {
     name = c("y1", "y2"), domain = ".overall", level = NA_character_,
     moe = c(0.03, 0.04), df = c(12, NA)
   )
-  res <- n_alloc(frame, measures = measures, targets = targets, df = 40)
+  res <- n_alloc_joint(frame, measures = measures, targets = targets, df = 40)
   # row 1 keeps its own 12, row 2 takes the scalar 40
-  per_row <- n_alloc(
+  per_row <- n_alloc_joint(
     frame, measures = measures,
     targets = transform(targets, df = c(12, 40))
   )
@@ -221,8 +222,8 @@ test_that("frame deff and resp_rate are stratum defaults under the measure rows"
     per_frame[[col]] <- c(value, NA)
     per_row <- measures
     per_row[[col]] <- c(value, NA)
-    by_frame <- n_alloc(per_frame, measures = measures, targets = targets)
-    by_row <- n_alloc(frame, measures = per_row, targets = targets)
+    by_frame <- n_alloc_joint(per_frame, measures = measures, targets = targets)
+    by_row <- n_alloc_joint(frame, measures = per_row, targets = targets)
     expect_equal(by_frame$detail$n, by_row$detail$n, label = col)
 
     # The measure row wins where it is set, the frame fills the rest.
@@ -232,16 +233,16 @@ test_that("frame deff and resp_rate are stratum defaults under the measure rows"
     both <- measures
     both[[col]] <- c(value, fill)
     expect_equal(
-      n_alloc(other, measures = per_row, targets = targets)$detail$n,
-      n_alloc(frame, measures = both, targets = targets)$detail$n,
+      n_alloc_joint(other, measures = per_row, targets = targets)$detail$n,
+      n_alloc_joint(frame, measures = both, targets = targets)$detail$n,
       label = col
     )
 
-    assessed <- prec_alloc(per_frame, n = c(300, 400), measures = measures,
+    assessed <- prec_alloc_joint(per_frame, n = c(300, 400), measures = measures,
                            targets = targets)
     expect_equal(
       assessed$cv,
-      prec_alloc(frame, n = c(300, 400), measures = per_row,
+      prec_alloc_joint(frame, n = c(300, 400), measures = per_row,
                  targets = targets)$cv,
       label = col
     )
@@ -249,27 +250,27 @@ test_that("frame deff and resp_rate are stratum defaults under the measure rows"
 })
 
 test_that("a stage design and a register read the frame response rate", {
-  frame <- data.frame(stratum = "A", N = 100000, n_per_psu = 10,
-                      cost_psu = 100, cost_ssu = 10)
-  measures <- data.frame(stratum = "A", name = "y", p = 0.5, icc_psu = 0.05)
+  frame <- data.frame(stratum = "A", N = 100000, take_2 = 10,
+                      cost_1 = 100, cost_2 = 10)
+  measures <- data.frame(stratum = "A", name = "y", p = 0.5, icc_1 = 0.05)
   targets <- data.frame(name = "y", cv = 0.08)
   psu <- data.frame(stratum = "A", N = rep(1000, 100))
-  scalar <- n_alloc(transform(frame, N_psu = 100), measures = measures,
+  scalar <- n_alloc_joint(transform(frame, N_1 = 100), measures = measures,
                     targets = targets, resp_rate = 0.5)
-  column <- n_alloc(transform(frame, N_psu = 100, resp_rate = 0.5),
+  column <- n_alloc_joint(transform(frame, N_1 = 100, resp_rate = 0.5),
                     measures = measures, targets = targets)
   expect_equal(column$n, scalar$n)
-  register <- n_alloc(transform(frame, resp_rate = 0.5), measures = measures,
+  register <- n_alloc_joint(transform(frame, resp_rate = 0.5), measures = measures,
                       targets = targets, psu = psu)
-  argument <- n_alloc(frame, measures = measures, targets = targets, psu = psu,
+  argument <- n_alloc_joint(frame, measures = measures, targets = targets, psu = psu,
                       resp_rate = 0.5)
   expect_equal(register$n, argument$n, tolerance = 1e-12)
   expect_identical(register$psu, argument$psu)
-  register_deff <- n_alloc(transform(frame, deff = 1.5), measures = measures,
+  register_deff <- n_alloc_joint(transform(frame, deff = 1.5), measures = measures,
                            targets = targets, psu = psu)
   expect_equal(
     register_deff$n,
-    n_alloc(frame, measures = measures, targets = targets, psu = psu,
+    n_alloc_joint(frame, measures = measures, targets = targets, psu = psu,
             deff = 1.5)$n
   )
 })
@@ -279,18 +280,18 @@ test_that("frame deff and resp_rate are validated where they are read", {
   measures <- data.frame(stratum = c("A", "B"), name = "y", p = c(0.3, 0.4))
   targets <- data.frame(name = "y", cv = 0.05)
   expect_error(
-    n_alloc(transform(frame, resp_rate = c(1.5, 1)), measures = measures,
+    n_alloc_joint(transform(frame, resp_rate = c(1.5, 1)), measures = measures,
             targets = targets),
     "'frame\\$resp_rate' must contain values in \\(0, 1\\] or NA"
   )
   expect_error(
-    n_alloc(transform(frame, deff = c(0, 1)), measures = measures,
+    n_alloc_joint(transform(frame, deff = c(0, 1)), measures = measures,
             targets = targets),
     "'frame\\$deff' must contain positive finite values or NA"
   )
   # A measure row covering the stratum leaves its frame value unread.
   expect_no_error(
-    n_alloc(transform(frame, deff = c(0, 1)),
+    n_alloc_joint(transform(frame, deff = c(0, 1)),
             measures = transform(measures, deff = 1), targets = targets)
   )
 })
@@ -303,11 +304,11 @@ test_that("indicator values in frame are refused in joint allocation", {
     bad <- frame
     bad[[col]] <- 0.5
     expect_error(
-      n_alloc(bad, measures = measures, targets = targets),
+      n_alloc_joint(bad, measures = measures, targets = targets),
       sprintf("Move .%s. from 'frame' to 'measures'", col)
     )
     expect_error(
-      prec_alloc(bad, n = c(300, 400), measures = measures,
+      prec_alloc_joint(bad, n = c(300, 400), measures = measures,
                  targets = targets),
       "reads indicator values from 'measures'"
     )
@@ -315,7 +316,7 @@ test_that("indicator values in frame are refused in joint allocation", {
 })
 
 test_that("a lower allocation is optimal only when it passes the public rule", {
-  fit <- n_alloc(
+  fit <- n_alloc_joint(
     data.frame(stratum = "S1", N = 1e6),
     measures = data.frame(stratum = "S1", name = "y", p = 0.5),
     targets = data.frame(name = "y", cv = 0.0003),
@@ -324,4 +325,16 @@ test_that("a lower allocation is optimal only when it passes the public rule", {
   expect_identical(fit$optimization$classification, "optimal")
   expect_true(all(fit$constraints$.pass))
   expect_gt(fit$detail$n, 917431)
+})
+
+## A frame that is not a data frame
+
+test_that("a joint call with a vector frame names the frame", {
+  expect_error(
+    n_alloc_joint(c(a = 1, b = 2),
+                  data.frame(stratum = c("a", "b"), name = "y", mean = 1, sd = 1,
+                             resp_rate = 0.8),
+                  targets = data.frame(name = "y", cv = 0.1), resp_rate = 0.5),
+    "'frame' must be a non-empty data frame"
+  )
 })

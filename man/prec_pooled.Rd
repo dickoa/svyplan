@@ -271,7 +271,7 @@ against 0.050 for independent ones, while the change variance rises from
 The level at a single occasion is unaffected either way, being a function
 of that occasion's size alone, so it is a reference line rather than a
 third position. What trades off is the change against the pooled
-estimate. \code{?prec_change} and this page size the two arms.
+estimate. \code{\link[=prec_change]{prec_change()}} and this page size the two arms.
 }
 
 \subsection{Issued overlap and respondent overlap}{

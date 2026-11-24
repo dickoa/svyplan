@@ -329,3 +329,12 @@ test_that("print names the absent covariance without calling it disjoint", {
   expect_true(any(grepl("No between-occasion covariance", out)))
   expect_false(any(grepl("independent", out)))
 })
+
+## Two occasion sizes give an occasion column
+
+test_that("a change precision with two sizes exports one row per occasion", {
+  d <- as.data.frame(prec_change(var = 100, n = c(400, 600), overlap = 0.5,
+                                 overlap_cor = 0.6))
+  expect_equal(d$occasion, 1:2)
+  expect_equal(d$n, c(400, 600))
+})

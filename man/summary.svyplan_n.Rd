@@ -17,7 +17,7 @@
 }
 \arguments{
 \item{object}{A result of \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}}, \code{\link[=n_ratio]{n_ratio()}},
-\code{\link[=n_multi]{n_multi()}} or \code{\link[=n_cluster]{n_cluster()}}.}
+\code{\link[=n_multi]{n_multi()}}, \code{\link[=n_cluster]{n_cluster()}}, \code{\link[=n_change]{n_change()}}, or \code{\link[=n_pooled]{n_pooled()}}.}
 
 \item{...}{Additional arguments are not supported and produce an error.}
 
@@ -38,11 +38,15 @@ the fields \code{stages}, \code{question}, \code{design}, \code{field}, \code{el
 and \code{assumptions}. A multi-indicator cluster size has \code{kind = "multi"}
 and the fields \code{stages}, \code{question}, \code{design}, \code{domains},
 \code{domain_values}, \code{total}, \code{worst}, \code{binding}, \code{binding_cause},
-\code{indicators}, \code{cost} and \code{assumptions}.
+\code{indicators}, \code{cost} and \code{assumptions}. A change summary has
+\code{kind = "change"} and sizes in \code{n}. A pooled summary has
+\code{kind = "pooled"} and sizes in \code{sizes}. Both report the
+target, precision at the whole size, and assumptions.
 }
 \description{
 \code{print()} gives the answer of \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}}, \code{\link[=n_ratio]{n_ratio()}},
-\code{\link[=n_multi]{n_multi()}} and \code{\link[=n_cluster]{n_cluster()}}. \code{summary()} gives what follows from it,
+\code{\link[=n_multi]{n_multi()}}, \code{\link[=n_cluster]{n_cluster()}}, \code{\link[=n_change]{n_change()}}, and \code{\link[=n_pooled]{n_pooled()}}. \code{summary()} gives
+what follows from it,
 read at the design that is fielded: the whole sample size or the whole
 stage sizes in \verb{$operational}, beside the continuous solution they round.
 }
@@ -72,7 +76,7 @@ confidence level the size was planned for (\code{1 - alpha}).
 
 Expected respondents are the field size times the response and
 eligibility rates, and eligible respondents multiply that by
-\code{eligible_per_unit}. The effective size divides the units analysed by the
+\code{eligible_per_unit}. The effective size divides the units analyzed by the
 design effect. For a cluster design the design effect and the effective
 size are the planning quantities of \code{\link[=design_effect]{design_effect()}} and
 \code{\link[=effective_n]{effective_n()}}, which leave out finite population corrections. A
@@ -102,17 +106,15 @@ per row of \code{domains}.
 
 \subsection{Assumptions of a multi-indicator cluster design}{
 
-The \code{indicators} table carries each row's design quantities: \code{icc_psu},
-\code{unit_relvar}, \code{var_ratio_psu} and the response rates, with \code{icc_ssu},
-\code{var_ratio_ssu} and \code{resp_rate_ssu} at three stages, and \code{alpha} when a
-row states a \code{moe} or \code{rmoe}. A quantity equal on every row is also
+The \code{indicators} table carries each row's design quantities:
+\code{unit_relvar}, \code{icc_1} through \verb{icc_\{S-1\}}, \code{var_ratio_1} through
+\verb{var_ratio_\{S-1\}}, and the response rates, with \code{alpha} when a row
+states a \code{moe} or \code{rmoe}. A quantity equal on every row is also
 listed in \code{assumptions}, and the print shows the ones that vary in a
 table of their own.
 
 Results of \code{\link[=n_alloc]{n_alloc()}} have their own summary, described in
-\link{summary.svyplan_alloc}. Other sizes, such as those of \code{\link[=n_change]{n_change()}} and
-\code{\link[=n_pooled]{n_pooled()}}, have no structured summary yet, and \code{summary()} returns the
-result itself, which prints as \code{print()} does.
+\link{summary.svyplan_alloc}.
 }
 }
 \examples{
@@ -138,10 +140,9 @@ cluster_rows <- data.frame(
   name    = c("a", "b"),
   p       = c(0.35, 0.40),
   cv      = c(0.15, 0.03),
-  icc_psu = 0.05
+  icc_1 = 0.05
 )
-summary(n_cluster(stage_cost = c(500, 50), indicators = cluster_rows,
-                  budget = 1e5))
+summary(n_cluster(cluster_rows, stage_cost = c(500, 50), budget = 1e5))
 
 }
 \seealso{

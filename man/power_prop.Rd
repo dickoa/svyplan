@@ -49,7 +49,7 @@ for power.}
 
 \item{alpha}{Significance level, default 0.05.}
 
-\item{N}{Population size for finite-population correction. A scalar applies
+\item{N}{Population size for finite population correction. A scalar applies
 to both groups. A length-2 vector \code{c(N1, N2)} sets group-specific
 population sizes. \code{Inf} disables FPC for the corresponding group.}
 
@@ -100,7 +100,7 @@ only the finite population terms. See \code{\link[=prec_change]{prec_change()}}.
 \code{"logodds"}. The arcsine square-root transform is variance-stabilizing.
 The log-odds transform is not, because its variance still depends on the
 proportion. Both provide alternatives to the Wald calculation near a
-boundary (Valliant, 2018, sections 4.3.4--4.3.5).}
+boundary (Valliant, 2018, sections 4.3.4 and 4.3.5).}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
@@ -132,7 +132,7 @@ Zero overlap retains the independent-samples convention.
 
 \describe{
 \item{\code{"wald"} (default)}{Standard Wald test. Appropriate for
-proportions in the 0.2--0.8 range. The only method that
+proportions from 0.2 to 0.8. The only method that
 supports panel \code{overlap}.}
 \item{\code{"arcsine"}}{Arcsine-transformed test. The arcsine variance
 \eqn{1/(4n)} is approximately constant in \eqn{p}, making it
@@ -142,7 +142,7 @@ alternative variances. Also suitable for rare or extreme
 proportions. Uses Valliant Eq (4.23)/(4.24).}
 }
 
-For proportions in the 0.2--0.8 range, all three methods give similar
+For proportions from 0.2 to 0.8, all three methods give similar
 results. Near a boundary, the arcsine and log-odds calculations avoid
 relying on the untransformed Wald scale. Their operating characteristics
 still depend on the design and the planning values supplied.
@@ -210,7 +210,13 @@ as known. This is the convention for survey-scale samples and is what
 lets \code{deff}, a finite \code{N}, and \code{resp_rate} enter the variance directly.
 The choice of \code{method} addresses accuracy in \eqn{p}, not in \eqn{n}:
 \code{"arcsine"} and \code{"logodds"} improve the normal approximation for an
-extreme proportion, but none of the three is exact at small \code{n}.
+extreme proportion, but none of the three is exact at small \code{n}. Under
+\code{"logodds"} the alternative variance grows without bound as \code{p2}
+approaches 0 or 1 while the null variance stays bounded. Two-sided power
+then climbs toward 1 at a small \code{n}, carried by rejections in the wrong
+direction: \code{n = 5}, \code{p1 = 0.5}, \code{p2 = 0.9999} reports 0.95. Read such
+a result as the limit of the approximation, which holds only when
+\code{n * p2 * (1 - p2)} is not small.
 
 The \code{df} argument that \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}} and \code{\link[=n_alloc]{n_alloc()}} accept has
 no counterpart here, and its absence is a decision rather than an

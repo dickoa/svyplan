@@ -23,11 +23,11 @@ eval_shipped <- function(z, states, unit_cost = NULL, alpha = 0.05,
                          df = NULL) {
   stratum <- z$frame$stratum
   idx_of <- split(seq_len(nrow(z$psu)), factor(z$psu$stratum, stratum))
-  take <- rep_len(z$frame$n_per_psu, length(stratum))
+  take <- rep_len(z$frame$take_2, length(stratum))
   icc_row <- .psu_icc(z$measures, stratum, idx_of)
   resp_row <- .joint_row_value("resp_rate", z$measures, z$frame, resp_rate)
   user_deff <- .joint_row_value("deff", z$measures, z$frame, deff)
-  m <- z$measures[, setdiff(names(z$measures), "icc_psu"), drop = FALSE]
+  m <- z$measures[, setdiff(names(z$measures), "icc_1"), drop = FALSE]
   m$deff <- user_deff * vapply(seq_len(nrow(m)), function(r) {
     h <- match(m$stratum[r], stratum)
     s <- states[[h]]
@@ -38,7 +38,7 @@ eval_shipped <- function(z, states, unit_cost = NULL, alpha = 0.05,
     sum(states[[h]]$per_psu) + states[[h]]$draw * take[h]
   }, numeric(1))
   base_frame <- z$frame[, setdiff(names(z$frame),
-                                  c("n_per_psu", "cost_psu", "cost_ssu"))]
+                                  c("take_2", "cost_1", "cost_2"))]
   .prec_alloc_bethel(
     frame = base_frame, n = n, measures = m, targets = z$targets,
     unit_cost = unit_cost, alpha = alpha, deff = deff, resp_rate = resp_rate,
@@ -63,7 +63,7 @@ test_that("the evaluator gives a fitted register plan's cost and precision", {
     lapply(seq_along(ev$idx_of), function(h) {
       i <- ev$idx_of[[h]]
       held <- fit$psu$certainty[i]
-      q <- fit$psu$n_take[i][held]
+      q <- fit$psu$take_2[i][held]
       M <- fit$psu$N[i][held]
       data.frame(Q = sum(q), A = sum(M^2 / q), held = sum(M),
                  n_c = sum(held), a = fit$detail$n_psu_draw[h])
@@ -71,8 +71,8 @@ test_that("the evaluator gives a fitted register plan's cost and precision", {
   }
   base <- .psu_fixture(4)
   staged <- base
-  staged$frame$cost_psu <- c(100, 120, 90, 150)
-  staged$frame$cost_ssu <- 10
+  staged$frame$cost_1 <- c(100, 120, 90, 150)
+  staged$frame$cost_2 <- 10
   flagged <- base
   flagged$psu$certainty <- seq_len(nrow(base$psu)) %in% c(7, 305, 520)
   mixed <- base
@@ -93,7 +93,7 @@ test_that("the evaluator gives a fitted register plan's cost and precision", {
   for (cs in cases) {
     z <- cs$z
     opts <- cs[setdiff(names(cs), "z")]
-    fit <- suppressWarnings(do.call(n_alloc, c(
+    fit <- suppressWarnings(do.call(n_alloc_joint, c(
       list(z$frame, measures = z$measures, targets = z$targets, psu = z$psu),
       opts
     )))
@@ -130,8 +130,8 @@ test_that("the evaluator matches the shipped assessment on any state", {
     level = c("south", NA, "north"), priority = c(2, 1, 0.5)
   )
   staged <- z
-  staged$frame$cost_psu <- c(100, 120, 90, 150)
-  staged$frame$cost_ssu <- c(10, 12, 9, 15)
+  staged$frame$cost_1 <- c(100, 120, 90, 150)
+  staged$frame$cost_2 <- c(10, 12, 9, 15)
   idx_of <- split(seq_len(nrow(z$psu)), factor(z$psu$stratum, z$frame$stratum))
   set.seed(11)
   for (draw in 1:40) {
@@ -144,7 +144,7 @@ test_that("the evaluator matches the shipped assessment on any state", {
     f <- sample(c(0.002, 0.01, 0.04, 0.2, 0.6, 1), 4, replace = TRUE)
     states <- lapply(1:4, function(h) {
       eval_state_at(f[h], zz$psu$N[idx_of[[h]]], zz$frame$N[h],
-                    zz$frame$n_per_psu[h], m)
+                    zz$frame$take_2[h], m)
     })
     want <- eval_shipped(zz, states, unit_cost = unit_cost, deff = 1.15,
                          resp_rate = resp, objective = objective, df = 25)
@@ -159,7 +159,7 @@ test_that("the evaluator matches the shipped assessment on any state", {
       sum(n * unit_cost)
     } else {
       sum(vapply(states, function(s) s$sums$n_c + s$draw, numeric(1)) *
-            staged$frame$cost_psu + n * staged$frame$cost_ssu)
+            staged$frame$cost_1 + n * staged$frame$cost_2)
     }
     expect_equal(got$cost, cost, tolerance = 1e-12)
   }
@@ -203,20 +203,40 @@ test_that("the evaluator scores a listed menu state by state", {
 
 ## The stored eligibility rate reaches an n override
 
-test_that("prec_alloc() with n keeps a register fit's eligibility rate", {
+test_that("prec_alloc_joint() with n keeps a register fit's eligibility rate", {
   z <- .psu_fixture()
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
                  psu = z$psu, resp_rate = 0.9, eligibility_rate = 0.8)
-  over <- prec_alloc(fit, n = fit$detail$n)
+  over <- prec_alloc_joint(fit, n = fit$detail$n)
   expect_equal(
     over$detail$.cv,
-    prec_alloc(fit, n = fit$detail$n, eligibility_rate = 0.8)$detail$.cv
+    prec_alloc_joint(fit, n = fit$detail$n, eligibility_rate = 0.8)$detail$.cv
   )
   # the binding literacy target holds at the stored sizes, as it does for a
   # fit without an eligibility rate
   expect_equal(over$detail$.cv[[1L]], 0.04, tolerance = 1e-6)
   expect_false(isTRUE(all.equal(
     over$detail$.cv,
-    prec_alloc(fit, n = fit$detail$n, eligibility_rate = 1)$detail$.cv
+    prec_alloc_joint(fit, n = fit$detail$n, eligibility_rate = 1)$detail$.cv
   )))
+})
+
+## A register passed to prec_alloc_joint() is the one stored
+
+test_that("an overriding register is the one the result keeps", {
+  frame <- data.frame(stratum = "S", N = 1000, take_2 = 10)
+  psu1 <- data.frame(stratum = "S", psu_id = paste0("P", 1:20), N = 50)
+  psu2 <- data.frame(stratum = "S", psu_id = paste0("Q", 1:20),
+                     N = c(240, rep(40, 19)))
+  measures <- data.frame(stratum = "S", name = "y", p = 0.3, icc_1 = 0.08)
+  targets <- data.frame(name = "y", cv = 0.2)
+  fit <- n_alloc_joint(frame, measures = measures, targets = targets,
+                       psu = psu1)
+  pr <- suppressWarnings(prec_alloc_joint(fit, psu = psu2))
+  expect_identical(pr$params$psu$psu_id, psu2$psu_id)
+  expect_identical(pr$psu$psu_id[1], "Q1")
+  again <- suppressWarnings(n_alloc_joint(pr))
+  expect_identical(again$psu$psu_id[1], "Q1")
+  kept <- prec_alloc_joint(fit)
+  expect_identical(kept$params$psu$psu_id, psu1$psu_id)
 })

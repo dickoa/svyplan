@@ -17,10 +17,10 @@ test_that("n_mean resp_rate inflates sample size", {
   expect_equal(rr$n, base$n / 0.8, tolerance = 1e-6)
 })
 
-test_that("n_cluster resp_rate_psu inflates stage-1 in CV mode", {
+test_that("n_cluster stage-1 resp_rate inflates stage-1 in CV mode", {
   base <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
   rr <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
-                   resp_rate_psu = 0.8)
+                   resp_rate = c(0.8, 1))
   expect_equal(rr$n[1], base$n[1] / 0.8, tolerance = 1e-6)
   expect_equal(unname(rr$n[2]), unname(base$n[2]), tolerance = 1e-6)
 })
@@ -138,59 +138,59 @@ test_that("multi round trips can override the response rate", {
 })
 
 test_that("multi-cluster scalar stage rates match indicator columns", {
-  indicators <- data.frame(p = 0.3, cv = 0.1, icc_psu = 0.05)
+  indicators <- data.frame(p = 0.3, cv = 0.1, icc_1 = 0.05)
   direct <- n_cluster(
-    indicators = indicators,
+    indicators,
     stage_cost = c(500, 50),
-    resp_rate_psu = 0.9,
-    resp_rate = 0.8
+    resp_rate = c(0.9, 0.8)
   )
   column <- n_cluster(
-    indicators = transform(indicators, resp_rate_psu = 0.9, resp_rate = 0.8),
+    transform(indicators, resp_rate_1 = 0.9, resp_rate = 0.8),
     stage_cost = c(500, 50)
   )
   expect_equal(direct$n, column$n)
   expect_equal(direct$total_n, column$total_n)
 
   achieved <- prec_cluster(
-    indicators = data.frame(p = 0.3, n = 40, n_per_psu = 10, icc_psu = 0.05),
-    resp_rate_psu = 0.9,
-    resp_rate = 0.8
+    data.frame(p = 0.3, n_1 = 40, take_2 = 10, icc_1 = 0.05),
+    resp_rate = c(0.9, 0.8)
   )
-  achieved_column <- prec_cluster(indicators = data.frame(
-    p = 0.3, n = 40, n_per_psu = 10, icc_psu = 0.05,
-    resp_rate_psu = 0.9, resp_rate = 0.8
+  achieved_column <- prec_cluster(data.frame(
+    p = 0.3, n_1 = 40, take_2 = 10, icc_1 = 0.05,
+    resp_rate_1 = 0.9, resp_rate = 0.8
   ))
-  expect_equal(achieved$detail, achieved_column$detail)
+  expect_setequal(names(achieved$detail), names(achieved_column$detail))
+  expect_equal(achieved$detail[names(achieved_column$detail)],
+               achieved_column$detail)
 })
 
 test_that("multi-cluster validates every stage response rate", {
   three_stage <- data.frame(
-    p = 0.3, cv = 0.1, icc_psu = 0.05, icc_ssu = 0.1
+    p = 0.3, cv = 0.1, icc_1 = 0.05, icc_2 = 0.1
   )
-  for (rate in c("resp_rate_psu", "resp_rate_ssu", "resp_rate")) {
+  for (rate in c("resp_rate_1", "resp_rate_2", "resp_rate")) {
     bad <- three_stage
     bad[[rate]] <- 0
     expect_error(
-      n_cluster(indicators = bad, stage_cost = c(500, 100, 50)),
+      n_cluster(bad, stage_cost = c(500, 100, 50)),
       paste0("'", rate, "' values must be in")
     )
   }
 
   expect_error(
-    prec_cluster(indicators = data.frame(
-      p = 0.3, n = 20, n_per_psu = 10, icc_psu = 0.05,
-      resp_rate_psu = 0
+    prec_cluster(data.frame(
+      p = 0.3, n_1 = 20, take_2 = 10, icc_1 = 0.05,
+      resp_rate_1 = 0
     )),
-    "'resp_rate_psu' values must be in"
+    "'resp_rate_1' values must be in"
   )
   expect_error(
     n_cluster(
-      indicators = data.frame(p = 0.3, cv = 0.1, icc_psu = 0.05),
+      data.frame(p = 0.3, cv = 0.1, icc_1 = 0.05),
       stage_cost = c(500, 50),
-      resp_rate_ssu = 0.9
+      resp_rate = c(1, 0.9, 1)
     ),
-    "not applicable for 2-stage"
+    "resp_rate"
   )
 })
 
@@ -246,29 +246,29 @@ test_that("power_prop resp_rate works for solve-power", {
 test_that("the cluster family's two rates act at different stages", {
   base <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
   psu <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
-                   resp_rate_psu = 0.8)
+                   resp_rate = c(0.8, 1))
   unit <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
                     resp_rate = 0.8)
 
   # Losing whole PSUs is a pure sample-size loss: the take is unchanged and
   # stage 1 is inflated to cover it.
-  expect_equal(unname(psu$n[["n_per_psu"]]), unname(base$n[["n_per_psu"]]),
+  expect_equal(unname(psu$n[["stage_2"]]), unname(base$n[["stage_2"]]),
                tolerance = 1e-9)
-  expect_equal(unname(psu$n[["n_psu"]]), unname(base$n[["n_psu"]]) / 0.8,
+  expect_equal(unname(psu$n[["stage_1"]]), unname(base$n[["stage_1"]]) / 0.8,
                tolerance = 1e-9)
 
   # Losing ultimate units shrinks the realized cluster and so moves the
   # cost-optimal take itself; the two are not interchangeable.
-  expect_false(isTRUE(all.equal(unname(unit$n[["n_per_psu"]]),
-                                unname(base$n[["n_per_psu"]]))))
-  expect_false(isTRUE(all.equal(unname(unit$n[["n_psu"]]),
-                                unname(psu$n[["n_psu"]]))))
+  expect_false(isTRUE(all.equal(unname(unit$n[["stage_2"]]),
+                                unname(base$n[["stage_2"]]))))
+  expect_false(isTRUE(all.equal(unname(unit$n[["stage_1"]]),
+                                unname(psu$n[["stage_1"]]))))
 })
 
 test_that("stage columns are refused where the design has no such stage", {
   # A single-stage design has no PSU or SSU stage to lose units at.
   tg2 <- data.frame(name = c("a", "b"), p = c(0.30, 0.10),
-                    moe = c(0.05, 0.05), resp_rate_psu = c(0.5, 0.9))
+                    moe = c(0.05, 0.05), resp_rate_1 = c(0.5, 0.9))
   expect_error(n_multi(tg2), "stages this design does not have")
   expect_error(
     prec_multi(transform(tg2, moe = NULL, n = 500)),
@@ -278,53 +278,53 @@ test_that("stage columns are refused where the design has no such stage", {
   # A 2-stage cluster design has no SSU stage; those units are the ultimate
   # ones, so their nonresponse is 'resp_rate'.
   tg3 <- data.frame(name = c("a", "b"), p = c(0.30, 0.10),
-                    cv = c(0.10, 0.15), icc_psu = c(0.02, 0.05),
-                    resp_rate_ssu = c(0.9, 0.9))
-  expect_error(n_cluster(indicators = tg3, stage_cost = c(500, 50)),
+                    cv = c(0.10, 0.15), icc_1 = c(0.02, 0.05),
+                    resp_rate_2 = c(0.9, 0.9))
+  expect_error(n_cluster(tg3, stage_cost = c(500, 50)),
                "not applicable for 2-stage")
   expect_error(
-    prec_cluster(indicators = transform(tg3, cv = NULL, n = 50, n_per_psu = 10)),
+    prec_cluster(transform(tg3, cv = NULL, n_1 = 50, take_2 = 10)),
     "not applicable for 2-stage"
   )
 })
 
 test_that("a cluster frame's two rates act at different stages", {
-  base <- data.frame(name = "a", p = 0.30, cv = 0.10, icc_psu = 0.02)
-  psu <- transform(base, resp_rate_psu = 0.8)
+  base <- data.frame(name = "a", p = 0.30, cv = 0.10, icc_1 = 0.02)
+  psu <- transform(base, resp_rate_1 = 0.8)
   unit <- transform(base, resp_rate = 0.8)
 
-  r0 <- n_cluster(indicators = base, stage_cost = c(500, 50))
-  r1 <- n_cluster(indicators = psu, stage_cost = c(500, 50))
-  r2 <- n_cluster(indicators = unit, stage_cost = c(500, 50))
+  r0 <- n_cluster(base, stage_cost = c(500, 50))
+  r1 <- n_cluster(psu, stage_cost = c(500, 50))
+  r2 <- n_cluster(unit, stage_cost = c(500, 50))
 
-  expect_equal(unname(r1$n[["n_per_psu"]]), unname(r0$n[["n_per_psu"]]),
+  expect_equal(unname(r1$n[["stage_2"]]), unname(r0$n[["stage_2"]]),
                tolerance = 1e-9)
-  expect_false(isTRUE(all.equal(unname(r2$n[["n_per_psu"]]),
-                                unname(r0$n[["n_per_psu"]]))))
+  expect_false(isTRUE(all.equal(unname(r2$n[["stage_2"]]),
+                                unname(r0$n[["stage_2"]]))))
 })
 
-test_that("resp_rate_psu validation names the argument it rejects", {
+test_that("stage resp_rate validation names the argument it rejects", {
   expect_error(
     n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
-              resp_rate_psu = 0),
-    "'resp_rate_psu' must be a number"
+              resp_rate = c(0, 1)),
+    "resp_rate"
   )
   expect_error(
     n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
-              resp_rate_psu = 1.5),
-    "'resp_rate_psu' must be a number"
+              resp_rate = c(1.5, 1)),
+    "resp_rate"
   )
 })
 
-test_that("a plan carries resp_rate_psu to the cluster family", {
-  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate_psu = 0.85)
-  expect_equal(plan$defaults$resp_rate_psu, 0.85)
+test_that("a plan carries stage resp_rate to the cluster family", {
+  plan <- svyplan(stage_cost = c(500, 50), icc = 0.05, resp_rate = c(0.85, 1))
+  expect_equal(plan$defaults$resp_rate, c(0.85, 1))
   expect_equal(
     n_cluster(cv = 0.05, plan = plan)$n,
     n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
-              resp_rate_psu = 0.85)$n
+              resp_rate = c(0.85, 1))$n
   )
-  expect_error(svyplan(resp_rate_psu = 0), "'resp_rate_psu' must be a number")
+  expect_error(svyplan(resp_rate = c(0, 1)), "resp_rate")
 })
 
 test_that("the three stage rates enter the CV where decision 7 derives them", {
@@ -333,8 +333,7 @@ test_that("the three stage rates enter the CV where decision 7 derives them", {
   a <- 200; m <- 25; q <- 2
 
   got <- prec_cluster(n = c(a, m, q), icc = c(d1, d2), unit_relvar = V,
-                      var_ratio = c(k1, k2), resp_rate_psu = r1,
-                      resp_rate_ssu = r2, resp_rate = r3)$cv
+                      var_ratio = c(k1, k2), resp_rate = c(r1, r2, r3))$cv
   mr <- m * r2; qr <- q * r3
   manual <- sqrt(V * k1 * d1 / (a * r1) +
                    V * k2 * (1 + d2 * (qr - 1)) / (a * r1 * mr * qr))
@@ -343,7 +342,7 @@ test_that("the three stage rates enter the CV where decision 7 derives them", {
   # Lumping the two later rates into the PSU rate is the error the split
   # exists to prevent: it is conservative but wrong, by about 5 percent here.
   lumped <- prec_cluster(n = c(a, m, q), icc = c(d1, d2), unit_relvar = V,
-                         var_ratio = c(k1, k2), resp_rate_psu = r1 * r2 * r3)$cv
+                         var_ratio = c(k1, k2), resp_rate = c(r1 * r2 * r3, 1, 1))$cv
   expect_gt(lumped, got)
   expect_gt(lumped / got, 1.03)
 })
@@ -352,18 +351,18 @@ test_that("the cost-optimal take follows sqrt(C1(1-icc)/(C2 icc r))", {
   C1 <- 500; C2 <- 50; icc <- 0.05
   for (r in c(1, 0.9, 0.8, 0.6)) {
     got <- n_cluster(stage_cost = c(C1, C2), icc = icc, cv = 0.05,
-                     resp_rate = r)$n[["n_per_psu"]]
+                     resp_rate = r)$n[["stage_2"]]
     expect_equal(unname(got), sqrt(C1 * (1 - icc) / (C2 * icc * r)),
                  tolerance = 1e-9)
   }
 
-  # resp_rate_psu is a pure 1/n_psu factor and must not move the take.
+  # stage-1 resp_rate is a pure 1/n_1 factor and must not move the take.
   base <- n_cluster(stage_cost = c(C1, C2), icc = icc, cv = 0.05)
   psu <- n_cluster(stage_cost = c(C1, C2), icc = icc, cv = 0.05,
-                   resp_rate_psu = 0.7)
-  expect_equal(unname(psu$n[["n_per_psu"]]), unname(base$n[["n_per_psu"]]),
+                   resp_rate = c(0.7, 1))
+  expect_equal(unname(psu$n[["stage_2"]]), unname(base$n[["stage_2"]]),
                tolerance = 1e-12)
-  expect_equal(unname(psu$n[["n_psu"]]), unname(base$n[["n_psu"]]) / 0.7,
+  expect_equal(unname(psu$n[["stage_1"]]), unname(base$n[["stage_1"]]) / 0.7,
                tolerance = 1e-9)
 })
 
@@ -371,23 +370,23 @@ test_that("cost is charged on the gross take and n stays gross", {
   C1 <- 500; C2 <- 50
   res <- n_cluster(stage_cost = c(C1, C2), icc = 0.05, cv = 0.05,
                    resp_rate = 0.8)
-  a <- res$n[["n_psu"]]; m <- res$n[["n_per_psu"]]
+  a <- res$n[["stage_1"]]; m <- res$n[["stage_2"]]
   expect_equal(res$cost, a * (C1 + C2 * m), tolerance = 1e-8)
   expect_equal(res$total_n, a * m, tolerance = 1e-9)
 
   # and the operational design pays for whole issued units
   op <- res$operational
-  expect_equal(op$cost, op$n[["n_psu"]] * (C1 + C2 * op$n[["n_per_psu"]]),
+  expect_equal(op$cost, op$n[["stage_1"]] * (C1 + C2 * op$n[["stage_2"]]),
                tolerance = 1e-8)
 })
 
 test_that("n_alloc rebuilds its inflation factor from the responding take", {
   fr <- data.frame(stratum = c("A", "B"), N = c(50000, 60000), sd = c(10, 12),
-                   icc_psu = c(0.05, 0.05),
-                   cost_psu = c(500, 500), cost_ssu = c(10, 10))
-  base <- n_alloc(fr, n = 2000)$detail$n_per_psu
-  unit <- n_alloc(transform(fr, resp_rate = 0.8), n = 2000)$detail$n_per_psu
-  psu <- n_alloc(transform(fr, resp_rate_psu = 0.8), n = 2000)$detail$n_per_psu
+                   icc_1 = c(0.05, 0.05),
+                   cost_1 = c(500, 500), cost_2 = c(10, 10))
+  base <- n_alloc(fr, n = 2000)$detail$take_2
+  unit <- n_alloc(transform(fr, resp_rate = 0.8), n = 2000)$detail$take_2
+  psu <- n_alloc(transform(fr, resp_rate_1 = 0.8), n = 2000)$detail$take_2
 
   expect_equal(unname(unit[1]), sqrt(500 / 10 * (1 - 0.05) / (0.05 * 0.8)),
                tolerance = 1e-9)
@@ -400,8 +399,8 @@ test_that("the stratum SD is inflated by the responding take, not the issued one
   # clustering penalty must differ with them; using the gross take would
   # inflate both alike and misallocate between them.
   fr <- data.frame(stratum = c("A", "B"), N = c(50000, 60000),
-                   sd = c(10, 10), icc_psu = c(0.05, 0.05),
-                   n_per_psu = c(20, 20), resp_rate = c(0.5, 1.0))
+                   sd = c(10, 10), icc_1 = c(0.05, 0.05),
+                   take_2 = c(20, 20), resp_rate = c(0.5, 1.0))
   res <- n_alloc(fr, n = 2000)
 
   # Stratum A realizes clusters of 10 and B of 20, so A suffers less
@@ -425,7 +424,7 @@ test_that("the stratum SD is inflated by the responding take, not the issued one
 test_that("an expected take below one unit is refused as unsupported", {
   err <- tryCatch(
     n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
-              n_per_psu = 1, resp_rate = 0.4),
+              stage_n = c(NA, 1), resp_rate = 0.4),
     error = conditionMessage
   )
   expect_match(err, "expected-take planning approximation is unsupported")
@@ -435,8 +434,7 @@ test_that("an expected take below one unit is refused as unsupported", {
 
 test_that("effective_n nets every stage a cluster design loses units at", {
   plan <- n_cluster(stage_cost = c(500, 100, 50), icc = c(0.02, 0.05),
-                    cv = 0.05, resp_rate_psu = 0.95, resp_rate_ssu = 0.9,
-                    resp_rate = 0.85)
+                    cv = 0.05, resp_rate = c(0.95, 0.9, 0.85))
   expect_equal(
     as.double(effective_n(plan)),
     plan$total_n * (0.95 * 0.9 * 0.85) / as.double(design_effect(plan)),
@@ -446,15 +444,15 @@ test_that("effective_n nets every stage a cluster design loses units at", {
 
 test_that("a plan and predict() carry every stage rate", {
   plan <- svyplan(stage_cost = c(500, 100, 50), icc = c(0.02, 0.05),
-                  resp_rate_psu = 0.95, resp_rate_ssu = 0.9, resp_rate = 0.85)
+                  resp_rate = c(0.95, 0.9, 0.85))
   expect_equal(
     n_cluster(cv = 0.05, plan = plan)$n,
     n_cluster(stage_cost = c(500, 100, 50), icc = c(0.02, 0.05), cv = 0.05,
-              resp_rate_psu = 0.95, resp_rate_ssu = 0.9, resp_rate = 0.85)$n
+              resp_rate = c(0.95, 0.9, 0.85))$n
   )
 
   x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
   grid <- predict(x, data.frame(resp_rate = c(1, 0.8, 0.6)))
   expect_equal(nrow(grid), 3L)
-  expect_true(all(diff(grid$n_per_psu) > 0))
+  expect_true(all(diff(grid$stage_2) > 0))
 })

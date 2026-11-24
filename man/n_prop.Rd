@@ -65,7 +65,7 @@ precision from a complex design (clustering, unequal weights)
 compared to simple random sampling. A DEFF of 1.5 means 50 percent
 more interviews are needed for the same precision. Estimate from a
 previous survey, use \code{\link[=design_effect]{design_effect()}} to compute it, or apply a
-rule of thumb (1.5--2.0 for typical cluster designs). Values < 1
+rule of thumb (1.5 to 2.0 for typical cluster designs). Values < 1
 are valid for efficient designs (e.g., stratified sampling with
 Neyman allocation). A published DEFT is squared first. See
 \code{\link[=varcomp]{varcomp()}} for that and for removing the published survey's
@@ -136,7 +136,7 @@ was stated in.}
 \code{"min_cases"}. \code{NULL} when no \code{min_cases} was given, there being
 nothing for precision to bind against.}
 \item{\code{params}}{The validated inputs (\code{p}, \code{alpha}, \code{N}, \code{deff},
-\code{resp_rate}, \code{df}, \code{min_cases} when given, and whichever of \code{moe},
+\code{resp_rate}, \code{eligibility_rate} and \code{eligible_per_unit} when not 1, \code{df}, \code{min_cases} when given, and whichever of \code{moe},
 \code{cv}, or \code{rmoe} was the target). \code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the
 \code{\link[=prec_prop]{prec_prop()}} round trip read the design back from here.}
 }

@@ -17,11 +17,11 @@
 .fpc_p <- 0.30
 .fpc_relvar <- (1 - .fpc_p) / .fpc_p
 
-.fpc_frame <- function(N, N_psu, m, icc = 0.05) {
+.fpc_frame <- function(N, N_1, m, icc = 0.05) {
   data.frame(
     stratum = "S", N = N, mean = .fpc_p, sd = sqrt(.fpc_p * (1 - .fpc_p)),
-    icc_psu = icc, n_per_psu = m, N_psu = N_psu,
-    cost_psu = 300, cost_ssu = 25
+    icc_1 = icc, take_2 = m, N_1 = N_1,
+    cost_1 = 300, cost_2 = 25
   )
 }
 
@@ -80,9 +80,9 @@ test_that("fpc = none reproduces n_cluster at an appreciable fraction", {
   icc <- 0.05
   m <- 20
   by_cluster <- n_cluster(
-    icc = icc, n_per_psu = m, cv = 0.10, resp_rate = 0.5,
+    icc = icc, stage_n = c(NA, m), cv = 0.10, resp_rate = 0.5,
     unit_relvar = .fpc_relvar, stage_cost = c(300, 25)
-  )$n[["n_psu"]]
+  )$n[["stage_1"]]
   # N chosen so that n/N is around 12 percent, where "unit" visibly departs.
   frame <- .fpc_frame(5e3, 250, m)
   by_alloc <- n_alloc(frame, cv = 0.10, resp_rate = 0.5, fpc = "none")$detail$n
@@ -125,18 +125,18 @@ test_that("fpc = stage reproduces the exact three-stage variance", {
   N_psu <- 2000
   N_ssu <- 20000
   frame <- data.frame(
-    stratum = "S", N = N, N_psu = N_psu, N_ssu = N_ssu,
-    n_per_psu = m, n_per_ssu = q,
-    cost_psu = 300, cost_ssu = 50, cost_tsu = 25
+    stratum = "S", N = N, N_1 = N_psu, N_2 = N_ssu,
+    take_2 = m, take_3 = q,
+    cost_1 = 300, cost_2 = 50, cost_3 = 25
   )
   measures <- data.frame(
-    stratum = "S", name = "y", p = .fpc_p, icc_psu = d1, icc_ssu = d2,
-    var_ratio_psu = 1, resp_rate = r
+    stratum = "S", name = "y", p = .fpc_p, icc_1 = d1, icc_2 = d2,
+    var_ratio_1 = 1, resp_rate = r
   )
   targets <- data.frame(
     name = "y", domain = ".overall", level = NA, cv = 0.08
   )
-  fit <- n_alloc(frame, measures = measures, targets = targets, fpc = "stage")
+  fit <- n_alloc_joint(frame, measures = measures, targets = targets, fpc = "stage")
 
   a <- fit$detail$n / (m * q)
   S2 <- .fpc_p * (1 - .fpc_p)
@@ -187,19 +187,19 @@ test_that("ordinary and generalized cluster paths agree under every fpc", {
   N_psu <- N / 40
   ordinary <- .fpc_frame(N, N_psu, m, icc)
   frame <- data.frame(
-    stratum = "S", N = N, N_psu = N_psu, n_per_psu = m,
-    cost_psu = 300, cost_ssu = 25
+    stratum = "S", N = N, N_1 = N_psu, take_2 = m,
+    cost_1 = 300, cost_2 = 25
   )
   measures <- data.frame(
-    stratum = "S", name = "y", p = .fpc_p, icc_psu = icc,
-    var_ratio_psu = 1, resp_rate = r
+    stratum = "S", name = "y", p = .fpc_p, icc_1 = icc,
+    var_ratio_1 = 1, resp_rate = r
   )
   targets <- data.frame(
     name = "y", domain = ".overall", level = NA, cv = 0.10
   )
   for (mode in c("none", "unit", "stage")) {
     expect_equal(
-      n_alloc(frame, measures = measures, targets = targets, fpc = mode)$detail$n,
+      n_alloc_joint(frame, measures = measures, targets = targets, fpc = mode)$detail$n,
       n_alloc(ordinary, cv = 0.10, resp_rate = r, fpc = mode)$detail$n,
       tolerance = 1e-6
     )
@@ -218,16 +218,16 @@ test_that("prec_alloc reproduces the target under every fpc", {
 })
 
 test_that("the operational block reads the take it actually fields", {
-  # No 'n_per_psu', so the take is cost-optimal and the whole-unit search
+  # No 'take_2', so the take is cost-optimal and the whole-unit search
   # picks its own integer take. Both halves of the stage correction have to
   # be rebuilt on that take rather than on the continuous one.
   frame <- data.frame(
     stratum = "S", N = 2e4, mean = .fpc_p, sd = sqrt(.fpc_p * (1 - .fpc_p)),
-    icc_psu = 0.05, N_psu = 500, cost_psu = 300, cost_ssu = 25
+    icc_1 = 0.05, N_1 = 500, cost_1 = 300, cost_2 = 25
   )
   fit <- n_alloc(frame, cv = 0.10, resp_rate = 0.6, fpc = "stage")
-  a <- fit$detail$n_psu_int
-  b <- fit$detail$n_per_psu_int
+  a <- fit$detail$n_1_int
+  b <- fit$detail$take_2_int
   S2 <- .fpc_p * (1 - .fpc_p)
   f1 <- a / 500
   f2 <- b * 0.6 / (2e4 / 500)
@@ -254,7 +254,7 @@ test_that("fpc = stage is refused outside cluster allocation", {
     name = "y", domain = ".overall", level = NA, cv = 0.05
   )
   expect_error(
-    n_alloc(flat[, c("stratum", "N")], measures = measures,
+    n_alloc_joint(flat[, c("stratum", "N")], measures = measures,
             targets = targets, fpc = "stage"),
     "applies to cluster allocation"
   )
@@ -263,9 +263,9 @@ test_that("fpc = stage is refused outside cluster allocation", {
 test_that("fpc = stage needs the PSU population", {
   frame <- data.frame(
     stratum = "S", N = 2e5, mean = .fpc_p, sd = sqrt(.fpc_p * (1 - .fpc_p)),
-    icc_psu = 0.05, n_per_psu = 20, cost_psu = 300, cost_ssu = 25
+    icc_1 = 0.05, take_2 = 20, cost_1 = 300, cost_2 = 25
   )
-  expect_error(n_alloc(frame, cv = 0.10, fpc = "stage"), "N_psu")
+  expect_error(n_alloc(frame, cv = 0.10, fpc = "stage"), "N_1")
   expect_silent(n_alloc(frame, cv = 0.10, fpc = "none"))
 })
 
@@ -295,20 +295,20 @@ test_that("fpc survives the round trip back to n_alloc", {
 
 test_that("fpc survives the generalized round trip", {
   frame <- data.frame(
-    stratum = "S", N = 2e5, N_psu = 5e3, n_per_psu = 20,
-    cost_psu = 300, cost_ssu = 25
+    stratum = "S", N = 2e5, N_1 = 5e3, take_2 = 20,
+    cost_1 = 300, cost_2 = 25
   )
   measures <- data.frame(
-    stratum = "S", name = "y", p = .fpc_p, icc_psu = 0.05,
-    var_ratio_psu = 1, resp_rate = 0.5
+    stratum = "S", name = "y", p = .fpc_p, icc_1 = 0.05,
+    var_ratio_1 = 1, resp_rate = 0.5
   )
   targets <- data.frame(
     name = "y", domain = ".overall", level = NA, cv = 0.10
   )
   for (mode in c("none", "unit", "stage")) {
-    fit <- n_alloc(frame, measures = measures, targets = targets, fpc = mode)
+    fit <- n_alloc_joint(frame, measures = measures, targets = targets, fpc = mode)
     expect_identical(fit$params$fpc, mode)
-    back <- prec_alloc(fit)
+    back <- prec_alloc_joint(fit)
     expect_equal(
       back$detail$.achieved[1L], fit$constraints$.achieved[1L],
       tolerance = 1e-6
@@ -342,23 +342,23 @@ test_that("predict() sweeps under the fit's own correction", {
 
 test_that("fpc is refused with a PSU register", {
   frame <- data.frame(
-    stratum = "S", N = 1000, n_per_psu = 10, cost_psu = 300, cost_ssu = 25
+    stratum = "S", N = 1000, take_2 = 10, cost_1 = 300, cost_2 = 25
   )
   psu <- data.frame(stratum = "S", N = rep(20, 50))
-  measures <- data.frame(stratum = "S", name = "y", p = .fpc_p, icc_psu = 0.05)
+  measures <- data.frame(stratum = "S", name = "y", p = .fpc_p, icc_1 = 0.05)
   targets <- data.frame(
     name = "y", domain = ".overall", level = NA, cv = 0.10
   )
   for (mode in c("none", "stage")) {
     expect_error(
-      n_alloc(frame, psu = psu, measures = measures, targets = targets,
+      n_alloc_joint(frame, psu = psu, measures = measures, targets = targets,
               fpc = mode),
       "PSU register"
     )
   }
   expect_s3_class(
-    n_alloc(frame, psu = psu, measures = measures, targets = targets),
-    "svyplan_n"
+    n_alloc_joint(frame, psu = psu, measures = measures, targets = targets),
+    "svyplan_alloc_joint"
   )
 })
 
@@ -371,12 +371,12 @@ test_that("fpc is refused with a PSU register", {
 .fpc_joint <- function() {
   list(
     frame = data.frame(
-      stratum = "S", N = 2e5, N_psu = 5e3, n_per_psu = 20,
-      cost_psu = 300, cost_ssu = 25
+      stratum = "S", N = 2e5, N_1 = 5e3, take_2 = 20,
+      cost_1 = 300, cost_2 = 25
     ),
     measures = data.frame(
-      stratum = "S", name = "y", p = .fpc_p, icc_psu = 0.05,
-      var_ratio_psu = 1, resp_rate = 0.5
+      stratum = "S", name = "y", p = .fpc_p, icc_1 = 0.05,
+      var_ratio_1 = 1, resp_rate = 0.5
     ),
     targets = data.frame(
       name = "y", domain = ".overall", level = NA, cv = 0.10
@@ -389,9 +389,9 @@ test_that("predict() on a generalized fit keeps the fit's correction", {
   got <- vapply(
     c("none", "unit", "stage"),
     function(mode) {
-      fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+      fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
                      fpc = mode)
-      pred <- predict(fit, data.frame(n_per_psu = 20))
+      pred <- predict(fit, data.frame(take_2 = 20))
       # Re-solving at the fitted take must return the fitted design.
       expect_equal(pred$n, fit$detail$n, tolerance = 1e-6)
       pred$n
@@ -409,9 +409,9 @@ test_that("the generalized take sweep keeps the correction across the grid", {
   swept <- lapply(
     c("none", "unit", "stage"),
     function(mode) {
-      fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+      fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
                      fpc = mode)
-      predict(fit, data.frame(n_per_psu = c(10, 20, 30)))$n
+      predict(fit, data.frame(take_2 = c(10, 20, 30)))$n
     }
   )
   # Every take in the grid, not only the fitted one.
@@ -424,7 +424,7 @@ test_that("the budget frontier floor is found under the fit's correction", {
   floors <- vapply(
     c("none", "unit", "stage"),
     function(mode) {
-      fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+      fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
                      objective = "y", budget = 4e5, fpc = mode)
       grid <- .budget_grid(fit, npoints = 5L)
       grid[1L]
@@ -472,20 +472,20 @@ test_that("domain_sampling survives the n_multi round trip", {
 ## D <= 0. Taking the uncorrected take instead loses up to a fifth of the
 ## variance when PSUs are small.
 
-.stage_take_frame <- function(icc = 5 / 54, N = 4900, N_psu = 100) {
+.stage_take_frame <- function(icc = 5 / 54, N = 4900, N_1 = 100) {
   data.frame(
-    N = N, N_psu = N_psu, sd = sqrt(54), mean = 10,
-    icc_psu = icc, cost_psu = 12, cost_ssu = 3
+    N = N, N_1 = N_1, sd = sqrt(54), mean = 10,
+    icc_1 = icc, cost_1 = 12, cost_2 = 3
   )
 }
 
 .stage_take_var <- function(b, budget, frame, r = 1) {
-  M <- frame$N / frame$N_psu
+  M <- frame$N / frame$N_1
   S2 <- frame$sd^2
-  Sb <- S2 * frame$icc_psu
-  Sw <- S2 * (1 - frame$icc_psu)
-  a <- budget / (frame$cost_psu + frame$cost_ssu * b)
-  (1 - a / frame$N_psu) * Sb / a + (1 - b * r / M) * Sw / (a * b * r)
+  Sb <- S2 * frame$icc_1
+  Sw <- S2 * (1 - frame$icc_1)
+  a <- budget / (frame$cost_1 + frame$cost_2 * b)
+  (1 - a / frame$N_1) * Sb / a + (1 - b * r / M) * Sw / (a * b * r)
 }
 
 test_that("the stage take minimizes the corrected variance at fixed budget", {
@@ -494,9 +494,9 @@ test_that("the stage take minimizes the corrected variance at fixed budget", {
   best <- optimize(
     .stage_take_var, c(1, 49), budget = 1000, frame = frame, tol = 1e-10
   )$minimum
-  expect_equal(fit$detail$n_per_psu, 7, tolerance = 1e-10)
-  expect_equal(fit$detail$n_per_psu, best, tolerance = 1e-6)
-  expect_equal(fit$detail$n_psu, 1000 / 33, tolerance = 1e-10)
+  expect_equal(fit$detail$take_2, 7, tolerance = 1e-10)
+  expect_equal(fit$detail$take_2, best, tolerance = 1e-6)
+  expect_equal(fit$detail$n_1, 1000 / 33, tolerance = 1e-10)
   expect_equal(fit$se^2, .stage_take_var(7, 1000, frame), tolerance = 1e-10)
 })
 
@@ -506,7 +506,7 @@ test_that("the stage take reads the unit response rate", {
   fit <- n_alloc(frame, budget = 1000, resp_rate = r, fpc = "stage")
   D <- 5 / 54 - (49 / 54) / 49
   expect_equal(
-    fit$detail$n_per_psu,
+    fit$detail$take_2,
     sqrt(12 * (49 / 54) / (3 * r * D)),
     tolerance = 1e-10
   )
@@ -515,7 +515,7 @@ test_that("the stage take reads the unit response rate", {
 test_that("below 1 / (M + 1) the stage take is the whole PSU", {
   frame <- .stage_take_frame(icc = 0.015)
   expect_no_warning(fit <- n_alloc(frame, budget = 1000, fpc = "stage"))
-  expect_equal(fit$detail$n_per_psu, 49)
+  expect_equal(fit$detail$take_2, 49)
 })
 
 test_that("unit and none keep the uncorrected take", {
@@ -523,14 +523,14 @@ test_that("unit and none keep the uncorrected take", {
   uncorrected <- sqrt(12 / 3 * (49 / 54) / (5 / 54))
   for (f in c("unit", "none")) {
     fit <- n_alloc(frame, budget = 1000, fpc = f)
-    expect_equal(fit$detail$n_per_psu, uncorrected, tolerance = 1e-10)
+    expect_equal(fit$detail$take_2, uncorrected, tolerance = 1e-10)
   }
 })
 
 test_that("the stage take survives the round trip through prec_alloc", {
   fit <- n_alloc(.stage_take_frame(), budget = 1000, fpc = "stage")
   back <- n_alloc(prec_alloc(fit))
-  expect_equal(back$detail$n_per_psu, fit$detail$n_per_psu, tolerance = 1e-10)
+  expect_equal(back$detail$take_2, fit$detail$take_2, tolerance = 1e-10)
   expect_equal(back$detail$n, fit$detail$n, tolerance = 1e-8)
 })
 
@@ -538,11 +538,11 @@ test_that("the stage take survives the round trip through prec_alloc", {
 ##
 ## Gross PSU count a and take b give
 ##   cv^2 = [B - W/M + W/(b r)] / (a r1) - B/A,  B = U k icc, W = U k (1 - icc)
-## A design never takes more than N_psu PSUs or M = N / N_psu units per PSU.
+## A design never takes more than N[1] PSUs or M = N[2] / N[1] units per PSU.
 
 .st_args <- list(
   stage_cost = c(12, 3), icc = 5 / 54, unit_relvar = 54 / 100,
-  fpc = "stage", N = 4900, N_psu = 100
+  fpc = "stage", N = c(100, 4900)
 )
 
 .st_cv2 <- function(a, b, icc = 5 / 54, U = 0.54, A = 100, M = 49, r1 = 1,
@@ -554,7 +554,7 @@ test_that("the stage take survives the round trip through prec_alloc", {
 test_that("prec_cluster applies each stage's own correction", {
   got <- prec_cluster(
     n = c(20, 10), icc = 0.1, unit_relvar = 2, fpc = "stage",
-    N = 4900, N_psu = 100, resp_rate = 0.8, resp_rate_psu = 0.9
+    N = c(100, 4900), resp_rate = c(0.9, 0.8)
   )$cv
   expect_equal(got^2, .st_cv2(20, 10, icc = 0.1, U = 2, r1 = 0.9, r = 0.8),
                tolerance = 1e-12)
@@ -562,8 +562,8 @@ test_that("prec_cluster applies each stage's own correction", {
 
 test_that("the stage take minimizes the corrected variance in n_cluster", {
   fit <- do.call(n_cluster, c(.st_args, list(budget = 1000)))
-  expect_equal(fit$n[["n_per_psu"]], 7, tolerance = 1e-10)
-  expect_equal(fit$n[["n_psu"]], 1000 / 33, tolerance = 1e-10)
+  expect_equal(fit$n[["stage_2"]], 7, tolerance = 1e-10)
+  expect_equal(fit$n[["stage_1"]], 1000 / 33, tolerance = 1e-10)
   expect_equal(fit$cv^2, .st_cv2(1000 / 33, 7), tolerance = 1e-12)
 })
 
@@ -571,63 +571,64 @@ test_that("below 1 / (M + 1) n_cluster takes whole PSUs", {
   fit <- do.call(
     n_cluster, modifyList(.st_args, list(icc = 0.015, budget = 1000))
   )
-  expect_equal(fit$n[["n_per_psu"]], 49)
+  expect_equal(fit$n[["stage_2"]], 49)
 })
 
-test_that("past N_psu PSUs the budget goes to the take", {
+test_that("past N[1] PSUs the budget goes to the take", {
   fit <- do.call(n_cluster, c(.st_args, list(budget = 6000)))
-  expect_equal(fit$n[["n_psu"]], 100)
-  expect_equal(fit$n[["n_per_psu"]], (6000 / 100 - 12) / 3, tolerance = 1e-10)
-  expect_lte(fit$operational$n[["n_psu"]], 100)
-  expect_lte(fit$operational$n[["n_per_psu"]], 49)
+  expect_equal(fit$n[["stage_1"]], 100)
+  expect_equal(fit$n[["stage_2"]], (6000 / 100 - 12) / 3, tolerance = 1e-10)
+  expect_lte(fit$operational$n[["stage_1"]], 100)
+  expect_lte(fit$operational$n[["stage_2"]], 49)
 })
 
-test_that("past N_psu PSUs the precision target goes to the take", {
+test_that("past N[1] PSUs the precision target goes to the take", {
   fit <- do.call(n_cluster, c(.st_args, list(cv = 0.01)))
-  expect_equal(fit$n[["n_psu"]], 100)
+  expect_equal(fit$n[["stage_1"]], 100)
   expect_equal(fit$cv, 0.01, tolerance = 1e-10)
-  expect_lte(fit$n[["n_per_psu"]], 49)
+  expect_lte(fit$n[["stage_2"]], 49)
   expect_lte(fit$operational$cv, 0.01 + 1e-12)
-  expect_lte(fit$operational$n[["n_psu"]], 100)
+  expect_lte(fit$operational$n[["stage_1"]], 100)
 })
 
-test_that("a fixed take that needs more than N_psu PSUs is refused", {
+test_that("a fixed take that needs more than N[1] PSUs is refused", {
   expect_error(
-    do.call(n_cluster, c(.st_args, list(cv = 0.01, n_per_psu = 5))),
-    "A larger take may reach it"
+    do.call(n_cluster, c(.st_args, list(cv = 0.01, stage_n = c(NA, 5)))),
+    "below the achievable floor"
   )
 })
 
 test_that("population bounds are checked on fixed sizes", {
   expect_error(
-    do.call(n_cluster, c(.st_args, list(budget = 1e5, n_psu = 120))),
-    "exceeds 'N_psu'"
+    do.call(n_cluster, c(.st_args, list(budget = 1e5, stage_n = c(120, NA)))),
+    "exceeds population capacity"
   )
   expect_error(
-    prec_cluster(n = c(20, 60), icc = 0.1, fpc = "stage", N = 4900,
-                 N_psu = 100),
-    "exceeds the units per PSU"
+    prec_cluster(n = c(20, 60), icc = 0.1, fpc = "stage", N = c(100, 4900)),
+    "exceeds population capacity"
   )
 })
 
 test_that("the stage correction needs its population and only it reads it", {
   expect_error(
-    n_cluster(stage_cost = c(12, 3), icc = 0.1, budget = 1000, N = 4900),
-    "fpc = \"stage\" corrects for"
+    n_cluster(stage_cost = c(12, 3), icc = 0.1, budget = 1000,
+              N = c(100, 4900), fpc = "none"),
+    "fpc = \"none\" disables it"
   )
   expect_error(
     n_cluster(stage_cost = c(12, 3), icc = 0.1, budget = 1000, fpc = "stage"),
-    "needs the population"
+    "requires stage population counts"
   )
-  plan <- svyplan(N = 4900)
+  plan_scalar <- svyplan(N = 4900)
   expect_no_error(
-    n_cluster(stage_cost = c(12, 3), icc = 0.1, budget = 1000, plan = plan)
+    n_cluster(stage_cost = c(12, 3), icc = 0.1, budget = 1000, plan = plan_scalar)
   )
+  plan_stage <- svyplan(N = c(100, 4900))
   expect_equal(
-    n_cluster(stage_cost = c(12, 3), icc = 0.1, budget = 1000, plan = plan,
-              fpc = "stage", N_psu = 100)$n,
     n_cluster(stage_cost = c(12, 3), icc = 0.1, budget = 1000,
-              fpc = "stage", N = 4900, N_psu = 100)$n
+              plan = plan_stage)$n,
+    n_cluster(stage_cost = c(12, 3), icc = 0.1, budget = 1000,
+              fpc = "stage", N = c(100, 4900))$n
   )
 })
 
@@ -639,8 +640,8 @@ test_that("the stage correction is refused where its model does not hold", {
   )
   pps <- varcomp(y ~ psu, data = fr, prob = ~share)
   expect_error(
-    prec_cluster(n = c(2, 2), icc = pps, fpc = "stage", N = 12, N_psu = 4),
-    "size-proportional first stage"
+    prec_cluster(n = c(2, 2), icc = pps, fpc = "stage", N = c(4, 12)),
+    "size-proportional stage_1"
   )
   fr3 <- data.frame(
     y = c(5, 10, 12, 3, 6, 15, 13, 6, 11, 4, 8, 9, 7, 2, 5, 9),
@@ -651,40 +652,41 @@ test_that("the stage correction is refused where its model does not hold", {
   pps_ssu <- varcomp(fr3$y, stage_id = list(fr3$psu, fr3$ssu),
                      prob = list(NULL, fr3$share))
   expect_error(
-    prec_cluster(n = c(2, 2, 2), icc = pps_ssu, fpc = "stage", N = 16,
-                 N_psu = 2, N_ssu = 4),
-    "size-proportional second stage"
+    prec_cluster(n = c(2, 2, 2), icc = pps_ssu, fpc = "stage",
+                 N = c(2, 4, 16)),
+    "size-proportional stage_2"
   )
   expect_error(
     n_cluster(
-      indicators = data.frame(name = "y", p = 0.3, cv = 0.1, icc_psu = 0.05,
-                              region = c("a", "b")),
-      domains = "region", stage_cost = c(12, 3), fpc = "stage", N = 4900,
-      N_psu = 100
+      data.frame(name = "y", p = 0.3, cv = 0.1, icc_1 = 0.05,
+                 region = c("a", "b")),
+      domains = "region", stage_cost = c(12, 3), fpc = "stage",
+      N = c(100, 4900)
     ),
     "reads each domain's population from 'indicators' columns"
   )
 })
 
-test_that("three stages read N_ssu and two stages refuse it", {
+test_that("three stages require length-3 N and two stages require length-2 N", {
   expect_error(
     n_cluster(stage_cost = c(12, 3, 1), icc = c(0.1, 0.1), budget = 1000,
-              fpc = "stage", N = 4900, N_psu = 100),
-    "also needs 'N_ssu'"
+              fpc = "stage", N = c(100, 4900)),
+    "length 3"
   )
   expect_error(
     n_cluster(stage_cost = c(12, 3), icc = 0.1, budget = 1000,
-              fpc = "stage", N = 4900, N_psu = 100, N_ssu = 700),
-    "applies to three-stage designs"
+              fpc = "stage", N = c(100, 700, 4900)),
+    "length 2"
   )
   expect_error(
-    prec_cluster(n = c(10, 2, 3), icc = c(0.1, 0.1), N_ssu = 700),
-    "fpc = \"stage\" corrects for"
+    prec_cluster(n = c(10, 2, 3), icc = c(0.1, 0.1),
+                 N = c(100, 700, 4900), fpc = "none"),
+    "fpc = \"none\" disables it"
   )
   expect_error(
     prec_cluster(n = c(10, 2, 3), icc = c(0.1, 0.1), fpc = "stage",
-                 N = 4900, N_psu = 100, N_ssu = 50),
-    "between 'N_psu' and 'N'"
+                 N = c(100, 50, 4900)),
+    "non-decreasing"
   )
 })
 
@@ -696,7 +698,7 @@ test_that("the stage correction survives every round trip", {
   back <- n_cluster(prec)
   expect_equal(back$n, fit$n, tolerance = 1e-10)
   swept <- predict(fit, data.frame(budget = c(800, 1000)))
-  expect_equal(swept$n_per_psu[2], 7, tolerance = 1e-10)
+  expect_equal(swept$stage_2[2], 7, tolerance = 1e-10)
   expect_equal(swept$cv[2], fit$cv, tolerance = 1e-12)
 })
 
@@ -709,7 +711,7 @@ test_that("the stage correction survives every round trip", {
 
 .st3_args <- list(
   stage_cost = c(300, 50, 10), icc = c(0.04, 0.10), unit_relvar = 7 / 3,
-  fpc = "stage", N = 12000, N_psu = 40, N_ssu = 400
+  fpc = "stage", N = c(40, 400, 12000)
 )
 
 .st3_cv2 <- function(a, b, cc, icc = c(0.04, 0.10), U = 7 / 3,
@@ -734,7 +736,7 @@ test_that("the stage correction survives every round trip", {
 
 test_that("prec_cluster corrects each of three stages by its own fraction", {
   got <- do.call(prec_cluster, c(
-    .st3_args[c("icc", "unit_relvar", "fpc", "N", "N_psu", "N_ssu")],
+    .st3_args[c("icc", "unit_relvar", "fpc", "N")],
     list(n = c(30, 4, 8))
   ))$cv
   expect_equal(got^2, .st3_cv2(30, 4, 8), tolerance = 1e-12)
@@ -769,23 +771,23 @@ test_that("the three-stage stage design is no costlier than any on a grid", {
   }
 }
 
-.st3_corner <- function(icc, N, N_ssu, ...) {
+.st3_corner <- function(icc, N, N_2, ...) {
   n_cluster(stage_cost = c(300, 50, 10), icc = icc, unit_relvar = 7 / 3,
-            fpc = "stage", N = N, N_psu = 40, N_ssu = N_ssu, ...)
+            fpc = "stage", N = c(40, N_2, N), ...)
 }
 
 test_that("a unit fraction at or past R2 / R3 = 1 / C takes whole SSUs", {
-  ## icc_ssu = 0.1 is below 1 / (C + 1) = 1 / 6, so R2 - R3 / C < 0.
+  ## icc_2 = 0.1 is below 1 / (C + 1) = 1 / 6, so R2 - R3 / C < 0.
   icc <- c(0.04, 0.10)
   by_budget <- .st3_corner(icc, 2000, 400, budget = 20000)
-  expect_equal(by_budget$n[["n_per_ssu"]], 5)
+  expect_equal(by_budget$n[["stage_3"]], 5)
   expect_lte(by_budget$cv,
              .st3_grid_best(icc, 40, 10, 5, budget = 20000) + 1e-12)
   by_cv <- .st3_corner(icc, 2000, 400, cv = 0.05)
-  expect_equal(by_cv$n[["n_per_ssu"]], 5)
+  expect_equal(by_cv$n[["stage_3"]], 5)
   expect_lte(by_cv$cost, .st3_grid_best(icc, 40, 10, 5, cv = 0.05) + 1e-8)
   for (fit in list(by_budget, by_cv)) {
-    expect_lte(fit$operational$n[["n_per_ssu"]], 5)
+    expect_lte(fit$operational$n[["stage_3"]], 5)
   }
 })
 
@@ -793,55 +795,55 @@ test_that("an SSU fraction at or past R1 = R2 / Q takes every SSU of a PSU", {
   ## R1 - R2 / Q = U (0.05 - 0.95 * 0.5 / 4) < 0.
   icc <- c(0.05, 0.5)
   by_budget <- .st3_corner(icc, 4800, 160, budget = 20000)
-  expect_equal(by_budget$n[["n_per_psu"]], 4)
+  expect_equal(by_budget$n[["stage_2"]], 4)
   expect_lte(by_budget$cv,
              .st3_grid_best(icc, 40, 4, 30, budget = 20000) + 1e-12)
   by_cv <- .st3_corner(icc, 4800, 160, cv = 0.08)
-  expect_equal(by_cv$n[["n_per_psu"]], 4)
+  expect_equal(by_cv$n[["stage_2"]], 4)
   expect_lte(by_cv$cost, .st3_grid_best(icc, 40, 4, 30, cv = 0.08) + 1e-8)
   for (fit in list(by_budget, by_cv)) {
-    expect_lte(fit$operational$n[["n_per_psu"]], 4)
+    expect_lte(fit$operational$n[["stage_2"]], 4)
   }
 })
 
-test_that("past N_psu PSUs the three-stage budget and target go to the takes", {
+test_that("past N[1] PSUs the three-stage budget and target go to the takes", {
   fit <- do.call(n_cluster, c(.st3_args, list(budget = 1e5)))
-  expect_equal(fit$n[["n_psu"]], 40)
+  expect_equal(fit$n[["stage_1"]], 40)
   expect_equal(fit$cost, 1e5, tolerance = 1e-10)
-  expect_lte(fit$n[["n_per_psu"]], 10)
-  expect_lte(fit$n[["n_per_ssu"]], 30)
+  expect_lte(fit$n[["stage_2"]], 10)
+  expect_lte(fit$n[["stage_3"]], 30)
   op <- fit$operational$n
-  expect_true(op[["n_psu"]] <= 40 && op[["n_per_psu"]] <= 10 &&
-                op[["n_per_ssu"]] <= 30)
+  expect_true(op[["stage_1"]] <= 40 && op[["stage_2"]] <= 10 &&
+                op[["stage_3"]] <= 30)
   expect_lte(fit$operational$cost, 1e5)
 
   tight <- do.call(n_cluster, c(.st3_args, list(cv = 0.02)))
-  expect_equal(tight$n[["n_psu"]], 40)
+  expect_equal(tight$n[["stage_1"]], 40)
   expect_equal(tight$cv, 0.02, tolerance = 1e-10)
   expect_lte(tight$operational$cv, 0.02 + 1e-12)
   op <- tight$operational$n
-  expect_true(op[["n_psu"]] <= 40 && op[["n_per_psu"]] <= 10 &&
-                op[["n_per_ssu"]] <= 30)
+  expect_true(op[["stage_1"]] <= 40 && op[["stage_2"]] <= 10 &&
+                op[["stage_3"]] <= 30)
   ## At full response every unit taken is a census, so only nonresponse
   ## leaves a floor above zero.
   expect_error(
     do.call(n_cluster, c(.st3_args, list(cv = 0.001, resp_rate = 0.8))),
-    "out of reach"
+    "below the achievable floor"
   )
 })
 
 test_that("three-stage stage sizes are bounded by the population", {
   expect_error(
-    do.call(n_cluster, c(.st3_args, list(cv = 0.05, n_per_psu = 11))),
-    "exceeds the SSUs per PSU"
+    do.call(n_cluster, c(.st3_args, list(cv = 0.05, stage_n = c(NA, 11, NA)))),
+    "exceeds population capacity"
   )
   expect_error(
-    do.call(n_cluster, c(.st3_args, list(cv = 0.05, n_per_ssu = 31))),
-    "exceeds the units per SSU"
+    do.call(n_cluster, c(.st3_args, list(cv = 0.05, stage_n = c(NA, NA, 31)))),
+    "exceeds population capacity"
   )
   expect_error(
-    do.call(n_cluster, c(.st3_args, list(budget = 1e5, n_psu = 41))),
-    "exceeds 'N_psu'"
+    do.call(n_cluster, c(.st3_args, list(budget = 1e5, stage_n = c(41, NA, NA)))),
+    "exceeds population capacity"
   )
 })
 
@@ -849,42 +851,42 @@ test_that("the three-stage stage correction survives every round trip", {
   fit <- do.call(n_cluster, c(.st3_args, list(cv = 0.06, resp_rate = 0.8)))
   prec <- prec_cluster(fit)
   expect_equal(prec$cv, fit$cv, tolerance = 1e-12)
-  expect_identical(prec$params$N_ssu, 400)
+  expect_identical(prec$params$N, c(40, 400, 12000))
   back <- n_cluster(prec)
   expect_equal(back$n, fit$n, tolerance = 1e-10)
-  swept <- predict(fit, data.frame(N_ssu = c(400, 800), cv = 0.06))
-  expect_equal(swept$n_psu[1], fit$n[["n_psu"]], tolerance = 1e-10)
-  expect_false(isTRUE(all.equal(swept$n_psu[2], swept$n_psu[1])))
+  swept <- predict(fit, data.frame(N_2 = c(400, 800), cv = 0.06))
+  expect_equal(swept$stage_1[1], fit$n[["stage_1"]], tolerance = 1e-10)
+  expect_false(isTRUE(all.equal(swept$stage_1[2], swept$stage_1[1])))
 })
 
-## T15. N counts final-stage units, and eligible units are N * eligible_per_unit
+## T15. N[S] counts final-stage units, and eligible units are N[S] * eligible_per_unit
 ##
-## The take is bounded by the N / N_psu final-stage units a PSU holds, and
+## The take is bounded by the N[2] / N[1] final-stage units a PSU holds, and
 ## the within-PSU fraction is the responding share of its eligible units.
 
 test_that("the take counts final-stage units and the variance eligible ones", {
   args <- list(stage_cost = c(12, 3), icc = 0.015, unit_relvar = 0.54,
-               budget = 1000, fpc = "stage", N = 4900, N_psu = 100)
+               budget = 1000, fpc = "stage", N = c(100, 4900))
   ## 24.5 eligible units per PSU, and 0.015 < 1 / 25.5, so whole PSUs.
   half <- do.call(n_cluster, c(args, list(eligible_per_unit = 0.5)))
-  expect_equal(half$n[["n_per_psu"]], 49)
-  expect_lte(half$operational$n[["n_per_psu"]], 49)
-  expect_identical(half$params$N, 4900)
+  expect_equal(half$n[["stage_2"]], 49)
+  expect_lte(half$operational$n[["stage_2"]], 49)
+  expect_identical(half$params$N, c(100, 4900))
   ## 98 eligible units per PSU, and 0.015 > 1 / 99, so the corrected take.
   double <- do.call(n_cluster, c(args, list(eligible_per_unit = 2)))
   D <- 0.015 - 0.985 / 98
-  expect_equal(double$n[["n_per_psu"]], sqrt(12 * 0.985 / (3 * 2 * D)),
+  expect_equal(double$n[["stage_2"]], sqrt(12 * 0.985 / (3 * 2 * D)),
                tolerance = 1e-10)
   expect_equal(
     prec_cluster(n = c(10, 30), icc = 0.1, unit_relvar = 2, fpc = "stage",
-                 N = 4900, N_psu = 100, eligible_per_unit = 2)$cv^2,
+                 N = c(100, 4900), eligible_per_unit = 2)$cv^2,
     .st_cv2(10, 30, icc = 0.1, U = 2, M = 98, r = 2),
     tolerance = 1e-12
   )
   expect_error(
-    prec_cluster(n = c(10, 60), icc = 0.1, fpc = "stage", N = 4900,
-                 N_psu = 100, eligible_per_unit = 0.5),
-    "exceeds the units per PSU"
+    prec_cluster(n = c(10, 60), icc = 0.1, fpc = "stage", N = c(100, 4900),
+                 eligible_per_unit = 0.5),
+    "exceeds population capacity"
   )
 })
 
@@ -896,50 +898,53 @@ test_that("the take counts final-stage units and the variance eligible ones", {
 
 .st_rows <- data.frame(
   name = c("stunting", "anemia"), p = c(0.3, 0.1), cv = c(0.08, 0.12),
-  icc_psu = c(0.03, 0.12)
+  icc_1 = c(0.03, 0.12)
 )
 
 test_that("every row meets its corrected target and one binds", {
-  fit <- n_cluster(indicators = .st_rows, stage_cost = c(120, 10),
-                   fpc = "stage", N = 3000, N_psu = 60)
+  fit <- n_cluster(.st_rows, stage_cost = c(120, 10),
+                   fpc = "stage", N = c(60, 3000))
   each <- vapply(seq_len(2), function(j) {
-    prec_cluster(n = fit$n, icc = .st_rows$icc_psu[j],
+    prec_cluster(n = fit$n, icc = .st_rows$icc_1[j],
                  unit_relvar = (1 - .st_rows$p[j]) / .st_rows$p[j],
-                 fpc = "stage", N = 3000, N_psu = 60)$cv
+                 fpc = "stage", N = c(60, 3000))$cv
   }, numeric(1))
   expect_equal(fit$detail$.cv_achieved, each, tolerance = 1e-12)
   expect_true(all(each <= .st_rows$cv * (1 + 1e-8)))
   expect_equal(max(each / .st_rows$cv), 1, tolerance = 1e-6)
-  expect_lte(fit$n[["n_psu"]], 60)
+  expect_lte(fit$n[["stage_1"]], 60)
   expect_true(all(fit$operational$cv_by_target <= .st_rows$cv + 1e-12))
 })
 
 test_that("prec_cluster reads the indicators under the stage correction", {
-  fit <- n_cluster(indicators = .st_rows, stage_cost = c(120, 10),
-                   fpc = "stage", N = 3000, N_psu = 60, resp_rate = 0.8)
+  fit <- n_cluster(.st_rows, stage_cost = c(120, 10),
+                   fpc = "stage", N = c(60, 3000), resp_rate = 0.8)
   prec <- prec_cluster(fit)
   expect_identical(prec$params$fpc, "stage")
   expect_equal(prec$detail$.cv, fit$detail$.cv_achieved, tolerance = 1e-10)
   back <- n_cluster(prec)
   expect_equal(back$n, fit$n, tolerance = 1e-7)
-  expect_identical(back$params$N_psu, 60)
-  expect_output(print(fit), "corrected by stage for N_psu = 60 PSUs")
-  expect_output(print(prec), "corrected by stage for N_psu = 60 PSUs")
+  expect_identical(back$params$N, c(60, 3000))
+  expect_output(print(fit),
+                "corrected by stage for stage_1 = 60 \\| stage_2 = 3000")
+  expect_output(print(prec),
+                "corrected by stage for stage_1 = 60 \\| stage_2 = 3000")
   three <- do.call(n_cluster, c(.st3_args, list(cv = 0.06)))
-  expect_output(print(three), "N_ssu = 400 SSUs of N = 12000 units")
+  expect_output(print(three),
+                "corrected by stage for stage_1 = 40 \\| stage_2 = 400 \\| stage_3 = 12000")
 })
 
 test_that("three-stage indicators stay within the population", {
-  rows <- transform(.st_rows, icc_ssu = c(0.08, 0.2))
-  fit <- n_cluster(indicators = rows, stage_cost = c(300, 50, 10),
-                   cv = NULL, budget = 60000, fpc = "stage",
-                   N = 12000, N_psu = 40, N_ssu = 400)
-  expect_lte(fit$n[["n_psu"]], 40)
-  expect_lte(fit$n[["n_per_psu"]], 10)
-  expect_lte(fit$n[["n_per_ssu"]], 30)
+  rows <- transform(.st_rows, icc_2 = c(0.08, 0.2))
+  fit <- n_cluster(rows, stage_cost = c(300, 50, 10),
+                   budget = 60000, fpc = "stage",
+                   N = c(40, 400, 12000))
+  expect_lte(fit$n[["stage_1"]], 40)
+  expect_lte(fit$n[["stage_2"]], 10)
+  expect_lte(fit$n[["stage_3"]], 30)
   op <- fit$operational
-  expect_true(op$n[["n_psu"]] <= 40 && op$n[["n_per_psu"]] <= 10 &&
-                op$n[["n_per_ssu"]] <= 30)
+  expect_true(op$n[["stage_1"]] <= 40 && op$n[["stage_2"]] <= 10 &&
+                op$n[["stage_3"]] <= 30)
   expect_lte(op$cost, 60000)
 })
 
@@ -947,19 +952,18 @@ test_that("the whole-unit three-stage indicators design is the best affordable",
   ## Ten PSUs, so each row's correction R1 / A is large enough to reorder
   ## the designs the two targets prefer.
   rows <- data.frame(name = c("a", "b"), p = c(0.16, 0.48), cv = c(0.12, 0.06),
-                     icc_psu = c(0.15, 0.06), icc_ssu = c(0.06, 0.27))
-  fit <- n_cluster(indicators = rows, stage_cost = c(300, 50, 10),
-                   budget = 8100, fpc = "stage", N = 720, N_psu = 10,
-                   N_ssu = 60)
+                     icc_1 = c(0.15, 0.06), icc_2 = c(0.06, 0.27))
+  fit <- n_cluster(rows, stage_cost = c(300, 50, 10),
+                   budget = 8100, fpc = "stage", N = c(10, 60, 720))
   g <- expand.grid(a = 1:10, m = 1:6, q = 1:12)
   g <- g[g$a * (300 + 50 * g$m + 10 * g$m * g$q) <= 8100, ]
   worst <- rep(0, nrow(g))
   for (j in 1:2) {
     cv <- vapply(seq_len(nrow(g)), function(i) {
       prec_cluster(n = c(g$a[i], g$m[i], g$q[i]),
-                   icc = c(rows$icc_psu[j], rows$icc_ssu[j]),
+                   icc = c(rows$icc_1[j], rows$icc_2[j]),
                    unit_relvar = (1 - rows$p[j]) / rows$p[j], fpc = "stage",
-                   N = 720, N_psu = 10, N_ssu = 60)$cv
+                   N = c(10, 60, 720))$cv
     }, numeric(1))
     worst <- pmax(worst, cv / rows$cv[j])
   }
@@ -969,35 +973,34 @@ test_that("the whole-unit three-stage indicators design is the best affordable",
 
 ## T17. Domains under the stage correction
 ##
-## Each domain is a population of its own, given by N, N_psu and N_ssu
+## Each domain is a population of its own, given by N_1, ..., N_{S-1}, N
 ## columns constant within it. Separate domains are the single-population
 ## design per domain, and a joint budget equalizes the worst ratio.
 
 .dm_rows <- data.frame(name = c("stunting", "anemia"), p = c(0.30, 0.10),
-                       cv = c(0.08, 0.12), icc_psu = c(0.03, 0.12))
-.dm_pops <- list(capital = c(N = 4500, N_psu = 30),
-                 rural = c(N = 135000, N_psu = 900))
+                       cv = c(0.08, 0.12), icc_1 = c(0.03, 0.12))
+.dm_pops <- list(capital = c(N_1 = 30, N = 4500),
+                 rural = c(N_1 = 900, N = 135000))
 .dm_table <- function(rows = .dm_rows, pops = .dm_pops) {
   do.call(rbind, lapply(names(pops), function(d) {
     cbind(rows, region = d, as.data.frame(as.list(pops[[d]])))
   }))
 }
 .dm_one <- function(d, rows = .dm_rows, pops = .dm_pops, ...) {
-  args <- c(list(indicators = rows, fpc = "stage"), as.list(pops[[d]]),
-            list(...))
+  args <- list(x = rows, fpc = "stage", N = unname(pops[[d]]), ...)
   do.call(n_cluster, args)
 }
 
 test_that("separate domains are each domain's own design", {
   for (mode in list(list(), list(budget = 20000))) {
-    fit <- do.call(n_cluster, c(list(indicators = .dm_table(),
+    fit <- do.call(n_cluster, c(list(x = .dm_table(),
                                      stage_cost = c(120, 10),
                                      domains = "region", fpc = "stage"),
                                 mode))
     for (i in 1:2) {
       one <- do.call(.dm_one, c(list(names(.dm_pops)[i],
                                      stage_cost = c(120, 10)), mode))
-      expect_identical(unname(unlist(fit$domains[i, c("n_psu", "n_per_psu")])),
+      expect_identical(unname(unlist(fit$domains[i, c("stage_1", "stage_2")])),
                        unname(one$n))
       expect_identical(fit$domains$.cv[i], one$cv)
     }
@@ -1005,43 +1008,43 @@ test_that("separate domains are each domain's own design", {
   ## The capital of 30 EAs takes all of them, where the uncorrected plan
   ## asks for 134.
   capital <- .dm_one("capital", stage_cost = c(120, 10))
-  expect_equal(capital$n[["n_psu"]], 30)
+  expect_equal(capital$n[["stage_1"]], 30)
   expect_equal(capital$cost, 8501, tolerance = 1e-3)
 })
 
-test_that("three-stage domains read N_ssu columns", {
-  rows <- transform(.dm_rows, icc_ssu = c(0.08, 0.2))
-  pops <- list(a = c(N = 12000, N_psu = 40, N_ssu = 400),
-               b = c(N = 60000, N_psu = 200, N_ssu = 2000))
-  fit <- n_cluster(indicators = .dm_table(rows, pops),
+test_that("three-stage domains read N_2 columns", {
+  rows <- transform(.dm_rows, icc_2 = c(0.08, 0.2))
+  pops <- list(a = c(N_1 = 40, N_2 = 400, N = 12000),
+               b = c(N_1 = 200, N_2 = 2000, N = 60000))
+  fit <- n_cluster(.dm_table(rows, pops),
                    stage_cost = c(300, 50, 10), domains = "region",
                    fpc = "stage")
   one <- .dm_one("a", rows, pops, stage_cost = c(300, 50, 10))
-  expect_identical(unname(unlist(fit$domains[1, c("n_psu", "n_per_psu",
-                                                  "n_per_ssu")])),
+  expect_identical(unname(unlist(fit$domains[1, c("stage_1", "stage_2",
+                                                  "stage_3")])),
                    unname(one$n))
   expect_error(
-    n_cluster(indicators = .dm_table(rows, lapply(pops, `[`, 1:2)),
+    n_cluster(.dm_table(rows, lapply(pops, function(p) p[c("N_1", "N")])),
               stage_cost = c(300, 50, 10), domains = "region",
               fpc = "stage"),
-    "also needs 'N_ssu'"
+    "missing 'N_2'"
   )
 })
 
 test_that("a joint budget equalizes the corrected worst ratio", {
-  fit <- n_cluster(indicators = .dm_table(), stage_cost = c(120, 10),
+  fit <- n_cluster(.dm_table(), stage_cost = c(120, 10),
                    domains = "region", fpc = "stage", budget = 25000,
                    allocation = "joint")
   ratio <- vapply(1:2, function(i) {
     max(prec_cluster(
-      indicators = cbind(.dm_rows, n = fit$domains$n_psu[i],
-                         n_per_psu = fit$domains$n_per_psu[i]),
-      fpc = "stage", N = .dm_pops[[i]][["N"]], N_psu = .dm_pops[[i]][["N_psu"]]
-    )$cv / .dm_rows$cv)
+      cbind(.dm_rows, n_1 = fit$domains$stage_1[i],
+            take_2 = fit$domains$stage_2[i]),
+      fpc = "stage", N = unname(.dm_pops[[i]])
+    )$detail$.cv / .dm_rows$cv)
   }, numeric(1))
   expect_equal(ratio[1], ratio[2], tolerance = 1e-3)
   expect_equal(fit$cost, 25000, tolerance = 1e-8)
-  expect_lte(fit$domains$n_psu[1], 30)
+  expect_lte(fit$domains$stage_1[1], 30)
   ## No split of the budget does better on the worst domain.
   grid <- vapply(seq(0.05, 0.95, by = 0.01), function(w) {
     max(vapply(1:2, function(i) {
@@ -1054,76 +1057,80 @@ test_that("a joint budget equalizes the corrected worst ratio", {
   expect_lte(max(ratio), min(grid) + 1e-6)
 
   single <- .dm_table(pops = .dm_pops["capital"])
-  by_joint <- n_cluster(indicators = single, stage_cost = c(120, 10),
+  by_joint <- n_cluster(single, stage_cost = c(120, 10),
                         domains = "region", fpc = "stage", budget = 8000,
                         allocation = "joint")
-  by_separate <- n_cluster(indicators = single, stage_cost = c(120, 10),
+  by_separate <- n_cluster(single, stage_cost = c(120, 10),
                            domains = "region", fpc = "stage", budget = 8000)
   expect_equal(by_joint$domains$.cv, by_separate$domains$.cv,
                tolerance = 1e-4)
 })
 
 test_that("precision with domains reads each domain's population", {
-  fit <- n_cluster(indicators = .dm_table(), stage_cost = c(120, 10),
+  fit <- n_cluster(.dm_table(), stage_cost = c(120, 10),
                    domains = "region", fpc = "stage")
   prec <- prec_cluster(fit)
   expect_identical(prec$params$fpc, "stage")
   for (i in 1:2) {
     scalar <- vapply(1:2, function(j) {
       prec_cluster(
-        n = unlist(fit$domains[i, c("n_psu", "n_per_psu")]),
-        icc = .dm_rows$icc_psu[j],
+        n = unlist(fit$domains[i, c("stage_1", "stage_2")]),
+        icc = .dm_rows$icc_1[j],
         unit_relvar = (1 - .dm_rows$p[j]) / .dm_rows$p[j], fpc = "stage",
-        N = .dm_pops[[i]][["N"]], N_psu = .dm_pops[[i]][["N_psu"]]
+        N = unname(.dm_pops[[i]])
       )$cv
     }, numeric(1))
     expect_equal(prec$detail$.cv[prec$detail$region == names(.dm_pops)[i]],
                  scalar, tolerance = 1e-12)
   }
   back <- n_cluster(prec)
-  expect_equal(back$domains, fit$domains, tolerance = 1e-8)
+  dom_cols <- setdiff(names(fit$domains), ".binding")
+  expect_equal(back$domains[, dom_cols], fit$domains[, dom_cols],
+               tolerance = 1e-8)
   expect_output(print(fit),
                 "corrected by stage for each domain's population")
-  budgeted <- n_cluster(indicators = .dm_table(), stage_cost = c(120, 10),
+  budgeted <- n_cluster(.dm_table(), stage_cost = c(120, 10),
                         domains = "region", fpc = "stage", budget = 20000)
   expect_output(print(budgeted), "budget = 20000 for each domain")
   expect_equal(budgeted$cost, 40000)
 })
 
-test_that("population columns are read only under the stage correction", {
+test_that("population columns auto-enable stage FPC and are refused under fpc = none", {
+  auto_fit <- n_cluster(transform(.dm_rows, N = 4500, N_1 = 30),
+                        stage_cost = c(120, 10))
+  expect_identical(auto_fit$params$fpc, "stage")
   expect_error(
-    n_cluster(indicators = transform(.dm_rows, N = 500, N_psu = 20),
-              stage_cost = c(120, 10)),
-    "Add fpc = \"stage\", or drop them"
+    n_cluster(transform(.dm_rows, N = 500, N_1 = 20),
+              stage_cost = c(120, 10), fpc = "none"),
+    "fpc = \"none\" disables it"
   )
   expect_error(
-    n_cluster(indicators = .dm_table(), stage_cost = c(120, 10),
-              domains = "region"),
-    "Add fpc = \"stage\""
+    n_cluster(.dm_table(), stage_cost = c(120, 10),
+              domains = "region", fpc = "none"),
+    "fpc = \"none\" disables it"
   )
   expect_error(
-    prec_cluster(indicators = transform(.dm_rows, n = 20, n_per_psu = 10,
-                                        N_psu = 30)),
-    "Add fpc = \"stage\", or drop it"
+    prec_cluster(transform(.dm_rows, n_1 = 20, take_2 = 10, N_1 = 30)),
+    "missing 'N'"
   )
   expect_error(
-    n_cluster(indicators = .dm_table(), stage_cost = c(120, 10),
-              domains = "region", fpc = "stage", N = 4500, N_psu = 30),
+    n_cluster(.dm_table(), stage_cost = c(120, 10),
+              domains = "region", fpc = "stage", N = c(30, 4500)),
     "given twice"
   )
   varying <- .dm_table()
-  varying$N_psu[1] <- 31
+  varying$N_1[1] <- 31
   expect_error(
-    n_cluster(indicators = varying, stage_cost = c(120, 10),
+    n_cluster(varying, stage_cost = c(120, 10),
               domains = "region", fpc = "stage"),
     "constant within each domain"
   )
-  whole <- n_cluster(indicators = transform(.dm_rows, N = 4500, N_psu = 30),
+  whole <- n_cluster(transform(.dm_rows, N = 4500, N_1 = 30),
                      stage_cost = c(120, 10), fpc = "stage")
-  by_args <- n_cluster(indicators = .dm_rows, stage_cost = c(120, 10),
-                       fpc = "stage", N = 4500, N_psu = 30)
+  by_args <- n_cluster(.dm_rows, stage_cost = c(120, 10),
+                       fpc = "stage", N = c(30, 4500))
   expect_identical(whole$n, by_args$n)
-  expect_null(whole$params$N_psu)
+  expect_null(whole$params$N)
   expect_identical(prec_cluster(whole)$detail$.cv,
                    prec_cluster(by_args)$detail$.cv)
 })

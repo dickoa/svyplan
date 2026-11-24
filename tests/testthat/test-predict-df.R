@@ -66,9 +66,9 @@ test_that("predict on an allocation keeps the fit's df", {
   jf <- data.frame(stratum = c("A", "B"), N = c(50000, 30000))
   ms <- data.frame(stratum = c("A", "B"), name = "y", p = c(0.3, 0.4))
   tg <- data.frame(name = "y", moe = 0.03)
-  floor_cost <- n_alloc(jf, measures = ms, targets = tg,
+  floor_cost <- n_alloc_joint(jf, measures = ms, targets = tg,
                         df = 5)$operational$cost
-  fit <- n_alloc(jf, measures = ms, targets = tg, objective = "y",
+  fit <- n_alloc_joint(jf, measures = ms, targets = tg, objective = "y",
                  budget = 3 * floor_cost, df = 5)
   expect_equal(svyplan:::.budget_grid(fit, 3)[1], floor_cost)
   short <- suppressWarnings(predict(fit, data.frame(budget = floor_cost - 1)))

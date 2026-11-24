@@ -3,26 +3,14 @@
 #' Create a reusable profile that captures shared design defaults
 #' for survey sample size and power calculations. A plan can be passed
 #' to functions like [n_prop()], [n_mean()], [power_prop()], or
-#' [n_cluster()] either via the `plan` named argument or by piping:
-#'
-#' ```
-#' plan <- svyplan(deff = 1.8, resp_rate = 0.85, N = 50000)
-#'
-#' # Named argument
-#' n_prop(p = 0.3, moe = 0.05, plan = plan)
-#'
-#' # Pipe
-#' plan |> n_prop(0.3, moe = 0.05)
-#' plan |> n_prop(p = 0.3, moe = 0.05)
-#' plan |> n_cluster(cv = 0.05)
-#' ```
+#' [n_cluster()] either through the `plan` argument or by piping the plan
+#' in as the first argument, as the examples show.
 #'
 #' @param ... Named defaults to reuse across calls. Allowed names:
 #'   `alpha`, `df`, `N`, `deff`, `resp_rate`, `eligibility_rate`,
 #'   `eligible_per_unit`,
-#'   `resp_rate_psu`, `resp_rate_ssu`,
 #'   `prop_method`,
-#'   `stage_cost`, `icc`, `unit_relvar`, `var_ratio`, `fixed_cost`,
+#'   `stage_cost`, `stage_n`, `icc`, `unit_relvar`, `var_ratio`, `fixed_cost`,
 #'   `unit_cost`,
 #'   `alternative`, `ratio`, `overlap`, `overlap_cor`, `overlap_draw`,
 #'   `alloc`, `min_n_stratum`, `min_n_domain`, `alloc_q`, `phase1_cost`.
@@ -53,6 +41,12 @@
 #' [power_prop()] when its value is valid for that function (so
 #' `svyplan(prop_method = "wilson")` applies to `n_prop()` but is ignored
 #' by `power_prop()`, which has no Wilson method).
+#'
+#' `resp_rate`, `N` and `stage_n` may hold one value per stage, for
+#' [n_cluster()] and [prec_cluster()]. Only those two read them by stage.
+#' Any other function given such a profile stops rather than read the
+#' values as something else, such as one response rate per stratum in
+#' [n_alloc()].
 #'
 #' All stored defaults are validated when the profile is created or updated.
 #' When both `stage_cost` and `icc` are supplied, their lengths must describe
@@ -102,6 +96,8 @@
 svyplan <- function(...) {
   defaults <- list(...)
   .validate_plan_defaults(defaults)
+  ## An explicit NULL unsets a default, as it does in update().
+  defaults <- defaults[!vapply(defaults, is.null, logical(1))]
   structure(list(defaults = defaults), class = "svyplan")
 }
 
@@ -116,7 +112,10 @@ print.svyplan <- function(x, ...) {
     max_w <- max(nchar(nms))
     for (nm in nms) {
       val <- x$defaults[[nm]]
-      val_str <- if (length(val) > 1L) {
+      val_str <- if (is.object(val) && !is.null(utils::getS3method(
+        "format", class(val)[1L], optional = TRUE))) {
+        paste(format(val), collapse = " ")
+      } else if (length(val) > 1L) {
         paste0("c(", paste(val, collapse = ", "), ")")
       } else {
         as.character(val)
@@ -132,6 +131,12 @@ print.svyplan <- function(x, ...) {
 #' @export
 update.svyplan <- function(object, ...) {
   dots <- list(...)
+  nms <- names(dots)
+  if (length(dots) > 0L &&
+        (is.null(nms) || any(!nzchar(nms)) || anyDuplicated(nms))) {
+    stop("arguments to update() must be named, each name once",
+         call. = FALSE)
+  }
   new_defaults <- modifyList(object$defaults, dots)
   do.call(svyplan, new_defaults)
 }
@@ -143,8 +148,7 @@ update.svyplan <- function(object, ...) {
     "alpha", "N", "deff", "resp_rate", "eligibility_rate",
     "eligible_per_unit", "df",
     "prop_method",
-    "stage_cost", "icc", "unit_relvar", "var_ratio", "fixed_cost",
-    "resp_rate_psu", "resp_rate_ssu",
+    "stage_cost", "stage_n", "icc", "unit_relvar", "var_ratio", "fixed_cost",
     "unit_cost",
     "alternative", "ratio", "overlap", "overlap_cor", "overlap_draw",
     "alloc", "min_n_stratum", "min_n_domain", "alloc_q",
@@ -189,24 +193,63 @@ update.svyplan <- function(object, ...) {
     }
   }
   if ("alpha" %in% nms) check_alpha(defaults$alpha)
-  if ("N" %in% nms) check_population_size(defaults$N)
+  if ("N" %in% nms && !is.null(defaults$N)) {
+    if (length(defaults$N) == 0L) {
+      stop("'N' must have at least one value", call. = FALSE)
+    }
+    if (length(defaults$N) == 1L) {
+      check_population_size(defaults$N)
+    } else {
+      .stage_population(defaults$N, length(defaults$N))
+    }
+  }
   if ("deff" %in% nms) check_deff(defaults$deff)
-  if ("resp_rate" %in% nms) check_resp_rate(defaults$resp_rate)
+  if ("resp_rate" %in% nms) {
+    rr <- defaults$resp_rate
+    if (!is.numeric(rr) || length(rr) == 0L || anyNA(rr) ||
+        any(!is.finite(rr)) || any(rr <= 0) || any(rr > 1)) {
+      stop("'resp_rate' must contain values in (0, 1]", call. = FALSE)
+    }
+  }
   if ("eligibility_rate" %in% nms)
     check_resp_rate(defaults$eligibility_rate, "eligibility_rate")
   if ("eligible_per_unit" %in% nms) check_eligible_per_unit(defaults$eligible_per_unit)
-  if ("resp_rate_psu" %in% nms)
-    check_resp_rate(defaults$resp_rate_psu, "resp_rate_psu")
-  if ("resp_rate_ssu" %in% nms)
-    check_resp_rate(defaults$resp_rate_ssu, "resp_rate_ssu")
   # design_df() returns a classed numeric, so a plan can store the count a
   # plan object already knows: svyplan(df = design_df(alloc)).
-  if ("df" %in% nms) check_df(as.double(defaults$df))
+  if ("df" %in% nms && !is.null(defaults$df)) {
+    if (!is.numeric(defaults$df)) {
+      stop("'df' must be a single number >= 1", call. = FALSE)
+    }
+    check_df(as.double(defaults$df))
+  }
 
   stage_cost <- NULL
   if ("stage_cost" %in% nms) {
     check_stage_cost(defaults$stage_cost)
     stage_cost <- .reorder_stage_cost(defaults$stage_cost)
+  }
+
+  if ("stage_n" %in% nms) {
+    sn <- defaults$stage_n
+    if (!is.numeric(sn) || length(sn) < 2L ||
+        any(!is.na(sn) & (!is.finite(sn) | sn < 1))) {
+      stop("'stage_n' must be a numeric vector of length >= 2 with NA or values >= 1",
+           call. = FALSE)
+    }
+    if (!is.null(stage_cost) && length(sn) != length(stage_cost)) {
+      stop("'stage_n' must have the same length as 'stage_cost'", call. = FALSE)
+    }
+  }
+
+  if ("resp_rate" %in% nms && length(defaults$resp_rate) > 1L &&
+      !is.null(stage_cost) && length(defaults$resp_rate) != length(stage_cost)) {
+    stop("'resp_rate' must be a scalar or have the same length as 'stage_cost'",
+         call. = FALSE)
+  }
+
+  if ("N" %in% nms && length(defaults$N) > 1L && !is.null(stage_cost) &&
+      length(defaults$N) != length(stage_cost)) {
+    stop("'N' must have the same length as 'stage_cost'", call. = FALSE)
   }
 
   icc <- NULL
@@ -222,9 +265,6 @@ update.svyplan <- function(object, ...) {
       icc <- icc$icc
     }
     icc <- .reorder_stage_vec(icc, "icc")
-    if (!length(icc) %in% 1:2) {
-      stop("'icc' must have length 1 or 2", call. = FALSE)
-    }
     check_icc(icc)
     .check_cluster_icc_open(icc, context = "svyplan()")
     if (!is.null(stage_cost)) {
@@ -235,12 +275,18 @@ update.svyplan <- function(object, ...) {
   if ("unit_relvar" %in% nms) check_scalar(defaults$unit_relvar, "unit_relvar")
   if ("var_ratio" %in% nms) {
     var_ratio <- .reorder_stage_vec(defaults$var_ratio, "var_ratio")
-    if (!is.numeric(var_ratio) || !length(var_ratio) %in% 1:2 || anyNA(var_ratio) ||
+    if (!is.numeric(var_ratio) || length(var_ratio) == 0L || anyNA(var_ratio) ||
         any(!is.finite(var_ratio)) || any(var_ratio <= 0)) {
-      stop("'var_ratio' must contain one or two positive finite values", call. = FALSE)
+      stop("'var_ratio' must contain positive finite values", call. = FALSE)
     }
-    if (!is.null(stage_cost) && length(stage_cost) == 2L && length(var_ratio) != 1L) {
-      stop("'var_ratio' must have length 1 for a 2-stage plan", call. = FALSE)
+    if (!is.null(stage_cost) && !length(var_ratio) %in% c(1L, length(stage_cost) - 1L)) {
+      stop(
+        sprintf(
+          "'var_ratio' must have length 1 or %d for a %d-stage plan",
+          length(stage_cost) - 1L, length(stage_cost)
+        ),
+        call. = FALSE
+      )
     }
   }
   if ("fixed_cost" %in% nms) check_fixed_cost(defaults$fixed_cost)

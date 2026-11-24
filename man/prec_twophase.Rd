@@ -19,6 +19,7 @@ prec_twophase(frame, ...)
   alpha = 0.05,
   phase1_deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   fixed_cost = 0,
   plan = NULL
 )
@@ -36,9 +37,9 @@ rejected.}
 
 \item{n_phase1}{Phase-1 sample size, counted as units issued. \code{nu} is a
 share of that same base, so with phase-1 nonresponse the largest
-usable \code{nu} is \code{resp_rate} rather than 1.}
+usable \code{nu} is \code{r_1 = resp_rate * eligibility_rate} rather than 1.}
 
-\item{phase1_cost, between, mu, N, phase1_deff, resp_rate, fixed_cost, plan}{As
+\item{phase1_cost, between, mu, N, phase1_deff, resp_rate, eligibility_rate, fixed_cost, plan}{As
 in \code{\link[=n_twophase]{n_twophase()}}. The per-stratum phase-2 design effect and response
 rate travel in the frame's \code{deff} and \code{resp_rate} columns, as they do
 there.}

@@ -44,7 +44,10 @@ power_did(treat, ...)
 
 \item{var}{Outcome variance. Applies to \code{outcome = "mean"} only. Under
 \code{outcome = "prop"} the cell variances follow from \code{treat} and \code{control},
-so supplying it is an error rather than a silent no-op.
+so supplying it is an error rather than a silent no-op. They stay fixed
+at those cells when the effect is solved for, so the detectable effect
+is a linear approximation and can exceed the range a difference of
+proportions allows at a very small \code{n} (above 2 at \code{n = 2}).
 Length 1: common variance for all four cells.
 Length 2: group-specific variances \code{c(var_treat, var_control)},
 assumed equal across waves.
@@ -71,7 +74,7 @@ for power.}
 
 \item{alpha}{Significance level, default 0.05.}
 
-\item{N}{Population size for finite-population correction.
+\item{N}{Population size for finite population correction.
 A scalar applies to both arms. Use a length-2 vector
 \code{c(N_treat, N_control)} for arm-specific population sizes.
 \code{Inf} (default) disables FPC.}

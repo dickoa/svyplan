@@ -248,6 +248,52 @@ test_that("the tolerance follows the plan, not the dearest states", {
   expect_identical(r$status, "optimal")
 })
 
+test_that("the tolerance follows the incumbent when no plan starts the search", {
+  # A tolerance read off a 1e3 ceiling would exceed the gaps between plans.
+  for (seed in 1:20) {
+    set.seed(seed)
+    H <- sample(2:4, 1)
+    owner <- rep(seq_len(H), each = 5L)
+    x <- stats::runif(length(owner), 0.2, 3)
+    cost <- 1e-4 * (1 + 1e-3 * x)
+    big <- seq(5L, length(owner), by = 5L)
+    cost[big] <- 1e3
+    C <- matrix(1 / (x * H) * stats::runif(1, 0.5, 1.2), ncol = 1)
+    C[big] <- 0
+    p <- .menu_problem(cost, C, owner)
+    want <- menu_brute(p)
+    q <- p
+    q$ends <- NULL
+    for (imp in list(p, q)) {
+      r <- .menu_tree(imp, 0, NULL, 0, 5000, 1e4)
+      expect_equal(r$value, want, tolerance = 1e-12)
+      expect_identical(r$status, "optimal")
+    }
+  }
+})
+
+test_that("the search never evaluates more nodes than its limit", {
+  for (seed in 1:60) {
+    p <- menu_random(seed, H = 6L, size = 6L, integer = FALSE)
+    want <- menu_brute(p)
+    sg <- .menu_subgradient(p)
+    q <- p
+    q$ends <- NULL
+    for (max_nodes in c(1, 7, 1000)) {
+      for (imp in list(p, q)) {
+        for (max_open in c(1, 1e4)) {
+          r <- .menu_tree(imp, sg$lambda, NULL, 0, max_nodes, max_open)
+          expect_lte(r$nodes, max_nodes)
+          if (!is.null(r$pick)) {
+            expect_true(.menu_feasible(p, r$pick))
+            expect_lte(r$bound, want * (1 + 1e-9))
+          }
+        }
+      }
+    }
+  }
+})
+
 test_that("a problem with no columns takes each group's cheapest state", {
   p <- .menu_problem(c(3, 1, 2, 5, 4), matrix(0, 5, 0), c(1, 1, 1, 2, 2))
   r <- .menu_search(p, numeric(0))
@@ -412,4 +458,57 @@ test_that("the C step-down sums its starting load as the R scan does", {
                 0.2259220897220075, 0.66471053932210622), ncol = 1)
   p <- .menu_problem(c(1, 1, 2, 1), C, c(1L, 2L, 3L, 3L))
   expect_identical(.menu_step_down(p, 1:3), .menu_step_down_r(p, 1:3))
+})
+
+test_that("a cheap optimum beside a ceiling of 3e8 is found with no start", {
+  # The optimum 0.00032 is about 1e-12 of the ceiling cost.
+  p <- .menu_problem(c(0.0002, 1e8, 0.00012, 0.00015, 2e8),
+                     matrix(c(0.4, 0, 0.6, 0.5, 0)), c(1, 1, 2, 2, 2))
+  want <- menu_brute(p)
+  expect_equal(want, 0.00032)
+  q <- p
+  q$ends <- NULL
+  for (imp in list(p, q)) {
+    r <- .menu_tree(imp, 0, NULL, 0, 5000, 1e4)
+    expect_equal(r$value, want, tolerance = 1e-12)
+    expect_identical(r$status, "optimal")
+  }
+})
+
+## The R search with an unsorted owner
+
+test_that("the search with groups out of order matches the compiled one and enumeration", {
+  checked <- 0L
+  for (seed in 201:260) {
+    p <- menu_random(seed, H = 3L, size = 5L)
+    want <- menu_brute(p)
+    if (!is.finite(want)) next
+    perm <- order(-p$owner, seq_along(p$owner))
+    q <- .menu_problem(p$cost[perm], p$C[perm, , drop = FALSE], p$owner[perm])
+    expect_true(is.unsorted(q$owner))
+    expect_null(q$ends)
+    sg <- .menu_subgradient(q)
+    r <- .menu_search(q, sg$lambda, sg$pick, grain = 1)
+    expect_equal(r$status, "optimal")
+    expect_equal(r$value, want, tolerance = 1e-9)
+    expect_true(.menu_feasible(q, r$pick))
+    expect_setequal(q$owner[r$pick], seq_len(q$H))
+    sg_c <- .menu_subgradient(p)
+    expect_equal(.menu_search(p, sg_c$lambda, sg_c$pick, grain = 1)$value,
+                 r$value, tolerance = 1e-9)
+    checked <- checked + 1L
+  }
+  expect_gt(checked, 30L)
+})
+
+## Native entry points check their indices
+
+test_that("the native menu entries refuse indices outside their groups", {
+  cost <- c(1, 2, 3, 4)
+  C <- matrix(c(4, 3, 2, 1), ncol = 1)
+  ends <- c(2L, 4L)
+  expect_error(.Call(C_menu_step_down, cost, C, ends, c(3L, 4L), FALSE),
+               "own group")
+  expect_error(.Call(C_menu_step_down, cost, C, c(2L, 5L), c(1L, 3L), FALSE),
+               "'ends' must increase")
 })

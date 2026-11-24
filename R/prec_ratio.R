@@ -126,6 +126,7 @@ prec_ratio.default <- function(
   df = NULL,
   plan = NULL
 ) {
+  .refuse_alloc_object(r, "prec_ratio", "ratio")
   .plan <- .merge_plan_args(plan, prec_ratio.default, match.call(),
                             environment())
   if (!is.null(.plan)) {
@@ -139,6 +140,8 @@ prec_ratio.default <- function(
   check_deff(deff)
   check_resp_rate(resp_rate)
   check_resp_rate(eligibility_rate, "eligibility_rate")
+  check_eligible_population(N, 1, eligibility_rate,
+                            label = "N * eligibility_rate")
   .check_gross_n(n, N)
   if (!is.null(df)) {
     check_df(df)

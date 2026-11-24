@@ -60,17 +60,25 @@
                        alpha = 0.05, deff = 1, resp_rate = 1,
                        min_n_stratum = NULL, objective = NULL, df = NULL,
                        certainty_cutoff = NULL, n_psu_per_zone = NULL,
-                       eligibility_rate = 1) {
+                       eligibility_rate = 1, ft_spec = NULL) {
   stratum <- as.character(frame[["stratum"]] %||% seq_len(nrow(frame)))
   H <- nrow(frame)
   idx_of <- split(seq_len(nrow(psu)), factor(psu$stratum, levels = stratum))
-  take <- .psu_take(frame, psu, stratum)
+  free_take <- !is.null(ft_spec) && isTRUE(ft_spec$active)
+  if (free_take) {
+    cand_takes <- ft_spec$cand_takes
+    take <- vapply(cand_takes, function(v) as.numeric(v[ceiling(length(v) / 2)]),
+                   numeric(1))
+  } else {
+    take <- .psu_take(frame, psu, stratum)
+    cand_takes <- as.list(take)
+  }
   zone_m <- .psu_zone_m(n_psu_per_zone)
   zone_key <- .psu_zone_key(psu, zone_m)
   flagged <- if ("certainty" %in% names(psu)) psu$certainty else
     logical(nrow(psu))
   icc_row <- .psu_icc(measures, stratum, idx_of)
-  stage_cost <- c("cost_psu", "cost_ssu") %in% names(frame)
+  stage_cost <- c("cost_1", "cost_2") %in% names(frame)
   if (all(stage_cost) && !is.null(unit_cost)) {
     stop(
       "certainty-aware allocation uses stage costs; do not supply 'unit_cost'",
@@ -80,21 +88,22 @@
   cost_psu <- NULL
   cost_ssu <- NULL
   if (all(stage_cost)) {
-    cost_psu <- rep_len(as.numeric(frame$cost_psu), H)
-    cost_ssu <- rep_len(as.numeric(frame$cost_ssu), H)
+    cost_psu <- rep_len(as.numeric(frame$cost_1), H)
+    cost_ssu <- rep_len(as.numeric(frame$cost_2), H)
     if (any(!is.finite(cost_psu)) || any(cost_psu <= 0) ||
           any(!is.finite(cost_ssu)) || any(cost_ssu <= 0)) {
-      stop("'cost_psu' and 'cost_ssu' must be positive and finite",
+      stop("'cost_1' and 'cost_2' must be positive and finite",
            call. = FALSE)
     }
   }
   base_frame <- frame[
     , setdiff(names(frame),
-              c("n_per_psu", "cost_psu", "cost_ssu", "certainty_cutoff")),
+              c("take_2", "take_2_min", "take_2_max", "take_2_step",
+                "cost_1", "cost_2", "certainty_cutoff")),
     drop = FALSE
   ]
   base_measures <- measures[
-    , setdiff(names(measures), c("icc_psu", "var_ratio_psu")), drop = FALSE
+    , setdiff(names(measures), c("icc_1", "var_ratio_1")), drop = FALSE
   ]
   problem <- .build_bethel_problem(
     frame = base_frame, measures = base_measures, targets = targets,
@@ -120,6 +129,8 @@
     problem = problem,
     N = frame$N,
     take = take,
+    cand_takes = cand_takes,
+    free_take = free_take,
     lower = problem$lower,
     idx_of = idx_of,
     sizes = lapply(idx_of, function(i) psu$N[i]),
@@ -155,10 +166,11 @@
 #' @noRd
 .psu_eval_states <- function(ev, h, states) {
   N <- ev$N[h]
-  b <- ev$take[h]
+  b <- if ("take" %in% names(states)) states$take else rep(ev$take[h], nrow(states))
   n <- states$Q + states$a * b
   rest <- N - states$held
   drawn <- states$a > 0
+  b_drawn <- b[drawn]
   shares <- function(x) {
     out <- matrix(0, length(n), ncol(x$w))
     for (k in which(x$w[h, ] > 0)) {
@@ -169,8 +181,8 @@
       s <- N^2 * (1 / (r * n) - 1 / N)
       v <- states$A / r - states$held
       v[drawn] <- v[drawn] +
-        rest[drawn]^2 * (1 + x$icc[h, k] * (b * r * e - 1)) *
-        (1 / (r * states$a[drawn] * b) - 1 / rest[drawn])
+        rest[drawn]^2 * (1 + x$icc[h, k] * (b_drawn * r * e - 1)) *
+        (1 / (r * states$a[drawn] * b_drawn) - 1 / rest[drawn])
       out[, k] <- x$w[h, k] * x$weight[k] * e *
         ifelse(s <= 0, s, pmax(v, s))
     }
@@ -208,20 +220,32 @@
 .psu_menu_new <- function(ev) {
   lapply(seq_along(ev$N), function(h) {
     M <- ev$sizes[[h]]
-    b <- ev$take[h]
     free <- which(!ev$flagged[[h]])
     cand <- free[order(-M[free], free)]
-    f_lo <- max(1e-9, (ev$lower[h] - length(M) - b * max(ev$zone_m, 1)) /
-                  ev$N[h])
     parts <- if (is.null(ev$cost_psu)) 1L else max(1L, length(cand))
-    hi <- c(1, pmin(1, ev$cutoff[h] * b / M[cand]))[seq_len(parts)]
-    n_forced <- sum(ev$flagged[[h]]) + seq_along(hi) - 1L
+    n_forced_base <- sum(ev$flagged[[h]]) + seq_len(parts) - 1L
+    visits_base <- n_forced_base + (n_forced_base < length(M))
+    bs <- as.numeric(ev$cand_takes[[h]])
+    nb <- length(bs)
+    take_val <- rep(bs, each = parts)
+    n_forced_cand <- rep.int(seq_len(parts) - 1L, nb)
+    visits <- rep.int(visits_base, nb)
+    hi <- unlist(lapply(bs, function(b) {
+      c(1, pmin(1, ev$cutoff[h] * b / M[cand]))[seq_len(parts)]
+    }), use.names = FALSE)
+    f_end <- unlist(lapply(bs, function(b) {
+      f_lo <- max(1e-9, (ev$lower[h] - length(M) - b * max(ev$zone_m, 1)) /
+                    ev$N[h])
+      rep(f_lo, parts)
+    }), use.names = FALSE)
     list(
       cand = cand,
+      take_val = take_val,
+      n_forced_cand = n_forced_cand,
       hi = hi,
-      visits = n_forced + (n_forced < length(M)),
-      f_end = rep(f_lo, length(hi)),
-      open = hi > f_lo,
+      visits = visits,
+      f_end = f_end,
+      open = hi > f_end,
       states = NULL,
       C = NULL
     )
@@ -329,22 +353,30 @@
     found <- list()
     for (p in which(mh$open)) {
       if (.psu_menu_lb(bd, mh$visits[p], mh$f_end[p]) > lim) next
+      b_p <- mh$take_val[p]
+      n_fc <- mh$n_forced_cand[p]
       forced <- ev$flagged[[h]]
-      forced[mh$cand[seq_len(p - 1L)]] <- TRUE
+      if (n_fc > 0L) forced[mh$cand[seq_len(n_fc)]] <- TRUE
       r <- .psu_menu_part(
-        M, ev$N[h], ev$take[h], mh$f_end[p], mh$hi[p], ev$cutoff[h], forced,
+        M, ev$N[h], b_p, mh$f_end[p], mh$hi[p], ev$cutoff[h], forced,
         ev$zone_m, ev$zone_key[[h]],
         f_stop = .psu_menu_f_stop(bd, mh$visits[p], lim)
       )
       mh$f_end[p] <- r$f_end
       mh$open[p] <- r$stopped
-      found[[length(found) + 1L]] <- r$states[, c("f", "Q", "A", "held",
-                                                  "n_c", "a", "key")]
+      st <- r$states[, c("f", "Q", "A", "held", "n_c", "a", "key")]
+      if (nrow(st) > 0L) {
+        st$take <- rep(b_p, nrow(st))
+        if (isTRUE(ev$free_take)) {
+          st$key <- paste(b_p, st$key, sep = "@")
+        }
+        found[[length(found) + 1L]] <- st
+      }
     }
     if (length(found)) {
       d <- do.call(rbind, found)
       d <- d[!duplicated(d$key) & !d$key %in% mh$states$key, , drop = FALSE]
-      d <- d[d$Q + d$a * ev$take[h] >= ev$lower[h] - 1e-8, , drop = FALSE]
+      d <- d[d$Q + d$a * d$take >= ev$lower[h] - 1e-8, , drop = FALSE]
       if (nrow(d)) {
         e <- .psu_eval_states(ev, h, d)
         d$n <- e$n
@@ -476,14 +508,15 @@
 .psu_plan <- function(ev, f_anchor, max_nodes, budget = NULL, gap = 0) {
   H <- length(ev$N)
   K <- ncol(ev$target$w)
-  f_lo <- vapply(.psu_menu_new(ev), function(mh) mh$f_end[1], 0)
+  f_lo <- vapply(.psu_menu_new(ev), function(mh) min(mh$f_end), 0)
   band <- 4
   repeat {
     first <- .psu_menu_new(ev)
     for (h in seq_len(H)) {
       hi <- min(1, band * max(f_anchor[h], f_lo[h]))
-      first[[h]]$hi[1] <- hi
-      first[[h]]$open <- seq_along(first[[h]]$hi) == 1L & hi > f_lo[h]
+      is_closure <- first[[h]]$n_forced_cand == 0L
+      first[[h]]$hi[is_closure] <- hi
+      first[[h]]$open <- is_closure & (hi > first[[h]]$f_end)
     }
     first <- .psu_menu_round(first, ev, list(price = 1, mu = numeric(K)),
                              rep(Inf, H))
@@ -508,8 +541,9 @@
     # A certainty take capped at a fractional PSU size has a fractional
     # cost, off the lattice of the prices.
     sizes <- unlist(ev$sizes, use.names = FALSE)
+    all_takes <- unlist(ev$cand_takes, use.names = FALSE)
     whole <- all(abs(sizes - round(sizes)) <= 1e-9) &&
-      all(abs(ev$take - round(ev$take)) <= 1e-9)
+      all(abs(all_takes - round(all_takes)) <= 1e-9)
     grain <- if (whole) .menu_grain(prices) else 0
     if (grain > 0 && !.on_grain(p1$cost, grain)) grain <- 0
   } else {
@@ -677,10 +711,15 @@
 .psu_design <- function(ev, h, state) {
   M <- ev$sizes[[h]]
   N <- ev$N[h]
-  b <- ev$take[h]
+  b <- if ("take" %in% names(state)) state$take else ev$take[h]
   f <- state$f
   n_h <- f * N
-  set <- strsplit(state$key, "|", fixed = TRUE)[[1]][1]
+  raw_key <- if (grepl("@", state$key, fixed = TRUE)) {
+    sub("^[^@]*@", "", state$key)
+  } else {
+    state$key
+  }
+  set <- strsplit(raw_key, "|", fixed = TRUE)[[1]][1]
   certain <- logical(length(M))
   if (nzchar(set)) certain[as.integer(strsplit(set, ",", fixed = TRUE)[[1]])] <- TRUE
   counts <- .psu_stratum_counts(n_h, N, b, M, certain, ev$zone_m)
@@ -697,5 +736,5 @@
   source[!certain] <- NA_character_
   list(certain = certain, per_psu = counts$per_psu,
        n_psu_draw = counts$n_psu_draw, n_certain_int = sum(counts$per_psu),
-       threshold = threshold, source = source)
+       threshold = threshold, source = source, take = b)
 }

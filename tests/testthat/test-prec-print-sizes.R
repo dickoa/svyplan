@@ -39,7 +39,7 @@ test_that("a fit prints its continuous size, labeled, beside its precision", {
 test_that("a size override prints the whole size, unlabeled, at its precision", {
   for (case in prec_fits()) {
     fit <- case$fit
-    whole <- if (inherits(fit, "svyplan_n") && identical(fit$type, "alloc")) {
+    whole <- if (inherits(fit, "svyplan_alloc")) {
       fit$detail$n_int
     } else {
       ceiling(fit$n)

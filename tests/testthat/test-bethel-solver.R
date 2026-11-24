@@ -153,3 +153,20 @@ test_that("integer cleanup leaves no feasible one-unit deletion", {
     expect_true(any(.bethel_constraint_value(normalized, candidate) > 1 + 1e-8))
   }
 })
+
+test_that("the Bethel dual survives a step just below its zero bound", {
+  ## Exact bits matter: L-BFGS-B steps to a multiplier of -2.2e-16 here.
+  A <- matrix(c(
+    0x1.481a59baec446p+11, 0x1.f0d4e94b6bb72p+6, 0x1.a6dcabd6f385ap+11,
+    0x1.419f4ddab805dp+11, 0x1.0eba4a7ae6689p+10, 0x1.79c0798eb9f4cp+14,
+    0x1.8a0e7b04e4cbbp+13, 0x1.666b63c8ccdb8p+10
+  ), 2L, 4L)
+  bound <- c(0x1.ada93b11d4f7bp+8, 0x1.22da734fa1149p+17,
+             0x1.262cb2a29fd05p+10, 0x1.6cfd51bd3481bp+9)
+  cost <- c(0x1.4fb099a4d6759p+7, 0x1.d09e51152ed6cp+6)
+  sol <- svyplan:::.bethel_solve(A, bound, cost, c(1, 1), c(19, 22),
+                                 constraint_ids = paste0("c", 1:4))
+  expect_identical(sol$classification, "optimal")
+  load <- colSums(A / sol$allocation) / bound
+  expect_true(all(load <= 1 + 1e-6))
+})

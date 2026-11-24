@@ -108,3 +108,37 @@ test_that("whole numbers of any size are kept and a tiny size takes a unit", {
   expect_identical(as.integer(x), 1L)
   expect_identical(summary(x)$sizes[["field"]], 1)
 })
+
+## Counts at the integer range
+
+test_that("a large PSU frame does not overflow a modest multistage design", {
+  big <- data.frame(stratum = "A", N = 2e10, N_1 = 3e9, N_2 = 6e9, mean = 10,
+                    sd = 2, icc_1 = .1, icc_2 = .1, take_2 = 2, take_3 = 2)
+  fit <- expect_no_warning(n_alloc(big, n = 400))
+  expect_identical(fit$detail$n_int, 400L)
+  expect_no_warning(expect_error(
+    n_alloc(transform(big, N = 4e9, N_1 = 1e9, N_2 = 2e9),
+            n = .Machine$integer.max - 1),
+    "counts at most 2,147,483,647 units at the final stage"
+  ))
+})
+
+test_that("an integer count past the range is refused, not made NA", {
+  j <- n_alloc_joint(
+    data.frame(stratum = "A", N = 1e10),
+    measures = data.frame(stratum = "A", name = "y", p = 0.3),
+    targets = data.frame(name = "y", cv = 0.1), min_n_stratum = 3e9
+  )
+  expect_error(as.integer(j), class = "svyplan_count_range")
+  expect_identical(j$operational$n, 3e9)
+  frac <- n_alloc_joint(
+    data.frame(stratum = "A", N = 1e10),
+    measures = data.frame(stratum = "A", name = "y", p = 0.3),
+    targets = data.frame(name = "y", cv = 0.1), min_n_stratum = 3e9 + .25
+  )
+  expect_identical(frac$operational$n, 3000000001)
+  expect_equal(frac$n, 3e9 + .25)
+  at_max <- n_alloc(data.frame(stratum = c("A", "B"), N = 3e9, mean = 10,
+                               sd = 2), n = .Machine$integer.max)
+  expect_identical(as.integer(at_max), .Machine$integer.max)
+})

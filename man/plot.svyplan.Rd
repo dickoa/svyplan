@@ -5,13 +5,19 @@
 \alias{plot.svyplan_strata}
 \alias{plot.svyplan_power}
 \alias{plot.svyplan_n}
+\alias{plot.svyplan_alloc}
+\alias{plot.svyplan_alloc_joint}
 \title{Plot svyplan objects}
 \usage{
 \method{plot}{svyplan_strata}(x, ...)
 
 \method{plot}{svyplan_power}(x, npoints = 101L, ...)
 
-\method{plot}{svyplan_n}(x, npoints = 25L, newdata = NULL, ...)
+\method{plot}{svyplan_n}(x, ...)
+
+\method{plot}{svyplan_alloc}(x, ...)
+
+\method{plot}{svyplan_alloc_joint}(x, npoints = 25L, newdata = NULL, ...)
 }
 \arguments{
 \item{x}{A svyplan object.}
@@ -25,8 +31,8 @@ override the defaults, so you can set \code{main}, \code{col}, \code{ylab}, \cod
 101) or the budget frontier (default 25, since each point is a solve).}
 
 \item{newdata}{Optional one-column data frame of \code{budget} values for
-\code{plot.svyplan_n()}. The default sweeps from the cheapest design that
-meets the hard targets up to twice the fitted budget.}
+\code{plot.svyplan_alloc_joint()}. The default sweeps from the cheapest design
+that meets the hard targets up to twice the fitted budget.}
 }
 \value{
 \code{x}, invisibly.
@@ -38,7 +44,7 @@ results.
 \details{
 \code{plot.svyplan_strata()} draws a bar chart of per-stratum sampling
 fractions (\code{f = n / N}) using \code{\link[=barplot]{barplot()}}. This shows how
-intensively each stratum is sampled, under Neyman allocation,
+intensively each stratum is sampled. Under Neyman allocation,
 high-variance strata get higher fractions. A dashed horizontal line
 marks the overall sampling fraction (\code{n / N}). Defaults:
 \code{col = "grey40"}, \code{ylab = "Sampling fraction (f)"}, \code{las = 2}.
@@ -49,16 +55,17 @@ reference lines at the computed power and sample size, and a dotted
 line at the significance level. Defaults: \code{ylim = c(0, 1)},
 \code{type = "l"}, \code{xlab = "Sample size (per group)"}, \code{ylab = "Power"}.
 
-\code{plot.svyplan_n()} draws the budget frontier for a fixed-budget joint
-allocation (\code{\link[=n_alloc]{n_alloc()}} with \code{objective} and \code{budget}): what precision
-each budget buys on the objective indicator, over the range where the
-hard targets remain fundable. The fitted design is a filled dot. The
-curve is the same one \code{\link[=predict]{predict()}} returns as a table, so read exact
+\code{plot.svyplan_alloc_joint()} draws the budget frontier for a fixed-budget
+joint allocation (\code{\link[=n_alloc_joint]{n_alloc_joint()}} with \code{objective} and \code{budget}). It shows
+what precision each budget buys on the objective indicator over the range
+where the hard targets remain fundable. The fitted design is a filled dot.
+The curve is the same one \code{\link[=predict]{predict()}} returns as a table, so read exact
 numbers there. Its shape is the point, since the objective falls as
 \code{1 / cost}, so the marginal return on budget flattens, and the plot
 shows where. A fit with a \code{psu} register draws its field designs, their
-cost and objective, as its grid reports them. Other \code{svyplan_n} results
-have no frontier to draw and produce an error naming what is plottable.
+cost and objective, as its grid reports them. Other allocation and sample
+size results have no frontier to draw and produce an error naming what is
+plottable.
 }
 \examples{
 # Sampling fraction per stratum
@@ -91,13 +98,13 @@ measures <- data.frame(
   sd = c(rep(NA, 3), 10, 12, 15)
 )
 targets <- data.frame(name = "vaccination", cv = 0.05)
-fit <- n_alloc(frame, measures = measures, targets = targets,
-               objective = "income", budget = 4000)
+fit <- n_alloc_joint(frame, measures = measures, targets = targets,
+                     objective = "income", budget = 4000)
 plot(fit)
 
 }
 \seealso{
 \link{predict.svyplan} for the sensitivity grids these curves are
-drawn from, and \code{\link[=strata_bound]{strata_bound()}}, \code{\link[=power_prop]{power_prop()}}, \code{\link[=n_alloc]{n_alloc()}} for the
-results that are plottable.
+drawn from, and \code{\link[=strata_bound]{strata_bound()}}, \code{\link[=power_prop]{power_prop()}}, \code{\link[=n_alloc_joint]{n_alloc_joint()}} for
+the results that are plottable.
 }

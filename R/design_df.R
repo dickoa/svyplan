@@ -46,7 +46,7 @@
 #' | Two-phase | phase-2 units per stratum | \eqn{\sum_h n_{2h} - H}{sum_h n_2h - H} |
 #'
 #' The counts are read from the whole-unit columns a plan reports
-#' (`n_int`, `n_psu_int`, `n_psu_draw`, `operational$n`), never from the continuous
+#' (`n_int`, `n_1_int`, `n_psu_draw`, `operational$n`), never from the continuous
 #' optimum, since a degree of freedom is a unit that will be fielded. They
 #' are issued counts and are not adjusted for nonresponse. For an element
 #' design, fewer respondents generally mean fewer degrees of freedom. For
@@ -98,12 +98,12 @@
 #'
 #' Certainty, or self-representing, PSUs contribute no between-PSU variance
 #' and should not count toward first-stage df. For a PSU register supplied
-#' through [n_alloc()] with no certainty PSUs, this helper counts the
+#' through [n_alloc_joint()] with no certainty PSUs, this helper counts the
 #' operational PSUs (`n_psu_draw`) minus the design's variance groups. Those
 #' are the strata without zones, the zones at `n_psu_per_zone = 2`, and the
-#' collapsed groups `$psu$.pair` at `n_psu_per_zone = 1`. A collapsed group
-#' can join strata, so a stratum whose only zone is pooled with another
-#' stratum's shows no df of its own and is marked `"pooled"` in `$strata`.
+#' collapsed groups `$psu$.variance_group` at `n_psu_per_zone = 1`. A
+#' collapsed group can join strata, so a stratum whose only zone is pooled
+#' with another stratum's shows no df of its own and is marked `"pooled"` in `$strata`.
 #' Each stratum's df is then the count on that stratum alone, and the
 #' per-stratum values need not sum to the overall df.
 #' Allocations containing certainty PSUs are refused, because combining
@@ -114,7 +114,9 @@
 #'
 #' A stratum holding a single PSU supports no within-stratum variance
 #' estimate at all, and warns, naming the stratum. Its own contribution is
-#' zero and `$strata` marks it `"singleton"`. Whether a small but positive
+#' zero and `$strata` marks it `"singleton"`. A stratum the design leaves
+#' with no units, as a starved two-phase stratum, is marked `"unsampled"`
+#' and is not counted among the strata. Whether a small but positive
 #' df is a problem is a judgment call, so it is reported and never warned
 #' about.
 #'
@@ -138,8 +140,8 @@
 #'   N       = c(12000, 30000, 8000),
 #'   sd      = c(5, 8, 3),
 #'   mean    = c(10, 20, 5),
-#'   icc_psu = 0.05,
-#'   n_per_psu = 12
+#'   icc_1 = 0.05,
+#'   take_2 = 12
 #' )
 #' alloc <- n_alloc(frame, n = 3000)
 #' design_df(alloc)
@@ -165,9 +167,9 @@
 #'
 #' # A PSU register cut into zones: PSUs minus zones
 #' register <- data.frame(stratum = "A", N = rep(1000, 100))
-#' zoned <- n_alloc(
-#'   data.frame(stratum = "A", N = 100000, n_per_psu = 10),
-#'   measures = data.frame(stratum = "A", name = "y", p = 0.5, icc_psu = 0.05),
+#' zoned <- n_alloc_joint(
+#'   data.frame(stratum = "A", N = 100000, take_2 = 10),
+#'   measures = data.frame(stratum = "A", name = "y", p = 0.5, icc_1 = 0.05),
 #'   targets = data.frame(name = "y", cv = 0.08),
 #'   psu = register, n_psu_per_zone = 2
 #' )
@@ -240,16 +242,16 @@ design_df.svyplan_cluster <- function(x, ...) {
 }
 
 #' @describeIn design_df Count the PSUs of a [prec_cluster()] result, or
-#'   the stratum counts of a one-measure [prec_alloc()] result as for an
-#'   allocation. A precision result carries the counts it was given and not
-#'   a plan's operational design, so counts that are not whole are refused,
-#'   stratum sizes on an element frame and PSU counts on a cluster frame. A
-#'   generalized [prec_alloc()] result is refused too.
+#'   the stratum counts of a [prec_alloc()] result as for an allocation. A
+#'   precision result carries the counts it was given and not a plan's
+#'   operational design, so counts that are not whole are refused, stratum
+#'   sizes on an element frame and PSU counts on a cluster frame. A
+#'   [prec_alloc_joint()] result is refused too.
 #' @export
 design_df.svyplan_prec <- function(x, ...) {
-  if (identical(x$type, "alloc")) {
+  if (x$type %in% c("alloc", "alloc_joint")) {
     .df_prec_alloc_counts(x)
-    return(design_df.svyplan_n(x, ...))
+    return(design_df.svyplan_alloc(x, ...))
   }
   .check_unused_dots(...)
   if (!identical(x$type, "cluster")) {
@@ -258,6 +260,12 @@ design_df.svyplan_prec <- function(x, ...) {
         "design_df() counts the units of a cluster or allocation precision result; this is a '%s' result. Pass its size by name with design_df(n = ...)",
         x$type
       ),
+      call. = FALSE
+    )
+  }
+  if (!is.null(x$params$indicators)) {
+    stop(
+      "design_df() counts the units of a single-indicator cluster precision result; call design_df() on the n_cluster() plan instead",
       call. = FALSE
     )
   }
@@ -280,23 +288,23 @@ design_df.svyplan_prec <- function(x, ...) {
 
 #' Refuse a precision allocation whose counts are not a fielded design
 #'
-#' A generalized result's `$detail` holds its constraints, not stratum
+#' A joint result's `$detail` holds its constraints, not stratum
 #' counts. A classic result with fractional counts holds the whole columns
 #' of its own rounding, which need not be the plan's operational design.
 #' @keywords internal
 #' @noRd
 .df_prec_alloc_counts <- function(x) {
-  if (!is.null(x$params[["measures"]])) {
+  if (identical(x$type, "alloc_joint") || !is.null(x$params[["measures"]])) {
     stop(
-      paste("a generalized prec_alloc() result reports its constraints, not",
+      paste("a joint prec_alloc_joint() result reports its constraints, not",
             "a count per stratum; call design_df() on the allocation, or",
             "pass the counts by name with design_df(n = ..., n_strata = ...)",
             "or design_df(n_psu = ..., n_strata = ...)"),
       call. = FALSE
     )
   }
-  cluster <- !is.null(x$detail[["n_psu"]])
-  units <- if (cluster) x$detail$n_psu else x$detail$n
+  cluster <- !is.null(x$detail[["n_1"]])
+  units <- if (cluster) x$detail$n_1 else x$detail$n
   if (any(abs(units - round(units)) > 1e-9)) {
     stop(
       sprintf(
@@ -318,7 +326,8 @@ design_df.svyplan_prec <- function(x, ...) {
 .df_cluster_domains <- function(x) {
   dom <- x$operational$domains
   cols <- x$params$domain_cols
-  units <- as.numeric(dom$n_psu)
+  stage1_col <- names(x$n)[1L]
+  units <- as.numeric(dom[[stage1_col]])
   per <- pmax(units - 1, 0)
   status <- ifelse(units <= 1, "singleton", "ok")
   label <- do.call(paste, c(unname(as.list(dom[cols])), sep = "/"))
@@ -334,20 +343,16 @@ design_df.svyplan_prec <- function(x, ...) {
              domains = domains_tab)
 }
 
-#' @describeIn design_df Count a [n_alloc()] allocation, at the PSU stage
-#'   when the frame carried cluster columns and at the element stage
-#'   otherwise, or the units of a single [n_prop()], [n_mean()] or
-#'   [n_ratio()] size. A change or pooled size counts more than one
-#'   occasion and is refused.
 #' @param method For an allocation, `"nominal"` (default) counts units
 #'   minus strata. `"satterthwaite"` weights each stratum by its share of
 #'   the planned variance. See "Satterthwaite degrees of freedom".
+#' @describeIn design_df Count the units or PSUs of an [n_alloc()] or
+#'   [n_alloc_joint()] allocation, per stratum and per domain.
 #' @export
-design_df.svyplan_n <- function(x, ..., method = c("nominal", "satterthwaite")) {
+design_df.svyplan_alloc <- function(x, ..., method = c("nominal", "satterthwaite")) {
   .check_unused_dots(...)
   method <- match.arg(method)
-  if (identical(x$type, "alloc") && !is.null(x$params$psu) &&
-      any(x$psu$certainty)) {
+  if (!is.null(x$params$psu) && any(x$psu$certainty)) {
     stop(
       paste("design_df() refuses allocations containing certainty PSUs,",
             "whose within-PSU variance contributions need a",
@@ -355,6 +360,30 @@ design_df.svyplan_n <- function(x, ..., method = c("nominal", "satterthwaite")) 
       call. = FALSE
     )
   }
+  if (!is.null(x$psu[[".zone"]])) {
+    if (identical(method, "satterthwaite")) {
+      stop(
+        "method = \"satterthwaite\" weights strata by their variance shares, and a zoned register's variance groups cut across strata. Use the nominal count",
+        call. = FALSE
+      )
+    }
+    return(.df_zoned(x))
+  }
+  parts <- .df_alloc_parts(x$detail)
+  out <- .df_stratified(parts, x, .df_domain_idx(x))
+  if (identical(method, "satterthwaite")) {
+    out <- .df_satterthwaite(out, x$detail[[".share"]], parts$census)
+  }
+  out
+}
+
+#' @describeIn design_df Count the units of a single-indicator [n_prop()],
+#'   [n_mean()], or [n_ratio()] size. A multi-indicator, change, or pooled
+#'   result is refused.
+#' @export
+design_df.svyplan_n <- function(x, ..., method = c("nominal", "satterthwaite")) {
+  .check_unused_dots(...)
+  method <- match.arg(method)
   if (identical(x$type, "multi")) {
     stop(
       "a multi-indicator result sizes several indicators against one design; count that design with design_df() on the allocation or pass the counts by name",
@@ -372,31 +401,14 @@ design_df.svyplan_n <- function(x, ..., method = c("nominal", "satterthwaite")) 
       call. = FALSE
     )
   }
-  if (!identical(x$type, "alloc")) {
-    if (identical(method, "satterthwaite")) {
-      stop(
-        "method = \"satterthwaite\" weights strata by their variance shares, and a single size has one stratum, where it equals the nominal count. Use the default",
-        call. = FALSE
-      )
-    }
-    units <- .whole_count(x$n)
-    return(.df_result(units - 1, units, 1L, "element"))
-  }
-  if (!is.null(x$psu[[".zone"]])) {
-    if (identical(method, "satterthwaite")) {
-      stop(
-        "method = \"satterthwaite\" weights strata by their variance shares, and a zoned register's variance groups cut across strata. Use the nominal count",
-        call. = FALSE
-      )
-    }
-    return(.df_zoned(x))
-  }
-  parts <- .df_alloc_parts(x$detail)
-  out <- .df_stratified(parts, x, .df_domain_idx(x))
   if (identical(method, "satterthwaite")) {
-    out <- .df_satterthwaite(out, x$detail[[".share"]], parts$census)
+    stop(
+      "method = \"satterthwaite\" weights strata by their variance shares, and a single size has one stratum, where it equals the nominal count. Use the default",
+      call. = FALSE
+    )
   }
-  out
+  units <- .whole_count(x$n)
+  .df_result(units - 1, units, 1L, "element")
 }
 
 #' Satterthwaite degrees of freedom from the strata's variance shares
@@ -423,7 +435,7 @@ design_df.svyplan_n <- function(x, ..., method = c("nominal", "satterthwaite")) 
     )
   }
   nu_h <- pmax(tab$n_units[keep] - 1, 0)
-  df <- 1 / sum(share[keep]^2 / nu_h)
+  df <- sum(share[keep])^2 / sum(share[keep]^2 / nu_h)
   tab$.share <- share
   .new_svyplan_df(
     df,
@@ -484,10 +496,10 @@ design_df.svyplan_twophase <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 .df_alloc_parts <- function(detail) {
-  cluster <- any(c("n_psu_draw", "n_psu_int", "n_psu") %in% names(detail))
+  cluster <- any(c("n_psu_draw", "n_1_int", "n_1") %in% names(detail))
   if (cluster) {
     units <- as.numeric(detail[["n_psu_draw"]] %||%
-                          detail[["n_psu_int"]] %||% .whole_count(detail$n_psu))
+                          detail[["n_1_int"]] %||% .whole_count(detail$n_1))
     # take_all is an element-level census inside the stratum and leaves the
     # PSU stage sampling, so no stratum drops out at this stage.
     census <- rep(FALSE, nrow(detail))
@@ -507,8 +519,8 @@ design_df.svyplan_twophase <- function(x, ...) {
 #'
 #' The zones are the design's strata. At two PSUs per zone each zone is a
 #' variance group of its own. At one per zone the zones are collapsed into
-#' the `.pair` groups, which can join strata. A stratum gives up one degree
-#' of freedom to every group it draws from, the count `survey::degf()` makes
+#' the `.variance_group` groups, which can join strata. A stratum gives up
+#' one degree of freedom to every group it draws from, the count `survey::degf()` makes
 #' on that subset, so a stratum whose zone is pooled with another stratum's
 #' can show none of its own.
 #' @keywords internal
@@ -517,10 +529,10 @@ design_df.svyplan_twophase <- function(x, ...) {
   stratum <- as.character(x$detail$stratum)
   units <- as.numeric(x$detail$n_psu_draw)
   tab <- x$psu[!is.na(x$psu$.zone), , drop = FALSE]
-  group <- if (is.null(tab$.pair)) {
+  group <- if (is.null(tab[[".variance_group"]])) {
     paste(tab$stratum, tab$.zone)
   } else {
-    as.character(tab$.pair)
+    as.character(tab[[".variance_group"]])
   }
   groups_of <- function(h) unique(group[tab$stratum %in% h])
   n_groups <- vapply(stratum, function(h) length(groups_of(h)), numeric(1))
@@ -578,9 +590,10 @@ design_df.svyplan_twophase <- function(x, ...) {
 .df_stratified <- function(parts, x, domain_idx) {
   units <- parts$units
   census <- parts$census
-  contrib <- !census
+  contrib <- !census & units > 0
   status <- ifelse(census, "census",
-                   ifelse(units <= 1, "singleton", "ok"))
+                   ifelse(units == 0, "unsampled",
+                          ifelse(units <= 1, "singleton", "ok")))
   per_stratum <- ifelse(contrib, pmax(units - 1, 0), 0)
 
   .warn_singleton_strata(parts$stratum[status == "singleton"], parts$stage)

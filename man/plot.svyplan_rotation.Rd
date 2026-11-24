@@ -50,7 +50,7 @@ the same column, the cells then reading their own color.}
 
 \item{col}{Cell colors. One color when \code{fill = "none"}, otherwise at
 least one color per distinct fill value, taken in sorted order of the
-values. Defaults to grey, and to a qualitative palette when \code{fill} is
+values. Defaults to gray, and to a qualitative palette when \code{fill} is
 set.}
 
 \item{rows}{\code{"panel"} (default) draws one row per panel.

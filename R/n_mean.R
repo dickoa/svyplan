@@ -68,7 +68,9 @@
 #' @return A `svyplan_n` object with `type = "mean"`:
 #' \describe{
 #'   \item{`n`}{Required sample size, continuous and gross. It already
-#'     carries `deff` and the `1 / resp_rate` inflation, so it counts the
+#'     carries `deff` and the
+#'     `1 / (resp_rate * eligibility_rate * eligible_per_unit)` inflation, so
+#'     it counts the
 #'     units to release, not the completed interviews. `$n` and
 #'     `as.double()` keep the unrounded value, which is what makes the
 #'     round trip through [prec_mean()] exact. `print()` and
@@ -80,7 +82,7 @@
 #'     about the mean. `cv` and `rmoe` are `NA` unless a non-zero `mu` was
 #'     supplied, both needing a mean to be relative to.}
 #'   \item{`params`}{The validated inputs (`var`, `alpha`, `N`, `deff`,
-#'     `resp_rate`, `df`, `mu` when given, and whichever of `moe`, `cv`, or
+#'     `resp_rate`, `eligibility_rate` and `eligible_per_unit` when not 1, `df`, `mu` when given, and whichever of `moe`, `cv`, or
 #'     `rmoe` was the target). Dispersion is always stored as `var`, including when
 #'     you supplied `sd`. [predict()], [confint()] and the [prec_mean()]
 #'     round trip read the design back from here.}
@@ -166,6 +168,7 @@
 #' @export
 n_mean <- function(var = NULL, ...) {
   if (!is.null(var)) {
+    .refuse_result_as_input(var, "var", "n_mean")
     .res <- .dispatch_plan(var, "var", n_mean.default, ...)
     if (!is.null(.res)) return(.res)
   }
@@ -235,7 +238,7 @@ n_mean.default <- function(
   }
 
   n <- .census_size(.apply_resp_rate(n, resp_rate * yield), N)
-  .check_attainable(n, N, resp_rate, eligibility_rate)
+  .check_attainable(n, N, resp_rate, eligibility_rate, eligible_per_unit)
 
   params <- list(
     var = var,

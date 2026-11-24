@@ -145,7 +145,7 @@ test_that("eligibility_rate combines with eligible_per_unit as one yield", {
            eligible_per_unit = 0.9 * 1.7)$n
   )
   for (fpc in c("none", "stage")) {
-    pop <- if (fpc == "stage") list(N = 40000, N_psu = 400) else list()
+    pop <- if (fpc == "stage") list(N = c(400, 40000)) else list()
     a <- do.call(n_cluster, c(list(stage_cost = c(500, 50), icc = 0.05,
                                    cv = 0.05, resp_rate = 0.9,
                                    eligibility_rate = 0.85, fpc = fpc), pop))
@@ -179,7 +179,7 @@ test_that("the inverse functions carry eligibility_rate both ways", {
   expect_equal(prec_pooled(po)$moe, 0.02)
   cl <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
                   resp_rate = 0.9, eligibility_rate = 0.9, fpc = "stage",
-                  N = 40000, N_psu = 400)
+                  N = c(400, 40000))
   expect_equal(n_cluster(prec_cluster(cl))$n, cl$n)
   # The panel's eligibility converts respondents to issued units, and the
   # target's population of 20000 stays behind the requirement
@@ -217,7 +217,7 @@ test_that("a panel target sized with the panel's rates raises no warning", {
 test_that("n_multi() sizes every row with its own eligibility_rate", {
   ind <- data.frame(
     name = c("a", "b", "c"), p = c(0.3, 0.1, NA), var = c(NA, NA, 4),
-    mu = c(NA, NA, 10), moe = c(0.03, 0.02, 0.3), N = 5000,
+    mean = c(NA, NA, 10), moe = c(0.03, 0.02, 0.3), N = 5000,
     eligibility_rate = c(0.8, NA, 1)
   )
   res <- n_multi(ind, resp_rate = 0.9, eligibility_rate = 0.9)
@@ -245,19 +245,17 @@ test_that("n_multi() sizes every row with its own eligibility_rate", {
 
 test_that("cluster indicators take eligibility_rate as one argument", {
   ind <- data.frame(name = c("a", "b"), p = c(0.3, 0.1), cv = c(0.05, 0.1),
-                    icc_psu = c(0.05, 0.02), resp_rate = c(0.9, 0.8))
+                    icc_1 = c(0.05, 0.02), resp_rate = c(0.9, 0.8))
   folded <- transform(ind, resp_rate = resp_rate * 0.9)
-  a <- n_cluster(stage_cost = c(500, 50), indicators = ind,
-                 eligibility_rate = 0.9, fpc = "stage", N = 40000,
-                 N_psu = 400)
-  b <- n_cluster(stage_cost = c(500, 50), indicators = folded,
-                 fpc = "stage", N = 36000, N_psu = 400)
+  a <- n_cluster(ind, stage_cost = c(500, 50),
+                 eligibility_rate = 0.9, fpc = "stage", N = c(400, 40000))
+  b <- n_cluster(folded, stage_cost = c(500, 50),
+                 fpc = "stage", N = c(400, 36000))
   expect_equal(a$n, b$n)
   expect_equal(a$indicators$resp_rate, ind$resp_rate)
   expect_equal(n_cluster(prec_cluster(a))$n, a$n, tolerance = 1e-6)
   expect_error(
-    n_cluster(stage_cost = c(500, 50),
-              indicators = transform(ind, eligibility_rate = 0.9)),
+    n_cluster(transform(ind, eligibility_rate = 0.9), stage_cost = c(500, 50)),
     "give the argument 'eligibility_rate'"
   )
 })
@@ -291,12 +289,12 @@ test_that("a scalar eligibility_rate in n_alloc() matches a frame of N * e", {
   b <- n_alloc(transform(fr, N = N * 0.8), cv = 0.01, resp_rate = 0.9)
   expect_equal(a$detail$n, b$detail$n / 0.8)
   cl <- data.frame(stratum = c("u", "r"), N = c(50000, 50000),
-                   N_psu = c(400, 500), sd = c(10, 10), mean = c(50, 50),
-                   icc_psu = c(0.05, 0.08), n_per_psu = c(20, 20))
+                   N_1 = c(400, 500), sd = c(10, 10), mean = c(50, 50),
+                   icc_1 = c(0.05, 0.08), take_2 = c(20, 20))
   for (fpc in c("unit", "stage")) {
     a <- n_alloc(cl, cv = 0.01, resp_rate = 0.9, eligibility_rate = 0.9,
                  fpc = fpc)
-    b <- n_alloc(transform(cl, N = N * 0.9, n_per_psu = n_per_psu * 0.9),
+    b <- n_alloc(transform(cl, N = N * 0.9, take_2 = take_2 * 0.9),
                  cv = 0.01, resp_rate = 0.9, fpc = fpc)
     expect_equal(a$detail$n, b$detail$n / 0.9)
   }
@@ -304,9 +302,9 @@ test_that("a scalar eligibility_rate in n_alloc() matches a frame of N * e", {
                    name = rep(c("y", "z"), each = 2),
                    mean = c(50, 50, 10, 12), sd = c(10, 10, 4, 5))
   tg <- data.frame(name = c("y", "z"), cv = c(0.01, 0.02))
-  a <- n_alloc(fr[1:2], measures = ms, targets = tg, resp_rate = 0.9,
+  a <- n_alloc_joint(fr[1:2], measures = ms, targets = tg, resp_rate = 0.9,
                eligibility_rate = 0.9)
-  b <- n_alloc(transform(fr[1:2], N = N * 0.9), measures = ms, targets = tg,
+  b <- n_alloc_joint(transform(fr[1:2], N = N * 0.9), measures = ms, targets = tg,
                resp_rate = 0.9)
   expect_equal(a$detail$n, b$detail$n / 0.9)
 })
@@ -388,20 +386,20 @@ test_that("the register design effect reads the responding take in scope", {
 
 test_that("a register allocation takes eligibility_rate per stratum", {
   z <- .psu_fixture()
-  base <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+  base <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
                   psu = z$psu, resp_rate = 0.9)
-  same <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+  same <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
                   psu = z$psu, resp_rate = 0.9, eligibility_rate = 1)
   expect_identical(same$detail$n, base$detail$n)
   fr <- transform(z$frame, eligibility_rate = c(0.95, 0.9, 0.8, 0.7))
-  fit <- n_alloc(fr, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(fr, measures = z$measures, targets = z$targets,
                  psu = z$psu, resp_rate = 0.9)
   expect_false(isTRUE(all.equal(fit$detail$n, base$detail$n)))
-  assessed <- prec_alloc(fit)$detail
+  assessed <- prec_alloc_joint(fit)$detail
   expect_true(all(assessed$.cv <= z$targets$cv + 1e-9))
   bad <- transform(z$measures, eligibility_rate = 0.9)
   expect_error(
-    n_alloc(z$frame, measures = bad, targets = z$targets, psu = z$psu),
+    n_alloc_joint(z$frame, measures = bad, targets = z$targets, psu = z$psu),
     "stratum rate"
   )
 })
@@ -410,7 +408,7 @@ test_that("a register solve is the joint solve at the register design effect", {
   z <- .psu_fixture()
   e <- c(0.95, 0.9, 0.8, 0.7)
   fr <- transform(z$frame, eligibility_rate = e)
-  fit <- n_alloc(fr, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(fr, measures = z$measures, targets = z$targets,
                  psu = z$psu, resp_rate = 0.9)
   certain <- fit$psu$certainty
   h_of <- match(z$measures$stratum, fr$stratum)
@@ -418,12 +416,12 @@ test_that("a register solve is the joint solve at the register design effect", {
     h <- h_of[r]
     i <- z$psu$stratum == fr$stratum[h]
     svyplan:::.psu_deff(fr$N[h], sum(z$psu$N[i & certain]),
-                        sum(z$psu$N[i & !certain]), z$measures$icc_psu[r],
+                        sum(z$psu$N[i & !certain]), z$measures$icc_1[r],
                         12 * 0.9 * e[h])
   }, numeric(1))
-  joint <- n_alloc(
+  joint <- n_alloc_joint(
     fr[c("stratum", "N", "eligibility_rate")],
-    measures = transform(z$measures[setdiff(names(z$measures), "icc_psu")],
+    measures = transform(z$measures[setdiff(names(z$measures), "icc_1")],
                          deff = deff_r),
     targets = z$targets, resp_rate = 0.9
   )
@@ -443,7 +441,7 @@ test_that("a register state's score is its variance over the population in scope
                        A = sum(held^2 / per), n_c = 2)
   for (e in c(1, 0.8, 0.5)) {
     ev <- list(
-      N = N, take = b, unit = 1, cost_psu = NULL, objective = NULL,
+      N = N, take = b, unit = 1, cost_1 = NULL, objective = NULL,
       target = list(w = matrix(1), weight = 1, resp = matrix(r),
                     scope = matrix(e), icc = matrix(icc))
     )
@@ -460,7 +458,7 @@ test_that("the register search bound is the scorer's stratum-rate floor", {
   n <- 400
   for (e in c(1, 0.8, 0.5)) {
     ev <- list(
-      N = N, take = 12, unit = 1, cost_psu = NULL, objective = NULL,
+      N = N, take = 12, unit = 1, cost_1 = NULL, objective = NULL,
       lower = 1,
       target = list(w = matrix(2), weight = 0.5, resp = matrix(r),
                     scope = matrix(e), icc = matrix(0.05))
@@ -552,8 +550,11 @@ test_that("an issued overlap profile is accepted at full response in scope", {
                   overlap = rot, cor_decay = 0.8)
   res <- predict(fit, data.frame(eligibility_rate = c(0.7, 0.8)))
   expect_equal(res$n[2L], fit$n)
-  expect_error(predict(fit, data.frame(resp_rate = 0.9)),
-               "coincide only at resp_rate = 1")
+  expect_error(
+    expect_warning(predict(fit, data.frame(resp_rate = 0.9)),
+                   "coincide only at resp_rate = 1"),
+    "all rows failed"
+  )
 })
 
 test_that("expected cases and the case floor read every yield factor", {

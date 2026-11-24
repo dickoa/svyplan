@@ -7,6 +7,7 @@
 \alias{design_effect.svyplan_cluster}
 \alias{design_effect.svyplan_prec}
 \alias{design_effect.svyplan_varcomp}
+\alias{design_effect.svyplan_alloc}
 \alias{design_effect.svyplan_n}
 \title{Planning design effect}
 \usage{
@@ -16,27 +17,29 @@ design_effect(x = NULL, ...)
   x = NULL,
   ...,
   icc = NULL,
-  n_per_psu = NULL,
-  n_per_ssu = NULL,
+  take = NULL,
   var_ratio = 1,
   weights = NULL,
-  strata = NULL
+  strata = NULL,
+  aux_r2 = NULL
 )
 
 \method{design_effect}{numeric}(x, ...)
 
-\method{design_effect}{svyplan_cluster}(x, ..., weights = NULL, strata = NULL)
+\method{design_effect}{svyplan_cluster}(x, ..., weights = NULL, strata = NULL, aux_r2 = NULL)
 
-\method{design_effect}{svyplan_prec}(x, ..., weights = NULL, strata = NULL)
+\method{design_effect}{svyplan_prec}(x, ..., weights = NULL, strata = NULL, aux_r2 = NULL)
 
 \method{design_effect}{svyplan_varcomp}(
   x,
   ...,
-  n_per_psu = NULL,
-  n_per_ssu = NULL,
+  take = NULL,
   weights = NULL,
-  strata = NULL
+  strata = NULL,
+  aux_r2 = NULL
 )
+
+\method{design_effect}{svyplan_alloc}(x, ..., weights = NULL, aux_r2 = NULL)
 
 \method{design_effect}{svyplan_n}(x, ..., weights = NULL)
 }
@@ -50,37 +53,39 @@ the design effect from the component arguments below.}
 rejected.}
 
 \item{icc}{Homogeneity of units within a cluster, in \eqn{[0, 1]}.
-A scalar for a two-stage design, or \code{c(icc_psu, icc_ssu)} for a
-three-stage design. This is the survey-planning measure returned by
+A vector of length \code{stages - 1} (scalar for two stages, length 2 for
+three stages, and so on). This is the survey-planning measure returned by
 \code{\link[=varcomp]{varcomp()}}, not a generic mixed-model ICC.}
 
-\item{n_per_psu}{Units taken per PSU in a two-stage design, or SSUs
-taken per PSU in a three-stage design. Required with \code{icc}. A single
-value, since the result describes one design. The examples show one
-design effect per stratum.}
-
-\item{n_per_ssu}{Units taken per SSU. Supply only for a three-stage
-design, where \code{icc} has length 2.}
+\item{take}{Per-parent take at stages \verb{2..S} (length \code{stages - 1}, matching
+\code{icc}). Scalar for two stages (units per PSU), length 2 for three stages
+(SSUs per PSU, units per SSU), and so on. Required with \code{icc}.}
 
 \item{var_ratio}{Ratio of the components' unit variance to the analysis
-variable's, default 1. A scalar names \code{var_ratio_psu} and, for a three-stage
-\code{icc}, derives \code{var_ratio_ssu = var_ratio_psu * (1 - icc_psu)}, the
-value for SSUs of equal size or drawn proportional to size. Supply a
-length-2 vector when SSUs are drawn otherwise. See Details.}
+variable's, default 1. A scalar supplies stage 1 and derives deeper ratios
+via \verb{k_s = k_\{s-1\} * (1 - icc_\{s-1\})}. Supply a vector matching \code{icc}
+when unequal-sized sub-units are drawn by SRS. See Details.}
 
-\item{weights}{For an \code{\link[=n_alloc]{n_alloc()}} result only: an \emph{additional}
-anticipated weighting adjustment charged on top of the allocation,
-such as a nonresponse correction or a calibration step. Do not pass
-the allocation's own weights. The stratum takes already carry those,
-and supplying them again counts the same disproportionality twice.
-The \code{allocation} component is exact for the plan, while this one is
-Kish's approximation, so with \code{weights} supplied the overall result is
+\item{weights}{Numeric vector of planned sampling weights, one per
+sampled unit. Only their relative variability matters. On an
+\code{\link[=n_alloc]{n_alloc()}} result they are an \emph{additional} anticipated weighting
+adjustment charged on top of the allocation, such as a nonresponse
+correction or a calibration step. Do not pass the allocation's own
+weights there. The stratum takes already carry those, and supplying
+them again counts the same disproportionality twice. The \code{allocation}
+component is exact for the plan, while the weighting one is Kish's
+approximation, so with \code{weights} supplied the overall result is
 approximate too and prints as such.}
 
 \item{strata}{Stratum-level data frame describing a planned stratified
 allocation, using the \code{\link[=n_alloc]{n_alloc()}} column names. \code{N} with \code{n} gives
 the weighting component. \code{N} with \code{sd} and \code{mean} gives the
 stratification component. Supply all four for both.}
+
+\item{aux_r2}{Optional anticipated squared correlation \eqn{R^2} in
+\eqn{[0, 1)} between the survey variable and auxiliary calibration
+variables. Multiplies the design effect by \eqn{1 - R^2}. Avoid supplying
+this when variance or ICC inputs are already computed on residuals.}
 }
 \value{
 A \code{svyplan_deff} object: a numeric scalar carrying the component
@@ -91,7 +96,8 @@ export the components.
 \description{
 Build the design effect you expect a complex design to produce, before
 any data are collected, by combining the design features you are
-planning: clustering, unequal weighting, and stratification. The result
+planning: clustering, unequal weighting, stratification, and optional
+auxiliary calibration. The result
 is a multiplier you pass as \code{deff} to \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}},
 \code{\link[=n_alloc]{n_alloc()}}, or any other sizing or precision function.
 }
@@ -112,36 +118,35 @@ which compute it from the actual weights, strata, and clusters.
 Components are selected by which arguments you supply, and multiply
 together:
 
-\deqn{DEFF = DEFF_{cluster} \times DEFF_{weight} \times DEFF_{strata}.}{DEFF = DEFF_cluster * DEFF_weight * DEFF_strata.}
+\deqn{DEFF = DEFF_{cluster} \times DEFF_{weight} \times DEFF_{strata} \times DEFF_{calibration}.}{DEFF = DEFF_cluster * DEFF_weight * DEFF_strata * DEFF_calibration.}
 
-\strong{Clustering} (\code{icc}, \code{n_per_psu}, \code{n_per_ssu}, \code{var_ratio}) uses the same
-variance model as \code{\link[=n_cluster]{n_cluster()}} and \code{\link[=prec_cluster]{prec_cluster()}}, so the two always
-agree. For a two-stage design with \code{n_per_psu} units taken per PSU,
-\deqn{DEFF_{cluster} = k(1 + \delta(m - 1)),}{DEFF_cluster = k(1 + delta(m - 1)),}
-and for a three-stage design taking \code{n_per_psu} SSUs per PSU and
-\code{n_per_ssu} units per SSU,
-\deqn{DEFF_{cluster} = k_1\delta_1 mq + k_2(1 + \delta_2(q - 1)).}{DEFF_cluster = k_1 delta_1 mq + k_2(1 + delta_2(q - 1)).}
-Estimate \code{icc} (and \code{var_ratio}) from a previous round or pilot with
-\code{\link[=varcomp]{varcomp()}}.
+\strong{Clustering} (\code{icc}, \code{take}, \code{var_ratio}) uses the same variance model as
+\code{\link[=n_cluster]{n_cluster()}} and \code{\link[=prec_cluster]{prec_cluster()}}, so the two always agree. For an
+\eqn{S}-stage design with stage homogeneities \eqn{\delta_1, \dots, \delta_{S-1}}{delta_1, ..., delta_{S-1}},
+variance ratios \eqn{k_1, \dots, k_{S-1}}{k_1, ..., k_{S-1}}, and per-parent
+takes \eqn{t_2, \dots, t_S}{t_2, ..., t_S} (supplied in \code{take}, length
+\eqn{S - 1}),
+\deqn{DEFF_{cluster} = \sum_{s=1}^{S-1} k_s \delta_s \prod_{j=s+1}^{S} t_j + k_{S-1}(1 - \delta_{S-1}).}{DEFF_cluster = sum_{s=1}^{S-1} k_s delta_s prod_{j=s+1}^S t_j + k_{S-1}(1 - delta_{S-1}).}
+For two stages (\eqn{t_2 = m}), this is \eqn{k_1(1 + \delta_1(m - 1))}. For
+three stages (\eqn{t_2 = m, t_3 = q}), it is
+\eqn{k_1 \delta_1 m q + k_2(1 + \delta_2(q - 1))}. Estimate \code{icc} (and
+\code{var_ratio}) from a previous round or pilot with \code{\link[=varcomp]{varcomp()}}.
 
-In the three-stage form \eqn{k_1} rescales the components' unit variance
-to the analysis variable and \eqn{k_2} does the same for the within-PSU
-part. When SSU size plays no part in the within-PSU estimator, as with
-SSUs of equal size or SSUs drawn proportional to size, that part is
-\eqn{1-\delta_1}{1 - delta_1} of the whole and
-\deqn{k_2 = k_1(1 - \delta_1).}{k_2 = k_1(1 - delta_1).}
-This is what makes the design effect collapse to \eqn{k_1} at
-\eqn{m=q=1}, where one unit is taken per SSU and one SSU per PSU so no
-clustering remains. A scalar \code{var_ratio} supplies \eqn{k_1} and derives
-\eqn{k_2} this way. When SSUs of unequal size are drawn by simple random
-sampling, their expanded totals also vary with size and \eqn{k_2} is
-larger, up to three times larger on real frames. Supply both ratios then,
-for instance from \code{\link[=varcomp]{varcomp()}} run with the selection the design uses.
+In the multistage form \eqn{k_s} rescales the stage-\eqn{s} components to
+the unit variance of the analysis variable. When sub-units have equal size
+or are drawn proportional to size, each stage ratio follows recursively from
+the stage above:
+\deqn{k_s = k_{s-1}(1 - \delta_{s-1}), \quad s = 2, \dots, S - 1.}{k_s = k_{s-1}(1 - delta_{s-1}), s = 2, ..., S - 1.}
+This makes the design effect collapse to \eqn{k_1} when every take equals 1,
+where no clustering remains. A scalar \code{var_ratio} supplies \eqn{k_1} and
+derives deeper ratios this way. When unequal-sized sub-units are drawn by
+simple random sampling, supply the full length-\eqn{S - 1} vector (for
+instance from \code{\link[=varcomp]{varcomp()}}).
 
 Written on components referenced to the total unit variance,
 \eqn{\delta_1=\sigma_1^2/S^2} and \eqn{\delta_2^{tot}=\sigma_2^2/S^2}{delta_2^tot=sigma_2^2/S^2},
 the same quantity is the familiar
-\eqn{1+\delta_1(mq-1)+\delta_2^{tot}(q-1)}{1+delta_1(mq-1)+delta_2^tot(q-1)}. The package's \code{icc_ssu} is
+\eqn{1+\delta_1(mq-1)+\delta_2^{tot}(q-1)}{1+delta_1(mq-1)+delta_2^tot(q-1)}. The package's \code{icc_2} is
 referenced to the within-PSU variance instead, so
 \eqn{\delta_2=\delta_2^{tot}/(1-\delta_1)}{delta_2=delta_2^tot/(1-delta_1)}.
 
@@ -159,13 +164,20 @@ past survey's final weights, divides that survey's weighting loss out of
 its published design effect. See \code{\link[=varcomp]{varcomp()}}.
 
 \strong{Stratification} (\code{N}, \code{sd}, and \code{mean} in \code{strata}) is the gain from
-stratifying, the only component that can fall below 1. With
+stratifying, the only design-stage component that can fall below 1. With
 \eqn{W_h = N_h/N},
 \deqn{DEFF_{strata} = \sum_h W_hS_h^2 /
       \left(\sum_h W_hS_h^2 + \sum_h W_h(\bar y_h - \bar y)^2\right).}{DEFF_strata = sum_h W_hS_h^2 / (sum_h W_hS_h^2 + sum_h W_h(ybar_h - ybar)^2 ).}
 It measures the gain under \emph{proportional} allocation. Any departure from
 proportional is already charged to the weighting component, so the two
 compose without double counting.
+
+\strong{Auxiliary calibration} (\code{aux_r2}) approximates the variance reduction
+from GREG or linear calibration on auxiliary variables with anticipated
+squared correlation \eqn{R^2 \in [0, 1)}{R^2 in [0, 1)}, multiplying the
+design effect by \eqn{1 - R^2}. Do not supply \code{aux_r2} when the \code{sd}, \code{var},
+or \code{icc} inputs were already computed from regression residuals rather than
+the raw survey variable, as that would double-count the auxiliary gain.
 
 Because the clustering component already prices the clustering, do not
 additionally inflate \code{deff} for it elsewhere. Components you leave
@@ -199,10 +211,9 @@ the plan's variance reads. Where every stratum has the same rate it
 cancels. Where the rates differ, a stratum that responds poorly carries
 more of the variance than its issued share suggests, and the ratio
 includes that loss. A per-stratum \code{deff} weights its own stratum's contribution and a
-scalar factors straight back out. A generalized allocation optimizing
-several measures has
-no single such ratio and is refused. Take the measure-specific numbers
-from \code{\link[=prec_alloc]{prec_alloc()}}.
+scalar factors straight back out. Joint designs from \code{\link[=n_alloc_joint]{n_alloc_joint()}}
+and their assessments can have different variance ratios by measure.
+Use \code{\link[=prec_alloc_joint]{prec_alloc_joint()}} for measure-specific precision.
 
 The clustering bracket reads \eqn{m_hr_h}, the take that responds, because
 that is the take \code{\link[=n_alloc]{n_alloc()}} sized the design on. So the ratio reported
@@ -230,10 +241,10 @@ nothing about which design component it describes.
 
 \item \code{design_effect(svyplan_cluster)}: Read \code{icc}, \code{var_ratio}, and the stage takes from a
 \code{\link[=n_cluster]{n_cluster()}} or \code{\link[=prec_cluster]{prec_cluster()}} allocation. The takes are those that
-respond, \code{n_per_psu * resp_rate * eligibility_rate * eligible_per_unit}
-at two stages, the ones the precision reads, so the design effect and
-the \code{cv} describe one design. A plan sized from an \code{indicators} table
-has no single design effect and is refused.
+respond (including \code{eligibility_rate} and \code{eligible_per_unit} at the final
+stage), so the design effect and the \code{cv} describe one design. A plan
+sized from an \code{indicators} table has no single design effect and is
+refused.
 
 \item \code{design_effect(svyplan_prec)}: Read the design features off a
 \code{\link[=prec_cluster]{prec_cluster()}} result, the same way as for \code{\link[=n_cluster]{n_cluster()}}, or the
@@ -242,10 +253,10 @@ stratum counts of a \code{\link[=prec_alloc]{prec_alloc()}} result, the same way
 rather than one to be derived, and are rejected.
 
 \item \code{design_effect(svyplan_varcomp)}: Read \code{icc} and \code{var_ratio} from a \code{\link[=varcomp]{varcomp()}}
-estimate. The stage takes are your design choice, so \code{n_per_psu} (and
-\code{n_per_ssu} for three stages) must be supplied.
+estimate. The stage takes are your design choice, so \code{take} (length
+\code{stages - 1}) must be supplied.
 
-\item \code{design_effect(svyplan_n)}: Read the planned allocation from an
+\item \code{design_effect(svyplan_alloc)}: Read the planned allocation from an
 \code{\link[=n_alloc]{n_alloc()}} result. This returns the allocation's own variance ratio,
 computed from the stratum sizes, takes, standard deviations, means and
 any per-stratum cluster factors, rather than a product of separate
@@ -256,17 +267,26 @@ loss of its whole takes that respond,
 the ratio when every stratum has the same variance. Supply \code{weights} only for
 an \emph{additional} anticipated adjustment. See the \code{weights} argument.
 
+\item \code{design_effect(svyplan_n)}: Single-indicator sizing results carry the \code{deff}
+supplied at creation rather than deriving one, and are rejected.
+
 }}
 \examples{
 # Clustering: 25 households per cluster, homogeneity 0.05
-design_effect(icc = 0.05, n_per_psu = 25)
+design_effect(icc = 0.05, take = 25)
+
+# The same cluster design with an anticipated calibration gain
+design_effect(icc = 0.05, take = 25, aux_r2 = 0.25)
 
 # One design effect per stratum, from a common icc and the takes. The
 # result of each call is a scalar, so sapply() returns a plain vector.
-sapply(c(20, 25, 30), function(m) design_effect(icc = 0.03, n_per_psu = m))
+sapply(c(20, 25, 30), function(m) design_effect(icc = 0.03, take = m))
 
 # Three stages: 10 SSUs per PSU, 4 units per SSU
-design_effect(icc = c(0.01, 0.05), n_per_psu = 10, n_per_ssu = 4)
+design_effect(icc = c(0.01, 0.05), take = c(10, 4))
+
+# Four stages: 5 EAs per district, 4 segments per EA, 8 households per segment
+design_effect(icc = c(0.01, 0.03, 0.06), take = c(5, 4, 8))
 
 # Weighting loss from a planned set of weights
 design_effect(weights = rep(c(1, 4), c(300, 100)))
@@ -281,7 +301,7 @@ frame <- data.frame(
 design_effect(strata = frame)
 
 # Clustering and weighting together
-deff <- design_effect(icc = 0.05, n_per_psu = 25, strata = frame)
+deff <- design_effect(icc = 0.05, take = 25, strata = frame)
 deff
 n_prop(p = 0.3, moe = 0.05, deff = deff)
 

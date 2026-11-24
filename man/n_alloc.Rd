@@ -4,7 +4,7 @@
 \alias{n_alloc}
 \alias{n_alloc.default}
 \alias{n_alloc.svyplan_prec}
-\title{Constrained stratified allocation}
+\title{Stratified sample allocation}
 \usage{
 n_alloc(frame, ...)
 
@@ -14,14 +14,9 @@ n_alloc(frame, ...)
   domains = NULL,
   n = NULL,
   cv = NULL,
+  moe = NULL,
+  rmoe = NULL,
   budget = NULL,
-  measures = NULL,
-  targets = NULL,
-  psu = NULL,
-  certainty_cutoff = NULL,
-  n_psu_per_zone = NULL,
-  control = NULL,
-  objective = NULL,
   alloc = c("neyman", "optimal", "proportional", "power"),
   unit_cost = NULL,
   alpha = 0.05,
@@ -34,1004 +29,285 @@ n_alloc(frame, ...)
   min_n_domain = NULL,
   alloc_q = 0.5,
   fpc = c("unit", "stage", "none"),
+  control = NULL,
   plan = NULL
 )
 
-\method{n_alloc}{svyplan_prec}(frame, ..., n = NULL, cv = NULL, budget = NULL)
+\method{n_alloc}{svyplan_prec}(
+  frame,
+  ...,
+  n = NULL,
+  cv = NULL,
+  moe = NULL,
+  rmoe = NULL,
+  budget = NULL
+)
 }
 \arguments{
-\item{frame}{For the default method: a \strong{stratum-level} data frame
-describing the population you want to sample. Each row represents one
-stratum, a subgroup of the population defined by a stratification
-variable such as region, age group, or urbanicity. The values in this
-frame typically come from a census, a population register, or a
-previous survey. Any stratum table with the columns below works,
-including a pool summary carried back from an executed sample once the
-measure columns are added.
+\item{frame}{For the default method, a stratum-level data frame describing
+the population to sample. Each row represents one stratum. When a design
+stratifies by several variables (such as region and urbanicity), cross
+them into a single stratification column first so that each row maps to
+one population cell.
 
-When a design stratifies by several variables at once (e.g. region
-\eqn{\times}{*} urbanicity), cross them into a single variable before
-calling \code{n_alloc} (e.g. with \code{\link[=interaction]{interaction()}}) so that each row maps
-to exactly one population cell.
-
-When \code{measures} and \code{targets} are supplied, \code{frame} instead describes
-atomic allocation strata for joint constrained allocation. It requires
-unique, non-missing \code{stratum} and positive finite \code{N} columns. It may
-contain \code{unit_cost}, \code{max_weight}, \code{take_all}, and complete domain
-classification columns named by \code{targets$domain}. In that mode \code{sd},
-\code{var}, \code{mean} and \code{p} belong in \code{measures} instead.
-Each row must be homogeneous for every
-domain classification used by a target. For a fixed-take two-stage
-design, also supply whole \code{N_psu} and \code{n_per_psu}, plus positive
-\code{cost_psu} and \code{cost_ssu}. A three-stage design additionally requires
-whole \code{N_ssu} and \code{n_per_ssu}, and positive \code{cost_tsu}. \code{N_psu} is the
-number of PSUs in the stratum. In three-stage mode, \code{N_ssu} is the
-aggregate number of SSUs across all PSUs in the stratum (not the number
-per PSU). Stage costs replace \code{unit_cost}.
-
-\strong{Required columns:}
+\strong{Required columns}
 \describe{
-\item{\code{N}}{Number of units (e.g. households, individuals) in
-each stratum. These are population counts, not sample sizes.
-Must be positive and finite.}
-\item{\code{sd} \strong{or} \code{var} (classic modes)}{A measure of how spread out the variable
-of interest is within each stratum, required except for a fixed \code{n}
-under \code{alloc = "proportional"} or \code{"power"}. Provide \strong{exactly one}:
-\itemize{
-\item \code{sd}: the stratum standard deviation
-(\eqn{\sqrt{\text{variance}}}{sqrt(variance)}), or
-\item \code{var}: the stratum variance.
-}
-Both must be non-negative and finite. A frame with \code{p} and
-neither column takes its variance from \code{p}, as \code{measures} does in
-joint allocation, \eqn{N p (1 - p) / (N - 1)}{N p (1 - p) / (N - 1)}
-in an element design and \eqn{p (1 - p)}{p (1 - p)} in a
-multistage one or under \code{fpc = "none"}. Without \code{sd}, \code{var} or \code{p}, those two rules
-allocate a fixed \code{n} from the stratum sizes alone, and the
-precision fields of the result are \code{NA} because nothing was
-assessed.}
+\item{\code{N}}{Population count of units in each stratum. Must be positive
+and finite.}
+\item{\code{sd} or \code{var}}{Within-stratum spread of the key variable, required
+except for a fixed \code{n} under \code{alloc = "proportional"} or \code{"power"}.
+Supply \code{sd} or \code{var}, not both. A frame with \code{p} and neither column
+derives its variance from \code{p}, as \code{N * p * (1 - p) / (N - 1)} in an
+element design under \code{fpc = "unit"} and \code{p * (1 - p)} in a cluster
+design or under \code{fpc = "none"}. Without \code{sd}, \code{var}, or \code{p}, fixed-\code{n}
+proportional and power rules allocate from stratum sizes alone and
+report \code{NA} precision.}
 }
 
-\strong{Optional columns:}
+\strong{Optional columns}
 \describe{
-\item{\code{stratum}}{A label identifying each stratum (e.g.
-\code{"Urban"}, \code{"Rural"}). If omitted, row numbers are used. Must
-be unique, or unique within each domain when \code{domains} is set.}
-\item{Label columns}{Any other character, factor or logical column,
-such as \code{region} and \code{residence}, is carried into \verb{$detail} after
-\code{stratum}. Numeric columns are not, so an integer code such as a
-region number is carried only once converted with \code{factor()}. A
-label column named like a column of \verb{$detail} is an error.}
-\item{\code{mean} \strong{or} \code{p}}{The stratum population mean or
-proportion of the variable of interest. \strong{Required when solving
-for \code{cv}, and by \code{alloc = "power"} when \code{sd} or \code{var} is given},
-because the coefficient of variation is defined relative to the
-mean. Use \code{mean} for continuous variables
-and \code{p} (in \eqn{[0, 1]}) for binary (yes/no) variables.}
-\item{\code{alloc_measure}}{Positive finite stratum measure used only by
-Bankier allocation (\code{alloc = "power"}). Defaults to
-\code{N * abs(mean)} (or \code{N * p}). Population CV is derived from
-\code{sd / abs(mean)} and requires a nonzero mean in every stratum.
-Without \code{sd}, \code{var} or \code{p} the CV term drops, the weights are
-\code{alloc_measure^alloc_q}, and \code{alloc_measure} defaults to \code{N}.}
-\item{\code{unit_cost}}{Per-unit interviewing cost in each stratum
-(positive, finite). Set higher values for strata that are more
-expensive to reach. Defaults to 1 everywhere (equal cost).}
-\item{\code{max_weight}}{Maximum allowed sampling weight
-\eqn{N_h / n_h}. Caps how under-represented a stratum can be.
-Use \code{NA} for strata without a cap. It bounds the gross weight,
-the units drawn, not the response-adjusted \eqn{N_h/(n_hr_h)},
-which differs once \code{resp_rate} varies by stratum.}
-\item{\code{min_n_stratum}}{Minimum sample size of each stratum, \code{NA}
-for none. See the argument of the same name.}
-\item{\code{n_step}}{Whole step of each stratum's sample size, \code{NA} or 1
-for none, so that \code{n_int} is a multiple of it. Use it when the
-sample of a stratum must divide evenly over fieldwork periods or
-rotation groups, such as 12 PSUs a year for monthly fieldwork. It
-counts the units \code{n} counts, so on a frame of households with \code{n}
-counting PSUs it is a number of PSUs. Bounds move to whole steps.
-A floor rises to the next step, the population caps a stratum at
-its last whole step, and a \code{take_all} stratum keeps its \code{N}. A
-two-stage frame and joint allocation refuse it. See the section on
-steps in Details.}
-\item{\code{take_all}}{Logical (or 0/1). If \code{TRUE}, every unit in the
-stratum is included, a census stratum. Useful for small strata
-whose total population is tiny enough to enumerate.}
-\item{\code{deff}, \code{resp_rate}}{Per-stratum design effect and expected
-response rate, for designs whose fieldwork differs across
-strata. \code{NA} in either column falls back to the scalar argument.
-The \code{deff} and \code{resp_rate} arguments override these columns when
-given as vectors. In joint allocation a non-missing \code{measures} row
-overrides them instead. A published DEFT is squared first, and the
-allocation already carries its own weighting loss. See \code{\link[=varcomp]{varcomp()}}.}
+\item{\code{stratum}}{Stratum label. Defaults to row numbers. Must be unique,
+or unique within each domain when \code{domains} is set.}
+\item{Label columns}{Other character, factor, or logical columns are
+carried into \verb{$detail} after \code{stratum}.}
+\item{\code{mean} or \code{p}}{Stratum population mean or proportion (in \verb{[0, 1]}).
+Required when solving for \code{cv} or \code{rmoe}, and by \code{alloc = "power"}
+when \code{sd} or \code{var} is given.}
+\item{\code{alloc_measure}}{Positive stratum size measure used only by
+\code{alloc = "power"}. Defaults to \code{N * abs(mean)} (or \code{N * p}) when a
+variance is given, or \code{N} otherwise.}
+\item{\code{unit_cost}}{Positive per-unit interviewing cost per stratum.
+Defaults to 1. Not allowed in cluster mode, which uses stage costs.}
+\item{\code{max_weight}}{Maximum allowed gross sampling weight \code{N / n} per
+stratum, \code{NA} for none.}
+\item{\code{min_n_stratum}}{Minimum sample size per stratum, \code{NA} for none.}
+\item{\code{n_step}}{Whole step size per stratum (\code{NA} or 1 for none) so
+\code{n_int} is a multiple of \code{n_step}. Element frames only.}
+\item{\code{take_all}}{Logical (or 0/1). If \code{TRUE}, every unit in the stratum
+is selected (census stratum). Element frames only.}
+\item{\code{deff}, \code{resp_rate}, \code{eligibility_rate}, \code{eligible_per_unit}}{
+Per-stratum design effect, response rate, eligibility rate, and
+eligible units per sampled unit. \code{NA} entries fall back to the scalar
+argument, so a scalar other than 1 beside a column with no \code{NA} is
+refused, since it would have no effect. Vector arguments override
+these columns.}
+\item{\code{icc_1}, ..., \verb{icc_\{S-1\}}, \code{var_ratio_1}, ..., \verb{var_ratio_\{S-1\}},
+\code{take_2}, ..., \code{take_S}, \code{cost_1}, ..., \code{cost_S}, \code{N_1}, ...,
+\verb{N_\{S-1\}}, \code{resp_rate_1}, ..., \verb{resp_rate_\{S-1\}}}{Multistage cluster
+columns for arbitrary stage depth S >= 2. Adding \code{icc_1} (and
+\code{icc_2}, ..., \verb{icc_\{S-1\}} for deeper designs) activates stratified
+multistage allocation.}
 }
 
-For \code{svyplan_prec} objects: a precision result from \code{\link[=prec_alloc]{prec_alloc()}}.}
+For \code{svyplan_prec} objects, a precision result from \code{\link[=prec_alloc]{prec_alloc()}}.}
 
-\item{...}{Additional arguments passed to methods. Unused arguments are rejected.}
+\item{...}{Additional arguments passed to methods. Unused arguments are
+rejected.}
 
-\item{domains}{Character vector of column names in \code{frame} to treat as
-domain identifiers, or \code{NULL} (default) for no domains. All names
-must exist in \code{frame}. Domains define sub-populations that each
-contain one or more strata. When \code{cv} is the target, precision is
-enforced \emph{within every domain} (see Details).}
+\item{domains}{Character vector of column names in \code{frame} that partition
+strata into reporting domains, or \code{NULL} (default). When solving for \code{cv},
+\code{moe}, or \code{rmoe}, the target is enforced inside every domain. In \code{n} and
+\code{budget} modes, domains are reported in \verb{$domains} and constrained only if
+\code{min_n_domain} is supplied.}
 
-\item{n}{Total sample size. Specify exactly one of \code{n}, \code{cv}, or \code{budget}.}
+\item{n}{Total sample size. Specify exactly one of \code{n}, \code{cv}, \code{moe}, \code{rmoe},
+or \code{budget}.}
 
 \item{cv}{Target coefficient of variation (relative standard error).
-For example, \code{cv = 0.05} means the standard error of the estimated
-population mean or total should be at most 5 percent of the estimate.
-Requires \code{mean} or \code{p} in \code{frame}. When domain columns are
-present, this target is enforced in each domain. Specify exactly one
-of \code{n}, \code{cv}, or \code{budget}.}
+Requires \code{mean} or \code{p} in \code{frame}. Specify exactly one of \code{n}, \code{cv},
+\code{moe}, \code{rmoe}, or \code{budget}.}
 
-\item{budget}{Total field budget. In the classic modes, specify exactly one
-of \code{n}, \code{cv}, or \code{budget}, and \code{budget} caps the affordable allocation.
-In joint constrained allocation it must be accompanied by \code{objective}.
-The allocation then minimizes the priority-weighted relative variance of
-the objective components subject to the budget, every hard target in
-\code{targets}, and the stratum bounds. With \code{psu} the budget holds the field
-design's cost, certainty visits included. Supplying \code{budget} without
-\code{objective} in joint mode is an error, because the two readings are
-incompatible.}
+\item{moe}{Target absolute margin of error (half-width of the confidence
+interval at \code{1 - alpha}). Specify exactly one of \code{n}, \code{cv}, \code{moe}, \code{rmoe},
+or \code{budget}.}
 
-\item{measures}{Optional long data frame for joint constrained allocation,
-with one row per required \code{stratum} and indicator \code{name}. Each row must
-contain either \code{p} in \verb{[0, 1]}, or \code{mean} and exactly one of non-negative
-\code{sd} or \code{var}. In element-level designs, \code{p} implies the finite-population
-variance \code{N * p * (1 - p) / (N - 1)}, using its stratum's \code{N > 1},
-consistently with \code{\link[=prec_prop]{prec_prop()}}, and \code{p * (1 - p)} under
-\code{fpc = "none"}. Explicit \code{var} and \code{sd} values are used
-as supplied. Multistage designs, including PSU-register designs, retain
-the working proportion variance \code{p * (1 - p)}.
-Optional row-specific \code{deff}, \code{resp_rate} and \code{eligible_per_unit} values
-take precedence, and \code{NA} falls back to the stratum's \code{frame} column of
-the same name, then to the scalar argument. A published DEFT is
-squared first, and the allocation already carries its own weighting
-loss. See \code{\link[=varcomp]{varcomp()}}.
-Indicator values (\code{p}, \code{mean}, \code{sd}, \code{var}) belong here, and \code{frame}
-columns of those names are refused. In fixed-take
-multistage mode, \code{icc_psu} is required and \code{var_ratio_psu} defaults to 1.
-Three-stage mode also requires \code{icc_ssu} and derives \code{var_ratio_ssu} as
-\code{var_ratio_psu * (1 - icc_psu)} when it is absent, the value for SSUs of
-equal size or drawn proportional to size (see \code{\link[=design_effect]{design_effect()}}).
-Stage parameters may instead be supplied as stratum defaults in \code{frame},
-in which case non-missing measure-row values take precedence.
-Only rows selected by a
-target and its domain are value-validated. Unused rows are ignored after
-their non-empty, unique keys and frame-stratum membership are checked.
-Must be supplied with \code{targets}.}
+\item{rmoe}{Target relative margin of error (\code{moe / abs(mean)}). Requires
+\code{mean} or \code{p} in \code{frame}. Specify exactly one of \code{n}, \code{cv}, \code{moe}, \code{rmoe},
+or \code{budget}.}
 
-\item{targets}{Optional long data frame with one precision requirement per
-row. It requires indicator \code{name} and exactly one positive \code{cv}, \code{moe},
-or \code{rmoe}.
-Optional \code{domain} and \code{level} select a frame domain (\code{.overall} and
-\code{level = NA} denote the whole population), \code{alpha} overrides the scalar
-value for MOE, and \code{constraint} supplies a stable unique identifier.
-Without a \code{level} column, a row naming a domain stands for every level
-of that domain, in the order the levels first appear in \code{frame}, and
-takes generated \code{constraint} identifiers. With a \code{level} column, every
-domain row names its level, so a table that targets every region and
-one named district writes the regions out in full.
-Must be supplied with \code{measures}. Optional when \code{objective} and \code{budget}
-are given, which requests the best design a budget can buy with no hard
-precision requirement.}
+\item{budget}{Total field budget. Caps the affordable allocation. Specify
+exactly one of \code{n}, \code{cv}, \code{moe}, \code{rmoe}, or \code{budget}.}
 
-\item{psu}{Optional PSU register for certainty-aware allocation, one row
-per PSU, with \code{stratum} and \code{N}, the count of ultimate units in that PSU.
-The PSU sizes must sum to \code{frame$N} within each stratum, and every PSU
-must hold at least its stratum's \code{n_per_psu} unless flagged certainty.
-Optional \code{psu_id} is carried through and optional \code{certainty} forces a
-PSU into the certainty part whatever its size. It is an alternative to
-the frame column \code{N_psu}, which says only how many PSUs a stratum has,
-and requires the frame column \code{n_per_psu} and \code{measures$icc_psu}. A
-stratum with a single PSU has no between-PSU variance, so its \code{icc_psu}
-is taken as 0 and may be \code{NA}. A stratum that draws a single PSU from
-its remainder leaves no variance estimate there, and \code{n_alloc()} warns
-with class \code{svyplan_single_draw}. \code{n_psu_per_zone = 2} draws at least
-two. Joint constrained allocation only, to
-\code{targets} or to an \code{objective} within a \code{budget}, and two stages only.
-See the certainty section under Details.}
-
-\item{certainty_cutoff}{Inclusion probability at which a PSU of the \code{psu}
-register is taken with certainty, in \eqn{(0, 1]}. One value applies to
-every stratum, and one per stratum, as a vector or as a \code{frame} column
-of the same name, relaxes the rule where it is set. The argument
-overrides the column. \code{NULL} (default) uses the column where present and
-1 otherwise, which is the rule without a cutoff. Requires \code{psu}. See the
-certainty section under Details.}
-
-\item{n_psu_per_zone}{\code{NULL} (default), 1 or 2, the PSUs drawn from each
-zone when each stratum's remainder is cut into zones of about equal
-size. With 2, every stratum that draws from its remainder has an
-estimable variance. With 1, the variance is estimated by collapsing
-zones in the groups \verb{$psu$.pair} fixes before selection.
-An optional \code{psu$zone_order} column sets the order zones are cut in,
-such as a geographic order, and size, largest first, is the default.
-Requires \code{psu}. See the certainty section under Details.}
-
-\item{control}{\code{NULL} (default) or a list of settings for the search that
-plans the whole design of a joint allocation, with or without \code{psu},
-and of the classic \code{cv} and \code{budget} modes that search (see \code{n_int}
-under Value).
-\code{max_nodes}, one positive whole number, 5,000 by default, is the number
-of search nodes after which the search stops with the best design
-found, the status \code{"limit"} and a lower bound. It finishes the node it
-is expanding, so it can open a few nodes past the limit. A larger value
-can prove a design the default leaves at the limit, at the cost of
-time. \code{gap}, a number in \eqn{[0, 1)}, 0 by default, stops the search once
-the design is within that relative gap of the bound, with the status
-\code{"gap"}. A stop at the node limit within 1e-6 of the bound also reads
-\code{"gap"}. A mode that does not search refuses \code{control}.}
-
-\item{objective}{Optional estimates whose priority-weighted relative
-variance is minimized among the allocations that meet \code{targets} and the
-budget. Either a character vector of indicator names (overall domain,
-equal priority) or a data frame with \code{name} plus optional \code{domain},
-\code{level}, non-negative \code{priority}, and \code{component} columns, using the same
-indicator-domain identifiers as \code{targets}, including the rows without a
-\code{level} that stand for every level of a domain. At least one priority
-must be positive. Priorities need not be normalized. Requires \code{budget}
-and must be supplied with \code{measures}.}
-
-\item{alloc}{Allocation rule: \code{"neyman"} (default), \code{"optimal"},
+\item{alloc}{Allocation rule, one of \code{"neyman"} (default), \code{"optimal"},
 \code{"proportional"}, or \code{"power"}.}
 
 \item{unit_cost}{Optional scalar or length-\code{nrow(frame)} vector of
-per-stratum unit costs, overriding \code{frame$unit_cost}. Not used with
-fixed-take multistage joint allocation, which requires stage costs.}
+per-stratum unit costs overriding \code{frame$unit_cost}. Element frames only.}
 
-\item{alpha}{Significance level, default 0.05. \code{alpha = 2 * pnorm(-2)}
-gives the multiplier of 2 that the DHS and MICS manuals use in place
-of 1.96.}
+\item{alpha}{Significance level for \code{moe} and \code{rmoe}, default 0.05.}
 
-\item{deff}{Design effect multiplier (> 0). A scalar applies to every
-stratum. A length-\code{nrow(frame)} vector gives one per stratum and
-overrides a \code{deff} column in \code{frame}. A published DEFT is squared
-first, and the allocation already carries its own weighting loss. See
-\code{\link[=varcomp]{varcomp()}}.}
+\item{deff}{Design effect multiplier (> 0). A scalar fills the \code{NA} rows
+of \code{frame$deff}, and a length-\code{nrow(frame)} vector overrides it.}
 
-\item{resp_rate}{Expected response rate among eligible units, in (0, 1].
-Default 1. A scalar applies to every stratum. A length-\code{nrow(frame)}
-vector gives one per stratum and overrides a \code{resp_rate} column in
-\code{frame}. See the nonresponse section of \link{svyplan-package} for what the
-rate counts and what this adjustment does and does not claim.}
+\item{resp_rate}{Expected response rate among eligible units in \verb{(0, 1]}.
+Default 1. A scalar fills the \code{NA} rows of \code{frame$resp_rate}, and a
+length-\code{nrow(frame)} vector overrides it.}
 
-\item{eligibility_rate}{Share of issued units in scope, such as dwellings
-found occupied, in (0, 1]. Default 1. A scalar applies to every stratum.
-A length-\code{nrow(frame)} vector gives one per stratum and overrides an
-\code{eligibility_rate} column in \code{frame}. In joint allocation it is a scalar,
-a \code{frame} column or a \code{measures} column. Strata are weighted by their
-population in scope, \code{N * eligibility_rate}, while the bounds on the
-sample stay in frame units. With a PSU register it is a scalar or a
-\code{frame} column, one rate per stratum. See the nonresponse section of
-\link{svyplan-package}.}
+\item{eligibility_rate}{Share of issued units in scope in \verb{(0, 1]}.
+Default 1. A scalar fills the \code{NA} rows of \code{frame$eligibility_rate}, and
+a length-\code{nrow(frame)} vector overrides it.}
 
-\item{eligible_per_unit}{Eligible units per sampled unit in joint allocation,
-a positive number, default 1, such as married women per household. It
-can exceed 1. A \code{measures} column of that name sets it per indicator
-and stratum, and a \code{frame} column per stratum, with the precedence
-\code{resp_rate} follows. \code{N}, \code{n}, bounds, weights and costs stay in
-sampled units, while every variance term reads
-\code{N * eligibility_rate * eligible_per_unit} eligible units and
-\code{resp_rate * eligibility_rate * eligible_per_unit} respondents per
-sampled unit. Classic allocation and a \code{psu} register refuse it. See \code{\link[=n_prop]{n_prop()}}
-for the caveat above 1.}
+\item{eligible_per_unit}{Expected eligible units per sampled unit (> 0).
+Default 1. A scalar fills the \code{NA} rows of \code{frame$eligible_per_unit},
+and a length-\code{nrow(frame)} vector overrides it. May exceed 1 (for example, adults per
+household). Sample counts, bounds, weights, and costs remain in sampled
+units while variance terms use \code{N * eligibility_rate * eligible_per_unit}
+and \code{resp_rate * eligibility_rate * eligible_per_unit}.}
 
-\item{df}{Degrees of freedom of the variance estimator the allocation
-will have, typically sampled PSUs minus strata, and available from
-\code{\link[=design_df]{design_df()}}. It switches the quantile used to translate a \code{moe}
-target in and to report \code{moe} out. A \code{cv} target carries no quantile
-and is unaffected. \code{NULL} (default) applies no adjustment.}
+\item{df}{Degrees of freedom of the variance estimator for computing \code{moe}
+and \code{rmoe} via the Student t quantile. \code{NULL} (default) uses the normal
+quantile.}
 
-\item{min_n_stratum}{Optional minimum sample size per stratum. One value
-applies to every stratum. A vector of length \code{nrow(frame)}, or a
-\code{frame} column of the same name, gives each stratum its own floor, with
-\code{NA} for none, such as a domain that needs a set number of interviews
-whatever its share of a power allocation. The argument overrides the
-column. The minimum is a lower bound and not a base to which a share
-is added. A stratum whose share already exceeds its minimum keeps that
-share, and the strata held at their minimum leave less for the others.
-To give every stratum its minimum and share the rest on top of it,
-allocate \code{n - sum(min_n_stratum)} and add the minimums, as in the
-examples. Without a floor a stratum can receive one unit, which leaves
-no within-stratum variance to estimate, so \code{min_n_stratum = 2} is the
-usual choice when variances will be estimated stratum by stratum.}
+\item{min_n_stratum}{Optional minimum sample size per stratum. Scalar or
+length-\code{nrow(frame)} vector overriding \code{frame$min_n_stratum}.}
 
-\item{min_n_domain}{Optional floor on each domain's total sample, in the
-units \code{n} counts, such as a publication minimum of 400 households per
-province. One number applies to every domain. A data frame with columns
-\code{domain} (the \code{domains} column), \code{level} and \code{min_n} gives floors that
-differ, and a level it leaves out has none. Needs one \code{domains} column
-and a classic mode. See the domains section in Details.}
+\item{min_n_domain}{Optional floor on each domain's total sample. Either a
+single positive number applied to every domain, or a data frame with
+columns \code{domain}, \code{level}, and \code{min_n}. Requires a single \code{domains}
+column. A floor above what the domain's strata can hold, continuously or
+in whole units, is refused.}
 
-\item{alloc_q}{Bankier allocation exponent, used only when \code{alloc = "power"}.
-Numeric scalar in \eqn{[0, 1]}. With the default \code{alloc_measure},
-\code{alloc_q = 1} gives Neyman allocation. At \code{alloc_q = 0} weights depend
-on population CVs and the response/design-effect adjustment, independently
-of \code{alloc_measure}. This does not generally equalize domain CVs.
-Default 0.5.}
+\item{alloc_q}{Bankier power allocation exponent in \verb{[0, 1]}, used only when
+\code{alloc = "power"}. Default 0.5.}
 
-\item{fpc}{Which finite population correction the variance carries:
-\code{"unit"} (default) for the ultimate-unit \code{1 - n / N}, on the whole
-inflated variance in cluster allocation, \code{"stage"} for the
-stage-by-stage correction, exact under the equal-size, equal-take
-variance-component model cluster allocation assumes, or \code{"none"} for no
-correction, \code{\link[=n_cluster]{n_cluster()}}'s default with-replacement model. \code{"stage"}
-and \code{"none"} match \code{\link[=n_cluster]{n_cluster()}} with the same \code{fpc}. \code{"stage"} requires
-\code{N_psu}, and \code{N_ssu} as well at three stages, and is refused in element
-allocation. Only \code{"unit"} is available with a \code{psu} register. See the
-correction section in Details.}
+\item{fpc}{Finite population correction mode, one of \code{"unit"} (default),
+\code{"stage"}, or \code{"none"}. \code{"unit"} applies \code{1 - n / N} to the stratum
+variance. \code{"stage"} applies the stage-by-stage correction in cluster mode
+and requires \code{N_1}, ..., \verb{N_\{S-1\}}. \code{"none"} drops the finite population
+correction.}
+
+\item{control}{\code{NULL} (default) or a list of branch-and-bound settings
+(\code{max_nodes}, \code{gap}) for searched whole-unit modes (\code{cv}/\code{moe}/\code{rmoe}
+under \code{"optimal"} or \code{"neyman"}, and \code{"optimal"} \code{budget} mode without
+domains). \code{max_nodes} bounds the combination search. With three or more
+stages, the listing of take vectors before it has its own limit.
+An unfinished listing can return a \code{"heuristic"} design.}
 
 \item{plan}{Optional \code{\link[=svyplan]{svyplan()}} object providing design defaults.}
 }
 \value{
-A \code{svyplan_n} object with \code{type = "alloc"} and a stratum-level
-allocation table in \verb{$detail} (also available via \code{as.data.frame()}),
-with columns:
-\describe{
-\item{\code{stratum}, \code{N}, \code{sd}, \code{unit_cost}}{Stratum identifiers and inputs
-carried over from the frame. The frame's label columns follow
-\code{stratum}, and \verb{$params$strata_keys} names them when together they
-identify the strata, \code{NULL} otherwise. In cluster mode \code{unit_cost} is the
-derived effective per-element cost
-\code{cost_psu / n_per_psu + cost_ssu} (1 when no stage costs were
-given), while \code{sd} stays the input stratum SD.}
-\item{\code{n}}{Allocated sample size (continuous).}
-\item{\code{n_int}}{Integer allocation. In \code{n} mode an element design
-keeps the requested total (bounded largest-remainder rounding). A
-cluster design fields whole PSUs at one whole take per stratum,
-near its cost-optimal value, so its total can miss \code{n} by at most
-half the largest take. The allocation is re-solved within what each
-stratum can field at its take, and each rounded PSU count then moves
-by at most one PSU, jointly across strata, toward \code{n}. A take is
-raised above that value only when the strata at their \code{N_psu}
-limits would otherwise fall more than half a take short, and a take
-risen past \code{N_psu} under \code{"optimal"} fields every PSU at its
-nearest whole value. In \code{cv}
-mode with \code{alloc = "optimal"} or \code{"neyman"}, the design is the
-cheapest whole allocation meeting the target (the smallest for
-\code{"neyman"}), with domains the cheapest in each domain, and in
-\code{budget} mode with \code{"optimal"} and no domains the
-whole allocation with the smallest variance within the budget,
-each found by a search reported in \verb{$operational$status} and
-\verb{$optimization$search} (with domains, the search of the domain
-furthest from its bound, each domain's search in
-\verb{$optimization$domains}). A cluster design searches whole PSU counts
-and, under \code{"optimal"} with stage costs and \code{N_psu}, each take the
-frame leaves free, at any whole value up to the average PSU size
-\code{N / N_psu} that the stratum's bounds allow.
-A fixed take, every take under \code{"neyman"}, and every take without
-\code{N_psu} stays at the whole take nearest its value. The other \code{cv} designs round each stratum
-up so the integer design meets the target, and the other \code{budget}
-designs add units by variance reduction per unit cost so the
-integer design stays within budget. For an optimal design across
-domains, use joint allocation with \code{measures} and \code{targets}. Always
-inside
-the integerized bounds (\code{ceiling(.lower)}, \code{floor(.upper)}), except
-that an \code{N_psu} cap bounds the whole PSU count rather than the
-element count, since the whole take can round up. An error is
-raised when no integer allocation satisfies them, and when no
-whole-unit cluster design comes within half a take of \code{n}, above or
-below. That error gives the nearest total the design can field, the
-smallest when lower bounds and one PSU per stratum force more, the
-largest when \code{N} and \code{N_psu} allow less. With an \code{n_step} column
-every size is a whole number of steps, as the section on steps in
-Details describes, and \verb{$detail} carries \code{n_step}.}
-\item{\code{weight}}{Base weight \code{N / n} of the issued sample, before
-nonresponse or calibration adjustment.}
-\item{\code{n_eff}}{Effective sample size
-\code{n * resp_rate * eligibility_rate / deff}.}
-\item{\code{.lower}, \code{.upper}}{Bounds applied to the stratum
-(from \code{min_n_stratum}, \code{max_weight}, \code{take_all}, \code{N_psu}, or
-\code{N}).}
-\item{\code{.binding}}{Whether the allocation sits on one of its
-bounds.}
-\item{\code{.bound_source}}{Which constraint produced the bound the
-allocation sits on, and \code{NA} when it sits on none.
-\code{"min_n_domain"} marks the strata of a domain held at its floor.}
-\item{\code{.psu_frac}}{Cluster mode with \code{N_psu} only: the share of
-the stratum's PSU universe the design selects, \code{n_psu / N_psu}.}
-\item{\code{.se}, \code{.moe}, \code{.rmoe}, \code{.cv}}{Precision of the stratum's own
-mean under the allocation, on the same scale as \code{mean} (or \code{p}).
-Multiply \code{.se} by \code{N} for the stratum total. \code{.rmoe} is \code{.moe}
-as a fraction of the stratum mean. \code{.cv} and \code{.rmoe} are \code{NA}
-unless the frame supplies \code{mean} or \code{p}.}
-\item{\code{.share}}{The stratum's share of the design variance of the
-overall mean. Sums to 1 and identifies where precision is
-actually being bought. It is \code{NA} when the design variance is
-zero, which a census is, since no stratum then holds a share of
-nothing.}
-\item{\code{take_all}, \code{mean}}{Present when take-all strata or stratum
-means were supplied.}
-\item{\code{n_per_psu}, \code{n_psu}}{Cluster mode only: the continuous
-per-stratum take and implied number of PSUs (\code{n / n_per_psu}). A
-free take above the cost-optimal one is a stratum fielding all its
-\code{N_psu} PSUs (see the \code{N_psu} section in Details).}
-\item{\code{n_psu_int}, \code{n_per_psu_int}}{Cluster mode only: the
-whole-unit field design (whole PSUs and whole takes), chosen so
-that \code{budget} designs stay within budget and \code{cv} designs meet
-the target. Here \code{n_int = n_psu_int * n_per_psu_int}.}
-\item{\code{n_psu}, \code{n_psu_int}, \code{n_per_psu}, \code{n_per_ssu}}{Joint fixed-take
-multistage mode: continuous and whole first-stage decisions and the
-fixed later-stage takes. \code{n_per_ssu} is present only for three stages.
-Public \code{n} remains in ultimate-unit units, so
-\code{n = n_psu * n_per_psu} for two stages and
-\code{n = n_psu * n_per_psu * n_per_ssu} for three stages. The same exact
-identities hold for \code{n_int} and \code{n_psu_int}.}
-\item{\code{n_psu_certain}, \code{n_psu_rest}, \code{threshold}}{With \code{psu} only: the
-number of certainty PSUs, the number of PSUs left in the remainder,
-and the certainty threshold \code{certainty_cutoff * n_per_psu / f}, at
-the sampling fraction \code{f} whose classification and draw give the
-planned design.}
-\item{\code{n_certain_int}, \code{n_psu_draw}}{With \code{psu} only: the units the
-operational design fields in the certainty PSUs, and the number of
-remainder PSUs it draws. Here
-\code{n_int = n_certain_int + n_psu_draw * n_per_psu}.}
-\item{\code{n_zone}}{With \code{n_psu_per_zone} only: the zones the remainder is
-cut into, so \code{n_psu_draw = n_zone * n_psu_per_zone}.}
-}
+A \code{svyplan_alloc} object with \code{type = "alloc"}, \code{stages} (1 for
+element frames, S >= 2 for cluster frames), top-level continuous totals
+and precision (\code{n}, \code{se}, \code{moe}, \code{cv}, \code{rmoe}), a stratum-level data
+frame in \verb{$detail} (also returned by \code{as.data.frame()}), an \verb{$operational}
+list for the integer field design, and \verb{$domains} when \code{domains} is set.
 
-The result also carries an \verb{$operational} list describing the integer
-field design. In joint mode it contains total \code{n}, variable field \code{cost},
-the full target table in \code{constraints}, \code{all_pass}, and \code{status},
-\code{"optimal"} when the search proved the design the best, \code{"gap"} when it
-stopped within the gap of \code{control}, or within 1e-6 at the node limit,
-and \code{"limit"} when its node limit came first with a larger gap. With \code{psu} it adds \code{n_certain} and
-\code{n_psu_draw}. In the classic modes it also reports the applicable
-aggregate \code{se}, \code{moe}, and \code{cv}. Top-level quantities describe the
-continuous design, while \code{as.integer()} returns the operational total.
+Key columns of \verb{$detail} include \code{stratum}, \code{N}, \code{sd}, \code{unit_cost},
+continuous \code{n}, operational \code{n_int}, base \code{weight}, effective size
+\code{n_eff}, bounds \code{.lower} and \code{.upper}, \code{.binding}, \code{.bound_source},
+stratum precision (\code{.se}, \code{.moe}, \code{.rmoe}, \code{.cv}), and variance share
+\code{.share}. Cluster mode adds \code{take_2}, ..., \code{take_S}, \code{n_1}, \code{n_1_int},
+and \code{take_2_int}, ..., \code{take_S_int}. When stage populations are
+supplied it also adds \code{N_1}, ..., \verb{N_\{S-1\}} and \code{.frac_1}, the continuous
+first-stage sampling fraction \code{n_1 / N_1}.
 
-With \code{psu}, the result adds \verb{$psu}, one row per PSU of the register:
-\describe{
-\item{\code{psu_id}, \code{stratum}, \code{N}}{Carried over from the register.
-\code{psu_id} is present when the register has it.}
-\item{\code{certainty}}{Whether the PSU is in the certainty part.}
-\item{\code{n_take}}{The take the operational design fields in the PSU. A
-certainty PSU carries its own whole take at the stratum rate, capped
-at its size, and a remainder PSU carries \code{n_per_psu}.}
-\item{\code{.certainty_source}}{Why a certainty PSU is certainty.
-\code{"threshold"} when its size reaches the threshold, \code{"supplied"} when
-\code{psu$certainty} flagged it below the threshold, \code{"operational"} when
-it is below the threshold but the whole-PSU remainder draw of
-\verb{$operational} would give it an inclusion probability of one, and
-\code{"planned"} when the planner holds it below the threshold to cut
-clustering, which it does only under stage costs. \code{NA} for a
-remainder PSU. \code{summary()} counts them.}
-\item{\code{.threshold}, \code{.distance}}{The stratum's threshold, and the
-relative distance \code{N / .threshold - 1}. A PSU with a small
-\code{.distance} is the one whose classification the allocation can tip.}
-\item{\code{.zone}}{With \code{n_psu_per_zone} only: the remainder PSU's zone
-within its stratum, \code{NA} for a certainty PSU.}
-\item{\code{.pair}}{With \code{n_psu_per_zone = 1} only: the variance group of
-the PSU's zone, numbered across strata, \code{NA} outside any zone.}
-}
+Top-level fields report the continuous allocation. For fieldwork, use
+\verb{$detail$n_int} (and \verb{$detail$n_1_int}, \verb{$detail$take_2_int}, ... in
+cluster mode). \code{as.integer()} returns the operational integer total.
 
-In joint mode, \verb{$optimization$search} reports how the whole design was
-chosen:
-\describe{
-\item{\code{family}}{\code{"whole units"} without \code{psu}, where a stratum's
-designs are its whole sizes or whole PSU counts. With \code{psu},
-\code{"voluntary"} under stage costs, where a stratum's designs include
-those holding its largest PSUs in certainty below the threshold, and
-\code{"closure"} under unit cost, where they do not.}
-\item{\code{status}}{\code{"optimal"}, \code{"gap"} or \code{"limit"}, as in
-\verb{$operational}.}
-\item{\code{bound}, \code{gap}}{A lower bound on the cost of any design in the
-family that meets every target, and the relative gap
-\code{(cost - bound) / cost}, 0 when the design is proved the cheapest.
-In budget mode the bound is on the weighted relative variance of any
-design within the budget, and the gap is relative to the design's.}
-\item{\code{nodes}, \code{max_nodes}}{The search nodes used and the limit,
-\code{control$max_nodes}.}
-\item{\code{states}, \code{kept}}{The stratum designs listed, and those the
-bound left in the search.}
-}
-
-In fixed-budget objective mode the result adds \verb{$objective}, one row per
-component with its \code{priority}, relative variance \code{.relvar}, equivalent
-\code{.cv}, weighted \code{.contribution}, and \code{.share} of the total, plus the scalar
-\verb{$objective_value}. \verb{$operational} carries the same two fields for the
-integer design together with \code{budget_residual}. \verb{$params$mode} is
-\code{"budget_objective"} rather than \code{"targets"}, and \verb{$optimization} adds the
-budget, whether it binds, its residual, the local \code{budget_sensitivity}
-(change in objective value per extra unit of budget), and the
-epsilon-constraint \code{objective_bound} and its multiplier. With \code{psu}
-these describe the continuous relaxation, and \verb{$operational} the field
-design the search planned.
+\verb{$rates} gives the rates the allocation used, one row per stratum, after
+the argument and \code{frame} columns are resolved: \code{resp_rate_1}, ...,
+\verb{resp_rate_\{S-1\}} in cluster mode, then \code{resp_rate} and
+\code{eligibility_rate}. \code{eligible_per_unit} is a yield and is not listed.
 }
 \description{
-Distribute a total sample size across strata defined by a single
-stratification variable, under a fixed total \code{n}, target CV, or budget.
-When the design uses multiple stratification variables (e.g. region and
-urbanicity), cross them into a single variable beforehand so that each row
-of \code{frame} represents one unique stratum.
+Distribute a sample across strata for a single indicator under a fixed total
+\code{n}, a precision target (\code{cv}, \code{moe}, or \code{rmoe}), or a \code{budget}, using
+Neyman, optimal, proportional, or Bankier power allocation. For multiple
+indicators, overlapping domain targets, or a PSU register with certainty
+selection, use \code{\link[=n_alloc_joint]{n_alloc_joint()}}.
 }
 \details{
-\subsection{Joint constrained allocation}{
+\subsection{Allocation rules}{
 
-Supplying both \code{measures} and \code{targets} requests a minimum-cost allocation
-meeting every indicator-domain precision requirement at once, and adding
-\code{objective} with \code{budget} asks instead for the best design that budget can
-buy. This generalized mode is mutually exclusive with scalar \code{n}, \code{cv},
-\code{budget}, \code{domains} and an explicit \code{alloc} rule, because the target table
-defines the constraints and the allocation is solved jointly. Its input
-contract, its multistage variance model, its infeasibility messages and the
-\code{predict()} frontier are on \link{n_alloc-generalized}.
-
-For fieldwork, use \verb{$detail$n_int}, not the analytical continuous \code{n}.
-Fixed-take count columns are numeric vectors whose values are exact whole
-numbers. The \verb{_int} suffix denotes operational integer semantics rather
-than R's 32-bit \code{integer} storage type. Result lists contain diagnostics and
-are not promised as a long-term serialization format.
+Allocation is controlled by \code{alloc} (matching \code{\link[=strata_bound]{strata_bound()}}).
+\itemize{
+\item \strong{proportional}: \eqn{n_h \propto N_h / r_h}{n_h ~ N_h / r_h}
+\item \strong{neyman}: \eqn{n_h \propto N_h S_h \sqrt{d_h / r_h}}{n_h ~ N_h S_h sqrt(d_h / r_h)}
+\item \strong{optimal}: \eqn{n_h \propto N_h S_h \sqrt{d_h / r_h} / \sqrt{c_h}}{n_h ~ N_h S_h sqrt(d_h / r_h) / sqrt(c_h)}
+\item \strong{power}: Bankier (1988) allocation,
+\eqn{n_h \propto (S_h / |\mu_h|) X_h^q \sqrt{d_h / r_h}}{n_h ~ (S_h / |mean_h|) * alloc_measure_h^alloc_q * sqrt(deff_h / resp_rate_h)},
+where \eqn{X_h} is \code{alloc_measure} (default \code{N * abs(mean)}).
 }
 
-\subsection{Building the frame}{
-
-The \code{frame} is a data frame where \strong{each row is one stratum} of
-your target population. It summarizes what you know about each
-subgroup \emph{before} sampling. A typical workflow:
-\enumerate{
-\item \strong{Identify strata} from a census or register (e.g. provinces,
-urban/rural areas, age groups).
-\item \strong{Look up \code{N}}: the population count per stratum.
-\item \strong{Estimate \code{sd}}: the standard deviation of your key variable
-within each stratum (from a pilot survey, a previous census, or
-expert judgment). If unknown, set \code{sd = 1} everywhere for
-proportional allocation.
-\item \strong{Add \code{mean} or \code{p}} if you want to solve for a target CV.
-}
-
-A minimal frame:
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{frame <- data.frame(
-  stratum = c("Urban", "Rural"),
-  N       = c(50000, 120000),
-  sd      = c(12, 20)
-)
-}\if{html}{\out{</div>}}
-
-When a design stratifies by several variables (e.g. region
-\eqn{\times}{*} urbanicity), cross them into one variable first:
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{frame$stratum <- interaction(frame$region, frame$urban, drop = TRUE)
-}\if{html}{\out{</div>}}
-
-This ensures that each row maps to exactly one population cell and that
-the allocation formulas apply to the correct per-stratum \code{N} and \code{sd} pairs.
+Bounds (\code{min_n_stratum}, \code{max_weight}, \code{take_all}, \code{N_1}) are enforced by
+recursive Neyman allocation (Wesolowski et al., 2022). Fixed-\code{n} integer
+rounding uses bounded largest-remainder / ORIC rounding (Cont and Heidari,
+2014).
 }
 
 \subsection{Cluster designs within strata}{
 
-Adding a \code{icc_psu} column to the frame turns the allocation into a
-stratified \strong{two-stage} design (e.g. enumeration areas then
-households within each stratum). Under the cluster variance model
-the problem reduces to the element allocation above with the stratum
-SD inflated to
-\code{sd * sqrt(var_ratio_psu * (1 + icc_psu * (n_per_psu * resp_rate - 1)))}
-and, when stage costs are given, a per-element cost of
-\code{cost_psu / n_per_psu + cost_ssu}. The clustering penalty is paid on the
-take that responds, \code{n_per_psu * resp_rate}, since a unit that does not
-respond contributes no within-cluster observation. The cost is paid on
-the gross take, since it is issued either way. The two coincide at
-\code{resp_rate = 1}. The whole-cluster operational search reads the same
-responding take, so a design it accepts is one the continuous reduction
-also accepts. All solve modes, allocation
-methods, and constraints work unchanged. The \code{n}, \code{cv}, and \code{budget} modes
-keep their meanings.
+Adding \code{icc_1} (and \code{icc_2}, ..., \verb{icc_\{S-1\}} for deeper designs) to \code{frame}
+switches \code{n_alloc()} to a stratified S-stage design. Each stratum's
+effective SD is inflated by its S-stage clustering factor and its effective
+per-element cost is \verb{(cost_1 + sum_\{s=2\}^S cost_s * prod_\{j=2\}^s take_j) / prod_\{j=2\}^S take_j}. Missing \code{take_s} entries use the cost-optimal takes
+from the stage costs and homogeneities, never below one expected response
+per unit (a warning names the strata where that floor binds), and the
+whole takes never fall below it either. A free take whose stage size per
+parent unit cannot hold that floor is refused, in whole units as well as
+continuously. \code{N_1}, ..., \verb{N_\{S-1\}} cap the stage counts per stratum and
+activate stage-level FPC when \code{fpc = "stage"}. Under every \code{fpc}, a take
+is at most the ratio of adjacent stage sizes (\verb{N_s / N_\{s-1\}}, with \code{N}
+for the last stage), continuously and, rounded down, in whole units. A
+fixed take above it is refused, and so is a total that every PSU at those
+takes cannot hold. The ratios describe balanced stages, so a design that
+takes more from its larger parent units needs capacity data the frame does
+not carry. A ratio whose sizes are not both given leaves its take uncapped.
+Every PSU counted in \code{N_1} is taken to contain at least one of the units
+counted in \code{N}. The sampled PSUs of a stratum then hold at most \code{N - N_1}
+units more than their count, under every \code{fpc}. A design within known
+stage sizes meets this already. Where a stage size is missing, the bound
+limits the takes, the totals and the whole PSU counts, free takes fall
+when a total needs more PSUs than the room at the cost-optimal takes
+leaves, and \code{\link[=prec_alloc]{prec_alloc()}} warns about a supplied design that breaks it.
+In fixed-\code{n} mode, when the rounded takes miss the whole total, each
+stratum offers the whole totals near its share of \code{n} that its stage
+sizes, PSU counts and bounds allow. These are other PSU counts at its
+rounded takes, also for a stratum whose takes are all fixed, and other
+free takes that field a nearby total exactly. Those keep the PSU count
+and free takes within a factor of two of the continuous design, and take
+any PSU count and takes the stage sizes allow when that design holds less
+than one PSU. The strata totals are chosen to meet every \code{min_n_domain}
+floor and to add up to \code{n}, or to come as close as they can. Totals far
+from a stratum's share are not considered, so a design that reaches \code{n}
+only by moving a stratum far from its share is not found, and a floor
+that only such designs meet is refused.
+Under \code{"optimal"}, a stratum whose allocation needs more than \code{N_1} PSUs
+fields every PSU and raises its free takes instead.
 
-Cluster-mode columns:
-\itemize{
-\item \code{icc_psu} (required): within-PSU homogeneity per stratum,
-e.g. from \code{\link[=varcomp]{varcomp()}} with \code{strata}. When PSUs are selected with
-probability proportional to size, pass \code{prob} to \code{\link[=varcomp]{varcomp()}} as well.
-\item \code{var_ratio_psu} (optional, default 1): variance ratio per stratum.
-\item \code{n_per_psu} (optional): fixes the per-stratum take, in the
-operational whole-unit design as much as in the continuous one. Any
-\code{NA} entries are replaced by the cost-optimal take
-\code{sqrt(cost_psu / cost_ssu * (1 - icc_psu) / icc_psu)}, or its
-stage-corrected form under \code{fpc = "stage"} (see "Which correction the
-variance carries"). Holding the
-take is what \code{n} mode gives up its exact total for. The stratum is
-fielded as a whole number of clusters of that size, so its element
-count lands on the nearest multiple.
-\item \code{cost_psu}, \code{cost_ssu} (together): per-PSU and per-element costs.
-These are required for \code{budget} mode or when \code{n_per_psu} is not fixed. They
-replace \code{unit_cost}, which is not allowed in this mode.
-\item \code{N_psu} (optional): the number of PSUs available in the stratum.
-}
-}
-
-\subsection{What \code{N_psu} does, and what it does not}{
-
-\code{N_psu} is a feasibility constraint and nothing more. It caps the
-allocation at \code{N_psu * n_per_psu} ultimate units and caps the whole-unit
-design at \code{N_psu} clusters, matching the bound the fixed-take path
-already applies. Leaving it out preserves the unbounded behavior, in
-which the allocation may ask for more PSUs than a stratum contains.
-
-A take the frame leaves free is not capped in elements under
-\code{alloc = "optimal"} in the \code{n} mode, and in the \code{cv} and \code{budget} modes
-without domains, where the search moves the take. Once the allocation
-passes \code{N_psu} PSUs at the cost-optimal take, the stratum fields all of
-them and its take rises to \code{n / N_psu}, with variance and cost read at
-that take. The allocation rule is unchanged, since on both sides of the
-switch the variance a unit of cost buys is the same, exactly so without
-a finite population correction. \code{\link[=prec_alloc]{prec_alloc()}} assesses a free take the
-same way, so \code{n_alloc(prec_alloc(fit))} reproduces such a design.
-
-The search keeps a free take within the average PSU size \code{N / N_psu},
-since no PSU fields more units than it holds, even where the rule's
-continuous take is larger. Without \code{N_psu} the take stays at the rule's
-whole take.
-
-Under \code{fpc = "none"} and \code{"stage"} the continuous take is the exact
-cost-optimal take of the variance the allocation reports. Under the
-default \code{"unit"} it is the take without a correction, since there the
-optimal take moves with the budget. A slightly different take can then
-buy a little more precision for the same cost, and the whole design,
-which the search chooses under the correction, can do better than the
-continuous one.
-
-On its own it does \strong{not} activate a first-stage finite population
-correction. Under the default \code{fpc = "unit"} no factor keyed to the PSU
-sampling fraction enters the variance, however large a share of the PSU
-universe the design takes, and \code{print()} says so once that share is
-appreciable. Supplying \code{N_psu} bounds the design. Asking for the
-correction as well is what \code{fpc = "stage"} does.
-
-So at \code{n_psu == N_psu} the default still carries between-PSU variance even
-though every PSU has been selected. That is deliberately conservative
-and is then not a literal variance. For the same
-reason, a target this path reports as unreachable at the PSU bound may
-be reachable under a finite-population first stage, and the error says so
-rather than claiming the precision is impossible. Under \code{fpc = "stage"}
-the between-PSU component does reach zero there, and the whole variance
-reaches zero only when every stage is enumerated.
-
-Because taking every PSU leaves the within-PSU take in force, it does not
-enumerate a stratum, and \code{take_all} is refused in cluster mode for the
-same reason the fixed-take path refuses it.
-
-The whole-unit design keeps its PSU count within \code{N_psu} as well. When the
-strata at their \code{N_psu} limits cannot hold \code{n} at their cost-optimal
-whole takes, a take is raised above its continuous value. When no whole
-take brings the design within half a take of \code{n}, \code{n_alloc()} stops with
-an error giving the largest total it can field.
+In the searched modes, the whole design is found by branch-and-bound over
+whole PSU counts and whole takes at every stage count, with \code{control}
+setting its limits. Its status is in \verb{$operational$status} (\code{"optimal"},
+or \code{"limit"} when the node limit stopped it) and its record in
+\verb{$optimization$search}. With three or more stages, a stratum whose take
+combinations are too many to list keeps a greedy rounding of the
+continuous design. If numerical pruning loses a feasible starting design,
+that design is retained. Both cases have status \code{"heuristic"} and a warning.
+A target or budget that the cost-optimal takes cannot meet is not refused
+when the search can still vary a take. The search then runs over every
+take first, and the continuous design is the one at the takes of the whole
+design, which \verb{$params$searched_takes} records. \code{\link[=prec_alloc]{prec_alloc()}} assesses
+the design at those takes, and a new target given to \code{\link[=n_alloc]{n_alloc()}} on that
+assessment sizes the original request again. The refusal stands when
+the search proves that no whole design exists, and a search that stops
+with no design raises an error of class \code{svyplan_plan_unknown}. With
+\code{domains}, a domain whose \code{min_n_domain} floor sets its design, or whose
+searched design the floor repair changes, is not proven either. Its
+record in \verb{$optimization$domains} reads \code{"heuristic"} with a \code{reason},
+and so does \verb{$operational$status}.
 }
 
-\subsection{Which correction the variance carries}{
+\subsection{Domains and steps}{
 
-\code{fpc} chooses, and the three choices are nested rather than arbitrary.
-Write \eqn{f_1} for the PSU sampling fraction and \eqn{f_2} for the
-within-PSU one, both measured on what responds. Under the equal-size,
-equal-take variance-component model this path assumes, the two-stage
-without-replacement variance corrects each component by its own stage:
+When \code{domains} is set and a precision target (\code{cv}, \code{moe}, or \code{rmoe}) is
+given, every domain meets the target on its own strata. National precision
+is reported in \verb{$se}, \verb{$moe}, and \verb{$cv} without acting as a constraint. To
+enforce national and domain targets simultaneously, or multiple indicators,
+use \code{\link[=n_alloc_joint]{n_alloc_joint()}}.
 
-\deqn{V = (1-f_1)\frac{S_1^2}{a} + (1-f_2)\frac{S_2^2}{am}.}{V = (1-f_1) S_1^2/a + (1-f_2) S_2^2/(am).}
-\itemize{
-\item \code{"unit"} (default) applies the ultimate-unit \code{1 - n / N} to the whole
-clustering-inflated variance, so the between-PSU component is attenuated
-by it too. Since \eqn{n/N = f_1f_2}, that factor is at least as large as
-either exact one, so this \strong{overstates both components} rather than
-either being understated. It is conservative against the exact
-without-replacement variance at every sampling fraction.
-\item \code{"stage"} applies the expression above, and its three-stage analogue.
-It needs \code{N_psu}, and \code{N_ssu} as well at three stages. It is exact for
-that model and not beyond it: unequal PSU sizes, a size-proportional
-first stage, and stochastic rather than expected nonresponse each need
-a more general variance expression, so it is refused with a \code{psu}
-register.
-\item \code{"none"} applies no correction at any stage, which is \code{\link[=n_cluster]{n_cluster()}}'s
-default model exactly. Use it to compare the two interfaces at a sampling
-fraction where the correction would otherwise separate them.
-}
-
-So \code{none} \eqn{\ge} \code{unit} \eqn{\ge} \code{stage} at every sampling fraction,
-and the three coincide as the fractions vanish.
-
-The default stays \code{"unit"} deliberately. \code{"stage"} is exact under that
-model, but it buys the exactness by depending on the mean PSU size
-\eqn{M = N/N_{psu}}{M = N/N_psu}, which the with-replacement form does not
-use at all. Under unequal PSU sizes that mean is a stand-in, and planners
-usually know it less well than they know \code{icc_psu} and the take. Choose
-\code{"stage"} when the PSU sizes really are close to equal and the fractions
-are large enough to matter.
-
-Under \code{"stage"} a free take is the cost-optimal take of the corrected
-variance. With \eqn{r} the unit response rate it is
-
-\deqn{m = \sqrt{\frac{c_1(1-\delta)}{c_2\,r\,\{\delta - (1-\delta)/M\}}}.}{m = sqrt(c_1 (1 - delta) / (c_2 r (delta - (1 - delta)/M))).}
-
-The within-PSU fraction lowers the between-PSU term to
-\eqn{\delta - (1-\delta)/M}{delta - (1 - delta)/M}. When
-\eqn{\delta \le 1/(M+1)}{delta <= 1/(M + 1)} that term is not positive, a
-further unit inside a PSU always buys more precision than a further PSU,
-and the take is the whole PSU, \eqn{M}. The take moves well away from the
-uncorrected one only for small PSUs. At \eqn{M = 50} and
-\eqn{\delta = 0.02}{delta = 0.02}, keeping the uncorrected take would cost
-about a fifth of the variance at the same budget, and at a few hundred
-units per PSU the two takes give the same variance to within half a
-percent.
-
-Note that the two fractions are controlled by different quantities.
-\eqn{f_1} falls as the design takes a smaller share of the PSU universe,
-but \eqn{f_2} is the realized take over \eqn{M} and does not move with \code{N}
-at all. A large population reached through a few large PSUs leaves
-\eqn{f_2} wherever it was, so \code{"stage"} is not in general a small
-correction to \code{"none"}.
-
-An element allocation has no stages to choose between, so it takes
-\code{"unit"}, the correction \code{1 - n / N}, or \code{"none"}, none at all. Under
-\code{"none"} a stratum variance derived from \code{p} is \code{p (1 - p)}, as in
-\code{\link[=n_prop]{n_prop()}} with \code{N = Inf}, rather than the finite-population
-\verb{N p (1 - p) / (N - 1)}. The stratum weights still read \code{N} (times
-\code{eligibility_rate}), and the caps, take-all strata and base weights stay
-in frame units, so only the correction is dropped. A take-all stratum
-then keeps a sampling variance, as a census of PSUs does in
-\code{\link[=n_cluster]{n_cluster()}}. Use \code{"none"} to reproduce a plan built on published
-design effects, which carry the clustering and leave no element
-correction to apply.
-
-Because \code{icc_psu} already accounts for the clustering, leave
-\code{deff} at 1 unless it captures a \emph{different} source of design
-effect (e.g. weighting loss). A clustering \code{deff} on top of
-\code{icc_psu} would double-count. The constraints \code{min_n_stratum} and
-\code{max_weight} stay in element units. For fielding,
-use the whole-unit design in \code{n_psu_int} and \code{n_per_psu_int}
-(\code{n_int = n_psu_int * n_per_psu_int}). Its actual field cost and
-precision are reported in \verb{$operational} and, in \code{budget} mode,
-never exceed the budget.
-}
-
-\subsection{Certainty PSUs from a register}{
-
-\code{N_psu} gives only the number of PSUs in a stratum. Supply \code{psu} to give
-their sizes instead. It has one row per PSU with \code{stratum} and \code{N}, and the
-sizes must sum to \code{frame$N} in every stratum. This two-stage joint-allocation
-mode requires \code{n_per_psu} in \code{frame} and \code{icc_psu} in \code{measures}.
-
-A remainder PSU is drawn for the take, so a PSU holding fewer units than
-\code{n_per_psu} is refused, named by its \code{psu_id} or its row. Merge it with a
-neighboring PSU before planning, as is usual when PSUs are formed
-(Valliant, Dever and Kreuter 2018, sec. 10.3) and as \code{\link[=merge_psus]{merge_psus()}} does,
-or flag it in \code{certainty}, where it is subsampled at the stratum's
-sampling fraction. A \code{psu_id} must name each PSU once.
-
-\code{icc_psu} describes the remainder, whose PSUs are selected with probability
-proportional to size. It is the size-weighted share of the stratum variance
-that lies between PSUs, which \code{\link[=varcomp]{varcomp()}} returns when \code{prob} is each PSU's
-share of its stratum's units, as in the last example. A stratum with a single
-PSU has no variance between PSUs, so its \code{icc_psu} is taken as 0 whatever is
-supplied and may be \code{NA}. Every other stratum needs a value in \eqn{[0, 1]}.
-
-With take \eqn{b_h}, sampling fraction \eqn{f_h = n_h / N_h} and
-\code{certainty_cutoff} \eqn{c_h}, a PSU is certain when its inclusion
-probability reaches \eqn{c_h}, that is when its size reaches
-
-\deqn{N_{hi} \ge c_h b_h / f_h.}{N_hi >= c_h * b_h / f_h.}
-
-The remainder is fielded as a whole number of PSUs drawn with probability
-proportional to size, and rounding that number up raises every remainder
-PSU's inclusion probability. A PSU whose probability reaches \eqn{c_h}
-under that draw is certainty too, and the draw is recomputed without it
-until no PSU reaches \eqn{c_h}, the iterative rule for selection
-proportional to size. A PSU below the threshold can be certainty this way,
-and so can a stratum's only PSU. A remainder always draws at least one
-PSU, even when the rounded certainty takes use up the stratum's
-allocation, so no part of a stratum is left out of the sample. The
-operational design is therefore one any fixed-size proportional-to-size
-method can draw as it stands.
-
-The default \eqn{c_h = 1} takes with certainty only the PSUs the design
-cannot sample less often. A cutoff below one, such as the 0.80 Valliant,
-Dever and Kreuter (2018, sec. 9.6) mention, takes more PSUs with
-certainty and removes their clustering from the design effect, so the
-sample usually falls. The classification is discrete, so the plan moves
-in steps as the cutoff changes and need not fall with it. Price the
-choice with \link{predict.svyplan} over
-\code{certainty_cutoff}.
-
-\code{n_psu_per_zone = 2} cuts each stratum's remainder, sorted by
-\code{psu$zone_order} or by size, into zones of about equal total size and draws
-two PSUs from each, the deep stratification of area samples (Valliant,
-Dever and Kreuter 2018, sec. 9.5 and Example 3.13). The remainder draw
-rounds up to a whole number of zones, which can add one PSU in a stratum.
-The rule above then applies inside each zone. A PSU is certain when its
-probability within its zone reaches \eqn{c_h}, and so is every PSU of a
-zone, or of a remainder, that holds no more PSUs than it draws. A stratum
-that draws from its remainder then draws at least two PSUs, so its
-variance can be estimated. The design effect does not credit the zones,
-so the planned precision stays conservative.
-
-\code{n_psu_per_zone = 1} draws one PSU from each zone, the finest
-stratification of the remainder. A zone holding a single PSU is a census,
-so more PSUs are certainty and the sample tends to be the smallest of the
-three settings. No zone yields two PSUs, so the variance needs zones
-collapsed, and \verb{$psu$.pair} fixes the groups before selection. Zones are
-paired in zone order within a stratum, with three together where the
-count is odd. Strata whose remainder is a single zone are grouped with
-each other in \code{frame} row order, so order the rows to put similar strata
-next to each other. One draw per zone has the with-replacement variance,
-so the groups are analyzed without a finite population correction. In
-that form the collapsed estimator overestimates the variance, by more as
-the zone totals in a group differ (Valliant, Dever and Kreuter 2018, sec.
-15.5.3). A without-replacement correction such as Brewer's can turn it
-into an underestimate when the zones in a group are alike.
-
-The certainty part has no first-stage sampling variance. The remainder has
-the usual clustering component, and the two are combined into the
-anticipated design effect. \code{psu$certainty} can add a PSU to the certainty
-part. It cannot remove a PSU either rule makes certainty.
-
-The continuous allocation uses an aggregate planning approximation. The
-noncertainty part uses a with-replacement clustering approximation, a
-standard approach in PPS sample-size planning. Each part receives its
-proportional share of the stratum allocation, so with \eqn{N_h^C} units
-in certainty PSUs, \eqn{N_h^R} in the remainder, \eqn{\delta_h} for
-\code{icc_psu} and response rate \eqn{r_h}, the design effect is
-
-\deqn{d_h = \frac{N_h^C + N_h^R \{1 + \delta_h (b_h r_h - 1)\}}{N_h}.}{d_h = (N_h^C + N_h^R * (1 + delta_h * (b_h * r_h - 1))) / N_h.}
-
-It depends on which PSUs are certainty, not on the allocation. A common
-stratum-level finite population correction is then applied. The
-clustering reads the responding take \eqn{b_h r_h}, as the \code{N_psu} form
-does, while the threshold and the draw read the issued take \eqn{b_h}.
-A PSU-level response rate and a \code{var_ratio_psu} other than 1 have no
-place in this design effect and are refused.
-
-The field design is chosen whole. For each stratum the planner lists every
-design these rules give as the sampling fraction runs, and under stage
-costs also those holding the stratum's largest PSUs in certainty below the
-threshold, which cuts clustering at the price of their visits. Under unit
-cost a visit has no price, so no PSU is held below the threshold. Give
-\code{cost_psu} and \code{cost_ssu} where holding a large PSU in certainty may be
-worth its visit. A search then picks one design per stratum, the cheapest
-meeting every target, and proves it so, or stops after
-\code{control$max_nodes} nodes, 5,000 by default, with the best design found
-and a lower bound on the cheapest, which \verb{$optimization$search} reports.
-With \code{objective} and \code{budget} it picks the design with the smallest
-weighted relative variance among those meeting every target in \code{targets}
-whose field cost, visits included, stays within the budget. A budget
-below the cheapest field design, or below the cheapest one meeting the
-targets, is an error that gives that design's cost. The continuous
-allocation in \verb{$detail$n} solves the aggregate model above under the
-planned classification, as a relaxation of the field design.
-\verb{$detail} gives the split and threshold by stratum, while \verb{$psu} gives
-each PSU's classification, its source, and \code{n_take}, the take the
-operational design fields in it. A certainty PSU carries its
-own whole take at the stratum rate, capped at its size, and a remainder
-PSU carries \code{n_per_psu}. The takes are the operational design's own
-numbers, so \code{sum(n_take[certainty]) = n_certain_int} in every stratum.
-
-A fit solved with a register keeps it in \verb{$params$psu}. Its presence is
-the stable test for a certainty-aware fit, and code can key on it rather
-than on \verb{$detail} column names.
-
-The operational design is fieldable. Certainty PSUs use their whole take
-at the stratum rate and the remainder uses whole PSUs at \code{n_per_psu}. Thus
-\code{n_int = n_certain_int + n_psu_draw * n_per_psu} in every stratum.
-\verb{$operational} reports its count, cost and precision. The rounded
-certainty takes \eqn{q_{hi}}{q_hi} run above the stratum rate and the remainder
-gets what is left, so the field design is assessed on its own takes and
-draw \eqn{a_h}, each part a stratum of its own:
-
-\deqn{V_h = S_h^2 \Big[\sum_{i \in C} N_{hi}^2 \Big(\frac{1}{r_h q_{hi}} - \frac{1}{N_{hi}}\Big) + (N_h^R)^2 \{1 + \delta_h (b_h r_h - 1)\} \Big(\frac{1}{r_h a_h b_h} - \frac{1}{N_h^R}\Big)\Big].}{V_h = S_h^2 * [sum_C N_hi^2 * (1 / (r_h * q_hi) - 1 / N_hi) + (N_h^R)^2 * (1 + delta_h * (b_h * r_h - 1)) * (1 / (r_h * a_h * b_h) - 1 / N_h^R)].}
-
-At the stratum rate the expression equals the aggregate one above. It is
-the variance the planner sizes, so every target holds on the design that
-is fielded. A census of every PSU gives each target its smallest
-variance, so when even that misses a target, \code{n_alloc()} stops with an
-error that says so.
-
-Use \code{cost_psu} and \code{cost_ssu} together to price PSU visits and interviews.
-A certainty PSU's visit is paid whatever its take, so the solver prices
-an interview at \code{cost_ssu + (N_h^R / N_h) * cost_psu / n_per_psu}, and
-\verb{$params$achieved$cost} and \verb{$optimization$cost} add the certainty visits
-as a fixed cost, as do the stratum costs \code{summary()} reports. The
-optimality certificate, its gap and its multipliers refer to the
-marginal-cost problem without that constant, which has the same optimum,
-and hold for the planned classification, not across classifications. In
-budget mode the continuous solve has the budget less the certainty visits.
-The field design prices its visits exactly, so near the cheapest design
-meeting the targets the aggregate model can need more than the budget. It
-is then solved at the cost of its own cheapest design meeting them, and
-\verb{$optimization$budget_residual} is negative. \link{predict.svyplan} compares
-values of \code{n_per_psu}, \code{certainty_cutoff}, \code{n_psu_per_zone} and, in
-budget mode, \code{budget}, and reports each row's search status.
-}
-
-\subsection{Domains vs. strata}{
-
-Domains are specified via the \code{domains} parameter. Domain columns
-partition strata into sub-populations. Each domain groups
-one or more strata. When \code{cv} is specified, every domain must meet the
-target, and since a domain's precision depends on its own strata only,
-the smallest design that does so is each domain at its own smallest
-total. Each domain is allocated by the rule inside itself, as if it were
-the frame, and its total is the least that meets the target there. The
-result is the minimum joint allocation reaches with a cv target in
-every domain. National precision is reported in \verb{$cv} and is not a
-target. To require it as well, state national and domain targets
-together in joint allocation (\code{measures} and \code{targets}). Under
-\code{alloc = "power"}, \code{alloc_q} shapes the shares inside a domain, and the
-domain totals come from their targets.
-
-In \code{n} or \code{budget} mode, domains affect reporting only. Per-domain
-precision metrics appear in \verb{$domains}, but the allocation itself treats
-all strata globally.
-
-\code{min_n_domain} adds a floor on each domain's total, in every mode. A
-domain whose share of the allocation falls short of its floor is held at
-the floor and allocated inside itself by the same rule, and the rest of
-the total is spread over the other domains. This repeats until no domain
-falls short. Holding one domain lowers the others' shares, so a domain
-already above its floor can end up held too. The result is the best
-allocation by the rule under the floors. In \code{cv} and \code{budget} mode the
-floors raise the total or the cost only where they bind. The whole-unit
-design keeps every floor, and in \code{n} and \code{budget} mode it takes the
-units it adds to a short domain from domains with room. With \code{n_step}
-it adds and removes whole steps, and in \code{n} mode it reaches the total by
-moving several strata together when no single step fits the excess, as
-36 and 36 for steps of 12, a total of 72 and floors of 25. \verb{$domains} then
-reports each floor as \code{.min_n} and whether it binds as \code{.floor_binding}.
-}
-
-\subsection{Allocation methods}{
-
-Allocation is controlled by the \code{alloc} parameter (same methods as
-\code{\link[=strata_bound]{strata_bound()}}):
-\itemize{
-\item \strong{proportional}: \eqn{n_h \propto N_h / r_h}{n_h proportional to N_h / r_h}
-\item \strong{neyman}: \eqn{n_h \propto N_h S_h \sqrt{d_h / r_h}}{n_h proportional to N_h S_h sqrt(d_h / r_h)}
-\item \strong{optimal}: \eqn{n_h \propto N_h S_h \sqrt{d_h / r_h} / \sqrt{c_h}}{n_h proportional to N_h S_h sqrt(d_h / r_h) / sqrt(c_h)}
-\item \strong{power}: Bankier (1988) allocation,
-\eqn{n_h \propto (S_h/|\mu_h|) X_h^q\sqrt{d_h/r_h}}{n_h ~ (S_h / abs(mean_h)) * alloc_measure_h^alloc_q * sqrt(deff_h / resp_rate_h)},
-where \eqn{X_h} is \code{frame$alloc_measure}, defaulting to
-\eqn{N_h|\mu_h|}. Every stratum needs a finite nonzero \code{mean} or \code{p}.
-The population CV \eqn{S_h/|\mu_h|} is distinct from the target \code{cv},
-which describes the relative standard error of an estimate.
-Zero-variance strata have zero allocation weight and remain subject to
-the allocation bounds. If all variances are zero, the existing fallback
-allocates in proportion to population size, with a warning.
-Use explicit domain targets when comparable domain precision is required.
-}
-
-The design effect \eqn{d_h} and response rate \eqn{r_h} enter only when
-they vary by stratum. A value shared by every stratum is a constant
-factor and cancels out of a proportional weighting, leaving the classical
-rules above it. Neyman and optimal allocation carry
-\eqn{\sqrt{d_h/r_h}}{sqrt(d_h/r_h)} from minimizing
-\eqn{\sum W_h^2S_h^2d_h/(r_hn_h)} under a constraint on issued count
-or cost, respectively. The power rule retains that adjustment while
-weighting population CVs by \code{alloc_measure^alloc_q}. Proportional carries
-\eqn{1/r_h} instead, and no \eqn{d_h} at all, because it is a count rule, not a
-variance optimum, and its purpose is a self-weighting sample, so it is
-the responding sample it holds proportional to \eqn{N_h}.
-
-Stratum allocations are rounded to integers using the ORIC method
-(Cont and Heidari, 2014). Constraints (\code{min_n_stratum}, \code{max_weight},
-\code{take_all}) are enforced via recursive Neyman allocation (RNA,
-Weso\enc{ł}{l}owski et al., 2022).
-
-When \code{budget} is specified, the algorithm finds the maximum affordable
-allocation under unit costs.
-}
-
-\subsection{Sample sizes in steps}{
-
-A frame column \code{n_step} makes each stratum's \code{n_int} a multiple of its
-step. The continuous allocation is solved within bounds moved to whole
-steps, then rounded in steps. In \code{n} mode each stratum takes the step
-nearest its share, and then moves by at most one step, jointly across
-strata, to reach \code{n} exactly. A total the steps cannot reach within
-that window is an error naming the nearest totals they do reach, so
-\code{n = 550} with steps of 4 and 8 names 548 and 552. A \code{cv} target rounds
-each stratum up to a step. A \code{budget} adds and removes whole steps. The
-searched modes search whole steps. With one step for every stratum the
-result is the allocation in sets of that size multiplied back.
-\code{\link[=prec_alloc]{prec_alloc()}} assesses any \code{n} on such a frame, so a previous round's
-allocation can be compared with one in steps.
+When \code{frame$n_step} is supplied on an element frame, every stratum's \code{n_int}
+is a whole multiple of \code{n_step}.
 }
 }
 \examples{
@@ -1045,13 +321,13 @@ frame <- data.frame(
 
 n_alloc(frame, n = 600)
 n_alloc(frame, cv = 0.03)
+n_alloc(frame, moe = 1.5)
 
 frame_constraints <- transform(
   frame,
   max_weight = c(25, 20, NA),
   take_all = c(FALSE, FALSE, TRUE)
 )
-
 n_alloc(frame_constraints, budget = 3500, alloc = "optimal", min_n_stratum = 40)
 
 frame_domains <- data.frame(
@@ -1061,209 +337,24 @@ frame_domains <- data.frame(
   sd   = c(12, 18, 10, 16),
   mean = c(55, 48, 58, 50)
 )
-
 n_alloc(frame_domains, domains = "province",
-       cv = 0.04, alloc = "power", alloc_q = 0.3)
+        cv = 0.04, alloc = "power", alloc_q = 0.3)
 
-# A publication floor of 480 per province, which holds the South, and
-# one of 550 for the South only
-n_alloc(frame_domains, domains = "province", n = 1000,
-        min_n_domain = 480)$domains
-south <- data.frame(domain = "province", level = "South", min_n = 550)
-n_alloc(frame_domains, domains = "province", n = 1000,
-        min_n_domain = south)$domains
-
-# Power allocation on a size measure alone, as DHS and MICS apply it
+# Power allocation on a size measure alone
 sizes <- data.frame(stratum = c("A", "B", "C"), N = c(4e5, 1e5, 2.5e4))
 n_alloc(sizes, n = 60, alloc = "power", alloc_q = 0.25, min_n_stratum = 15)
 
-# A floor for one stratum only, such as the clusters a small domain needs
-# for its own estimates. The others share the rest by the power rule.
-n_alloc(sizes, n = 60, alloc = "power", alloc_q = 0.25,
-        min_n_stratum = c(NA, NA, 20))
-
-# The minimum is a bound. To give each stratum its minimum and share the
-# rest by size on top of it, allocate what is left and add the minimums.
-floors <- c(10, 10, 10)
-n_alloc(sizes, n = 60 - sum(floors), alloc = "proportional")$detail$n +
-  floors
-
-# PSU counts in steps: 4 rotation groups, and 8 in strata split in two
-psus <- data.frame(
-  stratum = c("North", "South", "East", "West"),
-  N = c(120000, 95000, 60000, 30000),
-  min_n_stratum = c(16, 12, 12, 13),
-  n_step = c(4, 8, 4, 4)
-)
-n_alloc(psus, n = 120, alloc = "proportional")$detail[
-  c("stratum", "n", "n_int", "n_step")]
-
-# A proportion supplies its own variance
-rates <- data.frame(stratum = c("A", "B", "C"), N = c(4e5, 1e5, 2.5e4),
-                    p = c(0.48, 0.60, 0.16))
-n_alloc(rates, cv = 0.05)
-
-# Joint targets for two indicators and an overlapping domain
-joint_frame <- data.frame(
-  stratum = c("North urban", "North rural", "South urban"),
-  region = c("North", "North", "South"),
-  N = c(1000, 1800, 1200)
-)
-joint_measures <- data.frame(
-  stratum = rep(joint_frame$stratum, 2),
-  name = rep(c("coverage", "income"), each = 3),
-  p = c(0.5, 0.4, 0.6, NA, NA, NA),
-  mean = c(NA, NA, NA, 50, 55, 60),
-  sd = c(NA, NA, NA, 10, 12, 15)
-)
-joint_targets <- data.frame(
-  name = c("coverage", "income"),
-  domain = c(".overall", "region"),
-  level = c(NA, "North"),
-  cv = c(0.06, NA),
-  moe = c(NA, 3)
-)
-joint <- n_alloc(
-  joint_frame, measures = joint_measures, targets = joint_targets
-)
-prec_alloc(joint, n = joint$detail$n_int)
-
-# The best design a fixed budget can buy, subject to the same targets
-bought <- n_alloc(
-  joint_frame, measures = joint_measures, targets = joint_targets,
-  objective = "income", budget = 4000
-)
-bought$objective
-
-# Unequal priorities, and an objective on a specific domain
-priorities <- data.frame(
-  name     = c("income", "coverage"),
-  domain   = c(".overall", "region"),
-  level    = c(NA, "North"),
-  priority = c(2, 1)
-)
-n_alloc(
-  joint_frame, measures = joint_measures, targets = joint_targets,
-  objective = priorities, budget = 4000
-)
-
-# A domain without a level column targets every level of it
-every_region <- data.frame(
-  name = c("coverage", "income"),
-  domain = c(".overall", "region"),
-  cv = c(0.06, 0.05)
-)
-by_region <- n_alloc(
-  joint_frame, measures = joint_measures, targets = every_region
-)
-by_region$constraints[, c("constraint", ".target", ".achieved")]
-
-# What would other budgets buy? (cost-versus-objective frontier)
-predict(bought, data.frame(budget = c(3000, 4000, 5000)))
-
-# The same target tables with fixed two-stage takes
-joint_frame$N_psu <- c(100, 150, 100)
-joint_frame$n_per_psu <- c(8, 10, 12)
-joint_frame$cost_psu <- c(300, 400, 450)
-joint_frame$cost_ssu <- c(25, 30, 35)
-joint_measures$icc_psu <- rep(c(0.03, 0.05, 0.08), 2)
-joint_measures$var_ratio_psu <- 1
-joint_cluster <- n_alloc(
-  joint_frame, measures = joint_measures, targets = joint_targets
-)
-joint_cluster$detail[, c("stratum", "n_psu_int", "n_per_psu", "n_int")]
-
-# Each indicator measured on its own eligible persons per household
-joint_measures$eligible_per_unit <- rep(c(0.41, 2.6), each = 3)
-n_alloc(joint_frame, measures = joint_measures, targets = joint_targets)
-
-# Fixed three-stage takes: PSUs, SSUs within PSU, ultimate units within SSU
-joint_frame$N_ssu <- c(600, 1000, 750) # aggregate SSUs by stratum
-joint_frame$n_per_ssu <- c(3, 4, 3)
-joint_frame$cost_tsu <- c(5, 6, 7)
-joint_measures$icc_ssu <- rep(c(0.10, 0.08, 0.12), 2)
-joint_measures$var_ratio_ssu <- 1
-joint_three <- n_alloc(
-  joint_frame, measures = joint_measures, targets = joint_targets,
-  min_n_stratum = 20
-)
-joint_three$detail[, c(
-  "stratum", "n_psu_int", "n_per_psu", "n_per_ssu", "n_int"
-)]
-prec_alloc(joint_three, n = joint_three$detail$n_int)
-
 # Stratified two-stage design (EAs then households per stratum)
 frame_cluster <- data.frame(
-  stratum   = c("Urban", "Rural"),
-  N         = c(50000, 150000),
-  sd        = c(0.45, 0.48),
-  mean      = c(0.35, 0.25),
-  icc_psu = c(0.03, 0.08),
-  cost_psu  = c(300, 600),
-  cost_ssu  = c(40, 60)
+  stratum = c("Urban", "Rural"),
+  N       = c(50000, 150000),
+  sd      = c(0.45, 0.48),
+  mean    = c(0.35, 0.25),
+  icc_1   = c(0.03, 0.08),
+  cost_1  = c(300, 600),
+  cost_2  = c(40, 60)
 )
-
 n_alloc(frame_cluster, cv = 0.05)
-
-# Small PSUs of 49 units each: the stage correction moves the
-# cost-optimal take from about 6.3 to 7
-plots <- data.frame(N = 4900, N_psu = 100, sd = sqrt(54), mean = 10,
-                    icc_psu = 5 / 54, cost_psu = 12, cost_ssu = 3)
-n_alloc(plots, budget = 1000, fpc = "none")$detail$n_per_psu
-n_alloc(plots, budget = 1000, fpc = "stage")$detail$n_per_psu
-
-# Certainty PSUs from a register that lists every PSU with its size.
-# The "City" stratum is a single PSU.
-set.seed(1)
-size <- c(round(rlnorm(60, log(150), 0.8)), 4000)
-register <- data.frame(
-  psu_id = seq_along(size),
-  stratum = rep(c("North", "South", "City"), c(30, 30, 1)),
-  N = size
-)
-pop <- data.frame(
-  stratum = rep(register$stratum, size),
-  psu_id = rep(register$psu_id, size),
-  y = rbinom(sum(size), 1, rep(plogis(rnorm(61, -0.5, 0.4)), size))
-)
-# icc_psu under size-proportional selection: each PSU's share of its stratum
-pop$share <- ave(pop$y, pop$psu_id, FUN = length) /
-  ave(pop$y, pop$stratum, FUN = length)
-vc <- varcomp(y ~ psu_id, strata = ~stratum, prob = ~share,
-              data = subset(pop, stratum != "City"))
-
-reg_frame <- aggregate(N ~ stratum, register, sum)
-reg_frame$n_per_psu <- 10
-reg_measures <- aggregate(cbind(p = y) ~ stratum, pop, mean)
-reg_measures$name <- "y"
-# NA for "City": a single PSU has no between-PSU variance
-reg_measures$icc_psu <- vc$strata$icc_psu[
-  match(reg_measures$stratum, vc$strata$stratum)
-]
-reg_measures
-
-reg_fit <- n_alloc(
-  reg_frame, measures = reg_measures,
-  targets = data.frame(name = "y", cv = 0.05), psu = register
-)
-reg_fit$detail[, c("stratum", "n_psu_certain", "n_psu_draw", "n_int")]
-
-# Relaxing the certainty rule to an inclusion probability below one
-predict(reg_fit, data.frame(certainty_cutoff = c(1, 0.9, 0.8)))
-
-# No zones, one PSU per zone, and two PSUs per zone
-predict(reg_fit, data.frame(n_psu_per_zone = c(NA, 1, 2)))
-
-# The register design a field budget buys, with visits and interviews
-# priced and the cv of 0.05 kept as a hard target
-reg_frame$cost_psu <- 300
-reg_frame$cost_ssu <- 20
-reg_buy <- n_alloc(
-  reg_frame, measures = reg_measures,
-  targets = data.frame(name = "y", cv = 0.05), objective = "y",
-  budget = 30000, psu = register
-)
-reg_buy$operational[c("cost", "objective_value", "budget_residual")]
 
 }
 \references{
@@ -1274,9 +365,6 @@ and 9.
 Bankier, M. D. (1988). Power allocations: determining sample sizes for
 subnational areas. \emph{The American Statistician}, 42(3), 174--177.
 
-Bethel, J. (1989). Sample allocation in multivariate surveys. \emph{Survey
-Methodology}, 15(1), 47--57.
-
 Cont, R. and Heidari, M. (2014). Optimal rounding under integer
 constraints. \emph{arXiv preprint} arXiv:1501.00014.
 
@@ -1285,15 +373,16 @@ Weso\enc{ł}{l}owski, J., Wieczorkowski, R., and W\enc{ó}{o}jciak, W.
 Statistics and Methodology}, 10(5), 1263--1275.
 }
 \seealso{
-\link{n_alloc-generalized} for the joint mode in full,
-\code{\link[=prec_alloc]{prec_alloc()}} for the inverse and for the precision of any fixed
-allocation, nationally and by domain, \code{\link[=strata_bound]{strata_bound()}} for constructing the
-strata to allocate over, and \code{\link[=n_multi]{n_multi()}} for the unstratified
-multi-indicator size that joint allocation refines.
+\code{\link[=n_alloc_joint]{n_alloc_joint()}} for joint multi-indicator, overlapping-domain,
+and PSU-register allocation, \code{\link[=prec_alloc]{prec_alloc()}} for the inverse precision
+assessment, \code{\link[=strata_bound]{strata_bound()}} for building strata, and \code{\link[=n_multi]{n_multi()}} for
+unstratified multi-indicator sizing.
 
 Other stratified design functions:
-\code{\link{n_alloc-generalized}},
+\code{\link[=merge_psus]{merge_psus()}},
+\code{\link[=n_alloc_joint]{n_alloc_joint()}},
 \code{\link[=prec_alloc]{prec_alloc()}},
+\code{\link[=prec_alloc_joint]{prec_alloc_joint()}},
 \code{\link[=strata_bound]{strata_bound()}}
 }
 \concept{stratified design functions}

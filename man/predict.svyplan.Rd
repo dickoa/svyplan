@@ -3,6 +3,9 @@
 \name{predict.svyplan}
 \alias{predict.svyplan}
 \alias{predict.svyplan_n}
+\alias{predict.svyplan_alloc}
+\alias{predict.svyplan_multi}
+\alias{predict.svyplan_alloc_joint}
 \alias{predict.svyplan_cluster}
 \alias{predict.svyplan_power}
 \alias{predict.svyplan_prec}
@@ -10,18 +13,25 @@
 \usage{
 \method{predict}{svyplan_n}(object, newdata, ...)
 
-\method{predict}{svyplan_cluster}(object, newdata, ...)
+\method{predict}{svyplan_alloc}(object, newdata, ...)
+
+\method{predict}{svyplan_multi}(object, newdata, ...)
+
+\method{predict}{svyplan_alloc_joint}(object, newdata, ...)
+
+\method{predict}{svyplan_cluster}(object, newdata, ..., control = NULL)
 
 \method{predict}{svyplan_power}(object, newdata, ...)
 
 \method{predict}{svyplan_prec}(object, newdata, ...)
 }
 \arguments{
-\item{object}{A svyplan object (\code{svyplan_n}, \code{svyplan_cluster},
-\code{svyplan_power}, or \code{svyplan_prec}). For \code{svyplan_prec}, the types
-\code{"proportion"}, \code{"mean"}, \code{"ratio"}, \code{"change"}, \code{"pooled"} and
-\code{"alloc"} are supported. Types \code{"cluster"} and \code{"multi"}, and the
-precision of a PSU register allocation, are not.}
+\item{object}{A svyplan object (\code{svyplan_n}, \code{svyplan_multi},
+\code{svyplan_alloc}, \code{svyplan_alloc_joint}, \code{svyplan_cluster},
+\code{svyplan_power}, or \code{svyplan_prec}). For \code{svyplan_prec}, types
+\code{"proportion"}, \code{"mean"}, \code{"ratio"}, \code{"change"}, \code{"pooled"}, \code{"alloc"},
+and \code{"alloc_joint"} (including PSU register allocations) are supported.
+Types \code{"cluster"} and \code{"multi"} are not.}
 
 \item{newdata}{A data frame of parameter combinations to evaluate.
 Column names must be valid parameters for the object type (see
@@ -29,6 +39,9 @@ Details). Parameters not in \code{newdata} stay at their original
 values from the object.}
 
 \item{...}{Additional arguments are not supported and produce an error.}
+
+\item{control}{For a \code{\link[=n_cluster]{n_cluster()}} result only, the whole-unit search
+settings of each refit, as in \code{\link[=n_cluster]{n_cluster()}}. Defaults to the fit's own.}
 }
 \value{
 A data frame with \code{newdata} columns followed by result
@@ -36,9 +49,13 @@ columns. The result columns depend on the object type:
 \itemize{
 \item \code{svyplan_n}: \code{n}, \code{se}, \code{moe}, \code{cv}, \code{rmoe}, except for a
 \code{type = "change"} result, which reports one size per occasion as
-\code{n1} and \code{n2} in place of \code{n}, and a joint constrained allocation,
-which reports the design and cost columns described under Details
-\item \code{svyplan_cluster}: \code{n_psu}, \code{n_per_psu}, (opt. \code{n_per_ssu}), \code{total_n}, \code{cv}, \code{cost}
+\code{n1} and \code{n2} in place of \code{n}
+\item \code{svyplan_alloc} from \code{\link[=n_alloc]{n_alloc()}}: \code{n} (the total), \code{se}, \code{moe},
+\code{cv}, \code{rmoe} and \code{cost}
+\item \code{svyplan_alloc_joint} from \code{\link[=n_alloc_joint]{n_alloc_joint()}}: the design and cost
+columns described under Details
+\item \code{svyplan_multi}: \code{n} and \code{binding}, the name of the binding indicator
+\item \code{svyplan_cluster}: stage counts (\code{stage_1}, \code{stage_2}, ..., or custom stage names), \code{total_n}, \code{cv}, \code{cost}
 \item \code{svyplan_power}: \code{n}, \code{power}, \code{effect}
 \item \code{svyplan_prec}: \code{se}, \code{moe}, \code{cv}, \code{rmoe}, except for an allocation.
 A classic allocation reports \code{n} (the total), \code{se}, \code{moe}, \code{cv},
@@ -54,7 +71,7 @@ achieved value is reported beside it as \code{.cv_achieved}, \code{.moe_achieved
 \code{.rmoe_achieved} or \code{.power_achieved}. It equals the target unless a
 floor such as \code{min_cases} or \code{min_n_stratum} binds and carries the
 precision past it. A result column that repeats an input set in
-\code{newdata}, such as \code{n} or \code{n_per_psu}, is not shown twice.
+\code{newdata}, such as \code{n} or \code{take_2}, is not shown twice.
 }
 \description{
 Evaluate a svyplan result at new parameter combinations.
@@ -87,14 +104,21 @@ a statement about a horizon that changing the horizon would contradict.
 The lag profiles themselves cannot be varied, a grid row having nowhere
 to hold a vector. \code{cor_decay} can, being one number that replaces the
 correlation profile, whatever the overlap's shape.
-\item \strong{\code{n_cluster}}: \code{cv}, \code{budget}, \code{unit_relvar}, \code{resp_rate},
-\code{resp_rate_psu}, \code{resp_rate_ssu}, \code{eligibility_rate}, \code{eligible_per_unit},
-\code{fixed_cost}, the
-fixed sizes \code{n_psu}, \code{n_per_psu} and \code{n_per_ssu},
-stage deltas (\code{icc} or \code{icc_psu}, plus \code{icc_ssu} for 3-stage),
-stage ratios (\code{var_ratio} or \code{var_ratio_psu}, plus \code{var_ratio_ssu} for 3-stage),
-and stage costs (\code{cost_psu}, \code{cost_ssu}, \code{cost_tsu}). For 2-stage
-designs, \code{cost_tsu} aliases \code{cost_ssu}.
+\item \strong{\code{n_multi}}: \code{target_mult} (multiplier on all \code{cv}, \code{moe}, \code{rmoe}
+targets), \code{deff}, \code{resp_rate}, \code{eligibility_rate}, \code{eligible_per_unit},
+\code{alpha}, \code{df}.
+\item \strong{\code{n_cluster}} (single-indicator): \code{cv}, \code{budget}, \code{unit_relvar},
+\code{resp_rate}, stage response rates (\code{resp_rate_1}, ..., \verb{resp_rate_\{S-1\}}),
+\code{eligibility_rate}, \code{eligible_per_unit}, \code{fixed_cost}, fixed stage
+sizes (\code{n_1}, \code{take_2}, ..., \code{take_S}), stage deltas (\code{icc} for 2-stage
+or \code{icc_1}, ..., \verb{icc_\{S-1\}}), stage ratios (\code{var_ratio} for 2-stage or
+\code{var_ratio_1}, ..., \verb{var_ratio_\{S-1\}}), and stage costs (\code{cost_1}, ...,
+\code{cost_S}). Fits with stage-by-stage finite population correction also
+accept \code{N_1}, ..., \verb{N_\{S-1\}}, and \code{N}.
+\item \strong{\code{n_cluster}} (multi-indicator \code{indicators} table): \code{target_mult},
+\code{cost_mult}, \code{icc_mult}, \code{budget}, \code{resp_rate}, \code{eligibility_rate},
+\code{eligible_per_unit}, \code{fixed_cost}. \code{cost_mult} scales the stage costs
+and leaves \code{fixed_cost} as it is, which its own column varies.
 \item \strong{\code{power_prop}}: \code{p1}, \code{p2}, \code{n}, \code{power}, \code{alpha}, \code{N}, \code{deff},
 \code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate}, \code{eligibility_rate},
 \code{eligible_per_unit} (excluding the solved-for parameter). Not supported
@@ -103,8 +127,9 @@ for objects with vector \code{n}.
 \code{deff}, \code{alternative}, \code{overlap}, \code{overlap_cor}, \code{resp_rate},
 \code{eligibility_rate}, \code{eligible_per_unit} (excluding the solved-for
 parameter). Not supported for objects with vector \code{n}.
-\item \strong{\code{n_alloc}} (classic modes): \code{n}, \code{cv}, \code{budget}, \code{alpha}, \code{deff},
-\code{resp_rate}, \code{eligibility_rate}, \code{df}, \code{min_n_stratum}, \code{alloc_q}. A joint
+\item \strong{\code{n_alloc}} (classic modes): \code{n}, \code{cv}, \code{moe}, \code{rmoe}, \code{budget},
+\code{alpha}, \code{deff}, \code{resp_rate}, \code{eligibility_rate}, \code{eligible_per_unit},
+\code{df}, \code{min_n_stratum}, \code{alloc_q}. A joint
 constrained allocation varies other controls, described below.
 \item \strong{\code{power_did}}: \code{effect}, \code{n}, \code{power}, \code{alpha}, \code{N}, \code{deff},
 \code{resp_rate}, \code{eligibility_rate}, \code{eligible_per_unit}, \code{alternative},
@@ -130,10 +155,16 @@ is, also \code{overlap_cor}. Where both are, also \code{occasions}. \code{cor_de
 whatever the overlap's shape, since it replaces the correlation
 profile.
 \item \strong{\code{prec_alloc}}: \code{n}, \code{alpha}, \code{deff}, \code{resp_rate},
-\code{eligibility_rate}, \code{df}, and for a joint allocation
-\code{eligible_per_unit}. A number in \code{n} rescales the stratum sizes to that
-total and keeps their shares. A list column \code{n} gives each row its own
-stratum sizes, one per row of the frame, to compare allocations.
+\code{eligibility_rate}, \code{eligible_per_unit}, \code{df}. A number in \code{n} rescales
+the stratum sizes to that total and keeps their shares. A list column \code{n}
+gives each row its own stratum sizes, one per row of the frame, to
+compare allocations. Takes held by the assessment after a whole-design
+search also apply to each scenario.
+\item \strong{\code{prec_alloc_joint}}: fixed-design robustness sweeps over \code{alpha},
+\code{deff}, \code{resp_rate}, \code{eligibility_rate}, \code{df}, \code{var_mult}, \code{cost_mult},
+plus \code{icc_mult} (for multistage and PSU register fits) and \code{n} and
+\code{eligible_per_unit} (when \code{psu} is not used). The sample allocation is
+held fixed while assessment inputs vary.
 }
 
 For \code{svyplan_n} objects, \code{moe}, \code{rmoe}, and \code{cv} are mutually exclusive
@@ -143,36 +174,38 @@ original mode is preserved.
 Similarly, for \code{svyplan_cluster} objects, \code{cv} and \code{budget} are
 mutually exclusive.
 
-Multi-indicator (\code{n_multi}) and multi-indicator cluster results are
-not supported. Use the underlying single-indicator functions instead.
-
-A joint constrained allocation (\code{\link[=n_alloc]{n_alloc()}} with \code{measures} and \code{targets})
-varies two controls, and each grid row re-solves the stored problem.
+A joint constrained allocation (\code{\link[=n_alloc_joint]{n_alloc_joint()}}) re-solves the stored
+problem at each scenario row. Valid columns include \code{target_mult} (when
+targets are present), \code{cost_mult}, \code{deff}, \code{resp_rate}, \code{eligibility_rate},
+\code{alpha}, and \code{df}, \code{eligible_per_unit} without a PSU register, plus
+\code{budget} in budget mode, \code{take_2}, ..., \code{take_S}
+and \code{icc_mult} for multistage and register fits, \code{take_2_min} and \code{take_2_max}
+for free-take fits, and \code{certainty_cutoff} and \code{n_psu_per_zone} for PSU
+register fits.
 
 A fixed-budget objective fit varies \code{budget}, tracing the
 cost-versus-objective frontier. A fixed-take multistage fit varies the
-takes, \code{n_per_psu} for a two-stage design and either \code{n_per_psu} or
-\code{n_per_ssu} for a three-stage one, tracing what the fieldwork decision
+takes (\code{take_2}, ..., \code{take_S}), tracing what the fieldwork decision
 costs. A scalar take applies to every stratum, so the per-stratum takes the
 fit was built from are replaced rather than scaled. Sweep them
-asymmetrically by editing \code{frame} and calling \code{\link[=n_alloc]{n_alloc()}} per point. Both
+asymmetrically by editing \code{frame} and calling \code{\link[=n_alloc_joint]{n_alloc_joint()}} per point. Both
 controls may appear together on a budget-objective fit, one row per
 combination.
 
 The result reports the continuous \code{n} and \code{cost}, the operational \code{n_int}
 and \code{cost_int}, and \code{.feasible}. A multistage fit adds the PSU counts
-\code{n_psu} and \code{n_psu_int}, and budget mode adds \code{objective_value}, its
-equivalent \code{cv}, and whether the budget binds. A row the solver cannot
-satisfy, a budget too small to fund the hard targets or a take that exceeds
-the stage populations, gives an all-\code{NA} row with \code{.feasible = FALSE} and a
-warning, so one infeasible point does not discard the rest of the grid. A
-take that is not a positive whole number is a malformed grid rather than an
-infeasible design point, and stops.
+\code{n_1} and \code{n_1_int}, and budget mode adds \code{objective_value}, its
+equivalent \code{cv}, and whether the budget binds. On grids without a PSU
+register, a rejected scenario or a failed solve returns missing results,
+\code{.feasible = FALSE}, and a warning. Read the warning to distinguish a
+failed solve from proven infeasibility. The grid checks before solving
+that each requested take is a positive whole number.
 
-A certainty-aware fit (\code{\link[=n_alloc]{n_alloc()}} with \code{psu}) varies \code{n_per_psu} too,
-and reports \code{n_psu_certain} and \code{n_psu_draw} in place of the PSU counts. This is how the take is priced. It
-also sets the certainty threshold, so a larger take leaves fewer certainty
-PSUs and costs more sample, and the resulting cost curve has a minimum
+A certainty-aware fit (\code{\link[=n_alloc_joint]{n_alloc_joint()}} with \code{psu}) varies \code{take_2} too,
+and splits the PSU count \code{n_1_int} into \code{n_psu_certain} and \code{n_psu_draw}.
+This is how the take is priced. It also sets the certainty threshold, so
+a larger take leaves fewer certainty PSUs and costs more sample, and the
+resulting cost curve has a minimum
 worth finding rather than assuming. Such a fit also varies
 \code{certainty_cutoff}, one value per row applied to every stratum, to price
 a relaxed certainty rule the same way, and \code{n_psu_per_zone}, with \code{NA} for
@@ -189,9 +222,10 @@ limit stopped with a worse plan than a lower budget's, or with none,
 takes that plan, which fits its budget, so the objective never worsens
 as the budget grows. Its status reads \code{"limit"}.
 
-Precision targets stay out of reach of the grid. A one-stage minimum-cost
-fit therefore has nothing to vary. Modify \code{targets} and call \code{\link[=n_alloc]{n_alloc()}}
-again.
+A cluster grid from \code{\link[=n_cluster]{n_cluster()}} adds \code{.status} and \code{.nodes}, the
+status and node count of each row's whole-unit search. A row whose
+search stopped before finding a design reads \code{"unknown"}, with its
+sizes missing.
 
 If evaluation fails for a particular row (e.g. invalid parameter
 combinations), that row's result columns are \code{NA} and a warning is
@@ -218,6 +252,21 @@ predict(pw, data.frame(n = seq(100, 1000, 100)))
 cl <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
 predict(cl, data.frame(icc = c(0.01, 0.03, 0.05, 0.10, 0.15)))
 
+# Indicator names repeated across domains: each domain is sized on its
+# own, and the identity row target_mult = 1 returns the fitted n
+dtab <- data.frame(region = rep(c("N", "S"), each = 2),
+                   name = rep(c("y1", "y2"), 2),
+                   p = c(0.3, 0.5, 0.35, 0.45), cv = 0.1)
+dm <- n_multi(dtab, domains = "region")
+predict(dm, data.frame(target_mult = c(1, 1.5)))
+
+# Stage costs 20\% higher, the fixed cost of 10000 unchanged
+tab <- data.frame(name = c("a", "b"), p = c(0.3, 0.4), cv = 0.05,
+                  icc_1 = c(0.05, 0.1))
+fit <- n_cluster(tab, stage_cost = c(500, 50), budget = 1e5,
+                 fixed_cost = 1e4)
+predict(fit, data.frame(cost_mult = c(1, 1.2)))
+
 # Allocation: how does the CV change with sample size?
 frame <- data.frame(
   N    = c(4000, 3000, 3000),
@@ -243,12 +292,12 @@ predict(ch, expand.grid(n = c(800, 1200), overlap_cor = c(0.4, 0.7)))
 
 # Two-stage joint allocation: what does the per-PSU take cost?
 cluster_frame <- data.frame(
-  stratum  = c("Urban", "Rural"),
-  N        = c(60000, 40000),
-  N_psu    = c(600, 500),
-  n_per_psu = c(10, 10),
-  cost_psu = c(400, 550),
-  cost_ssu = c(20, 25)
+  stratum = c("Urban", "Rural"),
+  N       = c(60000, 40000),
+  N_1     = c(600, 500),
+  take_2  = c(10, 10),
+  cost_1  = c(400, 550),
+  cost_2  = c(20, 25)
 )
 cluster_measures <- data.frame(
   stratum = rep(cluster_frame$stratum, 2),
@@ -256,15 +305,15 @@ cluster_measures <- data.frame(
   p       = c(0.62, 0.48, NA, NA),
   mean    = c(NA, NA, 520, 380),
   sd      = c(NA, NA, 210, 160),
-  icc_psu = rep(c(0.04, 0.07), 2)
+  icc_1   = rep(c(0.04, 0.07), 2)
 )
 cluster_targets <- data.frame(
   name = c("literacy", "income"),
   cv   = c(0.03, 0.04)
 )
-joint <- n_alloc(cluster_frame, measures = cluster_measures,
-                 targets = cluster_targets)
-predict(joint, data.frame(n_per_psu = c(6, 10, 14, 20)))
+joint <- n_alloc_joint(cluster_frame, measures = cluster_measures,
+                       targets = cluster_targets)
+predict(joint, data.frame(take_2 = c(6, 10, 14, 20)))
 
 }
 \seealso{

@@ -71,11 +71,11 @@ test_that("a size-only result reports no precision", {
 
 test_that("a size-only cluster allocation reports no precision either", {
   cl <- data.frame(
-    stratum = c("A", "B"), N = c(4e5, 1e5), N_psu = c(800, 200),
-    n_per_psu = 20, icc_psu = 0.05
+    stratum = c("A", "B"), N = c(4e5, 1e5), N_1 = c(800, 200),
+    take_2 = 20, icc_1 = 0.05
   )
   x <- n_alloc(cl, n = 600, alloc = "proportional")
-  expect_identical(x$detail$n_psu_int, c(24L, 6L))
+  expect_identical(x$detail$n_1_int, c(24L, 6L))
   expect_true(is.na(x$cv))
   expect_true(is.na(x$operational$cv))
 })
@@ -83,9 +83,9 @@ test_that("a size-only cluster allocation reports no precision either", {
 test_that("precision targets and variance rules still need a variance", {
   fr <- .size_frame()
   expect_error(n_alloc(fr, cv = 0.05, alloc = "proportional"),
-               "'cv' or 'budget' target needs 'sd', 'var' or 'p'")
+               "precision or 'budget' target needs 'sd', 'var' or 'p'")
   expect_error(n_alloc(fr, budget = 100, alloc = "power"),
-               "'cv' or 'budget' target needs 'sd', 'var' or 'p'")
+               "precision or 'budget' target needs 'sd', 'var' or 'p'")
   expect_error(n_alloc(fr, n = 60),
                "alloc = \"neyman\" needs 'sd', 'var' or 'p'")
   expect_error(n_alloc(fr, n = 60, alloc = "optimal"),

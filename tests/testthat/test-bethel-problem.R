@@ -88,8 +88,8 @@ test_that("unused measure values cannot change the allocation problem", {
   augmented <- z$measures
   augmented$mean[unused] <- Inf
   augmented$sd[unused] <- NA_real_
-  augmented$icc_psu <- NA_real_
-  augmented$icc_psu[unused] <- 0.5
+  augmented$icc_1 <- NA_real_
+  augmented$icc_1[unused] <- 0.5
 
   got <- .build_bethel_problem(
     z$frame,
@@ -115,8 +115,8 @@ test_that("unused multistage rows need no stage planning values", {
     augmented <- z$measures
     augmented$mean[unused] <- Inf
     augmented$sd[unused] <- NA_real_
-    augmented$icc_psu[unused] <- NA_real_
-    if (stages == 3L) augmented$icc_ssu[unused] <- NA_real_
+    augmented$icc_1[unused] <- NA_real_
+    if (stages == 3L) augmented$icc_2[unused] <- NA_real_
 
     got <- .build_bethel_problem(z$frame, augmented, z$targets)
 
@@ -236,12 +236,12 @@ test_that("a negligible total is judged against the terms that formed it", {
     name = "income", domain = ".overall", level = NA_character_,
     cv = 0.05, moe = NA_real_
   )
-  ref <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+  ref <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
   for (scale in c(1e-6, 1e-14, 1e-30)) {
     small <- z
     small$measures$mean <- small$measures$mean * scale
     small$measures$sd <- small$measures$sd * scale
-    fit <- n_alloc(small$frame, measures = small$measures,
+    fit <- n_alloc_joint(small$frame, measures = small$measures,
                    targets = small$targets)
     expect_equal(fit$n, ref$n)
   }
@@ -250,7 +250,7 @@ test_that("a negligible total is judged against the terms that formed it", {
   zero <- z
   zero$measures$mean[5:8] <- c(50, -25, 60, -90)
   expect_error(
-    n_alloc(zero$frame, measures = zero$measures, targets = zero$targets),
+    n_alloc_joint(zero$frame, measures = zero$measures, targets = zero$targets),
     "negligible total"
   )
 })

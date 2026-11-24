@@ -1,56 +1,56 @@
 ## Whole and continuous takes keep one expected respondent
 
 .floor_cases <- function(r) {
-  i2 <- data.frame(name = "p", p = 0.5, cv = 0.05, icc_psu = 0.9,
+  i2 <- data.frame(name = "p", p = 0.5, cv = 0.05, icc_1 = 0.9,
                    resp_rate = r)
-  i3 <- data.frame(name = "p", p = 0.5, cv = 0.05, icc_psu = 0.05,
-                   icc_ssu = 0.8, resp_rate = r)
-  i3s <- data.frame(name = "p", p = 0.5, cv = 0.05, icc_psu = 0.6,
-                    icc_ssu = 0.01, resp_rate_ssu = r)
+  i3 <- data.frame(name = "p", p = 0.5, cv = 0.05, icc_1 = 0.05,
+                   icc_2 = 0.8, resp_rate = r)
+  i3s <- data.frame(name = "p", p = 0.5, cv = 0.05, icc_1 = 0.6,
+                    icc_2 = 0.01, resp_rate_2 = r)
   list(
     two_cv = list(
       scalar = function() n_cluster(stage_cost = c(1, 100), icc = 0.9,
                                     cv = 0.05, resp_rate = r),
-      table = function() n_cluster(indicators = i2, stage_cost = c(1, 100)),
-      icc = 0.9, rates = c(resp_rate = r)
+      table = function() n_cluster(i2, stage_cost = c(1, 100)),
+      icc = 0.9, rates = list(resp_rate = r)
     ),
     two_budget = list(
       scalar = function() n_cluster(stage_cost = c(1, 100), icc = 0.9,
                                     budget = 1e5, resp_rate = r),
-      table = function() n_cluster(indicators = i2, stage_cost = c(1, 100),
+      table = function() n_cluster(i2, stage_cost = c(1, 100),
                                    budget = 1e5),
-      icc = 0.9, rates = c(resp_rate = r)
+      icc = 0.9, rates = list(resp_rate = r)
     ),
     three_cv = list(
       scalar = function() n_cluster(stage_cost = c(500, 50, 500),
                                     icc = c(0.05, 0.8), cv = 0.05,
                                     resp_rate = r),
-      table = function() n_cluster(indicators = i3,
+      table = function() n_cluster(i3,
                                    stage_cost = c(500, 50, 500)),
-      icc = c(0.05, 0.8), rates = c(resp_rate = r)
+      icc = c(0.05, 0.8), rates = list(resp_rate = r)
     ),
     three_budget = list(
       scalar = function() n_cluster(stage_cost = c(500, 50, 500),
                                     icc = c(0.05, 0.8), budget = 3e5,
                                     resp_rate = r),
-      table = function() n_cluster(indicators = i3,
+      table = function() n_cluster(i3,
                                    stage_cost = c(500, 50, 500),
                                    budget = 3e5),
-      icc = c(0.05, 0.8), rates = c(resp_rate = r)
+      icc = c(0.05, 0.8), rates = list(resp_rate = r)
     ),
     three_ssu = list(
       scalar = function() n_cluster(stage_cost = c(5000, 500, 5),
                                     icc = c(0.6, 0.01), cv = 0.05,
-                                    resp_rate_ssu = r),
-      table = function() n_cluster(indicators = i3s,
+                                    resp_rate = c(1, r, 1)),
+      table = function() n_cluster(i3s,
                                    stage_cost = c(5000, 500, 5)),
-      icc = c(0.6, 0.01), rates = c(resp_rate_ssu = r)
+      icc = c(0.6, 0.01), rates = list(resp_rate = c(1, r, 1))
     )
   )
 }
 
 .assess <- function(n, case) {
-  args <- c(list(n = n, icc = case$icc), as.list(case$rates))
+  args <- c(list(n = n, icc = case$icc), case$rates)
   do.call(prec_cluster, args)
 }
 
@@ -84,42 +84,42 @@ test_that("one indicator in a table is the scalar design", {
 })
 
 test_that("the review's table examples solve at a take of two", {
-  ind <- data.frame(name = "p", p = 0.5, cv = 0.05, icc_psu = 0.9,
+  ind <- data.frame(name = "p", p = 0.5, cv = 0.05, icc_1 = 0.9,
                     resp_rate = 0.5)
-  free <- n_cluster(indicators = ind, stage_cost = c(1, 100))
-  fixed <- n_cluster(indicators = ind, stage_cost = c(1, 100), n_per_psu = 2)
+  free <- n_cluster(ind, stage_cost = c(1, 100))
+  fixed <- n_cluster(ind, stage_cost = c(1, 100), stage_n = c(NA, 2))
   expect_equal(free$n, fixed$n)
   expect_equal(unname(free$n), c(400, 2))
-  budget <- n_cluster(indicators = ind, stage_cost = c(1, 100), budget = 1e5)
+  budget <- n_cluster(ind, stage_cost = c(1, 100), budget = 1e5)
   expect_equal(unname(budget$n), c(1e5 / 201, 2))
   expect_identical(unname(budget$operational$n), c(497L, 2L))
 })
 
 test_that("a fractional fixed take rounds up to a supported whole take", {
   scalar <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
-                      resp_rate = 0.42, n_per_psu = 2.4)
-  expect_identical(unname(scalar$operational$n[["n_per_psu"]]), 3L)
-  ind <- data.frame(name = "p", p = 0.5, cv = 0.05, icc_psu = 0.05,
+                      resp_rate = 0.42, stage_n = c(NA, 2.4))
+  expect_identical(unname(scalar$operational$n[["stage_2"]]), 3L)
+  ind <- data.frame(name = "p", p = 0.5, cv = 0.05, icc_1 = 0.05,
                     resp_rate = 0.42)
-  table <- n_cluster(indicators = ind, stage_cost = c(500, 50),
-                     n_per_psu = 2.4)
+  table <- n_cluster(ind, stage_cost = c(500, 50),
+                     stage_n = c(NA, 2.4))
   expect_identical(table$operational$n, scalar$operational$n)
-  expect_no_error(prec_cluster(indicators = transform(
-    ind, n = table$operational$n[["n_psu"]],
-    n_per_psu = table$operational$n[["n_per_psu"]]
+  expect_no_error(prec_cluster(transform(
+    ind, n_1 = table$operational$n[["stage_1"]],
+    take_2 = table$operational$n[["stage_2"]]
   )))
 })
 
 test_that("a whole fixed take below one respondent stays an error", {
   expect_error(
     n_cluster(stage_cost = c(1, 100), icc = 0.9, cv = 0.05, resp_rate = 0.5,
-              n_per_psu = 1),
+              stage_n = c(NA, 1)),
     "unsupported below one"
   )
-  ind <- data.frame(name = "p", p = 0.5, cv = 0.05, icc_psu = 0.9,
+  ind <- data.frame(name = "p", p = 0.5, cv = 0.05, icc_1 = 0.9,
                     resp_rate = 0.5)
   expect_error(
-    n_cluster(indicators = ind, stage_cost = c(1, 100), n_per_psu = 1),
+    n_cluster(ind, stage_cost = c(1, 100), stage_n = c(NA, 1)),
     "unsupported below one"
   )
 })
@@ -127,10 +127,10 @@ test_that("a whole fixed take below one respondent stays an error", {
 test_that("eligibility enters the floor through the ultimate rate", {
   fit <- suppressWarnings(n_cluster(stage_cost = c(1, 100), icc = 0.9,
                                     cv = 0.05, eligible_per_unit = 0.25))
-  expect_identical(unname(fit$operational$n[["n_per_psu"]]), 4L)
+  expect_identical(unname(fit$operational$n[["stage_2"]]), 4L)
   above <- suppressWarnings(n_cluster(stage_cost = c(1, 100), icc = 0.9,
                                       cv = 0.05, eligible_per_unit = 2))
-  expect_identical(unname(above$operational$n[["n_per_psu"]]), 1L)
+  expect_identical(unname(above$operational$n[["stage_2"]]), 1L)
 })
 
 test_that("the take floors and the bounded optimizer", {

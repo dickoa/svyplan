@@ -114,8 +114,8 @@ test_that("a two-stage allocation's own cv as the target costs no more", {
   fr <- data.frame(
     stratum = c("North", "South"), N = c(40000, 60000),
     sd = c(12, 15), mean = c(50, 60),
-    icc_psu = c(0.05, 0.08), var_ratio_psu = 1,
-    cost_psu = c(400, 550), cost_ssu = c(45, 60)
+    icc_1 = c(0.05, 0.08), var_ratio_1 = 1,
+    cost_1 = c(400, 550), cost_2 = c(45, 60)
   )
   seen <- character(0)
   for (alloc in c("neyman", "optimal")) {

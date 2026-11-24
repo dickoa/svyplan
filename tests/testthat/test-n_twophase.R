@@ -121,7 +121,7 @@ test_that("input validation is specific", {
   expect_error(n_twophase(frame4, phase1_cost = 1, cv = 0.05, budget = 1),
                "exactly one of 'cv' or 'budget'")
   expect_error(n_twophase(frame4[, c("N", "mean")], phase1_cost = 1, budget = 1),
-               "must contain a 'sd' column")
+               "must contain a 'sd', 'var', or 'p' column")
   expect_error(n_twophase(transform(frame4, cost = 1), phase1_cost = 1, budget = 1),
                "per-stratum cost column is 'unit_cost'")
   expect_error(n_twophase(transform(frame4, take_all = TRUE), phase1_cost = 1, budget = 1),
@@ -1382,4 +1382,158 @@ test_that("a budget too small for every stratum keeps the floored unit", {
   expect_equal(fit$operational$n[["n_phase1"]], 2)
   expect_equal(fit$operational$n_int, c(1, 0))
   expect_true(is.infinite(fit$operational$cv))
+})
+
+test_that("n_twophase() and prec_twophase() support var, p, and eligibility_rate", {
+  fr_sd <- data.frame(
+    stratum = c("A", "B"),
+    N = c(6000, 4000),
+    sd = c(12, 25),
+    mean = c(40, 70),
+    unit_cost = c(2, 5)
+  )
+  fr_var <- transform(fr_sd, var = sd^2, sd = NULL)
+  fit_sd <- n_twophase(fr_sd, phase1_cost = 1, cv = 0.02)
+  fit_var <- n_twophase(fr_var, phase1_cost = 1, cv = 0.02)
+  expect_equal(fit_var$n, fit_sd$n)
+  expect_equal(fit_var$detail$nu, fit_sd$detail$nu)
+  expect_error(
+    n_twophase(transform(fr_sd, var = sd^2), phase1_cost = 1, cv = 0.02),
+    "not both"
+  )
+
+  # Proportion frame derives sd = sqrt(p * (1 - p)), between, and mu
+  fr_p <- data.frame(
+    stratum = c("A", "B"),
+    N = c(6000, 4000),
+    p = c(0.2, 0.5),
+    unit_cost = c(2, 5)
+  )
+  fr_p_ref <- transform(fr_p, sd = sqrt(p * (1 - p)), mean = p, p = NULL)
+  fit_p <- n_twophase(fr_p, phase1_cost = 1, cv = 0.05)
+  fit_p_ref <- n_twophase(fr_p_ref, phase1_cost = 1, cv = 0.05)
+  expect_equal(fit_p$n, fit_p_ref$n)
+  expect_equal(fit_p$detail$nu, fit_p_ref$detail$nu)
+  expect_equal(prec_twophase(fit_p)$cv, fit_p$cv)
+
+  # eligibility_rate scales phase-1 yield, nu cap, and finite-population N
+  fit_elig <- n_twophase(fr_sd, phase1_cost = 1, cv = 0.02, N = 10000,
+                         eligibility_rate = 0.8)
+  expect_gt(fit_elig$n[["n_phase1"]], fit_sd$n[["n_phase1"]])
+  expect_true(all(fit_elig$detail$nu <= 0.8 + 1e-9))
+  pr_elig <- prec_twophase(fit_elig)
+  expect_equal(pr_elig$cv, fit_elig$cv, tolerance = 1e-6)
+  expect_equal(n_twophase(pr_elig)$n, fit_elig$n, tolerance = 1e-6)
+  # Phase-1 census with resp_rate = 1 and nu = eligibility_rate has zero variance
+  census_fr <- transform(fr_sd, nu = c(0.8, 0.8))
+  expect_equal(
+    prec_twophase(census_fr, n_phase1 = 10000, N = 10000,
+                  eligibility_rate = 0.8)$se,
+    0,
+    tolerance = 1e-7
+  )
+  # Profile carrying eligibility_rate works seamlessly
+  pl <- svyplan(eligibility_rate = 0.8)
+  expect_equal(
+    n_twophase(fr_sd, phase1_cost = 1, cv = 0.02, N = 10000, plan = pl)$n,
+    fit_elig$n
+  )
+})
+
+## A stratum whose phase-2 unit costs nothing
+
+test_that("a zero phase-2 cost keeps the stratum at the cap", {
+  f <- data.frame(stratum = c("A", "B"), N = c(500, 500), sd = c(10, 20),
+                  unit_cost = c(0, 5), mean = c(40, 60))
+  fixed <- n_twophase(f, phase1_cost = 1, budget = 5000, n_phase1 = 1000)
+  expect_equal(fixed$detail$nu[1], 1)
+  expect_true(is.finite(fixed$cv))
+  capped <- n_twophase(f, phase1_cost = 1, budget = 5000, N = 200)
+  expect_equal(capped$n[["n_phase1"]], 200)
+  expect_true(is.finite(capped$cv))
+  free <- transform(f, unit_cost = c(0, 0))
+  cv_fixed <- n_twophase(free, phase1_cost = 1, cv = 0.05, n_phase1 = 1000)
+  expect_equal(cv_fixed$detail$nu, c(1, 1))
+  expect_equal(n_twophase(free, phase1_cost = 1, cv = 0.05)$cv, 0.05,
+               tolerance = 1e-6)
+  rr <- n_twophase(f, phase1_cost = 1, budget = 5000, n_phase1 = 1000,
+                   resp_rate = 0.8, eligibility_rate = 0.5)
+  expect_equal(rr$detail$nu[1], 0.4)
+  expect_equal(fixed$params$take_all, c(FALSE, FALSE))
+  refit <- n_twophase(transform(f, unit_cost = c(5, 5)), phase1_cost = 1,
+                      budget = 5000, n_phase1 = 1000)
+  expect_lt(refit$detail$nu[1], 1)
+})
+
+test_that("a single-phase comparator at zero cost does not stop the fit", {
+  f <- data.frame(stratum = c("A", "B"), N = c(5000, 5000), sd = c(10, 20),
+                  unit_cost = c(10, 10), mean = c(40, 60))
+  for (z in list(n_twophase(f, phase1_cost = 1, cv = 0.05, single_cost = 0),
+                 n_twophase(f, phase1_cost = 1, budget = 5000,
+                            single_cost = 0))) {
+    expect_false(z$single_phase$reaches_target)
+    expect_false(z$single_phase$better)
+  }
+})
+
+## A degenerate two-phase design within its frame, and its round trip
+
+test_that("a degenerate design never asks for more phase-1 units than N", {
+  f <- data.frame(stratum = c("A", "B"), N = c(1, 99), sd = 0, mean = 50,
+                  unit_cost = 1)
+  z <- suppressWarnings(n_twophase(f, phase1_cost = 1, budget = 5000, N = 50))
+  expect_lte(z$n[["n_phase1"]], 50)
+  expect_equal(z$operational$cv, Inf)
+  expect_error(suppressWarnings(n_twophase(f, phase1_cost = 1, cv = 0.05,
+                                           N = 50)), "short of the target")
+  free <- suppressWarnings(n_twophase(f, phase1_cost = 1, budget = 5000))
+  expect_equal(free$n[["n_phase1"]], 100)
+})
+
+test_that("a two-phase precision result takes overrides and refuses bad costs", {
+  f <- data.frame(stratum = c("A", "B"), N = c(5000, 5000), sd = c(10, 20),
+                  unit_cost = c(10, 10), mean = c(40, 60))
+  pr <- prec_twophase(n_twophase(f, phase1_cost = 1, budget = 5000))
+  expect_equal(n_twophase(pr, phase1_cost = 2)$n,
+               n_twophase(f, phase1_cost = 2, cv = pr$cv)$n)
+  expect_equal(n_twophase(pr, N = 20000, resp_rate = 0.8)$n,
+               n_twophase(f, phase1_cost = 1, cv = pr$cv, N = 20000,
+                          resp_rate = 0.8)$n)
+  expect_error(n_twophase(pr, bogus = 1), "unused argument: 'bogus'")
+  nu <- transform(f, nu = c(0.4, 0.6))
+  expect_error(prec_twophase(nu, n_phase1 = 1000, phase1_cost = -5),
+               "'phase1_cost' must be positive")
+  expect_error(prec_twophase(nu, n_phase1 = 1000, fixed_cost = -100),
+               "'fixed_cost' must be a non-negative")
+})
+
+test_that("the two-phase search gives one design at every scale", {
+  mk <- function(s) {
+    data.frame(stratum = c("A", "B"), N = c(5000, 5000), sd = c(1, 2) * s,
+               mean = c(10, 20) * s, unit_cost = c(2, 5))
+  }
+  for (s in c(1e-30, 1e-18, 1e-9, 1e9, 1e18)) {
+    o <- n_twophase(mk(s), phase1_cost = 1, budget = 500)$operational
+    expect_equal(unname(o$n), c(316, 50))
+    expect_equal(o$cv, 0.02368233, tolerance = 1e-6)
+    o <- n_twophase(mk(s), phase1_cost = 1, cv = 0.03)$operational
+    expect_equal(unname(o$n), c(197, 32))
+  }
+})
+
+test_that("assurance counts the planned respondents without rounding dust", {
+  expect_equal(.assure_size(100 * 0.14, 0.14, 0.95), .assure_size(14, 0.14, 0.95))
+  expect_equal(.assure_size(14.2, 0.14, 0.95), .assure_size(15, 0.14, 0.95))
+})
+
+test_that("a two-phase design without a mean says its cv is undefined", {
+  ft <- data.frame(stratum = c("A", "B"), N = c(500, 500), sd = c(10, 20),
+                   unit_cost = c(2, 5))
+  tp <- n_twophase(ft, phase1_cost = 1, budget = 500)
+  expect_identical(format(tp), "svyplan_twophase [n_phase1=112, n_phase2=110]")
+  expect_true(any(grepl("cv = undefined without 'mu'",
+                        capture.output(print(tp)))))
+  tm <- n_twophase(transform(ft, mean = c(40, 60)), phase1_cost = 1,
+                   budget = 500)
+  expect_match(format(tm), "cv=0\\.0353\\]$")
 })

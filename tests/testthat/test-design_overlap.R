@@ -528,3 +528,18 @@ test_that("a fixed panel and a window are refused for a panel plan", {
   fixed <- n_panel(n_mean(var = 1, moe = 0.1), retention = c(0.9, 0.9))
   expect_error(design_overlap(fixed), "takes a rotating panel")
 })
+
+## Read-only result classes refuse $<-
+
+test_that("read-only result classes refuse assignment by $", {
+  ov <- design_overlap("2-2-2")
+  expect_error(ov$overlap <- 1, "rotation overlap")
+  rot <- design_rotation("4-8-4")
+  expect_error(rot$pattern <- 1, "rotation pattern")
+  d <- design_effect(icc = 0.1, take = 10)
+  expect_error(d$deff <- 99, "planning design effect")
+  a <- n_alloc(data.frame(stratum = c("A", "B"), N = c(1000, 2000), sd = 1),
+               n = 300)
+  df <- design_df(a)
+  expect_error(df$df <- 3, "design degrees of freedom")
+})

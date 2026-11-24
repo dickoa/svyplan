@@ -13,9 +13,8 @@ svyplan(...)
 \item{...}{Named defaults to reuse across calls. Allowed names:
 \code{alpha}, \code{df}, \code{N}, \code{deff}, \code{resp_rate}, \code{eligibility_rate},
 \code{eligible_per_unit},
-\code{resp_rate_psu}, \code{resp_rate_ssu},
 \code{prop_method},
-\code{stage_cost}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{fixed_cost},
+\code{stage_cost}, \code{stage_n}, \code{icc}, \code{unit_relvar}, \code{var_ratio}, \code{fixed_cost},
 \code{unit_cost},
 \code{alternative}, \code{ratio}, \code{overlap}, \code{overlap_cor}, \code{overlap_draw},
 \code{alloc}, \code{min_n_stratum}, \code{min_n_domain}, \code{alloc_q}, \code{phase1_cost}.}
@@ -29,20 +28,10 @@ A \code{svyplan} object.
 Create a reusable profile that captures shared design defaults
 for survey sample size and power calculations. A plan can be passed
 to functions like \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}}, \code{\link[=power_prop]{power_prop()}}, or
-\code{\link[=n_cluster]{n_cluster()}} either via the \code{plan} named argument or by piping:
+\code{\link[=n_cluster]{n_cluster()}} either through the \code{plan} argument or by piping the plan
+in as the first argument, as the examples show.
 }
 \details{
-\if{html}{\out{<div class="sourceCode">}}\preformatted{plan <- svyplan(deff = 1.8, resp_rate = 0.85, N = 50000)
-
-# Named argument
-n_prop(p = 0.3, moe = 0.05, plan = plan)
-
-# Pipe
-plan |> n_prop(0.3, moe = 0.05)
-plan |> n_prop(p = 0.3, moe = 0.05)
-plan |> n_cluster(cv = 0.05)
-}\if{html}{\out{</div>}}
-
 The profile stores design parameters that are shared across multiple
 functions. Each default fills in only arguments not explicitly provided
 by the caller. Explicit arguments always take precedence:
@@ -65,6 +54,12 @@ and also fills the \code{method} argument of \code{\link[=n_prop]{n_prop()}}, \c
 \code{\link[=power_prop]{power_prop()}} when its value is valid for that function (so
 \code{svyplan(prop_method = "wilson")} applies to \code{n_prop()} but is ignored
 by \code{power_prop()}, which has no Wilson method).
+
+\code{resp_rate}, \code{N} and \code{stage_n} may hold one value per stage, for
+\code{\link[=n_cluster]{n_cluster()}} and \code{\link[=prec_cluster]{prec_cluster()}}. Only those two read them by stage.
+Any other function given such a profile stops rather than read the
+values as something else, such as one response rate per stratum in
+\code{\link[=n_alloc]{n_alloc()}}.
 
 All stored defaults are validated when the profile is created or updated.
 When both \code{stage_cost} and \code{icc} are supplied, their lengths must describe

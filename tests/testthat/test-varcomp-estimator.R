@@ -67,14 +67,14 @@ test_that("three stages, strata and weights carry the ratio estimator", {
   three <- varcomp(y ~ psu / ssu, data = fr, estimator = "ratio")
   expect_equal(three$varb, two$varb, tolerance = 1e-12)
   expect_identical(three$estimator, "ratio")
-  expect_lt(three$varw[["varw_psu"]],
-            varcomp(y ~ psu / ssu, data = fr)$varw[["varw_psu"]])
+  expect_lt(three$varw[["varw_1"]],
+            varcomp(y ~ psu / ssu, data = fr)$varw[["varw_1"]])
 
   fr$st <- ifelse(fr$psu <= 20, "a", "b")
   by_stratum <- varcomp(y ~ psu, data = fr, strata = ~st, estimator = "ratio")
   expect_identical(by_stratum$estimator, "ratio")
   expect_equal(
-    by_stratum$strata$icc_psu[1],
+    by_stratum$strata$icc_1[1],
     varcomp(y ~ psu, data = fr[fr$st == "a", ], estimator = "ratio")$icc
   )
 
@@ -113,8 +113,8 @@ test_that("the estimator is named in the print and refused on the back-out", {
   expect_false(any(grepl("estimator", capture.output(
     print(varcomp(y ~ psu, data = fr))
   ), fixed = TRUE)))
-  expect_error(varcomp(deff = 2, n_per_psu = 10, estimator = "ratio"),
+  expect_error(varcomp(deff = 2, take = 10, estimator = "ratio"),
                "without 'estimator'")
-  expect_true(is.na(varcomp(deff = 2, n_per_psu = 10)$estimator))
+  expect_true(is.na(varcomp(deff = 2, take = 10)$estimator))
   expect_error(varcomp(y ~ psu, data = fr, estimator = "mean"), "should be one of")
 })

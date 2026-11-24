@@ -1,27 +1,27 @@
 test_that("clustering component follows the two-stage variance model", {
-  expect_equal(as.double(design_effect(icc = 0.05, n_per_psu = 25)), 2.2)
-  expect_equal(as.double(design_effect(icc = 0, n_per_psu = 25)), 1)
-  expect_equal(as.double(design_effect(icc = 1, n_per_psu = 25)), 25)
-  expect_equal(as.double(design_effect(icc = 0.05, n_per_psu = 1)), 1)
+  expect_equal(as.double(design_effect(icc = 0.05, take = 25)), 2.2)
+  expect_equal(as.double(design_effect(icc = 0, take = 25)), 1)
+  expect_equal(as.double(design_effect(icc = 1, take = 25)), 25)
+  expect_equal(as.double(design_effect(icc = 0.05, take = 1)), 1)
   expect_equal(
-    as.double(design_effect(icc = 0.05, n_per_psu = 25, var_ratio = 1.5)),
+    as.double(design_effect(icc = 0.05, take = 25, var_ratio = 1.5)),
     1.5 * 2.2
   )
 })
 
 test_that("clustering component follows the three-stage variance model", {
   d <- c(0.01, 0.05)
-  # var_ratio_ssu is the within-PSU counterpart of var_ratio_psu, so the pair is not free.
+  # var_ratio_2 is the within-PSU counterpart of var_ratio_1, so the pair is not free.
   var_ratio <- c(1.2, 1.2 * (1 - d[1]))
   expected <- var_ratio[1] * d[1] * 10 * 4 + var_ratio[2] * (1 + d[2] * 3)
   expect_equal(
-    as.double(design_effect(icc = d, n_per_psu = 10, n_per_ssu = 4, var_ratio = var_ratio)),
+    as.double(design_effect(icc = d, take = c(10, 4), var_ratio = var_ratio)),
     expected
   )
-  # With var_ratio unset, var_ratio_ssu follows from var_ratio_psu * (1 - icc_psu): the
+  # With var_ratio unset, var_ratio_2 follows from var_ratio_1 * (1 - icc_1): the
   # decomposition leaves it no freedom.
   expect_equal(
-    as.double(design_effect(icc = d, n_per_psu = 10, n_per_ssu = 4)),
+    as.double(design_effect(icc = d, take = c(10, 4))),
     d[1] * 40 + (1 - d[1]) * (1 + d[2] * 3)
   )
 })
@@ -46,44 +46,44 @@ test_that("clustering component reproduces prec_cluster precision exactly", {
 
 test_that("named icc and var_ratio vectors are reordered to canonical stage order", {
   straight <- design_effect(
-    icc = c(0.01, 0.05), n_per_psu = 10, n_per_ssu = 4,
+    icc = c(0.01, 0.05), take = c(10, 4),
     var_ratio = c(1.2, 1.2 * 0.99)
   )
   swapped <- design_effect(
-    icc = c(icc_ssu = 0.05, icc_psu = 0.01),
-    n_per_psu = 10, n_per_ssu = 4,
-    var_ratio = c(var_ratio_ssu = 1.2 * 0.99, var_ratio_psu = 1.2)
+    icc = c(icc_2 = 0.05, icc_1 = 0.01),
+    take = c(10, 4),
+    var_ratio = c(var_ratio_2 = 1.2 * 0.99, var_ratio_1 = 1.2)
   )
   expect_equal(as.double(swapped), as.double(straight))
 })
 
 test_that("clustering component validates its inputs", {
-  expect_error(design_effect(icc = 0.05), "both 'icc' and 'n_per_psu'")
-  expect_error(design_effect(n_per_psu = 25), "both 'icc' and 'n_per_psu'")
-  expect_error(design_effect(icc = 1.2, n_per_psu = 25), "in \\[0, 1\\]")
-  expect_error(design_effect(icc = -0.1, n_per_psu = 25), "in \\[0, 1\\]")
+  expect_error(design_effect(icc = 0.05), "both 'icc' and 'take'")
+  expect_error(design_effect(take = 25), "both 'icc' and 'take'")
+  expect_error(design_effect(icc = 1.2, take = 25), "in \\[0, 1\\]")
+  expect_error(design_effect(icc = -0.1, take = 25), "in \\[0, 1\\]")
   expect_error(
-    design_effect(icc = c(0.1, 0.2, 0.3), n_per_psu = 5, n_per_ssu = 2),
-    "length 1 .* or 2"
+    design_effect(icc = c(0.1, 0.2, 0.3), take = c(5, 2)),
+    "must have length 3"
   )
   expect_error(
-    design_effect(icc = c(0.01, 0.05), n_per_psu = 10),
-    "also needs 'n_per_ssu'"
+    design_effect(icc = c(0.01, 0.05), take = 10),
+    "must have length 2"
   )
   expect_error(
-    design_effect(icc = 0.05, n_per_psu = 10, n_per_ssu = 4),
-    "three stages only"
+    design_effect(icc = 0.05, take = c(10, 4)),
+    "must have length 1"
   )
   expect_error(
-    design_effect(icc = 0.05, n_per_psu = 0.5), "at least 1"
+    design_effect(icc = 0.05, take = 0.5), ">= 1"
   )
   expect_error(
-    design_effect(icc = c(0.01, 0.05), n_per_psu = 10, n_per_ssu = 4,
+    design_effect(icc = c(0.01, 0.05), take = c(10, 4),
                   var_ratio = c(1, 2, 3)),
     "'var_ratio' must contain 1 or 2"
   )
   expect_error(
-    design_effect(icc = 0.05, n_per_psu = 25, var_ratio = -1), "positive finite"
+    design_effect(icc = 0.05, take = 25, var_ratio = -1), "positive finite"
   )
 })
 
@@ -138,23 +138,23 @@ test_that("stratification gain is 1 when stratum means are equal", {
 })
 
 test_that("var and p are accepted as aliases of sd and mean", {
-  a <- design_effect(strata = data.frame(N = c(10, 20), sd = c(2, 3),
-                                         mean = c(5, 8)))
-  b <- design_effect(strata = data.frame(N = c(10, 20), var = c(4, 9),
-                                         p = c(5, 8)))
+  a <- design_effect(strata = data.frame(N = c(10, 20), sd = c(0.2, 0.3),
+                                         mean = c(0.5, 0.8)))
+  b <- design_effect(strata = data.frame(N = c(10, 20), var = c(0.04, 0.09),
+                                         p = c(0.5, 0.8)))
   expect_equal(as.double(a), as.double(b))
 })
 
 test_that("components multiply", {
   frame <- data.frame(N = c(50000, 120000), n = c(600, 400),
                       sd = c(12, 20), mean = c(55, 48))
-  full <- design_effect(icc = 0.05, n_per_psu = 25, strata = frame)
+  full <- design_effect(icc = 0.05, take = 25, strata = frame)
   parts <- attr(full, "components")
   expect_named(parts, c("cluster", "weight", "strata"))
   expect_equal(as.double(full), prod(parts))
   expect_equal(
     unname(parts[["cluster"]]),
-    as.double(design_effect(icc = 0.05, n_per_psu = 25))
+    as.double(design_effect(icc = 0.05, take = 25))
   )
 })
 
@@ -244,10 +244,10 @@ test_that("varcomp supplies icc and var_ratio, the design supplies the takes", {
   )
   vc <- varcomp(income ~ district, data = frame)
   expect_equal(
-    as.double(design_effect(vc, n_per_psu = 25)),
+    as.double(design_effect(vc, take = 25)),
     unname(vc$var_ratio * (1 + vc$icc * 24))
   )
-  expect_error(design_effect(vc), "both 'icc' and 'n_per_psu'")
+  expect_error(design_effect(vc), "both 'icc' and 'take'")
 })
 
 test_that("three-stage varcomp needs both takes", {
@@ -263,8 +263,8 @@ test_that("three-stage varcomp needs both takes", {
     village = village
   )
   vc <- varcomp(income ~ district / village, data = frame)
-  expect_error(design_effect(vc, n_per_psu = 5), "also needs 'n_per_ssu'")
-  expect_s3_class(design_effect(vc, n_per_psu = 5, n_per_ssu = 4),
+  expect_error(design_effect(vc, take = 5), "must have length 2")
+  expect_s3_class(design_effect(vc, take = c(5, 4)),
                   "svyplan_deff")
 })
 
@@ -276,7 +276,7 @@ test_that("stratified varcomp is rejected with a pointer to its table", {
     region = rep(c("N", "S"), each = 60)
   )
   vc <- varcomp(y ~ ea, data = d, strata = ~region)
-  expect_error(design_effect(vc, n_per_psu = 10), "stratified varcomp")
+  expect_error(design_effect(vc, take = 10), "stratified varcomp")
 })
 
 test_that("an allocation returns its own variance ratio, not a decomposition", {
@@ -339,7 +339,7 @@ test_that("a generalized allocation has no single variance ratio", {
     cv = c(0.06, NA),
     moe = c(NA, 3)
   )
-  fit <- n_alloc(frame, measures = measures, targets = targets)
+  fit <- n_alloc_joint(frame, measures = measures, targets = targets)
   expect_error(design_effect(fit), "do not share one variance ratio")
   expect_error(effective_n(fit), "do not share one variance ratio")
 })
@@ -357,15 +357,15 @@ test_that("a clustered allocation contributes its stratum cluster factors", {
     N = c(50000, 150000),
     sd = c(0.45, 0.48),
     mean = c(0.35, 0.25),
-    icc_psu = c(0.03, 0.08),
-    cost_psu = c(300, 600),
-    cost_ssu = c(40, 60)
+    icc_1 = c(0.03, 0.08),
+    cost_1 = c(300, 600),
+    cost_2 = c(40, 60)
   )
   alloc <- n_alloc(frame, cv = 0.05)
   deff <- design_effect(alloc)
   d <- alloc$detail
   # the per-stratum factors enter the ratio stratum by stratum, not averaged
-  factor_h <- 1 + frame$icc_psu * (d$n_per_psu - 1)
+  factor_h <- 1 + frame$icc_1 * (d$take_2 - 1)
   W <- d$N / sum(d$N)
   total <- sum(W * d$sd^2) + sum(W * (d$mean - sum(W * d$mean))^2)
   expect_equal(
@@ -382,22 +382,22 @@ test_that("a clustered allocation deff is the exact variance ratio when sd agree
     N = c(3e5, 1.7e6),
     sd = c(2, 2),
     mean = c(10, 14),
-    icc_psu = c(0.01, 0.20),
-    var_ratio_psu = c(1.3, 0.8),
-    n_per_psu = 10,
-    cost_psu = 100,
-    cost_ssu = 1
+    icc_1 = c(0.01, 0.20),
+    var_ratio_1 = c(1.3, 0.8),
+    take_2 = 10,
+    cost_1 = 100,
+    cost_2 = 1
   )
   for (tweak in list(
     base,
     transform(base, mean = c(12, 12)),
     transform(base, N = c(1e6, 1e6)),
-    transform(base, var_ratio_psu = c(1, 1))
+    transform(base, var_ratio_1 = c(1, 1))
   )) {
     fit <- n_alloc(tweak, n = 2000, alloc = "neyman")
     d <- fit$detail
     W <- d$N / sum(d$N)
-    D_h <- tweak$var_ratio_psu * (1 + tweak$icc_psu * (d$n_per_psu - 1))
+    D_h <- tweak$var_ratio_1 * (1 + tweak$icc_1 * (d$take_2 - 1))
     S2 <- sum(W * d$sd^2) + sum(W * (d$mean - sum(W * d$mean))^2)
     exact <- sum(d$n) * sum(W^2 * d$sd^2 * D_h / d$n) / S2
     expect_equal(as.double(design_effect(fit)), exact, tolerance = 1e-8)
@@ -410,7 +410,7 @@ test_that("non-allocation sizing results are rejected", {
 })
 
 test_that("design effects can be used directly and combined", {
-  deff <- design_effect(icc = 0.05, n_per_psu = 20)
+  deff <- design_effect(icc = 0.05, take = 20)
   expect_s3_class(deff, "svyplan_deff")
   expect_true(is.numeric(deff))
   expect_length(deff, 1L)
@@ -429,7 +429,7 @@ test_that("design effects can be used directly and combined", {
 
 test_that("display and export methods are explicit", {
   deff <- design_effect(
-    icc = 0.05, n_per_psu = 20,
+    icc = 0.05, take = 20,
     strata = data.frame(N = c(10, 20), n = c(5, 5), sd = c(2, 3),
                         mean = c(5, 8))
   )
@@ -458,7 +458,7 @@ test_that("display and export methods are explicit", {
 })
 
 test_that("a one-component summary names its model without a product note", {
-  deff <- design_effect(icc = 0.05, n_per_psu = 25, var_ratio = 1.4)
+  deff <- design_effect(icc = 0.05, take = 25, var_ratio = 1.4)
   shown <- capture.output(summary(deff))
 
   expect_match(paste(shown, collapse = "\n"), "Clustering\\s+3\\.0800")
@@ -471,15 +471,13 @@ test_that("a one-component summary names its model without a product note", {
 test_that("three-stage summary discloses both ICCs, takes, and variance ratios", {
   deff <- design_effect(
     icc = c(0.01, 0.05),
-    n_per_psu = 10,
-    n_per_ssu = 4,
+    take = c(10, 4),
     var_ratio = c(1.2, 1.1)
   )
   shown <- paste(capture.output(summary(deff)), collapse = "\n")
 
   expect_match(shown, "icc = \\(0.01, 0.05\\)")
-  expect_match(shown, "n_per_psu = 10")
-  expect_match(shown, "n_per_ssu = 4")
+  expect_match(shown, "take = \\(10, 4\\)")
   expect_match(shown, "var_ratio = \\(1.2, 1.1\\)")
 })
 
@@ -489,9 +487,9 @@ test_that("allocation summaries distinguish direct and adjusted ratios", {
     N = c(50000, 150000),
     sd = c(0.45, 0.48),
     mean = c(0.35, 0.25),
-    icc_psu = c(0.03, 0.08),
-    cost_psu = c(300, 600),
-    cost_ssu = c(40, 60)
+    icc_1 = c(0.03, 0.08),
+    cost_1 = c(300, 600),
+    cost_2 = c(40, 60)
   )
   alloc <- n_alloc(frame, cv = 0.05)
   direct <- paste(capture.output(summary(design_effect(alloc))), collapse = "\n")
@@ -507,7 +505,7 @@ test_that("allocation summaries distinguish direct and adjusted ratios", {
 })
 
 test_that("unused arguments are rejected", {
-  expect_error(design_effect(icc = 0.05, n_per_psu = 20, methd = "kish"),
+  expect_error(design_effect(icc = 0.05, take = 20, methd = "kish"),
                "unused argument.*methd")
   expect_error(
     design_effect(n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05),
@@ -516,16 +514,15 @@ test_that("unused arguments are rejected", {
   )
 })
 
-test_that("the three-stage factor reduces to var_ratio_psu without clustering", {
-  # D = var_ratio_psu icc_psu m q + var_ratio_ssu (1 + icc_ssu (q - 1)). At m = q = 1 no
-  # clustering is left, so D must be var_ratio_psu. That holds only when
-  # var_ratio_ssu = var_ratio_psu (1 - icc_psu), which is why var_ratio_ssu is derived rather than
+test_that("the three-stage factor reduces to var_ratio_1 without clustering", {
+  # D = var_ratio_1 icc_1 m q + var_ratio_2 (1 + icc_2 (q - 1)). At m = q = 1 no
+  # clustering is left, so D must be var_ratio_1. That holds only when
+  # var_ratio_2 = var_ratio_1 (1 - icc_1), which is why var_ratio_2 is derived rather than
   # defaulted to 1.
   for (d1 in c(0.01, 0.05, 0.2304)) {
     for (kp in c(1, 1.4)) {
       expect_equal(
-        as.double(design_effect(icc = c(d1, 0.15), n_per_psu = 1,
-                                n_per_ssu = 1, var_ratio = kp)),
+        as.double(design_effect(icc = c(d1, 0.15), take = c(1, 1), var_ratio = kp)),
         kp
       )
     }
@@ -535,36 +532,35 @@ test_that("the three-stage factor reduces to var_ratio_psu without clustering", 
 test_that("the three-stage factor matches the exact variance decomposition", {
   # With components (sigma1^2, sigma2^2, sigma3^2) summing to S^2, the design
   # effect of an a x m x q design is 1 + d1(mq - 1) + d2(q - 1) on
-  # total-referenced deltas. The package's within-PSU-referenced icc_ssu is
+  # total-referenced deltas. The package's within-PSU-referenced icc_2 is
   # d2 / (1 - d1).
   s1 <- 1.2; s2 <- 0.9; s3 <- 2.0
   total <- s1^2 + s2^2 + s3^2
   d1 <- s1^2 / total
   d2 <- s2^2 / total
-  icc_ssu <- d2 / (1 - d1)
+  icc_2 <- d2 / (1 - d1)
 
   for (spec in list(c(m = 1, q = 1), c(m = 4, q = 3), c(m = 8, q = 5),
                     c(m = 10, q = 1))) {
     m <- spec[["m"]]; q <- spec[["q"]]
     expect_equal(
-      as.double(design_effect(icc = c(d1, icc_ssu), n_per_psu = m,
-                              n_per_ssu = q)),
+      as.double(design_effect(icc = c(d1, icc_2), take = c(m, q))),
       1 + d1 * (m * q - 1) + d2 * (q - 1),
       tolerance = 1e-10
     )
   }
 })
 
-test_that("a icc_psu of 1 leaves no three-stage design to identify", {
+test_that("a icc_1 of 1 leaves no three-stage design to identify", {
   expect_error(
-    design_effect(icc = c(1, 0.15), n_per_psu = 4, n_per_ssu = 3),
-    "leaves no within-PSU variance"
+    design_effect(icc = c(1, 0.15), take = c(4, 3)),
+    "leaves no within-stage variance"
   )
 })
 
 test_that("as.list gives the same fields as as.data.frame", {
   deff <- design_effect(
-    icc = 0.05, n_per_psu = 20,
+    icc = 0.05, take = 20,
     strata = data.frame(N = c(10, 20), n = c(5, 5), sd = c(2, 3),
                         mean = c(5, 8))
   )
@@ -578,7 +574,7 @@ test_that("as.list gives the same fields as as.data.frame", {
 })
 
 test_that("as.list on a one-component design effect repeats the overall value", {
-  lst <- as.list(design_effect(icc = 0.05, n_per_psu = 25))
+  lst <- as.list(design_effect(icc = 0.05, take = 25))
   expect_named(lst, c("deff", "deff_cluster"))
   expect_equal(lst$deff, 2.2)
   expect_equal(lst$deff_cluster, 2.2)
@@ -586,7 +582,7 @@ test_that("as.list on a one-component design effect repeats the overall value", 
 
 test_that("components are reachable by name through $ and [[", {
   deff <- design_effect(
-    icc = 0.05, n_per_psu = 20,
+    icc = 0.05, take = 20,
     strata = data.frame(N = c(10, 20), n = c(5, 5), sd = c(2, 3),
                         mean = c(5, 8))
   )
@@ -606,14 +602,14 @@ test_that("components are reachable by name through $ and [[", {
 })
 
 test_that("naming a field a design effect lacks is an error", {
-  deff <- design_effect(icc = 0.05, n_per_psu = 25)
+  deff <- design_effect(icc = 0.05, take = 25)
   expect_error(deff$deff_strata, "no field 'deff_strata'")
   expect_error(deff$deff_strata, "available: deff, deff_cluster")
   expect_error(deff[["nope"]], "no field 'nope'")
 })
 
 test_that("as.list rejects unused arguments", {
-  deff <- design_effect(icc = 0.05, n_per_psu = 25)
+  deff <- design_effect(icc = 0.05, take = 25)
   expect_error(as.list(deff, methd = "kish"), "unused argument.*methd")
 })
 
@@ -636,7 +632,7 @@ test_that("other prec types carry the deff you supplied, and are rejected", {
 })
 
 test_that("a planning design effect cannot be modified in place", {
-  d <- design_effect(icc = 0.05, n_per_psu = 5)
+  d <- design_effect(icc = 0.05, take = 5)
   expect_error({d[1] <- 99}, "cannot be modified in place")
   expect_error({d[[1]] <- 99}, "cannot be modified in place")
   expect_error(pmax(d, 99), "cannot be modified in place")
@@ -650,35 +646,36 @@ test_that("a planning design effect cannot be modified in place", {
 test_that("effective_n() of a cluster result equals 1 / cv^2", {
   cases <- list(
     list(resp_rate = 0.5),
-    list(resp_rate_psu = 0.5),
+    list(resp_rate = c(0.5, 1)),
     list(resp_rate = 0.5, eligible_per_unit = 0.41),
     list(resp_rate = 0.9, eligible_per_unit = 2),
-    list(resp_rate_psu = 0.8, resp_rate = 0.7, eligible_per_unit = 1.5)
+    list(resp_rate = c(0.8, 0.7), eligible_per_unit = 1.5)
   )
   for (rates in cases) {
     x <- do.call(prec_cluster, c(list(c(100, 20), icc = 0.05), rates))
     expect_equal(effective_n(x), 1 / x$cv^2)
-    take <- 20 * (rates[["resp_rate"]] %||% 1) *
-      (rates[["eligible_per_unit"]] %||% 1)
+    rr <- rates[["resp_rate"]] %||% 1
+    r_u <- if (length(rr) == 2L) rr[2L] else rr[1L]
+    take <- 20 * r_u * (rates[["eligible_per_unit"]] %||% 1)
     expect_equal(as.double(design_effect(x)), 1 + 0.05 * (take - 1))
   }
   z <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
-                 unit_relvar = 1, resp_rate = 0.5, n_per_psu = 20)
+                 unit_relvar = 1, resp_rate = 0.5, stage_n = c(NA, 20))
   expect_equal(effective_n(z), 1 / z$cv^2)
   e <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
                  unit_relvar = 1, resp_rate = 0.9, eligible_per_unit = 2.3,
-                 n_per_psu = 20)
+                 stage_n = c(NA, 20))
   expect_equal(effective_n(e), 1 / e$cv^2)
 })
 
 test_that("a three-stage result reads the SSU and ultimate responding takes", {
-  x <- prec_cluster(c(50, 6, 10), icc = c(0.05, 0.1), resp_rate_psu = 0.9,
-                    resp_rate_ssu = 0.8, resp_rate = 0.7, eligible_per_unit = 1.4)
+  x <- prec_cluster(c(50, 6, 10), icc = c(0.05, 0.1),
+                    resp_rate = c(0.9, 0.8, 0.7), eligible_per_unit = 1.4)
   expect_equal(effective_n(x), 1 / x$cv^2)
   expect_equal(
     as.double(design_effect(x)),
-    as.double(design_effect(icc = c(0.05, 0.1), n_per_psu = 6 * 0.8,
-                            n_per_ssu = 10 * 0.7 * 1.4,
+    as.double(design_effect(icc = c(0.05, 0.1),
+                            take = c(6 * 0.8, 10 * 0.7 * 1.4),
                             var_ratio = x$params$var_ratio))
   )
 })
@@ -694,11 +691,48 @@ test_that("an allocation's design effect reads a frame deff like the argument", 
   expect_equal(as.double(design_effect(from_frame)), 1.988455, tolerance = 1e-6)
   expect_equal(effective_n(from_frame), effective_n(from_arg))
 
-  cluster <- transform(frame, n_per_psu = 10, icc_psu = c(0.03, 0.06))
+  cluster <- transform(frame, take_2 = 10, icc_1 = c(0.03, 0.06))
   from_frame <- n_alloc(transform(cluster, deff = c(1.2, 1.5)), n = 1000)
   from_arg <- n_alloc(cluster, n = 1000, deff = c(1.2, 1.5))
   expect_equal(as.double(design_effect(from_frame)),
                as.double(design_effect(from_arg)))
   expect_gt(as.double(design_effect(from_frame)),
             as.double(design_effect(n_alloc(cluster, n = 1000))))
+})
+
+## A take clamped to one expected response
+
+test_that("a fit clamped to one expected response gives its design effect", {
+  for (rate in c(0.06, 0.1, 0.36, 0.72)) {
+    cl <- suppressWarnings(n_cluster(stage_cost = c(10, 500), icc = 0.9,
+                                     cv = 0.05, resp_rate = rate))
+    expect_true(is.finite(as.numeric(design_effect(cl))))
+    expect_true(is.finite(as.numeric(effective_n(cl))))
+  }
+  expect_error(design_effect(icc = 0.1, take = 0.5), "finite numbers >= 1")
+})
+
+## Stratification from a proportion column
+
+test_that("a strata table with p alone carries the stratification component", {
+  st <- data.frame(N = c(1000, 2000), n = c(100, 200), p = c(0.1, 0.8))
+  ref <- transform(st, p = NULL, sd = sqrt(p * (1 - p)), mean = p)
+  expect_equal(as.numeric(design_effect(strata = st)),
+               as.numeric(design_effect(strata = ref)))
+  expect_lt(as.numeric(design_effect(strata = st)), 0.6)
+  expect_error(design_effect(strata = transform(st, p = c(5, 10))),
+               "must be in \\[0, 1\\]")
+  expect_error(design_effect(strata = data.frame(N = 1:2 * 1000, sd = 1,
+                                                 var = 1, mean = 1:2)),
+               "both 'sd' and 'var'")
+  expect_error(design_effect(strata = data.frame(N = 1:2 * 1000, sd = 1,
+                                                 p = c(0.1, 0.2), mean = 1:2)),
+               "both 'mean' and 'p'")
+})
+
+test_that("a weighting design effect does not depend on the weight scale", {
+  w <- c(1, 2, 3, 5)
+  base <- as.numeric(design_effect(weights = w))
+  expect_equal(as.numeric(design_effect(weights = w * 1e155)), base)
+  expect_equal(as.numeric(design_effect(weights = w * 1e-170)), base)
 })

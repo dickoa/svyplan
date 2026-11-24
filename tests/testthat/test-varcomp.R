@@ -52,12 +52,12 @@ test_that("unstratified variance components have explicit export schemas", {
   expect_identical(
     names(three_df),
     c(
-      "stages", "varb", "varw_psu", "varw_ssu", "icc_psu",
-      "icc_ssu", "var_ratio_psu", "var_ratio_ssu", "unit_relvar"
+      "stages", "varb", "varw_1", "varw_2", "icc_1",
+      "icc_2", "var_ratio_1", "var_ratio_2", "unit_relvar"
     )
   )
   expect_equal(two_df$icc, two_stage$icc)
-  expect_equal(three_df$icc_psu, three_stage$icc[["icc_psu"]])
+  expect_equal(three_df$icc_1, three_stage$icc[["icc_1"]])
 })
 
 test_that("varcomp 2-stage SRS known values", {
@@ -195,11 +195,11 @@ test_that("varcomp.survey.design works with strata", {
   expect_false(is.null(result$strata))
   expect_equal(nrow(result$strata), 4L)
   expect_setequal(as.character(result$strata$stratum), as.character(1:4))
-  expect_true(all(result$strata$icc_psu >= 0 & result$strata$icc_psu <= 1))
+  expect_true(all(result$strata$icc_1 >= 0 & result$strata$icc_1 <= 1))
 
   # and naming them explicitly is the same calculation
   explicit <- varcomp(dsgn, ~y, strata = ~stratum)
-  expect_equal(result$strata$icc_psu, explicit$strata$icc_psu)
+  expect_equal(result$strata$icc_1, explicit$strata$icc_1)
 })
 
 test_that("an explicit strata argument overrides the design's own", {
@@ -406,16 +406,17 @@ test_that("3-stage SRS differs from PPS with uniform prob only in the between te
   expect_equal(vc_srs$varb, vc_pps$varb * M / (M - 1), tolerance = 1e-10)
   expect_equal(vc_srs$varw, vc_pps$varw, tolerance = 1e-10)
   expect_equal(vc_srs$unit_relvar, vc_pps$unit_relvar, tolerance = 1e-10)
-  expect_equal(vc_srs$icc[["icc_ssu"]], vc_pps$icc[["icc_ssu"]],
+  expect_equal(vc_srs$icc[["icc_2"]], vc_pps$icc[["icc_2"]],
                tolerance = 1e-10)
-  expect_equal(vc_srs$var_ratio[["var_ratio_ssu"]],
-               vc_pps$var_ratio[["var_ratio_ssu"]], tolerance = 1e-10)
+  expect_equal(vc_srs$var_ratio[["var_ratio_2"]],
+               vc_pps$var_ratio[["var_ratio_2"]], tolerance = 1e-10)
   within <- function(vc) vc$var_ratio[[1L]] * (1 - vc$icc[[1L]])
   expect_equal(within(vc_srs), within(vc_pps), tolerance = 1e-10)
 
   w_srs <- varcomp(y ~ psu/ssu, data = frame, weights = ~w)
   w_pps <- varcomp(y ~ psu/ssu, data = frame, prob = ~pp, weights = ~w)
-  expect_equal(w_srs$varb, w_pps$varb * M / (M - 1), tolerance = 1e-10)
+  # A sample at equal draw probabilities is an SRS of the PSUs.
+  expect_equal(w_srs$varb, w_pps$varb, tolerance = 1e-10)
   expect_equal(w_srs$varw, w_pps$varw, tolerance = 1e-10)
 })
 
@@ -542,8 +543,8 @@ test_that("per-stratum weighted results do not depend on other strata", {
     dsub <- survey::svydesign(ids = ~psu, weights = ~w, data = sub)
     ref <- varcomp(dsub, ~y, weights = ~w)
     i <- match(s, vc$strata$stratum)
-    expect_equal(vc$strata$icc_psu[i], ref$icc)
-    expect_equal(vc$strata$var_ratio_psu[i], ref$var_ratio)
+    expect_equal(vc$strata$icc_1[i], ref$icc)
+    expect_equal(vc$strata$var_ratio_1[i], ref$var_ratio)
   }
 })
 
@@ -610,8 +611,8 @@ test_that("strata gives per-stratum components matching manual splits", {
     sub <- d[d$region == s, ]
     ref <- varcomp(sub$y, stage_id = list(sub$ea))
     i <- match(s, vc$strata$stratum)
-    expect_equal(vc$strata$icc_psu[i], ref$icc)
-    expect_equal(vc$strata$var_ratio_psu[i], ref$var_ratio)
+    expect_equal(vc$strata$icc_1[i], ref$icc)
+    expect_equal(vc$strata$var_ratio_1[i], ref$var_ratio)
     expect_equal(vc$strata$unit_relvar[i], ref$unit_relvar)
     expect_equal(vc$strata$sd[i], sd(sub$y))
     expect_equal(vc$strata$mean[i], mean(sub$y))
@@ -631,8 +632,8 @@ test_that("strata works for 3-stage and the vector interface", {
   )
   vc <- varcomp(d$y, stage_id = list(d$psu, d$ssu), strata = d$dom)
   expect_equal(vc$stages, 3L)
-  expect_true(all(c("icc_psu", "icc_ssu", "var_ratio_psu", "var_ratio_ssu",
-                    "varw_psu", "varw_ssu") %in% names(vc$strata)))
+  expect_true(all(c("icc_1", "icc_2", "var_ratio_1", "var_ratio_2",
+                    "varw_1", "varw_2") %in% names(vc$strata)))
 })
 
 test_that("strata works on survey.design objects", {
@@ -659,7 +660,7 @@ test_that("stratified varcomp is rejected where a pooled one is needed", {
   vc <- varcomp(y ~ ea, data = d, strata = ~region)
   expect_error(n_cluster(stage_cost = c(500, 50), icc = vc, cv = 0.05),
                "stratified varcomp")
-  expect_error(design_effect(vc, n_per_psu = 10), "stratified varcomp")
+  expect_error(design_effect(vc, take = 10), "stratified varcomp")
   expect_error(prec_cluster(n = c(20, 10), icc = vc),
                "stratified varcomp")
   pooled <- varcomp(y ~ ea, data = d)
@@ -699,7 +700,7 @@ test_that("single-PSU data is rejected with a clear message", {
   expect_error(varcomp(y ~ psu, data = d, strata = ~region),
                "stratum 'Solo': at least two PSUs")
   expect_error(varcomp(y ~ psu, data = d, strata = ~region),
-               "n_alloc\\(psu =\\), leave its icc_psu NA")
+               "n_alloc_joint\\(psu =\\), leave its icc_1 NA")
   # The register hint is for strata only. An unstratified call has no
   # stratum to leave out.
   err <- tryCatch(varcomp(y, stage_id = list(rep(1, 20))),
@@ -717,7 +718,7 @@ test_that("a single-PSU stratum gets the same message under PPS", {
   expect_error(varcomp(y ~ psu, data = d, strata = ~region, prob = ~share),
                "stratum 'Solo': at least two PSUs")
   expect_error(varcomp(y ~ psu, data = d, strata = ~region, prob = ~share),
-               "n_alloc\\(psu =\\), leave its icc_psu NA")
+               "n_alloc_joint\\(psu =\\), leave its icc_1 NA")
   expect_error(varcomp(rnorm(20), stage_id = list(rep(1, 20)), prob = 1),
                "at least two PSUs")
 })
@@ -790,7 +791,7 @@ test_that("'weights' works with a PPS first stage and with strata", {
 
   ref_s <- varcomp(dsgn, ~y, strata = ~region, weights = ~w)
   frm_s <- varcomp(y ~ psu, data = s, weights = ~w, strata = ~region)
-  expect_equal(frm_s$strata$icc_psu, ref_s$strata$icc_psu,
+  expect_equal(frm_s$strata$icc_1, ref_s$strata$icc_1,
                tolerance = 1e-12)
   expect_equal(frm_s$strata$sd, ref_s$strata$sd, tolerance = 1e-12)
 })
@@ -927,21 +928,21 @@ test_that("a constant outcome is degenerate whether or not weights are given", {
 ## Back-out of an icc from a published design effect
 
 test_that("varcomp inverts the two-stage clustering identity", {
-  vc <- varcomp(deff = 1.8, n_per_psu = 20)
+  vc <- varcomp(deff = 1.8, take = 20)
   expect_s3_class(vc, "svyplan_varcomp")
   expect_identical(vc$source, "deff")
   expect_identical(vc$stages, 2L)
   expect_equal(vc$icc, (1.8 - 1) / 19)
   expect_identical(vc$var_ratio, 1)
-  expect_identical(vc$params$n_per_psu, 20)
+  expect_identical(vc$params$take, 20)
 
-  vk <- varcomp(deff = 1.8, n_per_psu = 20, var_ratio = 1.2)
+  vk <- varcomp(deff = 1.8, take = 20, var_ratio = 1.2)
   expect_equal(vk$icc, (1.8 / 1.2 - 1) / 19)
   expect_identical(vk$var_ratio, 1.2)
 })
 
 test_that("a design effect identifies icc and var_ratio and nothing else", {
-  vc <- varcomp(deff = 1.8, n_per_psu = 20)
+  vc <- varcomp(deff = 1.8, take = 20)
   expect_identical(vc$varb, NA_real_)
   expect_identical(vc$varw, NA_real_)
   expect_identical(vc$unit_relvar, NA_real_)
@@ -949,31 +950,31 @@ test_that("a design effect identifies icc and var_ratio and nothing else", {
 })
 
 test_that("the round trip returns the design effect at the source take", {
-  vc <- varcomp(deff = 1.8, n_per_psu = 20)
-  expect_equal(as.double(design_effect(vc, n_per_psu = 20)), 1.8)
-  vk <- varcomp(deff = 2.4, n_per_psu = 15, var_ratio = 1.3)
-  expect_equal(as.double(design_effect(vk, n_per_psu = 15)), 2.4)
+  vc <- varcomp(deff = 1.8, take = 20)
+  expect_equal(as.double(design_effect(vc, take = 20)), 1.8)
+  vk <- varcomp(deff = 2.4, take = 15, var_ratio = 1.3)
+  expect_equal(as.double(design_effect(vk, take = 15)), 2.4)
 })
 
 test_that("re-planning at another take moves the design effect", {
-  vc <- varcomp(deff = 1.8, n_per_psu = 20)
-  smaller <- as.double(design_effect(vc, n_per_psu = 12))
+  vc <- varcomp(deff = 1.8, take = 20)
+  smaller <- as.double(design_effect(vc, take = 12))
   expect_lt(smaller, 1.8)
   expect_equal(smaller, 1 + vc$icc * 11)
 })
 
 test_that("design_effect does not read the source take back", {
-  vc <- varcomp(deff = 1.8, n_per_psu = 20)
+  vc <- varcomp(deff = 1.8, take = 20)
   expect_error(design_effect(vc), "supply the take you are planning for")
-  expect_error(design_effect(vc), "n_per_psu = 20")
+  expect_error(design_effect(vc), "take = 20")
 })
 
 test_that("the identifying take is the size-weighted average", {
   takes <- c(18, 22, 20, 25, 15)
-  vc <- varcomp(deff = 1.8, n_per_psu = takes)
+  vc <- varcomp(deff = 1.8, take = takes)
   b_star <- sum(takes^2) / sum(takes)
-  expect_equal(vc$params$n_per_psu, b_star)
-  expect_equal(vc$params$n_per_psu_nominal, mean(takes))
+  expect_equal(vc$params$take, b_star)
+  expect_equal(vc$params$take_nominal, mean(takes))
   expect_equal(vc$icc, (1.8 - 1) / (b_star - 1))
 
   # b* = b_bar (1 + cv_b^2) with the population cv, and never below b_bar
@@ -983,25 +984,25 @@ test_that("the identifying take is the size-weighted average", {
 })
 
 test_that("a constant take reduces to itself", {
-  vc <- varcomp(deff = 1.8, n_per_psu = rep(20, 7))
-  expect_equal(vc$params$n_per_psu, 20)
-  expect_equal(vc$icc, varcomp(deff = 1.8, n_per_psu = 20)$icc)
-  expect_equal(varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0)$icc,
-               varcomp(deff = 1.8, n_per_psu = 20)$icc)
+  vc <- varcomp(deff = 1.8, take = rep(20, 7))
+  expect_equal(vc$params$take, 20)
+  expect_equal(vc$icc, varcomp(deff = 1.8, take = 20)$icc)
+  expect_equal(varcomp(deff = 1.8, take = 20, cv_take = 0)$icc,
+               varcomp(deff = 1.8, take = 20)$icc)
 })
 
 test_that("cv_take is the summary form of the same reduction", {
   takes <- c(18, 22, 20, 25, 15)
   cv_b <- sqrt(mean((takes - mean(takes))^2)) / mean(takes)
   expect_equal(
-    varcomp(deff = 1.8, n_per_psu = mean(takes), cv_take = cv_b)$icc,
-    varcomp(deff = 1.8, n_per_psu = takes)$icc
+    varcomp(deff = 1.8, take = mean(takes), cv_take = cv_b)$icc,
+    varcomp(deff = 1.8, take = takes)$icc
   )
 })
 
 test_that("the nominal take overstates a positive icc", {
-  nominal <- varcomp(deff = 1.8, n_per_psu = 20)$icc
-  weighted <- varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)$icc
+  nominal <- varcomp(deff = 1.8, take = 20)$icc
+  weighted <- varcomp(deff = 1.8, take = 20, cv_take = 0.3)$icc
   expect_lt(weighted, nominal)
   expect_equal(c(nominal, weighted), c(0.8 / 19, 0.8 / 20.8))
   # The relative overstatement tracks the relative gap in the take.
@@ -1015,55 +1016,55 @@ test_that("a published standard error forms the same design effect", {
   n <- 1200
   deff <- se^2 / (p * (1 - p) / n)
   expect_equal(
-    varcomp(se = se, p = p, n = n, n_per_psu = 20)$icc,
-    varcomp(deff = deff, n_per_psu = 20)$icc
+    varcomp(se = se, p = p, n = n, take = 20)$icc,
+    varcomp(deff = deff, take = 20)$icc
   )
   expect_equal(
-    varcomp(se = 1.2, var = 900, n = 1200, n_per_psu = 20)$icc,
-    varcomp(deff = 1.2^2 / (900 / 1200), n_per_psu = 20)$icc
+    varcomp(se = 1.2, var = 900, n = 1200, take = 20)$icc,
+    varcomp(deff = 1.2^2 / (900 / 1200), take = 20)$icc
   )
 })
 
 test_that("a published DEFT is squared and its weighting loss divided out", {
   deft <- 1.582
-  published <- varcomp(deff = deft^2, n_per_psu = 12.3)
+  published <- varcomp(deff = deft^2, take = 12.3)
   expect_equal(published$icc, (deft^2 - 1) / 11.3)
   expect_equal(round(published$icc, 3), 0.133)
-  clustering <- varcomp(deff = deft^2 / 1.4, n_per_psu = 12.3)
+  clustering <- varcomp(deff = deft^2 / 1.4, take = 12.3)
   expect_equal(round(clustering$icc, 3), 0.070)
 
-  carried <- varcomp(deff = deft^2, n_per_psu = 12.3, var_ratio = 1.4)
+  carried <- varcomp(deff = deft^2, take = 12.3, var_ratio = 1.4)
   expect_equal(carried$icc, clustering$icc)
   expect_equal(
-    as.double(design_effect(carried, n_per_psu = 15)),
-    1.4 * as.double(design_effect(clustering, n_per_psu = 15))
+    as.double(design_effect(carried, take = 15)),
+    1.4 * as.double(design_effect(clustering, take = 15))
   )
 
   kish <- design_effect(weights = rep(c(1, 4), c(300, 100)))
   expect_equal(as.double(kish), 76 / 49)
   expect_equal(
-    varcomp(deff = deft^2 / kish, n_per_psu = 12.3)$icc,
+    varcomp(deff = deft^2 / kish, take = 12.3)$icc,
     (deft^2 * 49 / 76 - 1) / 11.3
   )
-  restored <- design_effect(clustering, n_per_psu = 15) * kish
+  restored <- design_effect(clustering, take = 15) * kish
   expect_equal(n_prop(p = 0.28, cv = 0.05, deff = restored)$params$deff,
                as.double(restored))
 
   se <- 0.021
   formed <- se^2 / (0.30 * 0.70 / 1200)
   expect_equal(
-    varcomp(deff = formed / kish, n_per_psu = 20)$icc,
-    varcomp(se = se, p = 0.30, n = 1200, n_per_psu = 20, var_ratio = kish)$icc
+    varcomp(deff = formed / kish, take = 20)$icc,
+    varcomp(se = se, p = 0.30, n = 1200, take = 20, var_ratio = kish)$icc
   )
 })
 
 test_that("a design effect below var_ratio gives a negative icc and warns", {
-  expect_warning(vc <- varcomp(deff = 0.8, n_per_psu = 20),
+  expect_warning(vc <- varcomp(deff = 0.8, take = 20),
                  "beat simple random sampling")
   expect_lt(vc$icc, 0)
   expect_equal(vc$icc, (0.8 - 1) / 19)
   # the warning says where the value will be refused
-  expect_error(design_effect(vc, n_per_psu = 20), "must be in \\[0, 1\\]")
+  expect_error(design_effect(vc, take = 20), "must be in \\[0, 1\\]")
   expect_error(
     n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5,
               unit_relvar = 0.6),
@@ -1072,41 +1073,44 @@ test_that("a design effect below var_ratio gives a negative icc and warns", {
 })
 
 test_that("an icc above 1 warns rather than being clamped", {
-  expect_warning(vc <- varcomp(deff = 30, n_per_psu = 20),
+  expect_warning(vc <- varcomp(deff = 30, take = 20),
                  "unequal weighting")
   expect_gt(vc$icc, 1)
 })
 
 test_that("the back-out validates its inputs", {
-  expect_error(varcomp(deff = 1.8), "'n_per_psu' is required")
-  expect_error(varcomp(deff = 1.8, n_per_psu = 1), "must exceed 1")
-  expect_error(varcomp(deff = 1.8, n_per_psu = 0.5), "must exceed 1")
-  expect_error(varcomp(deff = 1.8, n_per_psu = -2), "positive and finite")
-  expect_error(varcomp(deff = 1.8, n_per_psu = NA_real_), "positive and finite")
-  expect_error(varcomp(deff = 0, n_per_psu = 20), "'deff' must be positive")
-  expect_error(varcomp(deff = 1.8, n_per_psu = 20, cv_take = -0.1),
+  expect_error(varcomp(deff = 1.8), "'take' is required")
+  expect_error(varcomp(deff = 1.8, take = 1), "must exceed 1")
+  expect_error(varcomp(deff = 1.8, take = 0.5), "must exceed 1")
+  expect_error(varcomp(deff = 1.8, take = -2), "positive and finite")
+  expect_error(varcomp(deff = 1.8, take = NA_real_), "positive and finite")
+  expect_error(varcomp(deff = 0, take = 20), "'deff' must be positive")
+  expect_error(varcomp(deff = 1.8, take = 20, cv_take = -0.1),
                "non-negative")
-  expect_error(varcomp(deff = 1.8, n_per_psu = c(10, 20), cv_take = 0.2),
+  expect_error(varcomp(deff = 1.8, take = c(10, 20), cv_take = 0.2),
                "takes that were not supplied")
-  expect_error(varcomp(deff = 1.8, n_per_psu = 20, var_ratio = 0),
+  expect_error(varcomp(deff = 1.8, take = 20, var_ratio = 0),
                "'var_ratio' must be positive")
 })
 
-test_that("a three-stage back-out is refused as under-identified", {
-  expect_error(varcomp(deff = 1.8, n_per_psu = 20, n_per_ssu = 4),
-               "does not identify a three-stage design")
+test_that("a design-effect back-out is two-stage, and a take vector gives PSU sizes", {
+  vc <- varcomp(deff = 1.8, take = c(20, 4))
+  expect_identical(vc$stages, 2L)
+  take <- sum(c(20, 4)^2) / sum(c(20, 4))
+  expect_equal(vc$icc, (1.8 - 1) / (take - 1))
+  expect_error(varcomp(deff = 1.8, take = 20, take_3 = 4), "unused argument")
 })
 
 test_that("the two back-out entry points do not mix", {
-  expect_error(varcomp(deff = 1.8, se = 0.02, n_per_psu = 20),
+  expect_error(varcomp(deff = 1.8, se = 0.02, take = 20),
                "either 'deff' or 'se'")
-  expect_error(varcomp(deff = 1.8, n_per_psu = 20, p = 0.3),
+  expect_error(varcomp(deff = 1.8, take = 20, p = 0.3),
                "'deff' is already the design effect")
-  expect_error(varcomp(se = 0.021, n = 1200, n_per_psu = 20),
+  expect_error(varcomp(se = 0.021, n = 1200, take = 20),
                "'p' for a proportion or 'var' for a mean")
-  expect_error(varcomp(se = 0.021, p = 0.3, var = 4, n = 1200, n_per_psu = 20),
+  expect_error(varcomp(se = 0.021, p = 0.3, var = 4, n = 1200, take = 20),
                "'p' for a proportion or 'var' for a mean")
-  expect_error(varcomp(se = 0.021, p = 1.3, n = 1200, n_per_psu = 20),
+  expect_error(varcomp(se = 0.021, p = 1.3, n = 1200, take = 20),
                "'p' must be in \\(0, 1\\)")
 })
 
@@ -1114,9 +1118,9 @@ test_that("back-out arguments and data do not mix", {
   set.seed(88)
   y <- rnorm(40)
   psu <- rep(1:8, each = 5)
-  expect_error(varcomp(y, stage_id = list(psu), deff = 1.8, n_per_psu = 20),
+  expect_error(varcomp(y, stage_id = list(psu), deff = 1.8, take = 20),
                "takes no data")
-  expect_error(varcomp(y, stage_id = list(psu), n_per_psu = 20),
+  expect_error(varcomp(y, stage_id = list(psu), take = 20),
                "belongs to the design effect back-out")
   expect_error(varcomp(y, stage_id = list(psu), cv_take = 0.2, var_ratio = 2),
                "belong to the design effect back-out")
@@ -1132,7 +1136,7 @@ test_that("an estimated varcomp keeps the data provenance", {
 })
 
 test_that("the unit relvariance a design effect cannot give is demanded", {
-  vc <- varcomp(deff = 1.8, n_per_psu = 20)
+  vc <- varcomp(deff = 1.8, take = 20)
   expect_error(n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5),
                "not identified by a design effect")
   expect_error(prec_cluster(n = c(40, 20), icc = vc),
@@ -1146,7 +1150,7 @@ test_that("the unit relvariance a design effect cannot give is demanded", {
 })
 
 test_that("a plan supplies the unit relvariance a design effect cannot", {
-  vc <- varcomp(deff = 1.8, n_per_psu = 20)
+  vc <- varcomp(deff = 1.8, take = 20)
   bare <- svyplan(stage_cost = c(500, 50))
   expect_error(n_cluster(icc = vc, budget = 1e5, plan = bare),
                "not identified by a design effect")
@@ -1177,7 +1181,7 @@ test_that("a varcomp refuses a supplied variance ratio", {
   set.seed(77)
   frame <- data.frame(y = rnorm(200, 50, 10), psu = rep(1:20, each = 10))
   est <- varcomp(y ~ psu, data = frame)
-  back <- varcomp(deff = 1.8, n_per_psu = 20)
+  back <- varcomp(deff = 1.8, take = 20)
   expect_error(
     n_cluster(stage_cost = c(500, 50), icc = est, cv = 0.05, var_ratio = 3),
     "or pass 'icc' as numbers"
@@ -1194,7 +1198,7 @@ test_that("a varcomp refuses a supplied variance ratio", {
   )
   expect_equal(
     n_cluster(stage_cost = c(500, 50),
-              icc = varcomp(deff = 1.8, n_per_psu = 20, var_ratio = 1.2),
+              icc = varcomp(deff = 1.8, take = 20, var_ratio = 1.2),
               cv = 0.05, unit_relvar = 0.6)$params$var_ratio[[1]],
     1.2
   )
@@ -1204,7 +1208,7 @@ test_that("a profile's components yield to a varcomp passed as icc", {
   set.seed(77)
   frame <- data.frame(y = rnorm(200, 50, 10), psu = rep(1:20, each = 10))
   est <- varcomp(y ~ psu, data = frame)
-  back <- varcomp(deff = 1.8, n_per_psu = 20)
+  back <- varcomp(deff = 1.8, take = 20)
   pl <- svyplan(stage_cost = c(500, 50), unit_relvar = 5, var_ratio = 3)
   expect_equal(
     n_cluster(icc = est, cv = 0.05, plan = pl)$n,
@@ -1229,10 +1233,10 @@ test_that("a profile's components yield to a varcomp passed as icc", {
 })
 
 test_that("a backed-out varcomp prints and exports its provenance", {
-  vc <- varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)
+  vc <- varcomp(deff = 1.8, take = 20, cv_take = 0.3)
   out <- capture.output(print(vc))
   expect_match(out[1], "from a design effect")
-  expect_match(out[4], "deff = 1.8000 at n_per_psu = 21.8")
+  expect_match(out[4], "deff = 1.8000 at take = 21.8")
   expect_match(out[4], "nominal 20")
   expect_match(out[5], "not identified by a design effect")
   expect_match(format(vc), "from deff")
@@ -1240,17 +1244,17 @@ test_that("a backed-out varcomp prints and exports its provenance", {
   df <- as.data.frame(vc)
   expect_identical(nrow(df), 1L)
   expect_identical(df$source, "deff")
-  expect_equal(df$n_per_psu, 21.8)
+  expect_equal(df$take, 21.8)
   expect_true(is.na(df$unit_relvar))
 
-  plain <- capture.output(print(varcomp(deff = 1.8, n_per_psu = 20)))
+  plain <- capture.output(print(varcomp(deff = 1.8, take = 20)))
   expect_false(grepl("nominal", plain[4]))
 })
 
 test_that("a backed-out icc drives the cluster functions", {
-  vc <- varcomp(deff = 2.0, n_per_psu = 25)
-  deff_at_10 <- as.double(design_effect(vc, n_per_psu = 10))
-  expect_equal(effective_n(vc, n = 1000, n_per_psu = 10), 1000 / deff_at_10)
+  vc <- varcomp(deff = 2.0, take = 25)
+  deff_at_10 <- as.double(design_effect(vc, take = 10))
+  expect_equal(effective_n(vc, n = 1000, take = 10), 1000 / deff_at_10)
   prec <- prec_cluster(n = c(50, 10), icc = vc, unit_relvar = 0.5)
   expect_equal(
     prec$cv,
@@ -1260,11 +1264,11 @@ test_that("a backed-out icc drives the cluster functions", {
 })
 
 test_that("the back-out refuses data arguments alongside a design effect", {
-  expect_error(varcomp(deff = 1.8, n_per_psu = 20, weights = rep(1, 4)),
+  expect_error(varcomp(deff = 1.8, take = 20, weights = rep(1, 4)),
                "without 'weights'")
-  expect_error(varcomp(deff = 1.8, n_per_psu = 20, strata = ~region),
+  expect_error(varcomp(deff = 1.8, take = 20, strata = ~region),
                "without 'strata'")
-  expect_error(varcomp(deff = 1.8, n_per_psu = 20, prob = rep(0.25, 4)),
+  expect_error(varcomp(deff = 1.8, take = 20, prob = rep(0.25, 4)),
                "without 'prob'")
 })
 
@@ -1395,22 +1399,22 @@ test_that("recovered components are near-unbiased for the frame components", {
 test_that("every estimation route records its selection and input", {
   fr <- .vc_unequal_frame()
   srs2 <- varcomp(y ~ psu, data = fr)
-  expect_identical(srs2$selection, c(psu = "srs"))
+  expect_identical(srs2$selection, c(stage_1 = "srs"))
   expect_identical(srs2$input, "frame")
   pps2 <- varcomp(y ~ psu, data = fr, prob = ~psu_share)
-  expect_identical(pps2$selection, c(psu = "pps"))
+  expect_identical(pps2$selection, c(stage_1 = "pps"))
   w2 <- varcomp(y ~ psu, data = fr, weights = rep(2, nrow(fr)))
   expect_identical(w2$input, "weighted")
   three <- varcomp(y ~ psu/ssu, data = fr)
-  expect_identical(three$selection, c(psu = "srs", ssu = "srs"))
+  expect_identical(three$selection, c(stage_1 = "srs", stage_2 = "srs"))
   both <- varcomp(y ~ psu/ssu, data = fr, prob = list(~psu_share, ~ssu_share))
-  expect_identical(both$selection, c(psu = "pps", ssu = "pps"))
+  expect_identical(both$selection, c(stage_1 = "pps", stage_2 = "pps"))
   st <- varcomp(y ~ psu, data = fr, strata = ifelse(fr$psu <= 6, "a", "b"))
-  expect_identical(st$selection, c(psu = "srs"))
-  expect_identical(varcomp(deff = 1.8, n_per_psu = 20)$input, "deff")
-  expect_true(is.na(varcomp(deff = 1.8, n_per_psu = 20)$selection))
+  expect_identical(st$selection, c(stage_1 = "srs"))
+  expect_identical(varcomp(deff = 1.8, take = 20)$input, "deff")
+  expect_true(is.na(varcomp(deff = 1.8, take = 20)$selection))
   expect_identical(
-    varcomp(se = 0.021, p = 0.3, n = 1200, n_per_psu = 20)$input, "se"
+    varcomp(se = 0.021, p = 0.3, n = 1200, take = 20)$input, "se"
   )
 })
 
@@ -1419,7 +1423,7 @@ test_that("print names the selection of each stage", {
   out <- capture.output(
     print(varcomp(y ~ psu/ssu, data = fr, prob = list(NULL, ~ssu_share)))
   )
-  expect_match(out[1], "3-stage, SRS PSUs, PPS SSUs, frame", fixed = TRUE)
+  expect_match(out[1], "3-stage, SRS stage 1, PPS stage 2, frame", fixed = TRUE)
 })
 
 ## A second-stage prob describes SSUs drawn proportional to size
@@ -1440,17 +1444,17 @@ test_that("the PPS second stage follows the one-draw formulas", {
     W2 <- W2 + sum(q_j * (t_j / q_j - sum(d$y))^2) / p_i[[as.character(i)]]
     W3 <- W3 + sum(Q_j^2 * S_j / q_j) / p_i[[as.character(i)]]
   }
-  expect_equal(vc$varw[["varw_psu"]], W2 / t_U^2, tolerance = 1e-12)
-  expect_equal(vc$varw[["varw_ssu"]], W3 / t_U^2, tolerance = 1e-12)
+  expect_equal(vc$varw[["varw_1"]], W2 / t_U^2, tolerance = 1e-12)
+  expect_equal(vc$varw[["varw_2"]], W3 / t_U^2, tolerance = 1e-12)
 })
 
-test_that("drawing SSUs by size removes the size effect from var_ratio_ssu", {
+test_that("drawing SSUs by size removes the size effect from var_ratio_2", {
   fr <- .vc_unequal_frame()
   srs <- varcomp(y ~ psu/ssu, data = fr, prob = ~psu_share)
   pps <- varcomp(y ~ psu/ssu, data = fr, prob = list(~psu_share, ~ssu_share))
   derived <- pps$var_ratio[[1]] * (1 - pps$icc[[1]])
-  expect_equal(pps$var_ratio[["var_ratio_ssu"]], derived, tolerance = 0.1)
-  expect_gt(srs$var_ratio[["var_ratio_ssu"]], 2 * derived)
+  expect_equal(pps$var_ratio[["var_ratio_2"]], derived, tolerance = 0.1)
+  expect_gt(srs$var_ratio[["var_ratio_2"]], 2 * derived)
   expect_equal(srs$varb, pps$varb)
   expect_equal(srs$icc[[1]], pps$icc[[1]])
   expect_equal(srs$var_ratio[[1]], pps$var_ratio[[1]])
@@ -1465,15 +1469,15 @@ test_that("a stratified frame takes the second-stage prob per stratum", {
                 prob = list(~psu_share, ~ssu_share))
   one <- varcomp(y ~ psu/ssu, data = fr[fr$region == "a", ],
                  prob = list(~psu_share, ~ssu_share))
-  expect_equal(st$strata$var_ratio_ssu[st$strata$stratum == "a"],
-               one$var_ratio[["var_ratio_ssu"]])
+  expect_equal(st$strata$var_ratio_2[st$strata$stratum == "a"],
+               one$var_ratio[["var_ratio_2"]])
 })
 
 test_that("a second-stage prob is refused where it has no meaning", {
   fr <- .vc_unequal_frame()
   expect_error(
     varcomp(y ~ psu, data = fr, prob = list(~psu_share, ~ssu_share)),
-    "needs three stages"
+    "1 to 1 entries"
   )
   expect_error(
     varcomp(y ~ psu/ssu, data = fr, prob = list(NULL, ~ssu_share),
@@ -1502,7 +1506,7 @@ test_that("stage-2 and stage-3 weights read the element fraction alone", {
   pop <- expand.grid(k = seq_len(Nij), ssu = seq_len(M), psu = seq_len(A))
   pop$y <- 50 + rnorm(A, 0, 3)[pop$psu] +
     rnorm(A * M, 0, 2)[(pop$psu - 1) * M + pop$ssu] + rnorm(nrow(pop), 0, 6)
-  truth <- varcomp(y ~ psu / ssu, data = pop)$varw[["varw_psu"]]
+  truth <- varcomp(y ~ psu / ssu, data = pop)$varw[["varw_1"]]
   draw <- function() {
     idx <- unlist(lapply(sample(A, a), function(i) {
       unlist(lapply(sample(M, m), function(j) {
@@ -1512,8 +1516,8 @@ test_that("stage-2 and stage-3 weights read the element fraction alone", {
     s <- pop[idx, ]
     one <- rep((M / m) * (Nij / n), nrow(s))
     two <- cbind(rep(M / m, nrow(s)), rep(Nij / n, nrow(s)))
-    c(one = varcomp(y ~ psu / ssu, data = s, weights = one)$varw[["varw_psu"]],
-      two = varcomp(y ~ psu / ssu, data = s, weights = two)$varw[["varw_psu"]])
+    c(one = varcomp(y ~ psu / ssu, data = s, weights = one)$varw[["varw_1"]],
+      two = varcomp(y ~ psu / ssu, data = s, weights = two)$varw[["varw_1"]])
   }
   bias <- rowMeans(replicate(200, draw())) / truth - 1
   # f3 = 0.5: one combined column reads f2 * f3 and removes too much noise.
@@ -1566,7 +1570,203 @@ test_that("strata keep the stage-3 weight of each stratum", {
     one <- varcomp(y ~ psu / ssu, data = s[s$region == r, ],
                    weights = ~ w2 + w3)
     row <- fit$strata[fit$strata$stratum == r, ]
-    expect_equal(c(row$icc_psu, row$icc_ssu), unname(one$icc),
+    expect_equal(c(row$icc_1, row$icc_2), unname(one$icc),
                  tolerance = 1e-12, info = r)
   }
+})
+
+## Nested IDs that hold the separator
+
+test_that("nested IDs holding a dot do not merge different units", {
+  y <- c(1, 2, 3, 4, 10, 11, 12, 13)
+  psu <- c("1", "1", "1", "1", "1.2", "1.2", "1.2", "1.2")
+  ssu <- c("2.x", "2.x", "y", "y", "x", "x", "z", "z")
+  vc <- varcomp(y, stage_id = list(psu, ssu))
+  unique_ids <- varcomp(y, stage_id = list(psu, paste0(psu, "#", ssu)))
+  expect_equal(vc$icc, unique_ids$icc)
+  expect_equal(unname(vc$icc[2]), 0.8)
+})
+
+test_that("two weight columns on a two-stage survey design are refused", {
+  skip_if_not_installed("survey")
+  fr <- data.frame(psu = rep(1:6, each = 4), y = c(1:24) %% 7,
+                   w2 = 2, w3 = 3, w = 6)
+  dsgn <- survey::svydesign(ids = ~psu, weights = ~w, data = fr)
+  expect_error(varcomp(dsgn, ~y, weights = ~ w2 + w3),
+               "two 'weights' columns")
+})
+
+## The stage count of a survey design read from its probabilities
+
+test_that("a last ID column with one row per value is the element only without a draw below it", {
+  skip_if_not_installed("survey")
+  s <- data.frame(psu = rep(1:3, each = 3), id = 1:9,
+                  y = c(1, 3, 7, 2, 8, 9, 4, 5, 14),
+                  p1 = 0.5, p2 = 0.5, p3 = 0.25)
+  d2 <- survey::svydesign(~psu + id, probs = ~p1 + p2, data = s)
+  v2 <- varcomp(d2, ~y)
+  ref2 <- varcomp(s$y, stage_id = list(s$psu), weights = 1 / s$p2)
+  expect_equal(v2$stages, 2L)
+  expect_equal(v2$varb, ref2$varb)
+  expect_equal(v2$varb, 0.03310787, tolerance = 1e-6)
+  d3 <- survey::svydesign(~psu + id, probs = ~p1 + p2 + p3, data = s)
+  v3 <- suppressWarnings(varcomp(d3, ~y))
+  ref3 <- suppressWarnings(varcomp(s$y, stage_id = list(s$psu, s$id)))
+  expect_equal(v3$stages, 3L)
+  expect_equal(v3$varb, ref3$varb)
+  expect_equal(v3$varb, 0.1196155, tolerance = 1e-6)
+  collapsed <- varcomp(s$y, stage_id = list(s$psu),
+                       weights = 1 / (s$p2 * s$p3))
+  expect_false(isTRUE(all.equal(v3$varb, collapsed$varb)))
+  dw <- survey::svydesign(~psu + id, weights = ~I(rep(1, 9)), data = s)
+  seen <- character()
+  withCallingHandlers(varcomp(dw, ~y), warning = function(w) {
+    seen <<- c(seen, conditionMessage(w))
+    invokeRestart("muffleWarning")
+  })
+  expect_true(any(grepl("does not say whether that ID is the element", seen)))
+  set.seed(3)
+  b <- data.frame(psu = rep(1:6, each = 8), ssu = rep(1:24, each = 2),
+                  hh = 1:48)
+  b$y <- rnorm(6)[b$psu] + rnorm(24)[b$ssu] + rnorm(48)
+  b$p1 <- 0.5
+  b$p2 <- 0.5
+  b$p3 <- 0.5
+  many <- varcomp(survey::svydesign(~psu + ssu, probs = ~p1 + p2 + p3,
+                                    data = b), ~y)
+  expect_equal(many$stages, 3L)
+  element <- varcomp(survey::svydesign(~psu + ssu + hh,
+                                       probs = ~p1 + p2 + p3, data = b), ~y)
+  expect_equal(element$stages, 3L)
+  expect_equal(element$varb, many$varb)
+})
+
+## A PPS sample of PSUs is read with the Hansen-Hurwitz estimator
+
+test_that("PPS sample components have the frame components as expectation", {
+  y_frame <- list(c(1, 4, 9), c(2, 2, 5), c(10, 12, 20), c(3, 7, 8))
+  p <- c(0.1, 0.2, 0.3, 0.4)
+  fr <- data.frame(psu = rep(1:4, each = 3), y = unlist(y_frame))
+  vf <- varcomp(fr$y, stage_id = list(fr$psu), prob = p)
+  big_t <- sum(fr$y)
+  draw <- function(i, j, a, b, w) {
+    ys <- list(y_frame[[i]][a], y_frame[[j]][b])
+    pp <- c(p[i], p[j])
+    n <- lengths(ys)
+    d <- data.frame(draw = rep(1:2, n), y = unlist(ys), w = rep(3 / n, n),
+                    q = rep(pp / sum(pp), n))
+    v <- suppressWarnings(varcomp(d$y, stage_id = list(d$draw), prob = d$q,
+                                  weights = if (w) d$w))
+    t_hat <- vapply(ys, function(x) 3 * mean(x), 1)
+    list(v = v, z = t_hat / pp, ys = ys, pp = pp)
+  }
+  ## Every unit of a drawn PSU taken: both components exact.
+  e_b <- 0
+  e_w <- 0
+  for (i in 1:4) for (j in 1:4) {
+    s <- draw(i, j, 1:3, 1:3, w = TRUE)
+    e_b <- e_b + p[i] * p[j] * s$v$varb * mean(s$z)^2
+    e_w <- e_w + p[i] * p[j] * s$v$varw * mean(s$z)^2
+  }
+  expect_equal(e_b, vf$varb * big_t^2, tolerance = 1e-12)
+  expect_equal(e_w, vf$varw * big_t^2, tolerance = 1e-12)
+  ## Two of three units per draw: the unclamped between term is unbiased,
+  ## and the package returns it clamped at zero.
+  subs <- utils::combn(3, 2, simplify = FALSE)
+  e_x <- 0
+  e_w <- 0
+  for (i in 1:4) for (j in 1:4) for (a in subs) for (b in subs) {
+    s <- draw(i, j, a, b, w = TRUE)
+    noise <- vapply(s$ys, function(x) 9 * (1 - 2 / 3) * var(x) / 2, 1)
+    x <- var(s$z) - mean(noise / s$pp^2)
+    expect_equal(s$v$varb * mean(s$z)^2, max(x, 0), tolerance = 1e-12)
+    e_x <- e_x + p[i] * p[j] / 9 * x
+    e_w <- e_w + p[i] * p[j] / 9 * s$v$varw * mean(s$z)^2
+  }
+  expect_equal(e_x, vf$varb * big_t^2, tolerance = 1e-12)
+  expect_equal(e_w, vf$varw * big_t^2, tolerance = 1e-12)
+})
+
+test_that("a three-stage PPS sample keeps the frame components as expectation", {
+  frame <- data.frame(psu = rep(1:3, each = 4), ssu = rep(1:6, each = 2),
+                      y = c(1, 3, 2, 8, 5, 5, 9, 14, 4, 6, 11, 2))
+  p <- c(0.2, 0.3, 0.5)
+  vf <- varcomp(frame$y, stage_id = list(frame$psu, frame$ssu), prob = p)
+  big_t <- sum(frame$y)
+  e <- c(0, 0, 0)
+  for (i in 1:3) for (j in 1:3) {
+    d <- rbind(transform(frame[frame$psu == i, ], draw = 1, q = p[i]),
+               transform(frame[frame$psu == j, ], draw = 2, q = p[j]))
+    d$q <- d$q / (p[i] + p[j])
+    d$ssu <- paste(d$draw, d$ssu)
+    v <- suppressWarnings(varcomp(d$y, stage_id = list(d$draw, d$ssu),
+                                  prob = d$q, weights = rep(1, nrow(d))))
+    z <- c(sum(frame$y[frame$psu == i]) / p[i],
+           sum(frame$y[frame$psu == j]) / p[j])
+    e <- e + p[i] * p[j] * c(v$varb, v$varw) * mean(z)^2
+  }
+  expect_equal(e, c(vf$varb, vf$varw) * big_t^2, tolerance = 1e-12,
+               ignore_attr = TRUE)
+})
+
+test_that("a PPS sample reading follows its formula and keeps SRS and frames", {
+  set.seed(11)
+  d <- data.frame(draw = rep(1:6, each = 4), y = rnorm(24, 10) + rep(1:6, each = 4),
+                  w = 5 / 4)
+  q <- rep(c(0.05, 0.1, 0.15, 0.2, 0.2, 0.3), each = 4)
+  a <- varcomp(d$y, stage_id = list(d$draw), prob = q, weights = d$w)
+  t_hat <- tapply(d$w * d$y, d$draw, sum)
+  q_psu <- tapply(q, d$draw, `[`, 1)
+  s2 <- tapply(d$y, d$draw, var)
+  z <- t_hat / q_psu
+  noise <- 5^2 * (1 - 4 / 5) * s2 / 4
+  expect_equal(a$varb, max(var(z) - mean(noise / q_psu^2), 0) / mean(z)^2)
+  expect_equal(a$varw, mean(5^2 * s2 / q_psu^2) / mean(z)^2)
+  unit <- varcomp(d$y, stage_id = list(d$draw), prob = q,
+                  weights = rep(1, 24))
+  frame <- varcomp(d$y, stage_id = list(d$draw), prob = q)
+  expect_identical(unit$input, "weighted")
+  expect_identical(frame$input, "frame")
+  expect_false(isTRUE(all.equal(unit$varb, frame$varb)))
+  srs_w <- varcomp(d$y, stage_id = list(d$draw), weights = rep(1, 24))
+  srs_f <- varcomp(d$y, stage_id = list(d$draw))
+  expect_equal(srs_w$varb, srs_f$varb)
+})
+
+test_that("two explicit conditional weight columns keep the SSU a stage", {
+  skip_if_not_installed("survey")
+  s <- data.frame(psu = rep(1:3, each = 3), id = 1:9,
+                  y = c(1, 3, 7, 2, 8, 9, 4, 5, 14),
+                  p1 = 0.5, p2 = 0.5, p3 = 0.25)
+  wd <- transform(s, w2 = 1 / p2, w3 = 1 / p3, u2 = 1, u3 = 1, el = 1:9,
+                  comb = 1 / (p1 * p2 * p3))
+  fields <- function(v) list(v$stages, v$varb, v$varw, v$icc)
+  ref_three <- suppressWarnings(
+    varcomp(wd$y, stage_id = list(wd$psu, wd$id), weights = wd[, c("w2", "w3")])
+  )
+  ref_two <- varcomp(wd$y, stage_id = list(wd$psu), weights = wd$w2)
+  d <- survey::svydesign(~psu + id, probs = ~p1 + p2, data = wd)
+  for (w in list(~w2 + w3, as.matrix(wd[, c("w2", "w3")]),
+                 wd[, c("w2", "w3")])) {
+    expect_warning(v <- varcomp(d, ~y, weights = w), "singletons")
+    expect_equal(fields(v), fields(ref_three))
+  }
+  expect_equal(fields(varcomp(d, ~y)), fields(ref_two))
+  expect_equal(fields(varcomp(d, ~y, weights = ~w2)), fields(ref_two))
+  expect_warning(unit <- varcomp(d, ~y, weights = ~u2 + u3), "singletons")
+  expect_equal(unit$stages, 3L)
+  dc <- survey::svydesign(~psu + id, weights = ~comb, data = wd)
+  expect_warning(v <- varcomp(dc, ~y, weights = ~w2 + w3), "singletons")
+  expect_equal(fields(v), fields(ref_three))
+  expect_warning(expect_error(varcomp(dc, ~y), "one combined weight"),
+                 "does not say whether that ID is the element")
+  d3 <- survey::svydesign(~psu + id + el, probs = ~p1 + p2 + p3, data = wd)
+  expect_warning(v <- varcomp(d3, ~y, weights = ~w2 + w3), "singletons")
+  expect_equal(fields(v), fields(ref_three))
+  dp <- survey::svydesign(~psu, probs = ~p1, data = wd)
+  expect_error(varcomp(dp, ~y, weights = ~w2 + w3),
+               "this design has two stages")
+  bad <- transform(wd, w3 = c(0, w3[-1]))
+  expect_error(varcomp(d, ~y, weights = bad[, c("w2", "w3")]),
+               "must be positive and finite")
 })

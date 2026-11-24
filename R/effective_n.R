@@ -21,8 +21,8 @@
 #'
 #' @details
 #' The design effect is built exactly as in [design_effect()], from
-#' whichever of the clustering, weighting, and stratification components
-#' you supply. `n` is the gross planned sample size. It is taken from the
+#' whichever of the clustering, weighting, stratification, and auxiliary
+#' calibration components you supply. `n` is the gross planned sample size. It is taken from the
 #' arguments when it can be (the length of `weights`, the total of
 #' `strata$n`, or the total of the plan you pass as `x`), and must be given
 #' explicitly otherwise.
@@ -42,9 +42,9 @@
 #' for an [n_alloc()] result the effective size inherits that scale. It
 #' answers how many simple random draws carry the same information under
 #' the planning model, not how many the finite-population variance from
-#' [prec_alloc()] would imply once sampling fractions are material. A
-#' generalized allocation has no single design effect and is refused here
-#' for the same reason it is in [design_effect()].
+#' [prec_alloc()] would imply once sampling fractions are material. For
+#' a joint design from [n_alloc_joint()], use [prec_alloc_joint()] for
+#' measure-specific precision.
 #'
 #' `effective_n()` is a planning tool. To compute the effective sample size
 #' realized by collected data, use `survey::svymean(..., deff = TRUE)` with
@@ -55,10 +55,13 @@
 #'
 #' @examples
 #' # From a design effect you already built
-#' effective_n(design_effect(icc = 0.05, n_per_psu = 25), n = 1200)
+#' effective_n(design_effect(icc = 0.05, take = 25), n = 1200)
 #'
 #' # Straight from the components
-#' effective_n(n = 1200, icc = 0.05, n_per_psu = 25)
+#' effective_n(n = 1200, icc = 0.05, take = 25)
+#'
+#' # Include the anticipated calibration gain once
+#' effective_n(n = 1200, icc = 0.05, take = 25, aux_r2 = 0.25)
 #'
 #' # From planned weights, where n is the number of units
 #' effective_n(weights = rep(c(1, 4), c(300, 100)))
@@ -101,8 +104,9 @@ effective_n <- function(x = NULL, ...) {
 #'   own value is used unless you override it here. An override re-evaluates
 #'   the plan, so on an allocation the population weights and the population
 #'   variance follow it too.
-#' @param icc,n_per_psu,n_per_ssu,var_ratio,weights,strata Design components, with
-#'   the same meaning as in [design_effect()].
+#' @param icc,take,var_ratio,weights,strata,aux_r2 Design components, with
+#'   the same meaning as in [design_effect()]. `aux_r2` is refused beside
+#'   `deff`, which already carries any calibration gain.
 #'
 #' @export
 effective_n.default <- function(
@@ -113,26 +117,26 @@ effective_n.default <- function(
   resp_rate = 1,
   eligibility_rate = 1,
   icc = NULL,
-  n_per_psu = NULL,
-  n_per_ssu = NULL,
+  take = NULL,
   var_ratio = 1,
   weights = NULL,
-  strata = NULL
+  strata = NULL,
+  aux_r2 = NULL
 ) {
   .check_unused_dots(...)
   if (!is.null(x)) {
     stop(
-      "'x' must be a svyplan result or NULL. Pass planning components by name (n, deff, icc, n_per_psu, weights, strata)",
+      "'x' must be a svyplan result or NULL. Pass planning components by name (n, deff, icc, take, weights, strata)",
       call. = FALSE
     )
   }
   if (!is.null(deff)) {
     if (
       !is.null(icc) ||
-        !is.null(n_per_psu) ||
-        !is.null(n_per_ssu) ||
+        !is.null(take) ||
         !is.null(weights) ||
-        !is.null(strata)
+        !is.null(strata) ||
+        !is.null(aux_r2)
     ) {
       stop(
         "supply either 'deff' or the design components it would be built from",
@@ -144,11 +148,11 @@ effective_n.default <- function(
   } else {
     value <- as.double(design_effect(
       icc = icc,
-      n_per_psu = n_per_psu,
-      n_per_ssu = n_per_ssu,
+      take = take,
       var_ratio = var_ratio,
       weights = weights,
-      strata = strata
+      strata = strata,
+      aux_r2 = aux_r2
     ))
   }
   .effective_n(.effective_n_size(n, weights, strata), value, resp_rate,
@@ -177,11 +181,12 @@ effective_n.svyplan_cluster <- function(
   resp_rate = NULL,
   eligibility_rate = NULL,
   weights = NULL,
-  strata = NULL
+  strata = NULL,
+  aux_r2 = NULL
 ) {
   .check_unused_dots(...)
   x <- .effective_n_rated(x, resp_rate, eligibility_rate)
-  deff <- design_effect(x, weights = weights, strata = strata)
+  deff <- design_effect(x, weights = weights, strata = strata, aux_r2 = aux_r2)
   .effective_n(
     n %||% x$total_n,
     as.double(deff),
@@ -204,15 +209,17 @@ effective_n.svyplan_prec <- function(
   resp_rate = NULL,
   eligibility_rate = NULL,
   weights = NULL,
-  strata = NULL
+  strata = NULL,
+  aux_r2 = NULL
 ) {
   .check_unused_dots(...)
-  if (identical(x$type, "alloc")) {
+  if (x$type %in% c("alloc", "alloc_joint")) {
     .deff_no_strata(strata)
-    return(.effective_n_alloc(x, n, resp_rate, eligibility_rate, weights))
+    return(.effective_n_alloc(x, n, resp_rate, eligibility_rate, weights,
+                              aux_r2))
   }
   x <- .effective_n_rated(x, resp_rate, eligibility_rate)
-  deff <- design_effect(x, weights = weights, strata = strata)
+  deff <- design_effect(x, weights = weights, strata = strata, aux_r2 = aux_r2)
   .effective_n(
     n %||% prod(x$params$n),
     as.double(deff),
@@ -230,18 +237,18 @@ effective_n.svyplan_varcomp <- function(
   n = NULL,
   resp_rate = 1,
   eligibility_rate = 1,
-  n_per_psu = NULL,
-  n_per_ssu = NULL,
+  take = NULL,
   weights = NULL,
-  strata = NULL
+  strata = NULL,
+  aux_r2 = NULL
 ) {
   .check_unused_dots(...)
   deff <- design_effect(
     x,
-    n_per_psu = n_per_psu,
-    n_per_ssu = n_per_ssu,
+    take = take,
     weights = weights,
-    strata = strata
+    strata = strata,
+    aux_r2 = aux_r2
   )
   .effective_n(
     .effective_n_size(n, weights, strata),
@@ -264,16 +271,33 @@ effective_n.svyplan_varcomp <- function(
 #'   sizes alone reads its whole counts throughout, as its design effect
 #'   does.
 #' @export
+effective_n.svyplan_alloc <- function(
+  x,
+  ...,
+  n = NULL,
+  resp_rate = NULL,
+  eligibility_rate = NULL,
+  weights = NULL,
+  aux_r2 = NULL
+) {
+  .check_unused_dots(...)
+  .effective_n_alloc(x, n, resp_rate, eligibility_rate, weights, aux_r2)
+}
+
+#' @describeIn effective_n Single-indicator sizing results carry the `deff`
+#'   supplied at creation rather than deriving one, and are rejected.
+#' @export
 effective_n.svyplan_n <- function(
   x,
   ...,
   n = NULL,
   resp_rate = NULL,
   eligibility_rate = NULL,
-  weights = NULL
+  weights = NULL,
+  aux_r2 = NULL
 ) {
   .check_unused_dots(...)
-  .effective_n_alloc(x, n, resp_rate, eligibility_rate, weights)
+  .effective_n_alloc(x, n, resp_rate, eligibility_rate, weights, aux_r2)
 }
 
 #' Effective size of a one-measure allocation, stratum rates kept apart
@@ -285,9 +309,13 @@ effective_n.svyplan_n <- function(
 #' whole counts throughout, as its design effect does.
 #' @keywords internal
 #' @noRd
-.effective_n_alloc <- function(x, n, resp_rate, eligibility_rate, weights) {
+.effective_n_alloc <- function(x, n, resp_rate, eligibility_rate, weights,
+                               aux_r2 = NULL) {
+  if (identical(x$type, "alloc_joint") || !is.null(x$params$measures)) {
+    .deff_alloc(x, weights, aux_r2 = aux_r2)
+  }
   x <- .effective_n_rated(x, resp_rate, eligibility_rate)
-  deff <- .deff_alloc(x, weights)
+  deff <- .deff_alloc(x, weights, aux_r2 = aux_r2)
   rate_h <- .alloc_summary_response_rates(x)$combined
   size_only <- all(is.na(x$detail[["sd"]]))
   n_h <- if (size_only) x$detail[["n_int"]] %||% x$detail$n else x$detail$n
@@ -307,15 +335,31 @@ effective_n.svyplan_n <- function(
 #' @keywords internal
 #' @noRd
 .effective_n_rated <- function(x, resp_rate = NULL, eligibility_rate = NULL) {
-  alloc <- identical(x$type, "alloc")
+  alloc <- isTRUE(x$type %in% c("alloc", "alloc_joint"))
   frame <- x$params[["frame"]]
-  rates <- list(resp_rate = resp_rate, eligibility_rate = eligibility_rate)
-  for (name in names(rates)) {
-    value <- rates[[name]]
-    if (is.null(value)) next
-    if (!alloc) check_resp_rate(value, name)
-    x$params[[name]] <- value
-    if (is.data.frame(frame)) frame[[name]] <- NULL
+  if (!is.null(resp_rate)) {
+    if (!alloc) {
+      stages <- x[["stages"]] %||% x$params[["stages"]] %||% 2L
+      if (length(resp_rate) == 1L) {
+        check_resp_rate(resp_rate, "resp_rate")
+        cur <- x$params[["resp_rate"]] %||% rep(1, stages)
+        if (length(cur) != stages) {
+          cur <- rep(1, stages)
+        }
+        cur[stages] <- resp_rate
+        x$params[["resp_rate"]] <- cur
+      } else {
+        x$params[["resp_rate"]] <- .expand_stage_resp_rate(resp_rate, stages)
+      }
+    } else {
+      x$params[["resp_rate"]] <- resp_rate
+      if (is.data.frame(frame)) frame[["resp_rate"]] <- NULL
+    }
+  }
+  if (!is.null(eligibility_rate)) {
+    if (!alloc) check_resp_rate(eligibility_rate, "eligibility_rate")
+    x$params[["eligibility_rate"]] <- eligibility_rate
+    if (is.data.frame(frame)) frame[["eligibility_rate"]] <- NULL
   }
   if (is.data.frame(frame)) x$params[["frame"]] <- frame
   if (alloc && !is.null(eligibility_rate) && is.data.frame(frame) &&
@@ -349,9 +393,7 @@ effective_n.svyplan_n <- function(
   # sample that responds is their product. An eligible rate then counts the
   # eligible persons each responding unit holds, and can exceed 1.
   p <- x$params
-  (p[["resp_rate_psu"]] %||% 1) *
-    (p[["resp_rate_ssu"]] %||% 1) *
-    (p[["resp_rate"]] %||% 1) *
+  prod(p[["resp_rate"]] %||% 1) *
     (p[["eligible_per_unit"]] %||% 1) *
     (p[["eligibility_rate"]] %||% 1)
 }

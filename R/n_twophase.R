@@ -16,27 +16,22 @@
 #' through untouched and subsamples only the nonrespondents, and the two
 #' differ only in which strata are marked `take_all`.
 #'
-#' @param frame For the default method: a data frame with one row per
-#'   phase-2 stratum, in the [n_alloc()] column vocabulary (`N`, `sd`,
-#'   `mean`, `unit_cost`, `take_all`) but on a narrower contract. `sd` is
-#'   required where [n_alloc()] also accepts `var`, and the cost and
-#'   `p`/`mean` rules differ, so a table built for one may need adjusting
-#'   before it is passed to the other. Columns:
+#' @param frame For the default method, a data frame with one row per
+#'   phase-2 stratum, using the [n_alloc()] column vocabulary (`N`, `sd`,
+#'   `var`, `mean`, `p`, `unit_cost`, `take_all`). Columns:
 #'   \describe{
 #'     \item{`N`}{Stratum size (**required**). Only relative size matters,
 #'       since the stratum weights are `N / sum(N)`.}
-#'     \item{`sd`}{Within-stratum standard deviation of the variable of
-#'       interest (**required**). A stratum with `sd = 0` still takes one
-#'       phase-2 unit, since the estimator needs its mean and a planning
-#'       value of zero says the stratum is homogeneous, not that its level
-#'       is known. A level phase 1 already records, such as a screened-out
-#'       group whose value is zero by definition, is a `take_all` stratum
-#'       with `unit_cost = 0`. Estimating a stratum's variance from the
-#'       survey takes at least two units there.}
-#'     \item{`mean`}{Stratum mean. Supply it to let the between-stratum
-#'       component be derived, which is what makes stratifying worthwhile.
-#'       Omit it, or pass `between = 0`, when the strata are not expected
-#'       to differ in level, as in nonresponse follow-up.}
+#'     \item{`sd` or `var`}{Within-stratum spread of the variable of interest.
+#'       Supply `sd`, `var`, or `p` (binary proportion in `[0, 1]`). Do not
+#'       supply both `sd` and `var`. When `p` is supplied without `sd` or
+#'       `var`, within-stratum SD is derived as `sqrt(p * (1 - p))`. A
+#'       stratum with `sd = 0` still takes one phase-2 unit, since the
+#'       estimator needs its mean.}
+#'     \item{`mean` or `p`}{Stratum mean or proportion (in `[0, 1]`). Do not
+#'       supply both. Supply one to derive the between-stratum variance
+#'       component and overall `mu`. Omit them, or pass `between = 0`, when
+#'       strata are not expected to differ in level.}
 #'     \item{`unit_cost`}{Incremental phase-2 cost per unit. Default 1.
 #'       Zero means the stratum is already measured, which with
 #'       `take_all = TRUE` is exactly a phase-1 respondent group.}
@@ -51,10 +46,11 @@
 #'       is treated as carrying less information per issued unit.}
 #'     \item{`take_all`}{Logical. `TRUE` carries every unit phase 1
 #'       successfully classified into phase 2. On the issued-unit scale
-#'       `nu` is measured on, that is `nu = resp_rate`, the phase-1
-#'       classification rate, and not 1. Among classified units the
-#'       fraction is one. The two coincide only when phase 1 classifies
-#'       everyone. Default `FALSE`.}
+#'       `nu` is measured on, that is `nu = r_1`, the phase-1
+#'       classification yield from the `resp_rate` and `eligibility_rate`
+#'       arguments, and not 1. Among classified units the fraction is
+#'       one. The two coincide only when phase 1 classifies every issued
+#'       unit. Default `FALSE`.}
 #'     \item{`stratum`}{Optional label.}
 #'   }
 #'   For `svyplan_prec` objects: a precision result from [prec_twophase()].
@@ -82,13 +78,16 @@
 #'   variance phase 1 is responsible for. Set it above 1 when phase 1 is
 #'   clustered, as an area screener is.
 #' @param resp_rate Expected phase-1 response, screening or successful
-#'   classification rate, in (0, 1], default 1. It divides the
-#'   between-stratum component and, because phase 2 can only draw from
-#'   the units phase 1 actually classified, it also caps every
-#'   subsampling fraction at `resp_rate`. In a nonresponse follow-up
-#'   frame leave it at 1, because there the strata *are* response status, so
-#'   classification succeeds for every unit and setting it again would
-#'   count the same loss twice.
+#'   classification rate among eligible units, in (0, 1], default 1. It is
+#'   a different rate from the frame's `resp_rate` column, which is the
+#'   phase-2 completion rate.
+#' @param eligibility_rate Share of issued phase-1 units in scope, in (0, 1],
+#'   default 1. Its product with `resp_rate`,
+#'   `r_1 = resp_rate * eligibility_rate`, is the expected share of issued
+#'   phase-1 units that phase 1 classifies. It divides the between-stratum
+#'   component and caps every `nu`, since phase 2 can only draw from the
+#'   units phase 1 classified. The eligible population in the finite
+#'   population correction is `N * eligibility_rate`.
 #' @param n_phase1 Fixed phase-1 sample size, or `NULL` (default) to solve
 #'   for it. Supply it when phase 1 has already run, when it is an existing
 #'   survey or panel, or when its size is set by field capacity rather than
@@ -101,7 +100,7 @@
 #'   strata are paid for. Or the target `cv` may sit below the floor left
 #'   when phase 2 carries every classified unit through, the
 #'   between-stratum component `d_1 A / r_1` plus the phase-2 residual at
-#'   `nu_h = resp_rate`, which no amount of subsampling can beat.
+#'   `nu_h = r_1`, which no amount of subsampling can beat.
 #' @param assurance Probability in (0, 1), or `NULL` (default). Planning at
 #'   the expected respondent count does not guarantee that the target will
 #'   be reached. The shortfall probability depends on the response distribution
@@ -109,9 +108,9 @@
 #'   issued sizes for which the required respondents arrive with at least
 #'   that probability, from the binomial distribution of respondents.
 #'
-#'   The level is **marginal**, holding stratum by stratum. Every stratum
-#'   clearing its target at once has the product probability and so is
-#'   lower, materially so with many strata, since three strata at 0.95 give
+#'   The level is **marginal**, holding stratum by stratum. When units
+#'   respond independently, every stratum clearing its target at once has
+#'   the product probability and so is lower, materially so with many strata, since three strata at 0.95 give
 #'   about 0.86 together. Raise the level for a familywise guarantee. It is
 #'   also conditional on the phase-1 pool. The assured phase-2 issue is
 #'   compared against what phase 1 supplies, and a stratum needing more
@@ -151,14 +150,14 @@
 #'   \item{`cost`}{Total cost, including `fixed_cost`.}
 #'   \item{`detail`}{Per-stratum table: `stratum`, `N`, `share`, `sd`,
 #'     `unit_cost`, `deff`, `resp_rate`, `nu` (the subsampling fraction,
-#'     as a share of the phase-1 units *issued*, and with `resp_rate` below 1
-#'     it is capped there, since phase 2 can only draw from the units
-#'     phase 1 classified, and the fraction taken among those classified
-#'     units is `nu / resp_rate`),
+#'     as a share of the stratum's expected issued phase-1 units
+#'     `W_h * n_phase1`. With `r_1` below 1 it is capped there, since
+#'     phase 2 can only draw from the units phase 1 classified, and the
+#'     fraction taken among those classified units is `nu / r_1`),
 #'     `n_issued`, `n_resp` (its expected responding part), and
 #'     `take_all`, which is `TRUE`
 #'     for strata that were supplied pinned **and** for those the
-#'     allocator truncated at the classification rate.}
+#'     allocator truncated at `r_1`.}
 #'   \item{`single_phase`}{The design that skips phase 1 and measures the
 #'     variable of interest directly, as `c(n = , cv = , cost = )`, its
 #'     whole-unit form `n_int`, `cv_int` and `cost_int` (the units the
@@ -187,8 +186,12 @@
 #'     stops with an error when no unit can be added. In budget mode a
 #'     stratum whose expected phase-1
 #'     yield rounds below one unit is left unsampled with a warning, and the
-#'     operational `cv` is then `Inf`. With `assurance` set it also carries `assured`,
-#'     `assured_phase1`, `pool` and `assured_cost`.}
+#'     operational `cv` is then `Inf`. With `assurance` set it also carries
+#'     `assured`, the phase-2 issue per stratum at which the planned
+#'     respondents arrive with that probability, `assured_phase1`, the
+#'     phase-1 size at which the planned classified count `r_1 n_phase1`
+#'     arrives with that probability, `pool`, the expected classified units
+#'     per stratum at that size, and `assured_cost`.}
 #'   \item{`params`}{Validated inputs, read back by [prec_twophase()]. They
 #'     include the design decisions a stratum table cannot express, so that
 #'     `n_twophase(prec_twophase(fit))` rebuilds this problem rather than a
@@ -222,7 +225,7 @@
 #'
 #' Any \eqn{\nu_h} above the cap is truncated there and the stratum joins
 #' \eqn{P}, which changes \eqn{\tilde A}{Atilde} and \eqn{\tilde c_a}{ctilde_a} and so the
-#' remaining strata are re-solved. The cap is `resp_rate` rather than 1.
+#' remaining strata are re-solved. The cap is `r_1` rather than 1.
 #' Phase 2 can only subsample the units phase 1 succeeded in classifying, so a
 #' stratum is "take-all" once it keeps all of those, not all of \eqn{N_h}.
 #' Strata are pinned one at a time in decreasing \eqn{S_h/\sqrt{c_h}}{S_h/sqrt(c_h)},
@@ -409,6 +412,7 @@
 #' @export
 n_twophase <- function(frame, ...) {
   if (!missing(frame)) {
+    .refuse_result_as_input(frame, "frame", "n_twophase")
     .res <- .dispatch_plan(frame, "frame", n_twophase.default, ...)
     if (!is.null(.res)) return(.res)
   }
@@ -430,6 +434,7 @@ n_twophase.default <- function(
   assurance = NULL,
   phase1_deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   single_deff = 1,
   single_resp_rate = 1,
   single_cost = NULL,
@@ -456,6 +461,7 @@ n_twophase.default <- function(
   .check_twophase_deff(phase1_deff, "phase1_deff")
   .check_twophase_deff(single_deff, "single_deff")
   check_resp_rate(resp_rate)
+  check_resp_rate(eligibility_rate, "eligibility_rate")
   check_resp_rate(single_resp_rate)
   check_population_size(N)
   check_fixed_cost(fixed_cost, budget)
@@ -475,29 +481,31 @@ n_twophase.default <- function(
     }
   }
 
+  r1_eff <- resp_rate * eligibility_rate
   d2_eff <- spec$d2 / spec$r2
-  a_eff <- phase1_deff * spec$A / resp_rate
+  a_eff <- phase1_deff * spec$A / r1_eff
   if (!is.null(budget)) check_scalar(budget, "budget")
   if (!is.null(cv)) {
     check_scalar(cv, "cv")
     if (!is.finite(spec$mu) || spec$mu == 0) {
-      stop("'mu' is required in cv mode; supply it or a 'mean' column",
+      stop("'mu' is required in cv mode; supply it or a 'mean' or 'p' column",
            call. = FALSE)
     }
   }
 
-  # Deff-inflated, response-unadjusted: a census removes all the variance,
-  # failing to reach some units does not.
-  var_pop <- phase1_deff * spec$A + sum(spec$d2 * spec$W * spec$S^2)
+  # Deff-inflated, response-unadjusted; divided by eligibility_rate so
+  # var_pop / N equals the eligible-population census term over N * eligibility_rate.
+  var_pop <- (phase1_deff * spec$A + sum(spec$d2 * spec$W * spec$S^2)) /
+    eligibility_rate
   # at nu_max rather than 1, the floor no amount of subsampling can beat
-  var_floor <- a_eff + sum(d2_eff * spec$W * spec$S^2 / resp_rate)
+  var_floor <- a_eff + sum(d2_eff * spec$W * spec$S^2 / r1_eff)
 
   # A stratum without variance still needs its mean observed, so it takes
   # one phase-2 unit, more buying no precision. Below one unit of phase-1
   # yield it takes what the pool holds. That count is a fixed cost, so the
   # optimum over the other strata is unchanged.
   zero <- spec$S == 0 & !spec$pinned
-  floor_count <- function(n1) pmin(1, resp_rate * spec$W[zero] * n1)
+  floor_count <- function(n1) pmin(1, r1_eff * spec$W[zero] * n1)
   floor_cost <- function(n1) sum(spec$cost[zero] * floor_count(n1))
 
   # The multiplier at a fixed phase-1 size, which the caller's 'n_phase1'
@@ -508,7 +516,7 @@ n_twophase.default <- function(
       # take-all strata must be measured whatever is left, so their cost is
       # as mandatory as the screening itself
       mandatory <- phase1_cost +
-        sum(spec$cost[spec$pinned] * spec$W[spec$pinned] * resp_rate)
+        sum(spec$cost[spec$pinned] * spec$W[spec$pinned] * r1_eff)
       if (allocatable <= mandatory) {
         stop(sprintf(
           paste("the budget does not reach phase 2 at this 'n_phase1':",
@@ -543,7 +551,7 @@ n_twophase.default <- function(
   }
   solve_nu <- function(lambda_fn) {
     .twophase_nu(spec$W, spec$S, spec$cost, d2_eff, phase1_cost, a_eff,
-                 spec$pinned, nu_max = resp_rate, lambda_fn = lambda_fn,
+                 spec$pinned, nu_max = r1_eff, lambda_fn = lambda_fn,
                  skip = zero)
   }
   unit_terms <- function(nu) {
@@ -562,9 +570,9 @@ n_twophase.default <- function(
                   "mean, so the outcome has no variability to plan for. The",
                   "smallest design that observes it in every stratum is",
                   "returned"), call. = FALSE)
-    n1 <- n_phase1 %||% max(1, ceiling(1 / (resp_rate * min(spec$W[zero])) -
-                                         1e-9))
-    fit <- list(nu = ifelse(spec$pinned, resp_rate, 0), pinned = spec$pinned)
+    n1 <- n_phase1 %||% min(N, max(1, ceiling(1 / (r1_eff * min(spec$W[zero])) -
+                                                1e-9)))
+    fit <- list(nu = ifelse(spec$pinned, r1_eff, 0), pinned = spec$pinned)
   } else {
     fit <- solve_nu(if (!is.null(n_phase1)) fixed_lambda(n_phase1))
     n1 <- n_phase1
@@ -621,11 +629,12 @@ n_twophase.default <- function(
       formatC(cv_out, format = "f", digits = 5), format(cv)), call. = FALSE)
   }
   single <- .twophase_single(spec, cv, budget, N, fixed_cost, single_cost,
-                             single_deff, single_resp_rate)
+                             single_deff, single_resp_rate,
+                             eligibility_rate = eligibility_rate)
 
   mode <- if (is.null(budget)) "cv" else "budget"
   operational <- .twophase_integerize(
-    n1, nu, spec, phase1_cost, a_eff, d2_eff, resp_rate, mode,
+    n1, nu, spec, phase1_cost, a_eff, d2_eff, r1_eff, mode,
     budget %||% Inf, fixed_cost, N, spec$mu, var_pop,
     target_cv = cv, n1_fixed = !is.null(n_phase1)
   )
@@ -647,8 +656,8 @@ n_twophase.default <- function(
     operational$assured <- .assure_size(
       operational$n_int * spec$r2, spec$r2, assurance)
     operational$assured_phase1 <- .assure_size(
-      operational$n[["n_phase1"]] * resp_rate, resp_rate, assurance)
-    operational$pool <- floor(resp_rate * spec$W * operational$assured_phase1)
+      operational$n[["n_phase1"]] * r1_eff, r1_eff, assurance)
+    operational$pool <- floor(r1_eff * spec$W * operational$assured_phase1)
     operational$assured_cost <- fixed_cost +
       phase1_cost * operational$assured_phase1 +
       sum(spec$cost * operational$assured)
@@ -683,23 +692,26 @@ n_twophase.default <- function(
 
   .new_svyplan_twophase(
     n = c(n_phase1 = n1, n_phase2 = sum(spec$W * nu) * n1),
-    responding = c(n_phase1 = resp_rate * n1,
+    responding = c(n_phase1 = r1_eff * n1,
                    n_phase2 = sum(spec$r2 * spec$W * nu) * n1),
     cv = cv_out,
     cost = cost,
     detail = detail,
     single_phase = single,
     operational = operational,
-    params = list(
-      phase1_cost = phase1_cost, between = spec$A, mu = spec$mu, N = N,
-      phase1_deff = phase1_deff, single_deff = single_deff,
-      resp_rate = resp_rate, single_resp_rate = single_resp_rate,
-      n_phase1_fixed = n_phase1, assurance = assurance,
-      fixed_cost = fixed_cost, mode = mode,
-      cv_target = cv, budget = budget, single_cost = single_cost,
-      # the strata the caller pinned, which is not the same set as the
-      # `take_all` column: that also flags the ones the allocator truncated
-      take_all = spec$pinned
+    params = c(
+      list(
+        phase1_cost = phase1_cost, between = spec$A, mu = spec$mu, N = N,
+        phase1_deff = phase1_deff, single_deff = single_deff,
+        resp_rate = resp_rate, single_resp_rate = single_resp_rate,
+        n_phase1_fixed = n_phase1, assurance = assurance,
+        fixed_cost = fixed_cost, mode = mode,
+        cv_target = cv, budget = budget, single_cost = single_cost,
+        # the strata the caller pinned, which is not the same set as the
+        # `take_all` column: that also flags the ones the allocator truncated
+        take_all = spec$pinned
+      ),
+      if (eligibility_rate != 1) list(eligibility_rate = eligibility_rate)
     )
   )
 }
@@ -717,18 +729,45 @@ n_twophase.default <- function(
       call. = FALSE
     )
   }
-  for (needed in c("N", "sd")) {
-    if (!needed %in% names(frame)) {
-      stop(sprintf("'frame' must contain a '%s' column", needed), call. = FALSE)
-    }
+  if (!"N" %in% names(frame)) {
+    stop("'frame' must contain an 'N' column", call. = FALSE)
   }
   N_h <- frame$N
   if (!is.numeric(N_h) || anyNA(N_h) || any(!is.finite(N_h)) || any(N_h <= 0)) {
     stop("'N' must contain positive finite values", call. = FALSE)
   }
-  S <- frame$sd
-  if (!is.numeric(S) || anyNA(S) || any(!is.finite(S)) || any(S < 0)) {
-    stop("'sd' must contain non-negative finite values", call. = FALSE)
+  has_sd <- "sd" %in% names(frame)
+  has_var <- "var" %in% names(frame)
+  has_p <- "p" %in% names(frame)
+  has_mean <- "mean" %in% names(frame)
+  if (has_sd && has_var) {
+    stop("supply stratum spread as 'sd' or 'var', not both", call. = FALSE)
+  }
+  if (has_mean && has_p) {
+    stop("supply stratum level as 'mean' or 'p', not both", call. = FALSE)
+  }
+  if (has_p) {
+    p_vals <- frame$p
+    if (!is.numeric(p_vals) || anyNA(p_vals) || any(!is.finite(p_vals)) ||
+        any(p_vals < 0) || any(p_vals > 1)) {
+      stop("'p' must contain finite values in [0, 1]", call. = FALSE)
+    }
+  }
+  if (has_sd) {
+    S <- frame$sd
+    if (!is.numeric(S) || anyNA(S) || any(!is.finite(S)) || any(S < 0)) {
+      stop("'sd' must contain non-negative finite values", call. = FALSE)
+    }
+  } else if (has_var) {
+    v <- frame$var
+    if (!is.numeric(v) || anyNA(v) || any(!is.finite(v)) || any(v < 0)) {
+      stop("'var' must contain non-negative finite values", call. = FALSE)
+    }
+    S <- sqrt(v)
+  } else if (has_p) {
+    S <- sqrt(p_vals * (1 - p_vals))
+  } else {
+    stop("'frame' must contain a 'sd', 'var', or 'p' column", call. = FALSE)
   }
   cost <- if ("unit_cost" %in% names(frame)) frame$unit_cost else rep(1, nrow(frame))
   if (!is.numeric(cost) || anyNA(cost) || any(!is.finite(cost)) || any(cost < 0)) {
@@ -746,24 +785,32 @@ n_twophase.default <- function(
   pinned <- .check_take_all(frame[["take_all"]], nrow(frame))
   W <- N_h / sum(N_h)
 
-  if (!is.null(between)) {
-    check_scalar(between, "between", positive = FALSE)
-    if (between < 0) stop("'between' must be non-negative", call. = FALSE)
-    A <- between
-  } else if ("mean" %in% names(frame)) {
+  level_col <- if (has_mean) {
     m <- frame$mean
     if (!is.numeric(m) || anyNA(m) || any(!is.finite(m))) {
       stop("'mean' must contain finite values", call. = FALSE)
     }
-    A <- sum(W * (m - sum(W * m))^2)
+    m
+  } else if (has_p) {
+    p_vals
+  } else {
+    NULL
+  }
+
+  if (!is.null(between)) {
+    check_scalar(between, "between", positive = FALSE)
+    if (between < 0) stop("'between' must be non-negative", call. = FALSE)
+    A <- between
+  } else if (!is.null(level_col)) {
+    A <- sum(W * (level_col - sum(W * level_col))^2)
   } else {
     A <- 0
   }
-  if (is.null(mu) && "mean" %in% names(frame)) {
+  if (is.null(mu) && !is.null(level_col)) {
     # the cv paths test this against zero, so a set of stratum means that
     # cancels has to reach them as an exact zero rather than as whatever
     # the summation left behind
-    mu <- .aggregate_mean(W, frame$mean)
+    mu <- .aggregate_mean(W, level_col)
   }
   list(
     stratum = .twophase_labels(frame),
@@ -811,6 +858,9 @@ n_twophase.default <- function(
 .twophase_nu <- function(W, S, cost, d2, phase1_cost, A, pinned, nu_max = 1,
                          lambda_fn = NULL, skip = rep(FALSE, length(W))) {
   key <- ifelse(cost > 0, S * sqrt(d2 / cost), Inf)
+  ## A free phase-2 unit sits at the cap, and pinning it first keeps its
+  ## infinite key out of the multiplier, where 0 * Inf is NaN.
+  pinned <- pinned | (!skip & !(cost > 0))
   if (is.null(lambda_fn)) {
     lambda_fn <- function(a_eff, c_eff, free) {
       if (a_eff > 0) sqrt(c_eff / a_eff) else Inf
@@ -1123,7 +1173,8 @@ n_twophase.default <- function(
     if (!is.finite(best)) {
       return(is.finite(value))
     }
-    value < best - 1e-9 * max(1, abs(best))
+    ## Relative, since a variance can sit far below 1 at any scale.
+    value < best - 1e-9 * abs(best)
   }
   # Solve the candidates of one block in order of their bound, and report
   # whether any bound in it could still beat the best design.
@@ -1195,6 +1246,23 @@ n_twophase.default <- function(
   list(found = out, search = record())
 }
 
+#' Log-multiplier bracket for the bound bisections, one per candidate row
+#'
+#' A stratum moves from size 1 to its cap as the multiplier crosses the range
+#' its two arguments give in logs, so the union over strata, widened by one,
+#' holds the root at any scale of the variance and cost inputs. Rows with no
+#' finite range fall back to `[-80, 80]`.
+#' @keywords internal
+#' @noRd
+.twophase_log_bracket <- function(l_lo, l_hi) {
+  lo <- apply(ifelse(is.finite(l_lo), l_lo, Inf), 1L, min) - 1
+  hi <- apply(ifelse(is.finite(l_hi), l_hi, -Inf), 1L, max) + 1
+  bad <- !is.finite(lo) | !is.finite(hi) | lo >= hi
+  lo[bad] <- -80
+  hi[bad] <- 80
+  list(lo = lo, hi = hi)
+}
+
 #' Continuous least phase-2 cost at each candidate, `Inf` where infeasible
 #'
 #' Least `sum(cost * n)` with `sum(term / n) <= room` and `1 <= n <= cap`,
@@ -1217,8 +1285,10 @@ n_twophase.default <- function(
       pmin(pmax(sqrt(exp(l) * tm[k, , drop = FALSE] / cm[k, , drop = FALSE]),
                 1), cap[k, , drop = FALSE])
     }
-    lo <- rep(-80, length(k))
-    hi <- rep(80, length(k))
+    lt <- log(tm[k, , drop = FALSE]) - log(cm[k, , drop = FALSE])
+    br <- .twophase_log_bracket(-lt, 2 * log(cap[k, , drop = FALSE]) - lt)
+    lo <- br$lo
+    hi <- br$hi
     for (it in seq_len(80L)) {
       mid <- (lo + hi) / 2
       over <- rowSums(tm[k, , drop = FALSE] / size(mid)) > room[k]
@@ -1251,8 +1321,10 @@ n_twophase.default <- function(
                        (exp(l) * pmax(cm[k, , drop = FALSE], 1e-300))), 1),
            cap[k, , drop = FALSE])
     }
-    lo <- rep(-80, length(k))
-    hi <- rep(80, length(k))
+    lt <- log(tm[k, , drop = FALSE]) - log(pmax(cm[k, , drop = FALSE], 1e-300))
+    br <- .twophase_log_bracket(lt - 2 * log(cap[k, , drop = FALSE]), lt)
+    lo <- br$lo
+    hi <- br$hi
     for (it in seq_len(80L)) {
       mid <- (lo + hi) / 2
       over <- rowSums(cm[k, , drop = FALSE] * size(mid)) > left[k]
@@ -1296,10 +1368,10 @@ n_twophase.default <- function(
                         rep(1, length(t)), hi)
     r <- .whole_search(q, grain = .menu_grain(c), max_nodes = 5000L)
   } else {
-    if (budget < sum(c) - 1e-9) {
+    if (budget < sum(c) * (1 - 1e-9)) {
       return(none)
     }
-    q <- .whole_problem(0, t, c / (budget + 1e-9 * max(1, budget)), 0,
+    q <- .whole_problem(0, t, .whole_budget_load(c, budget * (1 + 1e-9)), 0,
                         rep(1, length(t)), hi)
     r <- .whole_search(q, start = rep(1, length(t)), max_nodes = 5000L)
   }
@@ -1323,7 +1395,7 @@ n_twophase.default <- function(
 #' and reusing `var_unit` as the census term would report that case as
 #' exact.
 #'
-#' The phase-1 finite-population correction applies to what phase 1
+#' The phase-1 finite population correction applies to what phase 1
 #' estimates, not to the phase-2 residual. Writing \eqn{S^2} for the unit
 #' population variance,
 #' \deqn{V = A(1/n_a - 1/N)
@@ -1356,20 +1428,21 @@ n_twophase.default <- function(
 #' @keywords internal
 #' @noRd
 .twophase_single <- function(spec, cv, budget, N, fixed_cost, single_cost,
-                             single_deff, single_resp_rate) {
+                             single_deff, single_resp_rate,
+                             eligibility_rate = 1) {
   # the same split as the two-phase design: response divides the sampling
   # term only, so issuing to the whole frame and losing units to nonresponse
   # still leaves variance behind
   total <- spec$A + sum(spec$W * spec$S^2)
-  var_unit <- single_deff * total / single_resp_rate
-  var_pop <- single_deff * total
+  var_unit <- single_deff * total / (single_resp_rate * eligibility_rate)
+  var_pop <- single_deff * total / eligibility_rate
   unit <- single_cost %||% sum(spec$W * spec$cost)
   if (!is.numeric(unit) || length(unit) != 1L || !is.finite(unit) || unit < 0) {
     stop("'single_cost' must be a non-negative finite scalar", call. = FALSE)
   }
   none <- list(n = NA_real_, cv = NA_real_, cost = NA_real_,
                n_int = NA_real_, cv_int = NA_real_, cost_int = NA_real_,
-               better = FALSE)
+               reaches_target = FALSE, better = FALSE)
   if (unit <= 0) {
     return(none)
   }
@@ -1415,8 +1488,8 @@ n_twophase.default <- function(
 #'   rejected.
 #' @param n_phase1 Phase-1 sample size, counted as units issued. `nu` is a
 #'   share of that same base, so with phase-1 nonresponse the largest
-#'   usable `nu` is `resp_rate` rather than 1.
-#' @param phase1_cost,between,mu,N,phase1_deff,resp_rate,fixed_cost,plan As
+#'   usable `nu` is `r_1 = resp_rate * eligibility_rate` rather than 1.
+#' @param phase1_cost,between,mu,N,phase1_deff,resp_rate,eligibility_rate,fixed_cost,plan As
 #'   in [n_twophase()]. The per-stratum phase-2 design effect and response
 #'   rate travel in the frame's `deff` and `resp_rate` columns, as they do
 #'   there.
@@ -1487,6 +1560,7 @@ prec_twophase.default <- function(
   alpha = 0.05,
   phase1_deff = 1,
   resp_rate = 1,
+  eligibility_rate = 1,
   fixed_cost = 0,
   plan = NULL
 ) {
@@ -1495,6 +1569,8 @@ prec_twophase.default <- function(
     return(do.call(prec_twophase.default, c(merged, list(...))))
   }
   .check_unused_dots(...)
+  check_scalar(phase1_cost, "phase1_cost")
+  check_fixed_cost(fixed_cost)
   if (!is.data.frame(frame) || !"nu" %in% names(frame)) {
     stop("'frame' must contain a 'nu' column giving the subsampling fraction",
          call. = FALSE)
@@ -1511,23 +1587,30 @@ prec_twophase.default <- function(
   check_alpha(alpha)
   .check_twophase_deff(phase1_deff, "phase1_deff")
   check_resp_rate(resp_rate)
-  if (any(nu > resp_rate + sqrt(.Machine$double.eps))) {
+  check_resp_rate(eligibility_rate, "eligibility_rate")
+  r1_eff <- resp_rate * eligibility_rate
+  if (any(nu > r1_eff + sqrt(.Machine$double.eps))) {
     stop(sprintf(
       paste("'nu' is a share of the phase-1 units issued, so it cannot exceed",
-            "the classified fraction 'resp_rate' (%s); phase 2 has no one else",
+            "the classified fraction %s; phase 2 has no one else",
             "to draw from"),
-      format(resp_rate)), call. = FALSE)
+      if (eligibility_rate == 1) {
+        sprintf("'resp_rate' (%s)", format(r1_eff))
+      } else {
+        sprintf("'resp_rate * eligibility_rate' (%s)", format(r1_eff))
+      }), call. = FALSE)
   }
   check_population_size(N)
   if (n_phase1 > N) {
     stop("'n_phase1' exceeds the population size 'N'", call. = FALSE)
   }
 
-  a_eff <- phase1_deff * spec$A / resp_rate
+  a_eff <- phase1_deff * spec$A / r1_eff
   d2_eff <- spec$d2 / spec$r2
   var_unit <- a_eff + sum(d2_eff * spec$W * spec$S^2 / nu)
   # design effects, but not the response divisors: see .twophase_var()
-  var_pop <- phase1_deff * spec$A + sum(spec$d2 * spec$W * spec$S^2)
+  var_pop <- (phase1_deff * spec$A + sum(spec$d2 * spec$W * spec$S^2)) /
+    eligibility_rate
   se <- sqrt(.twophase_var(n_phase1, var_unit, N, var_pop))
   detail <- data.frame(
     stratum = spec$stratum, N = spec$N, share = spec$W, sd = spec$S,
@@ -1542,13 +1625,16 @@ prec_twophase.default <- function(
     moe = .q_alpha(alpha) * se,
     cv = .twophase_cv(n_phase1, var_unit, spec$mu, N, var_pop),
     type = "twophase",
-    params = list(
-      n_phase1 = n_phase1, phase1_cost = phase1_cost, between = spec$A,
-      mu = spec$mu, N = N, alpha = alpha,
-      phase1_deff = phase1_deff, resp_rate = resp_rate,
-      take_all = spec$pinned,
-      fixed_cost = fixed_cost,
-      cost = fixed_cost + n_phase1 * (phase1_cost + sum(spec$cost * spec$W * nu))
+    params = c(
+      list(
+        n_phase1 = n_phase1, phase1_cost = phase1_cost, between = spec$A,
+        mu = spec$mu, N = N, alpha = alpha,
+        phase1_deff = phase1_deff, resp_rate = resp_rate,
+        take_all = spec$pinned,
+        fixed_cost = fixed_cost,
+        cost = fixed_cost + n_phase1 * (phase1_cost + sum(spec$cost * spec$W * nu))
+      ),
+      if (eligibility_rate != 1) list(eligibility_rate = eligibility_rate)
     ),
     detail = detail
   )
@@ -1570,18 +1656,22 @@ n_twophase.svyplan_prec <- function(frame, ..., cv = NULL, budget = NULL) {
   # the achieved precision is the default target, but only when the caller
   # has not asked for the other mode
   if (is.null(budget)) cv <- cv %||% frame$cv
-  n_twophase(
-    base[, setdiff(names(base), c("nu", "n", "n_issued", "n_resp")),
-         drop = FALSE],
+  args <- list(
+    frame = base[, setdiff(names(base), c("nu", "n", "n_issued", "n_resp")),
+                 drop = FALSE],
     phase1_cost = p$phase1_cost,
     cv = cv, budget = budget,
     between = p$between, mu = p$mu, N = p$N, phase1_deff = p$phase1_deff,
-    resp_rate = p$resp_rate, fixed_cost = p$fixed_cost,
+    resp_rate = p$resp_rate,
+    eligibility_rate = p[["eligibility_rate"]] %||% 1,
+    fixed_cost = p$fixed_cost,
     n_phase1 = p$n_phase1_fixed, assurance = p$assurance,
     single_deff = p$single_deff %||% 1,
     single_resp_rate = p$single_resp_rate %||% 1,
-    single_cost = p$single_cost, ...
+    single_cost = p$single_cost
   )
+  do.call(n_twophase.default,
+          .roundtrip_args(args, list(...), n_twophase.default))
 }
 
 #' @rdname prec_twophase
@@ -1595,7 +1685,9 @@ prec_twophase.svyplan_twophase <- function(frame, ...) {
     n_phase1 = frame$n[["n_phase1"]], phase1_cost = p$phase1_cost,
     between = p$between, mu = p$mu, N = p$N, alpha = p$alpha %||% 0.05,
     phase1_deff = p$phase1_deff,
-    resp_rate = p$resp_rate, fixed_cost = p$fixed_cost
+    resp_rate = p$resp_rate,
+    eligibility_rate = p[["eligibility_rate"]] %||% 1,
+    fixed_cost = p$fixed_cost
   )
   # the design decisions a stratum table cannot express, so that
   # n_twophase() rebuilds this problem rather than an unconstrained one

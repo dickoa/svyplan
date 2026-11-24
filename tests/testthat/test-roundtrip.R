@@ -106,9 +106,9 @@ test_that("indicators 2-stage n_cluster -> prec_cluster round-trip", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    icc_psu = c(0.02, 0.05)
+    icc_1 = c(0.02, 0.05)
   )
-  s1 <- n_cluster(indicators = tgt, stage_cost = c(500, 50))
+  s1 <- n_cluster(tgt, stage_cost = c(500, 50))
   p1 <- prec_cluster(s1)
   expect_s3_class(p1, "svyplan_prec")
   expect_equal(nrow(p1$detail), 2L)
@@ -167,9 +167,9 @@ test_that("cluster multi-indicator round-trip preserves cluster class", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    icc_psu = c(0.02, 0.05)
+    icc_1 = c(0.02, 0.05)
   )
-  s1 <- n_cluster(indicators = tgt, stage_cost = c(500, 50))
+  s1 <- n_cluster(tgt, stage_cost = c(500, 50))
   p1 <- prec_cluster(s1)
   s2 <- n_cluster(p1)
   expect_s3_class(s2, "svyplan_cluster")
@@ -181,9 +181,9 @@ test_that("indicators budget round-trip preserves budget param", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    icc_psu = c(0.02, 0.05)
+    icc_1 = c(0.02, 0.05)
   )
-  s1 <- n_cluster(indicators = tgt, stage_cost = c(500, 50), budget = 100000)
+  s1 <- n_cluster(tgt, stage_cost = c(500, 50), budget = 100000)
   p1 <- prec_cluster(s1)
   expect_equal(p1$params$budget, 100000)
   s2 <- n_cluster(p1)
@@ -195,9 +195,9 @@ test_that("cluster round-trip does not leak stage sizes as domain columns", {
     name = c("stunting", "anemia"),
     p = c(0.30, 0.10),
     cv = c(0.10, 0.15),
-    icc_psu = c(0.02, 0.05)
+    icc_1 = c(0.02, 0.05)
   )
-  s1 <- n_cluster(indicators = tgt, stage_cost = c(500, 50))
+  s1 <- n_cluster(tgt, stage_cost = c(500, 50))
   p1 <- prec_cluster(s1)
   expect_no_message(s2 <- n_cluster(p1))
 })
@@ -302,8 +302,8 @@ test_that("round-trip methods honor ... overrides", {
 
   cl <- n_cluster(cv = 0.05, icc = 0.05, unit_relvar = 1,
                   stage_cost = c(500, 50))
-  c1 <- prec_cluster(cl, resp_rate_psu = 0.9)
-  c2 <- prec_cluster(n = cl$n, icc = 0.05, unit_relvar = 1, resp_rate_psu = 0.9)
+  c1 <- prec_cluster(cl, resp_rate = c(0.9, 1))
+  c2 <- prec_cluster(n = cl$n, icc = 0.05, unit_relvar = 1, resp_rate = c(0.9, 1))
   expect_equal(c1$cv, c2$cv)
 })
 

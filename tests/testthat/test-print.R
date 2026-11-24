@@ -10,8 +10,8 @@ test_that("print.svyplan_cluster outputs correctly", {
   result <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   out <- capture.output(print(result))
   expect_match(out[1], "Optimal 2-stage allocation")
-  expect_match(out[2], "n_psu")
-  expect_match(out[2], "n_per_psu")
+  expect_match(out[2], "stage_1")
+  expect_match(out[2], "stage_2")
   expect_match(out[3], "cv =")
 })
 
@@ -47,7 +47,7 @@ test_that("as.integer.svyplan_cluster returns the operational stage vector", {
   result <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
   expect_identical(as.integer(result),
                    setNames(as.integer(result$operational$n),
-                            c("n_psu", "n_per_psu")))
+                            c("stage_1", "stage_2")))
   expect_length(as.integer(result), 2L)
   expect_lte(result$operational$cost, 100000)
 })
@@ -56,7 +56,7 @@ test_that("cluster integer coercion preserves three-stage and fallback names", {
   result <- n_cluster(stage_cost = c(500, 50, 5), icc = c(0.05, 0.1),
                       budget = 100000)
   expect_identical(names(as.integer(result)),
-                   c("n_psu", "n_per_psu", "n_per_ssu"))
+                   c("stage_1", "stage_2", "stage_3"))
   expect_identical(unname(as.integer(result)), as.integer(result$operational$n))
   result$operational <- NULL
   expect_identical(as.integer(result),
@@ -206,7 +206,7 @@ test_that("as.data.frame.svyplan_cluster returns the stage table", {
   res <- n_cluster(budget = 100000, icc = 0.05, unit_relvar = 1,
                    stage_cost = c(500, 50))
   df <- as.data.frame(res)
-  expect_equal(df$stage, c("n_psu", "n_per_psu"))
+  expect_equal(df$stage, c("stage_1", "stage_2"))
   expect_equal(df$n, as.numeric(res$n))
   expect_identical(df$n_int, unname(as.integer(res)))
   expect_false(identical(as.integer(ceiling(res$n)), unname(as.integer(res))))
@@ -218,9 +218,9 @@ test_that("as.data.frame.svyplan_cluster returns domains when present", {
     domain = c("u", "r"),
     p = c(0.25, 0.35),
     cv = 0.08,
-    icc_psu = 0.05
+    icc_1 = 0.05
   )
-  res <- n_cluster(indicators = targets, domains = "domain", stage_cost = c(500, 50))
+  res <- n_cluster(targets, domains = "domain", stage_cost = c(500, 50))
   expect_identical(as.data.frame(res), res$domains)
 })
 
@@ -278,7 +278,7 @@ test_that("as.data.frame.svyplan_power has a stable two-group schema", {
 
 test_that("a single binding constraint prints on one line with the total", {
   z <- .bethel_fixture()
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+  fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
   expect_equal(sum(fit$constraints$.binding), 1L)
   expect_lt(sum(fit$constraints$.binding), nrow(fit$constraints))
 
@@ -294,14 +294,14 @@ test_that("a single binding constraint prints on one line with the total", {
   expect_false(any(grepl("status: optimal", out, fixed = TRUE)))
   expect_false(any(grepl("active bounds: 0 lower, 0 upper", out, fixed = TRUE)))
 
-  prec_out <- capture.output(print(prec_alloc(fit)))
+  prec_out <- capture.output(print(prec_alloc_joint(fit)))
   expect_true(any(grepl("binding of", prec_out, fixed = TRUE)))
   expect_true(any(grepl("see $detail", prec_out, fixed = TRUE)))
 })
 
 test_that("active bounds are reported only when some are active", {
   z <- .bethel_fixture()
-  bounded <- n_alloc(
+  bounded <- n_alloc_joint(
     z$frame, measures = z$measures, targets = z$targets,
     min_n_stratum = min(z$frame$N)
   )
@@ -312,7 +312,7 @@ test_that("active bounds are reported only when some are active", {
 test_that("print omits the subset label when every constraint is shown", {
   z <- .bethel_fixture()
   z$targets <- z$targets[1L, , drop = FALSE]
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+  fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
   expect_identical(nrow(fit$constraints), 1L)
 
   out <- capture.output(print(fit))
@@ -367,9 +367,9 @@ test_that("allocation and stage response rates never round onto a bound", {
 
   out <- capture.output(print(n_cluster(
     stage_cost = c(500, 50), icc = 0.01, cv = 0.05, unit_relvar = 1,
-    resp_rate_psu = 0.999, resp_rate = 0.004
+    resp_rate = c(0.999, 0.004)
   )))
-  expect_true(any(grepl("(resp_rate_psu = 0.999, resp_rate = 0.004)", out,
+  expect_true(any(grepl("(resp_rate = c(0.999, 0.004))", out,
                         fixed = TRUE)))
 })
 
@@ -449,7 +449,6 @@ test_that("cv() and SE() read every result class", {
 test_that("summary() of a result with no structured summary is the result", {
   checked <- character(0)
   for (case in list(
-    list("n_change", n_change(var = 100, moe = 2)),
     list("prec_mean", prec_mean(var = 4, n = 100, mu = 2)),
     list("power_prop", power_prop(p1 = 0.30, p2 = 0.35)),
     list("prec_multi", prec_multi(data.frame(name = c("a", "b"),
@@ -463,7 +462,6 @@ test_that("summary() of a result with no structured summary is the result", {
     expect_false(any(grepl("Length", out)), info = case[[1]])
     checked <- c(checked, case[[1]])
   }
-  expect_setequal(checked, c("n_change", "prec_mean", "power_prop",
-                             "prec_multi"))
+  expect_setequal(checked, c("prec_mean", "power_prop", "prec_multi"))
   expect_error(summary(n_prop(0.3, moe = 0.05), digits = 3), "unused argument")
 })

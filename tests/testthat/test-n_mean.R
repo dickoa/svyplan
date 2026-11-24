@@ -164,15 +164,15 @@ test_that("pooled and change results give NA, not Inf, at a zero level", {
 })
 
 test_that("n_multi takes a zero mean on a moe row and refuses it on a cv row", {
-  m <- n_multi(data.frame(name = c("a", "b"), var = 4, mu = c(0, 5),
+  m <- n_multi(data.frame(name = c("a", "b"), var = 4, mean = c(0, 5),
                           moe = 1))
   expect_equal(m$detail$.n[1], n_mean(var = 4, moe = 1)$n)
   expect_true(is.na(m$detail$.cv_achieved[1]))
-  expect_error(n_multi(data.frame(var = 4, mu = 0, cv = 0.1)),
+  expect_error(n_multi(data.frame(var = 4, mean = 0, cv = 0.1)),
                "must be non-zero on a row with a 'cv' target")
   expect_error(
-    n_cluster(indicators = data.frame(var = 4, mu = 0, moe = 1,
-                                      icc_psu = 0.05),
+    n_cluster(data.frame(var = 4, mean = 0, moe = 1,
+                                      icc_1 = 0.05),
               stage_cost = c(500, 50)),
     "multistage mode"
   )

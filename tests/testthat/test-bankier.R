@@ -118,7 +118,7 @@ test_that("alloc_measure is refused where the allocation cannot use it", {
                          mean = fr$mean, sd = fr$sd)
   targets <- data.frame(name = "y", cv = 0.05)
   expect_error(
-    n_alloc(fr[c("stratum", "N", "alloc_measure")], measures = measures,
+    n_alloc_joint(fr[c("stratum", "N", "alloc_measure")], measures = measures,
             targets = targets),
     "not used for joint"
   )

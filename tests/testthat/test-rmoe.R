@@ -137,29 +137,29 @@ test_that("an rmoe column is normalized to moe at ingestion", {
 test_that("an rmoe column works in the cluster path and reads the row method", {
   by_rmoe <- data.frame(
     name = c("a", "b"), p = c(0.20, 0.35), rmoe = c(0.10, 0.12),
-    icc_psu = 0.05, prop_method = "wilson"
+    icc_1 = 0.05, prop_method = "wilson"
   )
   by_moe <- data.frame(
     name = c("a", "b"), p = c(0.20, 0.35),
     moe = c(0.10 * 0.20, 0.12 * 0.35),
-    icc_psu = 0.05, prop_method = "wilson"
+    icc_1 = 0.05, prop_method = "wilson"
   )
   expect_identical(
-    n_cluster(indicators = by_rmoe, stage_cost = c(500, 50))$n,
-    n_cluster(indicators = by_moe, stage_cost = c(500, 50))$n
+    n_cluster(by_rmoe, stage_cost = c(500, 50))$n,
+    n_cluster(by_moe, stage_cost = c(500, 50))$n
   )
 })
 
 test_that("an rmoe row takes its scale from mu for a mean indicator", {
-  by_rmoe <- data.frame(name = "spend", var = 2500, mu = -40, rmoe = 0.05)
-  by_moe <- data.frame(name = "spend", var = 2500, mu = -40, moe = 0.05 * 40)
+  by_rmoe <- data.frame(name = "spend", var = 2500, mean = -40, rmoe = 0.05)
+  by_moe <- data.frame(name = "spend", var = 2500, mean = -40, moe = 0.05 * 40)
   expect_identical(n_multi(by_rmoe)$n, n_multi(by_moe)$n)
 })
 
 test_that("prec_multi reports .rmoe against each row's own estimand", {
   indicators <- data.frame(
     name = c("stunting", "spend"), p = c(0.25, NA), var = c(NA, 2500),
-    mu = c(NA, -40), n = 800
+    mean = c(NA, -40), n = 800
   )
   res <- prec_multi(indicators)
   expect_true(".rmoe" %in% names(res$detail))
@@ -178,9 +178,9 @@ test_that("an rmoe target allocates exactly as cv = rmoe / q", {
   )
   q <- stats::qnorm(0.975)
   r <- 0.06
-  by_rmoe <- n_alloc(frame, measures = measures,
+  by_rmoe <- n_alloc_joint(frame, measures = measures,
                      targets = data.frame(name = "A", rmoe = r))
-  by_cv <- n_alloc(frame, measures = measures,
+  by_cv <- n_alloc_joint(frame, measures = measures,
                    targets = data.frame(name = "A", cv = r / q))
   expect_equal(by_rmoe$detail$n, by_cv$detail$n, tolerance = 1e-10)
   expect_equal(by_rmoe$n, by_cv$n, tolerance = 1e-10)
@@ -206,11 +206,11 @@ test_that("an rmoe allocation round trips through prec_alloc", {
                       N = c(1200, 800, 2400, 1500, 900))
   measures <- data.frame(stratum = frame$stratum, name = "A",
                          p = c(0.12, 0.20, 0.08, 0.30, 0.15))
-  fitted <- n_alloc(frame, measures = measures,
+  fitted <- n_alloc_joint(frame, measures = measures,
                     targets = data.frame(name = "A", rmoe = 0.06))
-  assessed <- prec_alloc(fitted)
+  assessed <- prec_alloc_joint(fitted)
   expect_identical(assessed$detail$.metric, "rmoe")
-  refitted <- n_alloc(assessed)
+  refitted <- n_alloc_joint(assessed)
   expect_identical(refitted$constraints$.metric, "rmoe")
   expect_equal(refitted$detail$n, fitted$detail$n, tolerance = 1e-8)
 })
@@ -297,7 +297,7 @@ test_that("a target table row states exactly one of cv, moe, and rmoe", {
   frame <- data.frame(stratum = "a", N = 100)
   measures <- data.frame(stratum = "a", name = "A", p = 0.2)
   expect_error(
-    n_alloc(frame, measures = measures,
+    n_alloc_joint(frame, measures = measures,
             targets = data.frame(name = "A", cv = 0.1, rmoe = 0.1)),
     "exactly one positive finite 'cv', 'moe', or 'rmoe'"
   )
@@ -307,7 +307,7 @@ test_that("an objective cannot carry a precision requirement", {
   frame <- data.frame(stratum = c("a", "b"), N = c(100, 200))
   measures <- data.frame(stratum = c("a", "b"), name = "A", p = c(0.2, 0.3))
   expect_error(
-    n_alloc(frame, measures = measures, budget = 1000,
+    n_alloc_joint(frame, measures = measures, budget = 1000,
             objective = data.frame(name = "A", rmoe = 0.1)),
     "put 'cv', 'moe', or 'rmoe' requirements in 'targets'"
   )
@@ -377,4 +377,22 @@ test_that("an allocation keeps Inf at a zero overall mean", {
   expect_identical(a$cv, Inf)
   expect_identical(a$rmoe, Inf)
   expect_true(is.na(prec_mean(var = 4, n = 100, mu = 0)$rmoe))
+})
+
+## The log-odds relative margin's floor at large n
+
+test_that("the log-odds rmoe floor is found at large n", {
+  rel <- function(p, n) {
+    .prec_engine_prop(p, n, 0.05, Inf, 1, 1, "logodds")$moe / p
+  }
+  for (n in c(30, 1500, 1e5, 1e6)) {
+    floor_rmoe <- stats::optimize(function(u) rel(stats::plogis(u), n),
+                                  c(-5, 25), tol = 1e-12)$objective
+    p <- prec_prop(n = n, rmoe = floor_rmoe * 1.001, method = "logodds")
+    expect_equal(p$rmoe, floor_rmoe * 1.001, tolerance = 1e-8)
+    expect_error(prec_prop(n = n, rmoe = floor_rmoe * 0.999,
+                           method = "logodds"), "unattainable")
+  }
+  expect_equal(prec_prop(n = 400, rmoe = 0.2)$params$p,
+               0.1936077, tolerance = 1e-6)
 })

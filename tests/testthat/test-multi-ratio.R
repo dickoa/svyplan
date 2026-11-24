@@ -58,7 +58,7 @@ test_that("a mixed table sizes proportions, means, and ratios together", {
     name = c("literacy", "income", "consumption"),
     p = c(0.35, NA, NA),
     var = c(NA, 2500, NA),
-    mu = c(NA, 300, NA),
+    mean = c(NA, 300, NA),
     r = c(NA, NA, 420),
     cv_num = c(NA, NA, 1.20),
     cv_den = c(NA, NA, 0.45),
@@ -165,7 +165,7 @@ test_that("a row may declare only one estimand", {
     "only one of 'p', 'var', or 'r'"
   )
   expect_error(
-    n_multi(data.frame(var = 100, mu = 50, r = 420, cv_num = 1.2,
+    n_multi(data.frame(var = 100, mean = 50, r = 420, cv_num = 1.2,
                        cv_den = 0.45, component_cor = 0.65, cv = 0.05)),
     "only one of 'p', 'var', or 'r'"
   )
@@ -213,13 +213,13 @@ test_that("min_cases is refused on a ratio row and names it", {
 
 test_that("the multistage paths take ratio rows", {
   # test-multi-cluster-ratio.R covers the stage semantics.
-  sized <- n_cluster(indicators = ratio_row(cv = 0.05, icc_psu = 0.05),
+  sized <- n_cluster(ratio_row(cv = 0.05, icc_1 = 0.05),
                            stage_cost = c(500, 50))
   expect_s3_class(sized, "svyplan_cluster")
   expect_length(sized$n, 2L)
 
   prec <- prec_cluster(
-    indicators = ratio_row(n = sized$n[1L], n_per_psu = sized$n[2L], icc_psu = 0.05),
+    ratio_row(n_1 = sized$n[1L], take_2 = sized$n[2L], icc_1 = 0.05),
     stage_cost = c(500, 50)
   )
   expect_equal(prec$detail$.cv, 0.05, tolerance = 1e-6)
@@ -227,8 +227,8 @@ test_that("the multistage paths take ratio rows", {
 
 test_that("existing indicator tables are unaffected", {
   prop_only <- data.frame(p = c(0.3, 0.5), moe = 0.05)
-  mean_only <- data.frame(var = c(100, 200), mu = c(50, 60), cv = 0.05)
-  mixed <- data.frame(p = c(0.3, NA), var = c(NA, 100), mu = c(NA, 50),
+  mean_only <- data.frame(var = c(100, 200), mean = c(50, 60), cv = 0.05)
+  mixed <- data.frame(p = c(0.3, NA), var = c(NA, 100), mean = c(NA, 50),
                       cv = 0.05)
 
   expect_s3_class(n_multi(prop_only), "svyplan_n")

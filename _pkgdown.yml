@@ -16,6 +16,10 @@ articles:
     desc: "Plan one estimate and check its expected precision."
     contents:
       - svyplan
+  - title: "Allocation workflows"
+    desc: "Plan and assess joint targets, budget objectives, and PSU registers."
+    contents:
+      - joint-allocation
 
 reference:
 - title: Overview
@@ -41,24 +45,31 @@ reference:
 
 - title: Cluster designs
   desc: >
-    Size or evaluate a two- or three-stage cluster design, for one indicator
+    Size or evaluate a multistage cluster design, for one indicator
     or a table of them.
   contents:
   - n_cluster
   - prec_cluster
   - varcomp
 
-- title: Stratified designs
+- title: Classic stratified allocation
   desc: >
-    Size or evaluate an allocation across strata or domains, under a budget
-    or a CV target.
+    Allocate a fixed total across strata or domains, meet a precision target,
+    or work within a budget.
   contents:
   - n_alloc
   - prec_alloc
-  - merge_psus
-  - n_alloc-generalized
   - strata_bound
   - predict.svyplan_strata
+
+- title: Joint allocation and PSU registers
+  desc: >
+    Plan one allocation for multiple indicators or overlapping domains,
+    including certainty-aware two-stage designs from a PSU register.
+  contents:
+  - n_alloc_joint
+  - prec_alloc_joint
+  - merge_psus
 
 - title: Two-phase designs
   desc: Size or evaluate a two-phase design that screens or follows up.

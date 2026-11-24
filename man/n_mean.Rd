@@ -109,7 +109,9 @@ account.}
 A \code{svyplan_n} object with \code{type = "mean"}:
 \describe{
 \item{\code{n}}{Required sample size, continuous and gross. It already
-carries \code{deff} and the \code{1 / resp_rate} inflation, so it counts the
+carries \code{deff} and the
+\code{1 / (resp_rate * eligibility_rate * eligible_per_unit)} inflation, so
+it counts the
 units to release, not the completed interviews. \verb{$n} and
 \code{as.double()} keep the unrounded value, which is what makes the
 round trip through \code{\link[=prec_mean]{prec_mean()}} exact. \code{print()} and
@@ -121,7 +123,7 @@ Take the field figure from \code{as.integer()} rather than from \verb{$n}.}
 about the mean. \code{cv} and \code{rmoe} are \code{NA} unless a non-zero \code{mu} was
 supplied, both needing a mean to be relative to.}
 \item{\code{params}}{The validated inputs (\code{var}, \code{alpha}, \code{N}, \code{deff},
-\code{resp_rate}, \code{df}, \code{mu} when given, and whichever of \code{moe}, \code{cv}, or
+\code{resp_rate}, \code{eligibility_rate} and \code{eligible_per_unit} when not 1, \code{df}, \code{mu} when given, and whichever of \code{moe}, \code{cv}, or
 \code{rmoe} was the target). Dispersion is always stored as \code{var}, including when
 you supplied \code{sd}. \code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the \code{\link[=prec_mean]{prec_mean()}}
 round trip read the design back from here.}

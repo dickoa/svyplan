@@ -1,0 +1,169 @@
+---
+title: "Joint allocation for survey targets and budgets"
+description: >
+  Build an allocation across strata for several estimates, check the whole
+  field design, and plan with a PSU register.
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Joint allocation for survey targets and budgets}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(svyplan)
+```
+
+Use `n_alloc_joint()` when several estimates must share one allocation of
+sample across strata. A national coverage target and a regional income target
+can overlap because both refer to units in the same strata. For one indicator
+allocated by a classic rule such as Neyman, use `n_alloc()`. To size several
+indicators under a shared design, use `n_multi()`. Use `n_cluster()` when the
+allocation decision is how many units to take at each stage of a cluster design.
+
+## Meet two targets with one allocation
+
+Define the field strata in `frame`, the anticipated values in `measures`,
+and the precision requirements in `targets`.
+
+```{r joint-inputs}
+frame <- data.frame(
+  stratum = c("North urban", "North rural", "South urban"),
+  region = c("North", "North", "South"),
+  N = c(1000, 1800, 1200)
+)
+measures <- data.frame(
+  stratum = rep(frame$stratum, 2),
+  name = rep(c("coverage", "income"), each = 3),
+  p = c(0.5, 0.4, 0.6, NA, NA, NA),
+  mean = c(NA, NA, NA, 50, 55, 60),
+  sd = c(NA, NA, NA, 10, 12, 15)
+)
+targets <- data.frame(
+  name = c("coverage", "income"),
+  domain = c(".overall", "region"),
+  level = c(NA, "North"),
+  cv = c(0.06, NA),
+  moe = c(NA, 3)
+)
+```
+
+`frame` contains one row per stratum. `N` counts the ultimate units on
+that part of the frame. Join `measures` by `stratum` and `name`, with a row
+for each indicator in every stratum its requirements cover. Supply either
+a proportion `p` or a `mean` and `sd` (or `var`). Each target specifies
+one metric. Here coverage needs a relative standard error (CV) of at most
+0.06 overall, and mean income in the North needs a margin of error of
+at most 3. Leaving the `level` column out of `targets` expands each
+domain target to every level of its domain. A table that names levels, as
+this one does, must name every level it targets.
+
+```{r minimum-cost}
+fit <- n_alloc_joint(frame, measures, targets = targets)
+fit$detail[c("stratum", "n", "n_int")]
+fit$operational$status
+field <- prec_alloc_joint(fit, n = fit$detail$n_int)
+field$detail[c("constraint", ".target", ".achieved", ".pass")]
+```
+
+`n` is continuous and `n_int` is the whole count to plan for in each stratum.
+For this element fit, `prec_alloc_joint(fit)` checks the continuous design.
+Passing `n_int` checks the field design. The pass column tests the achieved
+value against the target on its own scale. Read the whole-design status
+before treating its cost or precision as an optimum.
+
+## Buy precision within a budget
+
+Add `objective` and `budget` to minimize relative variance for the named
+estimate. The same `targets` still impose hard requirements. To weight
+several estimates differently, use an objective table with `name` and
+`priority` columns.
+
+```{r joint-budget}
+bought <- n_alloc_joint(
+  frame, measures, targets = targets, objective = "income", budget = 400
+)
+bought$detail[c("stratum", "n", "n_int")]
+bought$operational[c("cost", "objective_value")]
+frontier <- predict(bought, data.frame(budget = c(250, 300, 400, 600)))
+frontier[c("budget", "cost_int", "objective_value", "cv", ".feasible")]
+```
+
+Each unit costs 1 here, so the budget is a total sample size. The
+minimum-cost design above needs 268 units, and a budget of 400 spends
+the remaining units where they reduce the income objective most. Along
+the grid, `cv` is the CV equivalent of `objective_value`, and both fall
+as the budget grows. The grid's `objective_value` describes the
+continuous design. For the whole objective at a particular budget, fit
+that budget and read `$operational$objective_value`, as for `bought`.
+
+A budget of 250 cannot fund the hard targets, so its row is missing,
+`.feasible` is false, and a warning gives the shortfall. A false
+`.feasible` on a grid without a register can also mean the solve failed,
+so read the warning for that row.
+
+To assess a fixed allocation at different response rates, use
+`predict(prec_alloc_joint(fit, n = fit$detail$n_int), ...)` with a scenario
+data frame instead of predicting from the allocation itself.
+
+## Decide how many units to take within each PSU
+
+In a two-stage plan without a register, `N_1` counts primary sampling units
+(PSUs) and `N` counts ultimate units. Costs are per PSU visit and per
+ultimate unit, respectively. Give `take_2` to hold the take fixed, or leave
+it out and give a range when the field team can vary the take.
+
+```{r fixed-and-free-takes}
+cluster <- data.frame(
+  stratum = c("A", "B"), N = c(20000, 8000), N_1 = c(400, 160),
+  cost_1 = 400, cost_2 = 40, take_2 = c(12, 8)
+)
+coverage <- data.frame(
+  stratum = cluster$stratum, name = "coverage", p = c(0.5, 0.4), icc_1 = 0.05
+)
+goal <- data.frame(name = "coverage", cv = 0.10)
+held <- n_alloc_joint(cluster, coverage, targets = goal)
+open <- n_alloc_joint(
+  transform(cluster, take_2 = NULL), coverage, targets = goal,
+  take_2_min = 2, take_2_max = 20
+)
+held$detail[c("stratum", "n_1_int", "take_2", "n_int")]
+open$detail[c("stratum", "n_1_int", "take_2_int", "n_int")]
+open$operational[c("cost", "status")]
+prec_alloc_joint(open, n = open$detail$n_int)$detail[c(".achieved", ".pass")]
+```
+
+The cheaper field plan can use fewer PSU visits and more ultimate units.
+Supplying whole totals to the free-take assessment uses its saved whole
+takes. The continuous take can differ from the take the field team uses.
+
+## Plan from a PSU register
+
+Replace `N_1` with a register table. Give each PSU its stratum and size
+`N`, with sizes summing to the stratum's ultimate-unit total. Keep
+`psu_id` to match the planned takes and zones back to the register. The
+default `fpc` setting is required for this register model.
+
+```{r zoned-register}
+register <- data.frame(stratum = "A", psu_id = seq_len(100), N = 1000)
+zoned <- n_alloc_joint(
+  data.frame(stratum = "A", N = sum(register$N), take_2 = 10),
+  coverage[1, ], targets = transform(goal, cv = 0.08),
+  psu = register, n_psu_per_zone = 2
+)
+zoned$detail[c("n_psu_certain", "n_psu_draw", "n_zone", "n_int")]
+head(zoned$psu[c("psu_id", "certainty", "take_2", ".zone")])
+prec_alloc_joint(zoned)$detail[c(".achieved", ".pass")]
+design_df(zoned)
+```
+
+This equal-size register draws 24 PSUs across 12 zones. Certainty PSUs
+are included automatically when the design calls for them or when the
+input register flags them. On a remainder row, `take_2` is the take
+if the PSU is drawn. The field plan's draw counts and zones tell the
+sampling team how many PSUs to select. The plan's `stages` is 2, and
+`prec_alloc_joint(zoned)` assesses the stored field design directly.
+For a raw register assessment, supply the stratum totals to assess as
+`n` and put the fixed `take_2` in `frame`. See `?merge_psus` when
+the frame needs to combine small neighboring PSUs before planning.

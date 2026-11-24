@@ -179,8 +179,11 @@ first interviewed at periods 3 and 2.
 With \code{take}, the schedule counts PSUs. Each panel is a group of
 \code{ceiling(n_entrants / take)} PSUs, and a group takes \code{take} units in each
 PSU for every cohort. The PSU allocation then reads its total from the
-schedule, as in \code{n_alloc(frame, n = schedule$selections$operational_issue[1], n_step = G)} with \code{G} the number of start-up panels, so that the master
-has the PSU count the schedule promises.
+schedule. Over a frame whose units are the PSUs, with an \code{n_step} column
+set to \code{G}, the number of start-up panels,
+\code{n_alloc(transform(psu_frame, n_step = G), n = schedule$selections$operational_issue[1])}
+gives each stratum a whole number of panels, so that the master has the
+PSU count the schedule promises.
 
 Under \code{retain_psus = TRUE} no PSU is replaced inside the horizon. An
 immediate start selects every group at the first period, each group's

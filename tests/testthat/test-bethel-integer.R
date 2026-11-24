@@ -42,7 +42,7 @@ every_plan <- function(problem, budget = NULL) {
 test_that("a joint allocation is the cheapest whole allocation", {
   for (seed in 1:20) {
     z <- joint_frame(seed)
-    fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+    fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
     plans <- every_plan(fit$params$problem)
     label <- paste("seed", seed)
     expect_equal(fit$operational$cost, min(plans$cost[plans$ok]),
@@ -56,10 +56,10 @@ test_that("a joint allocation is the cheapest whole allocation", {
 test_that("a joint budget buys the best whole allocation", {
   for (seed in 1:12) {
     z <- joint_frame(seed)
-    base <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+    base <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
     for (hard in c(FALSE, TRUE)) {
       budget <- (if (hard) 1.2 else 0.8) * base$operational$cost
-      fit <- n_alloc(z$frame, measures = z$measures,
+      fit <- n_alloc_joint(z$frame, measures = z$measures,
                      targets = if (hard) z$targets,
                      objective = c("y", "x"), budget = budget)
       plans <- every_plan(fit$params$problem, budget)
@@ -82,26 +82,26 @@ test_that("a two-stage joint allocation is the cheapest in whole PSUs", {
     set.seed(100 + seed)
     H <- sample(2:3, 1)
     frame <- data.frame(stratum = LETTERS[seq_len(H)],
-                        N = sample(2000:6000, H), N_psu = sample(15:40, H),
-                        n_per_psu = sample(c(5, 8, 10), H, replace = TRUE),
-                        cost_psu = sample(c(50, 120, 300), H, replace = TRUE),
-                        cost_ssu = sample(c(5, 10, 20), H, replace = TRUE))
+                        N = sample(2000:6000, H), N_1 = sample(15:40, H),
+                        take_2 = sample(c(5, 8, 10), H, replace = TRUE),
+                        cost_1 = sample(c(50, 120, 300), H, replace = TRUE),
+                        cost_2 = sample(c(5, 10, 20), H, replace = TRUE))
     measures <- data.frame(stratum = frame$stratum, name = "y",
                            p = stats::runif(H, 0.2, 0.6),
-                           icc_psu = stats::runif(H, 0.02, 0.1))
-    fit <- n_alloc(frame, measures = measures,
+                           icc_1 = stats::runif(H, 0.02, 0.1))
+    fit <- n_alloc_joint(frame, measures = measures,
                    targets = data.frame(name = "y", cv = 0.08))
     plans <- every_plan(fit$params$problem)
     expect_equal(fit$operational$cost, min(plans$cost[plans$ok]),
                  tolerance = 1e-9, label = paste("seed", seed))
-    expect_identical(fit$detail$n_psu_int, round(fit$detail$n_psu_int))
+    expect_identical(fit$detail$n_1_int, round(fit$detail$n_1_int))
     expect_identical(fit$operational$status, "optimal")
   }
 })
 
 test_that("a search stopped at its node limit reports a valid bound", {
   z <- joint_frame(20)
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
                  control = list(max_nodes = 1))
   best <- min(every_plan(fit$params$problem)$cost[
     every_plan(fit$params$problem)$ok])
@@ -116,22 +116,22 @@ test_that("a search stopped at its node limit reports a valid bound", {
   expect_true(any(grepl("whole-unit search: limit after",
                         utils::capture.output(summary(fit)))))
   expect_false(any(grepl("^search:", utils::capture.output(print(
-    n_alloc(z$frame, measures = z$measures, targets = z$targets)
+    n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
   )))))
   # The limit survives the round trip through the precision result.
-  again <- n_alloc(prec_alloc(fit))
+  again <- n_alloc_joint(prec_alloc_joint(fit))
   expect_identical(again$optimization$search$max_nodes, 1)
   expect_identical(again$params$control, list(max_nodes = 1))
 })
 
 test_that("an unaffordable joint budget names the cheapest whole cost", {
   z <- joint_frame(5)
-  base <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+  base <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
   # Between the continuous optimum's cost and the whole design's, the
   # budget funds the targets in the continuous model only.
   expect_lt(base$params$achieved$cost, base$operational$cost)
   err <- tryCatch(
-    n_alloc(z$frame, measures = z$measures, targets = z$targets,
+    n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
             objective = "y", budget = base$params$achieved$cost),
     error = conditionMessage
   )
@@ -147,7 +147,7 @@ test_that("a target within tolerance below the census floor is met there", {
                          n = c(40, 60), resp_rate = 0.8)$cv
   # The public tolerance is 1e-6 on the cv ratio.
   for (k in c(1e-12, 1e-9, 1e-7)) {
-    fit <- n_alloc(fr, measures = ms,
+    fit <- n_alloc_joint(fr, measures = ms,
                    targets = data.frame(name = "x", cv = floor_cv * (1 - k)),
                    resp_rate = 0.8)
     expect_identical(as.integer(fit$detail$n_int), c(40L, 60L), label = k)
@@ -156,7 +156,7 @@ test_that("a target within tolerance below the census floor is met there", {
   # Past it the gate refuses, rather than the whole-unit step failing on a
   # target the continuous solve admitted on its own scale.
   expect_error(
-    n_alloc(fr, measures = ms,
+    n_alloc_joint(fr, measures = ms,
             targets = data.frame(name = "x", cv = floor_cv * (1 - 2e-6)),
             resp_rate = 0.8),
     "precision targets are infeasible"
@@ -180,11 +180,11 @@ test_that("a budget at the floor solves cleanly when a target parallels the obje
   fr <- data.frame(stratum = "A", N = 100000)
   ms <- data.frame(stratum = "A", name = "y", p = 0.3)
   tg <- data.frame(name = "y", cv = 0.05)
-  floor_cost <- n_alloc(fr, measures = ms, targets = tg,
+  floor_cost <- n_alloc_joint(fr, measures = ms, targets = tg,
                         eligible_per_unit = 0.1)$operational$cost
   for (b in c(floor_cost, floor_cost + 1)) {
     fit <- expect_no_warning(
-      n_alloc(fr, measures = ms, targets = tg, objective = "y", budget = b,
+      n_alloc_joint(fr, measures = ms, targets = tg, objective = "y", budget = b,
               eligible_per_unit = 0.1)
     )
     expect_identical(as.integer(fit$detail$n_int), as.integer(b))
@@ -195,4 +195,18 @@ test_that("a budget at the floor solves cleanly when a target parallels the obje
   }
   expect_equal(.bethel_parallel_scale(cbind(c(2, 4), c(1, 3)), c(1, 2)),
                c(2, NA))
+})
+
+## The whole search accepts no more slack than the assessment
+
+test_that("a whole joint design at large counts passes its own assessment", {
+  fr <- data.frame(stratum = c("A", "B"), N = c(1e9, 1e9))
+  ms <- data.frame(stratum = c("A", "B"), name = "y", mean = c(50, 60),
+                   sd = c(10, 10))
+  for (e in c(1e-8, 1e-7, 1e-6)) {
+    fit <- n_alloc_joint(fr, ms, targets = data.frame(name = "y", cv = 0.05),
+                         eligibility_rate = e)
+    expect_true(all(fit$operational$constraints$.pass))
+    expect_lte(max(fit$operational$constraints$.residual), 1e-6)
+  }
 })

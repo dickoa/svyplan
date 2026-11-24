@@ -204,3 +204,12 @@ test_that("an existing rotation is rebuilt rather than trusted", {
 test_that("an overlap passed as a rotation names x$rotation", {
   expect_error(design_rotation(design_overlap("5")), "x\\$rotation")
 })
+
+## Stray separators in a pattern
+
+test_that("a pattern with a leading, trailing or doubled hyphen is refused", {
+  for (x in c("4-8-4-", "-4-8-4", "4--8-4")) {
+    expect_error(design_rotation(x), "is not a rotation spec")
+  }
+  expect_s3_class(design_rotation("4-8-4"), "svyplan_rotation")
+})

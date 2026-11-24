@@ -5,6 +5,7 @@
 \alias{design_df.default}
 \alias{design_df.svyplan_cluster}
 \alias{design_df.svyplan_prec}
+\alias{design_df.svyplan_alloc}
 \alias{design_df.svyplan_n}
 \alias{design_df.svyplan_strata}
 \alias{design_df.svyplan_twophase}
@@ -17,6 +18,8 @@ design_df(x = NULL, ...)
 \method{design_df}{svyplan_cluster}(x, ...)
 
 \method{design_df}{svyplan_prec}(x, ...)
+
+\method{design_df}{svyplan_alloc}(x, ..., method = c("nominal", "satterthwaite"))
 
 \method{design_df}{svyplan_n}(x, ..., method = c("nominal", "satterthwaite"))
 
@@ -83,7 +86,7 @@ freedom").
 
 
 The counts are read from the whole-unit columns a plan reports
-(\code{n_int}, \code{n_psu_int}, \code{n_psu_draw}, \code{operational$n}), never from the continuous
+(\code{n_int}, \code{n_1_int}, \code{n_psu_draw}, \code{operational$n}), never from the continuous
 optimum, since a degree of freedom is a unit that will be fielded. They
 are issued counts and are not adjusted for nonresponse. For an element
 design, fewer respondents generally mean fewer degrees of freedom. For
@@ -138,12 +141,12 @@ allocation are refused, since neither has one share per stratum.
 
 Certainty, or self-representing, PSUs contribute no between-PSU variance
 and should not count toward first-stage df. For a PSU register supplied
-through \code{\link[=n_alloc]{n_alloc()}} with no certainty PSUs, this helper counts the
+through \code{\link[=n_alloc_joint]{n_alloc_joint()}} with no certainty PSUs, this helper counts the
 operational PSUs (\code{n_psu_draw}) minus the design's variance groups. Those
 are the strata without zones, the zones at \code{n_psu_per_zone = 2}, and the
-collapsed groups \verb{$psu$.pair} at \code{n_psu_per_zone = 1}. A collapsed group
-can join strata, so a stratum whose only zone is pooled with another
-stratum's shows no df of its own and is marked \code{"pooled"} in \verb{$strata}.
+collapsed groups \verb{$psu$.variance_group} at \code{n_psu_per_zone = 1}. A
+collapsed group can join strata, so a stratum whose only zone is pooled
+with another stratum's shows no df of its own and is marked \code{"pooled"} in \verb{$strata}.
 Each stratum's df is then the count on that stratum alone, and the
 per-stratum values need not sum to the overall df.
 Allocations containing certainty PSUs are refused, because combining
@@ -154,7 +157,9 @@ nominal first-stage count too large.
 
 A stratum holding a single PSU supports no within-stratum variance
 estimate at all, and warns, naming the stratum. Its own contribution is
-zero and \verb{$strata} marks it \code{"singleton"}. Whether a small but positive
+zero and \verb{$strata} marks it \code{"singleton"}. A stratum the design leaves
+with no units, as a starved two-phase stratum, is marked \code{"unsampled"}
+and is not counted among the strata. Whether a small but positive
 df is a problem is a judgment call, so it is reported and never warned
 about.
 }
@@ -172,17 +177,18 @@ as a stratum, \eqn{\sum_d m_d - D}{sum_d m_d - D}, and \verb{$domains}
 holds the per-domain counts.
 
 \item \code{design_df(svyplan_prec)}: Count the PSUs of a \code{\link[=prec_cluster]{prec_cluster()}} result, or
-the stratum counts of a one-measure \code{\link[=prec_alloc]{prec_alloc()}} result as for an
-allocation. A precision result carries the counts it was given and not
-a plan's operational design, so counts that are not whole are refused,
-stratum sizes on an element frame and PSU counts on a cluster frame. A
-generalized \code{\link[=prec_alloc]{prec_alloc()}} result is refused too.
+the stratum counts of a \code{\link[=prec_alloc]{prec_alloc()}} result as for an allocation. A
+precision result carries the counts it was given and not a plan's
+operational design, so counts that are not whole are refused, stratum
+sizes on an element frame and PSU counts on a cluster frame. A
+\code{\link[=prec_alloc_joint]{prec_alloc_joint()}} result is refused too.
 
-\item \code{design_df(svyplan_n)}: Count a \code{\link[=n_alloc]{n_alloc()}} allocation, at the PSU stage
-when the frame carried cluster columns and at the element stage
-otherwise, or the units of a single \code{\link[=n_prop]{n_prop()}}, \code{\link[=n_mean]{n_mean()}} or
-\code{\link[=n_ratio]{n_ratio()}} size. A change or pooled size counts more than one
-occasion and is refused.
+\item \code{design_df(svyplan_alloc)}: Count the units or PSUs of an \code{\link[=n_alloc]{n_alloc()}} or
+\code{\link[=n_alloc_joint]{n_alloc_joint()}} allocation, per stratum and per domain.
+
+\item \code{design_df(svyplan_n)}: Count the units of a single-indicator \code{\link[=n_prop]{n_prop()}},
+\code{\link[=n_mean]{n_mean()}}, or \code{\link[=n_ratio]{n_ratio()}} size. A multi-indicator, change, or pooled
+result is refused.
 
 \item \code{design_df(svyplan_strata)}: Count a \code{\link[=strata_bound]{strata_bound()}} stratification, whose
 strata are element-stage and whose take-all strata are censuses.
@@ -199,8 +205,8 @@ frame <- data.frame(
   N       = c(12000, 30000, 8000),
   sd      = c(5, 8, 3),
   mean    = c(10, 20, 5),
-  icc_psu = 0.05,
-  n_per_psu = 12
+  icc_1 = 0.05,
+  take_2 = 12
 )
 alloc <- n_alloc(frame, n = 3000)
 design_df(alloc)
@@ -226,9 +232,9 @@ design_df(n_psu = 300, n_strata = 20)
 
 # A PSU register cut into zones: PSUs minus zones
 register <- data.frame(stratum = "A", N = rep(1000, 100))
-zoned <- n_alloc(
-  data.frame(stratum = "A", N = 100000, n_per_psu = 10),
-  measures = data.frame(stratum = "A", name = "y", p = 0.5, icc_psu = 0.05),
+zoned <- n_alloc_joint(
+  data.frame(stratum = "A", N = 100000, take_2 = 10),
+  measures = data.frame(stratum = "A", name = "y", p = 0.5, icc_1 = 0.05),
   targets = data.frame(name = "y", cv = 0.08),
   psu = register, n_psu_per_zone = 2
 )

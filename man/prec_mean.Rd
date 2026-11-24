@@ -99,7 +99,7 @@ mean to be relative to.}
 \item{\code{solved}}{\code{"mu"} when the mean was solved for, and absent
 otherwise. The solved value is in \code{params$mu}.}
 \item{\code{params}}{The validated inputs (\code{var}, \code{n}, \code{alpha}, \code{N},
-\code{deff}, \code{resp_rate}, \code{df}, and \code{mu} when given or solved for). Dispersion
+\code{deff}, \code{resp_rate}, \code{eligibility_rate} and \code{eligible_per_unit} when not 1, \code{df}, and \code{mu} when given or solved for). Dispersion
 is always stored as \code{var}, including when you supplied \code{sd}.
 \code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the \code{\link[=n_mean]{n_mean()}} round trip read the
 design back from here.}

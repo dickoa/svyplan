@@ -1,6 +1,6 @@
 test_that("minimum-cost Bethel summary separates field and continuous designs", {
   z <- .bethel_fixture()
-  x <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+  x <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
   s <- summary(x)
 
   expect_s3_class(s, "summary.svyplan_bethel")
@@ -36,7 +36,7 @@ test_that("minimum-cost Bethel summary separates field and continuous designs", 
 
 test_that("budget-objective summary retains both additive decompositions", {
   z <- .bethel_fixture()
-  x <- n_alloc(
+  x <- n_alloc_joint(
     z$frame, measures = z$measures, targets = z$targets,
     objective = c("vaccination", "income"), budget = 5000
   )
@@ -64,10 +64,10 @@ test_that("budget-objective summary retains both additive decompositions", {
 
 test_that("Bethel precision summary assesses the supplied allocation exactly", {
   z <- .bethel_fixture()
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+  fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
   supplied <- fit$detail$n_int
   supplied[1L] <- 0.5
-  x <- prec_alloc(fit, n = supplied)
+  x <- prec_alloc_joint(fit, n = supplied)
   s <- summary(x)
 
   expect_identical(s$kind, "assessment")
@@ -84,7 +84,7 @@ test_that("Bethel precision summary assesses the supplied allocation exactly", {
   expect_identical(s$bounds$status[1L], "lower violation")
   expect_false(s$bounds$pass[1L])
 
-  objective_only <- prec_alloc(
+  objective_only <- prec_alloc_joint(
     z$frame, n = fit$detail$n_int, measures = z$measures,
     targets = z$targets, objective = "income"
   )
@@ -98,22 +98,22 @@ test_that("Bethel precision summary assesses the supplied allocation exactly", {
 
 test_that("multistage Bethel summary exposes PSU decisions and fixed takes", {
   z <- .bethel_multistage_fixture(3L)
-  x <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+  x <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
   s <- summary(x)
 
   expect_identical(s$stages, 3L)
-  expect_equal(s$allocation$psu_continuous, x$detail$n_psu)
-  expect_equal(s$allocation$psu_field, x$detail$n_psu_int)
-  expect_equal(s$allocation$take_per_psu, z$frame$n_per_psu)
-  expect_equal(s$allocation$take_per_ssu, z$frame$n_per_ssu)
+  expect_equal(s$allocation$n_1_continuous, x$detail$n_1)
+  expect_equal(s$allocation$n_1_field, x$detail$n_1_int)
+  expect_equal(s$allocation$take_2, z$frame$take_2)
+  expect_equal(s$allocation$take_3, z$frame$take_3)
   expect_equal(sum(s$allocation$cost), x$operational$cost)
-  expect_equal(s$assumptions$fixed_takes$n_per_psu, z$frame$n_per_psu)
-  expect_equal(s$assumptions$fixed_takes$n_per_ssu, z$frame$n_per_ssu)
+  expect_equal(s$assumptions$fixed_takes$take_2, z$frame$take_2)
+  expect_equal(s$assumptions$fixed_takes$take_3, z$frame$take_3)
 })
 
 test_that("Bethel summary print is sectioned, bounded, and explicit", {
   z <- .bethel_fixture()
-  x <- n_alloc(
+  x <- n_alloc_joint(
     z$frame, measures = z$measures, targets = z$targets,
     objective = "income", budget = 5000
   )

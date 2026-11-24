@@ -68,10 +68,13 @@ Default 0.5.}
 \item{unit_cost}{Per-stratum unit costs, ordered from lowest to highest
 stratum. Scalar (equal costs) or vector of length \code{n_strata}.
 Default \code{NULL} (equal unit costs, \eqn{c_h = 1} for all strata),
-in which case \code{"optimal"} and \code{"neyman"} coincide.}
+in which case \code{"optimal"} and \code{"neyman"} coincide. Under \code{"optimal"}
+with unequal costs and a \code{cv} target, the boundaries minimize the cost
+of the design rather than its size.}
 
 \item{take_all_above}{Take-all threshold. Units with \code{x >= take_all_above} form a
-census stratum.}
+census stratum. With a response rate below 1 its respondents are a
+subsample, so its variance counts against a \code{cv} target.}
 
 \item{deff}{Design effect multiplier (> 0), default 1. Inflates the
 variance of the stratified mean exactly as it does in \code{\link[=n_alloc]{n_alloc()}}, so
@@ -338,8 +341,10 @@ which accepts \verb{$strata} directly, and \code{\link[=svyplan]{svyplan()}} for
 defaults.
 
 Other stratified design functions:
+\code{\link[=merge_psus]{merge_psus()}},
 \code{\link[=n_alloc]{n_alloc()}},
-\code{\link{n_alloc-generalized}},
-\code{\link[=prec_alloc]{prec_alloc()}}
+\code{\link[=n_alloc_joint]{n_alloc_joint()}},
+\code{\link[=prec_alloc]{prec_alloc()}},
+\code{\link[=prec_alloc_joint]{prec_alloc_joint()}}
 }
 \concept{stratified design functions}

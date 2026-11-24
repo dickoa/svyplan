@@ -56,12 +56,12 @@ test_that("classic and joint allocation agree under fpc = none", {
   measures <- data.frame(stratum = fr$stratum, name = "x", p = fr$p)
   targets <- data.frame(name = "x", domain = ".overall", cv = 0.03)
   classic <- n_alloc(fr, cv = 0.03, fpc = "none")
-  joint <- n_alloc(fr[, c("stratum", "N")], measures = measures,
+  joint <- n_alloc_joint(fr[, c("stratum", "N")], measures = measures,
                    targets = targets, fpc = "none")
   expect_equal(joint$detail$n, classic$detail$n, tolerance = 1e-5)
   expect_gt(classic$n, n_alloc(fr, cv = 0.03)$n)
 
-  assessed <- prec_alloc(fr[, c("stratum", "N")], measures = measures,
+  assessed <- prec_alloc_joint(fr[, c("stratum", "N")], measures = measures,
                          targets = targets, n = c(100, 200, 300),
                          fpc = "none")
   expect_equal(assessed$detail$.achieved,
@@ -88,10 +88,10 @@ test_that("round trips and predict keep fpc = none", {
   measures <- data.frame(stratum = .none_frame$stratum, name = "x",
                          p = .none_frame$p)
   targets <- data.frame(name = "x", domain = ".overall", cv = 0.03)
-  joint <- n_alloc(.none_frame[, c("stratum", "N")], measures = measures,
+  joint <- n_alloc_joint(.none_frame[, c("stratum", "N")], measures = measures,
                    targets = targets, fpc = "none")
-  expect_identical(prec_alloc(joint)$params$fpc, "none")
-  expect_identical(n_alloc(prec_alloc(joint))$params$fpc, "none")
+  expect_identical(prec_alloc_joint(joint)$params$fpc, "none")
+  expect_identical(n_alloc_joint(prec_alloc_joint(joint))$params$fpc, "none")
 })
 
 test_that("fpc = none takes a proportion frame with a one-unit stratum", {
@@ -130,7 +130,7 @@ test_that("summary names the correction away from the default", {
     summary(n_alloc(fr, cv = 0.03, fpc = "none"))
   ), fixed = TRUE)))
   expect_true(any(grepl(line, capture.output(summary(
-    n_alloc(fr[, c("stratum", "N")], measures = measures, targets = targets,
+    n_alloc_joint(fr[, c("stratum", "N")], measures = measures, targets = targets,
             fpc = "none")
   )), fixed = TRUE)))
   expect_false(any(grepl("finite population correction", capture.output(
@@ -157,7 +157,7 @@ test_that("a stratum above the integer range allocates", {
 
   measures <- data.frame(stratum = huge$stratum, name = "x", p = huge$p)
   targets <- data.frame(name = "x", domain = ".overall", cv = 0.05)
-  joint <- n_alloc(huge[, c("stratum", "N")], measures = measures,
+  joint <- n_alloc_joint(huge[, c("stratum", "N")], measures = measures,
                    targets = targets)
   expect_false(anyNA(joint$detail$n_int))
   expect_equal(joint$detail$n_int, n_alloc(huge, cv = 0.05)$detail$n_int)

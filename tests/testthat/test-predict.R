@@ -81,14 +81,18 @@ test_that("predict.svyplan_n errors on more than one precision target in newdata
   expect_error(predict(x, nd), "cannot contain more than one of")
 })
 
-test_that("predict.svyplan_n errors for multi-indicator results", {
+test_that("predict.svyplan_multi supports scenario grids", {
   targets <- data.frame(
     name = c("a", "b"),
     p    = c(0.3, 0.5),
     moe  = c(0.05, 0.05)
   )
   x <- n_multi(targets)
-  expect_error(predict(x, data.frame(deff = 1)), "multi-indicator")
+  res <- predict(x, data.frame(deff = c(1, 1.5), target_mult = c(1, 0.8)))
+  expect_equal(nrow(res), 2L)
+  expect_equal(res$n[1], x$n, tolerance = 1e-8)
+  expect_gt(res$n[2], res$n[1])
+  expect_error(predict(x, data.frame(cv = 0.05)), "unknown parameter")
 })
 
 test_that("predict.svyplan_cluster varies budget", {
@@ -97,7 +101,7 @@ test_that("predict.svyplan_cluster varies budget", {
   res <- predict(x, nd)
 
   expect_equal(nrow(res), 3L)
-  expect_true(all(c("n_psu", "n_per_psu", "total_n", "cv", "cost") %in% names(res)))
+  expect_true(all(c("stage_1", "stage_2", "total_n", "cv", "cost") %in% names(res)))
   expect_true(all(diff(res$cv) < 0))
 })
 
@@ -129,10 +133,10 @@ test_that("predict.svyplan_cluster supports varying icc only", {
 test_that("predict.svyplan_cluster supports varying var_ratio in 2-stage", {
   cl <- n_cluster(stage_cost = c(750, 100), icc = 0.05, unit_relvar = 1, var_ratio = 1,
                   budget = 1e5)
-  nd <- data.frame(var_ratio_psu = c(0.8, 1.0, 1.2))
+  nd <- data.frame(var_ratio_1 = c(0.8, 1.0, 1.2))
   res <- predict(cl, nd)
 
-  ref_cv <- vapply(nd$var_ratio_psu, function(kval) {
+  ref_cv <- vapply(nd$var_ratio_1, function(kval) {
     n_cluster(
       stage_cost = c(750, 100), icc = 0.05, unit_relvar = 1, var_ratio = kval, budget = 1e5
     )$cv
@@ -155,29 +159,37 @@ test_that("predict.svyplan_cluster varies unit_relvar", {
 
 test_that("predict.svyplan_cluster uses original mode when no cv/budget in newdata", {
   x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05)
-  nd <- data.frame(resp_rate_psu = c(0.8, 0.9, 1.0))
+  nd <- data.frame(resp_rate_1 = c(0.8, 0.9, 1.0))
   res <- predict(x, nd)
 
   expect_equal(nrow(res), 3L)
-  expect_true(res$n_psu[1] > res$n_psu[3])
+  expect_true(res$stage_1[1] > res$stage_1[3])
 })
 
 test_that("predict.svyplan_cluster supports varying stage costs", {
   x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
-  nd <- data.frame(cost_psu = c(500, 800), cost_ssu = c(50, 120))
+  nd <- data.frame(cost_1 = c(500, 800), cost_2 = c(50, 120))
   res <- predict(x, nd)
   ref <- vapply(seq_len(nrow(nd)), function(i) {
     n_cluster(
-      stage_cost = c(nd$cost_psu[i], nd$cost_ssu[i]),
+      stage_cost = c(nd$cost_1[i], nd$cost_2[i]),
       icc = 0.05,
       budget = 100000
     )$cv
   }, numeric(1))
   expect_equal(res$cv, ref, tolerance = 1e-8)
 
-  nd_alias <- data.frame(cost_psu = c(500, 800), cost_tsu = c(50, 120))
-  res_alias <- predict(x, nd_alias)
-  expect_equal(res_alias$cv, ref, tolerance = 1e-8)
+  x3 <- n_cluster(stage_cost = c(500, 100, 50), icc = c(0.01, 0.05), budget = 200000)
+  nd3 <- data.frame(cost_1 = c(500, 800), cost_2 = c(100, 150), cost_3 = c(50, 80))
+  res3 <- predict(x3, nd3)
+  ref3 <- vapply(seq_len(nrow(nd3)), function(i) {
+    n_cluster(
+      stage_cost = c(nd3$cost_1[i], nd3$cost_2[i], nd3$cost_3[i]),
+      icc = c(0.01, 0.05),
+      budget = 200000
+    )$cv
+  }, numeric(1))
+  expect_equal(res3$cv, ref3, tolerance = 1e-8)
 })
 
 test_that("predict.svyplan_cluster supports stage-wise icc and var_ratio in 3-stage", {
@@ -188,38 +200,38 @@ test_that("predict.svyplan_cluster supports stage-wise icc and var_ratio in 3-st
     budget = 200000
   )
   nd <- data.frame(
-    icc_psu = c(0.01, 0.02),
-    icc_ssu = c(0.05, 0.08),
-    var_ratio_psu = c(1.0, 1.2),
-    var_ratio_ssu = c(1.0 * (1 - 0.01), 1.2 * (1 - 0.02))
+    icc_1 = c(0.01, 0.02),
+    icc_2 = c(0.05, 0.08),
+    var_ratio_1 = c(1.0, 1.2),
+    var_ratio_2 = c(1.0 * (1 - 0.01), 1.2 * (1 - 0.02))
   )
   res <- predict(x, nd)
 
   ref <- vapply(seq_len(nrow(nd)), function(i) {
     n_cluster(
       stage_cost = c(500, 100, 50),
-      icc = c(nd$icc_psu[i], nd$icc_ssu[i]),
-      var_ratio = c(nd$var_ratio_psu[i], nd$var_ratio_ssu[i]),
+      icc = c(nd$icc_1[i], nd$icc_2[i]),
+      var_ratio = c(nd$var_ratio_1[i], nd$var_ratio_2[i]),
       budget = 200000
     )$cv
   }, numeric(1))
   expect_equal(res$cv, ref, tolerance = 1e-8)
 })
 
-test_that("predict.svyplan_cluster rejects overlapping cost aliases", {
+test_that("predict.svyplan_cluster rejects out-of-range cost columns", {
   x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, budget = 100000)
-  nd <- data.frame(cost_ssu = 50, cost_tsu = 50)
-  expect_error(predict(x, nd), "multiple columns")
+  nd <- data.frame(cost_2 = 50, cost_3 = 50)
+  expect_error(predict(x, nd), "unknown parameter")
 })
 
 test_that("predict.svyplan_cluster rejects overlapping icc/var_ratio aliases", {
   x <- n_cluster(stage_cost = c(500, 50), icc = 0.05, var_ratio = 1, budget = 100000)
   expect_error(
-    predict(x, data.frame(icc = 0.05, icc_psu = 0.05)),
+    predict(x, data.frame(icc = 0.05, icc_1 = 0.05)),
     "multiple columns"
   )
   expect_error(
-    predict(x, data.frame(var_ratio = 1, var_ratio_psu = 1)),
+    predict(x, data.frame(var_ratio = 1, var_ratio_1 = 1)),
     "multiple columns"
   )
 })
@@ -233,11 +245,11 @@ test_that("predict.svyplan_cluster rejects scalar icc/var_ratio for 3-stage", {
   )
   expect_error(
     predict(x, data.frame(icc = 0.02)),
-    "icc_psu'.*icc_ssu"
+    "icc_1'.*icc_2"
   )
   expect_error(
     predict(x, data.frame(var_ratio = 1.1)),
-    "var_ratio_psu'.*var_ratio_ssu"
+    "var_ratio_1'.*var_ratio_2"
   )
 })
 
@@ -247,15 +259,20 @@ test_that("predict.svyplan_cluster errors on both cv and budget", {
   expect_error(predict(x, nd), "cannot contain both")
 })
 
-test_that("predict.svyplan_cluster rejects a several-indicators result", {
+test_that("predict.svyplan_cluster re-solves a several-indicators result", {
   targets <- data.frame(
     name   = c("a", "b"),
     p      = c(0.3, 0.1),
     cv     = c(0.10, 0.15),
-    icc_psu = c(0.02, 0.05)
+    icc_1 = c(0.02, 0.05)
   )
-  x <- n_cluster(indicators = targets, stage_cost = c(500, 50))
-  expect_error(predict(x, data.frame(cv = 0.05)), "several-indicators")
+  x <- n_cluster(targets, stage_cost = c(500, 50))
+  g <- predict(x, data.frame(target_mult = c(1, 1.5)))
+  expect_equal(g$total_n[1], x$total_n, tolerance = 1e-10)
+  looser <- transform(targets, cv = cv * 1.5)
+  expect_equal(g$total_n[2], n_cluster(looser, stage_cost = c(500, 50))$total_n,
+               tolerance = 1e-10)
+  expect_error(predict(x, data.frame(cv = 0.05)), "unknown parameter")
 })
 
 test_that("predict.svyplan_power varies n (solved for power)", {
@@ -364,7 +381,7 @@ test_that("predict.svyplan_cluster supports fixed_cost in newdata", {
   expect_equal(nrow(res), 3L)
   expect_true("fixed_cost" %in% names(res))
   expect_true(res$cost[3] > res$cost[1])
-  expect_equal(res$n_psu[1], res$n_psu[2], tolerance = 1e-8)
+  expect_equal(res$stage_1[1], res$stage_1[2], tolerance = 1e-8)
 })
 
 test_that("predict.svyplan_power errors for vector n object", {
@@ -398,7 +415,7 @@ test_that("predict.svyplan_power supports varying alternative", {
 test_that("predict works for cluster-mode n_alloc objects", {
   fr <- data.frame(stratum = c("A", "B"), N = c(50000, 150000),
                    sd = c(0.45, 0.48), mean = c(0.35, 0.25),
-                   icc_psu = c(0.03, 0.08), n_per_psu = c(12, 12))
+                   icc_1 = c(0.03, 0.08), take_2 = c(12, 12))
   x <- n_alloc(fr, n = 1000)
   p <- predict(x, data.frame(n = c(1000, 1100)))
   expect_equal(nrow(p), 2L)
@@ -577,9 +594,9 @@ test_that("a swept input is not repeated as a result column", {
   res <- predict(pw, data.frame(n = c(100, 200)))
   expect_named(res, c("n", "power", "effect"))
   cl <- n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
-                  n_per_psu = 10)
-  res <- predict(cl, data.frame(n_per_psu = c(5, 10)))
-  expect_equal(sum(names(res) == "n_per_psu"), 1L)
+                  stage_n = c(NA, 10))
+  res <- predict(cl, data.frame(take_2 = c(5, 10)))
+  expect_equal(sum(names(res) == "take_2"), 1L)
   expect_false(any(grepl("_achieved$", names(res))))
 })
 
@@ -644,7 +661,7 @@ test_that("predict() at a fit's own values returns the fit, rates included", {
     cl <- do.call(n_cluster, c(list(stage_cost = c(500, 50), icc = 0.05,
                                     cv = 0.05, eligible_per_unit = epu), e))
     res <- predict(cl, data.frame(icc = 0.05))
-    expect_equal(c(res$n_psu, res$n_per_psu), unname(cl$n))
+    expect_equal(c(res$stage_1, res$stage_2), unname(cl$n))
     expect_equal(res$total_n, cl$total_n)
   }
 })
@@ -664,7 +681,7 @@ test_that("predict() on a budget allocation keeps its eligibility rate", {
                         domain = c(".overall", "region"),
                         level = c(NA, "North"), cv = c(0.06, NA),
                         moe = c(NA, 3))
-  fit <- n_alloc(frame, measures = measures, targets = targets,
+  fit <- n_alloc_joint(frame, measures = measures, targets = targets,
                  objective = "income", budget = 1000,
                  eligibility_rate = 0.7)
   res <- predict(fit, data.frame(budget = 1000))
@@ -728,8 +745,11 @@ test_that("predict() rescales an allocation or compares candidate ones", {
   bad <- data.frame(alpha = 0.05)
   bad$n <- list(c(1, 2))
   expect_error(predict(fixed, bad), "must give 3 stratum sizes")
-  expect_error(predict(fixed, data.frame(eligible_per_unit = 2)),
-               "unknown parameter")
+  expect_equal(
+    predict(fixed, data.frame(eligible_per_unit = 2))$se,
+    prec_alloc(frame, n = c(300, 500, 200), domains = "region",
+               eligible_per_unit = 2)$se
+  )
 })
 
 test_that("predict() on a joint allocation precision reports its constraints", {
@@ -747,19 +767,19 @@ test_that("predict() on a joint allocation precision reports its constraints", {
                         domain = c(".overall", "region"),
                         level = c(NA, "North"), cv = c(0.06, NA),
                         moe = c(NA, 3))
-  fit <- n_alloc(frame, measures = measures, targets = targets,
+  fit <- n_alloc_joint(frame, measures = measures, targets = targets,
                  eligible_per_unit = 1.5)
-  fixed <- prec_alloc(fit, n = fit$detail$n_int)
+  fixed <- prec_alloc_joint(fit, n = fit$detail$n_int)
   res <- predict(fixed, data.frame(deff = c(1, 1.5)))
   expect_equal(res$.max_ratio[1L], max(fixed$detail$.ratio))
-  again <- prec_alloc(fit, n = fit$detail$n_int, deff = 1.5)
+  again <- prec_alloc_joint(fit, n = fit$detail$n_int, deff = 1.5)
   expect_equal(res$.max_ratio[2L], max(again$detail$.ratio))
   expect_identical(res$.feasible, c(all(fixed$detail$.pass),
                                     all(again$detail$.pass)))
   expect_equal(res$.n_fail[2L], sum(!again$detail$.pass))
   expect_null(res$objective_value)
   res <- predict(fixed, data.frame(eligible_per_unit = 1))
-  expect_equal(res$.max_ratio, max(prec_alloc(
+  expect_equal(res$.max_ratio, max(prec_alloc_joint(
     frame, n = fit$detail$n_int, measures = measures, targets = targets
   )$detail$.ratio))
 })

@@ -51,7 +51,7 @@
 #' @return A `svyplan_prec` object with a `$detail` data frame containing
 #'   per-indicator precision: `.se`, `.moe`, `.rmoe`, and `.cv`. `.rmoe`
 #'   is `.moe` as a fraction of the row's own estimand, `p` for a
-#'   proportion, `abs(mu)` for a mean and `abs(r)` for a ratio, and `NA` for
+#'   proportion, `abs(mean)` for a mean and `abs(r)` for a ratio, and `NA` for
 #'   a row carrying none of them. The `domains` columns come first, so each
 #'   row can be joined back to its domain.
 #'
@@ -80,8 +80,8 @@
 #'   \item{`p`}{Expected proportion, in (0, 1). One of `p`, `var` or `r`
 #'     per row (see [n_multi()]).}
 #'   \item{`var`}{Population variance. One of `p`, `var` or `r` per row.}
-#'   \item{`mu`}{Population mean. Required for CV output when `var`
-#'     is specified, because CV = SE / mean.}
+#'   \item{`mean`}{Population mean. Required for CV output when `var`
+#'     is specified, because CV = SE / abs(mean).}
 #'   \item{`r`}{Anticipated ratio of two totals, marking a ratio row. It
 #'     requires `cv_num`, `cv_den` and `component_cor` alongside it. Its
 #'     `unit_relvar` comes from those moments, and a value given in that
@@ -106,13 +106,13 @@
 #'     no adjustment.}
 #'   \item{`resp_rate`}{Expected response rate at the ultimate unit
 #'     (default 1). A cluster design spends a rate at stage 1 too, and
-#'     [prec_cluster()] names that column `resp_rate_psu`.}
+#'     [prec_cluster()] names stage response columns `resp_rate_1`, ..., `resp_rate_{S-1}`.}
 #'   \item{`eligibility_rate`}{Share of the row's issued units in scope, in
 #'     (0, 1\]. `NA` takes the `eligibility_rate` argument.}
 #'   \item{`eligible_per_unit`}{Eligible units per sampled unit for the row's
 #'     estimate, as in [prec_prop()] and [prec_mean()]. Proportion and mean
 #'     rows. The
-#'     several-indicators mode of [prec_cluster()] refuses it.}
+#'     several-indicators mode of [prec_cluster()] reads the same column.}
 #' }
 #'
 #' Domain columns are specified via the `domains` parameter.
@@ -129,10 +129,10 @@
 #' Nothing here knows how many PSUs a domain holds. A small domain, such as
 #' an island district of 16 enumeration areas, can then be given more PSUs
 #' than it has, and a sample that takes most of them is assessed as if
-#' they were a few among many. [n_alloc()] and [prec_alloc()] read `N_psu`
+#' they were a few among many. [n_alloc()] and [prec_alloc()] read `N_1`
 #' in the frame and, with `fpc = "stage"`, apply the stage-by-stage
-#' correction. They size and assess such a domain, as the [prec_alloc()]
-#' examples show.
+#' correction. They size and assess such a domain, as the Details of
+#' [n_alloc()] describe.
 #'
 #' @family multi-indicator functions
 #' @seealso [n_multi()] for the inverse, [prec_cluster()] for a multistage
@@ -174,6 +174,7 @@ prec_multi.default <- function(
   eligible_per_unit = 1,
   plan = NULL
 ) {
+  .refuse_alloc_object(indicators, "prec_multi", "multi")
   merged <- .merge_plan_args(
     plan,
     prec_multi.default,
@@ -183,8 +184,9 @@ prec_multi.default <- function(
   if (!is.null(merged)) {
     return(do.call(prec_multi.default, c(merged, list(...))))
   }
-  .check_multi_split_args(list(...), "prec_cluster(indicators = )")
+  .check_multi_split_args(list(...), "prec_cluster(<table>, ...)")
   .check_unused_dots(...)
+  .refuse_unnumbered_stage_columns(indicators, "indicators")
   # An unresolved default arrives either as a missing argument or, through
   # the plan-merge path, as the full choice vector itself.
   if (identical(prop_method, c("wald", "wilson", "logodds", "beta"))) {
@@ -210,7 +212,8 @@ prec_multi.default <- function(
   }
 
   indicators <- .indicators_var_from_sd(indicators, domains)
-  .check_indicator_columns(indicators, domains, eligible = TRUE)
+  .check_indicator_columns(indicators, domains, eligible = TRUE,
+                           context = "prec_multi()")
   .check_resp_rate_column(indicators, FALSE)
   .stop_min_cases_column(
     indicators,
@@ -241,101 +244,6 @@ prec_multi.default <- function(
                      eligibility_rate = eligibility_rate,
                      eligible_per_unit = eligible_per_unit,
                      domain_cols = domain_cols)
-}
-
-#' Cluster precision from a table of indicators
-#'
-#' The several-indicators mode of [prec_cluster()]. The frame carries the
-#' stage sizes per row, so nothing here is a scalar the scalar branch could
-#' share.
-#' @keywords internal
-#' @noRd
-.prec_cluster_indicators <- function(
-  indicators,
-  domains = NULL,
-  stage_cost = NULL,
-  resp_rate_psu = 1,
-  resp_rate_ssu = 1,
-  resp_rate = 1,
-  eligibility_rate = 1,
-  fpc = "none",
-  pop = NULL
-) {
-  if (!is.data.frame(indicators) || nrow(indicators) == 0L) {
-    stop("'indicators' must be a non-empty data frame", call. = FALSE)
-  }
-  indicators <- .indicators_var_from_sd(indicators, domains)
-  .check_indicator_columns(indicators, domains)
-  .check_ratio_rows(indicators)
-  .check_estimand_markers(indicators)
-  .stop_min_cases_column(
-    indicators,
-    "prec_cluster(indicators = ) reads the sizes you already have, and a floor is a sizing constraint, so it belongs to n_multi()"
-  )
-
-  if (!"n" %in% names(indicators)) {
-    stop("'indicators' must contain an 'n' column", call. = FALSE)
-  }
-  if (!is.null(domains)) {
-    if (!is.character(domains) || anyNA(domains)) {
-      stop("'domains' must be a character vector without NAs", call. = FALSE)
-    }
-    missing_cols <- setdiff(domains, names(indicators))
-    if (length(missing_cols) > 0L) {
-      stop(
-        sprintf(
-          "domain column(s) not found in indicators: %s",
-          paste(sQuote(missing_cols), collapse = ", ")
-        ),
-        call. = FALSE
-      )
-    }
-  }
-
-  if (!is.null(stage_cost)) {
-    check_stage_cost(stage_cost)
-    stage_cost <- .reorder_stage_cost(stage_cost)
-  }
-  stages <- if (!is.null(stage_cost)) {
-    length(stage_cost)
-  } else if ("n_per_ssu" %in% names(indicators)) {
-    3L
-  } else {
-    2L
-  }
-  .check_resp_rate_column(indicators, TRUE, stages)
-  check_resp_rate(resp_rate_psu, "resp_rate_psu")
-  check_resp_rate(resp_rate_ssu, "resp_rate_ssu")
-  check_resp_rate(resp_rate)
-  if (stages == 2L && resp_rate_ssu != 1) {
-    stop("'resp_rate_ssu' is not applicable for 2-stage designs", call. = FALSE)
-  }
-  if (!is.null(stage_cost)) {
-    target_stages <- if ("n_per_ssu" %in% names(indicators)) 3L else 2L
-    if (target_stages == 3L && length(stage_cost) != 3L) {
-      stop(
-        sprintf(
-          "'stage_cost' has length %d but target columns describe a %d-stage design",
-          length(stage_cost),
-          target_stages
-        ),
-        call. = FALSE
-      )
-    }
-  }
-
-  .prec_multi_cluster(
-    indicators,
-    stages = stages,
-    stage_cost = stage_cost,
-    domain_cols = domains %||% character(0),
-    resp_rate_psu = resp_rate_psu,
-    resp_rate_ssu = resp_rate_ssu,
-    resp_rate = resp_rate,
-    eligibility_rate = eligibility_rate,
-    fpc = fpc,
-    pop = pop
-  )
 }
 
 #' Put the domain columns of an indicator table before its precision rows
@@ -390,7 +298,7 @@ prec_multi.default <- function(
   has_p <- "p" %in% names(indicators)
   has_var <- "var" %in% names(indicators)
   is_ratio <- .is_ratio_row(indicators)
-  .check_ratio_rows(indicators)
+  .check_ratio_rows(indicators, sizing = FALSE)
   if (!has_p && !has_var && !any(is_ratio)) {
     stop("'indicators' must contain a 'p', 'var', or 'r' column",
          call. = FALSE)
@@ -411,10 +319,10 @@ prec_multi.default <- function(
       stop("all 'var' values must be positive and finite", call. = FALSE)
     }
   }
-  if ("mu" %in% names(indicators)) {
-    mu_vals <- indicators$mu[!is.na(indicators$mu)]
-    if (any(!is.finite(mu_vals))) {
-      stop("'mu' values must be finite", call. = FALSE)
+  if ("mean" %in% names(indicators)) {
+    mean_vals <- indicators$mean[!is.na(indicators$mean)]
+    if (any(!is.finite(mean_vals))) {
+      stop("'mean' values must be finite", call. = FALSE)
     }
   }
   method_vals <- indicators$prop_method[!is.na(indicators$prop_method)]
@@ -427,7 +335,7 @@ prec_multi.default <- function(
   }
 
   nr <- nrow(indicators)
-  has_mu <- "mu" %in% names(indicators)
+  has_mean <- "mean" %in% names(indicators)
 
   row_labels <- if ("name" %in% names(indicators)) {
     indicators$name
@@ -476,7 +384,7 @@ prec_multi.default <- function(
       res_i <- prec_mean.default(
         var = indicators$var[i],
         n = indicators$n[i],
-        mu = if (has_mu && !is.na(indicators$mu[i])) indicators$mu[i] else NULL,
+        mu = if (has_mean && !is.na(indicators$mean[i])) indicators$mean[i] else NULL,
         alpha = indicators$alpha[i],
         N = indicators$N[i],
         deff = indicators$deff[i],
@@ -520,263 +428,10 @@ prec_multi.default <- function(
   )
 }
 
-#' @keywords internal
-#' @noRd
-.prec_multi_cluster <- function(indicators, stages, stage_cost = NULL,
-                                domain_cols = character(0),
-                                resp_rate_psu = 1,
-                                resp_rate_ssu = 1,
-                                resp_rate = 1,
-                                eligibility_rate = 1,
-                                fpc = "none",
-                                pop = NULL) {
-  if (!"alpha" %in% names(indicators)) {
-    indicators$alpha <- 0.05
-  }
-  if (!"resp_rate_psu" %in% names(indicators)) {
-    indicators$resp_rate_psu <- resp_rate_psu
-  } else {
-    indicators$resp_rate_psu[is.na(indicators$resp_rate_psu)] <- resp_rate_psu
-  }
-  if (!"resp_rate" %in% names(indicators)) {
-    indicators$resp_rate <- resp_rate
-  } else {
-    indicators$resp_rate[is.na(indicators$resp_rate)] <- resp_rate
-  }
-  if (stages == 3L) {
-    if (!"resp_rate_ssu" %in% names(indicators)) {
-      indicators$resp_rate_ssu <- resp_rate_ssu
-    } else {
-      indicators$resp_rate_ssu[is.na(indicators$resp_rate_ssu)] <-
-        resp_rate_ssu
-    }
-  }
-  if (!"var_ratio_psu" %in% names(indicators)) {
-    indicators$var_ratio_psu <- 1
-  }
-  # var_ratio_ssu is derived below, once var_ratio_psu and icc_psu have been validated.
-  var_ratio_ssu_supplied <- "var_ratio_ssu" %in% names(indicators)
-  if (!var_ratio_ssu_supplied) {
-    indicators$var_ratio_ssu <- 1
-  }
-
-  .validate_common_columns(indicators)
-  # The rows are evaluated on response times eligibility, and the table the
-  # result keeps shows each row's response rate as given.
-  given_resp <- indicators$resp_rate
-  indicators$resp_rate <- given_resp * eligibility_rate
-
-  if (!"unit_relvar" %in% names(indicators)) {
-    indicators$unit_relvar <- NA_real_
-  }
-  indicators$unit_relvar <- .derive_unit_relvar(indicators, require_all = TRUE)
-
-  rv_check <- indicators$unit_relvar[!is.na(indicators$unit_relvar)]
-  if (
-    length(rv_check) > 0L &&
-      (any(rv_check <= 0) || any(!is.finite(rv_check)))
-  ) {
-    stop("'unit_relvar' values must be positive and finite", call. = FALSE)
-  }
-  if (any(indicators$var_ratio_psu <= 0) || any(!is.finite(indicators$var_ratio_psu))) {
-    stop("'var_ratio_psu' values must be positive and finite", call. = FALSE)
-  }
-  if (any(indicators$var_ratio_ssu <= 0) || any(!is.finite(indicators$var_ratio_ssu))) {
-    stop("'var_ratio_ssu' values must be positive and finite", call. = FALSE)
-  }
-
-  nr <- nrow(indicators)
-  labels <- if ("name" %in% names(indicators)) indicators$name else seq_len(nr)
-
-  n1 <- indicators$n
-  if (
-    stages >= 2L &&
-      (!"n_per_psu" %in% names(indicators) ||
-        anyNA(indicators$n_per_psu) ||
-        any(indicators$n_per_psu <= 0))
-  ) {
-    stop(
-      "'n_per_psu' column is required for multistage precision (positive, no NA)",
-      call. = FALSE
-    )
-  }
-  if (
-    stages == 3L &&
-      (!"n_per_ssu" %in% names(indicators) ||
-        anyNA(indicators$n_per_ssu) ||
-        any(indicators$n_per_ssu <= 0))
-  ) {
-    stop(
-      "'n_per_ssu' column is required for 3-stage precision (positive, no NA)",
-      call. = FALSE
-    )
-  }
-  if (!"icc_psu" %in% names(indicators)) {
-    stop(
-      "'icc_psu' column is required for multistage precision",
-      call. = FALSE
-    )
-  }
-  if (!is.numeric(indicators$icc_psu)) {
-    stop("'icc_psu' must be numeric", call. = FALSE)
-  }
-  if (anyNA(indicators$icc_psu)) {
-    stop("'icc_psu' must not contain NA values", call. = FALSE)
-  }
-  if (any(indicators$icc_psu < 0 | indicators$icc_psu > 1)) {
-    stop("'icc_psu' values must be in [0, 1]", call. = FALSE)
-  }
-  if (stages == 3L) {
-    if (!"icc_ssu" %in% names(indicators)) {
-      stop(
-        "'icc_ssu' column is required for 3-stage precision",
-        call. = FALSE
-      )
-    }
-    if (!is.numeric(indicators$icc_ssu)) {
-      stop("'icc_ssu' must be numeric", call. = FALSE)
-    }
-    if (anyNA(indicators$icc_ssu)) {
-      stop("'icc_ssu' must not contain NA values", call. = FALSE)
-    }
-    if (any(indicators$icc_ssu < 0 | indicators$icc_ssu > 1)) {
-      stop("'icc_ssu' values must be in [0, 1]", call. = FALSE)
-    }
-  }
-
-  n2 <- indicators$n_per_psu
-  n3 <- if (stages == 3L) indicators$n_per_ssu else rep(NA_real_, nr)
-
-  rr <- indicators$resp_rate_psu
-  rs <- .indicator_rate(indicators, "resp_rate_ssu", nr)
-  ru <- .indicator_rate(indicators, "resp_rate", nr)
-  .check_row_takes(indicators, n2, if (stages == 3L) n3)
-  n1_eff <- n1 * rr
-
-  cv_vec <- numeric(nr)
-  delta1 <- indicators$icc_psu
-  delta2 <- if ("icc_ssu" %in% names(indicators)) {
-    indicators$icc_ssu
-  } else {
-    rep(0, nr)
-  }
-  unit_relvar <- indicators$unit_relvar
-  k1 <- indicators$var_ratio_psu
-  # var_ratio_ssu is the within-PSU counterpart of var_ratio_psu and is fixed by the
-  # decomposition: var_ratio_ssu = var_ratio_psu * (1 - icc_psu). See .var_ratio_ssu_default().
-  if (stages == 3L) {
-    implied <- .var_ratio_ssu_default(k1, delta1)
-    if (var_ratio_ssu_supplied) {
-      indicators$var_ratio_ssu[is.na(indicators$var_ratio_ssu)] <- implied[is.na(indicators$var_ratio_ssu)]
-    } else {
-      indicators$var_ratio_ssu <- implied
-    }
-  }
-  k2 <- indicators$var_ratio_ssu
-
-  # Stage sizes arrive gross; the variance reads what each stage realizes.
-  n2r <- if (stages == 2L) n2 * ru else n2 * rs
-  n3r <- if (stages == 3L) n3 * ru else n3
-  row_pops <- .stage_row_pops(indicators, domain_cols, fpc,
-                              .stage_eligible(pop, eligibility_rate), stages,
-                              eligibility_rate)
-  for (i in seq_len(nr)) {
-    if (!is.null(row_pops)) {
-      pop_i <- row_pops[[i]]
-      .check_stage_sizes(
-        if (stages == 2L) c(n1[i], n2[i]) else c(n1[i], n2[i], n3[i]),
-        pop_i
-      )
-      cv_vec[i] <- sqrt(max(
-        if (stages == 2L) {
-          .cv2_cluster_stage(n1_eff[i], n2r[i], delta1[i], unit_relvar[i],
-                             k1[i], pop_i$A, pop_i$M)
-        } else {
-          .cv2_cluster3_stage(n1_eff[i], n2r[i], n3r[i],
-                              c(delta1[i], delta2[i]), unit_relvar[i],
-                              c(k1[i], k2[i]), pop_i)
-        },
-        0
-      ))
-    } else if (stages == 2L) {
-      cv_vec[i] <- sqrt(
-        unit_relvar[i] * k1[i] / (n1_eff[i] * n2r[i]) * (1 + delta1[i] * (n2r[i] - 1))
-      )
-    } else {
-      cv_vec[i] <- sqrt(
-        unit_relvar[i] /
-          (n1_eff[i] * n2r[i] * n3r[i]) *
-          (k1[i] *
-            delta1[i] *
-            n2r[i] *
-            n3r[i] +
-            k2[i] * (1 + delta2[i] * (n3r[i] - 1)))
-      )
-    }
-  }
-
-  se_vec <- rep(NA_real_, nr)
-  moe_vec <- rep(NA_real_, nr)
-
-  # The inverse of .convert_moe_to_cv(): the cluster model delivers a sampling
-  # CV, and each row's own interval method turns that back into a margin of
-  # error. Reading moe as z * se would assume the Wald half-width for all four.
-  has_p <- "p" %in% names(indicators)
-  has_mu <- "mu" %in% names(indicators)
-  has_method <- "prop_method" %in% names(indicators)
-  is_ratio <- .is_ratio_row(indicators)
-  for (i in seq_len(nr)) {
-    df_i <- .row_df(indicators, i)
-    if (is_ratio[i]) {
-      se_vec[i] <- cv_vec[i] * abs(indicators$r[i])
-      moe_vec[i] <- .q_alpha(indicators$alpha[i], df_i) * se_vec[i]
-    } else if (has_p && !is.na(indicators$p[i])) {
-      p_i <- indicators$p[i]
-      se_vec[i] <- cv_vec[i] * p_i
-      method_i <- if (has_method) indicators$prop_method[i] else "wald"
-      moe_vec[i] <- .prec_engine_prop(
-        p_i, (1 - p_i) / (p_i * cv_vec[i]^2), indicators$alpha[i],
-        Inf, 1, 1, method_i, df_i
-      )$moe
-    } else if (has_mu && !is.na(indicators$mu[i])) {
-      se_vec[i] <- cv_vec[i] * abs(indicators$mu[i])
-      moe_vec[i] <- .q_alpha(indicators$alpha[i], df_i) * se_vec[i]
-    }
-  }
-
-  detail <- .with_domain_keys(
-    data.frame(
-      name = labels,
-      .se = se_vec,
-      .moe = moe_vec,
-      .rmoe = .rmoe_from_moe(moe_vec, .indicator_estimand(indicators, nr),
-                             at_zero = NA_real_),
-      .cv = cv_vec
-    ),
-    indicators,
-    domain_cols
-  )
-
-  indicators$resp_rate <- given_resp
-  .new_svyplan_prec(
-    se = se_vec,
-    moe = moe_vec,
-    cv = cv_vec,
-    type = "multi",
-    params = c(
-      list(
-        indicators = indicators,
-        stage_cost = stage_cost,
-        domain_cols = domain_cols,
-        design = "cluster",
-        stages = stages
-      ),
-      if (!is.null(row_pops)) list(fpc = "stage"),
-      if (!is.null(pop)) list(N = pop$N, N_psu = pop$A, N_ssu = pop$N_ssu),
-      if (eligibility_rate != 1) list(eligibility_rate = eligibility_rate)
-    ),
-    detail = detail
-  )
+#' @rdname prec_multi
+#' @export
+prec_multi.svyplan_multi <- function(indicators, ...) {
+  .prec_multi_from_fit(indicators, list(...))
 }
 
 #' @rdname prec_multi
@@ -839,7 +494,8 @@ prec_multi.svyplan_n <- function(indicators, ...) {
   # domain_sampling belongs here for the same reason as the rest: n_multi()
   # cannot rebuild the design it describes without it, and reverts to
   # "separate" rather than failing.
-  for (p in c("mode", "prop_method", "min_n_domain", "domain_sampling")) {
+  for (p in setdiff(c("mode", "prop_method", "min_n_domain", "domain_sampling"),
+                    names(dots))) {
     if (!is.null(x$params[[p]])) res$params[[p]] <- x$params[[p]]
   }
   res

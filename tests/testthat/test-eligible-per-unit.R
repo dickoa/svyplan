@@ -164,8 +164,8 @@ test_that("cluster sizes equal folding a rate at most 1 into resp_rate", {
   calls <- list(
     list(stage_cost = c(500, 50), icc = 0.05, cv = 0.05),
     list(stage_cost = c(500, 50), icc = 0.05, budget = 1e5),
-    list(stage_cost = c(500, 50), icc = 0.05, cv = 0.05, n_psu = 80),
-    list(stage_cost = c(500, 50), icc = 0.05, budget = 1e5, n_per_psu = 25),
+    list(stage_cost = c(500, 50), icc = 0.05, cv = 0.05, stage_n = c(80, NA)),
+    list(stage_cost = c(500, 50), icc = 0.05, budget = 1e5, stage_n = c(NA, 25)),
     list(stage_cost = c(500, 100, 20), icc = c(0.03, 0.1), cv = 0.05)
   )
   for (args in calls) {
@@ -173,7 +173,12 @@ test_that("cluster sizes equal folding a rate at most 1 into resp_rate", {
     folded <- do.call(n_cluster, c(args, resp_rate = 0.9 * 0.41))
     expect_equal(elig$n, folded$n)
     expect_equal(elig$operational$n, folded$operational$n)
-    expect_identical(elig$params$resp_rate, 0.9)
+    S <- length(args$stage_cost)
+    expect_identical(
+      elig$params$resp_rate,
+      stats::setNames(c(rep(1, S - 1L), 0.9),
+                      c(paste0("resp_rate_", seq_len(S - 1L)), "resp_rate"))
+    )
   }
 })
 
@@ -183,7 +188,7 @@ test_that("the household take is the eligible-person optimum converted", {
                    resp_rate = 0.9, eligible_per_unit = e)
     cost_per_eligible <- 50 / (e * 0.9)
     persons <- sqrt(500 / cost_per_eligible * (1 - 0.07) / 0.07)
-    expect_equal(unname(x$n["n_per_psu"]), persons / (e * 0.9))
+    expect_equal(unname(x$n["stage_2"]), persons / (e * 0.9))
   }
 })
 
@@ -193,7 +198,7 @@ test_that("prec_cluster reads the eligible respondents per cluster", {
   b <- 20 * 0.9 * 0.41
   expect_equal(ev$cv, sqrt((1 + 0.07 * (b - 1)) / (600 * b)))
   expect_identical(ev$params$eligible_per_unit, 0.41)
-  expect_identical(ev$params$resp_rate, 0.9)
+  expect_identical(ev$params$resp_rate, c(resp_rate_1 = 1, resp_rate = 0.9))
 })
 
 test_that("the cluster rate survives every round trip", {
@@ -212,9 +217,9 @@ test_that("the cluster rate survives every round trip", {
   expect_equal(n_cluster(prec_cluster(x))$n, x$n)
   swept <- predict(x, data.frame(eligible_per_unit = c(0.41, 1.2)))
   expect_equal(swept$cv, c(0.05, 0.05))
-  expect_equal(swept$n_psu[1], unname(x$n["n_psu"]))
+  expect_equal(swept$stage_1[1], unname(x$n["stage_1"]))
   by_cv <- predict(x, data.frame(cv = c(0.05, 0.04)))
-  expect_equal(by_cv$n_per_psu[1], unname(x$n["n_per_psu"]))
+  expect_equal(by_cv$stage_2[1], unname(x$n["stage_2"]))
 })
 
 test_that("an indicator table sizes each row with its own eligible_per_unit", {
@@ -257,9 +262,9 @@ test_that("an indicator table sizes each row with its own eligible_per_unit", {
   expect_null(n_multi(ind[, 1:3])$indicators$eligible_per_unit)
 })
 
-test_that("a mean row takes the rate, a ratio row and the cluster mode refuse it", {
+test_that("a mean row takes the rate, a ratio row refuses it, and the cluster mode reads it", {
   mixed <- data.frame(name = c("a", "m"), p = c(0.3, NA), var = c(NA, 4),
-                      mu = c(NA, 10), cv = c(0.1, 0.02))
+                      mean = c(NA, 10), cv = c(0.1, 0.02))
   fit <- n_multi(mixed, eligible_per_unit = 2)
   expect_equal(fit$detail$.n[2L],
                n_mean(var = 4, mu = 10, cv = 0.02, eligible_per_unit = 2)$n)
@@ -280,34 +285,43 @@ test_that("a mean row takes the rate, a ratio row and the cluster mode refuse it
     n_multi(data.frame(name = "a", p = 0.3, cv = 0.1, eligible_per_unit = 0)),
     "positive and finite"
   )
-  msg <- "an 'eligible_per_unit' column applies to n_multi\\(\\) and prec_multi\\(\\)"
-  ind <- data.frame(name = "a", p = 0.3, moe = 0.05, eligible_per_unit = 0.41)
-  expect_error(
-    n_cluster(indicators = transform(ind, icc_psu = 0.05),
-              stage_cost = c(500, 50)),
-    msg
-  )
-  expect_error(
-    prec_cluster(indicators = transform(ind, moe = NULL, icc_psu = 0.05,
-                                        n = 50, n_per_psu = 10)),
-    msg
+  ind <- data.frame(name = "a", p = 0.3, moe = 0.05, icc_1 = 0.05,
+                    eligible_per_unit = 0.41)
+  cl_col <- n_cluster(ind, stage_cost = c(500, 50))
+  cl_arg <- n_cluster(transform(ind, eligible_per_unit = NULL),
+                      stage_cost = c(500, 50), eligible_per_unit = 0.41)
+  expect_equal(cl_col$n, cl_arg$n)
+  expect_equal(prec_cluster(cl_col)$detail$.cv, cl_col$cv)
+  expect_equal(
+    prec_cluster(transform(ind, moe = NULL, n_1 = 50, take_2 = 10))$detail$.cv,
+    prec_cluster(n = c(50, 10), icc = 0.05, unit_relvar = 0.7 / 0.3,
+                 eligible_per_unit = 0.41)$cv
   )
 })
 
-test_that("indicators mode refuses the rate and the take check names it", {
-  ind <- data.frame(name = "a", p = 0.3, cv = 0.1, icc_psu = 0.05)
-  expect_error(
-    n_cluster(indicators = ind, stage_cost = c(500, 50), eligible_per_unit = 0.4),
-    "applies to the single-indicator call"
+test_that("cluster indicator mode supports eligible_per_unit and the take check names it", {
+  ind <- data.frame(name = c("a", "b"), p = c(0.3, 0.2), cv = c(0.1, 0.12),
+                    icc_1 = c(0.05, 0.08))
+  fit_arg <- n_cluster(ind, stage_cost = c(500, 50), eligible_per_unit = 0.4)
+  fit_col <- n_cluster(transform(ind, eligible_per_unit = c(0.4, 0.4)),
+                       stage_cost = c(500, 50))
+  expect_equal(fit_arg$n, fit_col$n)
+  # Per-row eligible_per_unit including > 1 and stage FPC round-trip
+  ind_var <- transform(ind, eligible_per_unit = c(0.5, 2.2))
+  fit_fpc <- n_cluster(ind_var, stage_cost = c(500, 50), fpc = "stage",
+                       N = c(500, 50000))
+  pr_fpc <- prec_cluster(fit_fpc)
+  expect_identical(pr_fpc$type, "cluster")
+  expect_equal(n_cluster(pr_fpc)$n, fit_fpc$n, tolerance = 1e-5)
+  expect_equal(
+    prec_cluster(transform(ind, n_1 = 50, take_2 = 10),
+                 eligible_per_unit = 0.4)$detail$.cv[1L],
+    prec_cluster(n = c(50, 10), icc = 0.05, unit_relvar = 0.7 / 0.3,
+                 eligible_per_unit = 0.4)$cv
   )
   expect_error(
-    prec_cluster(indicators = transform(ind, n = 50, n_per_psu = 10),
-                 eligible_per_unit = 0.4),
-    "applies to the single-indicator call"
-  )
-  expect_error(
-    n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05, n_per_psu = 2,
-              resp_rate = 0.9, eligible_per_unit = 0.4),
+    n_cluster(stage_cost = c(500, 50), icc = 0.05, cv = 0.05,
+              stage_n = c(NA, 2), resp_rate = 0.9, eligible_per_unit = 0.4),
     "at 'resp_rate \\* eligible_per_unit' = 0.36"
   )
   expect_error(
@@ -351,14 +365,14 @@ test_that("the cluster print counts eligible respondents", {
   frame <- data.frame(
     stratum = c("A-u", "A-r", "B-u", "B-r"),
     region = rep(c("A", "B"), each = 2),
-    N = c(4e5, 6e5, 3e5, 5e5), n_per_psu = 20, cost_psu = 400,
-    cost_ssu = 30, N_psu = c(2000, 3000, 1500, 2500)
+    N = c(4e5, 6e5, 3e5, 5e5), take_2 = 20, cost_1 = 400,
+    cost_2 = 30, N_1 = c(2000, 3000, 1500, 2500)
   )
   measures <- data.frame(
     stratum = rep(frame$stratum, 2),
     name = rep(c("mcpr", "stunting"), each = 4),
     p = c(0.30, 0.24, 0.28, 0.22, 0.20, 0.30, 0.22, 0.33),
-    icc_psu = rep(c(0.07, 0.05), each = 4), resp_rate = 0.9,
+    icc_1 = rep(c(0.07, 0.05), each = 4), resp_rate = 0.9,
     eligible_per_unit = rep(c(0.41, 0.27), each = 4)
   )
   targets <- data.frame(name = c("mcpr", "stunting"),
@@ -374,15 +388,15 @@ test_that("the cluster print counts eligible respondents", {
 
 test_that("without a correction the joint plan equals the folded rate", {
   z <- .elig_joint()
-  elig <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+  elig <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
                   fpc = "none")
-  folded <- n_alloc(z$frame, measures = .fold_rate(z$measures),
+  folded <- n_alloc_joint(z$frame, measures = .fold_rate(z$measures),
                     targets = z$targets, fpc = "none")
   expect_equal(elig$detail$n, folded$detail$n)
-  expect_identical(elig$detail$n_psu_int, folded$detail$n_psu_int)
+  expect_identical(elig$detail$n_1_int, folded$detail$n_1_int)
 
-  default <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
-  folded_default <- n_alloc(z$frame, measures = .fold_rate(z$measures),
+  default <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
+  folded_default <- n_alloc_joint(z$frame, measures = .fold_rate(z$measures),
                             targets = z$targets)
   expect_lt(sum(default$detail$n), sum(folded_default$detail$n))
   expect_equal(default$detail$n, folded_default$detail$n, tolerance = 0.01)
@@ -394,8 +408,8 @@ test_that("every variance term reads the eligible population", {
                    p = c(0.3, 0.2, 0.4), resp_rate = 0.8,
                    eligible_per_unit = c(0.5, 1.2, 0.9))
   tg <- data.frame(name = "y", cv = 0.05)
-  elig <- n_alloc(fr, measures = ms, targets = tg)
-  scaled <- n_alloc(
+  elig <- n_alloc_joint(fr, measures = ms, targets = tg)
+  scaled <- n_alloc_joint(
     transform(fr, N = N * ms$eligible_per_unit),
     measures = transform(ms, resp_rate = resp_rate * eligible_per_unit,
                          eligible_per_unit = NULL),
@@ -409,28 +423,52 @@ test_that("every variance term reads the eligible population", {
 test_that("a measures row beats the frame column, which beats the scalar", {
   z <- .elig_joint()
   no_col <- transform(z$measures, eligible_per_unit = NULL)
-  by_scalar <- n_alloc(z$frame, measures = no_col, targets = z$targets,
+  by_scalar <- n_alloc_joint(z$frame, measures = no_col, targets = z$targets,
                        eligible_per_unit = 0.41)
-  by_frame <- n_alloc(transform(z$frame, eligible_per_unit = 0.41),
-                      measures = no_col, targets = z$targets,
-                      eligible_per_unit = 2)
-  by_row <- n_alloc(transform(z$frame, eligible_per_unit = 2),
-                    measures = transform(no_col, eligible_per_unit = 0.41),
-                    targets = z$targets, eligible_per_unit = 3)
-  expect_equal(by_frame$detail$n, by_scalar$detail$n)
-  expect_equal(by_row$detail$n, by_scalar$detail$n)
+  by_frame <- n_alloc_joint(
+    transform(z$frame, eligible_per_unit = c(0.41, 0.41, 0.41, NA)),
+    measures = no_col, targets = z$targets, eligible_per_unit = 2
+  )
+  frame_spelled <- n_alloc_joint(
+    transform(z$frame, eligible_per_unit = c(0.41, 0.41, 0.41, 2)),
+    measures = no_col, targets = z$targets
+  )
+  expect_equal(by_frame$detail$n, frame_spelled$detail$n)
+  expect_false(isTRUE(all.equal(by_frame$detail$n, by_scalar$detail$n)))
+  by_row <- n_alloc_joint(
+    transform(z$frame, eligible_per_unit = 2),
+    measures = transform(no_col, eligible_per_unit = c(rep(0.41, 7), NA)),
+    targets = z$targets
+  )
+  row_spelled <- n_alloc_joint(
+    z$frame, measures = transform(no_col, eligible_per_unit = c(rep(0.41, 7), 2)),
+    targets = z$targets
+  )
+  expect_equal(by_row$detail$n, row_spelled$detail$n)
+  expect_error(
+    n_alloc_joint(transform(z$frame, eligible_per_unit = 0.41),
+                  measures = no_col, targets = z$targets,
+                  eligible_per_unit = 2),
+    "scalar argument would be ignored"
+  )
+  expect_error(
+    n_alloc_joint(z$frame,
+                  measures = transform(no_col, eligible_per_unit = 0.41),
+                  targets = z$targets, eligible_per_unit = 3),
+    "scalar argument would be ignored"
+  )
   expect_identical(by_scalar$params$eligible_per_unit, 0.41)
-  expect_null(n_alloc(z$frame, measures = no_col,
+  expect_null(n_alloc_joint(z$frame, measures = no_col,
                       targets = z$targets)$params$eligible_per_unit)
-  per_indicator <- n_alloc(z$frame, measures = z$measures,
+  per_indicator <- n_alloc_joint(z$frame, measures = z$measures,
                            targets = z$targets)
-  common <- n_alloc(z$frame, measures = no_col, targets = z$targets,
+  common <- n_alloc_joint(z$frame, measures = no_col, targets = z$targets,
                     eligible_per_unit = 0.27)
   expect_false(isTRUE(all.equal(per_indicator$detail$n, common$detail$n)))
-  expect_no_error(n_alloc(z$frame,
+  expect_no_error(n_alloc_joint(z$frame,
                           measures = transform(z$measures, eligible_per_unit = 3.2),
                           targets = z$targets))
-  expect_error(n_alloc(z$frame,
+  expect_error(n_alloc_joint(z$frame,
                        measures = transform(z$measures, eligible_per_unit = 0),
                        targets = z$targets),
                "'measures\\$eligible_per_unit' must contain positive finite")
@@ -438,44 +476,45 @@ test_that("a measures row beats the frame column, which beats the scalar", {
 
 test_that("joint round trips, predict() and the summary keep the rate", {
   z <- .elig_joint()
-  x <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
-  ev <- prec_alloc(x)
+  x <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
+  ev <- prec_alloc_joint(x)
   expect_equal(ev$detail$.achieved[ev$detail$.binding],
                ev$detail$.target[ev$detail$.binding])
-  expect_equal(n_alloc(ev)$detail$n, x$detail$n, tolerance = 1e-5)
+  expect_equal(n_alloc_joint(ev)$detail$n, x$detail$n, tolerance = 1e-5)
 
-  xs <- n_alloc(z$frame, measures = transform(z$measures, eligible_per_unit = NULL),
+  xs <- n_alloc_joint(z$frame, measures = transform(z$measures, eligible_per_unit = NULL),
                 targets = z$targets, eligible_per_unit = 0.41)
-  expect_identical(prec_alloc(xs)$params$eligible_per_unit, 0.41)
-  expect_equal(n_alloc(prec_alloc(xs))$detail$n, xs$detail$n,
+  expect_identical(prec_alloc_joint(xs)$params$eligible_per_unit, 0.41)
+  expect_equal(n_alloc_joint(prec_alloc_joint(xs))$detail$n, xs$detail$n,
                tolerance = 1e-5)
-  swept <- predict(xs, data.frame(n_per_psu = 20))
+  swept <- predict(xs, data.frame(take_2 = 20))
   expect_equal(swept$n, sum(xs$detail$n_int), tolerance = 0.02)
 
   summarized <- capture.output(summary(x))
   expect_true(any(grepl("Elig\\.", summarized)))
-  plain <- n_alloc(z$frame,
+  plain <- n_alloc_joint(z$frame,
                    measures = transform(z$measures, eligible_per_unit = NULL),
                    targets = z$targets)
   expect_false(any(grepl("Elig\\.", capture.output(summary(plain)))))
 })
 
-test_that("classic allocation and a register refuse the rate", {
-  classic <- data.frame(N = c(100, 200), sd = 1)
-  expect_error(n_alloc(classic, n = 50, eligible_per_unit = 0.4),
-               "applies to joint allocation")
-  expect_error(n_alloc(transform(classic, eligible_per_unit = 0.4), n = 50),
-               "applies to joint allocation")
-  expect_error(prec_alloc(classic, n = c(20, 30), eligible_per_unit = 0.4),
-               "applies to joint allocation")
-  expect_error(n_alloc(classic, n = 50,
-                       plan = svyplan(eligible_per_unit = 0.4)),
-               "applies to joint allocation")
+test_that("classic allocation supports eligible_per_unit and a register refuses it", {
+  classic <- data.frame(N = c(100, 200), sd = c(2, 3), mean = c(10, 12))
+  a_arg <- n_alloc(classic, n = 50, eligible_per_unit = 0.4)
+  a_col <- n_alloc(transform(classic, eligible_per_unit = 0.4), n = 50)
+  a_plan <- n_alloc(classic, n = 50, plan = svyplan(eligible_per_unit = 0.4))
+  expect_equal(a_arg$se, a_col$se)
+  expect_equal(a_arg$se, a_plan$se)
+  expect_equal(prec_alloc(a_arg)$se, a_arg$se)
+  expect_equal(
+    prec_alloc(classic, n = c(20, 30), eligible_per_unit = 0.4)$se,
+    prec_alloc(transform(classic, N = N * 0.4), n = c(20, 30), resp_rate = 0.4)$se
+  )
   z <- .elig_joint()
   reg <- data.frame(stratum = rep(z$frame$stratum, each = 2),
                     N = rep(z$frame$N / 2, each = 2))
   expect_error(
-    n_alloc(transform(z$frame, N_psu = NULL), measures = z$measures,
+    n_alloc_joint(transform(z$frame, N_1 = NULL), measures = z$measures,
             targets = z$targets, psu = reg),
     "not available with a PSU register"
   )
@@ -490,18 +529,18 @@ test_that("the substitution holds for moe targets and the staged correction", {
   scaled_fr <- transform(fr, N = N * ms$eligible_per_unit)
   folded <- transform(ms, resp_rate = resp_rate * eligible_per_unit,
                       eligible_per_unit = NULL)
-  elig <- n_alloc(fr, measures = ms, targets = tg)
-  scaled <- n_alloc(scaled_fr, measures = folded, targets = tg)
+  elig <- n_alloc_joint(fr, measures = ms, targets = tg)
+  scaled <- n_alloc_joint(scaled_fr, measures = folded, targets = tg)
   expect_equal(elig$detail$n, scaled$detail$n)
-  expect_equal(prec_alloc(elig)$detail$.se, prec_alloc(scaled)$detail$.se)
+  expect_equal(prec_alloc_joint(elig)$detail$.se, prec_alloc_joint(scaled)$detail$.se)
 
-  cl <- transform(fr, N_psu = c(100, 160, 60), n_per_psu = 12,
-                  cost_psu = 300, cost_ssu = 20)
+  cl <- transform(fr, N_1 = c(100, 160, 60), take_2 = 12,
+                  cost_1 = 300, cost_2 = 20)
   cms <- transform(ms, resp_rate = 0.9, eligible_per_unit = c(0.6, 1.1, 0.8),
-                   icc_psu = 0.06)
+                   icc_1 = 0.06)
   ctg <- data.frame(name = "y", cv = 0.06)
-  staged <- n_alloc(cl, measures = cms, targets = ctg, fpc = "stage")
-  staged_scaled <- n_alloc(
+  staged <- n_alloc_joint(cl, measures = cms, targets = ctg, fpc = "stage")
+  staged_scaled <- n_alloc_joint(
     transform(cl, N = N * cms$eligible_per_unit),
     measures = transform(cms, resp_rate = resp_rate * eligible_per_unit,
                          eligible_per_unit = NULL),
@@ -514,12 +553,12 @@ test_that("a direct joint assessment takes the scalar rate", {
   z <- .elig_joint()
   no_col <- transform(z$measures, eligible_per_unit = NULL)
   n_h <- c(700, 1000, 740, 1160)
-  scalar <- prec_alloc(z$frame, n = n_h, measures = no_col,
+  scalar <- prec_alloc_joint(z$frame, n = n_h, measures = no_col,
                        targets = z$targets, eligible_per_unit = 0.41)
-  column <- prec_alloc(z$frame, n = n_h,
+  column <- prec_alloc_joint(z$frame, n = n_h,
                        measures = transform(no_col, eligible_per_unit = 0.41),
                        targets = z$targets)
-  none <- prec_alloc(z$frame, n = n_h, measures = no_col,
+  none <- prec_alloc_joint(z$frame, n = n_h, measures = no_col,
                      targets = z$targets)
   expect_equal(scalar$detail$.achieved, column$detail$.achieved)
   expect_false(isTRUE(all.equal(scalar$detail$.achieved,
@@ -529,17 +568,17 @@ test_that("a direct joint assessment takes the scalar rate", {
 
 test_that("the substitution holds through three stages", {
   fr <- data.frame(
-    stratum = c("a", "b"), N = c(60000, 90000), N_psu = c(60, 90),
-    N_ssu = c(6000, 9000), n_per_psu = 4, n_per_ssu = 3,
-    cost_psu = 500, cost_ssu = 60, cost_tsu = 15
+    stratum = c("a", "b"), N = c(60000, 90000), N_1 = c(60, 90),
+    N_2 = c(6000, 9000), take_2 = 4, take_3 = 3,
+    cost_1 = 500, cost_2 = 60, cost_3 = 15
   )
   ms <- data.frame(stratum = fr$stratum, name = "y", p = c(0.3, 0.25),
-                   icc_psu = 0.05, icc_ssu = 0.2, resp_rate = 0.85,
+                   icc_1 = 0.05, icc_2 = 0.2, resp_rate = 0.85,
                    eligible_per_unit = c(0.7, 1.15))
   tg <- data.frame(name = "y", cv = 0.08)
   for (fpc in c("unit", "stage")) {
-    elig <- n_alloc(fr, measures = ms, targets = tg, fpc = fpc)
-    scaled <- n_alloc(
+    elig <- n_alloc_joint(fr, measures = ms, targets = tg, fpc = fpc)
+    scaled <- n_alloc_joint(
       transform(fr, N = N * ms$eligible_per_unit),
       measures = transform(ms, resp_rate = resp_rate * eligible_per_unit,
                            eligible_per_unit = NULL),
@@ -567,7 +606,7 @@ test_that("an eligible population of one unit or less is refused", {
   expect_true(is.finite(n_prop(0.3, cv = 0.1, eligible_per_unit = 0.01)$n))
   fr <- data.frame(stratum = c("A", "B"), N = c(10, 2000))
   expect_error(
-    n_alloc(fr, measures = data.frame(stratum = fr$stratum, name = "y",
+    n_alloc_joint(fr, measures = data.frame(stratum = fr$stratum, name = "y",
                                       p = c(0.3, 0.5)),
             targets = data.frame(name = "y", cv = 0.05), eligible_per_unit = 0.05),
     "'N * eligible_per_unit', the eligible population", fixed = TRUE
@@ -578,9 +617,9 @@ test_that("the default frontier starts at the eligible floor", {
   fr <- data.frame(stratum = "A", N = 100000)
   ms <- data.frame(stratum = "A", name = "y", p = 0.3)
   tg <- data.frame(name = "y", cv = 0.05)
-  floor_cost <- n_alloc(fr, measures = ms, targets = tg,
+  floor_cost <- n_alloc_joint(fr, measures = ms, targets = tg,
                         eligible_per_unit = 0.1)$operational$cost
-  fit <- n_alloc(fr, measures = ms, targets = tg, objective = "y",
+  fit <- n_alloc_joint(fr, measures = ms, targets = tg, objective = "y",
                  budget = 15000, eligible_per_unit = 0.1)
   grid <- svyplan:::.budget_grid(fit, 5)
   expect_equal(grid[1], floor_cost)
@@ -663,4 +702,39 @@ test_that("a count below 1 scales the population as eligibility does", {
     prec_mean(var = 4, n = 900, N = 3000, eligible_per_unit = 0.5)$se,
     prec_mean(var = 4, n = 900, N = 3000, eligibility_rate = 0.5)$se
   )
+})
+
+## The repeated-survey and ratio functions check the eligible population
+
+test_that("repeated-survey and ratio functions refuse one eligible unit or less", {
+  msg <- "'N * eligibility_rate', the eligible population, must be greater than 1"
+  expect_error(prec_pooled(p = 0.3, n = 5, occasions = 4, N = 10,
+                           eligibility_rate = 0.1), msg, fixed = TRUE)
+  expect_error(prec_pooled(var = 1, n = 5, occasions = 4, N = 10,
+                           eligibility_rate = 0.1), msg, fixed = TRUE)
+  expect_error(n_pooled(p = 0.3, moe = 0.1, occasions = 4, N = 10,
+                        eligibility_rate = 0.05), msg, fixed = TRUE)
+  expect_error(prec_change(p = c(0.3, 0.4), n = 5, N = 10,
+                           eligibility_rate = 0.05), msg, fixed = TRUE)
+  expect_error(prec_change(p = c(0.3, 0.4), n = 5, N = c(100, 5),
+                           eligibility_rate = 0.2), msg, fixed = TRUE)
+  expect_error(n_change(p = c(0.3, 0.4), moe = 0.1, N = c(100, 4),
+                        eligibility_rate = 0.25), msg, fixed = TRUE)
+  ratio <- list(r = 1, cv_num = 0.5, cv_den = 0.4, component_cor = 0.5)
+  expect_error(do.call(n_ratio, c(ratio, cv = 0.1, N = 2,
+                                  eligibility_rate = 0.2)), msg, fixed = TRUE)
+  expect_error(do.call(prec_ratio, c(ratio, n = 1, N = 2,
+                                     eligibility_rate = 0.2)), msg, fixed = TRUE)
+  expect_true(is.finite(n_change(p = c(0.3, 0.4), moe = 0.1,
+                                 N = c(100, 200), eligibility_rate = 0.5)$n))
+  expect_true(is.finite(n_pooled(p = 0.3, moe = 0.05, occasions = 3, N = 1e4,
+                                 eligibility_rate = 0.5)$n))
+  expect_error(prec_mean(var = 1, n = 5, N = 10, eligibility_rate = 0.1),
+               "the eligible population, must be greater than 1")
+})
+
+test_that("an unattainable size names the eligible units per unit", {
+  expect_error(n_prop(p = 0.3, moe = 0.001, N = 100, eligible_per_unit = 2,
+                      resp_rate = 0.4),
+               "about 80 respondents at resp_rate = 0.4 with eligible_per_unit = 2")
 })

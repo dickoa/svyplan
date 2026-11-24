@@ -69,7 +69,7 @@ test_that("plot.svyplan_power errors for vector n", {
 
 test_that("plot.svyplan_n draws the budget frontier", {
   z <- .bethel_fixture()
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
                  objective = "income", budget = 700)
   pdf(tempfile())
   on.exit(dev.off())
@@ -79,7 +79,7 @@ test_that("plot.svyplan_n draws the budget frontier", {
 
 test_that("the default frontier grid contains no infeasible budgets", {
   z <- .bethel_fixture()
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
                  objective = "income", budget = 700)
   grid <- .budget_grid(fit, 8L)
   expect_length(grid, 8L)
@@ -95,13 +95,13 @@ test_that("plot.svyplan_n rejects results with no frontier", {
                "fixed-budget joint allocations")
 
   z <- .bethel_fixture()
-  min_cost <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+  min_cost <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
   expect_error(plot(min_cost), "fixed-budget joint allocations")
 })
 
 test_that("plot.svyplan_n accepts an explicit budget grid", {
   z <- .bethel_fixture()
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
                  objective = "income", budget = 700)
   pdf(tempfile())
   on.exit(dev.off())
@@ -518,10 +518,10 @@ test_that("a budget grid starts at the cheapest whole design in scope", {
                         domain = c(".overall", "region"),
                         level = c(NA, "North"), cv = c(0.06, NA),
                         moe = c(NA, 3))
-  fit <- n_alloc(frame, measures = measures, targets = targets,
+  fit <- n_alloc_joint(frame, measures = measures, targets = targets,
                  objective = "income", budget = 1000,
                  eligibility_rate = 0.7)
-  floor_fit <- n_alloc(frame, measures = measures, targets = targets,
+  floor_fit <- n_alloc_joint(frame, measures = measures, targets = targets,
                        eligibility_rate = 0.7)
   expect_equal(svyplan:::.budget_grid(fit, 5)[1L],
                floor_fit$operational$cost)
@@ -536,4 +536,14 @@ test_that("the chart and the cell table take the schedule's argument names", {
   pdf(tempfile())
   on.exit(dev.off())
   expect_error(plot(rot, n_period = 8), "n_period")
+})
+
+## The grid size of a plotted curve
+
+test_that("plot() refuses a grid size that is not a finite number >= 2", {
+  pw <- power_prop(p1 = 0.3, p2 = 0.4, power = 0.8)
+  pdf(NULL)
+  on.exit(dev.off())
+  expect_error(plot(pw, npoints = "a"), "'npoints' must be a single finite number")
+  expect_error(plot(pw, npoints = Inf), "'npoints' must be a single finite number")
 })

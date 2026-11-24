@@ -14,11 +14,11 @@ budget_register <- function(seed) {
   frame <- data.frame(
     stratum = LETTERS[seq_len(H)],
     N = as.numeric(tapply(psu$N, psu$stratum, sum)),
-    n_per_psu = take
+    take_2 = take
   )
   if (seed %% 2 == 0) {
-    frame$cost_psu <- 50
-    frame$cost_ssu <- 5
+    frame$cost_1 <- 50
+    frame$cost_2 <- 5
   }
   list(
     frame = frame, psu = psu,
@@ -28,7 +28,7 @@ budget_register <- function(seed) {
       p = c(stats::runif(H, 0.1, 0.6), rep(NA, H)),
       mean = c(rep(NA, H), stats::runif(H, 50, 100)),
       sd = c(rep(NA, H), stats::runif(H, 20, 60)),
-      icc_psu = stats::runif(2 * H, 0.02, 0.2)
+      icc_1 = stats::runif(2 * H, 0.02, 0.2)
     ),
     targets = data.frame(name = c("y", "x"), cv = c(0.12, 0.1)),
     objective = data.frame(name = c("y", "x"), priority = c(1, 3)),
@@ -37,7 +37,7 @@ budget_register <- function(seed) {
 }
 
 budget_fit <- function(z, budget, hard) {
-  n_alloc(z$frame, measures = z$measures, targets = if (hard) z$targets,
+  n_alloc_joint(z$frame, measures = z$measures, targets = if (hard) z$targets,
           objective = z$objective, budget = budget, psu = z$psu,
           n_psu_per_zone = if (z$zone > 0) z$zone)
 }
@@ -93,7 +93,7 @@ test_that("a budget plan is the best plan of the whole menus", .quiet_single_dra
       expect_lte(op$cost, case$budget * (1 + 1e-9), label = label)
       expect_equal(op$budget_residual, case$budget - op$cost)
       expect_true(all(op$constraints$.pass), label = label)
-      expect_equal(prec_alloc(fit)$objective_value, op$objective_value,
+      expect_equal(prec_alloc_joint(fit)$objective_value, op$objective_value,
                    tolerance = 1e-12)
     }
   }
@@ -124,20 +124,20 @@ test_that("a budget below the cheapest plan is refused with its cost", {
 test_that("the cheapest plan can hold a PSU below the threshold", .quiet_single_draw({
   # With 12 units a stratum, holding the large PSU for 2 and drawing one
   # costs 2 visits and 12 units (100), drawing two costs 2 and 20 (140).
-  frame <- data.frame(stratum = c("A", "B"), N = c(1360, 64), n_per_psu = 10,
-                      cost_psu = 20, cost_ssu = 5)
+  frame <- data.frame(stratum = c("A", "B"), N = c(1360, 64), take_2 = 10,
+                      cost_1 = 20, cost_2 = 5)
   psu <- data.frame(stratum = rep(c("A", "B"), each = 4),
                     N = c(1330, 10, 10, 10, 14, 17, 23, 10))
   measures <- data.frame(stratum = c("A", "B"), name = "y", p = 0.3,
-                         icc_psu = 0.1)
-  fit <- n_alloc(frame, measures = measures, objective = "y", budget = 200,
+                         icc_1 = 0.1)
+  fit <- n_alloc_joint(frame, measures = measures, objective = "y", budget = 200,
                  psu = psu, min_n_stratum = 12)
   expect_equal(fit$operational$cost, 200)
   expect_equal(fit$detail$n_int, c(12, 12))
   expect_identical(fit$psu$.certainty_source[fit$psu$certainty],
                    c("planned", "planned"))
   expect_error(
-    n_alloc(frame, measures = measures, objective = "y", budget = 199,
+    n_alloc_joint(frame, measures = measures, objective = "y", budget = 199,
             psu = psu, min_n_stratum = 12),
     "'budget' is below the cheapest field design, which costs 200",
     fixed = TRUE
@@ -147,11 +147,11 @@ test_that("the cheapest plan can hold a PSU below the threshold", .quiet_single_
 test_that("a register budget fit reports the field design it plans", {
   z <- .psu_fixture()
   fr <- z$frame
-  fr$cost_psu <- 400
-  fr$cost_ssu <- 20
+  fr$cost_1 <- 400
+  fr$cost_2 <- 20
   objective <- data.frame(name = c("literacy", "income"), priority = c(1, 2))
   budget <- 40000
-  fit <- n_alloc(fr, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(fr, measures = z$measures, targets = z$targets,
                  objective = objective, budget = budget, psu = z$psu)
   op <- fit$operational
   expect_identical(fit$params$mode, "budget_objective")
@@ -173,21 +173,21 @@ test_that("a register budget fit reports the field design it plans", {
       fit$detail$n_int * 20
   ))
 
-  pa <- prec_alloc(fit)
+  pa <- prec_alloc_joint(fit)
   expect_equal(pa$objective_value, op$objective_value, tolerance = 1e-12)
   expect_equal(pa$params$budget_residual, op$budget_residual)
   expect_equal(pa$psu, fit$psu)
-  again <- n_alloc(pa)
+  again <- n_alloc_joint(pa)
   expect_equal(again$operational$objective_value, op$objective_value,
                tolerance = 1e-12)
   expect_lte(again$operational$cost, budget)
 
   # The same budget buys no worse a design without the hard targets, and
   # the closure family at unit cost is planned the same way.
-  free <- n_alloc(fr, measures = z$measures, objective = objective,
+  free <- n_alloc_joint(fr, measures = z$measures, objective = objective,
                   budget = budget, psu = z$psu)
   expect_lte(free$operational$objective_value, op$objective_value)
-  unit <- n_alloc(z$frame, measures = z$measures, objective = objective,
+  unit <- n_alloc_joint(z$frame, measures = z$measures, objective = objective,
                   budget = 900, psu = z$psu)
   expect_identical(unit$optimization$search$family, "closure")
   expect_lte(unit$operational$cost, 900)
@@ -198,13 +198,13 @@ test_that("the relaxation is solved at a larger budget when the targets need it"
   # under the same certainty prices visits by size share and needs more.
   z <- .psu_fixture()
   fr <- z$frame
-  fr$cost_psu <- 400
-  fr$cost_ssu <- 20
+  fr$cost_1 <- 400
+  fr$cost_2 <- 20
   objective <- data.frame(name = c("literacy", "income"), priority = c(1, 2))
-  target <- n_alloc(fr, measures = z$measures, targets = z$targets,
+  target <- n_alloc_joint(fr, measures = z$measures, targets = z$targets,
                     psu = z$psu)
   budget <- target$operational$cost
-  fit <- n_alloc(fr, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(fr, measures = z$measures, targets = z$targets,
                  objective = objective, budget = budget, psu = z$psu)
   expect_equal(fit$operational$cost, budget)
   expect_equal(fit$operational$budget_residual, 0)
@@ -217,11 +217,11 @@ test_that("the relaxation is solved at a larger budget when the targets need it"
 test_that("a register assessment prices certainty visits in its residual", {
   z <- .psu_fixture()
   fr <- z$frame
-  fr$cost_psu <- 400
-  fr$cost_ssu <- 20
+  fr$cost_1 <- 400
+  fr$cost_2 <- 20
   objective <- data.frame(name = "literacy", priority = 1)
-  fit <- n_alloc(fr, measures = z$measures, targets = z$targets, psu = z$psu)
-  pa <- prec_alloc(fr, n = fit$detail$n, measures = z$measures,
+  fit <- n_alloc_joint(fr, measures = z$measures, targets = z$targets, psu = z$psu)
+  pa <- prec_alloc_joint(fr, n = fit$detail$n, measures = z$measures,
                    targets = z$targets, objective = objective,
                    budget = 40000, psu = z$psu)
   expect_gt(sum(pa$params$certainty$n_psu_certain), 0)
@@ -233,12 +233,12 @@ test_that("a register assessment prices certainty visits in its residual", {
 test_that("a register grid reports each row's search status", {
   z <- .psu_fixture()
   fr <- z$frame
-  fr$cost_psu <- 400
-  fr$cost_ssu <- 20
-  fit <- n_alloc(fr, measures = z$measures, targets = z$targets, psu = z$psu)
+  fr$cost_1 <- 400
+  fr$cost_2 <- 20
+  fit <- n_alloc_joint(fr, measures = z$measures, targets = z$targets, psu = z$psu)
   expect_warning(
-    g <- predict(fit, data.frame(n_per_psu = c(8, 12, 400))),
-    "n_per_psu = 400 is infeasible"
+    g <- predict(fit, data.frame(take_2 = c(8, 12, 400))),
+    "take_2 = 400 is infeasible"
   )
   expect_identical(g$.status, c("optimal", "optimal", "infeasible"))
   expect_identical(g$.feasible, c(TRUE, TRUE, FALSE))
@@ -248,10 +248,10 @@ test_that("a register grid reports each row's search status", {
 test_that("a register budget grid reports the field design", {
   z <- .psu_fixture()
   fr <- z$frame
-  fr$cost_psu <- 400
-  fr$cost_ssu <- 20
+  fr$cost_1 <- 400
+  fr$cost_2 <- 20
   objective <- data.frame(name = c("literacy", "income"), priority = c(1, 2))
-  fit <- n_alloc(fr, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(fr, measures = z$measures, targets = z$targets,
                  objective = objective, budget = 40000, psu = z$psu)
   expect_warning(
     g <- predict(fit, data.frame(budget = c(30000, 40000))),
@@ -270,11 +270,11 @@ test_that("a node limit without a plan is unknown, not infeasible", {
   # so a budget of 34,800 is neither met nor ruled out.
   z <- .psu_fixture(3)
   fr <- z$frame
-  fr$cost_psu <- 400
-  fr$cost_ssu <- 20
+  fr$cost_1 <- 400
+  fr$cost_2 <- 20
   ev <- .psu_setup(fr, .check_psu_table(z$psu, fr, z$measures), z$measures,
                    z$targets, objective = "literacy")
-  fit <- n_alloc(fr, measures = z$measures, targets = z$targets, psu = z$psu)
+  fit <- n_alloc_joint(fr, measures = z$measures, targets = z$targets, psu = z$psu)
   e <- tryCatch(.psu_plan(ev, fit$detail$n / fr$N, 1, budget = 34800),
                 error = function(e) e)
   expect_s3_class(e, "svyplan_plan_unknown")
@@ -324,17 +324,17 @@ test_that("a budget grid row never reports a worse plan than a lower budget", {
 test_that("predict() reuses a lower budget's plan in a register grid", {
   z <- .psu_fixture()
   fr <- z$frame
-  fr$cost_psu <- 400
-  fr$cost_ssu <- 20
+  fr$cost_1 <- 400
+  fr$cost_2 <- 20
   objective <- data.frame(name = c("literacy", "income"), priority = c(1, 2))
-  fit <- n_alloc(fr, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(fr, measures = z$measures, targets = z$targets,
                  objective = objective, budget = 40000, psu = z$psu)
   # Stand-ins for a search stopped at the node limit, one on a worse plan
   # and one with none.
   worse <- fit
   worse$operational$status <- "limit"
   worse$operational$objective_value <- 2 * fit$operational$objective_value
-  local_mocked_bindings(n_alloc.default = function(..., budget) {
+  local_mocked_bindings(n_alloc_joint.default = function(..., budget) {
     if (budget == 40000) return(fit)
     if (budget == 50000) return(worse)
     stop(structure(list(message = "no plan", call = NULL),
@@ -358,10 +358,10 @@ test_that("predict() reuses a lower budget's plan in a register grid", {
 test_that("a register fit prints its continuous solve as a relaxation", {
   z <- .psu_fixture()
   fr <- z$frame
-  fr$cost_psu <- 400
-  fr$cost_ssu <- 20
+  fr$cost_1 <- 400
+  fr$cost_2 <- 20
   objective <- data.frame(name = c("literacy", "income"), priority = c(1, 2))
-  fit <- n_alloc(fr, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(fr, measures = z$measures, targets = z$targets,
                  objective = objective, budget = 33760, psu = z$psu)
   out <- utils::capture.output(print(fit))
   expect_true(any(grepl(
@@ -376,12 +376,12 @@ test_that("a register fit prints its continuous solve as a relaxation", {
 test_that("a register frontier draws the field designs from the register floor", {
   z <- .psu_fixture()
   fr <- z$frame
-  fr$cost_psu <- 400
-  fr$cost_ssu <- 20
+  fr$cost_1 <- 400
+  fr$cost_2 <- 20
   objective <- data.frame(name = c("literacy", "income"), priority = c(1, 2))
-  fit <- n_alloc(fr, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(fr, measures = z$measures, targets = z$targets,
                  objective = objective, budget = 40000, psu = z$psu)
-  target <- n_alloc(fr, measures = z$measures, targets = z$targets,
+  target <- n_alloc_joint(fr, measures = z$measures, targets = z$targets,
                     psu = z$psu)
   grid <- .budget_grid(fit, 3)
   expect_equal(grid, seq(target$operational$cost, 80000, length.out = 3))
@@ -398,49 +398,49 @@ test_that("a register frontier draws the field designs from the register floor",
 
 test_that("an assessment override keeps a register fit's field design", {
   z <- .psu_fixture(4)
-  fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets,
+  fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets,
                  psu = z$psu)
-  a <- prec_alloc(fit)
-  same <- prec_alloc(fit, alpha = fit$params$alpha)
+  a <- prec_alloc_joint(fit)
+  same <- prec_alloc_joint(fit, alpha = fit$params$alpha)
   expect_equal(same$params$achieved$n, a$params$achieved$n)
   expect_equal(same$detail$.se, a$detail$.se)
-  wide <- prec_alloc(fit, alpha = 0.1)
+  wide <- prec_alloc_joint(fit, alpha = 0.1)
   expect_equal(wide$detail$.se, a$detail$.se)
   expect_equal(wide$detail$.moe, qnorm(0.95) * a$detail$.se)
   expect_identical(wide$psu, fit$psu)
-  heavier <- prec_alloc(fit, deff = 1.5)
+  heavier <- prec_alloc_joint(fit, deff = 1.5)
   expect_equal(heavier$params$achieved$n, a$params$achieved$n)
   expect_equal(heavier$detail$.se, sqrt(1.5) * a$detail$.se)
-  expect_equal(prec_alloc(fit, unit_cost = 2)$params$achieved$cost,
+  expect_equal(prec_alloc_joint(fit, unit_cost = 2)$params$achieved$cost,
                2 * fit$operational$cost)
   # A new allocation is a new design, built from the totals.
   # An override is checked as a supplied allocation would be.
   m <- z$measures
-  m$var_ratio_psu <- 2
-  expect_error(prec_alloc(fit, measures = m),
-               "'var_ratio_psu' is not available with a PSU register")
+  m$var_ratio_1 <- 2
+  expect_error(prec_alloc_joint(fit, measures = m),
+               "'var_ratio_1' is not available with a PSU register")
   m <- z$measures
-  m$resp_rate_psu <- 0.9
-  expect_error(prec_alloc(fit, measures = m), "'resp_rate_psu' and")
+  m$resp_rate_1 <- 0.9
+  expect_error(prec_alloc_joint(fit, measures = m), "resp_rate_1")
   m <- z$measures
   m$eligible_per_unit <- 0.5
-  for (call in list(quote(prec_alloc(fit, measures = m)),
-                    quote(prec_alloc(fit, n = fit$detail$n, measures = m)))) {
+  for (call in list(quote(prec_alloc_joint(fit, measures = m)),
+                    quote(prec_alloc_joint(fit, n = fit$detail$n, measures = m)))) {
     expect_error(eval(call),
                  "'eligible_per_unit' is not available with a PSU register")
   }
-  expect_error(prec_alloc(fit, eligible_per_unit = 0.5), "unused argument")
+  expect_error(prec_alloc_joint(fit, eligible_per_unit = 0.5), "unused argument")
   fr <- z$frame
-  fr$cost_psu <- 100
-  fr$cost_ssu <- 10
-  staged <- n_alloc(fr, measures = z$measures, targets = z$targets,
+  fr$cost_1 <- 100
+  fr$cost_2 <- 10
+  staged <- n_alloc_joint(fr, measures = z$measures, targets = z$targets,
                     psu = z$psu)
-  expect_error(prec_alloc(staged, unit_cost = 2),
+  expect_error(prec_alloc_joint(staged, unit_cost = 2),
                "uses stage costs; do not supply 'unit_cost'")
-  rebuilt <- prec_alloc(fit, n = fit$detail$n)
+  rebuilt <- prec_alloc_joint(fit, n = fit$detail$n)
   expect_false(isTRUE(all.equal(rebuilt$params$achieved$n,
                                 a$params$achieved$n)))
-  expect_error(prec_alloc(fit, nonsense = 1), "unused argument")
+  expect_error(prec_alloc_joint(fit, nonsense = 1), "unused argument")
 })
 
 test_that("the cost grain never claims a step the costs do not have", {
@@ -463,11 +463,11 @@ test_that("the cost grain never claims a step the costs do not have", {
                     N = c(10.25, 12.5, 17.75, 9.5, 11, 14.25, 8.5))
   frame <- data.frame(stratum = c("A", "B"),
                       N = as.numeric(tapply(psu$N, psu$stratum, sum)[c("A", "B")]),
-                      n_per_psu = 4, cost_psu = 10, cost_ssu = 1)
+                      take_2 = 4, cost_1 = 10, cost_2 = 1)
   measures <- data.frame(stratum = c("A", "B"), name = "y", p = c(0.3, 0.4),
-                         icc_psu = 0.1)
+                         icc_1 = 0.1)
   targets <- data.frame(name = "y", cv = 0.15)
-  fit <- n_alloc(frame, measures = measures, targets = targets, psu = psu)
+  fit <- n_alloc_joint(frame, measures = measures, targets = targets, psu = psu)
   ev <- .psu_setup(frame, .check_psu_table(psu, frame, measures), measures,
                    targets)
   menu <- .psu_menu_round(.psu_menu_new(ev), ev, list(price = 1, mu = 0),

@@ -45,9 +45,9 @@ test_that("power and design-effect functions reject unused arguments", {
               effect = 0.1, powr = 0.9),
     "unused argument.*powr"
   )
-  expect_error(design_effect(icc = 0.05, n_per_psu = 5, methd = "kish"),
+  expect_error(design_effect(icc = 0.05, take = 5, methd = "kish"),
                "unused argument.*methd")
-  expect_error(effective_n(n = 100, icc = 0.05, n_per_psu = 5,
+  expect_error(effective_n(n = 100, icc = 0.05, take = 5,
                            methd = "kish"),
                "unused argument.*methd")
 })
@@ -84,8 +84,8 @@ test_that("round-trip overrides remain supported and validated", {
   expect_s3_class(prec_prop(n_result, alpha = 0.1), "svyplan_prec")
   expect_error(prec_prop(n_result, alpa = 0.1), "unused argument.*alpa")
 
-  targets <- data.frame(p = 0.3, cv = 0.1, icc_psu = 0.05)
-  cluster_result <- n_cluster(indicators = targets, stage_cost = c(500, 50))
+  targets <- data.frame(p = 0.3, cv = 0.1, icc_1 = 0.05)
+  cluster_result <- n_cluster(targets, stage_cost = c(500, 50))
   expect_error(prec_cluster(cluster_result, alpa = 0.1),
                "unused argument.*alpa")
 })

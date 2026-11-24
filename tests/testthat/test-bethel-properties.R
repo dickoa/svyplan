@@ -2,8 +2,8 @@ test_that("generalized allocation is invariant to table permutations", {
   for (stages in 1:3) {
     z <- if (stages == 1L) .bethel_fixture() else
       .bethel_multistage_fixture(stages)
-    fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
-    permuted <- n_alloc(
+    fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
+    permuted <- n_alloc_joint(
       z$frame[nrow(z$frame):1, , drop = FALSE],
       measures = z$measures[nrow(z$measures):1, , drop = FALSE],
       targets = z$targets[nrow(z$targets):1, , drop = FALSE]
@@ -23,17 +23,17 @@ test_that("rescaling every field cost preserves the continuous allocation", {
   for (stages in 1:3) {
     z <- if (stages == 1L) .bethel_fixture() else
       .bethel_multistage_fixture(stages)
-    fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+    fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
     scaled_frame <- z$frame
     if (stages == 1L) {
       scaled_frame$unit_cost <- scaled_frame$unit_cost * scale
     } else {
-      cost_names <- c("cost_psu", "cost_ssu", "cost_tsu")
+      cost_names <- c("cost_1", "cost_2", "cost_3")
       for (nm in intersect(cost_names, names(scaled_frame))) {
         scaled_frame[[nm]] <- scaled_frame[[nm]] * scale
       }
     }
-    scaled <- n_alloc(
+    scaled <- n_alloc_joint(
       scaled_frame, measures = z$measures, targets = z$targets
     )
 
@@ -50,7 +50,7 @@ test_that("tightening all targets cannot reduce minimum continuous cost", {
   for (stages in 1:3) {
     z <- if (stages == 1L) .bethel_fixture() else
       .bethel_multistage_fixture(stages)
-    loose <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
+    loose <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
     tight_targets <- z$targets
     if ("cv" %in% names(tight_targets)) {
       tight_targets$cv <- tight_targets$cv * 0.9
@@ -58,7 +58,7 @@ test_that("tightening all targets cannot reduce minimum continuous cost", {
     if ("moe" %in% names(tight_targets)) {
       tight_targets$moe <- tight_targets$moe * 0.9
     }
-    tight <- n_alloc(
+    tight <- n_alloc_joint(
       z$frame, measures = z$measures, targets = tight_targets
     )
     expect_gte(
@@ -81,8 +81,8 @@ test_that("joint result schemas are stable across one to three stages", {
   for (stages in 1:3) {
     z <- if (stages == 1L) .bethel_fixture() else
       .bethel_multistage_fixture(stages)
-    fit <- n_alloc(z$frame, measures = z$measures, targets = z$targets)
-    assessed <- prec_alloc(fit)
+    fit <- n_alloc_joint(z$frame, measures = z$measures, targets = z$targets)
+    assessed <- prec_alloc_joint(fit)
 
     expect_identical(names(fit$constraints), constraint_names)
     expect_identical(names(fit$operational), c(

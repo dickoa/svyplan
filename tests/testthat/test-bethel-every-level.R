@@ -31,8 +31,8 @@
 
 test_that("targets without a level column expand to the hand-built table", {
   z <- .every_level_fixture()
-  every <- n_alloc(z$frame, measures = z$measures, targets = z$every)
-  full <- n_alloc(z$frame, measures = z$measures, targets = z$full)
+  every <- n_alloc_joint(z$frame, measures = z$measures, targets = z$every)
+  full <- n_alloc_joint(z$frame, measures = z$measures, targets = z$full)
 
   expect_identical(every$constraints$constraint, full$constraints$constraint)
   expect_identical(every$detail$n_int, full$detail$n_int)
@@ -45,23 +45,23 @@ test_that("targets without a level column expand to the hand-built table", {
 
 test_that("an every-level fit round-trips as the hand-built one does", {
   z <- .every_level_fixture()
-  every <- n_alloc(z$frame, measures = z$measures, targets = z$every)
-  full <- n_alloc(z$frame, measures = z$measures, targets = z$full)
+  every <- n_alloc_joint(z$frame, measures = z$measures, targets = z$every)
+  full <- n_alloc_joint(z$frame, measures = z$measures, targets = z$full)
 
-  expect_identical(prec_alloc(every)$constraints$.achieved,
-                   prec_alloc(full)$constraints$.achieved)
-  expect_identical(n_alloc(prec_alloc(every))$detail$n,
-                   n_alloc(prec_alloc(full))$detail$n)
+  expect_identical(prec_alloc_joint(every)$constraints$.achieved,
+                   prec_alloc_joint(full)$constraints$.achieved)
+  expect_identical(n_alloc_joint(prec_alloc_joint(every))$detail$n,
+                   n_alloc_joint(prec_alloc_joint(full))$detail$n)
 })
 
 test_that("an objective without a level column expands the same way", {
   z <- .every_level_fixture()
-  short <- n_alloc(
+  short <- n_alloc_joint(
     z$frame, measures = z$measures, targets = z$every[1, ],
     objective = data.frame(name = "stunting", domain = "region"),
     budget = 4000
   )
-  long <- n_alloc(
+  long <- n_alloc_joint(
     z$frame, measures = z$measures, targets = z$every[1, ],
     objective = data.frame(name = "stunting", domain = "region",
                            level = c("North", "South", "East")),
@@ -80,11 +80,11 @@ test_that("a level column with a missing level on a domain row is refused", {
                level = "North")
   )
   expect_error(
-    n_alloc(z$frame, measures = z$measures, targets = mixed),
+    n_alloc_joint(z$frame, measures = z$measures, targets = mixed),
     "missing for domain .region.*Leave out the 'level' column.*cannot mix"
   )
   expect_error(
-    n_alloc(
+    n_alloc_joint(
       z$frame, measures = z$measures, targets = z$every[1, ],
       objective = data.frame(name = "stunting", domain = "region",
                              level = NA_character_),
@@ -99,11 +99,11 @@ test_that("an expanded row cannot carry a single identifier", {
   labelled <- z$every
   labelled$constraint <- paste0("c", 1:4)
   expect_error(
-    n_alloc(z$frame, measures = z$measures, targets = labelled),
+    n_alloc_joint(z$frame, measures = z$measures, targets = labelled),
     "'targets\\$constraint' labels one row"
   )
   expect_error(
-    n_alloc(z$frame, measures = z$measures,
+    n_alloc_joint(z$frame, measures = z$measures,
             targets = data.frame(name = "mcpr", level = "North", cv = 0.1)),
     "'targets\\$level' requires a 'domain' column"
   )
@@ -113,13 +113,13 @@ test_that("an every-level row checks its domain column in the frame", {
   z <- .every_level_fixture()
   absent <- data.frame(name = "mcpr", domain = "district", cv = 0.1)
   expect_error(
-    n_alloc(z$frame, measures = z$measures, targets = absent),
+    n_alloc_joint(z$frame, measures = z$measures, targets = absent),
     "domain column 'district' not found in frame"
   )
   holed <- z$frame
   holed$region[2] <- NA
   expect_error(
-    n_alloc(holed, measures = z$measures, targets = z$every),
+    n_alloc_joint(holed, measures = z$measures, targets = z$every),
     "domain column 'region' must not contain missing values"
   )
 })
@@ -127,7 +127,7 @@ test_that("an every-level row checks its domain column in the frame", {
 test_that("every-level targets read no absent column", {
   z <- .every_level_fixture()
   expect_no_warning(
-    n_alloc(.strict_df(z$frame), measures = .strict_df(z$measures),
+    n_alloc_joint(.strict_df(z$frame), measures = .strict_df(z$measures),
             targets = .strict_df(z$every))
   )
 })

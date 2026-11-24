@@ -318,11 +318,14 @@ prec_change.default <- function(
   df = NULL,
   plan = NULL
 ) {
+  .refuse_alloc_object(var, "prec_change", "change")
   .plan <- .merge_plan_args(plan, prec_change.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_change.default, c(.plan, list(...))))
   .check_unused_dots(...)
   check_resp_rate(eligibility_rate, "eligibility_rate")
   N_frame <- .check_power_N(N)
+  check_eligible_population(N_frame, 1, eligibility_rate,
+                            label = "N * eligibility_rate")
   N_pair <- N_frame * eligibility_rate
   inputs <- .change_inputs(var, sd, p, change, N_pair, r, cv_num, cv_den,
                            component_cor)

@@ -1,11 +1,11 @@
 #' Validate a PSU register against the frame it refines
 #'
-#' The register states the size of every PSU in a stratum, where `N_psu`
+#' The register states the size of every PSU in a stratum, where `N_1`
 #' states only how many there are. The two are alternatives, and supplying
 #' both leaves it ambiguous which the variance model should read.
 #' @keywords internal
 #' @noRd
-.check_psu_table <- function(psu, frame, measures) {
+.check_psu_table <- function(psu, frame, measures, allow_free_take = FALSE) {
   if (!is.data.frame(psu) || nrow(psu) == 0L) {
     stop("'psu' must be a data frame with at least one row", call. = FALSE)
   }
@@ -21,25 +21,25 @@
         any(psu$N <= 0)) {
     stop("'psu$N' must be positive and finite for every PSU", call. = FALSE)
   }
-  if ("N_psu" %in% names(frame)) {
+  if ("N_1" %in% names(frame)) {
     stop(
-      "'psu' and the frame column 'N_psu' are alternatives: 'psu' gives the size of every PSU and 'N_psu' only how many there are",
+      "'psu' and the frame column 'N_1' are alternatives: 'psu' gives the size of every PSU and 'N_1' only how many there are",
       call. = FALSE
     )
   }
-  if (!"n_per_psu" %in% names(frame)) {
-    stop("'psu' requires the frame column 'n_per_psu', the within-PSU take",
+  if (!allow_free_take && !"take_2" %in% names(frame)) {
+    stop("'psu' requires the frame column 'take_2', the within-PSU take",
          call. = FALSE)
   }
-  if (!"icc_psu" %in% names(measures)) {
+  if (!"icc_1" %in% names(measures)) {
     stop(
-      "'psu' requires 'measures$icc_psu', the within-PSU homogeneity of the noncertainty part",
+      "'psu' requires 'measures$icc_1', the within-PSU homogeneity of the noncertainty part",
       call. = FALSE
     )
   }
-  has_cost <- c("cost_psu", "cost_ssu") %in% names(frame)
+  has_cost <- c("cost_1", "cost_2") %in% names(frame)
   if (any(has_cost) && !all(has_cost)) {
-    stop("stage costs come as a pair: supply both 'cost_psu' and 'cost_ssu'",
+    stop("stage costs come as a pair: supply both 'cost_1' and 'cost_2'",
          call. = FALSE)
   }
   if (all(has_cost) && "unit_cost" %in% names(frame)) {
@@ -48,14 +48,15 @@
       call. = FALSE
     )
   }
-  three_stage <- intersect(
-    c("n_per_ssu", "icc_ssu", "var_ratio_ssu", "cost_tsu", "N_ssu"),
-    c(names(frame), names(measures))
+  deeper <- grep(
+    "^(take_([3-9]|[1-9][0-9]+)|(icc|var_ratio|N)_([2-9]|[1-9][0-9]+)|cost_([3-9]|[1-9][0-9]+))$",
+    c(names(frame), names(measures)),
+    value = TRUE
   )
-  if (length(three_stage) > 0L) {
+  if (length(deeper) > 0L) {
     stop(
       sprintf("certainty-aware allocation is two-stage; remove: %s",
-              paste(sQuote(three_stage), collapse = ", ")),
+              paste(sQuote(unique(deeper)), collapse = ", ")),
       call. = FALSE
     )
   }
@@ -232,18 +233,19 @@
       call. = FALSE
     )
   }
-  ratio <- c(frame[["var_ratio_psu"]], measures[["var_ratio_psu"]])
+  ratio <- c(frame[["var_ratio_1"]], measures[["var_ratio_1"]])
   ratio <- ratio[!is.na(ratio)]
   if (length(ratio) > 0L && (!is.numeric(ratio) || any(ratio != 1))) {
     stop(
-      "'var_ratio_psu' is not available with a PSU register: its design effect is built from 'icc_psu' and the take alone, so a variance ratio other than 1 would have no effect",
+      "'var_ratio_1' is not available with a PSU register: its design effect is built from 'icc_1' and the take alone, so a variance ratio other than 1 would have no effect",
       call. = FALSE
     )
   }
-  if (any(c("resp_rate_psu", "resp_rate_ssu") %in%
-            c(names(frame), names(measures)))) {
+  bad_rr <- grep("^resp_rate_[0-9]+$", c(names(frame), names(measures)),
+                 value = TRUE)
+  if (length(bad_rr) > 0L) {
     stop(
-      "'resp_rate_psu' and 'resp_rate_ssu' are not available with a PSU register: losing a whole certainty PSU is not part of its variance model. Give the ultimate-unit response in 'resp_rate'",
+      "stage response rate columns ('resp_rate_1', ...) are not available with a PSU register: losing a whole certainty PSU is not part of its variance model. Give the ultimate-unit response in 'resp_rate'",
       call. = FALSE
     )
   }
@@ -427,10 +429,10 @@
 #' @keywords internal
 #' @noRd
 .psu_icc <- function(measures, stratum, idx_of) {
-  icc <- measures$icc_psu
+  icc <- measures$icc_1
   if (is.logical(icc) && all(is.na(icc))) icc <- as.numeric(icc)
   if (!is.numeric(icc)) {
-    stop("'measures$icc_psu' must contain values in [0, 1]", call. = FALSE)
+    stop("'measures$icc_1' must contain values in [0, 1]", call. = FALSE)
   }
   row_h <- match(as.character(measures$stratum), stratum)
   single <- !is.na(row_h) & lengths(idx_of)[row_h] == 1L
@@ -439,7 +441,7 @@
   if (any(missing)) {
     stop(
       sprintf(
-        "'measures$icc_psu' is missing in stratum %s. Only a stratum with a single PSU may leave it missing",
+        "'measures$icc_1' is missing in stratum %s. Only a stratum with a single PSU may leave it missing",
         paste(sQuote(unique(as.character(measures$stratum[missing]))),
               collapse = ", ")
       ),
@@ -447,7 +449,7 @@
     )
   }
   if (any(icc < 0 | icc > 1)) {
-    stop("'measures$icc_psu' must contain values in [0, 1]", call. = FALSE)
+    stop("'measures$icc_1' must contain values in [0, 1]", call. = FALSE)
   }
   icc
 }
@@ -461,10 +463,10 @@
 #' @keywords internal
 #' @noRd
 .psu_take <- function(frame, psu, stratum) {
-  take <- frame$n_per_psu
+  take <- frame$take_2
   if (!is.numeric(take) || anyNA(take) || any(take < 1) ||
         any(abs(take - round(take)) > 1e-8)) {
-    stop("'n_per_psu' must contain positive whole numbers", call. = FALSE)
+    stop("'take_2' must contain positive whole numbers", call. = FALSE)
   }
   take <- rep_len(as.numeric(round(take)), length(stratum))
   small <- psu$N < take[match(psu$stratum, stratum)]
@@ -481,7 +483,7 @@
     }
     stop(
       sprintf(
-        "%d PSU%s in 'psu' hold%s fewer units than the take 'n_per_psu' of %s stratum (%s). Merge each with a neighboring PSU, as merge_psus() does, or flag it in 'psu$certainty'",
+        "%d PSU%s in 'psu' hold%s fewer units than the take 'take_2' of %s stratum (%s). Merge each with a neighboring PSU, as merge_psus() does, or flag it in 'psu$certainty'",
         length(label), if (length(label) == 1L) "" else "s",
         if (length(label) == 1L) "s" else "",
         if (length(label) == 1L) "its" else "their", shown
@@ -504,7 +506,7 @@
 #' zone get `NA`.
 #' @keywords internal
 #' @noRd
-.psu_pairs <- function(zone, idx_of) {
+.psu_variance_groups <- function(zone, idx_of) {
   n_zone <- vapply(idx_of, function(i) {
     z <- zone[i]
     if (all(is.na(z))) 0L else as.integer(max(z, na.rm = TRUE))
@@ -577,16 +579,22 @@
   certainty_cutoff = NULL,
   n_psu_per_zone = NULL,
   control = NULL,
-  eligibility_rate = 1
+  eligibility_rate = 1,
+  ft_spec = NULL,
+  take_2_min = NULL,
+  take_2_max = NULL,
+  take_2_step = NULL
 ) {
   .check_measures_keys(measures)
-  psu <- .check_psu_table(psu, frame, measures)
+  free_take <- !is.null(ft_spec) && isTRUE(ft_spec$active)
+  psu <- .check_psu_table(psu, frame, measures, allow_free_take = free_take)
   .check_register_scope(frame, measures)
   ev <- .psu_setup(
     frame, psu, measures, targets, unit_cost = unit_cost, alpha = alpha,
     deff = deff, resp_rate = resp_rate, min_n_stratum = min_n_stratum,
     objective = objective, df = df, certainty_cutoff = certainty_cutoff,
-    n_psu_per_zone = n_psu_per_zone, eligibility_rate = eligibility_rate
+    n_psu_per_zone = n_psu_per_zone, eligibility_rate = eligibility_rate,
+    ft_spec = ft_spec
   )
   max_nodes <- .search_control(control)$max_nodes
   gap <- .search_control(control)$gap
@@ -606,11 +614,12 @@
   }
   base_frame <- frame[
     , setdiff(names(frame),
-              c("n_per_psu", "cost_psu", "cost_ssu", "certainty_cutoff")),
+              c("take_2", "take_2_min", "take_2_max", "take_2_step",
+                "cost_1", "cost_2", "certainty_cutoff")),
     drop = FALSE
   ]
   base_measures <- measures[
-    , setdiff(names(measures), c("icc_psu", "var_ratio_psu")), drop = FALSE
+    , setdiff(names(measures), c("icc_1", "var_ratio_1")), drop = FALSE
   ]
   cost_psu <- ev$cost_psu
   cost_ssu <- ev$cost_ssu
@@ -623,14 +632,15 @@
     if (is.null(cost_psu)) return(0)
     sum(certain * cost_psu[match(psu$stratum, stratum)])
   }
-  solve_at <- function(certain, budget, objective, whole = FALSE) {
+  solve_at <- function(certain, budget, objective, whole = FALSE,
+                       take_use = take) {
     m <- base_measures
     m$deff <- user_deff * vapply(seq_len(nrow(m)), function(r) {
       h <- row_h[r]
       i <- idx_of[[h]]
       .psu_deff(
         N_h[h], sum(psu$N[i][certain[i]]), sum(psu$N[i][!certain[i]]),
-        icc_row[r], take[h] * resp_row[r] * scope_row[r]
+        icc_row[r], take_use[h] * resp_row[r] * scope_row[r]
       )
     }, numeric(1))
     unit <- if (is.null(cost_psu)) {
@@ -640,7 +650,7 @@
         i <- idx_of[[h]]
         sum(psu$N[i][!certain[i]])
       }, numeric(1))
-      cost_ssu + rest / N_h * cost_psu / take
+      cost_ssu + rest / N_h * cost_psu / take_use
     }
     if (!is.null(budget)) budget <- budget - visits_of(certain)
     # Although the inner solver receives an element-shaped frame, this is
@@ -674,13 +684,14 @@
   }
   plan <- .psu_plan(ev, f_anchor, max_nodes, budget, gap)
   design <- lapply(seq_len(H), function(h) .psu_design(ev, h, plan$rows[[h]]))
+  take_opt <- vapply(design, `[[`, numeric(1), "take")
   certain <- logical(nrow(psu))
   source <- rep(NA_character_, nrow(psu))
   for (h in seq_len(H)) {
     certain[idx_of[[h]]] <- design[[h]]$certain
     source[idx_of[[h]]] <- design[[h]]$source
   }
-  fit <- tryCatch(solve_at(certain, budget, objective),
+  fit <- tryCatch(solve_at(certain, budget, objective, take_use = take_opt),
                   error = function(e) NULL)
   if (is.null(fit) && !is.null(budget) && !is.null(targets)) {
     # The field design prices its visits exactly, so the continuous model
@@ -688,9 +699,10 @@
     # solved at the cost of its cheapest whole-unit design meeting the
     # targets, which its own rounding needs.
     fit <- tryCatch({
-      least <- solve_at(certain, NULL, NULL, whole = TRUE)$operational$cost +
+      least <- solve_at(certain, NULL, NULL, whole = TRUE,
+                        take_use = take_opt)$operational$cost +
         visits_of(certain)
-      solve_at(certain, least * (1 + 1e-9), objective)
+      solve_at(certain, least * (1 + 1e-9), objective, take_use = take_opt)
     }, error = function(e) NULL)
   }
   fit <- fit %||% flat
@@ -702,11 +714,11 @@
   per_psu <- lapply(design, `[[`, "per_psu")
   n_psu_draw <- vapply(design, `[[`, numeric(1), "n_psu_draw")
   n_certain_int <- vapply(design, `[[`, numeric(1), "n_certain_int")
-  n_int <- n_certain_int + n_psu_draw * take
+  n_int <- n_certain_int + n_psu_draw * take_opt
   assessed <- .psu_field_assess(
     frame, psu, measures, targets, unit_cost, alpha, deff, resp_rate,
     min_n_stratum, objective, budget, df, certain, per_psu, n_psu_draw,
-    eligibility_rate = eligibility_rate
+    eligibility_rate = eligibility_rate, take_override = take_opt
   )
   if (!all(assessed$detail$.pass)) {
     stop("internal error: the planned field design misses a target",
@@ -714,7 +726,7 @@
   }
   if (!is.null(budget) &&
         abs(assessed$objective_value - plan$value) >
-          1e-9 * max(abs(plan$value), 1e-300)) {
+          1e-12 + 1e-9 * max(abs(assessed$objective_value), abs(plan$value))) {
     stop("internal error: the planned field design's objective does not reassess",
          call. = FALSE)
   }
@@ -735,7 +747,11 @@
     ),
     budget = budget,
     plan = plan,
-    take = take,
+    take = take_opt,
+    free_take = free_take,
+    take_2_min = take_2_min,
+    take_2_max = take_2_max,
+    take_2_step = take_2_step,
     unit_cost = unit_cost,
     cost_psu = cost_psu,
     cost_ssu = cost_ssu,
@@ -805,11 +821,14 @@
   fit$detail$n_int <- op$n_int
   fit$detail$n_certain_int <- op$n_certain_int
   fit$detail$n_psu_draw <- op$n_psu_draw
+  fit$detail$take_2 <- as.numeric(x$take)
+  fit$detail$n_1_int <- n_certain + op$n_psu_draw
+  fit$detail$take_2_int <- as.numeric(x$take)
   if (x$zone_m >= 1L) fit$detail$n_zone <- op$n_psu_draw %/% x$zone_m
   fit$operational$n <- sum(op$n_int)
   fit$operational$n_certain <- sum(op$n_certain_int)
   fit$operational$n_psu_draw <- sum(op$n_psu_draw)
-  # Under n_psu_per_zone = 1 a single draw is the design, and $psu$.pair
+  # Under n_psu_per_zone = 1 a single draw is the design, and $psu$.variance_group
   # groups it for variance estimation.
   if (x$zone_m != 1L) {
     .warn_single_draw(fit$detail$stratum[op$n_psu_draw == 1])
@@ -849,11 +868,11 @@
     fit$optimization$budget_residual <- x$budget - fit$params$achieved$cost
   }
 
-  n_take <- numeric(nrow(x$psu))
+  take_psu <- numeric(nrow(x$psu))
   for (h in seq_along(x$idx_of)) {
     i <- x$idx_of[[h]]
-    n_take[i] <- x$take[h]
-    n_take[i[x$certainty[i]]] <- op$per_psu[[h]]
+    take_psu[i] <- x$take[h]
+    take_psu[i[x$certainty[i]]] <- op$per_psu[[h]]
   }
 
   stratum_of <- x$psu$stratum
@@ -861,7 +880,7 @@
     stratum = stratum_of,
     N = x$psu$N,
     certainty = x$certainty,
-    n_take = n_take,
+    take_2 = take_psu,
     .certainty_source = x$source,
     .threshold = x$threshold[match(stratum_of, x$stratum)],
     stringsAsFactors = FALSE
@@ -882,7 +901,7 @@
       )
     }
     fit$psu$.zone <- zone
-    if (x$zone_m == 1L) fit$psu$.pair <- .psu_pairs(zone, x$idx_of)
+    if (x$zone_m == 1L) fit$psu$.variance_group <- .psu_variance_groups(zone, x$idx_of)
   }
 
   plan <- x$plan
@@ -903,10 +922,18 @@
   fit$params$measures <- x$measures
   fit$params$unit_cost <- x$unit_cost
   fit$params$psu <- x$psu
+  fit$stages <- .bethel_plan_stages(fit, fit$params$problem)
   # As supplied, so a rebuild resolves it against the frame the same way.
   fit$params$certainty_cutoff <- x$certainty_cutoff
   fit$params$n_psu_per_zone <- x$n_psu_per_zone
   fit$params$control <- x$control
+  if (isTRUE(x$free_take)) {
+    fit$params$free_take <- TRUE
+    fit$params$take_2_min <- x[["take_2_min"]]
+    fit$params$take_2_max <- x[["take_2_max"]]
+    fit$params$take_2_step <- x[["take_2_step"]]
+    fit$params$take_2_int <- as.numeric(x$take)
+  }
   fit
 }
 
@@ -921,10 +948,12 @@
 .psu_field_assess <- function(frame, psu, measures, targets, unit_cost,
                               alpha, deff, resp_rate, min_n_stratum,
                               objective, budget, df, certain, per_psu,
-                              n_psu_draw, eligibility_rate = 1) {
+                              n_psu_draw, eligibility_rate = 1,
+                              take_override = NULL) {
   stratum <- as.character(frame[["stratum"]] %||% seq_len(nrow(frame)))
   idx_of <- split(seq_len(nrow(psu)), factor(psu$stratum, levels = stratum))
-  take <- .psu_take(frame, psu, stratum)
+  take <- if (!is.null(take_override)) as.numeric(take_override) else
+    .psu_take(frame, psu, stratum)
   icc_row <- .psu_icc(measures, stratum, idx_of)
   resp_row <- .joint_row_value("resp_rate", measures, frame, resp_rate)
   scope_row <- .joint_row_value("eligibility_rate", measures, frame,
@@ -932,7 +961,7 @@
   user_deff <- .joint_row_value("deff", measures, frame, deff)
   row_h <- match(as.character(measures$stratum), stratum)
   m <- measures[
-    , setdiff(names(measures), c("icc_psu", "var_ratio_psu")), drop = FALSE
+    , setdiff(names(measures), c("icc_1", "var_ratio_1")), drop = FALSE
   ]
   m$deff <- user_deff * vapply(seq_len(nrow(m)), function(r) {
     h <- row_h[r]
@@ -946,7 +975,8 @@
   .prec_alloc_bethel(
     frame = frame[
       , setdiff(names(frame),
-                c("n_per_psu", "cost_psu", "cost_ssu", "certainty_cutoff")),
+                c("take_2", "take_2_min", "take_2_max", "take_2_step",
+                  "cost_1", "cost_2", "certainty_cutoff")),
       drop = FALSE
     ],
     n = n_int, measures = m, targets = targets, unit_cost = unit_cost,
@@ -974,26 +1004,29 @@
   # An override passes the checks the construction from totals applies.
   .check_measures_keys(p$measures)
   .check_register_scope(p$frame, p$measures)
-  if (all(c("cost_psu", "cost_ssu") %in% names(p$frame)) &&
+  if (all(c("cost_1", "cost_2") %in% names(p$frame)) &&
         !is.null(p$unit_cost)) {
     stop(
       "certainty-aware allocation uses stage costs; do not supply 'unit_cost'",
       call. = FALSE
     )
   }
-  psu <- .check_psu_table(p$psu, p$frame, p$measures)
+  free_take <- isTRUE(p$free_take)
+  psu <- .check_psu_table(p$psu, p$frame, p$measures, allow_free_take = free_take)
   stratum <- as.character(p$frame[["stratum"]] %||% seq_len(nrow(p$frame)))
   idx_of <- split(seq_len(nrow(psu)), factor(psu$stratum, levels = stratum))
   certain <- fit$psu$certainty
-  per_psu <- lapply(idx_of, function(i) fit$psu$n_take[i][certain[i]])
+  per_psu <- lapply(idx_of, function(i) fit$psu[["take_2"]][i][certain[i]])
+  take_override <- if (free_take) fit$detail$take_2_int else NULL
   out <- .psu_field_assess(
     p$frame, psu, p$measures, p$targets, p$unit_cost, p$alpha, p$deff,
     p$resp_rate, p$min_n_stratum, p$objective, p$budget, p$df, certain,
     per_psu, fit$detail$n_psu_draw,
-    eligibility_rate = p[["eligibility_rate"]] %||% 1
+    eligibility_rate = p[["eligibility_rate"]] %||% 1,
+    take_override = take_override
   )
   n_certain <- vapply(idx_of, function(i) sum(certain[i]), numeric(1))
-  stage_cost <- all(c("cost_psu", "cost_ssu") %in% names(p$frame))
+  stage_cost <- all(c("cost_1", "cost_2") %in% names(p$frame))
   cost <- if (stage_cost) fit$operational$cost else out$params$achieved$cost
   out$params$achieved$cost <- cost
   if (!is.null(p$budget)) {
@@ -1004,6 +1037,13 @@
   out$params$certainty_cutoff <- p$certainty_cutoff
   out$params$n_psu_per_zone <- p$n_psu_per_zone
   out$params$control <- p[["control"]]
+  if (free_take) {
+    out$params$free_take <- TRUE
+    out$params$take_2_min <- p[["take_2_min"]]
+    out$params$take_2_max <- p[["take_2_max"]]
+    out$params$take_2_step <- p[["take_2_step"]]
+    out$params$take_2_int <- fit$detail$take_2_int
+  }
   out$params$frame <- p$frame
   out$params$measures <- p$measures
   out$params$unit_cost <- p$unit_cost
@@ -1076,7 +1116,7 @@
                                 eligibility_rate)
   # Kept as supplied, so the object records the caller's input.
   unit_cost_in <- unit_cost
-  stage_cost <- c("cost_psu", "cost_ssu") %in% names(frame)
+  stage_cost <- c("cost_1", "cost_2") %in% names(frame)
   if (all(stage_cost) && !is.null(unit_cost)) {
     stop(
       "certainty-aware allocation uses stage costs; do not supply 'unit_cost'",
@@ -1084,11 +1124,11 @@
     )
   }
   if (all(stage_cost)) {
-    cost_psu <- rep_len(as.numeric(frame$cost_psu), H)
-    cost_ssu <- rep_len(as.numeric(frame$cost_ssu), H)
+    cost_psu <- rep_len(as.numeric(frame$cost_1), H)
+    cost_ssu <- rep_len(as.numeric(frame$cost_2), H)
     if (any(!is.finite(cost_psu)) || any(cost_psu <= 0) ||
           any(!is.finite(cost_ssu)) || any(cost_ssu <= 0)) {
-      stop("'cost_psu' and 'cost_ssu' must be positive and finite",
+      stop("'cost_1' and 'cost_2' must be positive and finite",
            call. = FALSE)
     }
   } else {
@@ -1097,11 +1137,11 @@
   }
   base_frame <- frame[
     , setdiff(names(frame),
-              c("n_per_psu", "cost_psu", "cost_ssu", "certainty_cutoff")),
+              c("take_2", "cost_1", "cost_2", "certainty_cutoff")),
     drop = FALSE
   ]
   base_measures <- measures[
-    , setdiff(names(measures), c("icc_psu", "var_ratio_psu")), drop = FALSE
+    , setdiff(names(measures), c("icc_1", "var_ratio_1")), drop = FALSE
   ]
   user_deff <- .joint_row_value("deff", measures, frame, deff)
   row_h <- match(as.character(measures$stratum), stratum)
@@ -1167,9 +1207,9 @@
   n_all <- vapply(idx_of, length, numeric(1))
   # The take the assessed design fields in each PSU, by the same rule the
   # solver's operational design uses: a certainty PSU carries its own whole
-  # take at the stratum rate, the remainder carries the stated n_per_psu.
+  # take at the stratum rate, the remainder carries the stated take_2.
   f_of <- (n_h / N_h)[match(psu$stratum, stratum)]
-  n_take <- ifelse(
+  take_psu <- ifelse(
     certain,
     pmin(ceiling(f_of * psu$N), psu$N),
     take[match(psu$stratum, stratum)]
@@ -1179,7 +1219,7 @@
     stratum = psu$stratum,
     N = psu$N,
     certainty = certain,
-    n_take = n_take,
+    take_2 = take_psu,
     .certainty_source = source,
     .threshold = threshold[match(psu$stratum, stratum)],
     stringsAsFactors = FALSE
@@ -1200,7 +1240,7 @@
       zone[i] <- .psu_zones(k, psu$N[i], certain[i], zone_m, zone_key[i])
     }
     out$psu$.zone <- zone
-    if (zone_m == 1L) out$psu$.pair <- .psu_pairs(zone, idx_of)
+    if (zone_m == 1L) out$psu$.variance_group <- .psu_variance_groups(zone, idx_of)
   }
   out$params$psu <- psu
   out$params$certainty_cutoff <- certainty_cutoff

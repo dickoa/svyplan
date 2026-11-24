@@ -7,8 +7,8 @@
 #' @param npoints Number of points in the grid: the power curve (default
 #'   101) or the budget frontier (default 25, since each point is a solve).
 #' @param newdata Optional one-column data frame of `budget` values for
-#'   `plot.svyplan_n()`. The default sweeps from the cheapest design that
-#'   meets the hard targets up to twice the fitted budget.
+#'   `plot.svyplan_alloc_joint()`. The default sweeps from the cheapest design
+#'   that meets the hard targets up to twice the fitted budget.
 #' @param ... Additional graphical parameters passed to [barplot()]
 #'   (for strata) or [plot()] (for power and the budget frontier). These
 #'   override the defaults, so you can set `main`, `col`, `ylab`, `xlab`,
@@ -19,7 +19,7 @@
 #' @details
 #' `plot.svyplan_strata()` draws a bar chart of per-stratum sampling
 #' fractions (`f = n / N`) using [barplot()]. This shows how
-#' intensively each stratum is sampled, under Neyman allocation,
+#' intensively each stratum is sampled. Under Neyman allocation,
 #' high-variance strata get higher fractions. A dashed horizontal line
 #' marks the overall sampling fraction (`n / N`). Defaults:
 #' `col = "grey40"`, `ylab = "Sampling fraction (f)"`, `las = 2`.
@@ -30,16 +30,17 @@
 #' line at the significance level. Defaults: `ylim = c(0, 1)`,
 #' `type = "l"`, `xlab = "Sample size (per group)"`, `ylab = "Power"`.
 #'
-#' `plot.svyplan_n()` draws the budget frontier for a fixed-budget joint
-#' allocation ([n_alloc()] with `objective` and `budget`): what precision
-#' each budget buys on the objective indicator, over the range where the
-#' hard targets remain fundable. The fitted design is a filled dot. The
-#' curve is the same one [predict()] returns as a table, so read exact
+#' `plot.svyplan_alloc_joint()` draws the budget frontier for a fixed-budget
+#' joint allocation ([n_alloc_joint()] with `objective` and `budget`). It shows
+#' what precision each budget buys on the objective indicator over the range
+#' where the hard targets remain fundable. The fitted design is a filled dot.
+#' The curve is the same one [predict()] returns as a table, so read exact
 #' numbers there. Its shape is the point, since the objective falls as
 #' `1 / cost`, so the marginal return on budget flattens, and the plot
 #' shows where. A fit with a `psu` register draws its field designs, their
-#' cost and objective, as its grid reports them. Other `svyplan_n` results
-#' have no frontier to draw and produce an error naming what is plottable.
+#' cost and objective, as its grid reports them. Other allocation and sample
+#' size results have no frontier to draw and produce an error naming what is
+#' plottable.
 #'
 #' @examples
 #' # Sampling fraction per stratum
@@ -72,13 +73,13 @@
 #'   sd = c(rep(NA, 3), 10, 12, 15)
 #' )
 #' targets <- data.frame(name = "vaccination", cv = 0.05)
-#' fit <- n_alloc(frame, measures = measures, targets = targets,
-#'                objective = "income", budget = 4000)
+#' fit <- n_alloc_joint(frame, measures = measures, targets = targets,
+#'                      objective = "income", budget = 4000)
 #' plot(fit)
 #'
 #' @seealso [predict.svyplan] for the sensitivity grids these curves are
-#'   drawn from, and [strata_bound()], [power_prop()], [n_alloc()] for the
-#'   results that are plottable.
+#'   drawn from, and [strata_bound()], [power_prop()], [n_alloc_joint()] for
+#'   the results that are plottable.
 #'
 #' @name plot.svyplan
 NULL
@@ -130,6 +131,7 @@ plot.svyplan_strata <- function(x, ...) {
 #' @rdname plot.svyplan
 #' @export
 plot.svyplan_power <- function(x, npoints = 101L, ...) {
+  .check_npoints(npoints)
   if (length(x$n) == 2L) {
     stop(
       "plot() does not support power objects with unequal-group n",
@@ -171,22 +173,47 @@ plot.svyplan_power <- function(x, npoints = 101L, ...) {
 
 #' @rdname plot.svyplan
 #' @export
-plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
+plot.svyplan_n <- function(x, ...) {
+  stop(
+    paste0(
+      "plot() is available for fixed-budget joint allocations ",
+      "(n_alloc_joint() with 'objective' and 'budget'), which have a budget ",
+      "frontier to draw. Use plot() on a strata_bound() or power_*() ",
+      "result, or predict() for a sensitivity table on this one."
+    ),
+    call. = FALSE
+  )
+}
+
+#' @rdname plot.svyplan
+#' @export
+plot.svyplan_alloc <- function(x, ...) {
+  stop(
+    paste0(
+      "plot() is available for fixed-budget joint allocations ",
+      "(n_alloc_joint() with 'objective' and 'budget'), which have a budget ",
+      "frontier to draw. Use plot() on a strata_bound() or power_*() ",
+      "result, or predict() for a sensitivity table on this one."
+    ),
+    call. = FALSE
+  )
+}
+
+#' @rdname plot.svyplan
+#' @export
+plot.svyplan_alloc_joint <- function(x, npoints = 25L, newdata = NULL, ...) {
   if (!identical(x$params$mode, "budget_objective")) {
     stop(
       paste0(
         "plot() is available for fixed-budget joint allocations ",
-        "(n_alloc() with 'objective' and 'budget'), which have a budget ",
+        "(n_alloc_joint() with 'objective' and 'budget'), which have a budget ",
         "frontier to draw. Use plot() on a strata_bound() or power_*() ",
         "result, or predict() for a sensitivity table on this one."
       ),
       call. = FALSE
     )
   }
-  if (!is.numeric(npoints) || length(npoints) != 1L || is.na(npoints) ||
-      npoints < 2) {
-    stop("'npoints' must be a single number >= 2", call. = FALSE)
-  }
+  .check_npoints(npoints)
 
   if (is.null(newdata)) newdata <- data.frame(budget = .budget_grid(x, npoints))
   fr <- predict(x, newdata)
@@ -247,7 +274,7 @@ plot.svyplan_n <- function(x, npoints = 25L, newdata = NULL, ...) {
 #'   the same column, the cells then reading their own color.
 #' @param col Cell colors. One color when `fill = "none"`, otherwise at
 #'   least one color per distinct fill value, taken in sorted order of the
-#'   values. Defaults to grey, and to a qualitative palette when `fill` is
+#'   values. Defaults to gray, and to a qualitative palette when `fill` is
 #'   set.
 #' @param rows `"panel"` (default) draws one row per panel.
 #'   `"rotation_group"` draws one row per rotation group, the panels that
@@ -832,7 +859,7 @@ plot.svyplan_overlap <- function(x, ...) {
   lo <- NULL
   if (!is.null(targets)) {
     floor_fit <- tryCatch(
-      n_alloc.default(
+      n_alloc_joint.default(
         frame = p$frame, measures = p$measures, targets = targets,
         psu = p$psu, certainty_cutoff = p$certainty_cutoff,
         n_psu_per_zone = p$n_psu_per_zone, control = p[["control"]],
@@ -840,7 +867,8 @@ plot.svyplan_overlap <- function(x, ...) {
         resp_rate = p$resp_rate,
         eligibility_rate = p[["eligibility_rate"]] %||% 1,
         eligible_per_unit = p$eligible_per_unit %||% 1,
-        df = p$df, min_n_stratum = p$min_n_stratum, fpc = p$fpc %||% "unit"
+        df = p$df, min_n_stratum = p$min_n_stratum, fpc = p$fpc %||% "unit",
+        take_2_min = p[["take_2_min"]], take_2_max = p[["take_2_max"]], take_2_step = p[["take_2_step"]]
       ),
       error = function(e) NULL
     )
@@ -925,4 +953,15 @@ plot.svyplan_overlap <- function(x, ...) {
     },
     numeric(1)
   )
+}
+
+#' A grid size for a plotted curve
+#' @keywords internal
+#' @noRd
+.check_npoints <- function(npoints) {
+  if (!is.numeric(npoints) || length(npoints) != 1L || is.na(npoints) ||
+      !is.finite(npoints) || npoints < 2) {
+    stop("'npoints' must be a single finite number >= 2", call. = FALSE)
+  }
+  invisible(TRUE)
 }

@@ -64,9 +64,12 @@
 #' @param unit_cost Per-stratum unit costs, ordered from lowest to highest
 #'   stratum. Scalar (equal costs) or vector of length `n_strata`.
 #'   Default `NULL` (equal unit costs, \eqn{c_h = 1} for all strata),
-#'   in which case `"optimal"` and `"neyman"` coincide.
+#'   in which case `"optimal"` and `"neyman"` coincide. Under `"optimal"`
+#'   with unequal costs and a `cv` target, the boundaries minimize the cost
+#'   of the design rather than its size.
 #' @param take_all_above Take-all threshold. Units with `x >= take_all_above` form a
-#'   census stratum.
+#'   census stratum. With a response rate below 1 its respondents are a
+#'   subsample, so its variance counts against a `cv` target.
 #' @param deff Design effect multiplier (> 0), default 1. Inflates the
 #'   variance of the stratified mean exactly as it does in [n_alloc()], so
 #'   that `cv` and `n` mean the same thing in both. A scalar value leaves the
@@ -442,7 +445,28 @@ strata_bound <- function(x, n_strata, ..., n = NULL, cv = NULL,
   if (has_cv && !is.null(take_all_above)) {
     N_full <- length(x)
     N_work <- length(x_work)
-    search_target_V <- (cv * abs(mean(x)) * N_full / N_work)^2
+    x_ta <- x[x >= take_all_above]
+    V_ta <- if (length(x_ta) > 1L) {
+      (length(x_ta) / N_full)^2 * stats::var(x_ta) * (1 - rate) /
+        (length(x_ta) * rate / deff)
+    } else {
+      0
+    }
+    if (mean(x) == 0) {
+      stop("a 'cv' target is undefined when 'x' has mean zero; supply 'n' instead",
+           call. = FALSE)
+    }
+    room <- (cv * abs(mean(x)))^2 - V_ta
+    if (!(room > 0)) {
+      stop(
+        sprintf(
+          "the take-all stratum alone gives cv %.4g at a response rate of %.4g, above the target %.4g, so no boundary meets it. Raise 'cv', 'resp_rate' or 'take_all_above'",
+          sqrt(V_ta) / abs(mean(x)), rate, cv
+        ),
+        call. = FALSE
+      )
+    }
+    search_target_V <- room * (N_full / N_work)^2
   }
 
   # Every sampled stratum needs two units, and a take-all stratum is enumerated

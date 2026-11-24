@@ -25,11 +25,11 @@ test_that("the stage correction equals the enumerated two-stage variance", {
   enumerated <- mean((est - mu)^2)
   vc <- varcomp(as.vector(t(.fp_y)), stage_id = list(rep(1:3, each = 3)))
   by_cluster <- prec_cluster(n = c(a, b), icc = vc, fpc = "stage",
-                             N = 9, N_psu = 3)
+                             N = c(3, 9))
   expect_equal((by_cluster$cv * mu)^2, enumerated, tolerance = 1e-12)
   frame <- data.frame(
-    N = 9, N_psu = 3, n_per_psu = b, sd = sd(as.vector(.fp_y)), mean = mu,
-    icc_psu = vc$icc, var_ratio_psu = vc$var_ratio
+    N = 9, N_1 = 3, take_2 = b, sd = sd(as.vector(.fp_y)), mean = mu,
+    icc_1 = vc$icc, var_ratio_1 = vc$var_ratio
   )
   by_alloc <- prec_alloc(frame, n = a * b, fpc = "stage")
   expect_equal(by_alloc$se^2, enumerated, tolerance = 1e-12)
@@ -66,7 +66,7 @@ test_that("the stage correction equals the enumerated three-stage variance", {
   ssu <- paste(psu, rep(rep(1:3, each = 3), 3))
   vc <- varcomp(as.vector(.fp_y3), stage_id = list(psu, ssu))
   by_cluster <- prec_cluster(n = c(2, 2, 2), icc = vc, fpc = "stage",
-                             N = 27, N_psu = 3, N_ssu = 9)
+                             N = c(3, 9, 27))
   expect_equal((by_cluster$cv * mu)^2, enumerated, tolerance = 1e-12)
 })
 
@@ -74,10 +74,10 @@ test_that("the stage correction equals the enumerated three-stage variance", {
 
 test_that("the cost-optimal take keeps the within-PSU correction", {
   fit <- n_cluster(stage_cost = c(12, 3), icc = 5 / 54, unit_relvar = 0.54,
-                   budget = 1000, fpc = "stage", N = 4900, N_psu = 100)
-  expect_equal(fit$n[["n_per_psu"]], sqrt(12 * 49 / (3 * (5 - 49 / 49))))
-  expect_equal(fit$n[["n_per_psu"]], 7)
-  expect_equal(fit$n[["n_psu"]], 1000 / 33)
+                   budget = 1000, fpc = "stage", N = c(100, 4900))
+  expect_equal(fit$n[["stage_2"]], sqrt(12 * 49 / (3 * (5 - 49 / 49))))
+  expect_equal(fit$n[["stage_2"]], 7)
+  expect_equal(fit$n[["stage_1"]], 1000 / 33)
 })
 
 ## A single-stage cluster population of four clusters of three units
@@ -91,11 +91,11 @@ test_that("whole clusters beat SRS exactly below icc = 1 / (M + 1)", {
   srs <- (1 - 6 / 12) * var(as.vector(.fp_z)) / 6
   expect_lt(cluster, srs)
   by_cluster <- prec_cluster(n = c(2, 3), icc = vc, fpc = "stage",
-                             N = 12, N_psu = 4)
+                             N = c(4, 12))
   expect_equal((by_cluster$cv * mean(.fp_z))^2, cluster, tolerance = 1e-12)
   fit <- n_cluster(stage_cost = c(5, 1), icc = vc, budget = 16,
-                   fpc = "stage", N = 12, N_psu = 4)
-  expect_equal(fit$n[["n_per_psu"]], 3)
+                   fpc = "stage", N = c(4, 12))
+  expect_equal(fit$n[["stage_2"]], 3)
 })
 
 test_that("a fixed whole-cluster take sizes the PSU count exactly", {
@@ -104,8 +104,8 @@ test_that("a fixed whole-cluster take sizes the PSU count exactly", {
   S_B2 <- var(rowMeans(.fp_z))
   target <- 0.1
   fit <- n_cluster(stage_cost = c(5, 1), icc = vc, cv = target / mu,
-                   n_per_psu = 3, fpc = "stage", N = 12, N_psu = 4)
-  expect_equal(fit$n[["n_psu"]], S_B2 / (target^2 + S_B2 / 4),
+                   stage_n = c(NA, 3), fpc = "stage", N = c(4, 12))
+  expect_equal(fit$n[["stage_1"]], S_B2 / (target^2 + S_B2 / 4),
                tolerance = 1e-10)
 })
 

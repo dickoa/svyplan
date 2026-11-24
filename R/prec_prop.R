@@ -75,7 +75,7 @@
 #'     otherwise. The solved value is in `params$p`, whichever of `cv` or
 #'     `rmoe` asked for it.}
 #'   \item{`params`}{The validated inputs (`p`, `n`, `alpha`, `N`,
-#'     `deff`, `resp_rate`, `df`, and `rmoe` when the proportion was solved
+#'     `deff`, `resp_rate`, `eligibility_rate` and `eligible_per_unit` when not 1, `df`, and `rmoe` when the proportion was solved
 #'     from one). [predict()], [confint()] and the
 #'     [n_prop()] round trip read the design back from here.}
 #' }
@@ -258,6 +258,7 @@ prec_prop.default <- function(
   df = NULL,
   plan = NULL
 ) {
+  .refuse_alloc_object(p, "prec_prop", "proportion")
   .plan <- .merge_plan_args(plan, prec_prop.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_prop.default, c(.plan, list(...))))
   .check_unused_dots(...)

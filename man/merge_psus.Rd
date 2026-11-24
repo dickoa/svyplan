@@ -10,7 +10,7 @@ merge_psus(id, min_size, size = NULL)
 \item{id}{The PSU id of each row. Any atomic type.}
 
 \item{min_size}{The smallest size a PSU may have, a positive number.
-Usually the largest take \code{n_per_psu}.}
+Usually the largest take \code{take_2}.}
 
 \item{size}{The size each row contributes, for a frame with one row per
 PSU or with weighted rows. \code{NULL} (default) counts rows.}
@@ -23,9 +23,9 @@ the id of its first PSU in row order, so its type and class are those of
 \description{
 \code{merge_psus()} recodes primary sampling unit (PSU) ids so that every PSU
 holds at least \code{min_size} units, merging small PSUs with their neighbors
-in the current row order. A PSU register for \code{\link[=n_alloc]{n_alloc()}} must not hold a
-PSU smaller than its stratum's take, and merging small enumeration areas
-before the register is built is the usual remedy.
+in the current row order. A PSU register for \code{\link[=n_alloc_joint]{n_alloc_joint()}} must not
+hold a PSU smaller than its stratum's take, and merging small enumeration
+areas before the register is built is the usual remedy.
 
 It is a vector function. Apply it within each stratum, after sorting the
 frame so that neighbors in row order are neighbors on the ground, and
@@ -39,7 +39,7 @@ merged in order, closing a merged PSU as soon as its size reaches
 \code{min_size}, and a remainder below \code{min_size} at the end of the run joins
 the merged PSU before it. A run that is below \code{min_size} in total joins
 the PSU before it, or the one after it when it opens the stratum. A
-stratum below \code{min_size} in total becomes one PSU, which \code{\link[=n_alloc]{n_alloc()}}
+stratum below \code{min_size} in total becomes one PSU, which \code{\link[=n_alloc_joint]{n_alloc_joint()}}
 refuses as smaller than its take unless the register flags it as
 certainty.
 
@@ -51,7 +51,7 @@ areas.
 Called on a whole frame, \code{merge_psus()} sees one stratum and can merge
 PSUs of different strata. Apply it per stratum, with \code{split()} or a
 grouped \code{dplyr::mutate()}. A merge that crosses strata gives one id to
-PSUs of two strata, which \code{\link[=n_alloc]{n_alloc()}} refuses as a duplicated \code{psu_id}.
+PSUs of two strata, which \code{\link[=n_alloc_joint]{n_alloc_joint()}} refuses as a duplicated \code{psu_id}.
 }
 \examples{
 listing <- data.frame(
@@ -67,7 +67,7 @@ listing$psu_id <- unsplit(lapply(by_stratum, function(d) {
 }), listing$stratum)
 listing
 
-# The register n_alloc() reads
+# The register n_alloc_joint() reads
 aggregate(households ~ stratum + psu_id, listing, sum)
 
 }
@@ -76,5 +76,13 @@ Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
 Designing and Weighting Survey Samples}, 2nd ed. Springer. Section 10.3.
 }
 \seealso{
-\code{\link[=n_alloc]{n_alloc()}} for the register the merged ids feed.
+\code{\link[=n_alloc_joint]{n_alloc_joint()}} for the register the merged ids feed.
+
+Other stratified design functions:
+\code{\link[=n_alloc]{n_alloc()}},
+\code{\link[=n_alloc_joint]{n_alloc_joint()}},
+\code{\link[=prec_alloc]{prec_alloc()}},
+\code{\link[=prec_alloc_joint]{prec_alloc_joint()}},
+\code{\link[=strata_bound]{strata_bound()}}
 }
+\concept{stratified design functions}

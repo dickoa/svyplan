@@ -27,8 +27,8 @@ test_that("the derived coefficient is the one the optimizer receives", {
 })
 
 test_that("a one-row two-stage ratio table matches n_cluster()", {
-  tbl <- cluster_row(cv = 0.05, icc_psu = 0.05, var_ratio_psu = 1)
-  via_table <- n_cluster(indicators = tbl, stage_cost = c(500, 50))
+  tbl <- cluster_row(cv = 0.05, icc_1 = 0.05, var_ratio_1 = 1)
+  via_table <- n_cluster(tbl, stage_cost = c(500, 50))
   direct <- n_cluster(stage_cost = c(500, 50), icc = 0.05,
                       unit_relvar = CL_RELVAR, var_ratio = 1, cv = 0.05)
 
@@ -38,9 +38,9 @@ test_that("a one-row two-stage ratio table matches n_cluster()", {
 })
 
 test_that("a one-row three-stage ratio table matches n_cluster()", {
-  tbl <- cluster_row(cv = 0.05, icc_psu = 0.04, icc_ssu = 0.10,
-                     var_ratio_psu = 1)
-  via_table <- n_cluster(indicators = tbl, stage_cost = c(800, 120, 40))
+  tbl <- cluster_row(cv = 0.05, icc_1 = 0.04, icc_2 = 0.10,
+                     var_ratio_1 = 1)
+  via_table <- n_cluster(tbl, stage_cost = c(800, 120, 40))
   direct <- n_cluster(stage_cost = c(800, 120, 40),
                       icc = c(0.04, 0.10), unit_relvar = CL_RELVAR,
                       var_ratio = 1, cv = 0.05)
@@ -51,12 +51,12 @@ test_that("a one-row three-stage ratio table matches n_cluster()", {
 
 test_that("a moe target converts exactly on the ratio scale", {
   by_moe <- n_cluster(
-    indicators = cluster_row(moe = 20, icc_psu = 0.05, var_ratio_psu = 1),
+    cluster_row(moe = 20, icc_1 = 0.05, var_ratio_1 = 1),
     stage_cost = c(500, 50)
   )
   by_cv <- n_cluster(
-    indicators = cluster_row(cv = 20 / (qnorm(0.975) * 420), icc_psu = 0.05,
-                var_ratio_psu = 1),
+    cluster_row(cv = 20 / (qnorm(0.975) * 420), icc_1 = 0.05,
+                var_ratio_1 = 1),
     stage_cost = c(500, 50)
   )
 
@@ -64,8 +64,8 @@ test_that("a moe target converts exactly on the ratio scale", {
 })
 
 test_that("budget mode routes a ratio row to the same allocation", {
-  tbl <- cluster_row(cv = 0.05, icc_psu = 0.05, var_ratio_psu = 1)
-  via_table <- n_cluster(indicators = tbl, stage_cost = c(500, 50), budget = 80000)
+  tbl <- cluster_row(cv = 0.05, icc_1 = 0.05, var_ratio_1 = 1)
+  via_table <- n_cluster(tbl, stage_cost = c(500, 50), budget = 80000)
   direct <- n_cluster(stage_cost = c(500, 50), icc = 0.05,
                       unit_relvar = CL_RELVAR, var_ratio = 1, budget = 80000)
 
@@ -73,11 +73,11 @@ test_that("budget mode routes a ratio row to the same allocation", {
 })
 
 test_that("a fixed stage size is honoured on a ratio row", {
-  tbl <- cluster_row(cv = 0.05, icc_psu = 0.05, var_ratio_psu = 1)
-  via_table <- n_cluster(indicators = tbl, stage_cost = c(500, 50), n_per_psu = 12)
+  tbl <- cluster_row(cv = 0.05, icc_1 = 0.05, var_ratio_1 = 1)
+  via_table <- n_cluster(tbl, stage_cost = c(500, 50), stage_n = c(NA, 12))
   direct <- n_cluster(stage_cost = c(500, 50), icc = 0.05,
                       unit_relvar = CL_RELVAR, var_ratio = 1, cv = 0.05,
-                      n_per_psu = 12)
+                      stage_n = c(NA, 12))
 
   expect_equal(unname(via_table$n), unname(direct$n), tolerance = OPT_TOL)
   expect_equal(unname(via_table$n)[2L], 12)
@@ -85,7 +85,7 @@ test_that("a fixed stage size is honoured on a ratio row", {
 
 test_that("a ratio row of indicators matches the scalar prec_cluster()", {
   via_table <- prec_cluster(
-    indicators = cluster_row(n = 45, n_per_psu = 14, icc_psu = 0.05, var_ratio_psu = 1),
+    cluster_row(n_1 = 45, take_2 = 14, icc_1 = 0.05, var_ratio_1 = 1),
     stage_cost = c(500, 50)
   )
   direct <- prec_cluster(n = c(45, 14), icc = 0.05,
@@ -98,7 +98,7 @@ test_that("a moe-sized ratio row reports se and moe on the ratio scale", {
   # The reconstruction runs only in moe mode, reached through the round trip
   # from a moe-sized result. In cv mode every estimand reports .cv alone.
   sized <- n_cluster(
-    indicators = cluster_row(moe = 20, icc_psu = 0.05, var_ratio_psu = 1),
+    cluster_row(moe = 20, icc_1 = 0.05, var_ratio_1 = 1),
     stage_cost = c(500, 50)
   )
   res <- prec_cluster(sized)
@@ -111,11 +111,11 @@ test_that("a moe-sized ratio row reports se and moe on the ratio scale", {
 })
 
 test_that("the multistage round trip returns the same allocation", {
-  tbl <- cluster_row(cv = 0.05, icc_psu = 0.05, var_ratio_psu = 1)
-  sized <- n_cluster(indicators = tbl, stage_cost = c(500, 50))
+  tbl <- cluster_row(cv = 0.05, icc_1 = 0.05, var_ratio_1 = 1)
+  sized <- n_cluster(tbl, stage_cost = c(500, 50))
   prec <- prec_cluster(
-    indicators = cluster_row(n = sized$n[1L], n_per_psu = sized$n[2L], icc_psu = 0.05,
-                var_ratio_psu = 1),
+    cluster_row(n_1 = sized$n[1L], take_2 = sized$n[2L], icc_1 = 0.05,
+                var_ratio_1 = 1),
     stage_cost = c(500, 50)
   )
 
@@ -127,15 +127,15 @@ test_that("a mixed cluster table sizes all three estimands", {
     name = c("literacy", "income", "consumption"),
     p = c(0.35, NA, NA),
     var = c(NA, 2500, NA),
-    mu = c(NA, 300, NA),
+    mean = c(NA, 300, NA),
     r = c(NA, NA, 420),
     cv_num = c(NA, NA, 1.20),
     cv_den = c(NA, NA, 0.45),
     component_cor = c(NA, NA, 0.65),
     cv = 0.05,
-    icc_psu = 0.05
+    icc_1 = 0.05
   )
-  res <- n_cluster(indicators = tbl, stage_cost = c(500, 50))
+  res <- n_cluster(tbl, stage_cost = c(500, 50))
 
   expect_equal(nrow(res$detail), 3L)
   expect_true(all(is.finite(res$detail$.cv_target)))
@@ -147,11 +147,11 @@ test_that("a component's icc cannot stand in for the linearized one", {
   # total differ by an order of magnitude in the same population. Planning
   # with the wrong one is a different design, not a conservative one.
   ratio_icc <- n_cluster(
-    indicators = cluster_row(cv = 0.05, icc_psu = 0.00088, var_ratio_psu = 1),
+    cluster_row(cv = 0.05, icc_1 = 0.00088, var_ratio_1 = 1),
     stage_cost = c(500, 50)
   )
   component_icc <- n_cluster(
-    indicators = cluster_row(cv = 0.05, icc_psu = 0.02251, var_ratio_psu = 1),
+    cluster_row(cv = 0.05, icc_1 = 0.02251, var_ratio_1 = 1),
     stage_cost = c(500, 50)
   )
 
@@ -162,12 +162,12 @@ test_that("a component's icc cannot stand in for the linearized one", {
 
 test_that("stage response rates reach a ratio row", {
   with_rate <- n_cluster(
-    indicators = cluster_row(cv = 0.05, icc_psu = 0.05, var_ratio_psu = 1,
-                resp_rate_psu = 0.8),
+    cluster_row(cv = 0.05, icc_1 = 0.05, var_ratio_1 = 1,
+                resp_rate_1 = 0.8),
     stage_cost = c(500, 50)
   )
   without <- n_cluster(
-    indicators = cluster_row(cv = 0.05, icc_psu = 0.05, var_ratio_psu = 1),
+    cluster_row(cv = 0.05, icc_1 = 0.05, var_ratio_1 = 1),
     stage_cost = c(500, 50)
   )
 
@@ -176,7 +176,7 @@ test_that("stage response rates reach a ratio row", {
 
 test_that("the operational design is whole units", {
   res <- n_cluster(
-    indicators = cluster_row(cv = 0.05, icc_psu = 0.05, var_ratio_psu = 1),
+    cluster_row(cv = 0.05, icc_1 = 0.05, var_ratio_1 = 1),
     stage_cost = c(500, 50)
   )
   op <- res$operational$n
@@ -187,8 +187,8 @@ test_that("the operational design is whole units", {
 
 test_that("an incomplete ratio quartet is still refused in cluster mode", {
   expect_error(
-    n_cluster(indicators = data.frame(r = 420, cv_num = 1.2, cv = 0.05,
-                               icc_psu = 0.05),
+    n_cluster(data.frame(r = 420, cv_num = 1.2, cv = 0.05,
+                               icc_1 = 0.05),
                     stage_cost = c(500, 50)),
     "column\\(s\\) .*'cv_den'.*are absent"
   )
@@ -196,9 +196,9 @@ test_that("an incomplete ratio quartet is still refused in cluster mode", {
 
 test_that("a cluster row may still declare only one estimand", {
   expect_error(
-    n_cluster(indicators = data.frame(p = 0.3, r = 420, cv_num = 1.2, cv_den = 0.45,
+    n_cluster(data.frame(p = 0.3, r = 420, cv_num = 1.2, cv_den = 0.45,
                                component_cor = 0.65, cv = 0.05,
-                               icc_psu = 0.05),
+                               icc_1 = 0.05),
                     stage_cost = c(500, 50)),
     "only one of 'p', 'var', or 'r'"
   )

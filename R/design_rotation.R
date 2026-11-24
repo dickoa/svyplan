@@ -246,7 +246,10 @@ design_rotation <- function(x) {
   }
   parts <- strsplit(spec, "-", fixed = TRUE)[[1L]]
   n <- suppressWarnings(as.numeric(parts))
-  if (anyNA(n) || any(n < 0) || any(n != trunc(n))) {
+  ## strsplit() drops a trailing empty field, so a hyphen at either end or
+  ## a doubled one is caught on the string itself.
+  if (grepl("^-|-$|--", spec) || anyNA(n) || any(n < 0) ||
+        any(n != trunc(n))) {
     stop(
       sprintf(
         "'%s' is not a rotation spec. Use whole spell lengths separated by '-', as in \"4-8-4\", or one 0/1 flag per period, as in \"1-1-0-0-1-1\"",

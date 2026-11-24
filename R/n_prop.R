@@ -32,7 +32,7 @@
 #'   compared to simple random sampling. A DEFF of 1.5 means 50 percent
 #'   more interviews are needed for the same precision. Estimate from a
 #'   previous survey, use [design_effect()] to compute it, or apply a
-#'   rule of thumb (1.5--2.0 for typical cluster designs). Values < 1
+#'   rule of thumb (1.5 to 2.0 for typical cluster designs). Values < 1
 #'   are valid for efficient designs (e.g., stratified sampling with
 #'   Neyman allocation). A published DEFT is squared first. See
 #'   [varcomp()] for that and for removing the published survey's
@@ -95,7 +95,7 @@
 #'     `"min_cases"`. `NULL` when no `min_cases` was given, there being
 #'     nothing for precision to bind against.}
 #'   \item{`params`}{The validated inputs (`p`, `alpha`, `N`, `deff`,
-#'     `resp_rate`, `df`, `min_cases` when given, and whichever of `moe`,
+#'     `resp_rate`, `eligibility_rate` and `eligible_per_unit` when not 1, `df`, `min_cases` when given, and whichever of `moe`,
 #'     `cv`, or `rmoe` was the target). [predict()], [confint()] and the
 #'     [prec_prop()] round trip read the design back from here.}
 #' }
@@ -397,6 +397,7 @@
 #' @export
 n_prop <- function(p, ...) {
   if (!missing(p)) {
+    .refuse_result_as_input(p, "p", "n_prop")
     .res <- .dispatch_plan(p, "p", n_prop.default, ...)
     if (!is.null(.res)) return(.res)
   }
@@ -465,7 +466,7 @@ n_prop.default <- function(
     n <- max(n, n_cases)
   }
   n <- .census_size(n, N)
-  .check_attainable(n, N, resp_rate, eligibility_rate)
+  .check_attainable(n, N, resp_rate, eligibility_rate, eligible_per_unit)
 
   params <- list(
     p = p,

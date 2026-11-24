@@ -3,6 +3,7 @@
 \name{prec_multi}
 \alias{prec_multi}
 \alias{prec_multi.default}
+\alias{prec_multi.svyplan_multi}
 \alias{prec_multi.svyplan_n}
 \alias{prec_multi.svyplan_cluster}
 \title{Multi-indicator sampling precision}
@@ -19,6 +20,8 @@ prec_multi(indicators, ...)
   eligible_per_unit = 1,
   plan = NULL
 )
+
+\method{prec_multi}{svyplan_multi}(indicators, ...)
 
 \method{prec_multi}{svyplan_n}(indicators, ...)
 
@@ -81,7 +84,7 @@ absent or \code{NA}. Proportion and mean rows. See \code{\link[=n_multi]{n_multi
 A \code{svyplan_prec} object with a \verb{$detail} data frame containing
 per-indicator precision: \code{.se}, \code{.moe}, \code{.rmoe}, and \code{.cv}. \code{.rmoe}
 is \code{.moe} as a fraction of the row's own estimand, \code{p} for a
-proportion, \code{abs(mu)} for a mean and \code{abs(r)} for a ratio, and \code{NA} for
+proportion, \code{abs(mean)} for a mean and \code{abs(r)} for a ratio, and \code{NA} for
 a row carrying none of them. The \code{domains} columns come first, so each
 row can be joined back to its domain.
 }
@@ -114,8 +117,8 @@ See \code{\link[=n_multi]{n_multi()}} for a detailed guide on constructing indic
 \item{\code{p}}{Expected proportion, in (0, 1). One of \code{p}, \code{var} or \code{r}
 per row (see \code{\link[=n_multi]{n_multi()}}).}
 \item{\code{var}}{Population variance. One of \code{p}, \code{var} or \code{r} per row.}
-\item{\code{mu}}{Population mean. Required for CV output when \code{var}
-is specified, because CV = SE / mean.}
+\item{\code{mean}}{Population mean. Required for CV output when \code{var}
+is specified, because CV = SE / abs(mean).}
 \item{\code{r}}{Anticipated ratio of two totals, marking a ratio row. It
 requires \code{cv_num}, \code{cv_den} and \code{component_cor} alongside it. Its
 \code{unit_relvar} comes from those moments, and a value given in that
@@ -140,13 +143,13 @@ proportion method and on mean rows alike. \code{NA} (the default) applies
 no adjustment.}
 \item{\code{resp_rate}}{Expected response rate at the ultimate unit
 (default 1). A cluster design spends a rate at stage 1 too, and
-\code{\link[=prec_cluster]{prec_cluster()}} names that column \code{resp_rate_psu}.}
+\code{\link[=prec_cluster]{prec_cluster()}} names stage response columns \code{resp_rate_1}, ..., \verb{resp_rate_\{S-1\}}.}
 \item{\code{eligibility_rate}}{Share of the row's issued units in scope, in
 (0, 1]. \code{NA} takes the \code{eligibility_rate} argument.}
 \item{\code{eligible_per_unit}}{Eligible units per sampled unit for the row's
 estimate, as in \code{\link[=prec_prop]{prec_prop()}} and \code{\link[=prec_mean]{prec_mean()}}. Proportion and mean
 rows. The
-several-indicators mode of \code{\link[=prec_cluster]{prec_cluster()}} refuses it.}
+several-indicators mode of \code{\link[=prec_cluster]{prec_cluster()}} reads the same column.}
 }
 
 Domain columns are specified via the \code{domains} parameter.
@@ -164,10 +167,10 @@ treated as drawn with replacement, and \code{N} corrects only for the units.
 Nothing here knows how many PSUs a domain holds. A small domain, such as
 an island district of 16 enumeration areas, can then be given more PSUs
 than it has, and a sample that takes most of them is assessed as if
-they were a few among many. \code{\link[=n_alloc]{n_alloc()}} and \code{\link[=prec_alloc]{prec_alloc()}} read \code{N_psu}
+they were a few among many. \code{\link[=n_alloc]{n_alloc()}} and \code{\link[=prec_alloc]{prec_alloc()}} read \code{N_1}
 in the frame and, with \code{fpc = "stage"}, apply the stage-by-stage
-correction. They size and assess such a domain, as the \code{\link[=prec_alloc]{prec_alloc()}}
-examples show.
+correction. They size and assess such a domain, as the Details of
+\code{\link[=n_alloc]{n_alloc()}} describe.
 }
 }
 \examples{

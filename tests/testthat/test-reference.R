@@ -80,7 +80,7 @@ test_that("design_effect clustering matches VDK Eq 9.5", {
   icc <- 0.05
   b_bar <- 20
   deff_exp <- 1 + (b_bar - 1) * icc
-  result <- design_effect(icc = icc, n_per_psu = b_bar)
+  result <- design_effect(icc = icc, take = b_bar)
   expect_equal(as.double(result), deff_exp, tolerance = 1e-10)
 })
 
@@ -203,7 +203,7 @@ test_that("prec_mean SE with FPC matches Cochran formula", {
 
 test_that("n_alloc reproduces VDK Example 5.2 under a fixed budget", {
   z <- .vdk_example_5_2()
-  fit <- n_alloc(
+  fit <- n_alloc_joint(
     z$frame, measures = z$measures, targets = z$targets,
     objective = "revenue", budget = 300000, min_n_stratum = 100
   )
@@ -227,7 +227,7 @@ test_that("n_alloc reproduces VDK Example 5.2 under a fixed budget", {
 
 test_that("the VDK Example 5.2 rerun at 350000 improves on the published CV", {
   z <- .vdk_example_5_2()
-  fit <- n_alloc(
+  fit <- n_alloc_joint(
     z$frame, measures = z$measures, targets = z$targets,
     objective = "revenue", budget = 350000, min_n_stratum = 100
   )
@@ -244,7 +244,7 @@ test_that("the VDK Example 5.2 rerun at 350000 improves on the published CV", {
 test_that("VDK Example 5.2 at 250000 cannot fund its targets", {
   z <- .vdk_example_5_2()
   expect_error(
-    n_alloc(
+    n_alloc_joint(
       z$frame, measures = z$measures, targets = z$targets,
       objective = "revenue", budget = 250000, min_n_stratum = 100
     ),
@@ -325,4 +325,141 @@ test_that("n_alloc reproduces optsize with per-stratum Rh and deffh", {
             n = 600, alloc = "neyman", deff = d, resp_rate = r)$detail$n,
     c(45.38290, 86.10799, 168.50911, 300), tolerance = 1e-7
   )
+})
+
+## Further worked examples, at their printed precision
+
+test_that("VDK Example 3.9: stratified allocation of the SMHO frame", {
+  smho <- data.frame(
+    stratum = as.character(1:6), N = c(215, 65, 252, 50, 149, 144),
+    mean = c(21240408, 10024876, 4913008, 11927573, 6118415, 15567731),
+    sd = c(26787207, 10645109, 6909676, 11085034, 9817762, 44553355),
+    unit_cost = c(1400, 200, 300, 600, 450, 1000)
+  )
+  share <- function(fit) round(fit$detail$n / sum(fit$detail$n), 3)
+  expect_equal(share(n_alloc(smho, n = 100, alloc = "neyman")),
+               c(0.346, 0.042, 0.105, 0.033, 0.088, 0.386))
+  b100 <- n_alloc(smho, budget = 100000, alloc = "optimal")
+  expect_equal(share(b100), c(0.257, 0.082, 0.168, 0.038, 0.115, 0.339))
+  expect_equal(round(b100$n), 119)
+  expect_equal(round(n_alloc(smho, budget = 200000, alloc = "optimal")$n), 238)
+  expect_equal(round(n_alloc(smho, cv = 0.05, alloc = "optimal")$n), 406)
+  expect_equal(round(n_alloc(smho, cv = 0.10, alloc = "optimal")$n), 198)
+})
+
+test_that("VDK Example 9.7: two-stage optimum under a budget", {
+  fits <- lapply(c(0.01, 0.05, 0.10, 0.20), function(d) {
+    n_cluster(stage_cost = c(750, 100), icc = d, unit_relvar = 1,
+              budget = 100000)
+  })
+  expect_equal(vapply(fits, function(f) round(f$n[[1]], 1), 1),
+               c(28.8, 51.4, 63.6, 77.1))
+  expect_equal(vapply(fits, function(f) round(f$n[[2]], 1), 1),
+               c(27.2, 11.9, 8.2, 5.5))
+  expect_equal(vapply(fits, function(f) round(f$cv, 4), 1),
+               c(0.0401, 0.0502, 0.0574, 0.0670))
+})
+
+test_that("VDK Example 9.8: three-stage optimum under a budget", {
+  one <- n_cluster(stage_cost = c(500, 100, 120), icc = c(0.01, 0.10),
+                   unit_relvar = 1, var_ratio = c(1, 1), budget = 100000)
+  expect_equal(round(unname(one$n), 1), c(28.3, 7.1, 2.7))
+  expect_equal(round(one$cv, 4), 0.0499)
+  fits <- lapply(c(0.01, 0.05, 0.10), function(d1) {
+    n_cluster(stage_cost = c(500, 100, 120), icc = c(d1, 0.10),
+              unit_relvar = 2, var_ratio = c(1, 1), budget = 100000)
+  })
+  sizes <- t(vapply(fits, function(f) round(unname(f$n), 1), numeric(3)))
+  expect_equal(sizes[, 1], c(28.3, 53.9, 68.6))
+  expect_equal(sizes[, 2], c(7.1, 3.2, 2.2))
+  expect_equal(sizes[, 3], c(2.7, 2.7, 2.7))
+  expect_equal(vapply(fits, function(f) round(f$cv, 4), 1),
+               c(0.0706, 0.0830, 0.0922))
+})
+
+test_that("VDK Example 17.13: double sampling for stratification", {
+  frame <- data.frame(stratum = as.character(1:4), N = rep(0.25, 4),
+                      p = c(0.02, 0.12, 0.37, 0.54), unit_cost = 50)
+  fit <- n_twophase(frame, phase1_cost = 10, budget = 20000)
+  expect_equal(round((fit$cv / fit$single_phase$cv)^2, 2), 1.06)
+})
+
+test_that("VDK Example 17.14: nonresponse follow-up under a budget", {
+  frame <- data.frame(stratum = c("resp", "nonresp"), N = c(0.5, 0.5),
+                      mean = 1, sd = 1, unit_cost = c(0, 200),
+                      take_all = c(TRUE, FALSE))
+  fit <- n_twophase(frame, phase1_cost = 50, budget = 100000,
+                    single_cost = 50, single_resp_rate = 0.5)
+  expect_equal(round(fit$n[["n_phase1"]]), 828)
+  expect_equal(round(fit$detail$n_issued[2]), 293)
+  expect_equal(round(fit$detail$nu[2], 4), 0.7071)
+  expect_equal(round(fit$cv, 4), 0.0382)
+})
+
+## Hankin, Mohr and Newman (2019), Examples 5.7, 7.1, 9.1.3, 10.3, Table 13.1
+
+test_that("Satterthwaite degrees of freedom of six stratified allocations", {
+  frame <- data.frame(stratum = c("1", "2", "3"), N = c(100, 200, 50),
+                      var = c(200, 500, 4000))
+  allocations <- list(c(20, 18, 2), c(25, 10, 5), c(20, 10, 10),
+                      c(10, 10, 20), c(5, 5, 30), c(11, 23, 6))
+  df <- vapply(allocations, function(a) {
+    floor(as.double(design_df(prec_alloc(frame, n = a),
+                              method = "satterthwaite")))
+  }, 1)
+  expect_equal(df, c(1, 11, 16, 13, 5, 12))
+  expect_equal(n_alloc(frame, n = 40, alloc = "proportional")$detail$n_int,
+               c(11, 23, 6))
+  ney <- n_alloc(frame, n = 40, alloc = "neyman")
+  expect_equal(ney$detail$n_int, c(6, 20, 14))
+  expect_equal(floor(as.double(design_df(ney, method = "satterthwaite"))), 36)
+})
+
+test_that("the delta-method variance of a ratio from a five-unit population", {
+  x <- c(10, 20, 30, 40, 50)
+  y <- c(2, 5, 7, 14, 20)
+  r <- mean(y) / mean(x)
+  args <- list(r = r, cv_num = sd(y) / mean(y), cv_den = sd(x) / mean(x),
+               component_cor = cor(x, y), N = 5)
+  p <- do.call(prec_ratio, c(args, n = 3))
+  expect_equal(round((mean(x) * p$se)^2, 2), 0.92)
+  expect_equal(do.call(n_ratio, c(args, moe = qnorm(0.975) * p$se))$n, 3,
+               tolerance = 1e-9)
+})
+
+test_that("the variance of a two-stage mean from a nine-unit population", {
+  dat <- data.frame(psu = rep(1:3, each = 3),
+                    y = c(5, 10, 12, 3, 15, 6, 13, 6, 11))
+  p <- prec_cluster(c(2, 2), icc = varcomp(y ~ psu, data = dat),
+                    N = c(3, 9), fpc = "stage")
+  expect_equal(round((p$cv * mean(dat$y))^2, 3), 1.972)
+})
+
+test_that("the efficiency of two-phase sampling for stratification", {
+  frame <- data.frame(stratum = c("A", "B"), N = 5000, sd = sqrt(5),
+                      mean = c(100 - sqrt(95), 100 + sqrt(95)),
+                      unit_cost = 10)
+  fit <- n_twophase(frame, phase1_cost = 1, budget = 10000)
+  expect_equal(fit$detail$nu, rep(sqrt(0.1 * 0.05 / 0.95), 2),
+               tolerance = 1e-6)
+  expect_equal(round((fit$single_phase[["cv"]] / fit$cv)^2, 1), 3.5)
+})
+
+test_that("the variance of a change under retention, replacement and partial overlap", {
+  N <- 400
+  n <- 40
+  v <- c(100, 164)
+  covar <- 100
+  r <- covar / sqrt(prod(v))
+  change_var <- function(...) {
+    (N * prec_change(var = v, n = n, N = N, ...)$se)^2
+  }
+  expect_equal(change_var(overlap = 1, overlap_cor = r),
+               N^2 * (N - n) / N * (sum(v) - 2 * covar) / n)
+  expect_equal(change_var(overlap = 0), N^2 * (N - n) / N * sum(v) / n)
+  m <- n / 2
+  partial <- 0.25 * N^2 * (N - m) / N * (sum(v) - 2 * covar) / m +
+    0.25 * N^2 * (N - m) / N * sum(v) / m
+  expect_equal(change_var(overlap = 0.5, overlap_cor = r,
+                          overlap_draw = "independent"), partial)
 })

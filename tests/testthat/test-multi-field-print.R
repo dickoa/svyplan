@@ -10,13 +10,13 @@ coincide <- data.frame(
   name = c("stunting", "anemia"),
   p = c(0.30, 0.10),
   moe = c(0.05, 0.03),
-  icc_psu = c(0.02, 0.05)
+  icc_1 = c(0.02, 0.05)
 )
 diverge <- data.frame(
   name = c("a", "b"),
   p = c(0.35, 0.40),
   cv = c(0.15, 0.03),
-  icc_psu = 0.05
+  icc_1 = 0.05
 )
 
 table_rows <- function(out, names) {
@@ -26,11 +26,11 @@ table_rows <- function(out, names) {
 }
 
 test_that("the indicator table reads every cv at the field design", {
-  fit <- n_cluster(stage_cost = c(500, 50), indicators = coincide,
+  fit <- n_cluster(coincide, stage_cost = c(500, 50),
                    budget = 1e5)
   n <- fit$operational$n
-  expected <- cv_two_stage(coincide$p, coincide$icc_psu, n[["n_psu"]],
-                           n[["n_per_psu"]])
+  expected <- cv_two_stage(coincide$p, coincide$icc_1, n[["stage_1"]],
+                           n[["stage_2"]])
   expect_equal(fit$operational$cv_by_target, expected, tolerance = 1e-10)
   out <- capture.output(print(fit))
   rows <- table_rows(out, coincide$name)
@@ -42,11 +42,11 @@ test_that("the indicator table reads every cv at the field design", {
 })
 
 test_that("worst cv and binding indicator are reported apart", {
-  fit <- n_cluster(stage_cost = c(500, 50), indicators = diverge,
+  fit <- n_cluster(diverge, stage_cost = c(500, 50),
                    budget = 1e5)
   n <- fit$operational$n
-  cv <- cv_two_stage(diverge$p, diverge$icc_psu, n[["n_psu"]],
-                     n[["n_per_psu"]])
+  cv <- cv_two_stage(diverge$p, diverge$icc_1, n[["stage_1"]],
+                     n[["stage_2"]])
   expect_identical(which.max(cv), 1L)
   expect_identical(which.max(cv / diverge$cv), 2L)
   expect_identical(fit$operational$binding, "b")
@@ -61,16 +61,15 @@ test_that("worst cv and binding indicator are reported apart", {
 })
 
 test_that("a design that meets every target names no shortfall", {
-  fit <- n_cluster(stage_cost = c(500, 50), indicators = coincide,
+  fit <- n_cluster(coincide, stage_cost = c(500, 50),
                    budget = 1e5)
   out <- capture.output(print(fit))
   expect_true(any(grepl("^worst cv = [0-9.]+ \\(anemia\\)", out)))
   expect_true("binding: anemia" %in% out)
   expect_false(any(grepl("^short of target", out)))
 
-  cv_mode <- n_cluster(stage_cost = c(500, 50),
-                       indicators = transform(coincide, moe = NULL,
-                                              cv = c(0.08, 0.15)))
+  cv_mode <- n_cluster(transform(coincide, moe = NULL,
+                                              cv = c(0.08, 0.15)), stage_cost = c(500, 50))
   expect_true(all(cv_mode$operational$cv_by_target <= c(0.08, 0.15)))
   expect_false(any(grepl("^short of target",
                          capture.output(print(cv_mode)))))
@@ -79,14 +78,11 @@ test_that("a design that meets every target names no shortfall", {
 test_that("every no-domain cluster route stores the field binding", {
   rows <- transform(coincide, moe = NULL, cv = c(0.08, 0.15))
   fits <- list(
-    two_stage = n_cluster(stage_cost = c(500, 50), indicators = rows),
+    two_stage = n_cluster(rows, stage_cost = c(500, 50)),
     three_stage = n_cluster(
-      stage_cost = c(500, 100, 50),
-      indicators = transform(rows, icc_ssu = c(0.05, 0.10))
-    ),
-    stage_fpc = n_cluster(stage_cost = c(500, 50), indicators = coincide,
-                          budget = 1e5, fpc = "stage", N = 30000,
-                          N_psu = 300)
+      transform(rows, icc_2 = c(0.05, 0.10)), stage_cost = c(500, 100, 50)),
+    stage_fpc = n_cluster(coincide, stage_cost = c(500, 50),
+                          budget = 1e5, fpc = "stage", N = c(300, 30000))
   )
   seen <- character(0)
   for (route in names(fits)) {
@@ -136,13 +132,12 @@ test_that("a repeated indicator name is refused at every entry point", {
   expect_error(n_multi(transform(twice, moe = 0.05)), msg)
   expect_error(prec_multi(transform(twice, n = 400)), msg)
   expect_error(
-    n_cluster(stage_cost = c(500, 50), budget = 1e5,
-              indicators = transform(twice, moe = 0.05, icc_psu = 0.05)),
+    n_cluster(transform(twice, moe = 0.05, icc_1 = 0.05), stage_cost = c(500, 50), budget = 1e5),
     msg
   )
   expect_error(
-    prec_cluster(indicators = transform(twice, n = 60, n_per_psu = 12,
-                                        icc_psu = 0.05)),
+    prec_cluster(transform(twice, n_1 = 60, take_2 = 12,
+                                        icc_1 = 0.05)),
     msg
   )
   expect_error(
@@ -167,11 +162,11 @@ test_that("a repeated indicator name is refused at every entry point", {
 ## The stored cv is the worst continuous cv
 
 test_that("cv is the worst continuous cv, not the binding row's", {
-  fit <- n_cluster(stage_cost = c(500, 50), indicators = diverge,
+  fit <- n_cluster(diverge, stage_cost = c(500, 50),
                    budget = 1e5)
   n <- fit$n
-  cv <- cv_two_stage(diverge$p, diverge$icc_psu, n[["n_psu"]],
-                     n[["n_per_psu"]])
+  cv <- cv_two_stage(diverge$p, diverge$icc_1, n[["stage_1"]],
+                     n[["stage_2"]])
   expect_equal(fit$detail$.cv_achieved, cv, tolerance = 1e-10)
   expect_identical(fit$binding, "b")
   expect_equal(fit$cv, max(fit$detail$.cv_achieved))
@@ -186,25 +181,20 @@ test_that("cv is the largest precision of the design on every route", {
   dom <- rbind(transform(rows, region = "N"),
                transform(rows, region = "S", p = c(0.32, 0.12)))
   fits <- list(
-    two_stage_cv = n_cluster(stage_cost = c(500, 50), indicators = rows),
-    two_stage_budget = n_cluster(stage_cost = c(500, 50),
-                                 indicators = diverge, budget = 1e5),
-    stage_fpc_diverge = n_cluster(stage_cost = c(500, 50),
-                                  indicators = diverge, budget = 1e5,
-                                  fpc = "stage", N = 30000, N_psu = 300),
-    three_stage_diverge = n_cluster(stage_cost = c(500, 100, 50),
-                                    indicators = transform(diverge,
-                                                           icc_ssu = 0.1),
+    two_stage_cv = n_cluster(rows, stage_cost = c(500, 50)),
+    two_stage_budget = n_cluster(diverge, stage_cost = c(500, 50), budget = 1e5),
+    stage_fpc_diverge = n_cluster(diverge, stage_cost = c(500, 50), budget = 1e5,
+                                  fpc = "stage", N = c(300, 30000)),
+    three_stage_diverge = n_cluster(transform(diverge,
+                                                           icc_2 = 0.1), stage_cost = c(500, 100, 50),
                                     budget = 2e5),
-    three_stage = n_cluster(stage_cost = c(500, 100, 50),
-                            indicators = transform(rows,
-                                                   icc_ssu = c(0.05, 0.10))),
-    stage_fpc = n_cluster(stage_cost = c(500, 50), indicators = coincide,
-                          budget = 1e5, fpc = "stage", N = 30000,
-                          N_psu = 300),
-    domains = n_cluster(stage_cost = c(500, 50), indicators = dom,
+    three_stage = n_cluster(transform(rows,
+                                                   icc_2 = c(0.05, 0.10)), stage_cost = c(500, 100, 50)),
+    stage_fpc = n_cluster(coincide, stage_cost = c(500, 50),
+                          budget = 1e5, fpc = "stage", N = c(300, 30000)),
+    domains = n_cluster(dom, stage_cost = c(500, 50),
                         domains = "region"),
-    joint = n_cluster(stage_cost = c(500, 50), indicators = dom,
+    joint = n_cluster(dom, stage_cost = c(500, 50),
                       domains = "region", budget = 2e5,
                       allocation = "joint")
   )
@@ -236,9 +226,9 @@ test_that("cv is the largest precision of the design on every route", {
 })
 
 test_that("one indicator row keeps the scalar cv", {
-  one <- data.frame(name = "a", p = 0.3, cv = 0.05, icc_psu = 0.05)
+  one <- data.frame(name = "a", p = 0.3, cv = 0.05, icc_1 = 0.05)
   for (budget in list(NULL, 1e5)) {
-    ind <- n_cluster(stage_cost = c(500, 50), indicators = one,
+    ind <- n_cluster(one, stage_cost = c(500, 50),
                      budget = budget)
     cv_target <- if (is.null(budget)) 0.05
     scalar <- n_cluster(stage_cost = c(500, 50), icc = 0.05,

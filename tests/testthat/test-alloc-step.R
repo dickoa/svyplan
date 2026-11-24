@@ -205,16 +205,16 @@ test_that("the searched cv mode is the smallest design in steps", {
 
 test_that("a two-stage frame and joint allocation refuse n_step", {
   cl <- data.frame(stratum = c("a", "b"), N = c(1000, 2000), sd = 1,
-                   icc_psu = 0.1, n_per_psu = 10, n_step = 4)
+                   icc_1 = 0.1, take_2 = 10, n_step = 4)
   expect_error(n_alloc(cl, n = 40), "'n_step' applies to element frames")
   expect_error(prec_alloc(cl, n = c(20, 20)),
                "'n_step' applies to element frames")
   jf <- data.frame(stratum = c("a", "b"), N = c(1000, 2000), n_step = 4)
   m <- data.frame(stratum = c("a", "b"), name = "p", p = 0.3)
   t <- data.frame(name = "p", cv = 0.1)
-  expect_error(n_alloc(jf, measures = m, targets = t),
+  expect_error(n_alloc_joint(jf, measures = m, targets = t),
                "'n_step' is not used for joint constrained allocation")
-  expect_error(prec_alloc(jf, n = c(20, 20), measures = m, targets = t),
+  expect_error(prec_alloc_joint(jf, n = c(20, 20), measures = m, targets = t),
                "'n_step' is not used for joint constrained allocation")
 })
 

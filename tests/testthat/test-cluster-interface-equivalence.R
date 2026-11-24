@@ -1,7 +1,7 @@
 ## One indicator on one design is one answer, whichever interface states it.
 ##
 ## svyplan reaches the same two-stage and three-stage cluster design from four
-## directions: n_cluster(), n_cluster(indicators = ), n_alloc() cluster mode,
+## directions: n_cluster(), n_cluster( ), n_alloc() cluster mode,
 ## and n_alloc() generalized fixed-take allocation. They share a variance
 ## model, so a design described identically to all four must size identically
 ## in all four. Nothing else in the suite compares them, and a coefficient
@@ -26,8 +26,8 @@
 .eq_alloc_frame <- function(icc, m) {
   data.frame(
     stratum = "S", N = .eq_N, mean = .eq_p, sd = sqrt(.eq_p * (1 - .eq_p)),
-    icc_psu = icc, n_per_psu = m, N_psu = .eq_N_psu,
-    cost_psu = 300, cost_ssu = 25
+    icc_1 = icc, take_2 = m, N_1 = .eq_N_psu,
+    cost_1 = 300, cost_2 = 25
   )
 }
 
@@ -42,24 +42,24 @@ test_that("two-stage cluster interfaces agree at full response", {
   m <- 20
 
   by_cluster <- n_cluster(
-    icc = icc, n_per_psu = m, cv = .eq_cv,
+    icc = icc, stage_n = c(NA, m), cv = .eq_cv,
     unit_relvar = .eq_relvar, stage_cost = c(300, 25)
-  )$n[["n_psu"]]
+  )$n[["stage_1"]]
 
   by_multi <- n_cluster(
-    indicators = data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_psu = icc),
-    n_per_psu = m, stage_cost = c(300, 25)
-  )$n[["n_psu"]]
+    data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_1 = icc),
+    stage_n = c(NA, m), stage_cost = c(300, 25)
+  )$n[["stage_1"]]
 
   by_alloc <- n_alloc(.eq_alloc_frame(icc, m), cv = .eq_cv)$detail$n / m
 
-  by_generalized <- n_alloc(
+  by_generalized <- n_alloc_joint(
     data.frame(
-      stratum = "S", N = .eq_N, N_psu = .eq_N_psu, n_per_psu = m,
-      cost_psu = 300, cost_ssu = 25
+      stratum = "S", N = .eq_N, N_1 = .eq_N_psu, take_2 = m,
+      cost_1 = 300, cost_2 = 25
     ),
     measures = data.frame(
-      stratum = "S", name = "y", p = .eq_p, icc_psu = icc, var_ratio_psu = 1
+      stratum = "S", name = "y", p = .eq_p, icc_1 = icc, var_ratio_1 = 1
     ),
     targets = .eq_targets
   )$detail$n / m
@@ -75,27 +75,27 @@ test_that("two-stage cluster interfaces agree below full response", {
   rr <- 0.5
 
   by_cluster <- n_cluster(
-    icc = icc, n_per_psu = m, cv = .eq_cv, resp_rate = rr,
+    icc = icc, stage_n = c(NA, m), cv = .eq_cv, resp_rate = rr,
     unit_relvar = .eq_relvar, stage_cost = c(300, 25)
-  )$n[["n_psu"]]
+  )$n[["stage_1"]]
 
   by_multi <- n_cluster(
-    indicators = data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_psu = icc),
-    n_per_psu = m, resp_rate = rr, stage_cost = c(300, 25)
-  )$n[["n_psu"]]
+    data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_1 = icc),
+    stage_n = c(NA, m), resp_rate = rr, stage_cost = c(300, 25)
+  )$n[["stage_1"]]
 
   by_alloc <- n_alloc(
     .eq_alloc_frame(icc, m), cv = .eq_cv, resp_rate = rr
   )$detail$n / m
 
-  by_generalized <- n_alloc(
+  by_generalized <- n_alloc_joint(
     data.frame(
-      stratum = "S", N = .eq_N, N_psu = .eq_N_psu, n_per_psu = m,
-      cost_psu = 300, cost_ssu = 25
+      stratum = "S", N = .eq_N, N_1 = .eq_N_psu, take_2 = m,
+      cost_1 = 300, cost_2 = 25
     ),
     measures = data.frame(
-      stratum = "S", name = "y", p = .eq_p, icc_psu = icc,
-      var_ratio_psu = 1, resp_rate = rr
+      stratum = "S", name = "y", p = .eq_p, icc_1 = icc,
+      var_ratio_1 = 1, resp_rate = rr
     ),
     targets = .eq_targets
   )$detail$n / m
@@ -115,19 +115,19 @@ test_that("three-stage cluster interfaces agree below full response", {
   rr <- 0.5
 
   by_cluster <- n_cluster(
-    icc = c(d1, d2), n_per_psu = m, n_per_ssu = q, cv = .eq_cv,
+    icc = c(d1, d2), stage_n = c(NA, m, q), cv = .eq_cv,
     resp_rate = rr, unit_relvar = .eq_relvar, stage_cost = c(300, 50, 25)
-  )$n[["n_psu"]]
+  )$n[["stage_1"]]
 
-  by_generalized <- n_alloc(
+  by_generalized <- n_alloc_joint(
     data.frame(
-      stratum = "S", N = .eq_N, N_psu = .eq_N_psu, N_ssu = 4e7,
-      n_per_psu = m, n_per_ssu = q,
-      cost_psu = 300, cost_ssu = 50, cost_tsu = 25
+      stratum = "S", N = .eq_N, N_1 = .eq_N_psu, N_2 = 4e7,
+      take_2 = m, take_3 = q,
+      cost_1 = 300, cost_2 = 50, cost_3 = 25
     ),
     measures = data.frame(
-      stratum = "S", name = "y", p = .eq_p, icc_psu = d1, icc_ssu = d2,
-      var_ratio_psu = 1, resp_rate = rr
+      stratum = "S", name = "y", p = .eq_p, icc_1 = d1, icc_2 = d2,
+      var_ratio_1 = 1, resp_rate = rr
     ),
     targets = .eq_targets
   )$detail$n / (m * q)
@@ -144,14 +144,14 @@ test_that("ultimate-unit response enters the clustering bracket", {
   gross <- 1 + icc * (m - 1)
   responding <- 1 + icc * (m * rr - 1)
 
-  n_psu <- n_alloc(
+  n_psu <- n_alloc_joint(
     data.frame(
-      stratum = "S", N = .eq_N, N_psu = .eq_N_psu, n_per_psu = m,
-      cost_psu = 300, cost_ssu = 25
+      stratum = "S", N = .eq_N, N_1 = .eq_N_psu, take_2 = m,
+      cost_1 = 300, cost_2 = 25
     ),
     measures = data.frame(
-      stratum = "S", name = "y", p = .eq_p, icc_psu = icc,
-      var_ratio_psu = 1, resp_rate = rr
+      stratum = "S", name = "y", p = .eq_p, icc_1 = icc,
+      var_ratio_1 = 1, resp_rate = rr
     ),
     targets = .eq_targets
   )$detail$n / m
@@ -168,14 +168,14 @@ test_that("PSU response scales the design without touching the bracket", {
   rr <- 0.5
 
   size <- function(psu_rate) {
-    n_alloc(
+    n_alloc_joint(
       data.frame(
-        stratum = "S", N = .eq_N, N_psu = .eq_N_psu, n_per_psu = m,
-        cost_psu = 300, cost_ssu = 25
+        stratum = "S", N = .eq_N, N_1 = .eq_N_psu, take_2 = m,
+        cost_1 = 300, cost_2 = 25
       ),
       measures = data.frame(
-        stratum = "S", name = "y", p = .eq_p, icc_psu = icc,
-        var_ratio_psu = 1, resp_rate = rr, resp_rate_psu = psu_rate
+        stratum = "S", name = "y", p = .eq_p, icc_1 = icc,
+        var_ratio_1 = 1, resp_rate = rr, resp_rate_1 = psu_rate
       ),
       targets = .eq_targets
     )$detail$n / m
@@ -187,10 +187,9 @@ test_that("PSU response scales the design without touching the bracket", {
   expect_equal(
     size(0.8),
     n_cluster(
-      icc = icc, n_per_psu = m, cv = .eq_cv, resp_rate = rr,
-      resp_rate_psu = 0.8, unit_relvar = .eq_relvar,
-      stage_cost = c(300, 25)
-    )$n[["n_psu"]],
+      icc = icc, stage_n = c(NA, m), cv = .eq_cv, resp_rate = c(0.8, rr),
+      unit_relvar = .eq_relvar, stage_cost = c(300, 25)
+    )$n[["stage_1"]],
     tolerance = 1e-4
   )
 })
@@ -200,14 +199,14 @@ test_that("the two stage rates are not recoverable from one another", {
   m <- 20
 
   size <- function(...) {
-    n_alloc(
+    n_alloc_joint(
       data.frame(
-        stratum = "S", N = .eq_N, N_psu = .eq_N_psu, n_per_psu = m,
-        cost_psu = 300, cost_ssu = 25
+        stratum = "S", N = .eq_N, N_1 = .eq_N_psu, take_2 = m,
+        cost_1 = 300, cost_2 = 25
       ),
       measures = data.frame(
-        stratum = "S", name = "y", p = .eq_p, icc_psu = icc,
-        var_ratio_psu = 1, ...
+        stratum = "S", name = "y", p = .eq_p, icc_1 = icc,
+        var_ratio_1 = 1, ...
       ),
       targets = .eq_targets
     )$detail$n / m
@@ -217,8 +216,8 @@ test_that("the two stage rates are not recoverable from one another", {
   # rate shrinks the realized cluster.
   expect_false(
     isTRUE(all.equal(
-      size(resp_rate = 0.5, resp_rate_psu = 0.8),
-      size(resp_rate = 0.8, resp_rate_psu = 0.5),
+      size(resp_rate = 0.5, resp_rate_1 = 0.8),
+      size(resp_rate = 0.8, resp_rate_1 = 0.5),
       tolerance = 1e-3
     ))
   )
@@ -227,23 +226,23 @@ test_that("the two stage rates are not recoverable from one another", {
 test_that("a stage rate naming an absent stage is refused", {
   frame_1 <- data.frame(stratum = "S", N = 1e5)
   measures_1 <- data.frame(
-    stratum = "S", name = "y", p = .eq_p, resp_rate_psu = 0.8
+    stratum = "S", name = "y", p = .eq_p, resp_rate_1 = 0.8
   )
   expect_error(
-    n_alloc(frame_1, measures = measures_1, targets = .eq_targets),
+    n_alloc_joint(frame_1, measures = measures_1, targets = .eq_targets),
     "does not have"
   )
 
   frame_2 <- data.frame(
-    stratum = "S", N = .eq_N, N_psu = .eq_N_psu, n_per_psu = 20,
-    cost_psu = 300, cost_ssu = 25
+    stratum = "S", N = .eq_N, N_1 = .eq_N_psu, take_2 = 20,
+    cost_1 = 300, cost_2 = 25
   )
   measures_2 <- data.frame(
-    stratum = "S", name = "y", p = .eq_p, icc_psu = 0.05,
-    var_ratio_psu = 1, resp_rate_ssu = 0.9
+    stratum = "S", name = "y", p = .eq_p, icc_1 = 0.05,
+    var_ratio_1 = 1, resp_rate_2 = 0.9
   )
   expect_error(
-    n_alloc(frame_2, measures = measures_2, targets = .eq_targets),
+    n_alloc_joint(frame_2, measures = measures_2, targets = .eq_targets),
     "does not have"
   )
 })
@@ -253,8 +252,8 @@ test_that("a stage rate naming an absent stage is refused", {
 test_that("design_effect() of a cluster allocation reads the responding take", {
   frame <- data.frame(
     stratum = "S", N = 2e5, mean = .eq_p, sd = sqrt(.eq_p * (1 - .eq_p)),
-    icc_psu = 0.05, n_per_psu = 20, N_psu = 1e4,
-    cost_psu = 300, cost_ssu = 25
+    icc_1 = 0.05, take_2 = 20, N_1 = 1e4,
+    cost_1 = 300, cost_2 = 25
   )
   expect_equal(
     design_effect(n_alloc(frame, cv = .eq_cv))$deff_allocation,
@@ -281,8 +280,8 @@ test_that("the allocation FPC sits between no correction and the exact one", {
   for (N in c(2e5, 5e4, 2e4)) {
     frame <- data.frame(
       stratum = "S", N = N, mean = .eq_p, sd = sqrt(.eq_p * (1 - .eq_p)),
-      icc_psu = icc, n_per_psu = m, N_psu = N / m,
-      cost_psu = 300, cost_ssu = 25
+      icc_1 = icc, take_2 = m, N_1 = N / m,
+      cost_1 = 300, cost_2 = 25
     )
     got <- n_alloc(frame, cv = .eq_cv)$detail$n
 
@@ -319,25 +318,23 @@ test_that("the allocation FPC sits between no correction and the exact one", {
 
 .eq_one_row <- function(stages, rr, rp, rs) {
   row <- data.frame(
-    name = "y", p = .eq_p, cv = .eq_cv, icc_psu = 0.05,
-    resp_rate = rr, resp_rate_psu = rp
+    name = "y", p = .eq_p, cv = .eq_cv, icc_1 = 0.05,
+    resp_rate = rr, resp_rate_1 = rp
   )
   if (stages == 3L) {
-    row$icc_ssu <- 0.10
-    row$resp_rate_ssu <- rs
+    row$icc_2 <- 0.10
+    row$resp_rate_2 <- rs
   }
   row
 }
 
 .eq_scalar_args <- function(stages, rr, rp, rs) {
-  args <- list(
+  list(
     icc = if (stages == 2L) 0.05 else c(0.05, 0.10),
     unit_relvar = .eq_relvar,
     stage_cost = if (stages == 2L) c(300, 25) else c(300, 50, 25),
-    resp_rate = rr, resp_rate_psu = rp
+    resp_rate = if (stages == 2L) c(rp, rr) else c(rp, rs, rr)
   )
-  if (stages == 3L) args$resp_rate_ssu <- rs
-  args
 }
 
 .eq_rate_grid <- function(stages) {
@@ -364,7 +361,7 @@ test_that("one row of indicators reproduces the scalar allocation", {
           c(.eq_scalar_args(stages, r[1L], r[2L], r[3L]), constraint)
         )
         multi_args <- c(
-          list(indicators = .eq_one_row(stages, r[1L], r[2L], r[3L]),
+          list(x = .eq_one_row(stages, r[1L], r[2L], r[3L]),
                stage_cost = if (stages == 2L) c(300, 25) else c(300, 50, 25)),
           constraint[names(constraint) == "budget"]
         )
@@ -397,16 +394,16 @@ test_that("one row of indicators reproduces the scalar precision", {
       label <- sprintf("%d-stage, rates %s", stages, paste(r, collapse = "/"))
       row <- .eq_one_row(stages, r[1L], r[2L], r[3L])
       row$cv <- NULL
-      row$n <- sizes[1L]
-      row$n_per_psu <- sizes[2L]
-      if (stages == 3L) row$n_per_ssu <- sizes[3L]
+      row$n_1 <- sizes[1L]
+      row$take_2 <- sizes[2L]
+      if (stages == 3L) row$take_3 <- sizes[3L]
 
       scalar_args <- .eq_scalar_args(stages, r[1L], r[2L], r[3L])
       scalar_args$stage_cost <- NULL
       scalar_args$n <- sizes
       scalar <- do.call(prec_cluster, scalar_args)
 
-      multi <- prec_cluster(indicators = row)
+      multi <- prec_cluster(row)
       expect_equal(multi$detail$.cv, scalar$cv, tolerance = 1e-10,
                    info = label)
     }
@@ -416,17 +413,17 @@ test_that("one row of indicators reproduces the scalar precision", {
 ## T7. The pair round-trips in both directions
 
 test_that("an indicators allocation reports the target it was sized against", {
-  row <- data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_psu = 0.05)
-  fit <- n_cluster(indicators = row, stage_cost = c(300, 25))
+  row <- data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_1 = 0.05)
+  fit <- n_cluster(row, stage_cost = c(300, 25))
   expect_equal(prec_cluster(fit)$detail$.cv, .eq_cv, tolerance = 1e-8)
 })
 
 test_that("an indicators precision rebuilds the design it describes", {
   row <- data.frame(
     name = c("y", "z"), p = c(0.30, 0.10), cv = c(0.10, 0.15),
-    icc_psu = c(0.02, 0.05)
+    icc_1 = c(0.02, 0.05)
   )
-  fit <- n_cluster(indicators = row, stage_cost = c(300, 25))
+  fit <- n_cluster(row, stage_cost = c(300, 25))
   back <- n_cluster(prec_cluster(fit))
   expect_equal(unname(back$n), unname(fit$n), tolerance = 1e-6)
   expect_equal(back$cv, fit$cv, tolerance = 1e-6)
@@ -434,10 +431,10 @@ test_that("an indicators precision rebuilds the design it describes", {
 
 test_that("a costed indicators precision sizes the design it describes", {
   row <- data.frame(
-    name = c("y", "z"), p = c(0.30, 0.10), n = c(80, 80),
-    n_per_psu = c(20, 20), icc_psu = c(0.02, 0.05)
+    name = c("y", "z"), p = c(0.30, 0.10), n_1 = c(80, 80),
+    take_2 = c(20, 20), icc_1 = c(0.02, 0.05)
   )
-  prec <- prec_cluster(indicators = row, stage_cost = c(300, 25))
+  prec <- prec_cluster(row, stage_cost = c(300, 25))
   fit <- n_cluster(prec)
   expect_equal(prec_cluster(fit)$detail$.cv, prec$detail$.cv,
                tolerance = 1e-8)
@@ -450,15 +447,14 @@ test_that("a costed indicators precision sizes the design it describes", {
 ## designs coincide at any sampling fraction, with nonresponse at both stages.
 
 .eq_stage_frame <- data.frame(
-  N = 4900, N_psu = 100, sd = sqrt(54), mean = 10, icc_psu = 5 / 54,
-  cost_psu = 12, cost_ssu = 3, resp_rate_psu = 0.9
+  N = 4900, N_1 = 100, sd = sqrt(54), mean = 10, icc_1 = 5 / 54,
+  cost_1 = 12, cost_2 = 3, resp_rate_1 = 0.9
 )
 
 .eq_stage_cluster <- function(...) {
   n_cluster(
     stage_cost = c(12, 3), icc = 5 / 54, unit_relvar = 54 / 100,
-    fpc = "stage", N = 4900, N_psu = 100, resp_rate = 0.8,
-    resp_rate_psu = 0.9, ...
+    fpc = "stage", N = c(100, 4900), resp_rate = c(0.9, 0.8), ...
   )
 }
 
@@ -469,20 +465,20 @@ test_that("n_cluster and n_alloc agree under the stage correction", {
       c(list(.eq_stage_frame, resp_rate = 0.8, fpc = "stage"), mode)
     )
     by_cluster <- do.call(.eq_stage_cluster, mode)
-    expect_equal(by_cluster$n[["n_per_psu"]], by_alloc$detail$n_per_psu,
+    expect_equal(by_cluster$n[["stage_2"]], by_alloc$detail$take_2,
                  tolerance = 1e-10)
-    expect_equal(by_cluster$n[["n_psu"]], by_alloc$detail$n_psu,
+    expect_equal(by_cluster$n[["stage_1"]], by_alloc$detail$n_1,
                  tolerance = 1e-10)
     expect_equal(by_cluster$cv, by_alloc$cv, tolerance = 1e-10)
   }
 })
 
 test_that("prec_cluster and prec_alloc agree under the stage correction", {
-  frame <- transform(.eq_stage_frame, n_per_psu = 6)
+  frame <- transform(.eq_stage_frame, take_2 = 6)
   by_alloc <- prec_alloc(frame, n = 6 * 40, resp_rate = 0.8, fpc = "stage")
   by_cluster <- prec_cluster(
     n = c(40, 6), icc = 5 / 54, unit_relvar = 54 / 100, fpc = "stage",
-    N = 4900, N_psu = 100, resp_rate = 0.8, resp_rate_psu = 0.9
+    N = c(100, 4900), resp_rate = c(0.9, 0.8)
   )
   expect_equal(by_cluster$cv, by_alloc$cv, tolerance = 1e-10)
 })
@@ -490,21 +486,21 @@ test_that("prec_cluster and prec_alloc agree under the stage correction", {
 test_that("three-stage n_cluster and n_alloc agree under the stage correction", {
   p <- 0.3
   for (rr in c(1, 0.8)) {
-    by_alloc <- n_alloc(
-      data.frame(stratum = "S", N = 6000, N_psu = 60, N_ssu = 600,
-                 n_per_psu = 5, n_per_ssu = 4, cost_psu = 300, cost_ssu = 50,
-                 cost_tsu = 25),
+    by_alloc <- n_alloc_joint(
+      data.frame(stratum = "S", N = 6000, N_1 = 60, N_2 = 600,
+                 take_2 = 5, take_3 = 4, cost_1 = 300, cost_2 = 50,
+                 cost_3 = 25),
       measures = data.frame(stratum = "S", name = "y", p = p,
-                            icc_psu = 0.05, icc_ssu = 0.10, var_ratio_psu = 1,
+                            icc_1 = 0.05, icc_2 = 0.10, var_ratio_1 = 1,
                             resp_rate = rr),
       targets = .eq_targets,
       fpc = "stage"
     )$detail$n / 20
     by_cluster <- n_cluster(
-      icc = c(0.05, 0.10), n_per_psu = 5, n_per_ssu = 4, cv = .eq_cv,
+      icc = c(0.05, 0.10), stage_n = c(NA, 5, 4), cv = .eq_cv,
       resp_rate = rr, unit_relvar = (1 - p) / p, stage_cost = c(300, 50, 25),
-      fpc = "stage", N = 6000, N_psu = 60, N_ssu = 600
-    )$n[["n_psu"]]
+      fpc = "stage", N = c(60, 600, 6000)
+    )$n[["stage_1"]]
     expect_equal(by_alloc, by_cluster, tolerance = 1e-6)
   }
 })
@@ -514,29 +510,28 @@ test_that("three-stage n_cluster and n_alloc agree under the stage correction", 
 .eq_stage_pair <- function(stages, mode, rr) {
   common <- list(fpc = "stage", resp_rate = rr)
   if (stages == 2L) {
-    common <- c(common, list(stage_cost = c(120, 10), N = 3000, N_psu = 60))
+    common <- c(common, list(stage_cost = c(120, 10), N = c(60, 3000)))
     icc <- 0.06
-    row <- data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_psu = icc)
+    row <- data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_1 = icc)
   } else {
-    common <- c(common, list(stage_cost = c(300, 50, 10), N = 12000,
-                             N_psu = 40, N_ssu = 400))
+    common <- c(common, list(stage_cost = c(300, 50, 10), N = c(40, 400, 12000)))
     icc <- c(0.04, 0.10)
-    row <- data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_psu = icc[1],
-                      icc_ssu = icc[2])
+    row <- data.frame(name = "y", p = .eq_p, cv = .eq_cv, icc_1 = icc[1],
+                      icc_2 = icc[2])
   }
   scalar <- do.call(n_cluster, c(common, mode, list(
     icc = icc, unit_relvar = .eq_relvar,
     cv = if (is.null(mode$budget)) .eq_cv
   )))
-  several <- do.call(n_cluster, c(common, mode, list(indicators = row)))
+  several <- do.call(n_cluster, c(list(x = row), common, mode))
   list(scalar = scalar, several = several)
 }
 
 test_that("one indicator under the stage correction returns the scalar design", {
-  modes <- list(list(), list(budget = 9000), list(n_psu = 30))
+  modes <- list(list(), list(budget = 9000), list(stage_n = c(30, NA)))
   for (stages in 2:3) for (mode in modes) for (rr in c(1, 0.7)) {
     if (stages == 3L && !is.null(mode$budget)) mode$budget <- 40000
-    if (stages == 3L && !is.null(mode$n_psu)) mode$n_psu <- 35
+    if (stages == 3L && !is.null(mode$stage_n)) mode$stage_n <- c(35, NA, NA)
     got <- .eq_stage_pair(stages, mode, rr)
     tol <- if (stages == 2L) 1e-6 else 1e-4
     expect_equal(got$several$n, got$scalar$n, tolerance = tol)

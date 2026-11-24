@@ -97,9 +97,9 @@ test_that("floors in cv and budget modes keep the targets", {
 })
 
 test_that("a cluster frame keeps the floors in whole PSUs", {
-  fr <- transform(floor_frame(), N_psu = c(200, 300, 80, 120, 30, 40),
-                  icc_psu = 0.05, n_per_psu = 12, cost_psu = 300,
-                  cost_ssu = 20)
+  fr <- transform(floor_frame(), N_1 = c(200, 300, 80, 120, 30, 40),
+                  icc_1 = 0.05, take_2 = 12, cost_1 = 300,
+                  cost_2 = 20)
   for (mode in list(list(n = 1500), list(cv = 0.09), list(budget = 60000))) {
     fit <- suppressWarnings(do.call(
       n_alloc, c(list(fr, domains = "province", min_n_domain = 400), mode)
@@ -142,9 +142,9 @@ test_that("floors are refused where they cannot apply", {
                  "changes nothing")
   measures <- data.frame(stratum = fr$stratum, name = "y", p = fr$p)
   targets <- data.frame(name = "y", cv = 0.05)
-  expect_error(n_alloc(fr, measures = measures, targets = targets,
+  expect_error(n_alloc_joint(fr, measures = measures, targets = targets,
                        domains = "province", min_n_domain = 400),
-               "classic modes")
+               "belong to n_alloc\\(\\)")
 })
 
 test_that("floors survive the round trip through prec_alloc()", {
@@ -200,4 +200,73 @@ test_that("a total the floored steps reach only by moving strata together", {
   expect_true(all(n_int %% frame$n_step == 0))
   expect_true(all(tapply(n_int, frame$region, sum) >= 40))
   expect_true(all(abs(n_int - fit$detail$n) <= 2 * frame$n_step))
+})
+
+## The status of a design searched by domain
+
+floor_status <- function(fit) {
+  vapply(fit$optimization$domains, function(r) {
+    paste(c(r$status, r$reason), collapse = ":")
+  }, character(1))
+}
+
+test_that("a domain its floor sets is not reported as searched", {
+  routes <- character(0)
+  fd <- data.frame(stratum = c("A", "B"), reg = c("X", "Y"), N = 10000,
+                   mean = 50, sd = 10, icc_1 = .05, icc_2 = .1,
+                   cost_1 = 500, cost_2 = 100, cost_3 = 20)
+  fd2 <- fd[, setdiff(names(fd), c("icc_2", "cost_3"))]
+  fd2$cost_2 <- 20
+  fe <- data.frame(stratum = c("A", "B"), reg = c("X", "Y"), N = 10000,
+                   mean = 50, sd = 10)
+  for (route in c("three-stage", "two-stage", "element")) {
+    frame <- switch(route, `three-stage` = fd, `two-stage` = fd2, element = fe)
+    fit <- suppressWarnings(n_alloc(frame, cv = .1, min_n_domain = 500,
+                                    domains = "reg", alloc = "optimal"))
+    expect_identical(fit$operational$status, "heuristic", info = route)
+    expect_identical(unname(floor_status(fit)),
+                     c("heuristic:floor", "heuristic:floor"), info = route)
+    expect_output(print(fit), "search: not run", info = route)
+    routes <- c(routes, route)
+  }
+  expect_setequal(routes, c("three-stage", "two-stage", "element"))
+})
+
+test_that("a searched domain keeps its proof beside a floored one", {
+  fm <- data.frame(stratum = c("A", "B"), reg = c("X", "Y"), N = 10000,
+                   mean = 50, sd = c(10, 60), icc_1 = .05, icc_2 = .1,
+                   cost_1 = 500, cost_2 = 100, cost_3 = 20)
+  fit <- suppressWarnings(n_alloc(fm, cv = .1, min_n_domain = 300,
+                                  domains = "reg", alloc = "optimal"))
+  expect_identical(fit$operational$status, "heuristic")
+  expect_identical(unname(floor_status(fit)), c("heuristic:floor", "optimal"))
+})
+
+## A searched domain the floor repair changes
+
+test_that("a floor repair after the search is reported as such", {
+  fr <- data.frame(stratum = c("A", "B", "C"), region = c("N", "N", "S"),
+                   N = 200, mean = 10, sd = c(2, 9.02, 2),
+                   unit_cost = c(4, 1, 1))
+  args <- list(fr, cv = 0.114105214604767, alloc = "optimal",
+               domains = "region", fpc = "none")
+  free <- do.call(n_alloc, args)
+  floored <- do.call(n_alloc, c(args, list(
+    min_n_domain = data.frame(domain = "region", level = "N", min_n = 25)
+  )))
+  in_n <- fr$region == "N"
+  expect_equal(sum(free$detail$n_int[in_n]), 24)
+  expect_equal(sum(floored$detail$n_int[in_n]), 25)
+  expect_equal(sum(floored$detail$n[in_n]), 25.05, tolerance = 1e-9)
+  rec <- floored$optimization$domains
+  expect_identical(rec[["1_N"]]$status, "heuristic")
+  expect_identical(rec[["1_N"]]$reason, "floor repair")
+  expect_identical(rec[["1_N"]]$search$status, "optimal")
+  expect_identical(rec[["1_S"]]$status, "optimal")
+  for (out in list(capture.output(print(floored)),
+                   capture.output(print(summary(floored))))) {
+    txt <- paste(trimws(out), collapse = " ")
+    expect_match(txt, "search: ran, then the floor repair raised", fixed = TRUE)
+    expect_no_match(txt, "search: not run", fixed = TRUE)
+  }
 })

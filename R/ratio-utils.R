@@ -161,7 +161,7 @@ check_component_cor <- function(component_cor, name = "component_cor") {
 #' proportion and mean rows, and that is not an error there.
 #' @keywords internal
 #' @noRd
-.check_ratio_rows <- function(indicators) {
+.check_ratio_rows <- function(indicators, sizing = TRUE) {
   is_ratio <- .is_ratio_row(indicators)
   if (!any(is_ratio)) {
     return(invisible(TRUE))
@@ -197,7 +197,7 @@ check_component_cor <- function(component_cor, name = "component_cor") {
                                  moments[["cv_den"]],
                                  moments[["component_cor"]])
     .check_ratio_relvar(relvar, moments[["cv_num"]], moments[["cv_den"]],
-                        moments[["component_cor"]])
+                        moments[["component_cor"]], sizing = sizing)
   }
   if ("unit_relvar" %in% names(indicators)) {
     # A ratio row derives this from its moments, so a value alongside them can

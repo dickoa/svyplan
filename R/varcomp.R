@@ -12,24 +12,24 @@
 #'
 #' @return A `svyplan_varcomp` object with components:
 #' \describe{
-#'   \item{`varb`}{Between-PSU variance (scalar).}
-#'   \item{`varw`}{Within-PSU variance. Scalar for 2-stage, length-2
-#'     vector (`varw_psu`, `varw_ssu`) for 3-stage.}
-#'   \item{`icc`}{Measure of homogeneity. Length 1 for 2-stage,
-#'     length 2 (`icc_psu`, `icc_ssu`) for 3-stage.}
+#'   \item{`varb`}{Between-stage-1 (PSU) variance (scalar).}
+#'   \item{`varw`}{Within-stage-1 variance. Scalar for 2-stage, length `stages - 1`
+#'     vector (`varw_1`, ..., `varw_{S-1}`) for 3+ stages.}
+#'   \item{`icc`}{Measure of homogeneity. Scalar for 2-stage, length `stages - 1`
+#'     vector (`icc_1`, ..., `icc_{S-1}`) for 3+ stages.}
 #'   \item{`var_ratio`}{Ratio parameter(s), same length as `icc`
-#'     (`var_ratio_psu`, `var_ratio_ssu` for 3-stage).}
+#'     (`var_ratio_1`, ..., `var_ratio_{S-1}` for 3+ stages).}
 #'   \item{`unit_relvar`}{Unit relvariance (scalar).}
-#'   \item{`stages`}{Number of stages (2 or 3).}
+#'   \item{`stages`}{Number of stages (2 or more).}
 #'   \item{`strata`}{Per-stratum component table when `strata` is
 #'     supplied, otherwise `NULL` (see Details).}
 #'   \item{`source`}{`"data"` when the components were estimated, `"deff"`
 #'     when `icc` was backed out of a design effect.}
 #'   \item{`params`}{The take that identifies a backed-out `icc`,
-#'     `n_per_psu` alongside the nominal `n_per_psu_nominal`. Empty on the
+#'     `take` alongside the nominal `take_nominal`. Empty on the
 #'     estimated path, where the take is a later design choice.}
 #'   \item{`selection`}{How each sampled stage above the units is drawn,
-#'     `"srs"` or `"pps"`, named `psu` and, at three stages, `ssu`. `NA`
+#'     `"srs"` or `"pps"`, named `stage_1`, ..., `stage_{S-1}`. `NA`
 #'     for a backed-out `icc`, where the design effect does not say.}
 #'   \item{`input`}{What the components were computed from: `"frame"`,
 #'     `"weighted"` (a sample with within-cluster weights), `"deff"` or
@@ -38,10 +38,9 @@
 #'     `"expansion"` or `"ratio"`. `NA` for a backed-out `icc`.}
 #' }
 #' The result can be exported with [as.data.frame()]. Unstratified results
-#' become a one-row two- or three-stage component table. Stratified results
-#' return the table stored in `$strata`. A backed-out result adds
-#' `n_per_psu` and `source` to that row, and carries `NA` in the three
-#' fields a design effect does not identify.
+#' become a one-row component table. Stratified results return the table stored
+#' in `$strata`. A backed-out result adds `take` and `source` to that row, and
+#' carries `NA` in the three fields a design effect does not identify.
 #'
 #' @details
 #' The interface is determined by the class of `x`:
@@ -68,10 +67,13 @@
 #' summed weights, and the estimation variance of the weighted cluster
 #' totals is subtracted from the between-stage variance terms, so
 #' unequal-probability samples from a previous round give approximately
-#' design-unbiased components. Unit weights recover the frame formulas
-#' exactly. The weight *scale* matters. Within each cluster the summed
+#' design-unbiased components. With an SRS first stage, unit weights
+#' recover the frame formulas exactly. With `prob`, supplied weights, unit
+#' ones included, mark the PSUs as a PPS sample, and the components are
+#' the Hansen-Hurwitz estimates described with `prob` below. The weight
+#' *scale* matters. Within each cluster the summed
 #' weights should estimate the cluster population size, since the
-#' implied sampling fraction drives the correction. For a multi-stage
+#' implied sampling fraction drives the correction. For a multistage
 #' sample this means the *within-cluster* weights (the product of the
 #' stage-2 and later weights), not the full design weight, whose
 #' stage-1 factor would overstate every cluster size. The correction
@@ -80,18 +82,18 @@
 #' 3-stage weighted case the between-PSU correction removes
 #' element-stage estimation noise but not SSU-stage subsampling noise,
 #' so when few SSUs are sampled per PSU the between-PSU component (and
-#' `icc_psu`) is conservative: biased upward, never downward.
+#' `icc_1`) is conservative: biased upward, never downward.
 #'
 #' The element-stage noise in a 3-stage sample depends on the share of
 #' each SSU's elements that was sampled, \eqn{f_3 = n_{ij} / N_{ij}}{f3 =
 #' n_ij / N_ij}. Only the stage-3 weight sums to \eqn{N_{ij}}{N_ij}, so a
 #' single within-cluster weight column reads the fraction as
 #' \eqn{f_2 f_3}{f2 * f3} and removes too much noise from the SSU totals,
-#' which understates `varw_psu` and `icc_ssu`. The difference is small when
+#' which understates `varw_1` and `icc_2`. The difference is small when
 #' \eqn{f_3}{f3} is small, the usual case of a few households listed from
 #' many. When it is not, pass the stage-2 and stage-3 weights as two
 #' columns. At \eqn{f_2 = 0.2}{f2 = 0.2} and \eqn{f_3 = 0.5}{f3 = 0.5}
-#' one column understates `varw_psu` by about a fifth.
+#' one column understates `varw_1` by about a fifth.
 #'
 #' A sample passed without `weights` is read as the frame, and that
 #' overstates `icc`. Each sampled PSU's mean carries the noise of its own
@@ -116,6 +118,16 @@
 #' weight per element however many stages `ids` names, and the stage-1
 #' factor cannot be divided back out of it.
 #'
+#' The stage count comes from the same information. When the last `ids`
+#' column has one row per value and the design stores as many probability
+#' columns as `ids` columns, no draw sits below that ID, so it names the
+#' elements and the design has one stage fewer than its `ids`. A further
+#' probability column records a draw inside that unit and keeps it a stage.
+#' Two `weights` columns, the stage-2 and stage-3 conditional weights,
+#' declare the second of two `ids` columns an SSU in the same way, unit
+#' columns included. One combined design weight says neither, so the last
+#' ID is then read as a stage and a warning names the ambiguity.
+#'
 #' Unit weights describe a frame and pass straight through. Any other
 #' single-column weight is refused rather than guessed at, because a design
 #' declared as `ids = ~psu` carrying a full design weight is equally
@@ -128,9 +140,19 @@
 #' When `prob` is `NULL`, SRS first-stage is assumed. When provided, PPS
 #' variance estimation is used. `prob` must sum to 1 across the PSUs
 #' present in the data. On a complete frame these are the one-draw
-#' selection probabilities themselves. In a sample containing only some
-#' of the PSUs, renormalize over the sampled PSUs:
-#' `prob = pp[sampled] / sum(pp[sampled])`. For a fixed-size PPS design
+#' selection probabilities themselves, and the frame formulas apply. A
+#' sample, marked by `weights` or by the survey.design method, is read as
+#' \eqn{m} draws with replacement. With \eqn{z_i = \hat t_i / q_i}{z_i =
+#' t_i / q_i}, the between component is estimated by the variance of the
+#' \eqn{z_i} less the mean of their estimation variances over
+#' \eqn{q_i^2}{q_i^2}, the within component by the mean of
+#' \eqn{\hat N_i^2 s_i^2 / q_i^2}{N_i^2 s_i^2 / q_i^2}, and the total by
+#' the mean of the \eqn{z_i}. Renormalize over the draws,
+#' `prob = pp[drawn] / sum(pp[drawn])`, and give each draw its own PSU
+#' label, so that a PSU drawn twice enters twice. The common factor cancels
+#' from every component. A PPS design without replacement is read as one
+#' with replacement, which is close when few PSUs are taken from many. In a
+#' three-stage sample `prob` describes the first stage only. For a fixed-size PPS design
 #' the stage-1 inclusion probabilities are proportional to the one-draw
 #' probabilities, so shares derived from inverse stage-1 weights,
 #' `pi1 / sum(pi1)`, are identical and can be used when the frame is
@@ -139,7 +161,7 @@
 #' as separate strata, with `prob` renormalized over the remaining
 #' PSUs.
 #'
-#' Planning from a complete PSU register, as [n_alloc()] does with `psu`, is
+#' Planning from a complete PSU register, as [n_alloc_joint()] does with `psu`, is
 #' the exception. The certainty PSUs are not known until the allocation is,
 #' so use every PSU of the stratum, with `prob` equal to each PSU's share of
 #' the stratum's units. The `icc` returned is then the size-weighted
@@ -173,7 +195,7 @@
 #' accept:
 #'
 #' ```r
-#' vc <- varcomp(deff = 1.8, n_per_psu = 20)
+#' vc <- varcomp(deff = 1.8, take = 20)
 #' n_cluster(stage_cost = c(500, 50), icc = vc, budget = 1e5)
 #' ```
 #'
@@ -208,9 +230,9 @@
 #' takes or their coefficient of variation where they are known:
 #'
 #' ```r
-#' varcomp(deff = 1.8, n_per_psu = 20)                  # constant take
-#' varcomp(deff = 1.8, n_per_psu = takes)               # realized takes
-#' varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)   # summary form
+#' varcomp(deff = 1.8, take = 20)                  # constant take
+#' varcomp(deff = 1.8, take = takes)               # realized takes
+#' varcomp(deff = 1.8, take = 20, cv_take = 0.3)   # summary form
 #' ```
 #'
 #' The take is stored in `$params` as provenance, since the same `icc`
@@ -234,7 +256,7 @@
 #'
 #' ```r
 #' kish <- design_effect(weights = w)
-#' vc <- varcomp(deff = deft^2 / kish, n_per_psu = b)
+#' vc <- varcomp(deff = deft^2 / kish, take = b)
 #' ```
 #'
 #' This is the decomposition Kalton, Brick and L\enc{ê}{e} (2005) use to
@@ -253,7 +275,7 @@
 #' twice. A scalar `deff` in [n_prop()] or [n_mean()] carries no allocation.
 #' For a new design as disproportionate as the old one, multiply its
 #' expected weighting factor back in,
-#' `deff = design_effect(vc, n_per_psu = b_new) * kish_new`, or the sample
+#' `deff = design_effect(vc, take = b_new) * kish_new`, or the sample
 #' comes out too small. Weight variation within strata, from nonresponse
 #' adjustment for instance, recurs in the new survey and [n_alloc()] does
 #' not model it. A `deff` column in its `frame` can carry it.
@@ -295,25 +317,25 @@
 #'
 #' For three stages, `varb` uses the between-PSU expression above that
 #' matches the first stage, the SRS one without `prob` and the PPS one with
-#' it. `varw_psu` scales the variance of SSU totals within each PSU by the
-#' inverse draw probability \eqn{1/p_i}, which is \eqn{M} without `prob`, and `varw_ssu` aggregates the within-SSU ultimate-unit
+#' it. `varw_1` scales the variance of SSU totals within each PSU by the
+#' inverse draw probability \eqn{1/p_i}, which is \eqn{M} without `prob`, and `varw_2` aggregates the within-SSU ultimate-unit
 #' variances. The returned PSU homogeneity compares the between-PSU component
 #' with the element-level variance aggregated within PSUs. The SSU
-#' homogeneity is `varw_psu / (varw_psu + varw_ssu)`. This distinction is why
+#' homogeneity is `varw_1 / (varw_1 + varw_2)`. This distinction is why
 #' the first `icc` is not generally `varb / sum(c(varb, varw))` for a
 #' three-stage result.
 #'
 #' The two `var_ratio` values are estimated from their own stage
-#' decompositions, and `var_ratio_ssu` depends on how SSUs are drawn. By
+#' decompositions, and `var_ratio_2` depends on how SSUs are drawn. By
 #' default SSUs are taken by simple random sampling within each PSU and
 #' their totals are expanded by the number of SSUs. When SSU sizes vary,
-#' those totals vary with size as well as with content, so `var_ratio_ssu`
-#' rises above the `var_ratio_psu * (1 - icc_psu)` that planning functions
+#' those totals vary with size as well as with content, so `var_ratio_2`
+#' rises above the `var_ratio_1 * (1 - icc_1)` that planning functions
 #' derive when it is not supplied, and the more so the smaller the unit
 #' relvariance. A second-stage `prob`
 #' (one-draw probabilities of the SSUs within their PSU, usually their size
 #' share) describes selection proportional to size instead. The size effect
-#' then cancels, and `var_ratio_ssu` comes close to the derived value.
+#' then cancels, and `var_ratio_2` comes close to the derived value.
 #' Use the `prob` that matches the design being planned. Passing a
 #' `svyplan_varcomp` to a planning function uses the estimated pair as
 #' given.
@@ -332,7 +354,7 @@
 #' With `strata`, components are estimated separately within each
 #' stratum and returned as a per-stratum table in `$strata` (also via
 #' `as.data.frame()`). The pooled fields (`varb`, `icc`, ...) are not
-#' filled. The table's columns (`sd`, `mean`, `icc_psu`, `var_ratio_psu`)
+#' filled. The table's columns (`sd`, `mean`, `icc_1`, `var_ratio_1`)
 #' match the [n_alloc()] frame contract, so after adding stratum `N`
 #' it feeds a stratified two-stage allocation directly. When `prob` is
 #' combined with `strata`, supply one value per observation, summing
@@ -388,17 +410,19 @@
 #' # Feed into n_cluster
 #' n_cluster(stage_cost = c(500, 50), icc = vc2, budget = 100000)
 #'
-#' # Estimate components from a two-stage sample: within-cluster
-#' # weights (summing to each cluster's population size) and, for a
-#' # PPS first stage, one-draw probabilities renormalized over the
-#' # sampled clusters
-#' sampled <- unlist(lapply(split(seq_len(200), frame2$district)[1:8],
-#'                          sample, size = 4))
-#' samp <- frame2[sampled, ]
-#' samp$w <- 10 / 4
-#' pp <- rep(1 / 20, 8)
-#' varcomp(income ~ district, data = samp, weights = ~w,
-#'         prob = pp / sum(pp))
+#' # Estimate components from a two-stage PPS sample: 8 districts drawn
+#' # with replacement in proportion to a size measure, 4 of 10 units taken
+#' # in each draw. Each draw is its own PSU, so a district drawn twice
+#' # enters twice. The weights sum to each district's population, and the
+#' # one-draw probabilities are renormalized over the draws
+#' pp_all <- (1:20) / sum(1:20)
+#' draws <- sample(20, 8, replace = TRUE, prob = pp_all)
+#' samp <- do.call(rbind, lapply(seq_along(draws), function(j) {
+#'   rows <- sample(which(frame2$district == draws[j]), 4)
+#'   data.frame(frame2[rows, ], draw = j, w = 10 / 4)
+#' }))
+#' samp$q <- pp_all[draws[samp$draw]] / sum(pp_all[draws])
+#' varcomp(income ~ draw, data = samp, weights = ~w, prob = ~q)
 #'
 #' # Per-stratum components for a stratified two-stage plan
 #' set.seed(2718)
@@ -438,7 +462,7 @@
 #' vc3_pps <- varcomp(income ~ district/village, data = frame3, prob = ~pp)
 #'
 #' # Villages of unequal size. Drawn by SRS, their totals vary with size
-#' # and var_ratio_ssu is large. Drawn proportional to size (each
+#' # and var_ratio_2 is large. Drawn proportional to size (each
 #' # village's share of its district), it is close to the derived value.
 #' set.seed(42)
 #' sizes <- rpois(100, 8) + 2
@@ -463,31 +487,31 @@
 #'         stage_id = list(frame3$district, frame3$village))
 #'
 #' # Back an icc out of a previous round's published design effect
-#' vc <- varcomp(deff = 1.8, n_per_psu = 20)
+#' vc <- varcomp(deff = 1.8, take = 20)
 #' vc
 #'
 #' # Re-plan at a different take: the reason to back the icc out
-#' design_effect(vc, n_per_psu = 12)
+#' design_effect(vc, take = 12)
 #'
 #' # Realized takes varied around a nominal 20
-#' varcomp(deff = 1.8, n_per_psu = 20, cv_take = 0.3)
+#' varcomp(deff = 1.8, take = 20, cv_take = 0.3)
 #'
 #' # From a published standard error instead
-#' varcomp(se = 0.021, p = 0.30, n = 1200, n_per_psu = 20)
+#' varcomp(se = 0.021, p = 0.30, n = 1200, take = 20)
 #'
 #' # A DHS appendix publishes DEFT, the ratio of standard errors
 #' deft <- 1.582
-#' varcomp(deff = deft^2, n_per_psu = 12.3)
+#' varcomp(deff = deft^2, take = 12.3)
 #'
 #' # Divide out the weighting loss of the survey that published it
 #' w_old <- rep(c(1, 4), c(300, 100))
 #' kish <- design_effect(weights = w_old)
-#' vc_dhs <- varcomp(deff = deft^2 / kish, n_per_psu = 12.3)
+#' vc_dhs <- varcomp(deff = deft^2 / kish, take = 12.3)
 #' vc_dhs
 #'
 #' # A scalar deff for an equally disproportionate design puts it back
 #' n_prop(p = 0.28, cv = 0.05,
-#'        deff = design_effect(vc_dhs, n_per_psu = 15) * kish)
+#'        deff = design_effect(vc_dhs, take = 15) * kish)
 #'
 #' @export
 varcomp <- function(x, ...) {
@@ -523,7 +547,7 @@ varcomp <- function(x, ...) {
 #'   `~w`) when using the formula interface, or a numeric vector with
 #'   one positive value per observation. Within each cluster the
 #'   summed weights must estimate the cluster population size. For a
-#'   multi-stage sample use the within-cluster weights, not the full
+#'   multistage sample use the within-cluster weights, not the full
 #'   design weight (see Details). For a three-stage sample, two columns
 #'   (`~w2 + w3`, or a two-column matrix or data frame) give the stage-2
 #'   and stage-3 conditional weights separately, which the element-stage
@@ -587,7 +611,7 @@ varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL,
 #' @param stage_id A list of stage-ID vectors (required for vector interface).
 #'   Length determines the number of stage boundaries (stages - 1).
 #' @param deff A published design effect to back an `icc` out of, with `x`
-#'   unset. Requires `n_per_psu`. A published DEFT is squared first, and
+#'   unset. Requires `take`. A published DEFT is squared first, and
 #'   the published survey's weighting loss may need dividing out. See
 #'   Details.
 #' @param se A published standard error, an alternative to `deff` for the
@@ -595,15 +619,13 @@ varcomp.formula <- function(x, ..., data = NULL, prob = NULL, strata = NULL,
 #' @param p Proportion the published `se` refers to.
 #' @param var Unit variance the published `se` refers to, for a mean.
 #' @param n Sample size the published `se` was computed on.
-#' @param n_per_psu Take per PSU the published design effect refers to,
+#' @param take Take per PSU the published design effect refers to,
 #'   counted in the units the estimate was computed on. For a person-level
 #'   estimate it is the responding eligible persons per cluster, not the
 #'   households per cluster. Give the size-weighted average take, a vector
 #'   of realized takes, or a nominal take with `cv_take`. See Details.
-#' @param n_per_ssu Units per SSU. Not accepted on the back-out, which a
-#'   scalar design effect does not identify.
 #' @param cv_take Coefficient of variation of the realized takes, when
-#'   `n_per_psu` is their nominal mean.
+#'   `take` is their nominal mean.
 #' @param var_ratio Ratio of the clustered component's unit variance to the
 #'   analysis variable's, 1 when unset. See [design_effect()].
 #'
@@ -612,7 +634,7 @@ varcomp.default <- function(x, ..., stage_id = NULL, prob = NULL,
                             strata = NULL, weights = NULL,
                             estimator = c("expansion", "ratio"),
                             deff = NULL, se = NULL, p = NULL, var = NULL,
-                            n = NULL, n_per_psu = NULL, n_per_ssu = NULL,
+                            n = NULL, take = NULL,
                             cv_take = NULL, var_ratio = NULL) {
   .check_unused_dots(...)
   estimator <- match.arg(estimator)
@@ -626,7 +648,7 @@ varcomp.default <- function(x, ..., stage_id = NULL, prob = NULL,
     if (length(data_args) > 0L) {
       stop(
         sprintf(
-          "'deff' backs an 'icc' out of a published design effect and takes no data; call varcomp(deff = , n_per_psu = ) without %s",
+          "'deff' backs an 'icc' out of a published design effect and takes no data; call varcomp(deff = , take = ) without %s",
           paste0("'", data_args, "'", collapse = ", ")
         ),
         call. = FALSE
@@ -634,13 +656,11 @@ varcomp.default <- function(x, ..., stage_id = NULL, prob = NULL,
     }
     return(.varcomp_from_deff(
       deff = deff, se = se, p = p, var = var, n = n,
-      n_per_psu = n_per_psu, n_per_ssu = n_per_ssu, cv_take = cv_take,
-      var_ratio = var_ratio
+      take = take, cv_take = cv_take, var_ratio = var_ratio
     ))
   }
-  .stop_deff_only_args(n_per_psu = n_per_psu, n_per_ssu = n_per_ssu,
-                       cv_take = cv_take, p = p, var = var, n = n,
-                       var_ratio = var_ratio)
+  .stop_deff_only_args(take = take, cv_take = cv_take, p = p, var = var,
+                       n = n, var_ratio = var_ratio)
   if (is.numeric(x)) {
     .varcomp_vector(x, stage_id = stage_id, prob = prob, strata = strata,
                     w = weights, estimator = estimator)
@@ -707,6 +727,9 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     strata <- x$strata[[1L]]
   }
 
+  x <- .varcomp_survey_element_ids(
+    x, has_stage3_weights = identical(ncol(weights), 2L)
+  )
   sw <- if (is.null(weights)) {
     w <- .varcomp_survey_within_w(x)
     list(w = w, w3 = if (!is.null(w)) .varcomp_survey_stage3_w(x))
@@ -736,8 +759,42 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   }
 
   stage_id <- lapply(seq_len(n_stages), function(j) cl[[j]])
-  .varcomp_dispatch(y, stage_id, prob, sw$w, strata, estimator,
-                    if (n_stages == 2L) sw$w3)
+  .varcomp_dispatch(y, stage_id, prob, sw$w, strata, estimator, sw$w3,
+                    sample = TRUE)
+}
+
+#' Read a last ID column with one row per value as the element ID
+#'
+#' survey keeps one probability column per declared stage. When there are as
+#' many as there are ID columns, no draw sits below the last ID, so an ID
+#' with one row per value names the elements, and the design has one stage
+#' fewer than its ID columns suggest. A further probability column records a
+#' draw inside that unit, which keeps it a stage. One combined weight does
+#' not say which holds, so the reading is kept and the gap is named. Two
+#' explicit `weights` columns over two ID columns give stage-2 and stage-3
+#' weights, which declare the second ID an SSU whatever the probabilities.
+#' @keywords internal
+#' @noRd
+.varcomp_survey_element_ids <- function(x, has_stage3_weights = FALSE) {
+  cl <- x$cluster
+  k <- ncol(cl)
+  if (k < 2L || (k == 2L && has_stage3_weights) ||
+        length(unique(cl[[k]])) != nrow(cl)) {
+    return(x)
+  }
+  n_prob <- ncol(x$allprob)
+  if (n_prob == k) {
+    x$cluster <- cl[, -k, drop = FALSE]
+  } else if (n_prob < k) {
+    warning(
+      sprintf(
+        "the last of the design's %d ID columns has one row per value, and its single weight column does not say whether that ID is the element or a stage with one element drawn. It is read as a stage. Rebuild the design with per-stage 'probs=' to settle it",
+        k
+      ),
+      call. = FALSE
+    )
+  }
+  x
 }
 
 #' Resolve a formula or vector argument against a design's variables
@@ -834,20 +891,14 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' returned unidentified.
 #' @keywords internal
 #' @noRd
-.varcomp_from_deff <- function(deff, se, p, var, n, n_per_psu, n_per_ssu,
+.varcomp_from_deff <- function(deff, se, p, var, n, take,
                                cv_take, var_ratio) {
   if (!is.null(deff) && !is.null(se)) {
     stop("supply either 'deff' or 'se', not both", call. = FALSE)
   }
-  if (!is.null(n_per_ssu)) {
+  if (is.null(take)) {
     stop(
-      "a scalar design effect does not identify a three-stage design: it fixes one product of two homogeneities and cannot say how the clustering splits between the stages. Estimate the stages with the formula or survey.design interface",
-      call. = FALSE
-    )
-  }
-  if (is.null(n_per_psu)) {
-    stop(
-      "'n_per_psu' is required: the design effect identifies an 'icc' only at the take it was achieved with",
+      "'take' is required: the design effect identifies an 'icc' only at the take it was achieved with",
       call. = FALSE
     )
   }
@@ -862,15 +913,15 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     check_scalar(deff, "deff")
   }
 
-  take <- .varcomp_take(n_per_psu, cv_take)
-  if (take$value <= 1) {
+  take_info <- .varcomp_take(take, cv_take)
+  if (take_info$value <= 1) {
     stop(
-      "'n_per_psu' must exceed 1: at one unit per PSU the design effect carries no clustering and no 'icc' is identified",
+      "'take' must exceed 1: at one unit per PSU the design effect carries no clustering and no 'icc' is identified",
       call. = FALSE
     )
   }
 
-  icc <- (deff / var_ratio - 1) / (take$value - 1)
+  icc <- (deff / var_ratio - 1) / (take_info$value - 1)
   if (icc < 0) {
     warning(
       sprintf(
@@ -897,7 +948,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     unit_relvar = NA_real_,
     stages      = 2L,
     source      = "deff",
-    params      = list(n_per_psu = take$value, n_per_psu_nominal = take$nominal),
+    params      = list(take = take_info$value, take_nominal = take_info$nominal),
     input       = input,
     estimator   = NA_character_
   )
@@ -913,29 +964,29 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' positive `icc` by about the same relative amount.
 #' @keywords internal
 #' @noRd
-.varcomp_take <- function(n_per_psu, cv_take) {
-  if (!is.numeric(n_per_psu) || length(n_per_psu) == 0L ||
-      anyNA(n_per_psu) || any(!is.finite(n_per_psu)) || any(n_per_psu <= 0)) {
-    stop("'n_per_psu' must be positive and finite", call. = FALSE)
+.varcomp_take <- function(take, cv_take) {
+  if (!is.numeric(take) || length(take) == 0L ||
+      anyNA(take) || any(!is.finite(take)) || any(take <= 0)) {
+    stop("'take' must be positive and finite", call. = FALSE)
   }
-  if (length(n_per_psu) > 1L) {
+  if (length(take) > 1L) {
     if (!is.null(cv_take)) {
       stop(
-        "'cv_take' summarizes takes that were not supplied; drop it when 'n_per_psu' holds the realized takes",
+        "'cv_take' summarizes takes that were not supplied; drop it when 'take' holds the realized takes",
         call. = FALSE
       )
     }
-    nominal <- mean(n_per_psu)
-    return(list(value = sum(n_per_psu^2) / sum(n_per_psu), nominal = nominal))
+    nominal <- mean(take)
+    return(list(value = sum(take^2) / sum(take), nominal = nominal))
   }
   if (is.null(cv_take)) {
-    return(list(value = n_per_psu, nominal = n_per_psu))
+    return(list(value = take, nominal = take))
   }
   if (!is.numeric(cv_take) || length(cv_take) != 1L || is.na(cv_take) ||
       !is.finite(cv_take) || cv_take < 0) {
     stop("'cv_take' must be a non-negative finite scalar", call. = FALSE)
   }
-  list(value = n_per_psu * (1 + cv_take^2), nominal = n_per_psu)
+  list(value = take * (1 + cv_take^2), nominal = take)
 }
 
 #' Design effect implied by a published standard error
@@ -1102,7 +1153,8 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   }
 
   sw <- .varcomp_split_w(w)
-  .varcomp_dispatch(y, stage_id, pp, sw$w, strata, estimator, sw$w3)
+  .varcomp_dispatch(y, stage_id, pp, sw$w, strata, estimator, sw$w3,
+                    sample = !is.null(w))
 }
 
 #' One stage's draw probabilities from a formula or a vector
@@ -1124,30 +1176,37 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   pp
 }
 
-#' First- and second-stage draw probabilities from `prob`
+#' Per-stage draw probabilities from `prob` for arbitrary S >= 2
 #'
-#' A list gives one entry per sampled stage above the units, `NULL` meaning
-#' simple random sampling at that stage. Anything else is the first stage.
+#' A list gives one entry per sampled stage above the units (`1 .. stages - 1`),
+#' with `NULL` meaning simple random sampling at that stage. A non-list value
+#' supplies stage 1 only.
 #' @keywords internal
 #' @noRd
 .varcomp_split_prob <- function(prob, stages) {
-  if (!is.list(prob) || is.data.frame(prob)) {
-    return(list(psu = prob, ssu = NULL))
+  n_b <- stages - 1L
+  out <- vector("list", n_b)
+  names(out) <- paste0("stage_", seq_len(n_b))
+  if (is.null(prob)) {
+    return(out)
   }
-  if (length(prob) == 0L || length(prob) > stages - 1L) {
+  if (!is.list(prob) || is.data.frame(prob)) {
+    out[[1L]] <- prob
+    return(out)
+  }
+  if (length(prob) == 0L || length(prob) > n_b) {
     stop(
       sprintf(
-        "a 'prob' list takes one entry per sampled stage above the units: %s",
-        if (stages == 2L) {
-          "a 2-stage design has only the PSU stage, so a second-stage entry needs three stages"
-        } else {
-          "the PSU stage and the SSU stage, each NULL for simple random sampling"
-        }
+        "a 'prob' list takes 1 to %d entries (one per sampled stage above the units, NULL for SRS)",
+        n_b
       ),
       call. = FALSE
     )
   }
-  list(psu = prob[[1L]], ssu = if (length(prob) == 2L) prob[[2L]])
+  for (i in seq_along(prob)) {
+    out[i] <- list(prob[[i]])
+  }
+  out
 }
 
 #' Vector interface
@@ -1159,14 +1218,16 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     stop("'stage_id' must be a list of ID vectors", call. = FALSE)
   }
   sw <- .varcomp_split_w(w)
-  .varcomp_dispatch(x, stage_id, prob, sw$w, strata, estimator, sw$w3)
+  .varcomp_dispatch(x, stage_id, prob, sw$w, strata, estimator, sw$w3,
+                    sample = !is.null(w))
 }
 
 #' Dispatch to correct variance component estimator
 #' @keywords internal
 #' @noRd
 .varcomp_dispatch <- function(y, stage_id, prob, w = NULL, strata = NULL,
-                              estimator = "expansion", w3 = NULL) {
+                              estimator = "expansion", w3 = NULL,
+                              sample = !is.null(w)) {
   if (!is.numeric(y) || length(y) == 0L) {
     stop("'y' must be a non-empty numeric vector", call. = FALSE)
   }
@@ -1203,57 +1264,60 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   n_boundaries <- length(stage_id)
   stages <- n_boundaries + 1L
 
-  if (stages > 3L) {
+  if (stages > 3L && !is.null(w)) {
     stop(
-      "4+ stage variance components are not supported. Estimate the top three stages and fold deeper stages (e.g. persons within households) into the 'deff' passed to n_prop() or n_mean()",
+      "weighted sample varcomp() supports up to 3 stages; drop 'weights' to compute frame-level components for 4+ stages",
       call. = FALSE
     )
   }
 
   prob <- .varcomp_split_prob(prob, stages)
-  if (!is.null(prob$ssu) && !is.null(w)) {
+  if (sample && stages >= 3L && any(!vapply(prob[-1L], is.null, logical(1L)))) {
     stop(
-      "a second-stage 'prob' is supported on a complete frame only. Drop 'weights', or drop the second-stage entry of 'prob'",
+      "deeper-stage 'prob' entries are supported on a complete frame only. Drop 'weights', or drop the deeper-stage entries of 'prob'",
       call. = FALSE
     )
   }
 
   center <- identical(estimator, "ratio")
   vc <- if (!is.null(strata)) {
-    .varcomp_strata(y, stage_id, prob, w, strata, estimator, w3)
-  } else if (stages == 2L && is.null(prob$psu)) {
+    .varcomp_strata(y, stage_id, prob, w, strata, estimator, w3, sample)
+  } else if (is.null(w) && stages > 3L) {
+    .varcomp_multistage_frame(y, stage_id, prob, center = center)
+  } else if (stages == 2L && is.null(prob[[1L]])) {
     .varcomp_2stage_srs(y, stage_id[[1L]], w, center)
   } else if (stages == 2L) {
-    .varcomp_2stage_pps(y, stage_id[[1L]], prob$psu, w, center)
+    .varcomp_2stage_pps(y, stage_id[[1L]], prob[[1L]], w, center, sample)
   } else {
-    psu_pp <- prob$psu
+    psu_pp <- prob[[1L]]
     if (is.null(psu_pp)) {
       M <- length(unique(stage_id[[1L]]))
       psu_pp <- rep(1 / M, M)
     }
     .varcomp_3stage_pps(
-      y, stage_id[[1L]], stage_id[[2L]], psu_pp, w, ssu_pp = prob$ssu,
-      psu_srs = is.null(prob$psu), center = center, w3 = w3
+      y, stage_id[[1L]], stage_id[[2L]], psu_pp, w, ssu_pp = prob[[2L]],
+      psu_srs = is.null(prob[[1L]]), center = center, w3 = w3,
+      sample = sample
     )
   }
-  vc$selection <- c(
-    psu = if (is.null(prob$psu)) "srs" else "pps",
-    ssu = if (is.null(prob$ssu)) "srs" else "pps"
-  )[seq_len(stages - 1L)]
-  vc$input <- if (is.null(w)) "frame" else "weighted"
+  sel <- vapply(prob, function(p) if (is.null(p)) "srs" else "pps", character(1L))
+  names(sel) <- paste0("stage_", seq_len(n_boundaries))
+  vc$selection <- sel
+  vc$input <- if (sample) "weighted" else "frame"
   vc
 }
 
 #' Per-stratum variance components
 #'
 #' Splits the data by stratum and runs the requested estimator within
-#' each. Column names of the result (`sd`, `mean`, `icc_psu`, `var_ratio_psu`,
+#' each. Column names of the result (`sd`, `mean`, `icc_1`, `var_ratio_1`,
 #' ...) deliberately match the n_alloc() frame contract so the table can
 #' be merged into an allocation frame directly.
 #' @keywords internal
 #' @noRd
 .varcomp_strata <- function(y, stage_id, prob, w, strata,
-                            estimator = "expansion", w3 = NULL) {
+                            estimator = "expansion", w3 = NULL,
+                            sample = !is.null(w)) {
   if (length(strata) != length(y)) {
     stop("'strata' must have the same length as the outcome", call. = FALSE)
   }
@@ -1282,13 +1346,14 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
         ],
         if (!is.null(w)) w[idx],
         estimator = estimator,
-        w3 = if (!is.null(w3)) w3[idx]
+        w3 = if (!is.null(w3)) w3[idx],
+        sample = sample
       ),
       error = function(e) {
         # A register plan needs no estimate here, and collapsing would merge
         # a stratum the allocation keeps apart.
         hint <- if (inherits(e, "svyplan_single_psu")) {
-          ". To plan from a PSU register with n_alloc(psu =), leave its icc_psu NA instead, since a single PSU has no between-PSU variance"
+          ". To plan from a PSU register with n_alloc_joint(psu =), leave its icc_1 NA instead, since a single PSU has no between-PSU variance"
         } else {
           ""
         }
@@ -1305,19 +1370,20 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
         mean = sum(w[idx] * y[idx]) / sum(w[idx])
       )
     }
+    n_b <- vc$stages - 1L
+    for (k in seq_len(n_b)) {
+      row[[paste0("icc_", k)]] <- unname(vc$icc[k])
+    }
+    for (k in seq_len(n_b)) {
+      row[[paste0("var_ratio_", k)]] <- unname(vc$var_ratio[k])
+    }
+    row$varb <- vc$varb
     if (vc$stages == 2L) {
-      row$icc_psu <- vc$icc
-      row$var_ratio_psu <- vc$var_ratio
-      row$varb <- vc$varb
-      row$varw <- vc$varw
+      row$varw <- unname(vc$varw[1L])
     } else {
-      row$icc_psu <- vc$icc[["icc_psu"]]
-      row$icc_ssu <- vc$icc[["icc_ssu"]]
-      row$var_ratio_psu <- vc$var_ratio[["var_ratio_psu"]]
-      row$var_ratio_ssu <- vc$var_ratio[["var_ratio_ssu"]]
-      row$varb <- vc$varb
-      row$varw_psu <- vc$varw[["varw_psu"]]
-      row$varw_ssu <- vc$varw[["varw_ssu"]]
+      for (k in seq_len(n_b)) {
+        row[[paste0("varw_", k)]] <- unname(vc$varw[k])
+      }
     }
     row$unit_relvar <- vc$unit_relvar
     row
@@ -1580,6 +1646,29 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   .vc_component(max(spread - adjustment, 0), den)
 }
 
+#' Relvariance of the between-PSU term from a PPS sample of the PSUs
+#'
+#' With `z = t / q` over `m` with-replacement draws, `var(z)` estimates the
+#' single-draw variance, which adds `sum V_i / p_i` of estimation noise to
+#' the frame term, and `mean(noise / q^2)` estimates that noise. A common
+#' factor in `q` scales numerator and `den` alike. Both carry `m^2`, the
+#' scale of the summed draw weights that `den` is formed from.
+#' @keywords internal
+#' @noRd
+.vc_between_hh <- function(psu_total, draw_prob, den, noise = 0) {
+  m <- length(psu_total)
+  z <- psu_total / draw_prob
+  spread <- var(z) - mean(noise / draw_prob^2)
+  .vc_component(m^2 * max(spread, 0), den)
+}
+
+#' Element weights of a PPS sample, the within weight over the draw share
+#' @keywords internal
+#' @noRd
+.vc_draw_weights <- function(w, draw_prob, index) {
+  (w %||% 1) / draw_prob[index]
+}
+
 #' Relvariance contributed by the spread inside each group
 #'
 #' Aggregates group-level variances up to the estimator scale by weighting
@@ -1674,10 +1763,13 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' first-stage draw probabilities used to scale the within-PSU term.
 #' @keywords internal
 #' @noRd
-.varcomp_2stage <- function(y, psu_id, draw_prob, w, levels, center = FALSE) {
+.varcomp_2stage <- function(y, psu_id, draw_prob, w, levels, center = FALSE,
+                            sample = !is.null(w)) {
   psu <- .vc_group(psu_id, levels)
   .check_min_psu(psu$count)
-  summary <- .vc_summarise(.vc_linearize(y, w, center), w, psu)
+  hh <- sample && !is.null(draw_prob)
+  w_unit <- if (hh) .vc_draw_weights(w, draw_prob, psu$index) else w
+  summary <- .vc_summarise(.vc_linearize(y, w_unit, center), w, psu)
   summary$var <- .vc_fill_singletons(summary$var)
 
   correction <- 0
@@ -1685,10 +1777,14 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     correction <- .vc_total_var(summary$observed, summary$size, summary$var)
   }
 
-  relvar <- .vc_unit_relvar(y, w)
+  relvar <- .vc_unit_relvar(y, w_unit)
   unit <- relvar$unit
 
-  if (is.null(draw_prob)) {
+  if (hh) {
+    between <- .vc_between_hh(summary$total, draw_prob, relvar$den,
+                              noise = if (is.null(w)) 0 else correction)
+    scale <- draw_prob^2 / psu$count
+  } else if (is.null(draw_prob)) {
     between <- .vc_between_srs(
       summary$total, relvar$den,
       adjustment = if (is.null(w)) 0 else mean(correction)
@@ -1732,13 +1828,14 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' 2-stage PPS variance components
 #' @keywords internal
 #' @noRd
-.varcomp_2stage_pps <- function(y, psu_id, pp, w = NULL, center = FALSE) {
+.varcomp_2stage_pps <- function(y, psu_id, pp, w = NULL, center = FALSE,
+                                sample = !is.null(w)) {
   levels <- sort(unique(psu_id))
   # A lone PSU has prob 1, which the range check would report first and
   # hide the single-PSU condition the stratum hint keys on.
   .check_min_psu(length(levels))
   draw_prob <- .varcomp_map_pp(pp, y, psu_id, levels)
-  .varcomp_2stage(y, psu_id, draw_prob, w, levels, center)
+  .varcomp_2stage(y, psu_id, draw_prob, w, levels, center, sample)
 }
 
 #' 3-stage PPS variance components
@@ -1747,28 +1844,31 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 #' between-PSU dispersion of PSU totals gives `varb` and the spread of
 #' elements within a PSU gives the companion term the PSU homogeneity is
 #' measured against. At the SSU level the spread of SSU totals within a
-#' PSU gives `varw_psu` and the spread of elements within an SSU gives
-#' `varw_ssu`. With `psu_srs`, `pp` is the equal draw probability and
+#' PSU gives `varw_1` and the spread of elements within an SSU gives
+#' `varw_2`. With `psu_srs`, `pp` is the equal draw probability and
 #' `varb` is the SRS term of two stages, on divisor `A - 1`, which the
 #' stage-by-stage correction `1 - a/A` needs to be exact.
 #' @keywords internal
 #' @noRd
 .varcomp_3stage_pps <- function(y, psu_id, ssu_id, pp, w = NULL,
                                 ssu_pp = NULL, psu_srs = FALSE,
-                                center = FALSE, w3 = NULL) {
+                                center = FALSE, w3 = NULL,
+                                sample = !is.null(w)) {
   psu_levels <- sort(unique(psu_id))
   psu <- .vc_group(psu_id, psu_levels)
   .check_min_psu(psu$count)
   draw_prob <- .varcomp_map_pp(pp, y, psu_id, psu_levels)
 
   # SSU labels need only be unique inside a PSU, so nest before grouping.
-  nested <- interaction(psu_id, ssu_id, drop = TRUE)
+  nested <- factor(.collision_free_key(psu_id, ssu_id))
   ssu_levels <- unique(nested)
   ssu <- .vc_group(nested, ssu_levels)
   psu_of_ssu <- match(psu_id[match(ssu_levels, nested)], psu_levels)
   ssu_per_psu <- tabulate(psu_of_ssu, nbins = psu$count)
 
-  z <- .vc_linearize(y, w, center)
+  hh <- sample && !psu_srs
+  w_unit <- if (hh) .vc_draw_weights(w, draw_prob, psu$index) else w
+  z <- .vc_linearize(y, w_unit, center)
   by_psu <- .vc_summarise(z, w, psu)
   by_ssu <- .vc_summarise(z, w, ssu)
   by_psu$var <- .vc_fill_singletons(by_psu$var)
@@ -1779,6 +1879,7 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   )
 
   psu_adjustment <- 0
+  psu_noise <- 0
   if (!is.null(w)) {
     # Estimated SSU totals carry element-stage sampling noise. Remove it
     # from both terms built on those totals. The element-stage fraction is
@@ -1802,11 +1903,16 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
     psu_adjustment <- sum(psu_noise * (1 - draw_prob) / draw_prob)
   }
 
-  relvar <- .vc_unit_relvar(y, w)
+  relvar <- .vc_unit_relvar(y, w_unit)
   unit <- relvar$unit
   den <- relvar$den
+  ## A within term sums over the frame's PSUs. From a sample of them it is
+  ## estimated by the Hansen-Hurwitz mean, so each draw enters at q^2 / m.
+  per_psu <- if (hh) draw_prob^2 / psu$count else draw_prob
 
-  between_psu <- if (psu_srs) {
+  between_psu <- if (hh) {
+    .vc_between_hh(by_psu$total, draw_prob, den, noise = psu_noise)
+  } else if (psu_srs) {
     # The PPS adjustment at p = 1/A is (A - 1) times the summed noise, and
     # the SRS term subtracts its mean before scaling by A^2.
     .vc_between_srs(by_psu$total, den,
@@ -1814,13 +1920,13 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
   } else {
     .vc_between_pps(by_psu$total, draw_prob, den, adjustment = psu_adjustment)
   }
-  element_in_psu <- .vc_within(by_psu$size, by_psu$var, draw_prob, den)
+  element_in_psu <- .vc_within(by_psu$size, by_psu$var, per_psu, den)
   if (is.null(ssu_pp)) {
-    between_ssu <- .vc_within(ssu_per_psu, ssu_total_var, draw_prob, den)
+    between_ssu <- .vc_within(ssu_per_psu, ssu_total_var, per_psu, den)
     element_in_ssu <- .vc_component(
       sum(
         ssu_per_psu[psu_of_ssu] * by_ssu$size^2 * by_ssu$var /
-          draw_prob[psu_of_ssu]
+          per_psu[psu_of_ssu]
       ),
       den
     )
@@ -1844,11 +1950,159 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
 
   .new_svyplan_varcomp(
     varb    = between_psu$rel,
-    varw    = c(varw_psu = between_ssu$rel, varw_ssu = element_in_ssu$rel),
-    icc   = c(icc_psu = psu_ratios$icc, icc_ssu = ssu_ratios$icc),
-    var_ratio       = c(var_ratio_psu = psu_ratios$var_ratio, var_ratio_ssu = ssu_ratios$var_ratio),
+    varw    = c(varw_1 = between_ssu$rel, varw_2 = element_in_ssu$rel),
+    icc   = c(icc_1 = psu_ratios$icc, icc_2 = ssu_ratios$icc),
+    var_ratio       = c(var_ratio_1 = psu_ratios$var_ratio, var_ratio_2 = ssu_ratios$var_ratio),
     unit_relvar = unit$rel,
     stages  = 3L,
+    estimator = if (center) "ratio" else "expansion"
+  )
+}
+
+#' Map and validate stage-s (s >= 2) draw probabilities within each parent
+#' @keywords internal
+#' @noRd
+.varcomp_map_stage_pp <- function(stage_pp, nested, stage_levels, parent_of,
+                                  stage_idx) {
+  if (!is.numeric(stage_pp) || anyNA(stage_pp) || any(!is.finite(stage_pp)) ||
+      any(stage_pp <= 0) || any(stage_pp > 1)) {
+    stop(sprintf("stage-%d 'prob' values must lie in (0, 1]", stage_idx),
+         call. = FALSE)
+  }
+  if (length(stage_pp) != length(nested)) {
+    stop(
+      sprintf("stage-%d 'prob' must have one value per observation", stage_idx),
+      call. = FALSE
+    )
+  }
+  grouped <- split(stage_pp, match(nested, stage_levels))
+  if (any(vapply(grouped, function(v) max(v) - min(v), numeric(1L)) > 1e-12)) {
+    stop(
+      sprintf("stage-%d 'prob' must be constant within each stage-%d unit",
+              stage_idx, stage_idx),
+      call. = FALSE
+    )
+  }
+  draw <- vapply(grouped, `[`, numeric(1L), 1L, USE.NAMES = FALSE)
+  sums <- vapply(split(draw, parent_of), sum, numeric(1L))
+  if (any(abs(sums - 1) >= 1e-3)) {
+    stop(
+      sprintf("stage-%d 'prob' values must sum to 1 within each stage-%d parent",
+              stage_idx, stage_idx - 1L),
+      call. = FALSE
+    )
+  }
+  draw
+}
+
+#' Recursive frame-level variance components for arbitrary S >= 2 stages
+#'
+#' Generalizes the 2- and 3-stage SRS/PPS decompositions to any stage depth S:
+#' at each stage s = 1..(S - 1), computes the between-stage-s relvariance B_s
+#' (within stage-(s - 1) parents) and the element-within-stage-s relvariance
+#' E_s, yielding delta_s = B_s / (B_s + E_s) and k_s = (B_s + E_s) / V.
+#' @keywords internal
+#' @noRd
+.varcomp_multistage_frame <- function(y, stage_id, prob, center = FALSE) {
+  n_b <- length(stage_id)
+  stages <- n_b + 1L
+  z <- .vc_linearize(y, NULL, center)
+  relvar <- .vc_unit_relvar(y, NULL)
+  unit <- relvar$unit
+  den <- relvar$den
+
+  B_list <- vector("list", n_b)
+  E_list <- vector("list", n_b)
+  icc_vec <- numeric(n_b)
+  vr_vec <- numeric(n_b)
+  degen <- logical(n_b)
+
+  nest_prev <- NULL
+  lev_prev <- NULL
+  count_prev <- 1L
+  parent_P <- 1
+  parent_total <- sum(z)
+
+  for (s in seq_len(n_b)) {
+    nest_s <- if (s == 1L) {
+      stage_id[[1L]]
+    } else {
+      factor(.collision_free_key(nest_prev, stage_id[[s]]))
+    }
+    lev_s <- if (s == 1L) sort(unique(nest_s)) else unique(nest_s)
+    grp_s <- .vc_group(nest_s, lev_s)
+    if (s == 1L) .check_min_psu(grp_s$count)
+
+    parent_of_s <- if (s == 1L) {
+      rep(1L, grp_s$count)
+    } else {
+      match(nest_prev[match(lev_s, nest_s)], lev_prev)
+    }
+    children_per_parent <- tabulate(parent_of_s, nbins = count_prev)
+    sum_s <- .vc_summarise(z, NULL, grp_s)
+    sum_s$var <- .vc_fill_singletons(sum_s$var)
+
+    if (is.null(prob[[s]])) {
+      p_s <- 1 / children_per_parent[parent_of_s]
+      P_s <- parent_P[parent_of_s] * p_s
+      B_s <- if (s == 1L) {
+        .vc_between_srs(sum_s$total, den)
+      } else {
+        child_var <- .vc_fill_singletons(
+          vapply(split(sum_s$total, parent_of_s), var, numeric(1L),
+                 USE.NAMES = FALSE)
+        )
+        .vc_within(children_per_parent, child_var, parent_P, den)
+      }
+    } else {
+      p_s <- if (s == 1L) {
+        .varcomp_map_pp(prob[[1L]], y, stage_id[[1L]], lev_s)
+      } else {
+        .varcomp_map_stage_pp(prob[[s]], nest_s, lev_s, parent_of_s, s)
+      }
+      P_s <- parent_P[parent_of_s] * p_s
+      B_s <- if (s == 1L) {
+        .vc_between_pps(sum_s$total, p_s, den)
+      } else {
+        inflated <- sum_s$total / p_s - parent_total[parent_of_s]
+        .vc_component(sum(p_s * inflated^2 / parent_P[parent_of_s]), den)
+      }
+    }
+
+    E_s <- .vc_within(sum_s$size, sum_s$var, P_s, den)
+    rat_s <- .vc_ratios(B_s, E_s, unit)
+
+    B_list[[s]] <- B_s
+    E_list[[s]] <- E_s
+    icc_vec[s] <- rat_s$icc
+    vr_vec[s] <- rat_s$var_ratio
+    degen[s] <- rat_s$degenerate
+
+    nest_prev <- nest_s
+    lev_prev <- lev_s
+    count_prev <- grp_s$count
+    parent_P <- P_s
+    parent_total <- sum_s$total
+  }
+
+  .vc_warn_degenerate(degen)
+  .vc_warn_zero_mean(unit)
+
+  names(icc_vec) <- paste0("icc_", seq_len(n_b))
+  names(vr_vec) <- paste0("var_ratio_", seq_len(n_b))
+  varw_vec <- c(
+    vapply(B_list[-1L], `[[`, numeric(1L), "rel"),
+    E_list[[n_b]]$rel
+  )
+  names(varw_vec) <- paste0("varw_", seq_len(n_b))
+
+  .new_svyplan_varcomp(
+    varb = B_list[[1L]]$rel,
+    varw = varw_vec,
+    icc = icc_vec,
+    var_ratio = vr_vec,
+    unit_relvar = unit$rel,
+    stages = stages,
     estimator = if (center) "ratio" else "expansion"
   )
 }

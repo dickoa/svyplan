@@ -17,7 +17,7 @@
 #'   it must exceed `alpha`, the power at zero effect. Leave `NULL` to solve
 #'   for power.
 #' @param alpha Significance level, default 0.05.
-#' @param N Population size for finite-population correction. A scalar applies
+#' @param N Population size for finite population correction. A scalar applies
 #'   to both groups. A length-2 vector `c(N1, N2)` sets group-specific
 #'   population sizes. `Inf` disables FPC for the corresponding group.
 #' @param deff Design effect multiplier (> 0). Values < 1 are valid for

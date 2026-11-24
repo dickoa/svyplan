@@ -126,12 +126,12 @@ test_that("a register refused for small PSUs plans after merging", {
     psu_id = rep(register$psu_id, register$N)
   )
   plan_for <- function(psu) {
-    n_alloc(
+    n_alloc_joint(
       data.frame(stratum = c("A", "B"),
                  N = as.numeric(tapply(psu$N, psu$stratum, sum)),
-                 n_per_psu = 8),
+                 take_2 = 8),
       measures = data.frame(stratum = c("A", "B"), name = "y", p = 0.5,
-                            icc_psu = 0.05),
+                            icc_1 = 0.05),
       targets = data.frame(name = "y", cv = 0.15),
       psu = psu
     )
@@ -147,7 +147,7 @@ test_that("a register refused for small PSUs plans after merging", {
   expect_true(all(merged$N >= 8))
   expect_identical(sum(merged$N), sum(register$N))
   plan <- plan_for(merged)
-  expect_true(all(plan$psu$n_take <= plan$psu$N))
+  expect_true(all(plan$psu$take_2 <= plan$psu$N))
 })
 
 test_that("a register naming a PSU twice is refused", {
@@ -156,16 +156,16 @@ test_that("a register naming a PSU twice is refused", {
     stratum = c("A", "A", "B", "B"),
     N = c(40, 30, 20, 50)
   )
-  frame <- data.frame(stratum = c("A", "B"), N = c(70, 70), n_per_psu = 10)
+  frame <- data.frame(stratum = c("A", "B"), N = c(70, 70), take_2 = 10)
   measures <- data.frame(stratum = c("A", "B"), name = "y", p = 0.5,
-                         icc_psu = 0.05)
+                         icc_1 = 0.05)
   targets <- data.frame(name = "y", cv = 0.1)
   expect_error(
-    n_alloc(frame, measures = measures, targets = targets, psu = psu),
+    n_alloc_joint(frame, measures = measures, targets = targets, psu = psu),
     "'psu\\$psu_id' must name each PSU once, and .P2. appears more than once"
   )
   expect_error(
-    prec_alloc(frame, n = c(30, 30), measures = measures, targets = targets,
+    prec_alloc_joint(frame, n = c(30, 30), measures = measures, targets = targets,
                psu = psu),
     "must name each PSU once"
   )

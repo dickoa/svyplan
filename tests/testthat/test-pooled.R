@@ -582,7 +582,10 @@ test_that("a stored issued profile is refused when a round trip lowers response"
                 overlap = design_overlap("4", max_lag = 7), cor_decay = 0.8)
   expect_equal(x$params$overlap_basis, "issued")
   expect_error(prec_pooled(x, resp_rate = 0.8), "issued samples")
-  expect_error(predict(x, data.frame(resp_rate = 0.8)), "issued samples")
+  expect_error(
+    expect_warning(predict(x, data.frame(resp_rate = 0.8)), "issued samples"),
+    "all rows failed"
+  )
   # Re-reading it unchanged is fine, response still being full.
   expect_equal(prec_pooled(x)$moe, 1)
   expect_equal(nrow(predict(x, data.frame(moe = c(0.5, 1)))), 2L)
@@ -947,4 +950,40 @@ test_that("predict() keeps an inherited rotation and drops a replaced one", {
              overlap = design_overlap(c(1, 0, 1)), overlap_cor = 1)$n,
     tolerance = 1e-9
   )
+})
+
+## A size snapped to the census beats the target
+
+test_that("a pooled target only a census meets returns the census", {
+  z <- n_pooled(var = 10000, moe = 0.002, occasions = 4, N = 100)
+  expect_equal(z$n, 100)
+  expect_equal(z$se, 0)
+})
+
+## A pooled round trip at another correlation form or horizon
+
+test_that("a pooled round trip rebuilds its lags from the inputs as given", {
+  fit <- n_pooled(var = 100, cv = 0.05, mu = 10, occasions = 4, overlap = 0.5,
+                  cor_decay = 0.8)
+  pr <- prec_pooled(fit)
+  fresh <- function(...) {
+    prec_pooled(var = 100, mu = 10, n = fit$n, overlap = 0.5, ...)$se
+  }
+  expect_equal(prec_pooled(fit, cor_decay = 0.7)$se,
+               fresh(occasions = 4, cor_decay = 0.7))
+  expect_equal(prec_pooled(fit, occasions = 6)$se,
+               fresh(occasions = 6, cor_decay = 0.8))
+  expect_equal(prec_pooled(fit, overlap_cor = 0.6)$se,
+               fresh(occasions = 4, overlap_cor = 0.6))
+  expect_equal(n_pooled(pr, cor_decay = 0.7)$n,
+               n_pooled(var = 100, mu = 10, moe = pr$moe, occasions = 4,
+                        overlap = 0.5, cor_decay = 0.7)$n)
+  expect_equal(n_pooled(pr, occasions = 6)$n,
+               n_pooled(var = 100, mu = 10, moe = pr$moe, occasions = 6,
+                        overlap = 0.5, cor_decay = 0.8)$n)
+  shaped <- n_pooled(var = 100, cv = 0.05, mu = 10, occasions = 4,
+                     overlap = c(0.5, 0.4, 0.3), overlap_cor = 0.6)
+  expect_error(prec_pooled(shaped, occasions = 6),
+               "one number or one per lag \\(5 for 6 occasions\\)")
+  expect_equal(prec_pooled(fit)$se, pr$se)
 })

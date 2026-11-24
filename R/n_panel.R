@@ -17,7 +17,7 @@
 #'   `resp_rate` is the only recruitment response that reaches the answer.
 #'   Where the two differ the target's is reported as unused, at the call
 #'   and again in `summary()`. Clustered, allocation, multi-indicator,
-#'   multi-domain, change and two-phase results are refused, their
+#'   multidomain, change and two-phase results are refused, their
 #'   stage-specific and occasion-specific sizes not being one responding
 #'   count.
 #' @param retention Conditional retention, one value per wave transition,
@@ -73,8 +73,9 @@
 #'   entries are all 1. See the section on a life with a gap. Not available
 #'   for a fixed panel.
 #'
-#' @return A `svyplan_panel` object. [prec_panel()] returns the same class,
-#'   `$solved` naming the direction it was computed in. Fields:
+#' @return A `svyplan_panel` object, with `$solved` naming the direction it
+#'   was solved in. [prec_panel()] returns the same class with `$solved`
+#'   absent, since it solves for nothing. Fields:
 #' \describe{
 #'   \item{`n_issued`}{Fixed panels only. Units to issue to the one cohort.}
 #'   \item{`n_entrants`, `n_in_sample`, `n_cohorts`}{Rotating panels only.
@@ -280,7 +281,8 @@
 #' rest of the package where the two directions return `svyplan_n` and
 #' `svyplan_prec`. A panel's recruitment and its precision move together
 #' across the waves and are only readable side by side, so the object holds
-#' both whichever direction produced it, and `$solved` records which. The
+#' both whichever direction produced it. [n_panel()] records its direction in
+#' `$solved`, and [prec_panel()] leaves it absent. The
 #' class is a sibling of `svyplan_n`, not a subtype: `$n_issued` is a count
 #' of units to release, and the methods registered for an analysis sample
 #' would each answer a different question about it.
@@ -888,6 +890,7 @@ n_panel <- function(
 
   n_wave <- n_recruit * q
   .warn_panel_empty_waves(n_wave)
+  .check_panel_eligible_frame(n_wave, tgt, eligibility_rate)
   prec <- lapply(n_wave, function(m) .panel_prec_at(tgt, m))
   loss <- c(1, q[-k]) - q
   total_loss <- 1 - q[[k]]
@@ -1123,4 +1126,30 @@ n_panel <- function(
     return(a * b)
   }
   pmax(stats::convolve(a, rev(b), type = "open"), 0)
+}
+
+#' Refuse waves larger than the eligible population the target describes
+#'
+#' The precision at each wave reads the target's eligible population,
+#' `N * eligibility_rate`, which a panel with a higher eligibility rate of
+#' its own can exceed.
+#' @keywords internal
+#' @noRd
+.check_panel_eligible_frame <- function(n_wave, tgt, eligibility_rate) {
+  N <- tgt$N
+  if (is.null(N) || !is.finite(N)) {
+    return(invisible(TRUE))
+  }
+  target_elig <- tgt$params[["eligibility_rate"]] %||% 1
+  room <- N * target_elig
+  if (max(n_wave) > room * (1 + 1e-9)) {
+    stop(
+      sprintf(
+        "the panel's first wave holds %.1f respondents, more than the %g eligible units the target describes (N = %g at its eligibility_rate = %g). The panel's eligibility_rate is %g. Give both the same rate, or raise 'N'",
+        max(n_wave), room, N, target_elig, eligibility_rate
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }

@@ -113,7 +113,7 @@ acts on.}
 otherwise. The solved value is in \code{params$p}, whichever of \code{cv} or
 \code{rmoe} asked for it.}
 \item{\code{params}}{The validated inputs (\code{p}, \code{n}, \code{alpha}, \code{N},
-\code{deff}, \code{resp_rate}, \code{df}, and \code{rmoe} when the proportion was solved
+\code{deff}, \code{resp_rate}, \code{eligibility_rate} and \code{eligible_per_unit} when not 1, \code{df}, and \code{rmoe} when the proportion was solved
 from one). \code{\link[=predict]{predict()}}, \code{\link[=confint]{confint()}} and the
 \code{\link[=n_prop]{n_prop()}} round trip read the design back from here.}
 }

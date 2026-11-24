@@ -253,7 +253,7 @@ test_that("a target must be a single-indicator mean or proportion result", {
       n_alloc(data.frame(N = c(100, 200), sd = c(10, 15)), n = 50),
       retention = 0.9
     ),
-    "not 'alloc'"
+    "must be a result from"
   )
 })
 
@@ -1346,4 +1346,13 @@ test_that("a plan below its target is printed short with distinct figures", {
                fixed = TRUE)
   exact <- prec_panel(tgt, n_recruit = 1001, retention = 0.1)
   expect_no_match(.fmt_panel_headline(exact), "short of")
+})
+
+## Panel eligibility above the target's
+
+test_that("a panel wave above the target's eligible population is refused by the panel", {
+  tgt <- n_prop(p = 0.3, moe = 0.03, N = 1000, eligibility_rate = 0.3)
+  expect_error(suppressWarnings(n_panel(tgt, retention = 0.5,
+                                        eligibility_rate = 0.9)),
+               "more than the 300 eligible units the target describes")
 })

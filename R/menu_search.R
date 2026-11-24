@@ -408,6 +408,20 @@
 #' @noRd
 .menu_tree <- function(q, lambda, start, grain, max_nodes, max_open,
                        gap = 0, exact = FALSE) {
+  if (!is.null(q$ends)) {
+    start_int <- if (is.null(start)) NULL else as.integer(start)
+    return(.Call(C_menu_tree, q$cost, q$C, q$ends, as.double(lambda),
+                 start_int, as.double(grain), as.double(max_nodes),
+                 as.double(max_open), as.double(gap), isTRUE(exact)))
+  }
+  .menu_tree_r(q, lambda, start, grain, max_nodes, max_open, gap, exact)
+}
+
+#' R reference implementation of `.menu_tree()`
+#' @keywords internal
+#' @noRd
+.menu_tree_r <- function(q, lambda, start, grain, max_nodes, max_open,
+                         gap = 0, exact = FALSE) {
   K <- ncol(q$C)
   best <- if (is.null(start)) Inf else sum(q$cost[start])
   plan <- start
@@ -425,6 +439,7 @@
     if (cost < best - tol) {
       best <<- cost
       plan <<- states
+      tol <<- 1e-9 * max(abs(cost), 1e-300)
     }
   }
   fits <- function(j, cap) {
@@ -581,6 +596,10 @@
     }
     if (length(stack)) {
       nd <- stack[[length(stack)]]
+      if (nd$L <= limit() &&
+            nodes + length(nd$alive[[nd$branch]]) > max_nodes) {
+        break
+      }
       stack[[length(stack)]] <- NULL
       if (nd$L > limit()) next
       deep <- TRUE
@@ -592,6 +611,7 @@
         break
       }
       nd <- open[[i]]
+      if (nodes + length(nd$alive[[nd$branch]]) > max_nodes) break
       open[[i]] <- NULL
       bounds <- bounds[-i]
       deep <- length(open) >= max_open

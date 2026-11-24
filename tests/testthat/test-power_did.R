@@ -585,3 +585,17 @@ test_that("the within-arm overlap correction uses that arm's own N", {
     }
   }
 })
+
+## A change the overlap leaves without variance
+
+test_that("power_did refuses a change with no sampling variance, as power_mean does", {
+  v <- c(1, 1 + 1e-6)
+  expect_error(power_mean(var = v, effect = 0.1, overlap = 1, overlap_cor = 1),
+               "carries no sampling variance")
+  expect_error(power_did(treat = c(10, 11), control = c(10, 10.5),
+                         var = c(v, v), overlap = 1, overlap_cor = 1),
+               "carries no sampling variance")
+  expect_true(is.finite(power_did(treat = c(10, 11), control = c(10, 10.5),
+                                  var = c(1, 1.2, 1, 1.2), overlap = 0.5,
+                                  overlap_cor = 0.6)$n))
+})

@@ -214,7 +214,7 @@ as \code{\link[=n_ratio]{n_ratio()}} sizes it. It requires \code{cv_num}, \code{
 numerator and denominator, strictly positive.}
 \item{\code{component_cor}}{Correlation between a ratio row's numerator and
 denominator across units, in \eqn{[-1, 1]}.}
-\item{\code{mu}}{Population mean, finite. It may be negative. It is
+\item{\code{mean}}{Population mean, finite. It may be negative. It is
 required when \code{var} is used with \code{cv} because CV = SE / abs(mean),
 and it must then be non-zero, as it must in multistage mode, which
 works on the cv scale. With a \code{moe} target a zero mean is accepted
@@ -224,9 +224,9 @@ interval you want. For proportions, this is on the probability
 scale (e.g. 0.05 for +/- 5 percentage points). For means,
 it is in the same units as the variable (e.g. 10 dollars).}
 \item{\code{rmoe}}{Margin of error relative to the row's estimand, so
-0.12 asks for a half-width of 12 percent of \code{p} or of \code{abs(mu)}.
+0.12 asks for a half-width of 12 percent of \code{p} or of \code{abs(mean)}.
 It is converted to \code{moe} on ingestion, so the row needs \code{p} or
-\code{mu}, and it is read under the row's own \code{prop_method}.}
+\code{mean}, and it is read under the row's own \code{prop_method}.}
 \item{\code{cv}}{Target coefficient of variation (relative standard
 error). For example, 0.10 means the SE should be at most 10\%
 of the estimate.}
@@ -273,14 +273,14 @@ above. \code{NA} (the default) sets no floor. Single-stage \code{n_multi()}
 only, as for \code{min_cases}.}
 \item{\code{unit_relvar}}{Unit relvariance. If omitted, derived
 automatically from \code{p} (as \code{(1 - p) / p}) or from
-\code{var} / \code{mu^2}. A ratio row derives it from its moments, and a value
+\code{var} / \code{mean^2}. A ratio row derives it from its moments, and a value
 given there must agree with them.}
 \item{\code{resp_rate}}{Expected response rate at the ultimate unit, in
 (0, 1]. Default 1 (no adjustment). A value of 0.90 inflates the
 sample size by \code{1 / 0.90} to compensate for 10 percent
-non-response. It means the same thing in a cluster design, where
-\code{\link[=n_cluster]{n_cluster()}} additionally takes \code{resp_rate_psu} for whole clusters
-that cannot be worked and \code{resp_rate_ssu} for second-stage units in a
+nonresponse. It means the same thing in a cluster design, where
+\code{\link[=n_cluster]{n_cluster()}} additionally takes \code{resp_rate_1} for whole clusters
+that cannot be worked and \code{resp_rate_2} for second-stage units in a
 three-stage design. Naming a stage the design does not have is an
 error rather than a column carried along and ignored.}
 \item{\code{eligibility_rate}}{Share of the row's issued units in scope, in
@@ -296,7 +296,7 @@ household. The row is sized as \code{\link[=n_prop]{n_prop()}} or \code{\link[=n
 sampled unit. Each row
 can carry its own group.
 Proportion and mean rows, so a ratio row takes 1. The
-several-indicators mode of \code{\link[=n_cluster]{n_cluster()}} refuses the column.}
+several-indicators mode of \code{\link[=n_cluster]{n_cluster()}} reads the same column.}
 }
 
 Domain columns are specified via the \code{domains} parameter. When domains
@@ -312,13 +312,13 @@ requirement, which \code{n_domain_max} reports separately.
 Columns beyond those listed are carried along and ignored, so the table
 can keep questionnaire modules, sources, or other bookkeeping. The
 exception is a name the rest of the package would lead you to expect
-here: \code{mean} (this table takes \code{mu}, while the \code{\link[=n_alloc]{n_alloc()}} frame takes
-\code{mean}), \code{indicator} or \code{label} (it takes \code{name}), \code{method} (it takes
-\code{prop_method}), and \code{icc} or \code{var_ratio} (which are per stage here, so
-\code{icc_psu} and \code{var_ratio_psu}). Those are rejected with the name they
-should have carried rather than silently ignored. A column named
-through \code{domains} is exempt, so a domain may be called \code{label} or
-\code{method}.
+here: \code{mu} (tables use \code{mean} across the package, while scalar functions
+such as \code{\link[=n_mean]{n_mean()}} take \code{mu}), \code{indicator} or \code{label} (it takes \code{name}),
+\code{method} (it takes \code{prop_method}), and \code{icc} or \code{var_ratio} (which are
+per stage here, so \code{icc_1} and \code{var_ratio_1}). Those are rejected
+with the name they should have carried rather than silently ignored. A
+column named through \code{domains} is exempt, so a domain may be called
+\code{label} or \code{method}.
 
 The dispersion of a continuous indicator may be given as \code{var} or as
 \code{sd}, whichever the source reports, exactly as in \code{\link[=n_mean]{n_mean()}}. They are
@@ -340,10 +340,10 @@ treated as drawn with replacement, and \code{N} corrects only for the units.
 Nothing here knows how many PSUs a domain holds. A small domain, such as
 an island district of 16 enumeration areas, can then be given more PSUs
 than it has, and a sample that takes most of them is assessed as if
-they were a few among many. \code{\link[=n_alloc]{n_alloc()}} and \code{\link[=prec_alloc]{prec_alloc()}} read \code{N_psu}
+they were a few among many. \code{\link[=n_alloc]{n_alloc()}} and \code{\link[=prec_alloc]{prec_alloc()}} read \code{N_1}
 in the frame and, with \code{fpc = "stage"}, apply the stage-by-stage
-correction. They size and assess such a domain, as the \code{\link[=prec_alloc]{prec_alloc()}}
-examples show.
+correction. They size and assess such a domain, as the Details of
+\code{\link[=n_alloc]{n_alloc()}} describe.
 }
 }
 \examples{
@@ -364,13 +364,13 @@ targets_rmoe <- data.frame(
 )
 n_multi(targets_rmoe)
 
-# Continuous indicators: 'var' for the dispersion, 'mu' for the mean.
-# A CV target needs 'mu', because a relative standard error is relative
+# Continuous indicators: 'var' for the dispersion, 'mean' for the mean.
+# A CV target needs 'mean', because a relative standard error is relative
 # to something. A MOE target does not.
 targets_mean <- data.frame(
   name = c("expenditure", "hh_size"),
   var  = c(250000, 4.0),
-  mu   = c(1200, 5.4),
+  mean = c(1200, 5.4),
   cv   = c(0.05, 0.03)
 )
 n_multi(targets_mean)
@@ -380,7 +380,7 @@ targets_both <- data.frame(
   name = c("stunting", "expenditure"),
   p    = c(0.30, NA),
   var  = c(NA, 250000),
-  mu   = c(NA, 1200),
+  mean = c(NA, 1200),
   cv   = c(0.08, 0.05)
 )
 n_multi(targets_both)
@@ -390,7 +390,7 @@ n_multi(indicators[3, , drop = FALSE], prop_method = "wilson")
 
 # Korn-Graubard for an indicator whose expected count is small, with the
 # degrees of freedom of the planned variance estimator. 'df' is read on
-# beta rows only, so the other rows carry NA.
+# every row that sets it, and NA keeps the normal quantile on the other.
 targets_rare <- data.frame(
   name = c("stunting", "cocaine_use"),
   p    = c(0.30, 0.02),

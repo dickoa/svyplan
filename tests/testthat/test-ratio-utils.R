@@ -292,3 +292,21 @@ test_that("the residual route and the moment route size identically", {
 
   expect_equal(via_moments, via_residual, tolerance = 1e-10)
 })
+
+## A constant ratio in every precision evaluator
+
+test_that("precision evaluators report a constant ratio as se = 0", {
+  z <- list(r = 2, cv_num = 0.3, cv_den = 0.3, component_cor = 1)
+  row <- data.frame(name = "a", r = 2, cv_num = 0.3, cv_den = 0.3,
+                    component_cor = 1)
+  quiet <- function(e) suppressWarnings(e)
+  expect_equal(quiet(do.call(prec_ratio, c(z, n = 100)))$se, 0)
+  expect_equal(quiet(prec_multi(transform(row, n = 100)))$detail$.se, 0)
+  expect_equal(quiet(prec_cluster(transform(row, icc_1 = 0.05, n_1 = 10,
+                                            take_2 = 10)))$detail$.se, 0)
+  expect_equal(quiet(do.call(prec_pooled, c(z, n = 100, occasions = 3)))$se, 0)
+  expect_error(quiet(do.call(n_ratio, c(z, cv = 0.1))),
+               "No sample size is identified")
+  expect_error(quiet(n_multi(transform(row, cv = 0.1))),
+               "No sample size is identified")
+})

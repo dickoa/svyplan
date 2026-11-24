@@ -28,7 +28,7 @@ count of respondents and no response is counted twice. The panel's
 \code{resp_rate} is the only recruitment response that reaches the answer.
 Where the two differ the target's is reported as unused, at the call
 and again in \code{summary()}. Clustered, allocation, multi-indicator,
-multi-domain, change and two-phase results are refused, their
+multidomain, change and two-phase results are refused, their
 stage-specific and occasion-specific sizes not being one responding
 count.}
 
@@ -93,8 +93,9 @@ entries are all 1. See the section on a life with a gap. Not available
 for a fixed panel.}
 }
 \value{
-A \code{svyplan_panel} object. \code{\link[=prec_panel]{prec_panel()}} returns the same class,
-\verb{$solved} naming the direction it was computed in. Fields:
+A \code{svyplan_panel} object, with \verb{$solved} naming the direction it
+was solved in. \code{\link[=prec_panel]{prec_panel()}} returns the same class with \verb{$solved}
+absent, since it solves for nothing. Fields:
 \describe{
 \item{\code{n_issued}}{Fixed panels only. Units to issue to the one cohort.}
 \item{\code{n_entrants}, \code{n_in_sample}, \code{n_cohorts}}{Rotating panels only.
@@ -312,7 +313,8 @@ design effect chosen for that estimand.
 rest of the package where the two directions return \code{svyplan_n} and
 \code{svyplan_prec}. A panel's recruitment and its precision move together
 across the waves and are only readable side by side, so the object holds
-both whichever direction produced it, and \verb{$solved} records which. The
+both whichever direction produced it. \code{\link[=n_panel]{n_panel()}} records its direction in
+\verb{$solved}, and \code{\link[=prec_panel]{prec_panel()}} leaves it absent. The
 class is a sibling of \code{svyplan_n}, not a subtype: \verb{$n_issued} is a count
 of units to release, and the methods registered for an analysis sample
 would each answer a different question about it.

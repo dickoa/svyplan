@@ -646,3 +646,17 @@ test_that("the log-odds detectable effect is found on the rise to the peak", {
     0.2224067, tolerance = 1e-6
   )
 })
+
+## A detectable alternative closer than 1e-8
+
+test_that("the MDE is found however close a large sample puts it", {
+  for (m in c("wald", "logodds")) {
+    for (n in c(1e17, 1e18)) {
+      x <- power_prop(p1 = 0.3, n = n, power = 0.8, method = m)
+      expect_lt(x$effect, 1e-8)
+      expect_equal(power_prop(p1 = 0.3, p2 = 0.3 + x$effect, n = n,
+                              power = NULL, method = m)$power, 0.8,
+                   tolerance = 1e-6)
+    }
+  }
+})

@@ -60,7 +60,7 @@
 #'   \item{`solved`}{`"mu"` when the mean was solved for, and absent
 #'     otherwise. The solved value is in `params$mu`.}
 #'   \item{`params`}{The validated inputs (`var`, `n`, `alpha`, `N`,
-#'     `deff`, `resp_rate`, `df`, and `mu` when given or solved for). Dispersion
+#'     `deff`, `resp_rate`, `eligibility_rate` and `eligible_per_unit` when not 1, `df`, and `mu` when given or solved for). Dispersion
 #'     is always stored as `var`, including when you supplied `sd`.
 #'     [predict()], [confint()] and the [n_mean()] round trip read the
 #'     design back from here.}
@@ -172,6 +172,7 @@ prec_mean.default <- function(
   df = NULL,
   plan = NULL
 ) {
+  .refuse_alloc_object(var, "prec_mean", "mean")
   .plan <- .merge_plan_args(plan, prec_mean.default, match.call(), environment())
   if (!is.null(.plan)) return(do.call(prec_mean.default, c(.plan, list(...))))
   .check_unused_dots(...)

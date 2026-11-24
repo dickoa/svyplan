@@ -21,15 +21,16 @@ rates.
 The results describe a planned design. svyplan reports stratum-level
 design quantities such as sizes, sampling fractions and base weights. It
 never draws a sample and never attaches selection probabilities or
-weights to units. When the plan is settled,
-[sondage](https://cran.r-project.org/package=sondage) draws it, and
-analysis of the realized sample belongs to
+weights to units. Use a selection package such as
+[sondage](https://cran.r-project.org/package=sondage) to draw the
+sample. Analysis of the realized sample belongs to
 [survey](https://cran.r-project.org/package=survey) or
 [srvyr](https://cran.r-project.org/package=srvyr).
 
 ## Installation
 
-Install the development version from GitLab:
+Version 0.26.2 is an unreleased snapshot. Install the development
+version from GitLab.
 
 ``` r
 ## install.packages("pak")
@@ -63,7 +64,9 @@ response-rate adjustment increases that number so the expected
 responding sample meets the precision target. It does not correct
 nonresponse bias.
 
-Pass the result to the paired precision function to check the same plan:
+The printed recommendation is 570 whole units. The paired precision
+function checks the unrounded plan of about 569.44 units. Call
+`summary(coverage)` for precision at the whole field size.
 
 ``` r
 prec_prop(coverage)
@@ -96,23 +99,24 @@ predict(
 
 ## Find the right function
 
-| Planning task | Functions | Book chapter |
+| Planning task | Functions | Guide |
 |:---|:---|:---|
 | Start with sample size and precision | `n_prop()`, `n_mean()`, `prec_prop()`, `prec_mean()` | `vignette("svyplan")` |
 | Choose a precision target or ratio estimand | `n_prop()`, `n_mean()`, `n_ratio()` | [Precision targets and sample size](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/08-sample-size.html) |
 | Combine indicators or domain requirements | `n_multi()`, `prec_multi()` | [Several indicators and a floor](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/08-sample-size.html#several-indicators-and-a-floor) |
 | Construct strata and allocate a sample | `strata_bound()`, `n_alloc()`, `prec_alloc()` | [Allocation across domains and strata](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/10-stratum-allocation.html) |
-| Meet several allocation constraints | `n_alloc()` | [Two targets at once](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/10-stratum-allocation.html#two-targets-at-once) |
-| Plan a clustered survey | `varcomp()`, `n_cluster()`, `design_effect()`, `effective_n()`, `design_df()` | [Clusters, take size and cost](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/09-clusters-take.html) |
+| Meet joint indicator or domain targets, or plan from a PSU register | `n_alloc_joint()`, `prec_alloc_joint()`, `merge_psus()` | `vignette("joint-allocation")` |
+| Plan a clustered survey | `varcomp()`, `n_cluster()`, `prec_cluster()`, `design_effect()`, `effective_n()`, `design_df()` | [Clusters, take size and cost](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/09-clusters-take.html) |
 | Plan screening or nonresponse follow-up | `n_twophase()`, `prec_twophase()` | [Two-phase designs and subsamples](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/22-two-phase.html) |
 | Plan changes, averages, panels, and rotations | `n_change()`, `n_pooled()`, `n_panel()`, `design_rotation()`, `design_schedule()` | [Rotating panels and master samples](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/20-panels-master-samples.html) |
 | Plan a detectable comparison | `power_prop()`, `power_mean()`, `power_did()` | [Power for evaluation surveys](https://www.ahmadoudicko.com/sampling-design-r-book/chapters/24-evaluation-power.html) |
 
-`vignette("svyplan")` walks through a first plan. The book [Survey
-Sampling Design with
+`vignette("svyplan")` walks through a first plan and
+`vignette("joint-allocation")` works through the three input tables, a
+budget, and a zoned PSU register. The book [Survey Sampling Design with
 R](https://www.ahmadoudicko.com/sampling-design-r-book/) works through
-each task in a chapter and continues into sample selection with
-`samplyr`.
+each task in a chapter and illustrates the transition from planning to
+sample selection with `samplyr`.
 
 Function reference pages document every argument and returned component.
 The [package website](https://dickoa.gitlab.io/svyplan) collects the

@@ -287,11 +287,13 @@
     ))
   }
 
+  ## L-BFGS-B can step a rounding error below its zero bound.
   allocation_for <- function(lambda) {
-    w <- drop(As %*% lambda)
+    w <- drop(As %*% pmax(lambda, 0))
     pmin(pmax(sqrt(w / cs), lower), upper)
   }
   objective <- function(lambda) {
+    lambda <- pmax(lambda, 0)
     n <- allocation_for(lambda)
     w <- drop(As %*% lambda)
     -(sum(cs * n + w / n) - sum(lambda))
@@ -359,15 +361,7 @@
 #' Collision-free key for generalized allocation joins
 #' @keywords internal
 #' @noRd
-.bethel_key <- function(...) {
-  vals <- list(...)
-  enc <- lapply(vals, function(x) {
-    x <- as.character(x)
-    if (anyNA(x)) stop("join keys must not contain missing values", call. = FALSE)
-    paste0(nchar(x), "_", x)
-  })
-  do.call(paste, c(enc, list(sep = ":")))
-}
+.bethel_key <- function(...) .collision_free_key(...)
 
 #' Validate the fixed-take stage contract and create decision-unit inputs
 #' @keywords internal
@@ -390,13 +384,52 @@
     )]
   } else character(0)
   all_names <- union(frame_names, measure_names)
-  stage_names <- c(
-    "n_psu", "n_per_psu", "n_per_ssu", "icc_psu", "icc_ssu",
-    "var_ratio_psu", "var_ratio_ssu", "cost_psu", "cost_ssu", "cost_tsu",
-    "N_psu", "N_ssu"
-  )
-  present <- intersect(stage_names, all_names)
-  if (length(present) == 0L) {
+
+  if ("n_1" %in% all_names) {
+    stop(
+      "'n_1' is the free decision in generalized fixed-take allocation and must not be supplied",
+      call. = FALSE
+    )
+  }
+
+  frame_only_pat <- "^(take|cost|N)_[0-9]+$"
+  misplaced <- grep(frame_only_pat, measure_names, value = TRUE)
+  if (length(misplaced) > 0L) {
+    stop(
+      sprintf("stage frame column(s) must be supplied in 'frame', not 'measures': %s",
+              paste(sQuote(misplaced), collapse = ", ")),
+      call. = FALSE
+    )
+  }
+
+  # Detect maximum implied stage count from all numbered stage columns
+  stage_hits <- integer(0)
+  take_cols <- grep("^take_[0-9]+$", all_names, value = TRUE)
+  if (length(take_cols) > 0L) {
+    idx <- as.integer(sub("^take_", "", take_cols))
+    if (any(idx < 2L)) {
+      stop("stage take columns start at 'take_2'", call. = FALSE)
+    }
+    stage_hits <- c(stage_hits, idx)
+  }
+  cost_cols_all <- grep("^cost_[0-9]+$", all_names, value = TRUE)
+  if (length(cost_cols_all) > 0L) {
+    idx <- as.integer(sub("^cost_", "", cost_cols_all))
+    if (any(idx < 1L)) {
+      stop("stage cost columns start at 'cost_1'", call. = FALSE)
+    }
+    stage_hits <- c(stage_hits, idx)
+  }
+  sub_cols <- grep("^(N|icc|var_ratio)_[0-9]+$", all_names, value = TRUE)
+  if (length(sub_cols) > 0L) {
+    idx <- as.integer(sub("^(N|icc|var_ratio)_", "", sub_cols))
+    if (any(idx < 1L)) {
+      stop("stage parameter columns start at index 1", call. = FALSE)
+    }
+    stage_hits <- c(stage_hits, idx + 1L)
+  }
+
+  if (length(stage_hits) == 0L) {
     bounds <- .alloc_bounds(N, max_weight, take_all, min_n_stratum)
     return(list(
       stages = 1L,
@@ -407,33 +440,12 @@
       variance_model = "one_stage_wald"
     ))
   }
-  if ("n_psu" %in% present) {
-    stop(
-      "'n_psu' is the free decision in generalized fixed-take allocation and must not be supplied",
-      call. = FALSE
-    )
-  }
-  misplaced <- intersect(
-    c("n_per_psu", "n_per_ssu", "cost_psu", "cost_ssu", "cost_tsu",
-      "N_psu", "N_ssu"),
-    measure_names
-  )
-  if (length(misplaced) > 0L) {
-    stop(
-      sprintf("stage frame column(s) must be supplied in 'frame', not 'measures': %s",
-              paste(sQuote(misplaced), collapse = ", ")),
-      call. = FALSE
-    )
-  }
-  stages <- if (length(intersect(
-    present, c("n_per_ssu", "icc_ssu", "var_ratio_ssu", "cost_tsu", "N_ssu")
-  )) > 0L) 3L else 2L
-  required <- if (stages == 2L) {
-    c("N_psu", "n_per_psu", "cost_psu", "cost_ssu")
-  } else {
-    c("N_psu", "N_ssu", "n_per_psu", "n_per_ssu",
-      "cost_psu", "cost_ssu", "cost_tsu")
-  }
+
+  stages <- max(2L, max(stage_hits))
+  N_cols <- paste0("N_", seq_len(stages - 1L))
+  take_req <- paste0("take_", 2L:stages)
+  cost_req <- paste0("cost_", seq_len(stages))
+  required <- c(N_cols, take_req, cost_req)
   missing <- setdiff(required, frame_names)
   if (length(missing) > 0L) {
     stop(
@@ -470,55 +482,68 @@
     }
     as.numeric(x)
   }
-  N_psu <- whole_positive(frame$N_psu, "N_psu")
-  n_per_psu <- whole_positive(frame$n_per_psu, "n_per_psu")
-  if (any(N_psu > N + 1e-8)) {
-    stop("'N_psu' must not exceed the ultimate-unit population 'N'",
-         call. = FALSE)
-  }
-  cost_psu <- positive(frame$cost_psu, "cost_psu")
-  cost_ssu <- positive(frame$cost_ssu, "cost_ssu")
 
-  if (stages == 2L) {
-    take <- n_per_psu
-    upper <- pmin(N_psu, N / take)
-    cost <- cost_psu + cost_ssu * n_per_psu
-    out <- list(
-      stages = stages,
-      take = take,
-      N_psu = N_psu,
-      n_per_psu = n_per_psu,
-      cost_psu = cost_psu,
-      cost_ssu = cost_ssu,
-      cost = cost,
-      upper = upper,
-      variance_model = "two_stage_fixed_take_wald"
-    )
-  } else {
-    N_ssu <- whole_positive(frame$N_ssu, "N_ssu")
-    n_per_ssu <- whole_positive(frame$n_per_ssu, "n_per_ssu")
-    if (any(N_ssu < N_psu) || any(N_ssu > N + 1e-8)) {
-      stop("'N_ssu' must lie between 'N_psu' and 'N'", call. = FALSE)
+  H <- length(N)
+  N_stages <- matrix(0, nrow = H, ncol = stages - 1L)
+  for (s in seq_len(stages - 1L)) {
+    N_stages[, s] <- whole_positive(frame[[N_cols[s]]], N_cols[s])
+    if (s == 1L && any(N_stages[, 1L] > N + 1e-8)) {
+      stop("'N_1' must not exceed the ultimate-unit population 'N'",
+           call. = FALSE)
     }
-    take <- n_per_psu * n_per_ssu
-    upper <- pmin(N_psu, N_ssu / n_per_psu, N / take)
-    cost_tsu <- positive(frame$cost_tsu, "cost_tsu")
-    cost <- cost_psu + cost_ssu * n_per_psu + cost_tsu * take
-    out <- list(
-      stages = stages,
-      take = take,
-      N_psu = N_psu,
-      N_ssu = N_ssu,
-      n_per_psu = n_per_psu,
-      n_per_ssu = n_per_ssu,
-      cost_psu = cost_psu,
-      cost_ssu = cost_ssu,
-      cost_tsu = cost_tsu,
-      cost = cost,
-      upper = upper,
-      variance_model = "three_stage_fixed_take_wald"
-    )
+    if (s > 1L && (any(N_stages[, s] < N_stages[, s - 1L]) ||
+                   any(N_stages[, s] > N + 1e-8))) {
+      stop(
+        sprintf("'N_%d' must lie between 'N_%d' and 'N'", s, s - 1L),
+        call. = FALSE
+      )
+    }
   }
+  colnames(N_stages) <- N_cols
+
+  takes <- matrix(0, nrow = H, ncol = stages - 1L)
+  for (s in 2L:stages) {
+    takes[, s - 1L] <- whole_positive(frame[[take_req[s - 1L]]], take_req[s - 1L])
+  }
+  colnames(takes) <- take_req
+
+  costs <- matrix(0, nrow = H, ncol = stages)
+  for (s in seq_len(stages)) {
+    costs[, s] <- positive(frame[[cost_req[s]]], cost_req[s])
+  }
+  colnames(costs) <- cost_req
+
+  take <- apply(takes, 1L, prod)
+  upper <- N_stages[, 1L]
+  cum_take <- rep(1, H)
+  for (s in 2L:stages) {
+    cum_take <- cum_take * takes[, s - 1L]
+    cap_s <- if (s < stages) N_stages[, s] / cum_take else N / cum_take
+    upper <- pmin(upper, cap_s)
+  }
+  cost <- costs[, 1L]
+  cum_take <- rep(1, H)
+  for (s in 2L:stages) {
+    cum_take <- cum_take * takes[, s - 1L]
+    cost <- cost + costs[, s] * cum_take
+  }
+
+  vmodel <- switch(
+    as.character(stages),
+    "2" = "two_stage_fixed_take_wald",
+    "3" = "three_stage_fixed_take_wald",
+    sprintf("%d_stage_fixed_take_wald", stages)
+  )
+  out <- list(
+    stages = stages,
+    take = take,
+    N_stages = N_stages,
+    takes = takes,
+    costs = costs,
+    cost = cost,
+    upper = upper,
+    variance_model = vmodel
+  )
   if (any(floor(upper + 1e-9) < 1)) {
     stop("fixed takes exceed the available stage populations", call. = FALSE)
   }
@@ -532,6 +557,39 @@
       call. = FALSE
     )
   }
+  out
+}
+
+#' The rates a joint fit used, one row per stratum and indicator it reads
+#'
+#' Built from the vectors the problem builder resolved. The builder has
+#' already kept only the measure rows its targets and objective require.
+#' @keywords internal
+#' @noRd
+.joint_rates_table <- function(measures, m_stratum, resp, scope,
+                               stage_rates = NULL) {
+  out <- data.frame(stratum = m_stratum,
+                    name = as.character(measures$name),
+                    stringsAsFactors = FALSE)
+  for (s in seq_len(if (is.null(stage_rates)) 0L else ncol(stage_rates))) {
+    out[[paste0("resp_rate_", s)]] <- as.numeric(stage_rates[, s])
+  }
+  out$resp_rate <- as.numeric(resp)
+  out$eligibility_rate <- as.numeric(scope)
+  out
+}
+
+#' The rates a classic allocation used, one row per stratum
+#' @keywords internal
+#' @noRd
+.alloc_rates_table <- function(prep) {
+  out <- data.frame(stratum = prep$stratum, stringsAsFactors = FALSE)
+  S <- prep$stages %||% 1L
+  for (s in seq_len(S - 1L)) {
+    out[[paste0("resp_rate_", s)]] <- as.numeric(prep$stage_resp_mat[, s])
+  }
+  out$resp_rate <- as.numeric(prep$resp_given_h)
+  out$eligibility_rate <- as.numeric(prep$eligibility_h)
   out
 }
 
@@ -1007,6 +1065,65 @@
   )
 }
 
+#' Measure rows that the targets and the objective use
+#'
+#' Shared by the problem builders and by the refusal of an ignored scalar,
+#' so that both read the same rows.
+#' @keywords internal
+#' @noRd
+.bethel_required_measures <- function(frame, measures, targets, objective,
+                                      alpha, df) {
+  stratum <- as.character(frame$stratum)
+  .check_measures_keys(measures)
+  m_stratum_all <- as.character(measures$stratum)
+  m_name_all <- as.character(measures$name)
+  if (anyNA(m_stratum_all) || any(!nzchar(m_stratum_all)) ||
+      anyNA(m_name_all) || any(!nzchar(m_name_all))) {
+    stop("measure keys must contain non-missing, non-empty values",
+         call. = FALSE)
+  }
+  unknown_strata <- setdiff(unique(m_stratum_all), stratum)
+  if (length(unknown_strata) > 0L) {
+    stop(sprintf("measure strata not found in frame: %s",
+                 paste(unknown_strata, collapse = ", ")), call. = FALSE)
+  }
+  measure_key_all <- .bethel_key(m_stratum_all, m_name_all)
+  if (anyDuplicated(measure_key_all)) {
+    stop("'measures' must have unique stratum x name rows", call. = FALSE)
+  }
+  target_spec <- .bethel_target_spec(
+    frame, targets, alpha, df, allow_empty = !is.null(objective)
+  )
+  objective_spec <- if (is.null(objective)) NULL else
+    .bethel_objective_spec(frame, objective)
+  req_indices <- c(target_spec$indices, objective_spec$indices)
+  req_name <- c(target_spec$name, objective_spec$name)
+  required_keys <- unique(unlist(Map(
+    function(idx, name) .bethel_key(stratum[idx], rep(name, length(idx))),
+    req_indices, req_name
+  ), use.names = FALSE))
+  missing_keys <- setdiff(required_keys, measure_key_all)
+  if (length(missing_keys) > 0L) {
+    for (k in seq_along(req_indices)) {
+      idx <- req_indices[[k]]
+      wanted <- .bethel_key(stratum[idx], rep(req_name[k], length(idx)))
+      missing <- stratum[idx][!wanted %in% measure_key_all]
+      if (length(missing) > 0L) {
+        stop(sprintf("missing measures for indicator '%s' in strata: %s",
+                     req_name[k], paste(missing, collapse = ", ")),
+             call. = FALSE)
+      }
+    }
+  }
+  list(
+    measures = measures[measure_key_all %in% required_keys, , drop = FALSE],
+    target_spec = target_spec,
+    objective_spec = objective_spec,
+    req_indices = req_indices,
+    req_name = req_name
+  )
+}
+
 #' Build a generalized allocation problem
 #' @keywords internal
 #' @noRd
@@ -1082,58 +1199,16 @@
     )
   }
 
-  # Determine target relevance before validating measure values. Unused
-  # indicator-stratum rows may carry incomplete planning information and must
-  # not change the mathematical problem.
-  .check_measures_keys(measures)
-  m_stratum_all <- as.character(measures$stratum)
-  m_name_all <- as.character(measures$name)
-  if (anyNA(m_stratum_all) || any(!nzchar(m_stratum_all)) ||
-      anyNA(m_name_all) || any(!nzchar(m_name_all))) {
-    stop("measure keys must contain non-missing, non-empty values",
-         call. = FALSE)
-  }
-  unknown_strata <- setdiff(unique(m_stratum_all), stratum)
-  if (length(unknown_strata) > 0L) {
-    stop(sprintf("measure strata not found in frame: %s",
-                 paste(unknown_strata, collapse = ", ")), call. = FALSE)
-  }
-  measure_key_all <- .bethel_key(m_stratum_all, m_name_all)
-  if (anyDuplicated(measure_key_all)) {
-    stop("'measures' must have unique stratum x name rows", call. = FALSE)
-  }
-  target_spec <- .bethel_target_spec(
-    frame, targets, alpha, df, allow_empty = !is.null(objective)
+  # Unused indicator-stratum rows may carry incomplete planning information
+  # and must not change the mathematical problem.
+  required <- .bethel_required_measures(
+    frame, measures, targets, objective, alpha, df
   )
-  objective_spec <- if (is.null(objective)) NULL else
-    .bethel_objective_spec(frame, objective)
-  # Targets and objective components share one coefficient-construction path;
-  # the columns are split apart again once the requirement loop has run.
-  req_indices <- c(target_spec$indices, objective_spec$indices)
-  req_name <- c(target_spec$name, objective_spec$name)
-  required_keys <- unique(unlist(Map(
-    function(idx, name) {
-      .bethel_key(stratum[idx], rep(name, length(idx)))
-    },
-    req_indices,
-    req_name
-  ), use.names = FALSE))
-  missing_keys <- setdiff(required_keys, measure_key_all)
-  if (length(missing_keys) > 0L) {
-    for (k in seq_along(req_indices)) {
-      idx <- req_indices[[k]]
-      wanted <- .bethel_key(stratum[idx], rep(req_name[k], length(idx)))
-      missing <- stratum[idx][!wanted %in% measure_key_all]
-      if (length(missing) > 0L) {
-        stop(
-          sprintf("missing measures for indicator '%s' in strata: %s",
-                  req_name[k], paste(missing, collapse = ", ")),
-          call. = FALSE
-        )
-      }
-    }
-  }
-  measures <- measures[measure_key_all %in% required_keys, , drop = FALSE]
+  measures <- required$measures
+  target_spec <- required$target_spec
+  objective_spec <- required$objective_spec
+  req_indices <- required$req_indices
+  req_name <- required$req_name
   m_stratum <- as.character(measures$stratum)
   m_name <- as.character(measures$name)
   measure_key <- .bethel_key(m_stratum, m_name)
@@ -1221,49 +1296,50 @@
   }
   deff_norm <- .joint_row_value("deff", measures, frame, deff)
   resp_norm <- .joint_row_value("resp_rate", measures, frame, resp_rate)
-  resp_psu_norm <- rep(1, length(resp_norm))
-  resp_ssu_norm <- rep(1, length(resp_norm))
-  .bethel_reject_stage_rate(
-    c("resp_rate_psu", "resp_rate_ssu")[c(stage$stages < 2L, stage$stages < 3L)],
-    measures, frame, stage$stages
-  )
+  rr_present <- unique(c(
+    grep("^resp_rate_[0-9]+$", names(frame), value = TRUE),
+    grep("^resp_rate_[0-9]+$", names(measures), value = TRUE)
+  ))
+  if (length(rr_present) > 0L) {
+    rr_idx <- as.integer(sub("^resp_rate_", "", rr_present))
+    bad_rr <- rr_present[rr_idx < 1L | rr_idx >= stage$stages]
+    .bethel_reject_stage_rate(bad_rr, measures, frame, stage$stages)
+  }
   if (identical(fpc, "stage") && stage$stages < 2L) {
     stop(
       "'fpc = \"stage\"' applies to cluster allocation, where the correction has stages to choose between. An element allocation takes 'fpc = \"unit\"' for the correction 1 - n/N or 'fpc = \"none\"' for no correction. Add the stage columns, or choose one of those",
       call. = FALSE
     )
   }
-  if (stage$stages >= 2L) {
-    icc_psu_norm <- .bethel_stage_measure(
-      "icc_psu", measures, frame, m_stratum, stratum,
-      required = TRUE, interval = c(0, 1)
-    )
-    var_ratio_psu_norm <- .bethel_stage_measure(
-      "var_ratio_psu", measures, frame, m_stratum, stratum,
-      default = 1, positive = TRUE
-    )
-    resp_psu_norm <- .bethel_stage_measure(
-      "resp_rate_psu", measures, frame, m_stratum, stratum,
-      default = 1, interval = c(0, 1), positive = TRUE
-    )
-  }
-  if (stage$stages == 3L) {
-    resp_ssu_norm <- .bethel_stage_measure(
-      "resp_rate_ssu", measures, frame, m_stratum, stratum,
-      default = 1, interval = c(0, 1), positive = TRUE
-    )
-    icc_ssu_norm <- .bethel_stage_measure(
-      "icc_ssu", measures, frame, m_stratum, stratum,
-      required = TRUE, interval = c(0, 1)
-    )
-    # var_ratio_ssu is fixed by var_ratio_psu * icc_psu + var_ratio_ssu = 1; see .var_ratio_ssu_default().
-    var_ratio_ssu_norm <- .bethel_stage_measure(
-      "var_ratio_ssu", measures, frame, m_stratum, stratum,
-      default = NA_real_, positive = TRUE
-    )
-    implied_var_ratio_ssu <- .var_ratio_ssu_default(var_ratio_psu_norm, icc_psu_norm)
-    supplied <- !is.na(var_ratio_ssu_norm)
-    var_ratio_ssu_norm[!supplied] <- implied_var_ratio_ssu[!supplied]
+  S <- stage$stages
+  nr_m <- nrow(measures)
+  icc_mat <- NULL
+  vr_mat <- NULL
+  rr_mat <- NULL
+  if (S >= 2L) {
+    icc_mat <- matrix(0, nrow = nr_m, ncol = S - 1L)
+    vr_mat <- matrix(0, nrow = nr_m, ncol = S - 1L)
+    rr_mat <- matrix(1, nrow = nr_m, ncol = S - 1L)
+    for (s in seq_len(S - 1L)) {
+      icc_mat[, s] <- .bethel_stage_measure(
+        paste0("icc_", s), measures, frame, m_stratum, stratum,
+        required = TRUE, interval = c(0, 1)
+      )
+      vr_s <- .bethel_stage_measure(
+        paste0("var_ratio_", s), measures, frame, m_stratum, stratum,
+        default = if (s == 1L) 1 else NA_real_, positive = TRUE
+      )
+      if (s > 1L) {
+        implied <- vr_mat[, s - 1L] * (1 - icc_mat[, s - 1L])
+        miss <- is.na(vr_s)
+        vr_s[miss] <- implied[miss]
+      }
+      vr_mat[, s] <- vr_s
+      rr_mat[, s] <- .bethel_stage_measure(
+        paste0("resp_rate_", s), measures, frame, m_stratum, stratum,
+        default = 1, interval = c(0, 1), positive = TRUE
+      )
+    }
   }
 
   t_name <- target_spec$name
@@ -1312,46 +1388,42 @@
     # the between-PSU component alone when each stage corrects its own.
     fpc_factor <- variance_factor
     staged <- identical(fpc, "stage")
-    if (stage$stages == 2L) {
-      m <- stage$n_per_psu[idx]
-      mr <- m * resp_k
-      within_frac <- if (staged) {
-        pmin(1, mr / (N_k / frame$N_psu[idx]))
-      } else {
-        rep(0, length(idx))
+    if (S >= 2L) {
+      n_idx <- length(idx)
+      eff_t <- matrix(0, nrow = n_idx, ncol = S - 1L)
+      for (s in 2L:S) {
+        r_s <- if (s < S) rr_mat[mi, s] else resp_k
+        eff_t[, s - 1L] <- stage$takes[idx, s - 1L] * r_s
       }
-      variance_factor <- var_ratio_psu_norm[mi] *
-        (icc_psu_norm[mi] * mr + (1 - within_frac) * (1 - icc_psu_norm[mi]))
-      decision_take <- m
-      stage_resp <- resp_psu_norm[mi] * resp_k
+      # Suffix products Q[, s] = prod_{j=s+1}^S eff_t[, j-1], Q[, S] = 1
+      Q <- matrix(1, nrow = n_idx, ncol = S)
+      for (s in (S - 1L):1L) {
+        Q[, s] <- Q[, s + 1L] * eff_t[, s]
+      }
+      R1 <- vr_mat[mi, 1L] * icc_mat[mi, 1L]
+      variance_factor <- R1 * Q[, 1L]
+      for (s in 2L:S) {
+        R_s <- if (s < S) {
+          vr_mat[mi, s] * icc_mat[mi, s]
+        } else {
+          vr_mat[mi, S - 1L] * (1 - icc_mat[mi, S - 1L])
+        }
+        f_s <- if (staged) {
+          M_s <- if (s < S) {
+            stage$N_stages[idx, s] / stage$N_stages[idx, s - 1L]
+          } else {
+            N_k / stage$N_stages[idx, S - 1L]
+          }
+          pmin(1, eff_t[, s - 1L] / M_s)
+        } else {
+          rep(0, n_idx)
+        }
+        variance_factor <- variance_factor + (1 - f_s) * R_s * Q[, s]
+      }
+      decision_take <- stage$take[idx]
+      stage_resp <- apply(rr_mat[mi, , drop = FALSE], 1L, prod) * resp_k
       fpc_factor <- if (staged) {
-        var_ratio_psu_norm[mi] * icc_psu_norm[mi] * N_k / frame$N_psu[idx]
-      } else {
-        variance_factor
-      }
-    } else if (stage$stages == 3L) {
-      m <- stage$n_per_psu[idx]
-      q <- stage$n_per_ssu[idx]
-      mr <- m * resp_ssu_norm[mi]
-      qr <- q * resp_k
-      ssu_frac <- if (staged) {
-        pmin(1, mr / (frame$N_ssu[idx] / frame$N_psu[idx]))
-      } else {
-        rep(0, length(idx))
-      }
-      unit_frac <- if (staged) {
-        pmin(1, qr / (N_k / frame$N_ssu[idx]))
-      } else {
-        rep(0, length(idx))
-      }
-      variance_factor <-
-        var_ratio_psu_norm[mi] * icc_psu_norm[mi] * mr * qr +
-        (1 - ssu_frac) * var_ratio_ssu_norm[mi] * icc_ssu_norm[mi] * qr +
-        (1 - unit_frac) * var_ratio_ssu_norm[mi] * (1 - icc_ssu_norm[mi])
-      decision_take <- m * q
-      stage_resp <- resp_psu_norm[mi] * resp_ssu_norm[mi] * resp_k
-      fpc_factor <- if (staged) {
-        var_ratio_psu_norm[mi] * icc_psu_norm[mi] * N_k / frame$N_psu[idx]
+        R1 * N_k / stage$N_stages[idx, 1L]
       } else {
         variance_factor
       }
@@ -1380,7 +1452,9 @@
   }
   # Measured against the terms that formed the total, never an absolute floor.
   negligible_total <- function(k) {
-    scale_total <- sum(abs(N[membership[, k]] * mean_all[membership[, k], k]))
+    in_k <- membership[, k]
+    scale_total <- sum(abs(N[in_k] * scope_all[in_k, k] * elig_all[in_k, k] *
+                             mean_all[in_k, k]))
     abs(total_all[k]) <= sqrt(.Machine$double.eps) * scale_total
   }
   A <- A_all[, seq_len(K), drop = FALSE]
@@ -1491,6 +1565,8 @@
   problem$resp_hk <- resp_hk
   problem$elig_hk <- elig_hk
   problem$scope_hk <- scope_hk
+  problem$rates <- .joint_rates_table(measures, m_stratum, resp_norm,
+                                      scope_norm, rr_mat)
   problem$take_all <- take_all
   problem$population_N <- N
   problem$stage <- stage
@@ -1698,7 +1774,10 @@
                                   max_nodes = 5000, gap = 0) {
   accept <- 1 + .bethel_canonical_tolerance(problem, control$tolerance)
   H <- length(problem$cost)
-  load <- sweep(problem$A, 2L, problem$bound * accept, "/")
+  ## The search accepts a load up to 1 + 1e-9 and the ceiling already
+  ## carries the assessment's slack, so the scale stops them stacking.
+  load <- sweep(problem$A, 2L, problem$bound * accept, "/") *
+    .whole_target_scale()
   q <- .whole_problem(problem$cost, 0, matrix(0, H, ncol(load)), load,
                       problem$lower_int, problem$upper_int)
   r <- .whole_search(q, grain = .menu_grain(problem$cost),
@@ -1726,7 +1805,7 @@
          call. = FALSE)
   }
   list(
-    allocation = as.integer(r$x),
+    allocation = .whole_storage(r$x),
     cost = evaluation$cost,
     constraints = evaluation$constraints,
     all_pass = evaluation$all_pass,
@@ -1852,7 +1931,7 @@
   }
   cost_min <- sum(cost * base_allocation)
   cost_max <- sum(cost * upper)
-  budget_tol <- control$tolerance * max(1, abs(budget))
+  budget_tol <- control$tolerance * abs(budget)
 
   if (budget < cost_min - budget_tol) {
     return(list(
@@ -1896,22 +1975,14 @@
     return(list(status = "failed",
                 message = "the objective bracket endpoints failed certification"))
   }
+  binding <- TRUE
+  ## The objective's floor is bought below the budget, so the budget does
+  ## not bind. The upper bounds cost more than the budget here.
   if (f_lo <= 0) {
-    return(list(
-      status = "optimal",
-      allocation = upper,
-      base_allocation = base_allocation,
-      solved = NULL,
-      lambda = rep(NA_real_, K),
-      objective_multiplier = NA_real_,
-      budget_sensitivity = NA_real_,
-      objective_bound = q_lo,
-      budget_binding = FALSE,
-      cost = cost_max,
-      root_iterations = 0L
-    ))
-  }
-  if (f_hi >= 0) {
+    objective_bound <- bracket_lo
+    root_iterations <- 0L
+    binding <- FALSE
+  } else if (f_hi >= 0) {
     objective_bound <- q_hi
     root_iterations <- 0L
   } else {
@@ -1940,7 +2011,7 @@
                              objective_multiplier <= 0) NA_real_ else
       -1 / objective_multiplier,
     objective_bound = objective_bound,
-    budget_binding = TRUE,
+    budget_binding = binding,
     cost = sum(cost * solved$allocation),
     root_iterations = root_iterations
   )
@@ -1962,7 +2033,7 @@
   tolerance <- control$tolerance
   cost <- problem$cost
   H <- length(cost)
-  budget_tol <- tolerance * max(1, abs(budget))
+  budget_tol <- tolerance * abs(budget)
   lowest <- sum(cost * problem$lower_int)
   if (lowest > budget + budget_tol) {
     stop(sprintf(
@@ -2002,10 +2073,13 @@
     start <- cheapest$allocation
   }
   accept <- 1 + .bethel_canonical_tolerance(problem, tolerance)
-  load <- sweep(problem$A, 2L, problem$bound * accept, "/")
+  ## The search accepts a load up to 1 + 1e-9 and the ceiling already
+  ## carries the assessment's slack, so the scale stops them stacking.
+  load <- sweep(problem$A, 2L, problem$bound * accept, "/") *
+    .whole_target_scale()
   q <- .whole_problem(
     0, problem$objective$q_h,
-    cbind(cost / (budget + budget_tol), matrix(0, H, K)),
+    cbind(.whole_budget_load(cost, budget + budget_tol), matrix(0, H, K)),
     cbind(0, load),
     problem$lower_int, problem$upper_int
   )
@@ -2025,7 +2099,7 @@
   }
   objective <- .bethel_objective_value(problem, r$x)
   list(
-    allocation = as.integer(r$x),
+    allocation = .whole_storage(r$x),
     cost = evaluation$cost,
     constraints = evaluation$constraints,
     all_pass = evaluation$all_pass,
@@ -2175,17 +2249,24 @@
   if (problem$stages == 1L) {
     detail$unit_cost <- problem$cost
   } else {
-    detail$N_psu <- problem$stage$N_psu
-    if (problem$stages == 3L) detail$N_ssu <- problem$stage$N_ssu
-    detail$cost_psu <- problem$stage$cost_psu
-    detail$cost_ssu <- problem$stage$cost_ssu
-    if (problem$stages == 3L) detail$cost_tsu <- problem$stage$cost_tsu
-    detail$n_per_psu <- problem$stage$n_per_psu
-    if (problem$stages == 3L) detail$n_per_ssu <- problem$stage$n_per_ssu
-    detail$n_psu <- decision
+    S <- problem$stages
+    for (s in seq_len(S - 1L)) {
+      detail[[paste0("N_", s)]] <- problem$stage$N_stages[, s]
+    }
+    for (s in seq_len(S)) {
+      detail[[paste0("cost_", s)]] <- problem$stage$costs[, s]
+    }
+    for (s in 2L:S) {
+      detail[[paste0("take_", s)]] <- problem$stage$takes[, s - 1L]
+    }
+    detail$n_1 <- decision
     # Count columns use R's standard double representation consistently.
     # The "_int" suffix records whole-number semantics, not storage type.
-    detail$n_psu_int <- as.numeric(decision_int)
+    detail$n_1_int <- as.numeric(decision_int)
+    for (s in 2L:S) {
+      detail[[paste0("take_", s, "_int")]] <-
+        as.numeric(problem$stage$takes[, s - 1L])
+    }
   }
   detail$n <- n
   detail$n_int <- n_int
@@ -2193,8 +2274,8 @@
   detail$.lower <- problem$lower * problem$stage$take
   detail$.upper <- problem$upper * problem$stage$take
   if (problem$stages > 1L) {
-    detail$.lower_psu <- problem$lower
-    detail$.upper_psu <- problem$upper
+    detail$.lower_n_1 <- problem$lower
+    detail$.upper_n_1 <- problem$upper
   }
   detail$.binding <- abs(decision - problem$lower) <= 1e-6 |
     abs(decision - problem$upper) <= 1e-6
@@ -2226,7 +2307,7 @@
     mode = mode,
     alloc = "bethel",
     n_h = n,
-    n_psu_h = if (problem$stages > 1L) decision else NULL,
+    n_1_h = if (problem$stages > 1L) decision else NULL,
     stages = problem$stages,
     problem = problem,
     achieved = list(n = sum(n), cost = continuous$cost)
@@ -2242,16 +2323,13 @@
   carried <- .alloc_carry_labels(detail, frame)
   detail <- carried$detail
   params$strata_keys <- carried$keys
-  .new_svyplan_n(
+  .new_svyplan_alloc_joint(
     n = sum(n),
-    type = "alloc",
-    method = "bethel",
+    stages = problem$stages,
     params = params,
-    se = NA_real_,
-    moe = NA_real_,
-    cv = NA_real_,
     targets = problem$targets,
     detail = detail,
+    rates = problem$rates,
     binding = problem$constraint_ids[continuous$constraints$.binding],
     operational = operational,
     constraints = continuous$constraints,
@@ -2349,7 +2427,7 @@
     se = evaluated$se,
     moe = evaluated$moe,
     cv = evaluated$cv,
-    type = "alloc",
+    type = "alloc_joint",
     method = "bethel",
     params = params,
     detail = evaluated$constraints,

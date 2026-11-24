@@ -5,10 +5,10 @@ test_that("joint proportion precision matches exact finite-population sampling",
   frame <- data.frame(stratum = "S", N = length(population))
   measures <- data.frame(stratum = "S", name = "y", p = mean(population))
   targets <- data.frame(name = "y", cv = .5)
-  got <- prec_alloc(frame, n = 5, measures = measures, targets = targets)
+  got <- prec_alloc_joint(frame, n = 5, measures = measures, targets = targets)
   expect_equal(got$se^2, exact, tolerance = 1e-12)
   expect_equal(got$se, prec_prop(.3, n = 5, N = 20)$se)
-  expect_equal(prec_alloc(frame, n = 20, measures = measures,
+  expect_equal(prec_alloc_joint(frame, n = 20, measures = measures,
                           targets = targets)$se, 0)
 })
 
@@ -19,18 +19,18 @@ test_that("joint and scalar proportion planning share response and FPC conventio
     targets <- data.frame(name = "y", cv = .5)
     scalar <- prec_prop(.3, n = 5, N = N, resp_rate = response,
                          deff = deff, df = 9, alpha = .1)
-    joint <- prec_alloc(frame, n = 5, measures = measures, targets = targets,
+    joint <- prec_alloc_joint(frame, n = 5, measures = measures, targets = targets,
                         resp_rate = response, deff = deff, df = 9, alpha = .1)
     expect_equal(joint$se, scalar$se)
     expect_equal(joint$cv, scalar$cv)
     expect_equal(joint$moe, scalar$moe)
 
-    sized <- n_alloc(frame, measures = measures, targets = targets,
+    sized <- n_alloc_joint(frame, measures = measures, targets = targets,
                       resp_rate = response, deff = deff)
     expect_equal(sized$detail$n,
                  n_prop(.3, cv = .5, N = N, resp_rate = response, deff = deff)$n,
                  tolerance = 1e-6)
-    expect_equal(prec_alloc(sized)$cv, .5, tolerance = 1e-6)
+    expect_equal(prec_alloc_joint(sized)$cv, .5, tolerance = 1e-6)
     expect_true(all(sized$operational$constraints$.pass))
   }
 })
@@ -46,12 +46,12 @@ test_that("stratum-specific proportion corrections match stratified enumeration"
   measures <- data.frame(stratum = c("B", "A"), name = "y",
                          p = c(mean(b), mean(a)))
   targets <- data.frame(name = "y", cv = .5)
-  got <- prec_alloc(frame, n = c(A = 2, B = 3), measures = measures,
+  got <- prec_alloc_joint(frame, n = c(A = 2, B = 3), measures = measures,
                     targets = targets)
   expect_equal(got$se^2, exact, tolerance = 1e-12)
   targets$domain <- "stratum"
   targets$level <- "A"
-  domain <- prec_alloc(frame, n = c(A = 2, B = 3), measures = measures,
+  domain <- prec_alloc_joint(frame, n = c(A = 2, B = 3), measures = measures,
                        targets = targets)
   expect_equal(domain$se, prec_prop(mean(a), n = 2, N = 4)$se)
 })
@@ -59,7 +59,7 @@ test_that("stratum-specific proportion corrections match stratified enumeration"
 test_that("budget objectives use the corrected proportion variance", {
   frame <- data.frame(stratum = "S", N = 20)
   measures <- data.frame(stratum = "S", name = "y", p = .3)
-  fit <- n_alloc(frame, measures = measures, objective = "y", budget = 5)
+  fit <- n_alloc_joint(frame, measures = measures, objective = "y", budget = 5)
   expect_equal(fit$detail$n, 5)
   expect_equal(fit$objective_value, prec_prop(.3, n = 5, N = 20)$cv^2)
 })
@@ -67,27 +67,27 @@ test_that("budget objectives use the corrected proportion variance", {
 test_that("element proportion measures reject undefined finite-population variances", {
   frame <- data.frame(stratum = "S", N = 1)
   measures <- data.frame(stratum = "S", name = "y", p = .3)
-  expect_error(n_alloc(frame, measures = measures,
+  expect_error(n_alloc_joint(frame, measures = measures,
                        targets = data.frame(name = "y", cv = .5)),
                "N.*must be greater than 1.*proportion")
 })
 
 test_that("PSU-register designs retain their working proportion variance", {
-  frame <- data.frame(stratum = "S", N = 1000, n_per_psu = 10)
+  frame <- data.frame(stratum = "S", N = 1000, take_2 = 10)
   psu <- data.frame(stratum = "S", psu_id = 1:10, N = c(550, rep(50, 9)))
-  measures <- data.frame(stratum = "S", name = "y", p = .3, icc_psu = .08)
+  measures <- data.frame(stratum = "S", name = "y", p = .3, icc_1 = .08)
   targets <- data.frame(name = "y", cv = .2)
   explicit <- measures
   explicit$mean <- explicit$p
   explicit$var <- explicit$p * (1 - explicit$p)
   explicit$p <- NULL
-  a <- n_alloc(frame, measures = measures, targets = targets, psu = psu)
-  b <- n_alloc(frame, measures = explicit, targets = targets, psu = psu)
+  a <- n_alloc_joint(frame, measures = measures, targets = targets, psu = psu)
+  b <- n_alloc_joint(frame, measures = explicit, targets = targets, psu = psu)
   expect_equal(a$detail$n, b$detail$n)
   expect_equal(a$detail$n_int, b$detail$n_int)
-  expect_equal(prec_alloc(a)$se, prec_alloc(b)$se)
-  expect_equal(prec_alloc(frame, n = 80, measures = measures,
+  expect_equal(prec_alloc_joint(a)$se, prec_alloc_joint(b)$se)
+  expect_equal(prec_alloc_joint(frame, n = 80, measures = measures,
                           targets = targets, psu = psu)$se,
-               prec_alloc(frame, n = 80, measures = explicit,
+               prec_alloc_joint(frame, n = 80, measures = explicit,
                           targets = targets, psu = psu)$se)
 })

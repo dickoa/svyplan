@@ -256,6 +256,7 @@
 #' @export
 n_change <- function(var = NULL, ...) {
   if (!is.null(var)) {
+    .refuse_result_as_input(var, "var", "n_change")
     .res <- .dispatch_plan(var, "var", n_change.default, ...)
     if (!is.null(.res)) return(.res)
   }
@@ -296,6 +297,8 @@ n_change.default <- function(
   .check_unused_dots(...)
   check_resp_rate(eligibility_rate, "eligibility_rate")
   N_frame <- .check_power_N(N)
+  check_eligible_population(N_frame, 1, eligibility_rate,
+                            label = "N * eligibility_rate")
   N_pair <- N_frame * eligibility_rate
   inputs <- .change_inputs(var, sd, p, change, N_pair, r, cv_num, cv_den,
                            component_cor)
@@ -345,6 +348,7 @@ n_change.default <- function(
     target_se, inputs$var_pair, N_pair, deff, rate,
     ratio, overlap, overlap_cor, overlap_draw
   )
+  solved <- n
   n <- .census_size(n, if (length(n) == 1L) min(N_frame) else N_frame)
 
   n_vec <- if (length(n) == 1L) c(n, n) else n
@@ -363,7 +367,10 @@ n_change.default <- function(
   # The inversion is closed form on n <= N, so a mismatch here means the
   # linear form and the variance it inverts have drifted apart, not that
   # the inputs were unusual.
-  if (abs(prec$se - target_se) > 1e-6 * max(1, target_se)) {
+  ## A size snapped to the census beats the target rather than meeting it.
+  snapped <- any(n != solved)
+  off <- if (snapped) prec$se - target_se else abs(prec$se - target_se)
+  if (off > 1e-6 * max(1, target_se)) {
     stop(
       "internal error: solved size does not reproduce the target standard error",
       call. = FALSE

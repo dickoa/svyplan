@@ -150,9 +150,11 @@
 #' With `take`, the schedule counts PSUs. Each panel is a group of
 #' `ceiling(n_entrants / take)` PSUs, and a group takes `take` units in each
 #' PSU for every cohort. The PSU allocation then reads its total from the
-#' schedule, as in `n_alloc(frame, n = schedule$selections$operational_issue[1],
-#' n_step = G)` with `G` the number of start-up panels, so that the master
-#' has the PSU count the schedule promises.
+#' schedule. Over a frame whose units are the PSUs, with an `n_step` column
+#' set to `G`, the number of start-up panels,
+#' `n_alloc(transform(psu_frame, n_step = G), n = schedule$selections$operational_issue[1])`
+#' gives each stratum a whole number of panels, so that the master has the
+#' PSU count the schedule promises.
 #'
 #' Under `retain_psus = TRUE` no PSU is replaced inside the horizon. An
 #' immediate start selects every group at the first period, each group's

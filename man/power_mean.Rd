@@ -50,7 +50,7 @@ for power.}
 
 \item{alpha}{Significance level, default 0.05.}
 
-\item{N}{Population size for finite-population correction. A scalar applies
+\item{N}{Population size for finite population correction. A scalar applies
 to both groups. A length-2 vector \code{c(N1, N2)} sets group-specific
 population sizes. \code{Inf} disables FPC for the corresponding group.}
 

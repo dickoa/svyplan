@@ -1,3 +1,11 @@
+test_that("allocation summary formatters label take columns at every stage", {
+  allocation <- data.frame(take_2_continuous = 3.5, take_2_field = 4,
+                           take_3_continuous = 9.2, take_3_field = 9)
+  labels <- c("take_2 cont.", "take_2 field", "take_3 cont.", "take_3 field")
+  expect_identical(names(.fmt_alloc_summary_table(allocation)), labels)
+  expect_identical(names(.fmt_bethel_summary_table(allocation)), labels)
+})
+
 summary_alloc_frame <- function() {
   data.frame(
     stratum = c("Urban", "Rural", "Remote"),
@@ -15,12 +23,12 @@ summary_alloc_cluster_frame <- function(domains = FALSE) {
     N = c(50000, 150000),
     sd = c(0.45, 0.48),
     mean = c(0.35, 0.25),
-    icc_psu = c(0.03, 0.08),
-    cost_psu = c(300, 600),
-    cost_ssu = c(40, 60),
+    icc_1 = c(0.03, 0.08),
+    cost_1 = c(300, 600),
+    cost_2 = c(40, 60),
     resp_rate = c(0.90, 0.80),
-    resp_rate_psu = c(0.95, 0.90),
-    N_psu = c(1000, 2000)
+    resp_rate_1 = c(0.95, 0.90),
+    N_1 = c(1000, 2000)
   )
   if (domains) out$region <- c("N", "S")
   out
@@ -120,11 +128,11 @@ test_that("cluster summaries use whole operational stages and stage costs", {
   s <- summary(x)
 
   expect_equal(s$allocation$n_field, x$detail$n_int)
-  expect_equal(s$allocation$n_psu_field, x$detail$n_psu_int)
-  expect_equal(s$allocation$n_per_psu_field, x$detail$n_per_psu_int)
+  expect_equal(s$allocation$n_1_field, x$detail$n_1_int)
+  expect_equal(s$allocation$take_2_field, x$detail$take_2_int)
   expect_equal(
     s$allocation$n_field,
-    s$allocation$n_psu_field * s$allocation$n_per_psu_field
+    s$allocation$n_1_field * s$allocation$take_2_field
   )
   expect_equal(s$overall$se, x$operational$se)
   expect_equal(s$overall$moe, x$operational$moe)
@@ -136,8 +144,8 @@ test_that("cluster summaries use whole operational stages and stage costs", {
   out <- capture.output(print(s))
   expect_match(out[1L], "Stratified cluster allocation summary")
   expect_true(any(grepl("Cluster stages by stratum", out, fixed = TRUE)))
-  expect_true(any(grepl("PSUs field", out, fixed = TRUE)))
-  expect_true(any(grepl("Take field", out, fixed = TRUE)))
+  expect_true(any(grepl("n_1 field", out, fixed = TRUE)))
+  expect_true(any(grepl("take_2 field", out, fixed = TRUE)))
   expect_true(all(nchar(out) <= 80L))
 })
 
@@ -148,7 +156,7 @@ test_that("domain summaries are recomputed on the field design", {
 
   expect_equal(s$domains$n, x$detail$n_int)
   expect_equal(s$overall$worst_domain_cv, max(s$domains$cv))
-  expect_equal(s$overall$worst_domain_cv, x$operational$cv)
+  expect_equal(x$operational$cv, x$operational$rmoe / qnorm(0.975))
   expect_equal(s$continuous$worst_domain_cv, max(x$domains$.cv))
 
   out <- capture.output(print(s))
@@ -179,6 +187,36 @@ test_that("active allocation bounds are named in the summary", {
 
 test_that("summary of a non-allocation result is not an allocation summary", {
   expect_s3_class(summary(n_prop(p = 0.3, moe = 0.05)), "summary.svyplan_n")
-  ordinary <- n_pooled(var = 100, moe = 1, occasions = 4)
-  expect_identical(summary(ordinary), ordinary)
+  expect_s3_class(summary(n_pooled(var = 100, moe = 1, occasions = 4)),
+                  "summary.svyplan_n")
+  expect_false(inherits(summary(n_pooled(var = 100, moe = 1, occasions = 4)),
+                        "summary.svyplan_alloc"))
+})
+
+## Eligibility rate and eligible units per unit are reported apart
+
+test_that("a classic allocation shows the scope rate and the yield apart", {
+  f <- data.frame(stratum = c("A", "B"), N = c(1000, 2000), sd = c(1, 2))
+  a <- n_alloc(f, n = 300, eligible_per_unit = 1.5)
+  s <- capture.output(summary(a))
+  expect_false(any(grepl("eligibility rate", s)))
+  expect_true(any(grepl("eligible per unit: 1.5", s)))
+  expect_false(any(grepl("eligibility_rate", s)))
+  b <- n_alloc(f, n = 300, eligibility_rate = 0.8, eligible_per_unit = 1.5)
+  s <- capture.output(summary(b))
+  expect_true(any(grepl("eligibility rate: 0.80", s)))
+  expect_true(any(grepl("Scope", s)))
+  expect_match(capture.output(print(a))[4], "eligible_per_unit = 1.5")
+  col <- n_alloc(transform(f, eligible_per_unit = c(1.5, 2)), n = 300)
+  expect_match(capture.output(print(col))[4], "eligible_per_unit = 1.5 to 2")
+  expect_match(capture.output(print(a))[2], "expected respondents = 450.0")
+})
+
+test_that("the summary names a moe or rmoe target", {
+  f <- data.frame(stratum = c("A", "B"), N = c(1000, 2000), sd = c(1, 2),
+                  mean = c(5, 6))
+  expect_true(any(grepl("attaining moe = 0.1",
+                        capture.output(summary(n_alloc(f, moe = 0.1))))))
+  expect_true(any(grepl("attaining rmoe = 0.02",
+                        capture.output(summary(n_alloc(f, rmoe = 0.02))))))
 })

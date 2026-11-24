@@ -1,19 +1,20 @@
 ## R CMD check results
 
-0 errors | 0 warnings | 1 note
+On Arch Linux (x86_64) with R 4.6.2 Patched, the source tarball returned
+`Status: OK` from `R CMD check --no-tests --no-manual`. The full suite
+ran separately with 33,820 passing expectations and zero failures,
+warnings or skips. The PDF reference manual also built locally.
+The network-enabled URL check passed for the package sources.
 
-* checking CRAN incoming feasibility ... NOTE
-  New submission
+`R CMD check --as-cran --no-tests --no-manual` reported 0 errors,
+0 warnings and 2 notes with remote incoming checks enabled. The local
+run with remote incoming checks disabled reported the same notes.
 
-  The same NOTE reports the `BugReports` URL as possibly invalid and
-  suggests
-
-      https://gitlab.com/dickoa/svyplan/-/work_items/issues
-
-  The check heuristic appends `/issues` to the `BugReports` value. This
-  package is hosted on GitLab, where the value given already is the issue
-  tracker, so the suggestion is that tracker plus a further path segment the
-  project does not serve. The URL is correct as given.
+- The CRAN incoming check identifies a new submission and suggests
+  appending `/issues` to `BugReports`. The configured GitLab work-item
+  URL returned HTTP 200. The suggested path redirected to sign-in.
+- The compilation flags named in the note come from this Arch Linux R
+  installation's default `CFLAGS`.
 
 ## Test environments
 

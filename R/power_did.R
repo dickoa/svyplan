@@ -15,7 +15,10 @@
 #' @param outcome Outcome scale: `"mean"` (default) or `"prop"`.
 #' @param var Outcome variance. Applies to `outcome = "mean"` only. Under
 #'   `outcome = "prop"` the cell variances follow from `treat` and `control`,
-#'   so supplying it is an error rather than a silent no-op.
+#'   so supplying it is an error rather than a silent no-op. They stay fixed
+#'   at those cells when the effect is solved for, so the detectable effect
+#'   is a linear approximation and can exceed the range a difference of
+#'   proportions allows at a very small `n` (above 2 at `n = 2`).
 #'   Length 1: common variance for all four cells.
 #'   Length 2: group-specific variances `c(var_treat, var_control)`,
 #'   assumed equal across waves.
@@ -37,7 +40,7 @@
 #'   it must exceed `alpha`, the power at zero effect. Leave `NULL` to solve
 #'   for power.
 #' @param alpha Significance level, default 0.05.
-#' @param N Population size for finite-population correction.
+#' @param N Population size for finite population correction.
 #'   A scalar applies to both arms. Use a length-2 vector
 #'   `c(N_treat, N_control)` for arm-specific population sizes.
 #'   `Inf` (default) disables FPC.
@@ -354,8 +357,10 @@ power_did.default <- function(
     params$power <- power
 
     r <- ratio
+    ## Measured against the level variances, as power_mean() does, since
+    ## the change variances are what the overlap may have cancelled.
     .check_change_variance(var_terms$change[1] / r + var_terms$change[2],
-                           sum(abs(var_terms$change)))
+                           sum(var_terms$level))
     power_n2 <- function(n2) {
       n_vec <- if (r == 1) c(n2, n2) else c(r * n2, n2)
       n_eff <- n_vec * rate
@@ -496,6 +501,7 @@ power_did.default <- function(
   cross <- overlap_cor * sqrt(v0 * v1)
   f <- .overlap_pop_factors(overlap, 1, overlap_draw)
   list(
+    level = v0 + v1,
     change = .safe_variance(v0 + v1 - 2 * overlap * cross, what),
     census = .safe_variance(
       f$marginal[1L] * v0 + f$marginal[2L] * v1 -
@@ -523,7 +529,8 @@ power_did.default <- function(
     overlap, overlap_cor, overlap_draw, "control change variance"
   )
 
-  list(change = c(vt$change, vc$change), census = c(vt$census, vc$census))
+  list(change = c(vt$change, vc$change), census = c(vt$census, vc$census),
+       level = c(vt$level, vc$level))
 }
 
 #' @keywords internal
@@ -535,7 +542,8 @@ power_did.default <- function(
   vc <- .did_var_pair(var_parts[3], var_parts[4], overlap, overlap_cor,
                       overlap_draw, "control change variance")
 
-  list(change = c(vt$change, vc$change), census = c(vt$census, vc$census))
+  list(change = c(vt$change, vc$change), census = c(vt$census, vc$census),
+       level = c(vt$level, vc$level))
 }
 
 #' DiD variance with the correction applied to each arm
