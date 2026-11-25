@@ -165,12 +165,22 @@
 }
 
 #' Compute normalized KKT diagnostics for a Bethel solution
+#'
+#' With `floors`, each floor's multiplier `mu` lowers the linear cost of
+#' its level, and its shortfall, scaled by the floor, joins the primal
+#' residual.
 #' @keywords internal
 #' @noRd
-.bethel_kkt <- function(A, cost, lower, upper, allocation, lambda) {
+.bethel_kkt <- function(A, cost, lower, upper, allocation, lambda,
+                        floors = NULL, mu = numeric(0)) {
   constraint_residual <- .bethel_constraint_value(A, allocation) - 1
   w <- drop(A %*% lambda)
-  derivative <- cost - w / allocation^2
+  shift <- if (is.null(floors)) 0 else drop(floors$membership %*% mu)
+  floor_residual <- if (is.null(floors)) numeric(0) else {
+    (floors$spec$min_n - drop(crossprod(floors$membership, allocation))) /
+      pmax(1, floors$spec$min_n)
+  }
+  derivative <- cost - shift - w / allocation^2
   scale <- max(1, max(abs(cost)))
   tol_bound <- 1e-7 * pmax(1, abs(allocation))
   fixed <- abs(upper - lower) <= tol_bound
@@ -182,14 +192,20 @@
   stationarity[on_upper] <- pmax(derivative[on_upper], 0)
   stationarity[interior] <- derivative[interior]
   projected <- lambda - pmax(0, lambda + constraint_residual)
-  dual_value <- sum(cost * allocation + w / allocation) - sum(lambda)
+  floor_gap <- if (is.null(floors)) 0 else {
+    sum(mu * (drop(crossprod(floors$membership, allocation)) -
+                floors$spec$min_n))
+  }
+  dual_value <- sum(cost * allocation + w / allocation) - sum(lambda) -
+    floor_gap
   primal_value <- sum(cost * allocation)
   list(
-    primal_residual = max(c(0, constraint_residual)),
+    primal_residual = max(c(0, constraint_residual, floor_residual)),
     projected_dual_residual = max(abs(projected)),
     stationarity_residual = max(abs(stationarity)) / scale,
     complementarity_residual = max(
-      abs(lambda * constraint_residual) / pmax(1, abs(lambda))
+      abs(lambda * constraint_residual) / pmax(1, abs(lambda)),
+      abs(mu * floor_residual) / pmax(1, abs(mu))
     ),
     relative_duality_gap = abs(primal_value - dual_value) /
       max(1, abs(primal_value)),
@@ -217,7 +233,8 @@
   upper,
   control = .bethel_control(),
   constraint_ids = colnames(A) %||% as.character(seq_len(ncol(A))),
-  accept = control$tolerance
+  accept = control$tolerance,
+  floors = NULL
 ) {
   if (!is.matrix(A) || !is.numeric(A) || nrow(A) == 0L || ncol(A) == 0L ||
       anyNA(A) || any(!is.finite(A)) || any(A < 0)) {
@@ -264,20 +281,38 @@
   cost_scale <- stats::median(cost)
   As <- sweep(A, 2L, bound, "/")
   cs <- cost / cost_scale
-  lower_value <- .bethel_constraint_value(As, lower)
+  ## L-BFGS-B can step a rounding error below its zero bound. With floors
+  ## each level's count is met inside the stratum minimum, so the dual
+  ## stays a function of the target multipliers alone.
+  inner <- function(lambda) {
+    w <- drop(As %*% pmin(pmax(lambda, 0), .Machine$double.xmax))
+    if (is.null(floors)) {
+      return(list(x = pmin(pmax(sqrt(w / cs), lower), upper), mu = numeric(0)))
+    }
+    .bethel_floor_min(cs, w, lower, upper, floors, tie = rowSums(As))
+  }
+  allocation_for <- function(lambda) inner(lambda)$x
+  cheapest <- inner(numeric(K))
+  lower_value <- .bethel_constraint_value(As, cheapest$x)
   if (all(lower_value <= 1 + rep_len(accept, length(lower_value)))) {
     lambda <- numeric(K)
-    kkt <- .bethel_kkt(As, cs, lower, upper, lower, lambda)
+    kkt <- .bethel_kkt(As, cs, lower, upper, cheapest$x, lambda, floors,
+                       cheapest$mu)
     return(c(
       list(
-        allocation = lower,
-        cost = sum(cost * lower),
+        allocation = cheapest$x,
+        cost = sum(cost * cheapest$x),
         lambda = lambda,
+        floor_multiplier = cost_scale * cheapest$mu,
         iterations = 0L,
         convergence_code = 0L,
         converged = TRUE,
         classification = "optimal",
-        message = "lower allocation satisfies every precision target",
+        message = if (is.null(floors)) {
+          "lower allocation satisfies every precision target"
+        } else {
+          "the cheapest allocation meeting the floors satisfies every precision target"
+        },
         cost_scale = cost_scale,
         constraint_scale = bound,
         feasibility_tolerance = control$tolerance,
@@ -287,16 +322,14 @@
     ))
   }
 
-  ## L-BFGS-B can step a rounding error below its zero bound.
-  allocation_for <- function(lambda) {
-    w <- drop(As %*% pmax(lambda, 0))
-    pmin(pmax(sqrt(w / cs), lower), upper)
-  }
+  ## A floor can leave the dual linear over a long range, and a line search
+  ## that steps past every finite value reads as the worst one.
   objective <- function(lambda) {
-    lambda <- pmax(lambda, 0)
+    lambda <- pmin(pmax(lambda, 0), .Machine$double.xmax)
     n <- allocation_for(lambda)
     w <- drop(As %*% lambda)
-    -(sum(cs * n + w / n) - sum(lambda))
+    v <- -(sum(cs * n + w / n) - sum(lambda))
+    if (is.finite(v)) v else .Machine$double.xmax
   }
   gradient <- function(lambda) {
     n <- allocation_for(lambda)
@@ -319,8 +352,10 @@
     )
   )
   certify <- function(opt) {
-    allocation <- allocation_for(opt$par)
-    kkt <- .bethel_kkt(As, cs, lower, upper, allocation, opt$par)
+    at <- inner(opt$par)
+    allocation <- at$x
+    kkt <- .bethel_kkt(As, cs, lower, upper, allocation, opt$par, floors,
+                       at$mu)
     checks <- unlist(kkt[c(
       "primal_residual", "projected_dual_residual",
       "stationarity_residual", "complementarity_residual",
@@ -329,7 +364,7 @@
     # KKT certification is authoritative. L-BFGS-B can report an abnormal
     # line-search termination on the flat dual face even when the recovered
     # primal-dual pair satisfies every optimality condition.
-    list(allocation = allocation, kkt = kkt,
+    list(allocation = allocation, kkt = kkt, mu = at$mu,
          converged = all(checks <= control$kkt_tolerance))
   }
   state <- certify(opt)
@@ -371,6 +406,7 @@
       allocation = allocation,
       cost = sum(cost * allocation),
       lambda = lambda_original,
+      floor_multiplier = cost_scale * state$mu,
       multiplier_identifiable = !duplicate_multiplier,
       lambda_scaled = opt$par,
       iterations = unname(opt$counts[["function"]]),
@@ -1171,7 +1207,8 @@
   objective = NULL,
   fpc = "unit",
   .finite_prop_var = TRUE,
-  eligibility_rate = 1
+  eligibility_rate = 1,
+  min_n_domain = NULL
 ) {
   check_deff(deff)
   check_resp_rate(resp_rate)
@@ -1650,6 +1687,14 @@
   problem$population_N <- N
   problem$stage <- stage
   problem$stages <- stage$stages
+  problem$floors <- .bethel_domain_floors(frame, min_n_domain)
+  if (!is.null(problem$floors)) {
+    if (problem$stages > 1L) {
+      stop("joint 'min_n_domain' is available for element frames",
+           call. = FALSE)
+    }
+    .bethel_floor_capacity(problem$floors, problem$upper, problem$upper_int)
+  }
   problem
 }
 
@@ -1854,11 +1899,29 @@
   cols <- problem$A[, active, drop = FALSE]
   if (binding) cols <- cbind(cols, objective_cols)
   G <- cols[free, , drop = FALSE] / allocation[free]^2
+  ## A binding floor is one more active row. Its gradient is the level's
+  ## membership, and its slope is its own multiplier.
+  floors <- problem$floors
+  floor_slope <- NULL
+  n_floor <- 0L
+  if (!is.null(floors)) {
+    held <- .bethel_floor_table(floors, allocation)
+    tight <- abs(held$achieved - held$min_n) <= 1e-6 * pmax(1, held$min_n)
+    floor_slope <- ifelse(tight, optimization$floor_multiplier %||% NA_real_,
+                          0)
+    n_floor <- sum(tight)
+    G <- cbind(G, floors$membership[free, tight, drop = FALSE])
+  }
   shared <- .ambiguous_columns(G)
   target_shared <- shared[seq_len(sum(active))]
   sensitivity[which(active)[target_shared]] <- NA_real_
+  if (n_floor > 0L) {
+    floor_shared <- utils::tail(shared, n_floor)
+    floor_slope[which(tight)[floor_shared]] <- NA_real_
+  }
   if (!budget_mode) {
-    return(list(sensitivity = sensitivity, status = "available"))
+    return(list(sensitivity = sensitivity, status = "available",
+                floor = floor_slope))
   }
   mu <- optimization$objective_multiplier %||% NA_real_
   status <- if (!binding) {
@@ -1869,22 +1932,27 @@
     "objective_multiplier_not_positive"
   } else if (.price_undetermined(
     G, c(rep(0, sum(active)),
-         rep_len(objective_rates, ncol(as.matrix(objective_cols))))
+         rep_len(objective_rates, ncol(as.matrix(objective_cols))),
+         rep(0, n_floor))
   )) {
     "not_identifiable"
   } else {
     "available"
   }
-  if (identical(status, "budget_at_minimum")) sensitivity[active] <- NA_real_
+  if (identical(status, "budget_at_minimum")) {
+    sensitivity[active] <- NA_real_
+    if (!is.null(floor_slope)) floor_slope[floor_slope != 0] <- NA_real_
+  }
+  per_objective <- function(v) {
+    switch(status, available = v / mu, budget_not_binding = 0 * v,
+           rep(NA_real_, length(v)))
+  }
   objective <- numeric(n)
-  objective[active] <- switch(
-    status,
-    available = sensitivity[active] / mu,
-    budget_not_binding = 0,
-    NA_real_
-  )
+  objective[active] <- per_objective(sensitivity[active])
   list(sensitivity = sensitivity, objective = objective, status = status,
-       budget = if (identical(status, "available")) -1 / mu else NA_real_)
+       budget = if (identical(status, "available")) -1 / mu else NA_real_,
+       floor = floor_slope,
+       floor_objective = if (!is.null(floor_slope)) per_objective(floor_slope))
 }
 
 #' Null vectors of active gradient columns, in the columns' own scale
@@ -1973,17 +2041,44 @@
 #' @keywords internal
 #' @noRd
 .bethel_whole_targets <- function(problem, control = .bethel_control(),
-                                  max_nodes = 5000, gap = 0) {
+                                  max_nodes = 5000, gap = 0,
+                                  continuous = NULL) {
   accept <- 1 + .bethel_canonical_tolerance(problem, control$tolerance)
   H <- length(problem$cost)
   ## The search accepts a load up to 1 + 1e-9 and the ceiling already
   ## carries the assessment's slack, so the scale stops them stacking.
   load <- sweep(problem$A, 2L, problem$bound * accept, "/") *
     .whole_target_scale()
-  q <- .whole_problem(problem$cost, 0, matrix(0, H, ncol(load)), load,
-                      problem$lower_int, problem$upper_int)
-  r <- .whole_search(q, grain = .menu_grain(problem$cost),
-                     max_nodes = max_nodes, gap = gap)
+  q <- .bethel_whole_problem(problem, problem$cost, 0,
+                             matrix(0, H, ncol(load)), load)
+  if (is.null(problem$floors)) {
+    r <- .whole_search(q, grain = .menu_grain(problem$cost),
+                       max_nodes = max_nodes, gap = gap)
+  } else {
+    ## The continuous cost design rounded up meets every target and floor,
+    ## so it starts the search, with its multipliers scaled to the loads.
+    cont <- continuous %||% if (ncol(problem$A) > 0L) {
+      .bethel_solve(
+        problem$A, problem$bound, problem$cost, problem$lower, problem$upper,
+        control = control, constraint_ids = problem$constraint_ids,
+        accept = accept - 1, floors = problem$floors
+      )
+    } else {
+      fm <- .bethel_floor_min(problem$cost, numeric(H), problem$lower,
+                              problem$upper, problem$floors)
+      list(allocation = fm$x, lambda = numeric(0), floor_multiplier = fm$mu)
+    }
+    start <- if (!is.null(cont$allocation)) {
+      pmin(pmax(ceiling(cont$allocation - 1e-9), problem$lower_int),
+           problem$upper_int)
+    }
+    plan <- if (!is.null(start) && .whole_feasible(q, .whole_plan(q, start))) {
+      .whole_plan(q, start)
+    }
+    r <- .whole_search(q, start = plan, grain = .menu_grain(problem$cost),
+                       max_nodes = max_nodes, gap = gap,
+                       lambda = .bethel_whole_lambda(problem, q, cont, accept))
+  }
   if (identical(r$status, "infeasible")) {
     bad <- problem$constraint_ids[
       .whole_load(q, .whole_plan(q, q$hi)) > 1 + 1e-9
@@ -2002,7 +2097,8 @@
   }
   evaluation <- .precision_from_allocation(problem, r$x,
                                            tolerance = control$tolerance)
-  if (!evaluation$all_pass || !evaluation$bounds_pass) {
+  if (!evaluation$all_pass || !evaluation$bounds_pass ||
+        !.bethel_floors_met(problem, r$x)) {
     stop("internal error: integer allocation failed final validation",
          call. = FALSE)
   }
@@ -2145,7 +2241,8 @@
     s <- .bethel_solve(
       cbind(A, q_h), c(b, ob), cost, lower, upper,
       control = control, constraint_ids = ids,
-      accept = c(accept, control$tolerance)
+      accept = c(accept, control$tolerance),
+      floors = problem$floors
     )
     if (any(held) && !is.null(s$allocation)) {
       s$constraint_scale <- c(bound, ob)
@@ -2161,7 +2258,8 @@
     base <- .bethel_solve(
       A, bound, cost, lower, upper,
       control = control, constraint_ids = problem$constraint_ids,
-      accept = accept
+      accept = accept,
+      floors = problem$floors
     )
     if (identical(base$classification, "infeasible")) {
       return(list(status = "infeasible_targets", infeasible = base$infeasible))
@@ -2171,7 +2269,7 @@
     }
     base_allocation <- base$allocation
   } else {
-    base_allocation <- lower
+    base_allocation <- .bethel_floor_cheapest(problem)
   }
   cost_min <- sum(cost * base_allocation)
   cost_max <- sum(cost * upper)
@@ -2184,7 +2282,7 @@
       shortfall = cost_min - budget
     ))
   }
-  if (cost_max <= .joint_budget_room(budget)) {
+  if (cost_max <= .budget_room(budget)) {
     return(list(
       status = "optimal",
       allocation = upper,
@@ -2282,22 +2380,30 @@
   }
   K <- ncol(problem$A)
   start <- problem$lower_int
-  if (K > 0L) {
+  searched <- K > 0L || !is.null(problem$floors)
+  if (searched) {
     cheapest <- .bethel_whole_targets(problem, control, max_nodes, gap)
     if (cheapest$cost > budget + budget_tol) {
       if (cheapest$search$bound > budget + budget_tol) {
         # Rounded up, so the number named is itself affordable.
+        what <- if (K == 0L) {
+          "the regional sample floors"
+        } else if (!is.null(problem$floors)) {
+          "the precision targets and regional sample floors"
+        } else {
+          "the precision targets"
+        }
         stop(sprintf(
           paste0(
-            "no integer allocation meets the precision targets within the ",
-            "budget: the cheapest target-feasible integer allocation costs ",
+            "no integer allocation meets %s within the ",
+            "budget: the cheapest integer allocation meeting them costs ",
             "%.6g against a budget of %.6g.\n",
-            "  Raise 'budget' to at least %.2f, or relax the targets.\n",
+            "  Raise 'budget' to at least %.2f, or relax the requirements.\n",
             "  A budget carried over from a minimum-cost fit falls just short ",
             "like this by construction: that cost is the continuous optimum, ",
             "and whole units cost slightly more."
           ),
-          cheapest$cost, budget, ceiling(cheapest$cost * 100) / 100
+          what, cheapest$cost, budget, ceiling(cheapest$cost * 100) / 100
         ), call. = FALSE)
       }
       stop(structure(
@@ -2312,19 +2418,7 @@
     start <- cheapest$allocation
   }
   list(start = start, cost = sum(cost * start),
-       nodes = if (K > 0L) cheapest$search$nodes else 0)
-}
-
-#' The spend a budget search may reach
-#'
-#' The requested budget, or the cheapest accepted design when that costs
-#' more, plus rounding. The feasibility tolerance only decides whether a
-#' cheapest design marginally over the budget is accepted, so it never buys
-#' a better design.
-#' @keywords internal
-#' @noRd
-.joint_budget_room <- function(budget, floor_cost = budget) {
-  max(budget, floor_cost) * (1 + 1e-9)
+       nodes = if (searched) cheapest$search$nodes else 0)
 }
 
 #' The whole allocation the budget buys best, every target held
@@ -2339,32 +2433,44 @@
 #' @keywords internal
 #' @noRd
 .bethel_whole_budget <- function(problem, budget, control = .bethel_control(),
-                                 max_nodes = 5000, gap = 0) {
+                                 max_nodes = 5000, gap = 0, continuous = NULL) {
   tolerance <- control$tolerance
   cost <- problem$cost
   H <- length(cost)
   opening <- .bethel_whole_start(problem, budget, control, max_nodes, gap)
   start <- opening$start
-  room <- .joint_budget_room(budget, opening$cost)
+  room <- .budget_room(budget, opening$cost)
   K <- ncol(problem$A)
   accept <- 1 + .bethel_canonical_tolerance(problem, tolerance)
   ## The search accepts a load up to 1 + 1e-9 and the ceiling already
   ## carries the assessment's slack, so the scale stops them stacking.
   load <- sweep(problem$A, 2L, problem$bound * accept, "/") *
     .whole_target_scale()
-  q <- .whole_problem(
-    0, problem$objective$q_h,
+  q <- .bethel_whole_problem(
+    problem, 0, problem$objective$q_h,
     cbind(.whole_budget_load(cost, room), matrix(0, H, K)),
-    cbind(0, load),
-    problem$lower_int, problem$upper_int
+    cbind(0, load)
   )
-  r <- .whole_search(q, start = start, max_nodes = max_nodes, gap = gap)
+  if (is.null(problem$floors)) {
+    r <- .whole_search(q, start = start, max_nodes = max_nodes, gap = gap)
+  } else {
+    ## The continuous multipliers, per unit of objective, scaled to the
+    ## loads start the search.
+    mu <- continuous$objective_multiplier %||% NA_real_
+    lambda <- if (isTRUE(mu > 0)) {
+      .bethel_whole_lambda(problem, q, continuous$solved, accept,
+                           lead = room / (mu * (1 + 1e-9)), per = mu)
+    }
+    r <- .whole_search(q, start = start, max_nodes = max_nodes, gap = gap,
+                       lambda = lambda)
+  }
   if (is.null(r$x)) {
     stop("internal error: the budget search lost the plan it started from",
          call. = FALSE)
   }
   evaluation <- .precision_from_allocation(problem, r$x, tolerance = tolerance)
-  if (!evaluation$all_pass || !evaluation$bounds_pass) {
+  if (!evaluation$all_pass || !evaluation$bounds_pass ||
+        !.bethel_floors_met(problem, r$x)) {
     stop("internal error: integer allocation failed final validation",
          call. = FALSE)
   }
@@ -2409,7 +2515,8 @@
   max_nodes = 5000,
   gap = 0,
   .whole = TRUE,
-  objective_rule = "sum"
+  objective_rule = "sum",
+  min_n_domain = NULL
 ) {
   control <- .bethel_control()
   problem <- .build_bethel_problem(
@@ -2426,7 +2533,8 @@
     min_n_stratum = min_n_stratum,
     objective = objective,
     fpc = fpc,
-    .finite_prop_var = .finite_prop_var
+    .finite_prop_var = .finite_prop_var,
+    min_n_domain = min_n_domain
   )
   if (!is.null(problem$objective)) problem$objective$rule <- objective_rule
   worst <- identical(objective_rule, "worst")
@@ -2437,7 +2545,8 @@
       problem$lower, problem$upper,
       control = control,
       constraint_ids = problem$constraint_ids,
-      accept = .bethel_canonical_tolerance(problem, control$tolerance)
+      accept = .bethel_canonical_tolerance(problem, control$tolerance),
+      floors = problem$floors
     )
     if (solved$classification == "infeasible") {
       stop(sprintf("precision targets are infeasible: %s",
@@ -2463,10 +2572,15 @@
                    paste(fit$infeasible, collapse = ", ")), call. = FALSE)
     }
     if (identical(fit$status, "unaffordable")) {
-      stop(sprintf(
-        "'budget' cannot fund the precision targets: the cheapest target-feasible design costs %.6g, short by %.6g",
-        fit$cost_min, fit$shortfall
-      ), call. = FALSE)
+      what <- if (is.null(problem$floors)) {
+        "the precision targets: the cheapest target-feasible design"
+      } else if (ncol(problem$A) == 0L) {
+        "the regional sample floors: the cheapest design meeting them"
+      } else {
+        "the precision targets and regional sample floors: the cheapest design meeting them"
+      }
+      stop(sprintf("'budget' cannot fund %s costs %.6g, short by %.6g",
+                   what, fit$cost_min, fit$shortfall), call. = FALSE)
     }
     if (!identical(fit$status, "optimal")) {
       stop(sprintf("joint allocation solver failed certification: %s",
@@ -2535,12 +2649,17 @@
            budget - sum(problem$cost * rounded)
          })
   } else if (mode == "targets") {
-    .bethel_whole_targets(problem, control, max_nodes, gap)
+    .bethel_whole_targets(problem, control, max_nodes, gap,
+                          continuous = solved)
   } else if (worst) {
     .bethel_whole_worst(problem, budget, control, max_nodes,
-                        continuous = allocation)
+                        continuous = allocation, solved = solved)
   } else {
-    .bethel_whole_budget(problem, budget, control, max_nodes, gap)
+    .bethel_whole_budget(problem, budget, control, max_nodes, gap,
+                         continuous = list(
+                           allocation = allocation, solved = solved,
+                           objective_multiplier = fit$objective_multiplier
+                         ))
   }
   optimization$search <- integer$search
   decision <- allocation
@@ -2630,7 +2749,12 @@
   carried <- .alloc_carry_labels(detail, frame)
   detail <- carried$detail
   params$strata_keys <- carried$keys
-  .new_svyplan_alloc_joint(
+  if (!is.null(problem$floors)) {
+    params$min_n_domain <- problem$floors$spec
+    operational$domain_floors <- .bethel_floor_table(problem$floors,
+                                                     decision_int, TRUE)
+  }
+  result <- .new_svyplan_alloc_joint(
     n = sum(n),
     stages = problem$stages,
     params = params,
@@ -2644,6 +2768,13 @@
     objective = continuous_objective$components,
     objective_value = continuous_objective$value
   )
+  if (!is.null(problem$floors)) {
+    floors <- .bethel_floor_table(problem$floors, decision)
+    floors$.sensitivity <- slopes$floor
+    if (budget_mode) floors$.objective_sensitivity <- slopes$floor_objective
+    result$domain_floors <- floors
+  }
+  result
 }
 
 #' Precision-wrapper engine for joint constrained allocation
@@ -2667,7 +2798,8 @@
   .finite_prop_var,
   eligible_per_unit = 1,
   eligibility_rate = 1,
-  objective_rule = "sum"
+  objective_rule = "sum",
+  min_n_domain = NULL
 ) {
   if (is.null(n)) stop("'n' is required", call. = FALSE)
   problem <- .build_bethel_problem(
@@ -2684,7 +2816,8 @@
     min_n_stratum = min_n_stratum,
     objective = objective,
     fpc = fpc,
-    .finite_prop_var = .finite_prop_var
+    .finite_prop_var = .finite_prop_var,
+    min_n_domain = min_n_domain
   )
   if (!is.null(problem$objective)) problem$objective$rule <- objective_rule
   decision <- .bethel_to_decision(
@@ -2733,7 +2866,8 @@
       budget - evaluated$cost
     params$objective_rule <- objective_rule
   }
-  .new_svyplan_prec(
+  if (!is.null(problem$floors)) params$min_n_domain <- problem$floors$spec
+  result <- .new_svyplan_prec(
     se = evaluated$se,
     moe = evaluated$moe,
     cv = evaluated$cv,
@@ -2745,6 +2879,13 @@
     objective = assessed$components,
     objective_value = assessed$value
   )
+  if (!is.null(problem$floors)) {
+    x <- evaluated$allocation
+    result$domain_floors <- .bethel_floor_table(
+      problem$floors, x, whole = all(abs(x - round(x)) <= 1e-9)
+    )
+  }
+  result
 }
 
 #' Refuse a `measures` table without its key columns

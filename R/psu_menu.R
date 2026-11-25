@@ -435,8 +435,9 @@
 
 #' The budget problem over the same menus
 #'
-#' The cost a plan minimizes is the objective, and field cost over the
-#' budget is the first column, ahead of the target columns.
+#' The cost a plan minimizes is the objective, and field cost is the first
+#' column, ahead of the target columns, loaded so that the search accepts a
+#' plan within the budget's rounding room.
 #' @keywords internal
 #' @noRd
 .psu_budget_problem <- function(rows, budget) {
@@ -445,7 +446,7 @@
   if (!NCOL(C)) C <- matrix(0, length(money), 0L)
   .menu_problem(
     unlist(lapply(rows, function(r) r$states$objective), use.names = FALSE),
-    cbind(money / budget, C),
+    cbind(.whole_budget_load(money, .budget_room(budget)), C),
     rep(seq_along(rows), vapply(rows, function(r) nrow(r$states), 1L))
   )
 }
@@ -549,7 +550,8 @@
   } else {
     problem_of <- function(rows) .psu_budget_problem(rows, budget)
     weights_of <- function(lambda) {
-      list(price = lambda[1] / budget, mu = lambda[-1], obj = 1)
+      list(price = lambda[1] * .whole_budget_load(1, .budget_room(budget)),
+           mu = lambda[-1], obj = 1)
     }
     grain <- 0
     start <- .psu_budget_start(ev, rows1, f_anchor, max_nodes, budget, gap)
@@ -627,7 +629,7 @@
                               gap = 0) {
   H <- length(ev$N)
   K <- ncol(ev$target$w)
-  fits <- function(cost) cost <= budget * (1 + 1e-9)
+  fits <- function(cost) cost <= .budget_room(budget)
   lim <- vapply(rows1, function(r) {
     if (NROW(r$states)) min(r$states$cost) else Inf
   }, 0)
@@ -658,7 +660,8 @@
       list(states = s, C = .psu_eval_states(ev, h, s)$C)
     }))
   }
-  if (!fits(tp$bound)) {
+  if (identical(tp$status, "optimal") ||
+        tp$bound > .budget_proof(.budget_room(budget))) {
     stop(sprintf(
       "'budget' cannot fund the precision targets: the cheapest field design meeting them costs %.6g, short by %.6g",
       tp$value, tp$value - budget

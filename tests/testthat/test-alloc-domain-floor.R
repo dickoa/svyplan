@@ -144,7 +144,7 @@ test_that("floors are refused where they cannot apply", {
   targets <- data.frame(name = "y", cv = 0.05)
   expect_error(n_alloc_joint(fr, measures = measures, targets = targets,
                        domains = "province", min_n_domain = 400),
-               "belong to n_alloc\\(\\)")
+               "belongs? to n_alloc\\(\\)")
 })
 
 test_that("floors survive the round trip through prec_alloc()", {

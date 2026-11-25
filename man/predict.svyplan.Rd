@@ -175,8 +175,9 @@ Similarly, for \code{svyplan_cluster} objects, \code{cv} and \code{budget} are
 mutually exclusive.
 
 A joint constrained allocation (\code{\link[=n_alloc_joint]{n_alloc_joint()}}) re-solves the stored
-problem at each scenario row. Valid columns include \code{target_mult} (when
-targets are present), \code{cost_mult}, \code{deff}, \code{resp_rate}, \code{eligibility_rate},
+problem at each scenario row. Valid columns include \code{target_mult} and
+\code{target_constraint} (when targets are present), \code{cost_mult}, \code{deff},
+\code{resp_rate}, \code{eligibility_rate},
 \code{alpha}, and \code{df}, \code{eligible_per_unit} without a PSU register, plus
 \code{budget} in budget mode, \code{take_2}, ..., \code{take_S}
 and \code{icc_mult} for multistage and register fits, \code{take_2_min} and \code{take_2_max}
@@ -192,14 +193,27 @@ asymmetrically by editing \code{frame} and calling \code{\link[=n_alloc_joint]{n
 controls may appear together on a budget-objective fit, one row per
 combination.
 
+\code{target_mult} alone scales every target. With \code{target_constraint}, a
+row that names a target id from \code{fit$constraints$constraint} scales that
+target alone, in its own metric, and a row with \code{NA} scales every
+target. A named row adds \code{.target_base} and \code{.target}, the saved and
+requested values, and \code{.achieved} and \code{.achieved_int}, the target's
+precision at the continuous and whole designs.
+
 The result reports the continuous \code{n} and \code{cost}, the operational \code{n_int}
-and \code{cost_int}, and \code{.feasible}. A multistage fit adds the PSU counts
+and \code{cost_int}, \code{.status} and \code{.feasible}. A multistage fit adds the PSU counts
 \code{n_1} and \code{n_1_int}, and budget mode adds \code{objective_value}, its
-equivalent \code{cv}, and whether the budget binds. On grids without a PSU
-register, a rejected scenario or a failed solve returns missing results,
-\code{.feasible = FALSE}, and a warning. Read the warning to distinguish a
-failed solve from proven infeasibility. The grid checks before solving
-that each requested take is a positive whole number.
+equivalent \code{cv}, the field design's \code{objective_value_int}, and whether
+the budget binds. Under \code{objective_rule = "worst"}, \code{cv} is the largest
+component CV when every priority is 1, and otherwise the largest
+\code{sqrt(priority)} times a component CV. A fit with \code{min_n_domain} keeps
+its floors in every scenario. \code{.status} reads \code{"optimal"}, \code{"gap"} or
+\code{"limit"} for a row with a plan, as \verb{$operational$status} does,
+\code{"infeasible"} where no design exists, with \code{.feasible = FALSE}, and
+\code{"unknown"} where the search stopped before finding one or the solve
+failed, with \code{.feasible = NA}. A row without a plan has missing results
+and a warning. The grid checks before solving that each requested take
+is a positive whole number.
 
 A certainty-aware fit (\code{\link[=n_alloc_joint]{n_alloc_joint()}} with \code{psu}) varies \code{take_2} too,
 and splits the PSU count \code{n_1_int} into \code{n_psu_certain} and \code{n_psu_draw}.
@@ -213,10 +227,7 @@ no zones, to compare zone settings. A grid that varies \code{n_psu_per_zone},
 or a fit with zones, adds \code{n_zone}. A register fit sized to an
 \code{objective} within a \code{budget} varies \code{budget} as well.
 
-A register grid adds \code{.status}. It reads \code{"optimal"}, \code{"gap"} or
-\code{"limit"} for a row with a plan, as \verb{$operational$status} does, \code{"infeasible"} where no
-design exists, and \code{"unknown"} where the search stopped before finding
-one or the solve failed, a row whose \code{.feasible} is \code{NA}. In budget mode
+On a register grid, in budget mode
 \code{objective_value} and \code{cv} are those of the field design. A row the node
 limit stopped with a worse plan than a lower budget's, or with none,
 takes that plan, which fits its budget, so the objective never worsens
@@ -314,6 +325,10 @@ cluster_targets <- data.frame(
 joint <- n_alloc_joint(cluster_frame, measures = cluster_measures,
                        targets = cluster_targets)
 predict(joint, data.frame(take_2 = c(6, 10, 14, 20)))
+
+# Tighten the income target alone, then every target at once
+predict(joint, data.frame(target_constraint = c("income@.overall:cv", NA),
+                          target_mult = 0.9))
 
 }
 \seealso{

@@ -69,8 +69,10 @@ static inline double rel_slack(double ref) {
   return 1e-9 * fmax(fabs(ref), DBL_MIN);
 }
 
+/* The budget carries rounding only. A relative slack would buy whole units
+ * once the budget is a billion times a unit cost. */
 static inline double budget_cap(const StageCtx *ctx) {
-  return ctx->budget_var + rel_slack(ctx->budget_var);
+  return ctx->budget_var + 8.0 * DBL_EPSILON * fabs(ctx->budget_var);
 }
 
 static inline double cost_cap(const StageCtx *ctx) {

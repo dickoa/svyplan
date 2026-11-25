@@ -227,7 +227,8 @@ plot.svyplan_alloc_joint <- function(x, npoints = 25L, newdata = NULL, ...) {
     type = "l",
     xlab = "Cost",
     ylab = if (identical(x$params$objective_rule, "worst")) {
-      "Worst weighted cv"
+      if (all(x$objective$priority == 1)) "Largest cv" else
+        "Worst weighted cv"
     } else {
       "Objective cv"
     },
@@ -871,7 +872,8 @@ plot.svyplan_overlap <- function(x, ...) {
         resp_rate = p$resp_rate,
         eligibility_rate = p[["eligibility_rate"]] %||% 1,
         eligible_per_unit = p$eligible_per_unit %||% 1,
-        df = p$df, min_n_stratum = p$min_n_stratum, fpc = p$fpc %||% "unit",
+        df = p$df, min_n_stratum = p$min_n_stratum,
+        min_n_domain = p$min_n_domain, fpc = p$fpc %||% "unit",
         take_2_min = p[["take_2_min"]], take_2_max = p[["take_2_max"]], take_2_step = p[["take_2_step"]]
       ),
       error = function(e) NULL
@@ -879,6 +881,14 @@ plot.svyplan_overlap <- function(x, ...) {
     # the integer design is the true floor: the continuous optimum is not
     # itself affordable in whole units
     if (!is.null(floor_fit)) lo <- floor_fit$operational$cost
+  } else if (!is.null(p$problem$floors)) {
+    # the cheapest whole design meeting the floors, which a fractional
+    # floor rounds up
+    lo <- tryCatch(
+      .bethel_whole_targets(p$problem, .bethel_control(),
+                            .search_control(p[["control"]])$max_nodes)$cost,
+      error = function(e) sum(p$problem$cost * .bethel_floor_cheapest(p$problem))
+    )
   }
   hi <- 2 * p$budget
   if (is.null(lo) || !is.finite(lo) || lo >= hi) lo <- 0.5 * p$budget

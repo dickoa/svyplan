@@ -28,6 +28,7 @@ n_alloc_joint(frame, ...)
   eligible_per_unit = 1,
   df = NULL,
   min_n_stratum = NULL,
+  min_n_domain = NULL,
   take_2_min = NULL,
   take_2_max = NULL,
   take_2_step = NULL,
@@ -150,6 +151,13 @@ into variances with a \code{t} quantile.}
 \item{min_n_stratum}{Optional minimum sample size per stratum. Scalar,
 length-\code{nrow(frame)} vector, or \code{frame$min_n_stratum}.}
 
+\item{min_n_domain}{Optional sample floors on the levels of one domain
+column of \code{frame}, as a data frame with columns \code{domain} (that
+column's name), \code{level} and \code{min_n}. A floor counts issued units
+before response. The continuous design meets \code{min_n}, and the whole
+design meets it rounded up. Element frames only, under both objective
+rules and in cost mode.}
+
 \item{take_2_min}{Optional minimum within-PSU take for free-take two-stage
 optimization. Positive whole number, scalar or length-\code{nrow(frame)} vector,
 overriding \code{frame$take_2_min}. Default is \code{1}.}
@@ -213,6 +221,13 @@ exactly up to 2^53.
 \item \code{optimization} describes the continuous solve and holds the
 whole-unit search record in \code{search}. Fixed-budget runs also report
 \code{objective} and \code{objective_value}.
+\item With \code{min_n_domain}, \code{domain_floors} gives each floor's \code{required}
+and \code{achieved} count and \code{.pass} at the continuous design, and
+\code{operational$domain_floors} the same at the whole design.
+\code{.sensitivity} is the change in minimum cost per unit of floor, and
+in budget mode \code{.objective_sensitivity} the change in the objective
+per unit of floor at the fixed budget. Both are 0 for a floor with
+slack, and follow \verb{$optimization$slopes} as the target slopes do.
 \item For registers, \code{detail$n_psu_certain} and \code{detail$n_psu_draw} count
 the certainty PSUs and the remainder draws, and \code{detail$n_1_int} is
 their sum. \code{detail$take_2} and \code{take_2_int} give the remainder take.
@@ -328,8 +343,8 @@ missing, when the solver has no multiplier for the objective, as at a
 budget that only the cheapest design fits.
 
 Every budget fit, continuous or whole and with fixed or free takes,
-buys its design within the budget itself, up to a relative rounding
-room of \code{1e-9}. The cheapest design that meets the targets is accepted
+buys its design within the budget itself, up to floating-point rounding
+of the budget. The cheapest design that meets the targets is accepted
 when it costs at most a relative \code{1e-6} more than the budget, and the
 search then stays at that cost.
 
@@ -376,6 +391,14 @@ level <- n_alloc_joint(
 )
 level$objective
 
+# At least 150 interviews in the South, which the budget alone would not give
+floored <- n_alloc_joint(
+  frame, measures, targets = targets,
+  objective = c("coverage", "income"), budget = 400,
+  min_n_domain = data.frame(domain = "region", level = "South", min_n = 150)
+)
+floored$operational$domain_floors
+
 # Fixed and free takes for a two-stage coverage plan
 cluster <- data.frame(
   stratum = c("A", "B"), N = c(20000, 8000), N_1 = c(400, 160),
@@ -420,8 +443,9 @@ arXiv:2610.26093.
 \seealso{
 \code{\link[=prec_alloc_joint]{prec_alloc_joint()}} for the inverse assessment, \code{\link[=n_alloc]{n_alloc()}} for
 classic single-indicator stratum allocation, \code{\link[=merge_psus]{merge_psus()}} for merging
-small PSUs before register planning, and \code{\link[=predict.svyplan]{predict.svyplan()}} for budget
-and take frontiers.
+small PSUs before register planning, \code{\link[=predict.svyplan]{predict.svyplan()}} for budget
+and take frontiers, and \code{\link[=tradeoff_alloc]{tradeoff_alloc()}} for trading the precision of
+one objective component for another's.
 
 Other stratified design functions:
 \code{\link[=merge_psus]{merge_psus()}},

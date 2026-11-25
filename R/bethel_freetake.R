@@ -1249,16 +1249,15 @@
   best
 }
 
-#' Minimize a stratum's budget objective over the continuous take bounds
+#' The points where a stratum's budget objective can be least
 #'
 #' The objective decreases in y when B or D is positive. On each piece of
 #' the upper edge it is a constant plus a coefficient times 1/x, so the
-#' endpoints and the bend at N / m_max suffice. When B and D are zero, use
-#' the cheapest y at each x. Cost breaks equal objective values.
+#' endpoints and the bend at N / m_max suffice. When B and D are zero, the
+#' points take the cheapest y at each x.
 #' @keywords internal
 #' @noRd
-.freetake_stratum_obj_min <- function(c1, c2, A, B, D, N1, N, L_ult,
-                                      m_min, m_max) {
+.freetake_stratum_obj_points <- function(B, D, N1, N, L_ult, m_min, m_max) {
   x_hi <- min(N1, N / m_min)
   x_lo <- min(x_hi, max(1, L_ult / m_max))
   if (B > 0 || D > 0) {
@@ -1268,6 +1267,19 @@
     x <- c(x_lo, x_hi)
     y <- pmin(N, pmax(L_ult, m_min * x))
   }
+  list(x = x, y = y)
+}
+
+#' Minimize a stratum's budget objective over the continuous take bounds
+#'
+#' Cost breaks equal objective values.
+#' @keywords internal
+#' @noRd
+.freetake_stratum_obj_min <- function(c1, c2, A, B, D, N1, N, L_ult,
+                                      m_min, m_max) {
+  pt <- .freetake_stratum_obj_points(B, D, N1, N, L_ult, m_min, m_max)
+  x <- pt$x
+  y <- pt$y
   value <- A / x + B / y - D * (y / x)
   best <- order(value, c1 * x + c2 * y)[1L]
   list(x = x[best], y = y[best])
@@ -1356,7 +1368,7 @@
   }
   ## The cheapest accepted design may cost up to the tolerance more than
   ## the budget. Better designs are bought within the larger of the two.
-  b_eff <- .joint_budget_room(budget, cost_min)
+  b_eff <- .budget_room(budget, cost_min)
 
   list(base = base, x = base_x, y = base_y, cost_min = cost_min,
        budget_tol = budget_tol, b_eff = b_eff)
@@ -1737,7 +1749,7 @@
   q <- .whole_problem(
     o1 = 0, o2 = bt$obj_o2,
     g1 = cbind(.whole_budget_load(bt$cost,
-                                  .joint_budget_room(budget, opening$cost)),
+                                  .budget_room(budget, opening$cost)),
                matrix(0, B, K)),
     g2 = cbind(0, bt$g2),
     lo = bt$lo, hi = bt$hi,

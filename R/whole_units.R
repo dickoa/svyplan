@@ -4,8 +4,10 @@
 #' `lo..hi`, with `lo >= 1`. A branch is a fixed choice that shapes the
 #' stratum's terms, such as a cluster take. On branch `i` the cost is
 #' `o0 + o1 x + o2 / x` and the load on column `k` is
-#' `g0[, k] + g1[, k] x + g2[, k] / x`, with `o1`, `o2`, `g1` and `g2`
-#' nonnegative, and a plan keeps every column's load at most 1. Under
+#' `g0[, k] + g1[, k] x + g2[, k] / x`, with `o1`, `o2` and `g2`
+#' nonnegative, and a plan keeps every column's load at most 1. A column
+#' with `g1 < 0` falls as `x` grows, as a sample floor's does, and every
+#' state's load stays nonnegative. Under
 #' multipliers `lambda` a state's reduced cost is
 #' `gamma + alpha x + beta / x`, convex in `x` on each branch, so the
 #' Lagrangian bound, its subgradient and the sizes reduced-cost fixing
@@ -49,10 +51,14 @@
 }
 
 #' Each branch's best whole size under `alpha` and `beta`
+#'
+#' With `alpha <= 0` the reduced cost falls as `x` grows unless both are
+#' zero, so the largest size is best.
 #' @keywords internal
 #' @noRd
 .whole_best <- function(alpha, beta, lo, hi) {
-  star <- ifelse(alpha > 0, sqrt(beta / alpha), ifelse(beta > 0, hi, lo))
+  star <- ifelse(alpha > 0, sqrt(beta / ifelse(alpha > 0, alpha, 1)),
+                 ifelse(beta > 0 | alpha < 0, hi, lo))
   x1 <- pmin(pmax(floor(star), lo), hi)
   x2 <- pmin(pmax(ceiling(star), lo), hi)
   ifelse(alpha * x1 + beta / x1 <= alpha * x2 + beta / x2, x1, x2)
@@ -89,6 +95,37 @@
 #' @keywords internal
 #' @noRd
 .whole_budget_load <- function(cost, cap) cost * (1 + 1e-9) / cap
+
+#' The rounding a field cost may carry above its budget
+#'
+#' A few units in the last place of the budget. A relative slack such as
+#' `1e-9` would buy whole units once the budget is a billion times a unit
+#' cost.
+#' @keywords internal
+#' @noRd
+.budget_slack <- function(budget) 8 * .Machine$double.eps * abs(budget)
+
+#' The spend a budget search may reach
+#'
+#' The requested budget, or the cheapest accepted design when that costs
+#' more, plus rounding. A feasibility tolerance only decides whether a
+#' cheapest design marginally over the budget is accepted, so it never buys
+#' a better design.
+#' @keywords internal
+#' @noRd
+.budget_room <- function(budget, floor_cost = budget) {
+  room <- max(budget, floor_cost)
+  room + .budget_slack(room)
+}
+
+#' The spend a bound must exceed to prove a level out of reach
+#'
+#' A lower bound computed at this spend is valid for every design within
+#' `room`, and a bound above `room` by rounding alone proves nothing. It
+#' never admits a design.
+#' @keywords internal
+#' @noRd
+.budget_proof <- function(room) room * (1 + 1e-9)
 
 #' A plan from multipliers, doubled until the best states fit, or `NULL`
 #' @keywords internal
@@ -221,8 +258,10 @@
 #' A state whose reduced cost exceeds its stratum's minimum by more than
 #' `slack` is in no plan cheaper than the bound plus `slack`. On a branch
 #' the kept sizes lie between the roots of `alpha x^2 - T x + beta`, with
-#' `T` the stratum's minimum plus `slack` less the branch's constant. A
-#' branch with no kept size comes back with `lo > hi`.
+#' `T` the stratum's minimum plus `slack` less the branch's constant.
+#' With `alpha < 0` the reduced cost falls in `x`, so the kept sizes run
+#' from the root of `-alpha x^2 + T x - beta` up. A branch with no kept
+#' size comes back with `lo > hi`.
 #' @keywords internal
 #' @noRd
 .whole_intervals <- function(q, lambda, slack) {
@@ -239,10 +278,21 @@
   hi[both] <- pmin(hi, floor((top + d) / (2 * a) + 1e-9))[both]
   only_a <- a > 0 & !(b > 0)
   hi[only_a] <- pmin(hi, floor(top / a + 1e-9))[only_a]
-  only_b <- !(a > 0) & b > 0
+  only_b <- a == 0 & b > 0
   lo[only_b] <- pmax(lo, ceiling(b / top - 1e-9))[only_b]
+  falling <- a < 0
+  if (any(falling)) {
+    aa <- -a[falling]
+    bb <- pmax(b[falling], 0)
+    tt <- top[falling]
+    dd <- sqrt(tt^2 + 4 * aa * bb)
+    root <- ifelse(tt >= 0, ifelse(bb == 0, 0, 2 * bb / (tt + dd)),
+                   (dd - tt) / (2 * aa))
+    lo[falling] <- pmax(lo[falling], ceiling(root - 1e-9))
+  }
   # A branch whose best state already passes the threshold keeps nothing.
-  none <- top < 0 | (both & top^2 < 4 * a * b - 1e-12 * abs(top)^2)
+  none <- (a >= 0 & top < 0) |
+    (both & top^2 < 4 * a * b - 1e-12 * abs(top)^2)
   lo[none] <- Inf
   list(lo = lo, hi = hi)
 }
@@ -278,8 +328,9 @@
                status = "infeasible", nodes = 0, states = 0, kept = 0)
   # When every load falls as x grows, each stratum's smallest load per
   # column, at its largest size, bounds what any plan can reach.
-  if (all(q$g1 == 0)) {
-    floor_load <- .menu_group_min(q$g0 + q$g2 / q$hi, q$ends)$min
+  if (all(q$g1 <= 0)) {
+    floor_load <- .menu_group_min(q$g0 + q$g1 * q$hi + q$g2 / q$hi,
+                                  q$ends)$min
     if (any(colSums(matrix(floor_load, q$H)) > 1 + 1e-9)) return(none)
   }
   sg <- .whole_subgradient(q, start, lambda = lambda)
@@ -294,6 +345,16 @@
   iv$lo[pb] <- pmin(iv$lo[pb], sg$pick$x)
   iv$hi[pb] <- pmax(iv$hi[pb], sg$pick$x)
   keep <- which(iv$lo <= iv$hi)
+  ## A branch whose reduced cost is flat keeps every size, as a stratum with
+  ## no weight under a binding floor does. Past this many states the plan
+  ## found stands, with the Lagrangian bound.
+  if (sum(iv$hi[keep] - iv$lo[keep] + 1) > 2e6) {
+    return(list(x = sg$pick$x, branch = q$orig[sg$pick$b], value = sg$ub,
+                bound = sg$L, status = "limit", nodes = 0,
+                states = sum(iv$hi[keep] - iv$lo[keep] + 1), kept = 0,
+                lambda = sg$lambda,
+                top = .whole_lagrangian(q, sg$lambda)$rmin + slack))
+  }
   xs <- lapply(keep, function(i) seq(iv$lo[i], iv$hi[i]))
   branch <- rep(keep, lengths(xs))
   x <- unlist(xs, use.names = FALSE)

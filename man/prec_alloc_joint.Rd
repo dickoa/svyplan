@@ -28,6 +28,7 @@ prec_alloc_joint(frame, ...)
   eligible_per_unit = 1,
   df = NULL,
   min_n_stratum = NULL,
+  min_n_domain = NULL,
   fpc = c("unit", "stage", "none"),
   plan = NULL
 )
@@ -89,6 +90,9 @@ column, since the argument would be ignored.}
 
 \item{min_n_stratum}{Optional minimum sample size per stratum.}
 
+\item{min_n_domain}{Optional sample floors on the levels of one domain
+column of \code{frame}, as in \code{\link[=n_alloc_joint]{n_alloc_joint()}}. Element frames only.}
+
 \item{fpc}{Finite population correction (\code{"unit"}, \code{"stage"}, or \code{"none"}).
 Leave the default for a PSU register.}
 
@@ -97,7 +101,8 @@ Leave the default for a PSU register.}
 \value{
 A \code{svyplan_prec} object with \code{type = "alloc_joint"}, per-constraint
 results in \verb{$detail}, stratum bound checks in \verb{$bounds}, and optional
-\verb{$objective}, \verb{$objective_value}, and \verb{$psu}.
+\verb{$objective}, \verb{$objective_value}, \verb{$domain_floors} and \verb{$psu}. A
+supplied whole design is checked against each floor rounded up.
 }
 \description{
 Evaluate achieved precision for every indicator and domain requirement under

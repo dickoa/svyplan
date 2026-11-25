@@ -62,7 +62,8 @@
     .bethel_solve(
       cbind(A, caps$A), b, cost, lower, upper,
       control = control, constraint_ids = ids,
-      accept = c(accept, cap_accept(t))
+      accept = c(accept, cap_accept(t)),
+      floors = problem$floors
     )
   }
 
@@ -70,7 +71,8 @@
     base <- .bethel_solve(
       A, bound, cost, lower, upper,
       control = control, constraint_ids = problem$constraint_ids,
-      accept = accept
+      accept = accept,
+      floors = problem$floors
     )
     if (identical(base$classification, "infeasible")) {
       return(list(status = "infeasible_targets", infeasible = base$infeasible))
@@ -80,12 +82,12 @@
     }
     base_allocation <- base$allocation
   } else {
-    base_allocation <- lower
+    base_allocation <- .bethel_floor_cheapest(problem)
   }
   cost_min <- sum(cost * base_allocation)
   cost_max <- sum(cost * upper)
   budget_tol <- control$tolerance * abs(budget)
-  b_eff <- .joint_budget_room(budget, cost_min)
+  b_eff <- .budget_room(budget, cost_min)
   if (budget < cost_min - budget_tol) {
     return(list(status = "unaffordable", cost_min = cost_min,
                 shortfall = cost_min - budget))
@@ -298,14 +300,14 @@
 #' @noRd
 .bethel_whole_worst <- function(problem, budget, control = .bethel_control(),
                                 max_nodes = 5000, max_trials = 200L,
-                                continuous = NULL) {
+                                continuous = NULL, solved = NULL) {
   tolerance <- control$tolerance
   cost <- problem$cost
   H <- length(cost)
   K <- ncol(problem$A)
   caps <- .bethel_worst_caps(problem)
   opening <- .bethel_whole_start(problem, budget, control, max_nodes, 0)
-  limit <- .joint_budget_room(budget, opening$cost)
+  limit <- .budget_room(budget, opening$cost)
   used <- opening$nodes
   accept <- 1 + .bethel_canonical_tolerance(problem, tolerance)
   target_load <- sweep(problem$A, 2L, problem$bound * accept, "/") *
@@ -325,16 +327,26 @@
     if (left < 1 || !all(t * caps$rate - caps$B > 0)) {
       return(list(out = "unknown"))
     }
-    q <- .whole_problem(cost, 0, matrix(0, H, K + length(caps$live)),
-                        cbind(target_load, cap_load(t)),
-                        problem$lower_int, problem$upper_int)
-    r <- .whole_search(q, grain = .menu_grain(cost), max_nodes = left)
+    ## With floors, the continuous solve's multipliers, scaled to this
+    ## level's loads, start the search.
+    held <- problem
+    held$A <- cbind(problem$A, caps$A)
+    held$bound <- c(problem$bound, t * caps$rate - caps$B)
+    q <- .bethel_whole_problem(problem, cost, 0,
+                               matrix(0, H, K + length(caps$live)),
+                               cbind(target_load, cap_load(t)))
+    lambda <- if (!is.null(problem$floors)) {
+      .bethel_whole_lambda(held, q, solved,
+                           c(accept, rep(1, length(caps$live))))
+    }
+    r <- .whole_search(q, grain = .menu_grain(cost), max_nodes = left,
+                       lambda = lambda)
     used <<- used + r$nodes
     if (identical(r$status, "infeasible")) return(list(out = "infeasible"))
     if (!is.null(r$x) && sum(cost * r$x) <= limit) {
       return(c(list(out = "feasible"), evaluate(r$x)))
     }
-    if (identical(r$status, "optimal") || r$bound > limit) {
+    if (identical(r$status, "optimal") || r$bound > .budget_proof(limit)) {
       return(list(out = "infeasible"))
     }
     list(out = "unknown")
@@ -347,7 +359,8 @@
   } else {
     relaxed <- problem
     relaxed$bound <- problem$bound * accept * (1 + 1e-12)
-    cont <- tryCatch(.bethel_worst_solve(relaxed, limit, control),
+    cont <- tryCatch(.bethel_worst_solve(relaxed, .budget_proof(limit),
+                                         control),
                      error = function(e) NULL)
     ## Only a proven level bounds the whole designs. The solve's own t* can
     ## overstate it, as when a budget within the tolerance of the cheapest
@@ -397,7 +410,8 @@
   }
   evaluation <- .precision_from_allocation(problem, allocation,
                                            tolerance = tolerance)
-  if (!evaluation$all_pass || !evaluation$bounds_pass) {
+  if (!evaluation$all_pass || !evaluation$bounds_pass ||
+        !.bethel_floors_met(problem, allocation)) {
     stop("internal error: integer allocation failed final validation",
          call. = FALSE)
   }
@@ -458,7 +472,8 @@
     pick <- open[order(score[1, ], score[2, ])[1L]]
     x[pick] <- x[pick] + 1
   }
-  if (!.precision_from_allocation(problem, x, tolerance = tolerance)$all_pass) {
+  if (!.precision_from_allocation(problem, x, tolerance = tolerance)$all_pass ||
+        !.bethel_floors_met(problem, x)) {
     return(NULL)
   }
   list(x = .whole_storage(x), cost = sum(cost * x), level = caps$level(x))
@@ -486,11 +501,11 @@
   H <- length(problem$cost)
   accept <- 1 + .bethel_canonical_tolerance(held, control$tolerance)
   load <- sweep(held$A, 2L, held$bound * accept, "/") * .whole_target_scale()
-  q <- .whole_problem(
-    0, problem$objective$q_h,
+  q <- .bethel_whole_problem(
+    problem, 0, problem$objective$q_h,
     cbind(.whole_budget_load(problem$cost, budget),
           matrix(0, H, ncol(held$A))),
-    cbind(0, load), problem$lower_int, problem$upper_int
+    cbind(0, load)
   )
   r <- tryCatch(.whole_search(q, start = start, max_nodes = max_nodes),
                 error = function(e) NULL)

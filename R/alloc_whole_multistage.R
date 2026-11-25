@@ -177,14 +177,31 @@
 #' Exact whole design of a stratified allocation with three or more stages
 #'
 #' Status `"heuristic"` with a `reason` when it cannot search, `"infeasible"` when none fits.
+#' A budget within the relative `1e-8` that `n_alloc()` accepts below the
+#' cheapest whole design buys that design: the search is repeated at its
+#' cost.
 #' @keywords internal
 #' @noRd
 .alloc_whole_cluster_multistage <- function(prep, alloc, mode, cv, budget,
-                                            deff, resp_rate, lo_i, hi_i,
-                                            b_rule, max_nodes, gap = 0,
-                                            target_se = NULL,
-                                            incumbent = NULL,
-                                            state_limit = 2000L) {
+                                            ...) {
+  w <- .alloc_whole_cluster_multistage_at(prep, alloc, mode, cv, budget, ...)
+  if (identical(mode, "budget") && identical(w$status, "infeasible") &&
+        isTRUE(w$min_cost <= budget * (1 + 1e-8))) {
+    w <- .alloc_whole_cluster_multistage_at(prep, alloc, mode, cv,
+                                            w$min_cost, ...)
+  }
+  w
+}
+
+#' The whole design search at one budget
+#' @keywords internal
+#' @noRd
+.alloc_whole_cluster_multistage_at <- function(prep, alloc, mode, cv, budget,
+                                               deff, resp_rate, lo_i, hi_i,
+                                               b_rule, max_nodes, gap = 0,
+                                               target_se = NULL,
+                                               incumbent = NULL,
+                                               state_limit = 2000L) {
   H <- length(prep$N_h)
   W <- .alloc_scope_N(prep) / sum(.alloc_scope_N(prep))
   r <- rep_len(resp_rate, H)
@@ -200,7 +217,8 @@
     }
   }
   room_total <- if (mode == "cv") se_goal^2 * (1 + 1e-12)
-  cap <- (if (mode == "cv") incumbent$cost %||% Inf else budget) * (1 + 1e-9)
+  cap <- if (mode == "cv") (incumbent$cost %||% Inf) * (1 + 1e-9) else
+    .budget_room(budget)
 
   empty <- function() {
     if (is.null(incumbent)) return(refused())
@@ -449,7 +467,7 @@
     grain <- if (costed) .menu_grain(as.vector(prep$cost_mat)) else 1
     offset <- 0
   } else {
-    room <- budget * (1 + 1e-9)
+    room <- .budget_room(budget)
     Dmax <- vapply(seq_len(H), function(h) max(D[owner == h]), 1)
     q <- .whole_problem(0, C, .whole_budget_load(pc, room), 0, lo, hi,
                         owner = owner,

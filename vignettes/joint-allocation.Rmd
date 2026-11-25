@@ -87,7 +87,8 @@ bought <- n_alloc_joint(
 bought$detail[c("stratum", "n", "n_int")]
 bought$operational[c("cost", "objective_value")]
 frontier <- predict(bought, data.frame(budget = c(250, 300, 400, 600)))
-frontier[c("budget", "cost_int", "objective_value", "cv", ".feasible")]
+frontier[c("budget", "cost_int", "objective_value", "objective_value_int",
+           ".feasible")]
 ```
 
 Each unit costs 1 here, so the budget is a total sample size. The
@@ -95,13 +96,30 @@ minimum-cost design above needs 268 units, and a budget of 400 spends
 the remaining units where they reduce the income objective most. Along
 the grid, `cv` is the CV equivalent of `objective_value`, and both fall
 as the budget grows. The grid's `objective_value` describes the
-continuous design. For the whole objective at a particular budget, fit
-that budget and read `$operational$objective_value`, as for `bought`.
+continuous design and `objective_value_int` the whole design at each
+budget.
 
 A budget of 250 cannot fund the hard targets, so its row is missing,
 `.feasible` is false, and a warning gives the shortfall. A false
 `.feasible` on a grid without a register can also mean the solve failed,
 so read the warning for that row.
+
+To price one target, name it by its id in `target_constraint` and scale
+it with `target_mult`. Every other target keeps its value, and the row
+reports the requested target and its achieved precision in both designs.
+
+```{r joint-named}
+named <- predict(bought, data.frame(
+  target_constraint = "coverage@.overall:cv",
+  target_mult = c(0.9, 0.81, 0.8)
+))
+named[c("target_mult", ".target", ".achieved_int", "cost_int",
+        "objective_value_int", ".status")]
+```
+
+The coverage target is slack at 0.9 of its value. At 0.81 it binds and
+the income objective rises, and at 0.8 no design within the budget meets
+it, so that row reads `"infeasible"` with a warning.
 
 To assess a fixed allocation at different response rates, use
 `predict(prec_alloc_joint(fit, n = fit$detail$n_int), ...)` with a scenario
@@ -133,6 +151,45 @@ lowers that to 1.063 and marks income as the component at the level. Coverage
 stays below it because its hard target already holds it.
 `level$optimization$objective_weights` gives the sum-rule priorities that
 return the same continuous design.
+
+## Keep a minimum sample in a region
+
+A budget spent where it lowers the objective most can leave a region with
+few interviews. `min_n_domain` sets a floor on the issued sample of each
+level of one domain column, and every budget, rule and `predict()`
+scenario keeps it.
+
+```{r joint-floor}
+floored <- n_alloc_joint(
+  frame, measures, targets = targets, objective = "income", budget = 400,
+  min_n_domain = data.frame(domain = "region", level = "South", min_n = 150)
+)
+floored$operational$domain_floors
+floored$operational$objective_value / bought$operational$objective_value
+```
+
+The floor costs the income objective the ratio printed last, and
+`floored$domain_floors$.objective_sensitivity` gives the first-order
+cost of one more unit of floor.
+
+## Trade one estimate for another
+
+`tradeoff_alloc()` asks what one estimate gives up when another must
+improve at the same budget. Each row caps the CV of `improve` at a
+multiple of its value in the fit, holds every other component at its
+value, and buys the best CV of `allow`.
+
+```{r joint-tradeoff}
+both <- n_alloc_joint(frame, measures, targets = targets,
+                      objective = c("coverage", "income"), budget = 400)
+trade <- tradeoff_alloc(both, improve = "income@.overall",
+                        allow = "coverage@.overall", cv_mult = c(0.99, 0.95))
+trade[c("cv_mult", "requested_cv", "field_improve_cv", "field_allow_cv",
+        "field_cost", "field_status")]
+```
+
+A row reads `"infeasible"` when the budget cannot buy the requested CV
+while the other estimates keep theirs.
 
 ## Decide how many units to take within each PSU
 

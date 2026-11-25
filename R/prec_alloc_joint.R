@@ -38,13 +38,16 @@
 #'   column, since the argument would be ignored.
 #' @param df Optional degrees of freedom for MOE and RMOE targets.
 #' @param min_n_stratum Optional minimum sample size per stratum.
+#' @param min_n_domain Optional sample floors on the levels of one domain
+#'   column of `frame`, as in [n_alloc_joint()]. Element frames only.
 #' @param fpc Finite population correction (`"unit"`, `"stage"`, or `"none"`).
 #'   Leave the default for a PSU register.
 #' @param plan Optional [svyplan()] object providing design defaults.
 #'
 #' @return A `svyplan_prec` object with `type = "alloc_joint"`, per-constraint
 #'   results in `$detail`, stratum bound checks in `$bounds`, and optional
-#'   `$objective`, `$objective_value`, and `$psu`.
+#'   `$objective`, `$objective_value`, `$domain_floors` and `$psu`. A
+#'   supplied whole design is checked against each floor rounded up.
 #'
 #' @details
 #' * For an element or cluster fit, `prec_alloc_joint(fit)` assesses the
@@ -130,6 +133,7 @@ prec_alloc_joint.default <- function(
   eligible_per_unit = 1,
   df = NULL,
   min_n_stratum = NULL,
+  min_n_domain = NULL,
   fpc = c("unit", "stage", "none"),
   plan = NULL
 ) {
@@ -175,6 +179,10 @@ prec_alloc_joint.default <- function(
   }
   min_n_stratum <- .resolve_min_n_stratum(min_n_stratum, frame)
   .alloc_refuse_step(frame, "joint constrained allocation")
+  if (!is.null(min_n_domain) && !is.null(psu)) {
+    stop("joint 'min_n_domain' is available for element frames",
+         call. = FALSE)
+  }
 
   if (!is.null(psu)) {
     if (!identical(fpc, "unit")) {
@@ -221,7 +229,8 @@ prec_alloc_joint.default <- function(
     df = df,
     fpc = fpc,
     .finite_prop_var = TRUE,
-    objective_rule = objective_rule
+    objective_rule = objective_rule,
+    min_n_domain = min_n_domain
   )
 }
 
@@ -343,6 +352,7 @@ prec_alloc_joint.svyplan_alloc_joint <- function(frame, ...) {
     df = p$df,
     unit_cost = p$unit_cost,
     min_n_stratum = p$min_n_stratum,
+    min_n_domain = p$min_n_domain,
     fpc = p$fpc %||% "unit",
     .allow_fractional_stages = !n_explicit,
     .finite_prop_var = TRUE,

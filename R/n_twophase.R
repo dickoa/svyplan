@@ -1371,7 +1371,8 @@ n_twophase.default <- function(
     if (budget < sum(c) * (1 - 1e-9)) {
       return(none)
     }
-    q <- .whole_problem(0, t, .whole_budget_load(c, budget * (1 + 1e-9)), 0,
+    room <- .budget_room(budget, sum(c))
+    q <- .whole_problem(0, t, .whole_budget_load(c, room), 0,
                         rep(1, length(t)), hi)
     r <- .whole_search(q, start = rep(1, length(t)), max_nodes = 5000L)
   }

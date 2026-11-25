@@ -151,10 +151,10 @@ test_that("a budget just below a design's cost does not buy it", {
       fr <- frames[[nm]]
       cols <- intersect(cost_cols, names(fr))
       fr[cols] <- lapply(fr[cols], function(v) v * scale)
-      over <- suppressWarnings(n_alloc(fr, budget = 6 * scale / (1 + 1.25e-9),
+      over <- suppressWarnings(n_alloc(fr, budget = 6 * scale * (1 - 1e-13),
                                        alloc = "optimal", fpc = "none"))
       expect_equal(over$operational$cost / scale, below[[nm]])
-      fits <- suppressWarnings(n_alloc(fr, budget = 6 * scale / (1 + .5e-9),
+      fits <- suppressWarnings(n_alloc(fr, budget = 6 * scale,
                                        alloc = "optimal", fpc = "none"))
       expect_equal(fits$operational$cost / scale, 6)
     }

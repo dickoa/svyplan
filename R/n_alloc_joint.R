@@ -98,6 +98,12 @@
 #'   into variances with a `t` quantile.
 #' @param min_n_stratum Optional minimum sample size per stratum. Scalar,
 #'   length-`nrow(frame)` vector, or `frame$min_n_stratum`.
+#' @param min_n_domain Optional sample floors on the levels of one domain
+#'   column of `frame`, as a data frame with columns `domain` (that
+#'   column's name), `level` and `min_n`. A floor counts issued units
+#'   before response. The continuous design meets `min_n`, and the whole
+#'   design meets it rounded up. Element frames only, under both objective
+#'   rules and in cost mode.
 #' @param take_2_min Optional minimum within-PSU take for free-take two-stage
 #'   optimization. Positive whole number, scalar or length-`nrow(frame)` vector,
 #'   overriding `frame$take_2_min`. Default is `1`.
@@ -155,6 +161,13 @@
 #'   * `optimization` describes the continuous solve and holds the
 #'     whole-unit search record in `search`. Fixed-budget runs also report
 #'     `objective` and `objective_value`.
+#'   * With `min_n_domain`, `domain_floors` gives each floor's `required`
+#'     and `achieved` count and `.pass` at the continuous design, and
+#'     `operational$domain_floors` the same at the whole design.
+#'     `.sensitivity` is the change in minimum cost per unit of floor, and
+#'     in budget mode `.objective_sensitivity` the change in the objective
+#'     per unit of floor at the fixed budget. Both are 0 for a floor with
+#'     slack, and follow `$optimization$slopes` as the target slopes do.
 #'   * For registers, `detail$n_psu_certain` and `detail$n_psu_draw` count
 #'     the certainty PSUs and the remainder draws, and `detail$n_1_int` is
 #'     their sum. `detail$take_2` and `take_2_int` give the remainder take.
@@ -259,8 +272,8 @@
 #' budget that only the cheapest design fits.
 #'
 #' Every budget fit, continuous or whole and with fixed or free takes,
-#' buys its design within the budget itself, up to a relative rounding
-#' room of `1e-9`. The cheapest design that meets the targets is accepted
+#' buys its design within the budget itself, up to floating-point rounding
+#' of the budget. The cheapest design that meets the targets is accepted
 #' when it costs at most a relative `1e-6` more than the budget, and the
 #' search then stays at that cost.
 #'
@@ -285,8 +298,9 @@
 #' @family stratified design functions
 #' @seealso [prec_alloc_joint()] for the inverse assessment, [n_alloc()] for
 #'   classic single-indicator stratum allocation, [merge_psus()] for merging
-#'   small PSUs before register planning, and [predict.svyplan()] for budget
-#'   and take frontiers.
+#'   small PSUs before register planning, [predict.svyplan()] for budget
+#'   and take frontiers, and [tradeoff_alloc()] for trading the precision of
+#'   one objective component for another's.
 #'
 #' @examples
 #' frame <- data.frame(
@@ -326,6 +340,14 @@
 #'   objective_rule = "worst"
 #' )
 #' level$objective
+#'
+#' # At least 150 interviews in the South, which the budget alone would not give
+#' floored <- n_alloc_joint(
+#'   frame, measures, targets = targets,
+#'   objective = c("coverage", "income"), budget = 400,
+#'   min_n_domain = data.frame(domain = "region", level = "South", min_n = 150)
+#' )
+#' floored$operational$domain_floors
 #'
 #' # Fixed and free takes for a two-stage coverage plan
 #' cluster <- data.frame(
@@ -384,6 +406,7 @@ n_alloc_joint.default <- function(
   eligible_per_unit = 1,
   df = NULL,
   min_n_stratum = NULL,
+  min_n_domain = NULL,
   take_2_min = NULL,
   take_2_max = NULL,
   take_2_step = NULL,
@@ -454,6 +477,10 @@ n_alloc_joint.default <- function(
     unit_cost = unit_cost, fpc = fpc
   )
 
+  if (!is.null(min_n_domain) && (!is.null(psu) || isTRUE(ft_spec$active))) {
+    stop("joint 'min_n_domain' is available for element frames",
+         call. = FALSE)
+  }
   if (!is.null(psu)) {
     if (!identical(fpc, "unit")) {
       stop(
@@ -531,7 +558,8 @@ n_alloc_joint.default <- function(
     .finite_prop_var = TRUE,
     max_nodes = sc$max_nodes,
     gap = sc$gap,
-    objective_rule = objective_rule
+    objective_rule = objective_rule,
+    min_n_domain = min_n_domain
   )
   fit$params$control <- control
   fit
@@ -633,6 +661,7 @@ n_alloc_joint.svyplan_prec <- function(frame, ...) {
     eligibility_rate = p[["eligibility_rate"]] %||% 1,
     df = p$df,
     min_n_stratum = p$min_n_stratum,
+    min_n_domain = p$min_n_domain,
     fpc = p$fpc %||% "unit"
   )
   if (!is.null(p$psu)) {

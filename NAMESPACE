@@ -259,6 +259,7 @@ export(prec_ratio)
 export(prec_twophase)
 export(strata_bound)
 export(svyplan)
+export(tradeoff_alloc)
 export(varcomp)
 importFrom(grDevices,
   adjustcolor,

@@ -213,7 +213,7 @@ n_cluster.data.frame <- function(
 .joint_whole_minimax <- function(dom_data, cost_vec, var_budget, min_total,
                                  witness, max_nodes) {
   nd <- length(dom_data)
-  limit <- var_budget * (1 + 1e-9)
+  limit <- .budget_room(var_budget)
   used <- numeric(nd)
   ratio_of <- function(d, n) {
     dd <- dom_data[[d]]
@@ -959,7 +959,7 @@ n_cluster.data.frame <- function(
     lapply(shares_n, as.numeric)
   } else if (!any(vapply(floor_design, is.null, logical(1L))) &&
                sum(vapply(floor_design, .stage_cost, 1, cost_vec, 0)) <=
-                 var_budget * (1 + 1e-9)) {
+                 .budget_room(var_budget)) {
     floor_design
   }
   if (is.null(witness)) {

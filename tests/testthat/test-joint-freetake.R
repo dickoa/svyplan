@@ -694,8 +694,10 @@ test_that("a looser target never worsens the free-take budget objective", {
       fit <- run(cv, fpc)
       label <- sprintf("%s cv = %s", fpc, cv)
       expect_lt(fit$constraints$.cv, cv, label = label)
+      ## "optimal" certifies a relative gap within kkt_tolerance (1e-6).
+      ## The CI image lands 2e-8 away, so a tighter bound fails there.
       expect_equal(fit$objective_value, floor_fit$objective_value,
-                   tolerance = 1e-8, label = label)
+                   tolerance = 1e-6, label = label)
       expect_equal(fit$params$achieved$cost, 190, tolerance = 1e-6,
                    label = label)
       expect_identical(fit$optimization$classification, "optimal",

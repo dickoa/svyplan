@@ -10,9 +10,10 @@ Initial release of the package.
   stage-specific costs, response rates, and finite population corrections.
 - Use `n_alloc_joint()` and `prec_alloc_joint()` for joint indicator and
   domain requirements, budget objectives that minimize a weighted sum of
-  relative variances or the largest of them, and PSU registers with certainty
-  units and optional zones. Read the recommended whole design and search
-  status alongside the continuous calculation.
+  relative variances or the largest of them, regional sample floors, and PSU
+  registers with certainty units and optional zones. Read the recommended
+  whole design and search status alongside the continuous calculation, and
+  trade one estimate's precision for another's with `tradeoff_alloc()`.
 - Plan two-phase sampling and nonresponse follow-up, compare repeated
   estimates, and size panel recruitment. Describe rotations, overlap, and
   fieldwork schedules.

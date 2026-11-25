@@ -69,6 +69,7 @@ reference:
   contents:
   - n_alloc_joint
   - prec_alloc_joint
+  - tradeoff_alloc
   - merge_psus
 
 - title: Two-phase designs

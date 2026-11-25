@@ -142,10 +142,13 @@ summary.svyplan_prec <- function(object, ...) {
 
   primary_constraints <- if (design) operational_constraints else constraints
   primary_objective <- if (design) operational_objective else objective
+  floors <- object$domain_floors
+  operational_floors <- if (design) object$operational$domain_floors
   overall <- .bethel_summary_overall(
     n = if (design) object$operational$n else p$achieved$n,
     cost = if (design) object$operational$cost else p$achieved$cost,
     constraints = primary_constraints,
+    floors = if (design) operational_floors else floors,
     bounds = bounds,
     objective = primary_objective,
     objective_value = if (design) {
@@ -165,6 +168,7 @@ summary.svyplan_prec <- function(object, ...) {
       n = object$n,
       cost = p$achieved$cost,
       constraints = constraints,
+      floors = floors,
       bounds = bounds,
       objective = objective,
       objective_value = object$objective_value,
@@ -206,6 +210,10 @@ summary.svyplan_prec <- function(object, ...) {
       p$objective_rule %||% "sum"
     )
     if (length(note) > 0L) out$sensitivity_note <- note
+  }
+  if (!is.null(floors)) {
+    out$domain_floors <- floors
+    out$operational_domain_floors <- operational_floors
   }
   cert <- .bethel_summary_certainty(object)
   if (!is.null(cert)) {
@@ -256,6 +264,7 @@ summary.svyplan_prec <- function(object, ...) {
   cost,
   constraints,
   bounds,
+  floors = NULL,
   objective,
   objective_value,
   budget = NULL,
@@ -279,7 +288,10 @@ summary.svyplan_prec <- function(object, ...) {
     n_constraints = n_constraints,
     n_pass = n_pass,
     n_violated = n_constraints - n_pass,
-    all_pass = n_constraints == 0L || n_pass == n_constraints,
+    all_pass = (n_constraints == 0L || n_pass == n_constraints) &&
+      (is.null(floors) || all(floors$.pass)),
+    n_floors = if (is.null(floors)) 0L else nrow(floors),
+    n_floors_pass = if (is.null(floors)) 0L else sum(floors$.pass),
     n_bound_violations = n_bounds_bad,
     objective_value = objective_value,
     objective_components = if (is.null(objective)) 0L else nrow(objective),
@@ -1206,6 +1218,15 @@ print.summary.svyplan_bethel <- function(x, ...) {
     )
   }
 
+  .print_bethel_floors(
+    x$domain_floors,
+    if (design) "Continuous sample floors" else "Assessed sample floors"
+  )
+  if (design) {
+    .print_bethel_floors(x$operational_domain_floors,
+                         "Operational sample floors")
+  }
+
   .print_bethel_objective(
     x$objective,
     if (design) {
@@ -1304,6 +1325,10 @@ print.summary.svyplan_bethel <- function(x, ...) {
       }
     )
   }
+  if (isTRUE(values$n_floors > 0L)) {
+    rows[["Sample floors"]] <- sprintf("%d of %d met", values$n_floors_pass,
+                                       values$n_floors)
+  }
   if (!is.null(values$objective_value)) {
     rows[[if (isTRUE(values$objective_worst)) {
       "Worst weighted rel. var."
@@ -1326,6 +1351,17 @@ print.summary.svyplan_bethel <- function(x, ...) {
   for (name in names(rows)) {
     cat(sprintf("  %-*s  %s\n", width, name, rows[[name]]))
   }
+  invisible(NULL)
+}
+
+#' Print the regional sample floors, required against achieved
+#' @keywords internal
+#' @noRd
+.print_bethel_floors <- function(tab, title) {
+  if (is.null(tab) || nrow(tab) == 0L) return(invisible(NULL))
+  cat("\n", title, "\n\n", sep = "")
+  .print_bethel_table(tab[c("domain", "level", "required", "achieved",
+                            ".pass")])
   invisible(NULL)
 }
 

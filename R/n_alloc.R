@@ -2716,18 +2716,18 @@ n_alloc.svyplan_prec <- function(
     out
   }
   step_cost <- cost_h * step
+  room <- .budget_room(budget, sum(lower * cost_h))
   # Lifting a stratum to its whole lower bound can spend more than the
   # floors elsewhere save. The caller checked that the bounds alone fit, so
   # trimming above them always comes back inside the budget.
-  while (sum(n_int * cost_h) > budget * (1 + 1e-9)) {
+  while (sum(n_int * cost_h) > room) {
     can <- which(n_int > lower)
     loss <- change(can, n_int[can] - step[can]) / step_cost[can]
     j <- can[which.min(loss)]
     n_int[j] <- n_int[j] - step[j]
   }
   repeat {
-    spare <- budget - sum(n_int * cost_h)
-    can <- which(n_int < upper & step_cost <= spare + 1e-9 * budget)
+    can <- which(n_int < upper & step_cost <= room - sum(n_int * cost_h))
     if (length(can) == 0L) {
       break
     }
@@ -2885,10 +2885,10 @@ n_alloc.svyplan_prec <- function(
                        max_nodes = max_nodes, gap = gap)
     offset <- sum(cost[!on] * n[!on])
   } else {
-    room <- budget - sum(prep$cost_h[!on] * n[!on])
+    fixed <- sum(prep$cost_h[!on] * n[!on])
+    room <- .budget_room(budget, fixed + sum(prep$cost_h[on] * k * lo)) - fixed
     q <- .whole_problem(0, a[on] / k,
-                        .whole_budget_load(prep$cost_h[on] * k,
-                                           room + 1e-9 * budget), 0,
+                        .whole_budget_load(prep$cost_h[on] * k, room), 0,
                         lo, hi)
     r <- .whole_search(q, start = lo, max_nodes = max_nodes, gap = gap)
     offset <- -sum(c0)
@@ -3033,7 +3033,6 @@ n_alloc.svyplan_prec <- function(
       1
     }
   } else {
-    room <- budget * (1 + 1e-9)
     # Past the lower bound one PSU suffices and cost grows with the take.
     w <- pmax(w, ifelse(free, pmin(b_max, pmax(1, lo_i)), w))
     low <- lightest(w, function(h, t) t$lo * t$pc)
@@ -3044,6 +3043,7 @@ n_alloc.svyplan_prec <- function(
         min_cost
       ), call. = FALSE)
     }
+    room <- .budget_room(budget, min_cost)
     grain <- 0
   }
   shape <- function(h, t, Dmax) {
@@ -3325,7 +3325,7 @@ n_alloc.svyplan_prec <- function(
       -Inf
     }
   }
-  slack <- if (keep == "budget") 1e-9 * abs(budget) else 1e-9
+  slack <- if (keep == "budget") .budget_slack(budget) else 1e-9
   while (over(x) > slack) {
     room <- dom_total(x)[dom] - unit >= need[dom] - 1e-9 & x > lo
     if (keep == "total") room <- room & unit <= over(x) + 1e-9
@@ -3743,9 +3743,10 @@ n_alloc.svyplan_prec <- function(
         call. = FALSE
       )
     }
+    room <- .budget_room(budget, min_cost)
     a_h <- pmin(pmax(as.integer(floor(n_h / b_h + 1e-9)), a_min), a_max)
     repeat {
-      if (sum(a_h * psu_cost) <= budget * (1 + 1e-9)) {
+      if (sum(a_h * psu_cost) <= room) {
         break
       }
       cand <- which(a_h > a_min)
@@ -3760,8 +3761,7 @@ n_alloc.svyplan_prec <- function(
       a_h[j] <- a_h[j] - 1L
     }
     repeat {
-      spare <- budget - sum(a_h * psu_cost)
-      cand <- which(psu_cost <= spare + 1e-9 * budget & a_h < a_max)
+      cand <- which(psu_cost <= room - sum(a_h * psu_cost) & a_h < a_max)
       if (length(cand) == 0L) {
         break
       }
@@ -4536,10 +4536,11 @@ n_alloc.svyplan_prec <- function(
         call. = FALSE
       )
     }
+    room <- .budget_room(budget, min_cost)
     a_h <- .as_count(floor(n_h / P_h + 1e-9), what, "at the PSU stage")
     a_h <- pmin(pmax(a_h, a_min), a_max)
     repeat {
-      if (sum(a_h * psu_cost) <= budget * (1 + 1e-9)) break
+      if (sum(a_h * psu_cost) <= room) break
       cand <- which(a_h > a_min)
       if (length(cand) == 0L) {
         stop(
@@ -4552,8 +4553,7 @@ n_alloc.svyplan_prec <- function(
       a_h[j] <- a_h[j] - 1L
     }
     repeat {
-      spare <- budget - sum(a_h * psu_cost)
-      cand <- which(psu_cost <= spare + 1e-9 * budget & a_h < a_max)
+      cand <- which(psu_cost <= room - sum(a_h * psu_cost) & a_h < a_max)
       if (length(cand) == 0L) break
       gain <- Cj[cand] * (1 / a_h[cand] - 1 / (a_h[cand] + 1L)) / psu_cost[cand]
       j <- cand[which.max(gain)]
@@ -4675,7 +4675,7 @@ n_alloc.svyplan_prec <- function(
       if (!isTRUE(variance <= goal)) next
       value <- cost
     } else {
-      if (!isTRUE(cost <= budget * (1 + 1e-9))) next
+      if (!isTRUE(cost <= .budget_room(budget))) next
       value <- variance
     }
     if (value < best_value) {

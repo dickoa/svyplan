@@ -4,7 +4,8 @@
 #' `priority_j * relvar_j <= t` is the column at the bound `t` for every
 #' component. `floor` is the largest of the per-component minima over the
 #' stratum boxes, a lower bound on the worst level even though the minima
-#' come from different takes.
+#' come from different takes. Each stratum's minimum is read from the exact
+#' terms at the points where it can lie, as the level of a design is read.
 #' @keywords internal
 #' @noRd
 .freetake_worst_caps <- function(prob) {
@@ -16,16 +17,18 @@
   e <- sweep(obj$e_mat, 2L, w, "*")
   ft <- prob$ft_spec
   floors <- vapply(seq_len(ncol(a)), function(j) {
-    value <- 0
-    for (h in seq_len(prob$H)) {
-      pt <- .freetake_stratum_obj_min(
-        prob$c1[h], prob$c2[h], a[h, j], b[h, j], d[h, j],
-        prob$N_1[h], prob$N[h], prob$L_ult[h], ft$take_2_min[h],
-        ft$take_2_max_cont[h]
+    pts <- lapply(seq_len(prob$H), function(h) {
+      .freetake_stratum_obj_points(
+        b[h, j], d[h, j], prob$N_1[h], prob$N[h], prob$L_ult[h],
+        ft$take_2_min[h], ft$take_2_max_cont[h]
       )
-      value <- value + a[h, j] / pt$x + b[h, j] / pt$y - d[h, j] * pt$y / pt$x
-    }
-    value - sum(e[, j])
+    })
+    at <- vapply(1:3, function(k) {
+      x <- vapply(pts, function(p) p$x[min(k, length(p$x))], numeric(1))
+      y <- vapply(pts, function(p) p$y[min(k, length(p$y))], numeric(1))
+      .freetake_terms(obj$exact, x, y)[, j]
+    }, numeric(prob$H))
+    w[j] * sum(apply(matrix(at, prob$H), 1L, min))
   }, numeric(1))
   level <- function(x, y) {
     max(colSums(.freetake_terms(obj$exact, x, y)) * w)
@@ -255,7 +258,7 @@
   caps <- .freetake_worst_caps(prob)
   bt0 <- .freetake_branch_table(prob, tolerance)
   opening <- .freetake_whole_open(prob, bt0, budget, control, max_nodes, 0)
-  limit <- .joint_budget_room(budget, opening$cost)
+  limit <- .budget_room(budget, opening$cost)
   used <- opening$nodes
   evaluate <- function(x, take) {
     list(x = as.numeric(x), take = as.numeric(take),
@@ -284,7 +287,7 @@
       tr <- evaluate(r$x, bt$m[r$branch])
       if (tr$cost <= limit) return(c(list(out = "feasible"), tr))
     }
-    if (identical(r$status, "optimal") || r$bound > limit) {
+    if (identical(r$status, "optimal") || r$bound > .budget_proof(limit)) {
       return(list(out = "infeasible"))
     }
     list(out = "unknown")
@@ -292,7 +295,8 @@
 
   relaxed <- prob
   relaxed$Vmax <- prob$Vmax * (1 + tolerance)^2 * (1 + 1e-12)
-  cont <- tryCatch(.freetake_worst_solve(relaxed, limit, control),
+  cont <- tryCatch(.freetake_worst_solve(relaxed, .budget_proof(limit),
+                                         control),
                    error = function(e) NULL)
   lo <- if (!is.null(cont) && cont$status %in% c("optimal", "feasible")) {
     max(caps$floor, cont$objective_lower_bound)

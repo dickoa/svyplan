@@ -142,8 +142,9 @@
 #' mutually exclusive.
 #'
 #' A joint constrained allocation ([n_alloc_joint()]) re-solves the stored
-#' problem at each scenario row. Valid columns include `target_mult` (when
-#' targets are present), `cost_mult`, `deff`, `resp_rate`, `eligibility_rate`,
+#' problem at each scenario row. Valid columns include `target_mult` and
+#' `target_constraint` (when targets are present), `cost_mult`, `deff`,
+#' `resp_rate`, `eligibility_rate`,
 #' `alpha`, and `df`, `eligible_per_unit` without a PSU register, plus
 #' `budget` in budget mode, `take_2`, ..., `take_S`
 #' and `icc_mult` for multistage and register fits, `take_2_min` and `take_2_max`
@@ -159,14 +160,27 @@
 #' controls may appear together on a budget-objective fit, one row per
 #' combination.
 #'
+#' `target_mult` alone scales every target. With `target_constraint`, a
+#' row that names a target id from `fit$constraints$constraint` scales that
+#' target alone, in its own metric, and a row with `NA` scales every
+#' target. A named row adds `.target_base` and `.target`, the saved and
+#' requested values, and `.achieved` and `.achieved_int`, the target's
+#' precision at the continuous and whole designs.
+#'
 #' The result reports the continuous `n` and `cost`, the operational `n_int`
-#' and `cost_int`, and `.feasible`. A multistage fit adds the PSU counts
+#' and `cost_int`, `.status` and `.feasible`. A multistage fit adds the PSU counts
 #' `n_1` and `n_1_int`, and budget mode adds `objective_value`, its
-#' equivalent `cv`, and whether the budget binds. On grids without a PSU
-#' register, a rejected scenario or a failed solve returns missing results,
-#' `.feasible = FALSE`, and a warning. Read the warning to distinguish a
-#' failed solve from proven infeasibility. The grid checks before solving
-#' that each requested take is a positive whole number.
+#' equivalent `cv`, the field design's `objective_value_int`, and whether
+#' the budget binds. Under `objective_rule = "worst"`, `cv` is the largest
+#' component CV when every priority is 1, and otherwise the largest
+#' `sqrt(priority)` times a component CV. A fit with `min_n_domain` keeps
+#' its floors in every scenario. `.status` reads `"optimal"`, `"gap"` or
+#' `"limit"` for a row with a plan, as `$operational$status` does,
+#' `"infeasible"` where no design exists, with `.feasible = FALSE`, and
+#' `"unknown"` where the search stopped before finding one or the solve
+#' failed, with `.feasible = NA`. A row without a plan has missing results
+#' and a warning. The grid checks before solving that each requested take
+#' is a positive whole number.
 #'
 #' A certainty-aware fit ([n_alloc_joint()] with `psu`) varies `take_2` too,
 #' and splits the PSU count `n_1_int` into `n_psu_certain` and `n_psu_draw`.
@@ -180,10 +194,7 @@
 #' or a fit with zones, adds `n_zone`. A register fit sized to an
 #' `objective` within a `budget` varies `budget` as well.
 #'
-#' A register grid adds `.status`. It reads `"optimal"`, `"gap"` or
-#' `"limit"` for a row with a plan, as `$operational$status` does, `"infeasible"` where no
-#' design exists, and `"unknown"` where the search stopped before finding
-#' one or the solve failed, a row whose `.feasible` is `NA`. In budget mode
+#' On a register grid, in budget mode
 #' `objective_value` and `cv` are those of the field design. A row the node
 #' limit stopped with a worse plan than a lower budget's, or with none,
 #' takes that plan, which fits its budget, so the objective never worsens
@@ -281,6 +292,10 @@
 #' joint <- n_alloc_joint(cluster_frame, measures = cluster_measures,
 #'                        targets = cluster_targets)
 #' predict(joint, data.frame(take_2 = c(6, 10, 14, 20)))
+#'
+#' # Tighten the income target alone, then every target at once
+#' predict(joint, data.frame(target_constraint = c("income@.overall:cv", NA),
+#'                           target_mult = 0.9))
 #'
 #' @seealso [plot.svyplan] to draw a one-parameter grid, and
 #'   [confint.svyplan] for the interval implied by a single result.
@@ -1249,7 +1264,8 @@ predict.svyplan_prec <- function(object, newdata, ...) {
         df = r$df, fpc = p$fpc %||% "unit",
         .allow_fractional_stages = !list_n,
         .finite_prop_var = TRUE,
-        objective_rule = p$objective_rule %||% "sum"
+        objective_rule = p$objective_rule %||% "sum",
+        min_n_domain = p$min_n_domain
       )
     }
 
@@ -1259,15 +1275,16 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       out$objective_value <- res$objective_value
       out$cv <- sqrt(res$objective_value)
     }
+    floors_pass <- all(res$domain_floors$.pass)
     if (nrow(res$detail) > 0L) {
       out$.max_ratio <- max(res$detail$.ratio, na.rm = TRUE)
       out$.n_fail <- sum(!res$detail$.pass, na.rm = TRUE)
       out$.feasible <- all(res$detail$.pass, na.rm = TRUE) &&
-        all(res$bounds$.pass, na.rm = TRUE)
+        all(res$bounds$.pass, na.rm = TRUE) && floors_pass
     } else {
       out$.max_ratio <- NA_real_
       out$.n_fail <- 0L
-      out$.feasible <- all(res$bounds$.pass, na.rm = TRUE)
+      out$.feasible <- all(res$bounds$.pass, na.rm = TRUE) && floors_pass
     }
     if (list_n) names(out)[1L] <- "total_n"
     out
@@ -1286,6 +1303,13 @@ predict.svyplan_prec <- function(object, newdata, ...) {
   }
   if (ncol(newdata) == 0L) {
     stop("'newdata' must have at least one column", call. = FALSE)
+  }
+  twice <- unique(names(newdata)[duplicated(names(newdata))])
+  if (length(twice) > 0L) {
+    stop(sprintf(
+      "newdata names %s more than once. Give each scenario parameter one column",
+      paste(sQuote(twice), collapse = ", ")
+    ), call. = FALSE)
   }
 
   unknown <- setdiff(names(newdata), allowed)
@@ -1594,14 +1618,42 @@ predict.svyplan_prec <- function(object, newdata, ...) {
     take_cols,
     if (free_take) c("take_2_min", "take_2_max"),
     if (certainty) c("certainty_cutoff", "n_psu_per_zone"),
-    if (!is.null(targets)) "target_mult",
+    if (!is.null(targets)) c("target_mult", "target_constraint"),
     "cost_mult",
     if (stages >= 2L || certainty) "icc_mult",
     "deff", "resp_rate", "eligibility_rate",
     if (!certainty) "eligible_per_unit", "alpha", "df"
   )
-  .validate_newdata(newdata, allowed)
+  ## data.frame(target_constraint = NA) holds a logical NA, the selector
+  ## that scales every target.
+  sel <- if (is.data.frame(newdata)) newdata[["target_constraint"]]
+  if (is.logical(sel) && all(is.na(sel))) {
+    newdata$target_constraint <- as.character(sel)
+  }
+  .validate_newdata(newdata, allowed,
+                    allowed_character = if (!is.null(targets)) "target_constraint")
+  if (free_take && "take_2" %in% names(newdata) &&
+        any(c("take_2_min", "take_2_max") %in% names(newdata))) {
+    stop("newdata cannot set 'take_2' beside 'take_2_min' or 'take_2_max': a fixed take leaves no bounds to search. Vary one or the other",
+         call. = FALSE)
+  }
   varied <- names(newdata)
+  named <- "target_constraint" %in% varied
+  if (named) {
+    if (!"target_mult" %in% varied) {
+      stop("newdata 'target_constraint' needs a 'target_mult' column to scale the target it names",
+           call. = FALSE)
+    }
+    id <- as.character(newdata$target_constraint)
+    unknown <- setdiff(id[!is.na(id)], targets$constraint)
+    if (length(unknown)) {
+      stop(sprintf(
+        "newdata 'target_constraint' names no target of the fit: %s. The fit's targets are %s",
+        paste(sQuote(unique(unknown)), collapse = ", "),
+        paste(sQuote(targets$constraint), collapse = ", ")
+      ), call. = FALSE)
+    }
+  }
 
   varied_takes <- intersect(take_cols, varied)
   for (nm in varied_takes) {
@@ -1666,7 +1718,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 
   zoned <- certainty &&
     ("n_psu_per_zone" %in% varied || !is.null(p$n_psu_per_zone))
-  cols <- .bethel_predict_cols(budget_mode, stages, certainty, zoned)
+  cols <- .bethel_predict_cols(budget_mode, stages, certainty, zoned, named)
 
   rows <- lapply(seq_len(nrow(newdata)), function(i) {
     frame <- p$frame
@@ -1689,7 +1741,12 @@ predict.svyplan_prec <- function(object, newdata, ...) {
     df_i <- if ("df" %in% varied) newdata$df[i] else p$df
 
     for (nm in varied_takes) frame[[nm]] <- round(newdata[[nm]][i])
-    if ("target_mult" %in% varied) {
+    one <- if (named) newdata$target_constraint[i] else NA_character_
+    if (!is.na(one)) {
+      k <- match(one, targets$constraint)
+      metric <- .predict_target_metric(targets[k, , drop = FALSE])
+      targets_i[[metric]][k] <- targets[[metric]][k] * newdata$target_mult[i]
+    } else if ("target_mult" %in% varied) {
       targets_i <- .predict_scale_targets(targets_i, newdata$target_mult[i])
     }
     if ("cost_mult" %in% varied) {
@@ -1782,6 +1839,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
         eligible_per_unit = epu_i,
         df = df_i,
         min_n_stratum = p$min_n_stratum,
+        min_n_domain = p$min_n_domain,
         take_2_min = t_min_i,
         take_2_max = t_max_i,
         take_2_step = t_step_i,
@@ -1790,11 +1848,24 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       error = function(e) e
     )
     if (inherits(fit, "error")) {
-      status <- if (certainty) .plan_error_status(fit) else "infeasible"
-      return(list(values = .bethel_predict_row(NULL, cols, status),
-                  status = status, message = conditionMessage(fit)))
+      status <- .plan_error_status(fit)
+      values <- .bethel_predict_row(NULL, cols, status)
+      if (!is.na(one)) {
+        values$.target_base <- targets[[metric]][k]
+        values$.target <- targets_i[[metric]][k]
+      }
+      return(list(values = values, status = status,
+                  message = conditionMessage(fit)))
     }
-    list(values = .bethel_predict_row(fit, cols))
+    values <- .bethel_predict_row(fit, cols)
+    if (!is.na(one)) {
+      achieved <- function(tab) tab$.achieved[match(one, tab$constraint)]
+      values$.target_base <- targets[[metric]][k]
+      values$.target <- targets_i[[metric]][k]
+      values$.achieved <- achieved(fit$constraints)
+      values$.achieved_int <- achieved(fit$operational$constraints)
+    }
+    list(values = values)
   })
   values <- do.call(rbind, lapply(rows, `[[`, "values"))
   if (certainty && budget_mode) {
@@ -1841,14 +1912,23 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 .predict_budget_monotone <- function(newdata, values) {
   if (!"budget" %in% names(newdata)) return(values)
   other <- setdiff(names(newdata), "budget")
+  ## Rows share a key only when every input but the budget is the same
+  ## value: a missing value is its own, and numbers are compared exactly.
+  exact <- function(v) {
+    out <- if (is.numeric(v)) sprintf("%.17g", v) else as.character(v)
+    out <- paste0(nchar(out), "_", out)
+    out[is.na(v)] <- "NA"
+    out
+  }
   key <- if (length(other)) {
-    do.call(paste, c(lapply(newdata[other], format), sep = "\r"))
+    do.call(paste, c(lapply(newdata[other], exact), sep = ":"))
   } else {
     rep("", nrow(newdata))
   }
   field <- intersect(
     c("n_psu_certain", "n_psu_draw", "n_zone", "objective_value", "cv",
-      "n_1_int", "n_int", "cost_int", ".status", ".feasible"),
+      "n_1_int", "n_int", "cost_int", "objective_value_int", ".achieved_int",
+      ".status", ".feasible"),
     names(values)
   )
   planned <- function(r) values$.status[r] %in% c("optimal", "gap", "limit")
@@ -1876,24 +1956,36 @@ predict.svyplan_prec <- function(object, newdata, ...) {
 #' @keywords internal
 #' @noRd
 .bethel_predict_cols <- function(budget_mode, stages, certainty = FALSE,
-                                 zoned = FALSE) {
+                                 zoned = FALSE, named = FALSE) {
+  lead <- if (named) c(".target_base", ".target", ".achieved", ".achieved_int")
   if (certainty) {
     return(c(
-      "n_psu_certain", "n_psu_draw", if (zoned) "n_zone", "n", "cost",
+      lead, "n_psu_certain", "n_psu_draw", if (zoned) "n_zone", "n", "cost",
       if (budget_mode) c("objective_value", "cv"),
       "n_1_int", "n_int", "cost_int", if (budget_mode) ".binding", ".status",
       ".feasible"
     ))
   }
   c(
+    lead,
     if (stages > 1L) "n_1",
     "n", "cost",
     if (budget_mode) c("objective_value", "cv"),
     if (stages > 1L) "n_1_int",
     "n_int", "cost_int",
-    if (budget_mode) ".binding",
-    ".feasible"
+    if (budget_mode) c("objective_value_int", ".binding"),
+    ".status", ".feasible"
   )
+}
+
+#' The metric a stored target row holds, `"cv"`, `"moe"` or `"rmoe"`
+#' @keywords internal
+#' @noRd
+.predict_target_metric <- function(row) {
+  for (m in c("cv", "moe", "rmoe")) {
+    if (m %in% names(row) && !is.na(row[[m]])) return(m)
+  }
+  stop("internal error: a stored target row holds no metric", call. = FALSE)
 }
 
 #' One grid row, or its all-NA counterpart when the solve failed
@@ -1928,9 +2020,11 @@ predict.svyplan_prec <- function(object, newdata, ...) {
       n_1_int = sum(fit$detail$n_1_int),
       n_int = as.numeric(fit$operational$n),
       cost_int = fit$operational$cost,
+      objective_value_int = fit$operational$objective_value,
       .binding = isTRUE(fit$optimization$budget_binding),
       .status = fit$operational$status,
-      .feasible = isTRUE(fit$operational$all_pass)
+      .feasible = isTRUE(fit$operational$all_pass),
+      NA_real_
     )
   }
   values <- lapply(cols, value_of)
