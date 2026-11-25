@@ -670,8 +670,14 @@ print.svyplan_strata <- function(x, ...) {
   }
   # The two modes return the same class and the same numbers mean different
   # things in each, so the question stays even though it never varies.
+  worst <- identical(x$params$objective_rule, "worst")
   cat(
-    if (budget_mode) {
+    if (budget_mode && worst) {
+      sprintf(
+        "question: least worst weighted relative variance within a budget of %.6g\n",
+        x$params$budget
+      )
+    } else if (budget_mode) {
       sprintf(
         "question: best design affordable within a budget of %.6g\n",
         x$params$budget
@@ -735,10 +741,23 @@ print.svyplan_strata <- function(x, ...) {
   ))
   if (budget_mode) {
     cat(sprintf(
-      "objective: weighted relative variance %.6g continuous, %.6g operational\n",
+      if (worst) {
+        "worst weighted rel. variance: %.6g continuous, %.6g operational\n"
+      } else {
+        "objective: weighted relative variance %.6g continuous, %.6g operational\n"
+      },
       x$objective_value,
       op$objective_value
     ))
+    field <- op$objective
+    if (worst && !is.null(field) && all(field$priority == 1)) {
+      cat(sprintf(
+        "worst cv = %.4f (%s)\n",
+        sqrt(op$objective_value),
+        paste(.bethel_component_label(field[field$.binding, ]),
+              collapse = ", ")
+      ))
+    }
     # For a register both describe the relaxation, so summary() keeps them.
     if (!register) {
       if (!isTRUE(opt$budget_binding)) {
@@ -759,9 +778,11 @@ print.svyplan_strata <- function(x, ...) {
     obj <- x$objective
     if (!is.null(obj) && nrow(obj) > 0L) {
       shown <- utils::head(
-        obj[c("component", "priority", ".cv", ".share")],
+        obj[c("component", "priority", ".cv",
+              if (worst) ".binding" else ".share")],
         6L
       )
+      if (worst) shown$.binding <- ifelse(shown$.binding, "*", "")
       cat("\n")
       print(shown, row.names = FALSE, right = FALSE)
       cat("\n")
@@ -829,7 +850,8 @@ print.svyplan_strata <- function(x, ...) {
   )
   if (!is.null(x$objective_value)) {
     cat(sprintf(
-      "objective: weighted relative variance %.6g\n",
+      "objective: %sweighted relative variance %.6g\n",
+      if (identical(x$params$objective_rule, "worst")) "worst " else "",
       x$objective_value
     ))
     if (!is.null(x$params[["budget"]])) {

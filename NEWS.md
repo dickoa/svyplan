@@ -9,7 +9,8 @@ Initial release of the package.
   seek a precision target, or work within a budget. Cluster designs support
   stage-specific costs, response rates, and finite population corrections.
 - Use `n_alloc_joint()` and `prec_alloc_joint()` for joint indicator and
-  domain requirements, budget objectives, and PSU registers with certainty
+  domain requirements, budget objectives that minimize a weighted sum of
+  relative variances or the largest of them, and PSU registers with certainty
   units and optional zones. Read the recommended whole design and search
   status alongside the continuous calculation.
 - Plan two-phase sampling and nonresponse follow-up, compare repeated

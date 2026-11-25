@@ -15,6 +15,7 @@ n_alloc_joint(frame, ...)
   targets = NULL,
   objective = NULL,
   budget = NULL,
+  objective_rule = c("sum", "worst"),
   psu = NULL,
   certainty_cutoff = NULL,
   n_psu_per_zone = NULL,
@@ -94,6 +95,13 @@ is minimized within \code{budget}. Either a character vector of indicator names
 
 \item{budget}{Optional positive field budget. Must be supplied with
 \code{objective}.}
+
+\item{objective_rule}{How \code{objective} combines its components. \code{"sum"}
+(default) minimizes the sum of \code{priority * relvar} over the components.
+\code{"worst"} minimizes the largest \code{priority * relvar}, so with equal
+priorities it gives the smallest CV that every component is held to.
+Under \code{"worst"} every \code{priority} must be positive, \code{control$gap} is
+refused, and a PSU register is not available.}
 
 \item{psu}{Optional PSU register for certainty-aware two-stage allocation,
 one row per PSU, with \code{stratum} and \code{N} (ultimate units in the PSU). PSU
@@ -178,7 +186,27 @@ report PSU counts \code{n_1} and \code{n_1_int}, and stage takes \code{take_2}, 
 The whole field design is \code{n_1_int} PSUs with \code{take_s_int} units at
 each later stage.
 \item \code{constraints} reports each target, achieved precision, and pass
-indicator at the continuous design. \code{operational} gives the whole
+indicator at the continuous design. \code{.multiplier} prices each target
+in cost, and \code{.sensitivity} is the change in minimum cost per unit
+relaxation of the target. In budget mode, \code{.sensitivity} holds the
+objective fixed, and \code{.objective_sensitivity} gives the change in the
+objective per unit relaxation with the budget fixed, so
+\code{.objective_sensitivity * 0.1 * .target} is the first-order effect of
+relaxing a target by 10 percent. It is 0 for a target with slack and
+for every target when the budget does not bind. An active target
+whose price it shares with another active target has no slope of its
+own, so both of its slopes are \code{NA}.
+\verb{$optimization$slopes} reads \code{"available"}, or names why slopes are
+withheld. \code{"budget_at_minimum"} (the budget equals the cheapest cost
+meeting the targets), \code{"register"}, and for free takes
+\code{"not_optimal"} (the continuous design is only \code{"feasible"}) and
+\code{"multipliers_not_verified"} (no multipliers price the full free-take
+problem at the design) withhold every slope.
+\code{"objective_multiplier_not_positive"} and \code{"not_identifiable"} (the
+objective shares its price with the targets) withhold
+\code{.objective_sensitivity} and \verb{$optimization$budget_sensitivity}, and
+\code{"budget_not_binding"} withholds \code{budget_sensitivity}. A refit with
+the changed target or budget then measures its effect. \code{operational} gives the whole
 total, cost, constraint results, \code{all_pass}, and search status.
 Whole counts are stored as doubles and can represent integers
 exactly up to 2^53.
@@ -206,7 +234,7 @@ binding constraints, and inputs.
 \description{
 Allocate a sample across atomic strata to meet precision requirements for
 multiple indicators and domains at once, or to minimize a priority-weighted
-relative variance within a fixed budget. Supports element allocation,
+relative variance, summed or at its largest, within a fixed budget. Supports element allocation,
 fixed-take multistage allocation, and two-stage allocation with a free
 within-PSU take. A PSU register adds certainty-aware two-stage planning.
 }
@@ -220,6 +248,40 @@ components subject to \code{budget} and any hard requirements in \code{targets}.
 Replanning from \code{\link[=prec_alloc_joint]{prec_alloc_joint()}} uses the achieved metrics as
 targets in minimum-cost mode and the assessed cost as the budget in
 objective mode. It optimizes the resulting problem again.
+}
+
+\subsection{Hold every component to one level}{
+
+Under the sum rule one estimate can lose precision while the others gain.
+With \code{objective_rule = "worst"}, the budget buys the smallest level \code{t}
+with \code{priority * relvar <= t} for every component, the weighted
+Chebyshev allocation of Willems and Münnich (2026). \verb{$objective_value}
+is that level, \code{.contribution} in \verb{$objective} is each component's
+\code{priority * relvar}, and \code{.binding} marks the components at the level.
+A second stage then minimizes the priority-weighted sum within the
+budget, with every component held at the level. It spends any budget the
+level leaves, and it returns a design that no other affordable design
+improves in every component (Steuer and Choo, 1983, Theorem 4.6).
+
+\verb{$optimization$objective_weights} gives sum-rule priorities, summing to 1,
+under which the sum rule returns the same continuous design. A component
+with weight 0 does not drive the design at this budget. The prices and
+slopes come from the first stage, so \code{budget_sensitivity} and
+\code{.objective_sensitivity} are changes in the level. The whole design comes
+from a bisection on the level, each trial an exact minimum-cost search
+with every component capped. \verb{$optimization$search} records the proven
+\code{bound}, the \code{gap}, the number of \code{trials}, and the status of the whole
+second stage in \code{second_stage}. \verb{$optimization$second_stage} gives that of
+the continuous one.
+
+With free takes, the continuous level carries the same kind of
+certificate as the free-take sum rule. Weak duality gives
+\verb{$optimization$objective_lower_bound}, and the design is \code{"optimal"} when
+its level lies within a relative \code{1e-6} of that bound and \code{"feasible"}
+otherwise. A free-take budget fit reports \code{.objective_sensitivity} and
+\code{budget_sensitivity}, under either rule, only when it is \code{"optimal"} and
+its multipliers are verified against the full free-take problem, so that
+they do not price only one choice of takes.
 }
 
 \subsection{Multistage and register designs}{
@@ -263,8 +325,13 @@ returned design when that costs more. The design is \code{"optimal"} when its
 objective lies within a relative \code{1e-6} of that bound
 (\verb{$optimization$objective_gap}). It is \code{"feasible"}, with both fields
 missing, when the solver has no multiplier for the objective, as at a
-budget that only the cheapest design fits. Continuous and whole
-free-take fits allow a relative budget tolerance of \code{1e-6}.
+budget that only the cheapest design fits.
+
+Every budget fit, continuous or whole and with fixed or free takes,
+buys its design within the budget itself, up to a relative rounding
+room of \code{1e-9}. The cheapest design that meets the targets is accepted
+when it costs at most a relative \code{1e-6} more than the budget, and the
+search then stays at that cost.
 
 See \code{vignette("joint-allocation")} for the three input tables, assessment
 of whole designs, and an example of a fixed-budget grid.
@@ -301,6 +368,14 @@ bought <- n_alloc_joint(
 )
 bought$objective
 
+# The same budget held to the smallest CV both estimates meet
+level <- n_alloc_joint(
+  frame, measures, targets = targets,
+  objective = c("coverage", "income"), budget = 400,
+  objective_rule = "worst"
+)
+level$objective
+
 # Fixed and free takes for a two-stage coverage plan
 cluster <- data.frame(
   stratum = c("A", "B"), N = c(20000, 8000), N_1 = c(400, 160),
@@ -331,8 +406,16 @@ prec_alloc_joint(zoned)
 Bethel, J. (1989). Sample allocation in multivariate surveys. \emph{Survey
 Methodology}, 15(1), 47--57.
 
+Steuer, R. E. and Choo, E.-U. (1983). An interactive weighted Tchebycheff
+procedure for multiple objective programming. \emph{Mathematical Programming},
+26(3), 326--344.
+
 Valliant, R., Dever, J. A., and Kreuter, F. (2018). \emph{Practical Tools for
 Designing and Weighting Survey Samples}, 2nd ed. Springer. Chapter 5.
+
+Willems, F. and Münnich, R. (2026). Sensitivity analysis for
+multivariate optimal sample allocation. \emph{arXiv preprint}
+arXiv:2610.26093.
 }
 \seealso{
 \code{\link[=prec_alloc_joint]{prec_alloc_joint()}} for the inverse assessment, \code{\link[=n_alloc]{n_alloc()}} for

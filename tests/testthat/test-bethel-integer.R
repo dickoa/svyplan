@@ -70,7 +70,7 @@ test_that("a joint budget buys the best whole allocation", {
       expect_identical(fit$operational$status, "optimal", label = label)
       expect_equal(fit$optimization$search$bound,
                    fit$operational$objective_value, tolerance = 1e-9)
-      expect_lte(fit$operational$cost, budget * (1 + 1e-6))
+      expect_lte(fit$operational$cost, budget * (1 + 1e-9))
       expect_equal(fit$operational$budget_residual,
                    budget - fit$operational$cost)
     }

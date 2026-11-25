@@ -2,7 +2,7 @@
 #'
 #' Allocate a sample across atomic strata to meet precision requirements for
 #' multiple indicators and domains at once, or to minimize a priority-weighted
-#' relative variance within a fixed budget. Supports element allocation,
+#' relative variance, summed or at its largest, within a fixed budget. Supports element allocation,
 #' fixed-take multistage allocation, and two-stage allocation with a free
 #' within-PSU take. A PSU register adds certainty-aware two-stage planning.
 #'
@@ -57,6 +57,12 @@
 #'   `domain`, `level`, `priority`, and `component` columns. Requires `budget`.
 #' @param budget Optional positive field budget. Must be supplied with
 #'   `objective`.
+#' @param objective_rule How `objective` combines its components. `"sum"`
+#'   (default) minimizes the sum of `priority * relvar` over the components.
+#'   `"worst"` minimizes the largest `priority * relvar`, so with equal
+#'   priorities it gives the smallest CV that every component is held to.
+#'   Under `"worst"` every `priority` must be positive, `control$gap` is
+#'   refused, and a PSU register is not available.
 #' @param psu Optional PSU register for certainty-aware two-stage allocation,
 #'   one row per PSU, with `stratum` and `N` (ultimate units in the PSU). PSU
 #'   sizes must sum to `frame$N` within each stratum. Supply unique
@@ -122,7 +128,27 @@
 #'     The whole field design is `n_1_int` PSUs with `take_s_int` units at
 #'     each later stage.
 #'   * `constraints` reports each target, achieved precision, and pass
-#'     indicator at the continuous design. `operational` gives the whole
+#'     indicator at the continuous design. `.multiplier` prices each target
+#'     in cost, and `.sensitivity` is the change in minimum cost per unit
+#'     relaxation of the target. In budget mode, `.sensitivity` holds the
+#'     objective fixed, and `.objective_sensitivity` gives the change in the
+#'     objective per unit relaxation with the budget fixed, so
+#'     `.objective_sensitivity * 0.1 * .target` is the first-order effect of
+#'     relaxing a target by 10 percent. It is 0 for a target with slack and
+#'     for every target when the budget does not bind. An active target
+#'     whose price it shares with another active target has no slope of its
+#'     own, so both of its slopes are `NA`.
+#'     `$optimization$slopes` reads `"available"`, or names why slopes are
+#'     withheld. `"budget_at_minimum"` (the budget equals the cheapest cost
+#'     meeting the targets), `"register"`, and for free takes
+#'     `"not_optimal"` (the continuous design is only `"feasible"`) and
+#'     `"multipliers_not_verified"` (no multipliers price the full free-take
+#'     problem at the design) withhold every slope.
+#'     `"objective_multiplier_not_positive"` and `"not_identifiable"` (the
+#'     objective shares its price with the targets) withhold
+#'     `.objective_sensitivity` and `$optimization$budget_sensitivity`, and
+#'     `"budget_not_binding"` withholds `budget_sensitivity`. A refit with
+#'     the changed target or budget then measures its effect. `operational` gives the whole
 #'     total, cost, constraint results, `all_pass`, and search status.
 #'     Whole counts are stored as doubles and can represent integers
 #'     exactly up to 2^53.
@@ -156,6 +182,39 @@
 #' Replanning from [prec_alloc_joint()] uses the achieved metrics as
 #' targets in minimum-cost mode and the assessed cost as the budget in
 #' objective mode. It optimizes the resulting problem again.
+#'
+#' ## Hold every component to one level
+#'
+#' Under the sum rule one estimate can lose precision while the others gain.
+#' With `objective_rule = "worst"`, the budget buys the smallest level `t`
+#' with `priority * relvar <= t` for every component, the weighted
+#' Chebyshev allocation of Willems and Münnich (2026). `$objective_value`
+#' is that level, `.contribution` in `$objective` is each component's
+#' `priority * relvar`, and `.binding` marks the components at the level.
+#' A second stage then minimizes the priority-weighted sum within the
+#' budget, with every component held at the level. It spends any budget the
+#' level leaves, and it returns a design that no other affordable design
+#' improves in every component (Steuer and Choo, 1983, Theorem 4.6).
+#'
+#' `$optimization$objective_weights` gives sum-rule priorities, summing to 1,
+#' under which the sum rule returns the same continuous design. A component
+#' with weight 0 does not drive the design at this budget. The prices and
+#' slopes come from the first stage, so `budget_sensitivity` and
+#' `.objective_sensitivity` are changes in the level. The whole design comes
+#' from a bisection on the level, each trial an exact minimum-cost search
+#' with every component capped. `$optimization$search` records the proven
+#' `bound`, the `gap`, the number of `trials`, and the status of the whole
+#' second stage in `second_stage`. `$optimization$second_stage` gives that of
+#' the continuous one.
+#'
+#' With free takes, the continuous level carries the same kind of
+#' certificate as the free-take sum rule. Weak duality gives
+#' `$optimization$objective_lower_bound`, and the design is `"optimal"` when
+#' its level lies within a relative `1e-6` of that bound and `"feasible"`
+#' otherwise. A free-take budget fit reports `.objective_sensitivity` and
+#' `budget_sensitivity`, under either rule, only when it is `"optimal"` and
+#' its multipliers are verified against the full free-take problem, so that
+#' they do not price only one choice of takes.
 #'
 #' ## Multistage and register designs
 #'
@@ -197,8 +256,13 @@
 #' objective lies within a relative `1e-6` of that bound
 #' (`$optimization$objective_gap`). It is `"feasible"`, with both fields
 #' missing, when the solver has no multiplier for the objective, as at a
-#' budget that only the cheapest design fits. Continuous and whole
-#' free-take fits allow a relative budget tolerance of `1e-6`.
+#' budget that only the cheapest design fits.
+#'
+#' Every budget fit, continuous or whole and with fixed or free takes,
+#' buys its design within the budget itself, up to a relative rounding
+#' room of `1e-9`. The cheapest design that meets the targets is accepted
+#' when it costs at most a relative `1e-6` more than the budget, and the
+#' search then stays at that cost.
 #'
 #' See `vignette("joint-allocation")` for the three input tables, assessment
 #' of whole designs, and an example of a fixed-budget grid.
@@ -207,8 +271,16 @@
 #' Bethel, J. (1989). Sample allocation in multivariate surveys. *Survey
 #' Methodology*, 15(1), 47--57.
 #'
+#' Steuer, R. E. and Choo, E.-U. (1983). An interactive weighted Tchebycheff
+#' procedure for multiple objective programming. *Mathematical Programming*,
+#' 26(3), 326--344.
+#'
 #' Valliant, R., Dever, J. A., and Kreuter, F. (2018). *Practical Tools for
 #' Designing and Weighting Survey Samples*, 2nd ed. Springer. Chapter 5.
+#'
+#' Willems, F. and Münnich, R. (2026). Sensitivity analysis for
+#' multivariate optimal sample allocation. *arXiv preprint*
+#' arXiv:2610.26093.
 #'
 #' @family stratified design functions
 #' @seealso [prec_alloc_joint()] for the inverse assessment, [n_alloc()] for
@@ -246,6 +318,14 @@
 #'   objective = "income", budget = 400
 #' )
 #' bought$objective
+#'
+#' # The same budget held to the smallest CV both estimates meet
+#' level <- n_alloc_joint(
+#'   frame, measures, targets = targets,
+#'   objective = c("coverage", "income"), budget = 400,
+#'   objective_rule = "worst"
+#' )
+#' level$objective
 #'
 #' # Fixed and free takes for a two-stage coverage plan
 #' cluster <- data.frame(
@@ -291,6 +371,7 @@ n_alloc_joint.default <- function(
   targets = NULL,
   objective = NULL,
   budget = NULL,
+  objective_rule = c("sum", "worst"),
   psu = NULL,
   certainty_cutoff = NULL,
   n_psu_per_zone = NULL,
@@ -332,6 +413,8 @@ n_alloc_joint.default <- function(
   )
   min_n_stratum <- .resolve_min_n_stratum(min_n_stratum, frame)
   fpc <- match.arg(fpc)
+  objective_rule <- match.arg(objective_rule)
+  .check_objective_rule(objective_rule, objective, control)
 
   if (is.null(measures)) {
     stop("joint constrained allocation requires 'measures'", call. = FALSE)
@@ -378,6 +461,7 @@ n_alloc_joint.default <- function(
         call. = FALSE
       )
     }
+    .refuse_objective_rule_route(objective_rule, "register")
     return(.psu_result(.n_alloc_psu(
       frame = frame,
       psu = psu,
@@ -423,7 +507,8 @@ n_alloc_joint.default <- function(
       take_2_max = take_2_max,
       take_2_step = take_2_step,
       max_nodes = sc$max_nodes,
-      gap = sc$gap
+      gap = sc$gap,
+      objective_rule = objective_rule
     )
     fit$params$control <- control
     return(fit)
@@ -445,10 +530,57 @@ n_alloc_joint.default <- function(
     fpc = fpc,
     .finite_prop_var = TRUE,
     max_nodes = sc$max_nodes,
-    gap = sc$gap
+    gap = sc$gap,
+    objective_rule = objective_rule
   )
   fit$params$control <- control
   fit
+}
+
+#' Refuse the worst rule where it is not defined
+#' @keywords internal
+#' @noRd
+.check_objective_rule <- function(objective_rule, objective, control) {
+  if (!identical(objective_rule, "worst")) {
+    return(invisible(NULL))
+  }
+  if (is.null(objective)) {
+    stop(
+      "objective_rule = \"worst\" needs 'objective': name the components whose largest weighted relative variance the budget should minimize",
+      call. = FALSE
+    )
+  }
+  priority <- if (is.data.frame(objective)) objective[["priority"]]
+  if (is.numeric(priority) && any(priority == 0, na.rm = TRUE)) {
+    stop(
+      "under objective_rule = \"worst\" every objective 'priority' must be positive. Leave out a component that is only reported, and read its precision from prec_alloc_joint()",
+      call. = FALSE
+    )
+  }
+  gap <- if (is.list(control)) control[["gap"]]
+  if (is.numeric(gap) && length(gap) == 1L && !is.na(gap) && gap != 0) {
+    stop(
+      "'control$gap' is refused under objective_rule = \"worst\": the whole search bisects on the worst level and stops only when its bracket closes. Its measured gap is in $optimization$search$gap",
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
+}
+
+#' Refuse the worst rule on a route that has no worst-rule solver
+#' @keywords internal
+#' @noRd
+.refuse_objective_rule_route <- function(objective_rule, route) {
+  if (!identical(objective_rule, "worst")) {
+    return(invisible(NULL))
+  }
+  stop(
+    switch(
+      route,
+      register = "objective_rule = \"worst\" is not available with a PSU register, whose design is planned for one certainty configuration at a time. Use objective_rule = \"sum\""
+    ),
+    call. = FALSE
+  )
 }
 
 #' @rdname n_alloc_joint
@@ -492,6 +624,7 @@ n_alloc_joint.svyplan_prec <- function(frame, ...) {
     targets = targets,
     objective = p$objective,
     budget = budget_arg,
+    objective_rule = p$objective_rule %||% "sum",
     unit_cost = p$unit_cost,
     alpha = p$alpha,
     deff = p$deff,

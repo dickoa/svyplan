@@ -867,6 +867,15 @@
     fit$optimization$budget <- x$budget
     fit$optimization$budget_residual <- x$budget - fit$params$achieved$cost
   }
+  ## The multipliers price one certainty configuration, which a change of
+  ## target or budget can switch.
+  fit$constraints$.sensitivity <- rep(NA_real_, nrow(fit$constraints))
+  if (!is.null(fit$constraints$.objective_sensitivity)) {
+    fit$constraints$.objective_sensitivity <-
+      rep(NA_real_, nrow(fit$constraints))
+    fit$optimization$budget_sensitivity <- NA_real_
+  }
+  fit$optimization$slopes <- "register"
 
   take_psu <- numeric(nrow(x$psu))
   for (h in seq_along(x$idx_of)) {

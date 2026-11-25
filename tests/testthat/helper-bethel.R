@@ -42,3 +42,29 @@
   }
   z
 }
+
+## Willems and Muennich (2026), Sensitivity analysis for multivariate optimal
+## sample allocation, arXiv:2610.26093, Section 6 and Table 1. The precision
+## units are Bethel's (1989, Table 1) a_qh times 0.06^2, with no finite
+## population correction. The stratum sizes sum to 10001, not the 10000 the
+## paper states, so every total is taken from sum(N).
+bethel_reference <- function() {
+  d_qh <- rbind(
+    Floorspace = c(12.33, 3.73, 3.83, 11.36, 7.37, 2.03),
+    Age = c(76.24, 2.89, 1.28, 0.19, 0.01, 0.01),
+    Employees = c(23.90, 6.93, 0.56, 2.44, 0.12, 1.06),
+    Oil = c(37.52, 5.70, 1.96, 0.45, 0.05, 0.04)
+  ) * 0.06^2
+  N <- c(5158, 2632, 1184, 711, 184, 132)
+  frame <- data.frame(stratum = paste0("s", 1:6), N = N, unit_cost = 1,
+                      region = rep(c("r1", "r2", "r3"), each = 2))
+  ## With mean 1, sd_h = sqrt(d_qh) * sum(N) / N_h gives the relative
+  ## variance sum_h d_qh / n_h of the paper.
+  measures <- data.frame(
+    stratum = rep(frame$stratum, each = nrow(d_qh)),
+    name = rep(rownames(d_qh), times = ncol(d_qh)),
+    mean = 1,
+    sd = as.vector(sqrt(d_qh) * sum(N) / rep(N, each = nrow(d_qh)))
+  )
+  list(d_qh = d_qh, N = N, frame = frame, measures = measures)
+}

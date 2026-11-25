@@ -666,6 +666,44 @@ test_that("a free-take budget is refused only below the dual bound", {
   expect_identical(objective_only(high * 1.002)$classification, "feasible")
 })
 
+test_that("a looser target never worsens the free-take budget objective", {
+  ## Invariant oracle: a slack target leaves the optimum unchanged. Under
+  ## "unit" and "stage" a census gives a zero objective floor, and the
+  ## first root-search trial sits just above it.
+  frame <- data.frame(stratum = c("A", "B"), N = c(18, 24), N_1 = c(6, 6),
+                      cost_1 = c(12, 8), cost_2 = c(2, 3))
+  measures <- data.frame(
+    stratum = rep(c("A", "B"), 2), name = rep(c("cov", "inc"), each = 2),
+    p = c(0.35, 0.45, NA, NA), mean = c(NA, NA, 100, 120),
+    sd = c(NA, NA, 25, 30), icc_1 = c(0.34, 0.08, 0.04, 0.42)
+  )
+  objective <- data.frame(name = c("cov", "inc"), priority = c(1, 28))
+  run <- function(cv, fpc) {
+    n_alloc_joint(frame, measures, targets = data.frame(name = "cov", cv = cv),
+                  objective = objective, budget = 190, fpc = fpc,
+                  take_2_min = 1, take_2_max = c(3, 4))
+  }
+  caps <- list(
+    unit = c(0.2, 0.22, 0.23, 0.235, 0.23501, 0.25, 0.27, 0.29, 1),
+    stage = c(0.2, 0.205, 0.22, 0.25, 1)
+  )
+  for (fpc in names(caps)) {
+    floor_fit <- run(1, fpc)
+    expect_identical(floor_fit$optimization$classification, "optimal")
+    for (cv in caps[[fpc]]) {
+      fit <- run(cv, fpc)
+      label <- sprintf("%s cv = %s", fpc, cv)
+      expect_lt(fit$constraints$.cv, cv, label = label)
+      expect_equal(fit$objective_value, floor_fit$objective_value,
+                   tolerance = 1e-8, label = label)
+      expect_equal(fit$params$achieved$cost, 190, tolerance = 1e-6,
+                   label = label)
+      expect_identical(fit$optimization$classification, "optimal",
+                       label = label)
+    }
+  }
+})
+
 test_that("the stratum minimum of the free-take dual is global in every FPC mode", {
   stratum_min <- svyplan:::.freetake_stratum_min
   set.seed(7)
@@ -806,4 +844,39 @@ test_that("a bound sweep row equals a direct refit at the fitted step", {
   }
   expect_setequal(checked, c("plain row 1", "plain row 2",
                              "register row 1", "register row 2"))
+})
+
+test_that("free-take cost slopes need a certified fit with verified multipliers", {
+  frame <- data.frame(stratum = "A", N = 1000, N_1 = 100, cost_1 = 10,
+                      cost_2 = 1)
+  measures <- data.frame(stratum = "A", name = c("early", "late"), mean = 1,
+                         sd = 1, icc_1 = c(0.8, 0.2))
+  cost_fit <- function(cv) {
+    n_alloc_joint(frame, measures,
+                  targets = data.frame(name = "early", cv = cv), fpc = "none")
+  }
+  ## Oracle: the minimum cost refitted on both sides of the target.
+  fit <- cost_fit(0.28)
+  expect_identical(fit$optimization$classification, "optimal")
+  expect_identical(fit$optimization$slopes, "available")
+  expect_equal(fit$constraints$.sensitivity,
+               (cost_fit(0.28001)$params$achieved$cost -
+                  cost_fit(0.27999)$params$achieved$cost) / 2e-5,
+               tolerance = 1e-5)
+
+  ## A design certified only as feasible reports no slope.
+  frame <- data.frame(stratum = c("A", "B"), N = c(532, 30), N_1 = c(28, 5),
+                      cost_1 = c(7.07063587717158, 0.578738214079003),
+                      cost_2 = c(22.5576906511801, 16.9300337906728))
+  measures <- data.frame(stratum = c("A", "B"), name = "y1",
+                         p = c(0.432623439654708, 0.424562202217057),
+                         icc_1 = c(0.0477240467650706, 0.793064531126775))
+  feasible <- n_alloc_joint(frame, measures,
+                            targets = data.frame(name = "y1",
+                                                 cv = 0.00733288432015429),
+                            take_2_max = c(84, 10))
+  expect_identical(feasible$optimization$classification, "feasible")
+  expect_identical(feasible$optimization$slopes, "not_optimal")
+  expect_true(all(is.na(feasible$constraints$.sensitivity)))
+  expect_output(print(summary(feasible)), "Sens. is not reported")
 })

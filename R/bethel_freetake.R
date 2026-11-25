@@ -678,6 +678,9 @@
   b_all <- matrix(0, H, R)
   d_all <- matrix(0, H, R)
   e_all <- matrix(0, H, R)
+  g_all <- matrix(0, H, R)
+  r1_all <- matrix(1, H, R)
+  rsp_all <- matrix(1, H, R)
   total_all <- numeric(R)
   domain_N_all <- numeric(R)
   mean_all <- matrix(NA_real_, H, R)
@@ -704,6 +707,9 @@
     R1 <- vr_1[mi] * icc_1[mi]
     R2 <- vr_1[mi] * (1 - icc_1[mi])
     M_k <- N_k / N_1[idx]
+    g_all[idx, k] <- N_k^2 * v_k * R1 / r1
+    r1_all[idx, k] <- r1
+    rsp_all[idx, k] <- resp_norm[mi]
 
     if (identical(fpc, "none")) {
       a_all[idx, k] <- N_k^2 * v_k * R1 / r1
@@ -763,6 +769,44 @@
     Vmax[k] <- (scaled * abs(total_all[k]))^2
   }
 
+  ## A stratum whose take and PSU count are both fixed adds a constant to
+  ## each column. Held as its exact variance in `e`, it leaves the solver
+  ## only the free strata. A column with no free stratum, or a target the
+  ## fixed strata alone exceed, keeps its form. The exact form keeps the
+  ## original coefficients, since an assessed design may sit below a floor.
+  exact_all <- list(a = a_all, b = b_all, g = g_all, r1 = r1_all,
+                    resp = rsp_all, N = N, N_1 = N_1, fpc = fpc)
+  ## The bounds `1 <= x <= N_1`, `L_ult <= y <= N` and
+  ## `m_lo x <= y <= m_hi x` can leave a single design even when the take
+  ## limits differ, as when a sample floor fills every PSU at the largest
+  ## take.
+  m_lo <- ft_spec$take_2_min
+  m_hi <- ft_spec$take_2_max_cont
+  same <- function(lo, hi) abs(hi - lo) <= 1e-12 * pmax(abs(hi), 1)
+  x_fix <- pmin(N_1, N / m_lo)
+  y_fix <- pmin(N, m_hi * x_fix)
+  fixed <- same(pmax(1, L_ult / m_hi), x_fix) &
+    same(pmax(L_ult, m_lo * x_fix), y_fix)
+  if (any(fixed)) {
+    at_fix <- .freetake_terms(exact_all, x_fix, y_fix)
+    fold <- colSums(a_all[!fixed, , drop = FALSE] +
+                      b_all[!fixed, , drop = FALSE]) > 0
+    fold[seq_len(K)] <- fold[seq_len(K)] &
+      Vmax - colSums(at_fix[fixed, seq_len(K), drop = FALSE]) > 0
+    for (mat in c("a_all", "b_all", "d_all", "g_all")) {
+      m <- get(mat)
+      m[fixed, fold] <- 0
+      assign(mat, m)
+    }
+    e_all[fixed, fold] <- -at_fix[fixed, fold]
+  }
+  exact_cols <- function(cols) {
+    out <- exact_all
+    for (f in c("a", "b", "g", "r1", "resp")) {
+      out[[f]] <- exact_all[[f]][, cols, drop = FALSE]
+    }
+    out
+  }
   objective_part <- NULL
   if (J > 0L) {
     for (j in seq_len(J)) {
@@ -795,6 +839,7 @@
       d_h = as.numeric(d_obj %*% w_obj),
       e_h = as.numeric(e_obj %*% w_obj),
       E0 = sum(e_obj %*% w_obj),
+      exact = exact_cols(K + seq_len(J)),
       spec = objective_spec$objective
     )
     if (sum(objective_part$a_h + objective_part$b_h / m_mid) <= 0) {
@@ -831,6 +876,7 @@
     b = b_all[, seq_len(K), drop = FALSE],
     d = d_all[, seq_len(K), drop = FALSE],
     e = e_all[, seq_len(K), drop = FALSE],
+    exact = exact_cols(seq_len(K)),
     Vmax = Vmax,
     total = total_all[seq_len(K)],
     domain_N = domain_N_all[seq_len(K)],
@@ -851,6 +897,30 @@
     measures = measures,
     targets = target_spec$targets
   )
+}
+
+#' Each stratum's free-take variance in each column, with no cancellation
+#'
+#' The solver's form `a / x + b / y - d (y / x) - e` subtracts the
+#' correction from the gross terms. Here each correction is the share it
+#' leaves, a product of exact differences: under the ultimate-unit
+#' correction `(a / x + b / y)` times `1 - r1 resp y / N`, and under the
+#' stage correction the between-PSU term `g / x` times `1 - r1 x / N_1` and
+#' the within-PSU term `b / y` times `1 - resp (N_1 y) / (N x)`. A census
+#' term is exactly zero, and the remainder of a PSU census survives.
+#' @keywords internal
+#' @noRd
+.freetake_terms <- function(ex, x, y) {
+  if (identical(ex$fpc, "none")) {
+    ex$a / x + ex$b / y
+  } else if (identical(ex$fpc, "stage")) {
+    between <- .fpc_remaining(x, ex$N_1, ex$r1)
+    within <- pmax((ex$N * x - ex$N_1 * y) / (ex$N * x) * ex$resp +
+                     (1 - ex$resp), 0)
+    ex$g / x * between + ex$b / y * within
+  } else {
+    (ex$a / x + ex$b / y) * .fpc_remaining(y, ex$N, ex$r1 * ex$resp)
+  }
 }
 
 #' Evaluate variance vector for a free-take 2-stage design `(x, y)`
@@ -1203,23 +1273,20 @@
   list(x = x[best], y = y[best])
 }
 
-#' Solve the fixed-budget continuous free-take 2-stage problem by epsilon-constraint
+#' The cheapest free-take design meeting the targets, and the budget checks
+#'
+#' Returns that design, or in `early` the result a budget search ends with:
+#' infeasible targets, a failed solve, a budget below the dual cost bound,
+#' or an unresolved gap between that bound and the cheapest design found.
 #' @keywords internal
 #' @noRd
-.freetake_budget_solve_continuous <- function(prob, budget, control = .bethel_control()) {
+.freetake_budget_open <- function(prob, budget, control) {
   H <- prob$H
   K <- prob$K
-  obj <- prob$objective
-  ft <- prob$ft_spec
-  m_min <- ft$take_2_min
-  m_max <- ft$take_2_max_cont
-
-  Q_at <- function(x, y) {
-    m <- y / x
-    sum(obj$a_h / x + obj$b_h / y - obj$d_h * m - obj$e_h)
-  }
+  m_min <- prob$ft_spec$take_2_min
+  m_max <- prob$ft_spec$take_2_max_cont
   cost_at <- function(x, y) sum(prob$c1 * x + prob$c2 * y)
-
+  base <- NULL
   if (K > 0L) {
     base <- .freetake_solve_core(
       prob$a, prob$b, prob$d, prob$e, prob$Vmax,
@@ -1227,10 +1294,10 @@
       prob$constraint_ids, control = control
     )
     if (identical(base$classification, "infeasible")) {
-      return(list(status = "infeasible_targets", infeasible = base$infeasible))
+      return(list(early = list(status = "infeasible_targets", infeasible = base$infeasible)))
     }
     if (!base$classification %in% c("optimal", "feasible")) {
-      return(list(status = "failed", message = base$message))
+      return(list(early = list(status = "failed", message = base$message)))
     }
     base_x <- base$x
     base_y <- base$y
@@ -1248,7 +1315,6 @@
   }
   cost_min <- cost_at(base_x, base_y)
   budget_tol <- control$tolerance * abs(budget)
-  b_eff <- budget + budget_tol
   if (budget < cost_min - budget_tol) {
     ## The solve accepts each target within acc of its variance, so a bound
     ## from the nominal dual gives back the multipliers' share of that slack.
@@ -1262,12 +1328,12 @@
       -Inf
     }
     if (budget < cost_bound - budget_tol) {
-      return(list(
+      return(list(early = list(
         status = "unaffordable",
         cost_min = cost_bound,
         shortfall = cost_bound - budget,
         exact = exact
-      ))
+      )))
     }
     relaxed <- if (!exact) {
       .freetake_solve_core(
@@ -1277,17 +1343,50 @@
       )
     }
     fits <- !is.null(relaxed$x) &&
-      cost_at(relaxed$x, relaxed$y) <= b_eff &&
+      cost_at(relaxed$x, relaxed$y) <= budget + budget_tol &&
       all(.freetake_var(prob$a, prob$b, prob$d, prob$e, relaxed$x, relaxed$y) <=
             prob$Vmax * (1 + acc))
     if (!fits) {
-      return(list(status = "unknown", cost_min = cost_min,
-                  cost_bound = cost_bound))
+      return(list(early = list(status = "unknown", cost_min = cost_min,
+                               cost_bound = cost_bound)))
     }
     base_x <- relaxed$x
     base_y <- relaxed$y
     cost_min <- cost_at(base_x, base_y)
   }
+  ## The cheapest accepted design may cost up to the tolerance more than
+  ## the budget. Better designs are bought within the larger of the two.
+  b_eff <- .joint_budget_room(budget, cost_min)
+
+  list(base = base, x = base_x, y = base_y, cost_min = cost_min,
+       budget_tol = budget_tol, b_eff = b_eff)
+}
+
+#' Solve the fixed-budget continuous free-take 2-stage problem by epsilon-constraint
+#' @keywords internal
+#' @noRd
+.freetake_budget_solve_continuous <- function(prob, budget, control = .bethel_control()) {
+  H <- prob$H
+  K <- prob$K
+  obj <- prob$objective
+  ft <- prob$ft_spec
+  m_min <- ft$take_2_min
+  m_max <- ft$take_2_max_cont
+
+  Q_at <- function(x, y) {
+    m <- y / x
+    sum(obj$a_h / x + obj$b_h / y - obj$d_h * m - obj$e_h)
+  }
+  cost_at <- function(x, y) sum(prob$c1 * x + prob$c2 * y)
+
+  opening <- .freetake_budget_open(prob, budget, control)
+  if (!is.null(opening$early)) return(opening$early)
+  base <- opening$base
+  base_x <- opening$x
+  base_y <- opening$y
+  cost_min <- opening$cost_min
+  budget_tol <- opening$budget_tol
+  b_eff <- opening$b_eff
 
   up_x <- numeric(H)
   up_y <- numeric(H)
@@ -1308,7 +1407,7 @@
       prob$Vmax * (1 + control$tolerance)^2
   )
 
-  if (up_meets && budget >= cost_max - budget_tol) {
+  if (up_meets && cost_max <= b_eff) {
     return(list(
       status = "optimal",
       x = up_x,
@@ -1370,6 +1469,7 @@
       objective_lower_bound = lower %||% NA_real_,
       objective_gap = gap,
       budget_binding = binding,
+      at_minimum = budget <= cost_min + budget_tol,
       cost = s$cost,
       root_iterations = iterations
     )
@@ -1394,7 +1494,14 @@
     }
     s$cost - budget
   }
+  ## Near a zero floor the core can fail at the tightest objective. The
+  ## minimum cost does not rise as the bound loosens, so a failed start is
+  ## raised, never treated as the answer.
   f_lo <- residual(bracket_lo)
+  while (is.na(f_lo) && bracket_lo < q_lo + 0.1 * span) {
+    bracket_lo <- q_lo + 10 * (bracket_lo - q_lo)
+    f_lo <- residual(bracket_lo)
+  }
   s_lo <- best
   if (!is.na(f_lo) && f_lo <= 0) {
     return(finish(s_lo$s, bracket_lo, lower = if (up_meets) q_lo,
@@ -1556,16 +1663,17 @@
   )
 }
 
-#' Exact integer `(n_1, take_2)` global search for fixed-budget mode
+#' The cheapest whole free-take design a budget search starts from
+#'
+#' Each stratum's cheapest branch at its lower bound, or with targets the
+#' cheapest whole design meeting them. Refuses a budget below either, and
+#' an unresolved search for the cheapest design.
 #' @keywords internal
 #' @noRd
-.freetake_whole_budget <- function(prob, budget, control, max_nodes, gap) {
-  bt <- .freetake_branch_table(prob, control$tolerance)
+.freetake_whole_open <- function(prob, bt, budget, control, max_nodes, gap) {
   H <- prob$H
-  B <- length(bt$owner)
   K <- prob$K
   budget_tol <- control$tolerance * abs(budget)
-
   cheap_b <- integer(H)
   cheap_x <- numeric(H)
   for (h in seq_len(H)) {
@@ -1608,9 +1716,28 @@
     start_b <- cheapest$branch
   }
 
+  list(x = start_x, branch = start_b,
+       cost = sum((prob$c1 + prob$c2 * bt$m[start_b]) * start_x),
+       nodes = if (K > 0L) cheapest$r$nodes else 0)
+}
+
+#' Exact integer `(n_1, take_2)` global search for fixed-budget mode
+#' @keywords internal
+#' @noRd
+.freetake_whole_budget <- function(prob, budget, control, max_nodes, gap) {
+  bt <- .freetake_branch_table(prob, control$tolerance)
+  H <- prob$H
+  B <- length(bt$owner)
+  K <- prob$K
+
+  opening <- .freetake_whole_open(prob, bt, budget, control, max_nodes, gap)
+  start_x <- opening$x
+  start_b <- opening$branch
+
   q <- .whole_problem(
     o1 = 0, o2 = bt$obj_o2,
-    g1 = cbind(.whole_budget_load(bt$cost, budget + budget_tol),
+    g1 = cbind(.whole_budget_load(bt$cost,
+                                  .joint_budget_room(budget, opening$cost)),
                matrix(0, B, K)),
     g2 = cbind(0, bt$g2),
     lo = bt$lo, hi = bt$hi,
@@ -1638,7 +1765,8 @@
 .freetake_assess <- function(
   frame, measures, targets, objective,
   n_1, take_2, alpha, deff, resp_rate, eligible_per_unit, eligibility_rate,
-  df, min_n_stratum, fpc, lambda = NULL, tolerance = .bethel_control()$tolerance
+  df, min_n_stratum, fpc, lambda = NULL, tolerance = .bethel_control()$tolerance,
+  objective_rule = "sum"
 ) {
   H <- nrow(frame)
   prob_eval <- .freetake_build_problem(
@@ -1657,7 +1785,7 @@
   y <- n_1 * take_2
   K <- prob_eval$K
   variance <- if (K > 0L) {
-    .freetake_var(prob_eval$a, prob_eval$b, prob_eval$d, prob_eval$e, n_1, y)
+    colSums(.freetake_terms(prob_eval$exact, n_1, y))
   } else numeric(0)
   if (any(variance < 0)) {
     stop("internal error: allocation produced a materially negative variance",
@@ -1705,29 +1833,13 @@
   obj_res <- NULL
   if (!is.null(prob_eval$objective)) {
     obj <- prob_eval$objective
-    v_obj <- .freetake_var(obj$a_mat, obj$b_mat, obj$d_mat, obj$e_mat, n_1, y)
+    v_obj <- colSums(.freetake_terms(obj$exact, n_1, y))
     if (any(v_obj < 0)) {
       stop("internal error: allocation produced a materially negative objective variance",
            call. = FALSE)
     }
-    relvar <- v_obj / obj$total^2
-    contribution <- obj$priority * relvar
-    val <- sum(contribution)
-    obj_res <- list(
-      value = val,
-      components = data.frame(
-        component = obj$component,
-        name = obj$name,
-        domain = obj$domain,
-        level = obj$level,
-        priority = obj$priority,
-        .relvar = relvar,
-        .cv = sqrt(relvar),
-        .contribution = contribution,
-        .share = if (val > 0) contribution / val else rep(NA_real_, length(relvar)),
-        stringsAsFactors = FALSE
-      )
-    )
+    obj$rule <- objective_rule
+    obj_res <- .joint_objective_table(obj, v_obj / obj$total^2)
   }
 
   list(
@@ -1760,9 +1872,11 @@
   take_2_max = NULL,
   take_2_step = NULL,
   max_nodes = 5000,
-  gap = 0
+  gap = 0,
+  objective_rule = "sum"
 ) {
   control <- .bethel_control()
+  worst <- identical(objective_rule, "worst")
   prob <- .freetake_build_problem(
     frame = frame,
     measures = measures,
@@ -1803,7 +1917,11 @@
     optimization$x <- NULL
     optimization$y <- NULL
   } else {
-    fit <- .freetake_budget_solve_continuous(prob, budget, control)
+    fit <- if (worst) {
+      .freetake_worst_solve(prob, budget, control)
+    } else {
+      .freetake_budget_solve_continuous(prob, budget, control)
+    }
     if (identical(fit$status, "infeasible_targets")) {
       stop(sprintf("precision targets are infeasible: %s",
                    paste(fit$infeasible, collapse = ", ")), call. = FALSE)
@@ -1857,6 +1975,11 @@
     optimization$objective_gap <- fit$objective_gap
     optimization$objective_multiplier <- fit$objective_multiplier
     optimization$root_iterations <- fit$root_iterations
+    if (worst) {
+      names(fit$objective_weights) <- prob$objective$component
+      optimization$objective_weights <- fit$objective_weights
+      optimization$second_stage <- fit$second_stage
+    }
   }
 
   cont_eval <- .freetake_assess(
@@ -1865,13 +1988,43 @@
     alpha = alpha, deff = deff, resp_rate = resp_rate,
     eligible_per_unit = eligible_per_unit, eligibility_rate = eligibility_rate,
     df = df, min_n_stratum = min_n_stratum, fpc = fpc,
-    lambda = lambda, tolerance = control$tolerance
+    lambda = lambda, tolerance = control$tolerance,
+    objective_rule = objective_rule
   )
+  cols <- NULL
+  slope_fit <- if (mode == "budget_objective") {
+    fit
+  } else {
+    list(status = solved$classification, solved = solved)
+  }
+  if (mode == "budget_objective") {
+    obj <- prob$objective
+    cols <- if (worst) {
+      caps <- .freetake_worst_caps(prob)
+      list(a = caps$a, b = caps$b, d = caps$d, e = caps$e,
+           vmax = rep(fit$objective_bound, caps$J))
+    } else {
+      list(a = matrix(obj$a_h), b = matrix(obj$b_h), d = matrix(obj$d_h),
+           e = matrix(obj$e_h), vmax = fit$objective_bound)
+    }
+  }
+  slopes <- .freetake_slopes(prob, slope_fit, cont_eval$constraints, cols,
+                             control)
+  cont_eval$constraints$.sensitivity <- slopes$sensitivity
+  if (mode == "budget_objective") {
+    cont_eval$constraints$.objective_sensitivity <- slopes$objective
+    optimization$budget_sensitivity <- slopes$budget
+  }
+  optimization$slopes <- slopes$status
 
   if (mode == "targets") {
     disc <- .freetake_whole_targets(prob, control, max_nodes, gap,
                                     lambda_cont = lambda)
     search_rec <- .whole_record(disc$r, "whole units (free take)", max_nodes)
+  } else if (worst) {
+    disc <- .freetake_whole_worst(prob, budget, control, max_nodes,
+                                  continuous = list(x = x_cont, y = y_cont))
+    search_rec <- disc$search
   } else {
     disc <- .freetake_whole_budget(prob, budget, control, max_nodes, gap)
     search_rec <- .whole_record(disc$r, "whole units (free take)", max_nodes,
@@ -1888,7 +2041,8 @@
     alpha = alpha, deff = deff, resp_rate = resp_rate,
     eligible_per_unit = eligible_per_unit, eligibility_rate = eligibility_rate,
     df = df, min_n_stratum = min_n_stratum, fpc = fpc,
-    lambda = NULL, tolerance = control$tolerance
+    lambda = NULL, tolerance = control$tolerance,
+    objective_rule = objective_rule
   )
   if (!int_eval$all_pass) {
     stop("internal error: free-take integer allocation failed final validation",
@@ -1998,6 +2152,7 @@
     params$objective <- prob$objective$spec
     params$budget <- budget
     params$achieved$objective_value <- cont_eval$objective$value
+    params$objective_rule <- objective_rule
   }
   params$feasibility_tolerance <- control$tolerance
   carried <- .alloc_carry_labels(detail, frame)
@@ -2041,7 +2196,8 @@
   eligibility_rate = 1,
   take_2_min = NULL,
   take_2_max = NULL,
-  take_2_step = NULL
+  take_2_step = NULL,
+  objective_rule = "sum"
 ) {
   n_1 <- as.numeric(n) / as.numeric(take_2)
   ev <- .freetake_assess(
@@ -2050,7 +2206,8 @@
     alpha = alpha, deff = deff, resp_rate = resp_rate,
     eligible_per_unit = eligible_per_unit, eligibility_rate = eligibility_rate,
     df = df, min_n_stratum = min_n_stratum, fpc = fpc,
-    lambda = NULL, tolerance = .bethel_control()$tolerance
+    lambda = NULL, tolerance = .bethel_control()$tolerance,
+    objective_rule = objective_rule
   )
   stratum <- as.character(frame$stratum)
   N <- as.numeric(frame$N)
@@ -2100,6 +2257,7 @@
     params$budget <- budget
     params$achieved$objective_value <- ev$objective$value
     params$budget_residual <- if (is.null(budget)) NA_real_ else budget - ev$cost
+    params$objective_rule <- objective_rule
   }
   .new_svyplan_prec(
     se = ev$constraints$.se,

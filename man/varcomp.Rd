@@ -197,10 +197,15 @@ stage-2 and later weights), not the full design weight, whose
 stage-1 factor would overstate every cluster size. The correction
 assumes noninformative (SRS-like) subsampling within clusters.
 Informative within-cluster sampling remains approximate. In the
-3-stage weighted case the between-PSU correction removes
-element-stage estimation noise but not SSU-stage subsampling noise,
-so when few SSUs are sampled per PSU the between-PSU component (and
-\code{icc_1}) is conservative: biased upward, never downward.
+3-stage weighted case the between-PSU correction removes the
+element-stage noise of the PSU totals, and the SSU-stage noise too when
+the stage-2 and stage-3 weights come as two columns. The SSU-stage term
+is \eqn{M_i^2 (1 - m_i / M_i) S_{T,i}^2 / m_i}{M_i^2 (1 - m_i/M_i)
+S2_T,i / m_i}, with \eqn{M_i}{M_i} the summed stage-2 weight. One
+within-cluster column cannot separate the two stages, so that term stays
+in the between-PSU component, and when few SSUs are sampled per PSU the
+component (and \code{icc_1}) is conservative: biased upward, never downward.
+At 3 of 20 SSUs per PSU the excess can be half the component.
 
 The element-stage noise in a 3-stage sample depends on the share of
 each SSU's elements that was sampled, \eqn{f_3 = n_{ij} / N_{ij}}{f3 =
@@ -209,9 +214,10 @@ single within-cluster weight column reads the fraction as
 \eqn{f_2 f_3}{f2 * f3} and removes too much noise from the SSU totals,
 which understates \code{varw_1} and \code{icc_2}. The difference is small when
 \eqn{f_3}{f3} is small, the usual case of a few households listed from
-many. When it is not, pass the stage-2 and stage-3 weights as two
-columns. At \eqn{f_2 = 0.2}{f2 = 0.2} and \eqn{f_3 = 0.5}{f3 = 0.5}
-one column understates \code{varw_1} by about a fifth.
+many. When it is not, or when few SSUs are taken per PSU, pass the
+stage-2 and stage-3 weights as two columns. At \eqn{f_2 = 0.2}{f2 =
+0.2} and \eqn{f_3 = 0.5}{f3 = 0.5} one column understates \code{varw_1} by
+about a fifth.
 
 A sample passed without \code{weights} is read as the frame, and that
 overstates \code{icc}. Each sampled PSU's mean carries the noise of its own

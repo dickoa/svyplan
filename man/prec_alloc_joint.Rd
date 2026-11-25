@@ -16,6 +16,7 @@ prec_alloc_joint(frame, ...)
   targets = NULL,
   objective = NULL,
   budget = NULL,
+  objective_rule = c("sum", "worst"),
   psu = NULL,
   certainty_cutoff = NULL,
   n_psu_per_zone = NULL,
@@ -56,6 +57,9 @@ See Details for the defaults when passing an allocation.}
 
 \item{budget}{Optional budget used with \code{objective} to compute budget
 residual.}
+
+\item{objective_rule}{How \code{objective} combines its components, \code{"sum"}
+(default) or \code{"worst"}, as in \code{\link[=n_alloc_joint]{n_alloc_joint()}}.}
 
 \item{psu}{Optional PSU register, as in \code{\link[=n_alloc_joint]{n_alloc_joint()}}.}
 

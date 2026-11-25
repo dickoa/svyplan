@@ -19,6 +19,8 @@
 #' @param objective Optional objective specification, as in [n_alloc_joint()].
 #' @param budget Optional budget used with `objective` to compute budget
 #'   residual.
+#' @param objective_rule How `objective` combines its components, `"sum"`
+#'   (default) or `"worst"`, as in [n_alloc_joint()].
 #' @param psu Optional PSU register, as in [n_alloc_joint()].
 #' @param certainty_cutoff Optional certainty probability cutoff, as in
 #'   [n_alloc_joint()].
@@ -116,6 +118,7 @@ prec_alloc_joint.default <- function(
   targets = NULL,
   objective = NULL,
   budget = NULL,
+  objective_rule = c("sum", "worst"),
   psu = NULL,
   certainty_cutoff = NULL,
   n_psu_per_zone = NULL,
@@ -152,6 +155,8 @@ prec_alloc_joint.default <- function(
     eligibility_rate = eligibility_rate, eligible_per_unit = eligible_per_unit
   )
   fpc <- match.arg(fpc)
+  objective_rule <- match.arg(objective_rule)
+  .check_objective_rule(objective_rule, objective, NULL)
 
   if (is.null(measures)) {
     stop("joint precision assessment requires 'measures'", call. = FALSE)
@@ -178,6 +183,7 @@ prec_alloc_joint.default <- function(
         call. = FALSE
       )
     }
+    .refuse_objective_rule_route(objective_rule, "register")
     return(.prec_alloc_psu(
       frame = frame,
       psu = psu,
@@ -214,7 +220,8 @@ prec_alloc_joint.default <- function(
     min_n_stratum = min_n_stratum,
     df = df,
     fpc = fpc,
-    .finite_prop_var = TRUE
+    .finite_prop_var = TRUE,
+    objective_rule = objective_rule
   )
 }
 
@@ -306,7 +313,8 @@ prec_alloc_joint.svyplan_alloc_joint <- function(frame, ...) {
         fpc = p$fpc %||% "unit",
         take_2_min = p[["take_2_min"]],
         take_2_max = p[["take_2_max"]],
-        take_2_step = p[["take_2_step"]]
+        take_2_step = p[["take_2_step"]],
+        objective_rule = p$objective_rule %||% "sum"
       )
       out <- do.call(
         .prec_alloc_freetake,
@@ -337,7 +345,8 @@ prec_alloc_joint.svyplan_alloc_joint <- function(frame, ...) {
     min_n_stratum = p$min_n_stratum,
     fpc = p$fpc %||% "unit",
     .allow_fractional_stages = !n_explicit,
-    .finite_prop_var = TRUE
+    .finite_prop_var = TRUE,
+    objective_rule = p$objective_rule %||% "sum"
   )
   out <- do.call(
     .prec_alloc_bethel,

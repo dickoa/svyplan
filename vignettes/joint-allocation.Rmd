@@ -107,6 +107,33 @@ To assess a fixed allocation at different response rates, use
 `predict(prec_alloc_joint(fit, n = fit$detail$n_int), ...)` with a scenario
 data frame instead of predicting from the allocation itself.
 
+## Hold every estimate to one level
+
+The sum of weighted relative variances can let one estimate lose precision
+while another gains. `objective_rule = "worst"` minimizes the largest
+`priority * relvar` instead. With `priority = 1 / r^2` for reference CVs `r`,
+the objective is the square of the largest ratio of achieved CV to its
+reference.
+
+```{r joint-worst}
+reference <- data.frame(name = c("coverage", "income"),
+                        priority = 1 / c(0.05, 0.01)^2)
+summed <- n_alloc_joint(frame, measures, targets = targets,
+                        objective = reference, budget = 400)
+level <- n_alloc_joint(frame, measures, targets = targets,
+                       objective = reference, budget = 400,
+                       objective_rule = "worst")
+summed$objective$.cv / c(0.05, 0.01)
+level$objective[c("component", ".cv", ".binding")]
+level$objective$.cv / c(0.05, 0.01)
+```
+
+The sum rule leaves income at 1.066 times its reference CV. The worst rule
+lowers that to 1.063 and marks income as the component at the level. Coverage
+stays below it because its hard target already holds it.
+`level$optimization$objective_weights` gives the sum-rule priorities that
+return the same continuous design.
+
 ## Decide how many units to take within each PSU
 
 In a two-stage plan without a register, `N_1` counts primary sampling units

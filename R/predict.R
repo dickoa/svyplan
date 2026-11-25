@@ -1235,7 +1235,8 @@ predict.svyplan_prec <- function(object, newdata, ...) {
         budget = p$budget, df = r$df, fpc = p$fpc %||% "unit",
         eligible_per_unit = r$eligible_per_unit,
         eligibility_rate = r$eligibility_rate,
-        take_2_min = p[["take_2_min"]], take_2_max = p[["take_2_max"]], take_2_step = p[["take_2_step"]]
+        take_2_min = p[["take_2_min"]], take_2_max = p[["take_2_max"]], take_2_step = p[["take_2_step"]],
+        objective_rule = p$objective_rule %||% "sum"
       )
     } else {
       res <- .prec_alloc_bethel(
@@ -1247,7 +1248,8 @@ predict.svyplan_prec <- function(object, newdata, ...) {
         min_n_stratum = .resolve_min_n_stratum(p$min_n_stratum, frame_i),
         df = r$df, fpc = p$fpc %||% "unit",
         .allow_fractional_stages = !list_n,
-        .finite_prop_var = TRUE
+        .finite_prop_var = TRUE,
+        objective_rule = p$objective_rule %||% "sum"
       )
     }
 
@@ -1771,6 +1773,7 @@ predict.svyplan_prec <- function(object, newdata, ...) {
         control = p[["control"]],
         objective = p$objective,
         budget = budget,
+        objective_rule = p$objective_rule %||% "sum",
         unit_cost = unit_cost_i,
         alpha = alpha_i,
         deff = deff_i,

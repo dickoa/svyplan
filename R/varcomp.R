@@ -79,10 +79,15 @@
 #' stage-1 factor would overstate every cluster size. The correction
 #' assumes noninformative (SRS-like) subsampling within clusters.
 #' Informative within-cluster sampling remains approximate. In the
-#' 3-stage weighted case the between-PSU correction removes
-#' element-stage estimation noise but not SSU-stage subsampling noise,
-#' so when few SSUs are sampled per PSU the between-PSU component (and
-#' `icc_1`) is conservative: biased upward, never downward.
+#' 3-stage weighted case the between-PSU correction removes the
+#' element-stage noise of the PSU totals, and the SSU-stage noise too when
+#' the stage-2 and stage-3 weights come as two columns. The SSU-stage term
+#' is \eqn{M_i^2 (1 - m_i / M_i) S_{T,i}^2 / m_i}{M_i^2 (1 - m_i/M_i)
+#' S2_T,i / m_i}, with \eqn{M_i}{M_i} the summed stage-2 weight. One
+#' within-cluster column cannot separate the two stages, so that term stays
+#' in the between-PSU component, and when few SSUs are sampled per PSU the
+#' component (and `icc_1`) is conservative: biased upward, never downward.
+#' At 3 of 20 SSUs per PSU the excess can be half the component.
 #'
 #' The element-stage noise in a 3-stage sample depends on the share of
 #' each SSU's elements that was sampled, \eqn{f_3 = n_{ij} / N_{ij}}{f3 =
@@ -91,9 +96,10 @@
 #' \eqn{f_2 f_3}{f2 * f3} and removes too much noise from the SSU totals,
 #' which understates `varw_1` and `icc_2`. The difference is small when
 #' \eqn{f_3}{f3} is small, the usual case of a few households listed from
-#' many. When it is not, pass the stage-2 and stage-3 weights as two
-#' columns. At \eqn{f_2 = 0.2}{f2 = 0.2} and \eqn{f_3 = 0.5}{f3 = 0.5}
-#' one column understates `varw_1` by about a fifth.
+#' many. When it is not, or when few SSUs are taken per PSU, pass the
+#' stage-2 and stage-3 weights as two columns. At \eqn{f_2 = 0.2}{f2 =
+#' 0.2} and \eqn{f_3 = 0.5}{f3 = 0.5} one column understates `varw_1` by
+#' about a fifth.
 #'
 #' A sample passed without `weights` is read as the frame, and that
 #' overstates `icc`. Each sampled PSU's mean carries the noise of its own
@@ -1900,6 +1906,19 @@ varcomp.survey.design <- function(x, ..., prob = NULL, strata = NULL,
       0
     )
     psu_noise <- vapply(grouped_noise, sum, numeric(1L), USE.NAMES = FALSE)
+    # An estimated PSU total also carries SSU-stage noise,
+    # M_i^2 (1 - m_i / M_i) S^2_T / m_i. The SSU totals above carry the
+    # within-PSU weight, so their spread estimates (M_i / m_i)^2 S^2_T, and
+    # the term is m_i (1 - m_i / M_i) times it. M_i is the summed stage-2
+    # weight, which exists only when the stage-3 weight is given apart.
+    if (!is.null(w3)) {
+      w2_ssu <- vapply(split(w / w3, ssu$index), mean, numeric(1L),
+                       USE.NAMES = FALSE)
+      ssu_count <- vapply(split(w2_ssu, psu_of_ssu), sum, numeric(1L),
+                          USE.NAMES = FALSE)
+      psu_noise <- psu_noise + ssu_per_psu *
+        pmax(1 - ssu_per_psu / ssu_count, 0) * ssu_total_var
+    }
     psu_adjustment <- sum(psu_noise * (1 - draw_prob) / draw_prob)
   }
 

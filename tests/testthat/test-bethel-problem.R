@@ -221,6 +221,9 @@ test_that("builder rejects invalid 0/1 flags and undefined constraints", {
 test_that("materially negative evaluated variance is an internal error", {
   z <- .bethel_fixture()
   p <- .build_bethel_problem(z$frame, z$measures, z$targets[1, ])
+  ## A built problem measures each stratum from its upper count, which
+  ## cannot go negative. One without those variances keeps the guard.
+  p$V_upper <- NULL
   p$upper[] <- 1e9
   expect_error(
     .precision_from_allocation(p, rep(1e9, nrow(z$frame))),

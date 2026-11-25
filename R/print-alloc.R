@@ -40,7 +40,8 @@
 #' A joint allocation summary has fields `kind`, `question`, `mode`,
 #' `stages`, `status`, `overall`, `continuous`, `allocation`, `constraints`,
 #' `operational_constraints`, `objective`, `operational_objective`, `bounds`,
-#' `optimization`, and `assumptions`. For a fitted design the headline and
+#' `optimization`, and `assumptions`, plus `sensitivity_note` in a budget
+#' fit and in a fit whose slopes are withheld. For a fitted design the headline and
 #' allocation describe the integer field recommendation, while `continuous`
 #' and `constraints` describe the continuous design. For a precision
 #' assessment they describe the supplied allocation exactly.
@@ -49,7 +50,12 @@
 #' decomposition. `.ratio` is achieved divided by target, `.residual` is that
 #' ratio minus one, and `.sensitivity` is the local change in minimum cost per
 #' unit relaxation of the stated target, so `-.sensitivity * 0.1 * .target`
-#' is the first-order saving from relaxing it by 10 percent. Objective
+#' is the first-order saving from relaxing it by 10 percent. In a budget
+#' fit the objective is held fixed for `.sensitivity`, and
+#' `.objective_sensitivity` is the local change in the objective per unit
+#' relaxation with the budget held fixed. `sensitivity_note` states both,
+#' and why slopes are missing when they are. A row with no slope shares its
+#' price with another active row. Objective
 #' `.contribution` and
 #' `.share` columns are genuinely additive across components.
 #'
@@ -173,7 +179,8 @@ summary.svyplan_prec <- function(object, ...) {
   # keeps the schema it has always had.
   out <- list(
     kind = kind,
-    question = .bethel_summary_question(mode, kind, budget),
+    question = .bethel_summary_question(mode, kind, budget,
+                                        p$objective_rule %||% "sum"),
     mode = mode,
     stages = .bethel_plan_stages(object, problem),
     status = if (design) object$optimization$classification else "assessed",
@@ -192,6 +199,14 @@ summary.svyplan_prec <- function(object, ...) {
     },
     assumptions = .bethel_summary_assumptions(object)
   )
+  if (design) {
+    note <- .bethel_sensitivity_note(
+      object$optimization$slopes,
+      if (identical(mode, "budget_objective")) budget,
+      p$objective_rule %||% "sum"
+    )
+    if (length(note) > 0L) out$sensitivity_note <- note
+  }
   cert <- .bethel_summary_certainty(object)
   if (!is.null(cert)) {
     out$certainty <- cert
@@ -268,16 +283,79 @@ summary.svyplan_prec <- function(object, ...) {
     n_bound_violations = n_bounds_bad,
     objective_value = objective_value,
     objective_components = if (is.null(objective)) 0L else nrow(objective),
+    objective_worst = !is.null(objective) && ".binding" %in% names(objective),
     budget = budget,
     budget_residual = budget_residual
   )
 }
 
+#' Say what each constraint sensitivity holds fixed in a budget fit
+#' @keywords internal
+#' @noRd
+.bethel_sensitivity_note <- function(status, budget, rule = "sum") {
+  if (is.null(status)) {
+    return(NULL)
+  }
+  budget_mode <- !is.null(budget)
+  held <- if (budget_mode) {
+    sprintf(
+      paste(
+        "Sens. is the change in minimum cost per unit relaxation of a target,",
+        "the objective held fixed. Obj. sens. is the change in the %s",
+        "relative variance per unit relaxation, the budget held at %.6g."
+      ),
+      if (identical(rule, "worst")) "worst weighted" else "weighted",
+      budget
+    )
+  }
+  refit <- "Refit with the changed target to measure its effect."
+  slopes <- if (budget_mode) "The slopes are" else "Sens. is"
+  reason <- switch(
+    status,
+    available = NULL,
+    budget_not_binding = paste(
+      "The budget does not bind, so relaxing a target leaves the objective",
+      "unchanged."
+    ),
+    budget_at_minimum = paste(
+      "The slopes are not defined for active targets because the budget",
+      "equals the cheapest cost that meets them.", refit
+    ),
+    objective_multiplier_not_positive = paste(
+      "Obj. sens. is not defined for active targets because the objective",
+      "has no positive price at this budget.", refit
+    ),
+    not_identifiable = paste(
+      "Obj. sens. is not defined for active targets because the objective",
+      "shares its price with them.", refit
+    ),
+    register = paste(
+      slopes, "not reported for a PSU register, whose prices hold for one",
+      "certainty configuration only.", refit
+    ),
+    not_optimal = paste(
+      slopes, "not reported because the continuous design is feasible but",
+      "not certified optimal.", refit
+    ),
+    multipliers_not_verified = paste(
+      slopes, "not reported because no multipliers price the full",
+      "free-take problem at this design.", refit
+    ),
+    NULL
+  )
+  c(held, reason)
+}
+
 #' State which generalized allocation question was answered
 #' @keywords internal
 #' @noRd
-.bethel_summary_question <- function(mode, kind, budget) {
+.bethel_summary_question <- function(mode, kind, budget, rule = "sum") {
   if (identical(kind, "assessment")) {
+    if (identical(rule, "worst")) {
+      return(
+        "assess a supplied joint allocation's precision and worst weighted objective"
+      )
+    }
     if (identical(mode, "budget_objective")) {
       return(
         "assess a supplied joint allocation against its targets, objective, and budget"
@@ -289,6 +367,12 @@ summary.svyplan_prec <- function(object, ...) {
       )
     }
     return("assess a supplied joint allocation against every precision target")
+  }
+  if (identical(mode, "budget_objective") && identical(rule, "worst")) {
+    return(sprintf(
+      "minimize the worst weighted relative variance within budget = %.6g",
+      budget
+    ))
   }
   if (identical(mode, "budget_objective")) {
     return(sprintf(
@@ -426,18 +510,11 @@ summary.svyplan_prec <- function(object, ...) {
 .bethel_summary_optimization <- function(object) {
   opt <- object$optimization
   ids <- object$params$problem$constraint_ids
-  solver_ids <- c(
-    ids,
-    if (length(opt$constraint_scale %||% numeric(0)) > length(ids)) {
-      "objective"
-    }
+  solver_ids <- .bethel_solver_ids(
+    object, length(opt$constraint_scale %||% numeric(0))
   )
   active <- opt$active_precision %||% integer(0)
-  active_precision <- ifelse(
-    active <= length(ids),
-    ids[active],
-    "objective"
-  )
+  active_precision <- .bethel_solver_ids(object, max(c(0, active)))[active]
   diagnostic_names <- c(
     "primal_residual",
     "projected_dual_residual",
@@ -453,17 +530,8 @@ summary.svyplan_prec <- function(object, ...) {
     stringsAsFactors = FALSE
   )
   diagnostics$pass <- diagnostics$value <= diagnostics$tolerance
-  multiplier_ids <- c(
-    ids,
-    if (
-      length(
-        opt$multiplier_identifiable %||%
-          logical(0)
-      ) >
-        length(ids)
-    ) {
-      "objective"
-    }
+  multiplier_ids <- .bethel_solver_ids(
+    object, length(opt$multiplier_identifiable %||% logical(0))
   )
   identifiable <- opt$multiplier_identifiable %||% logical(0)
   if (length(identifiable) > 0L) {
@@ -506,8 +574,38 @@ summary.svyplan_prec <- function(object, ...) {
     budget_sensitivity = opt$budget_sensitivity,
     objective_bound = opt$objective_bound,
     objective_multiplier = opt$objective_multiplier,
-    root_iterations = opt$root_iterations
+    root_iterations = opt$root_iterations,
+    objective_weights = opt$objective_weights,
+    second_stage = opt$second_stage,
+    slopes = opt$slopes
   )
+}
+
+#' Names of the solver rows: the targets, then the objective or its caps
+#'
+#' A sum-rule budget solve appends one objective row. A worst-rule solve
+#' appends one cap per component with a variance term.
+#' @keywords internal
+#' @noRd
+.bethel_solver_ids <- function(object, n) {
+  ids <- object$params$problem$constraint_ids
+  if (n <= length(ids)) {
+    return(ids[seq_len(n)])
+  }
+  obj <- object$params$problem$objective
+  extra <- if (identical(obj$rule, "worst")) {
+    paste0("worst: ", obj$component[colSums(obj$A) > 0])
+  } else {
+    "objective"
+  }
+  c(ids, extra)[seq_len(n)]
+}
+
+#' Label a component by its name, or its full key inside a domain
+#' @keywords internal
+#' @noRd
+.bethel_component_label <- function(tab) {
+  ifelse(tab$domain == ".overall", tab$name, tab$component)
 }
 
 #' Resolved numerical assumptions behind each target-stratum contribution
@@ -1098,7 +1196,8 @@ print.summary.svyplan_bethel <- function(x, ...) {
       "Continuous precision constraints"
     } else {
       "Assessed precision constraints"
-    }
+    },
+    note = x$sensitivity_note
   )
   if (design) {
     .print_bethel_constraints(
@@ -1206,7 +1305,11 @@ print.summary.svyplan_bethel <- function(x, ...) {
     )
   }
   if (!is.null(values$objective_value)) {
-    rows[["Weighted rel. variance"]] <- sprintf(
+    rows[[if (isTRUE(values$objective_worst)) {
+      "Worst weighted rel. var."
+    } else {
+      "Weighted rel. variance"
+    }]] <- sprintf(
       "%.6g (%d component%s)",
       values$objective_value,
       values$objective_components,
@@ -1229,7 +1332,7 @@ print.summary.svyplan_bethel <- function(x, ...) {
 #' Print both the result and numerical diagnostics for every hard target
 #' @keywords internal
 #' @noRd
-.print_bethel_constraints <- function(tab, title) {
+.print_bethel_constraints <- function(tab, title, note = NULL) {
   cat("\n", title, "\n\n", sep = "")
   if (is.null(tab) || nrow(tab) == 0L) {
     cat("No hard precision constraints.\n")
@@ -1249,12 +1352,17 @@ print.summary.svyplan_bethel <- function(x, ...) {
   )
   .print_bethel_table(tab[result])
   diagnostics <- intersect(
-    c("constraint", ".residual", ".tolerance", ".multiplier", ".sensitivity"),
+    c("constraint", ".residual", ".tolerance", ".multiplier", ".sensitivity",
+      ".objective_sensitivity"),
     names(tab)
   )
   if (length(diagnostics) > 1L) {
     cat("\nConstraint diagnostics\n\n")
     .print_bethel_table(tab[diagnostics])
+    if (length(note) > 0L) {
+      cat("\n")
+      cat(strwrap(paste(note, collapse = " "), width = 78), sep = "\n")
+    }
   }
   invisible(NULL)
 }
@@ -1266,9 +1374,15 @@ print.summary.svyplan_bethel <- function(x, ...) {
   if (is.null(tab) || nrow(tab) == 0L) {
     return(invisible(NULL))
   }
-  cat("\n", title, " (contributions are additive)\n\n", sep = "")
+  worst <- ".binding" %in% names(tab)
+  cat("\n", title, if (worst) {
+    " (the largest contribution is the objective)"
+  } else {
+    " (contributions are additive)"
+  }, "\n\n", sep = "")
   cols <- intersect(
-    c("component", "priority", ".relvar", ".cv", ".contribution", ".share"),
+    c("component", "priority", ".relvar", ".cv", ".contribution", ".share",
+      ".binding"),
     names(tab)
   )
   .print_bethel_table(tab[cols])
@@ -1309,11 +1423,27 @@ print.summary.svyplan_bethel <- function(x, ...) {
       format(signif(sr$bound, 6), big.mark = ","),
       100 * sr$gap
     ))
-    cat(sprintf(
-      "  states: %s listed, %s kept by the bound\n",
-      format(sr$states, big.mark = ","),
-      format(sr$kept, big.mark = ",")
-    ))
+    if (!is.na(sr$states %||% NA)) {
+      cat(sprintf(
+        "  states: %s listed, %s kept by the bound\n",
+        format(sr$states, big.mark = ","),
+        format(sr$kept, big.mark = ",")
+      ))
+    }
+    if (!is.null(sr$trials)) {
+      cat(sprintf(
+        "  worst-level bisection: %d trial%s, second stage %s\n",
+        sr$trials, if (sr$trials == 1L) "" else "s", sr$second_stage
+      ))
+    }
+  }
+  if (!is.null(opt$second_stage)) {
+    cat(sprintf("  continuous second stage: %s\n", opt$second_stage))
+  }
+  if (!is.null(opt$objective_weights) && !anyNA(opt$objective_weights)) {
+    cat("  sum-rule priorities giving the same continuous design:\n")
+    cat(sprintf("    %s %.4g\n", names(opt$objective_weights),
+                opt$objective_weights), sep = "")
   }
   if (!is.null(opt$budget_binding)) {
     cat(sprintf(
@@ -1323,6 +1453,8 @@ print.summary.svyplan_bethel <- function(x, ...) {
   }
   if (!is.null(opt$budget_sensitivity) && is.finite(opt$budget_sensitivity)) {
     cat(sprintf("  budget sensitivity: %.6g\n", opt$budget_sensitivity))
+  } else if (isTRUE(opt$budget_binding) && !is.null(opt$slopes)) {
+    cat(sprintf("  budget sensitivity: not reported (%s)\n", opt$slopes))
   }
   if (nrow(opt$diagnostics) > 0L) {
     cat("\nKKT certification\n\n")
@@ -1404,6 +1536,7 @@ print.summary.svyplan_bethel <- function(x, ...) {
       ".tolerance",
       ".multiplier",
       ".sensitivity",
+      ".objective_sensitivity",
       ".relvar",
       ".cv",
       ".contribution",
@@ -1448,6 +1581,7 @@ print.summary.svyplan_bethel <- function(x, ...) {
     .tolerance = "Tol.",
     .multiplier = "Mult.",
     .sensitivity = "Sens.",
+    .objective_sensitivity = "Obj. sens.",
     priority = "Priority",
     .relvar = "Rel. var.",
     .cv = "CV",

@@ -1525,6 +1525,56 @@ test_that("stage-2 and stage-3 weights read the element fraction alone", {
   expect_lt(abs(bias[["two"]]), 0.05)
 })
 
+test_that("subsampled SSUs leave the between-PSU numerator unbiased", {
+  ## Oracle: the exact design expectation over every sample of 2 PSUs, 2
+  ## SSUs per PSU and n elements per SSU, all by SRS. The shared
+  ## denominator is the squared estimated total, so the unbiased quantity
+  ## is varb times that square over a^2, against the frame's over A^2.
+  ## Totals are far apart, so no sample clips a spread at zero.
+  M <- c(3, 4, 3)
+  fr <- do.call(rbind, lapply(seq_along(M), function(i) {
+    expand.grid(el = 1:3, ssu = seq_len(M[i]), psu = i)
+  }))
+  fr$y <- c(0, 30, 70)[fr$psu] + c(0, 6, 13, 21)[fr$ssu] +
+    c(-0.5, 0.2, 0.4)[fr$el] * fr$ssu
+  frame <- varcomp(fr$y, stage_id = list(fr$psu, fr$ssu))
+  target <- frame$varb * sum(fr$y)^2 / 3^2
+  pick <- function(i, n) {
+    units <- fr[fr$psu == i, ]
+    out <- list()
+    for (ssus in combn(M[i], 2, simplify = FALSE)) {
+      sets <- combn(3, n, simplify = FALSE)
+      for (a in sets) for (b in sets) {
+        rows <- rbind(units[units$ssu == ssus[1] & units$el %in% a, ],
+                      units[units$ssu == ssus[2] & units$el %in% b, ])
+        rows$w2 <- M[i] / 2
+        rows$w3 <- 3 / n
+        out[[length(out) + 1L]] <- rows
+      }
+    }
+    out
+  }
+  for (n in c(2, 3)) {
+    per_psu <- lapply(seq_along(M), pick, n = n)
+    ## Each PSU pair has probability 1/3, and within a pair every sample
+    ## is equally likely, so pairs are averaged after their own samples.
+    by_pair <- lapply(combn(3, 2, simplify = FALSE), function(pair) {
+      grid <- expand.grid(seq_along(per_psu[[pair[1]]]),
+                          seq_along(per_psu[[pair[2]]]))
+      mapply(function(j, k) {
+        s <- rbind(per_psu[[pair[1]]][[j]], per_psu[[pair[2]]][[k]])
+        v <- varcomp(s$y, stage_id = list(s$psu, s$ssu),
+                     weights = cbind(s$w2, s$w3))
+        c(v$varb, v$varb * sum(s$w2 * s$w3 * s$y)^2 / 2^2)
+      }, grid[[1]], grid[[2]])
+    })
+    expect_true(all(vapply(by_pair, function(x) all(x[1, ] > 0), NA)),
+                label = paste("n =", n))
+    expect_equal(mean(vapply(by_pair, function(x) mean(x[2, ]), 0)), target,
+                 tolerance = 1e-10, label = paste("n =", n))
+  }
+})
+
 test_that("every interface takes the stage-3 weight the same way", {
   skip_if_not_installed("survey")
   set.seed(5)
@@ -1611,10 +1661,12 @@ test_that("a last ID column with one row per value is the element only without a
   expect_equal(v2$varb, 0.03310787, tolerance = 1e-6)
   d3 <- survey::svydesign(~psu + id, probs = ~p1 + p2 + p3, data = s)
   v3 <- suppressWarnings(varcomp(d3, ~y))
-  ref3 <- suppressWarnings(varcomp(s$y, stage_id = list(s$psu, s$id)))
   expect_equal(v3$stages, 3L)
-  expect_equal(v3$varb, ref3$varb)
-  expect_equal(v3$varb, 0.1196155, tolerance = 1e-6)
+  ## Each SSU is one element drawn at rate 0.5, so the SSU-stage noise
+  ## is the element-stage noise of the two-stage reading: 3 (1 - 1/2)
+  ## times the spread of the SSU totals, which leaves 661.33 * 9 / 424^2.
+  expect_equal(v3$varb, v2$varb)
+  expect_equal(v3$varb, (2389 + 1 / 3 - 1728) * 9 / 424^2, tolerance = 1e-12)
   collapsed <- varcomp(s$y, stage_id = list(s$psu),
                        weights = 1 / (s$p2 * s$p3))
   expect_false(isTRUE(all.equal(v3$varb, collapsed$varb)))

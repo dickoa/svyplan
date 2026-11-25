@@ -63,7 +63,8 @@ add to the overall row.
 A joint allocation summary has fields \code{kind}, \code{question}, \code{mode},
 \code{stages}, \code{status}, \code{overall}, \code{continuous}, \code{allocation}, \code{constraints},
 \code{operational_constraints}, \code{objective}, \code{operational_objective}, \code{bounds},
-\code{optimization}, and \code{assumptions}. For a fitted design the headline and
+\code{optimization}, and \code{assumptions}, plus \code{sensitivity_note} in a budget
+fit and in a fit whose slopes are withheld. For a fitted design the headline and
 allocation describe the integer field recommendation, while \code{continuous}
 and \code{constraints} describe the continuous design. For a precision
 assessment they describe the supplied allocation exactly.
@@ -72,7 +73,12 @@ Constraint rows are simultaneous requirements, not an additive
 decomposition. \code{.ratio} is achieved divided by target, \code{.residual} is that
 ratio minus one, and \code{.sensitivity} is the local change in minimum cost per
 unit relaxation of the stated target, so \code{-.sensitivity * 0.1 * .target}
-is the first-order saving from relaxing it by 10 percent. Objective
+is the first-order saving from relaxing it by 10 percent. In a budget
+fit the objective is held fixed for \code{.sensitivity}, and
+\code{.objective_sensitivity} is the local change in the objective per unit
+relaxation with the budget held fixed. \code{sensitivity_note} states both,
+and why slopes are missing when they are. A row with no slope shares its
+price with another active row. Objective
 \code{.contribution} and
 \code{.share} columns are genuinely additive across components.
 }

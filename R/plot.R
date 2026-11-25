@@ -226,7 +226,11 @@ plot.svyplan_alloc_joint <- function(x, npoints = 25L, newdata = NULL, ...) {
   defaults <- list(
     type = "l",
     xlab = "Cost",
-    ylab = "Objective cv",
+    ylab = if (identical(x$params$objective_rule, "worst")) {
+      "Worst weighted cv"
+    } else {
+      "Objective cv"
+    },
     main = .frontier_title(x$params$objective)
   )
   args <- modifyList(defaults, list(...))

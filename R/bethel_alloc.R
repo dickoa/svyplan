@@ -318,17 +318,47 @@
                   control$kkt_tolerance / 10)
     )
   )
-  allocation <- allocation_for(opt$par)
-  kkt <- .bethel_kkt(As, cs, lower, upper, allocation, opt$par)
-  checks <- unlist(kkt[c(
-    "primal_residual", "projected_dual_residual",
-    "stationarity_residual", "complementarity_residual",
-    "relative_duality_gap"
-  )])
-  # KKT certification is authoritative. L-BFGS-B can report an abnormal
-  # line-search termination on the flat dual face even when the recovered
-  # primal-dual pair satisfies every optimality condition.
-  converged <- all(checks <= control$kkt_tolerance)
+  certify <- function(opt) {
+    allocation <- allocation_for(opt$par)
+    kkt <- .bethel_kkt(As, cs, lower, upper, allocation, opt$par)
+    checks <- unlist(kkt[c(
+      "primal_residual", "projected_dual_residual",
+      "stationarity_residual", "complementarity_residual",
+      "relative_duality_gap"
+    )])
+    # KKT certification is authoritative. L-BFGS-B can report an abnormal
+    # line-search termination on the flat dual face even when the recovered
+    # primal-dual pair satisfies every optimality condition.
+    list(allocation = allocation, kkt = kkt,
+         converged = all(checks <= control$kkt_tolerance))
+  }
+  state <- certify(opt)
+  ## The projected gradient is the constraint residual, and the duality gap
+  ## is that residual times the multiplier. A large multiplier can leave
+  ## the gap above tolerance when the gradient test stops the search, so
+  ## the search runs again with the gradient tolerance scaled down. It
+  ## restarts cold, since a warm start stops on its first flat step.
+  if (!state$converged && max(opt$par) > 1) {
+    again <- stats::optim(
+      lambda0, objective, gradient, method = "L-BFGS-B",
+      lower = rep(0, K),
+      control = list(
+        maxit = control$max_iterations,
+        factr = 1e2,
+        pgtol = min(control$optimizer_tolerance,
+                    control$kkt_tolerance / 10) / max(opt$par)
+      )
+    )
+    retry <- certify(again)
+    if (retry$converged) {
+      again$counts <- opt$counts + again$counts
+      opt <- again
+      state <- retry
+    }
+  }
+  allocation <- state$allocation
+  kkt <- state$kkt
+  converged <- state$converged
   lambda_original <- cost_scale * opt$par / bound
   normalized_columns <- as.data.frame(t(As), optional = TRUE)
   duplicate_multiplier <- duplicated(normalized_columns) |
@@ -1357,6 +1387,8 @@
   membership <- cbind(target_spec$membership, objective_spec$membership)
   A_all <- matrix(0, H, R)
   B_all <- numeric(R)
+  B_h_all <- matrix(0, H, R)
+  V_upper_all <- matrix(0, H, R)
   total_all <- numeric(R)
   domain_N_all <- numeric(R)
   mean_all <- matrix(NA_real_, H, R)
@@ -1402,6 +1434,7 @@
       }
       R1 <- vr_mat[mi, 1L] * icc_mat[mi, 1L]
       variance_factor <- R1 * Q[, 1L]
+      later <- 0
       for (s in 2L:S) {
         R_s <- if (s < S) {
           vr_mat[mi, s] * icc_mat[mi, s]
@@ -1419,6 +1452,7 @@
           rep(0, n_idx)
         }
         variance_factor <- variance_factor + (1 - f_s) * R_s * Q[, s]
+        later <- later + (1 - f_s) * R_s * Q[, s]
       }
       decision_take <- stage$take[idx]
       stage_resp <- apply(rr_mat[mi, , drop = FALSE], 1L, prod) * resp_k
@@ -1434,7 +1468,26 @@
     variance_inflated <- var_norm[mi] * variance_factor
     A_all[idx, k] <- N_k^2 * variance_inflated * deff_norm[mi] /
       (stage_resp * decision_take)
-    B_all[k] <- -sum(N_k * var_norm[mi] * fpc_factor * deff_norm[mi])
+    B_h_all[idx, k] <- -(N_k * var_norm[mi] * fpc_factor * deff_norm[mi])
+    B_all[k] <- sum(B_h_all[, k])
+    ## The variance at the upper count, formed from the share the correction
+    ## leaves rather than as A / U + B, so a census reads exactly zero and
+    ## the later stages of a PSU census keep their variance however small.
+    U <- stage$upper[idx]
+    remaining <- if (identical(fpc, "none")) {
+      variance_factor
+    } else if (staged && S >= 2L) {
+      R1 * Q[, 1L] *
+        .fpc_remaining(U, stage$N_stages[idx, 1L], rr_mat[mi, 1L]) + later
+    } else {
+      response <- resp_norm[mi]
+      if (S >= 2L) {
+        response <- response * apply(rr_mat[mi, , drop = FALSE], 1L, prod)
+      }
+      variance_factor * .fpc_remaining(U, N[idx] / decision_take, response)
+    }
+    V_upper_all[idx, k] <- N_k^2 * var_norm[mi] * remaining * deff_norm[mi] /
+      (stage_resp * decision_take * U)
     total_all[k] <- sum(N_k * mean_norm[mi])
     domain_N_all[k] <- sum(N_k)
   }
@@ -1489,6 +1542,26 @@
       target_value[k] / q_target[k]
     Vmax[k] <- (scaled * abs(total[k]))^2
   }
+  ## A stratum fixed at its count adds a constant to each column. Held as
+  ## its exact variance, it leaves the solvers only the free strata, whose
+  ## terms its own two cancelling terms would otherwise dwarf. A column with
+  ## no free stratum, or a target the fixed strata alone exceed, keeps its
+  ## form, so the existing constant and infeasible paths read it. The
+  ## folded coefficients serve the solvers only. An assessed design may sit
+  ## below a stratum's floor, so every variance is read from the originals.
+  A_eval_all <- A_all
+  fixed <- stage$lower == stage$upper
+  if (any(fixed)) {
+    folded_B <- colSums(B_h_all[!fixed, , drop = FALSE]) +
+      colSums(V_upper_all[fixed, , drop = FALSE])
+    fold <- colSums(A_all[!fixed, , drop = FALSE]) > 0
+    fold[seq_len(K)] <- fold[seq_len(K)] & Vmax - folded_B[seq_len(K)] > 0
+    A_all[fixed, fold] <- 0
+    B_h_all[fixed, fold] <- V_upper_all[fixed, fold]
+    B_all[fold] <- folded_B[fold]
+    A <- A_all[, seq_len(K), drop = FALSE]
+    B <- B_all[seq_len(K)]
+  }
   bound <- Vmax - B
   objective_part <- NULL
   if (J > 0L) {
@@ -1511,6 +1584,10 @@
       priority = priority,
       A = A_obj,
       B = B_obj,
+      B_h = B_h_all[, K + seq_len(J), drop = FALSE],
+      V_upper = V_upper_all[, K + seq_len(J), drop = FALSE],
+      A_eval = A_eval_all[, K + seq_len(J), drop = FALSE],
+      upper = stage$upper,
       total = total_obj,
       domain_N = domain_N_all[K + seq_len(J)],
       q_h = as.numeric(A_obj %*% scaled),
@@ -1557,6 +1634,8 @@
     variance_model = stage$variance_model
   )
   problem$objective <- objective_part
+  problem$V_upper <- V_upper_all[, seq_len(K), drop = FALSE]
+  problem$A_eval <- A_eval_all[, seq_len(K), drop = FALSE]
   problem$Vmax <- Vmax
   problem$membership <- G
   problem$mean_hk <- mean_hk
@@ -1666,12 +1745,16 @@
   allocation <- .bethel_match_allocation(
     problem, allocation, tolerance = tolerance
   )
-  reciprocal <- .bethel_constraint_value(problem$A, allocation)
-  variance <- problem$B + reciprocal
-  cancellation_scale <- pmax(abs(problem$B), abs(reciprocal))
-  tiny_negative <- variance < 0 &
-    abs(variance) <= 100 * .Machine$double.eps * cancellation_scale
-  variance[tiny_negative] <- 0
+  variance <- if (is.null(problem$V_upper)) {
+    reciprocal <- .bethel_constraint_value(problem$A, allocation)
+    v <- problem$B + reciprocal
+    cancellation_scale <- pmax(abs(problem$B), abs(reciprocal))
+    v[v < 0 & abs(v) <= 100 * .Machine$double.eps * cancellation_scale] <- 0
+    v
+  } else {
+    colSums(.bethel_stratum_terms(problem$A_eval %||% problem$A,
+                                  problem$V_upper, problem$upper, allocation))
+  }
   if (any(variance < 0)) {
     stop("internal error: allocation produced a materially negative variance",
          call. = FALSE)
@@ -1745,6 +1828,125 @@
   )
 }
 
+#' The slopes of a fitted joint design and the status that governs them
+#'
+#' `.sensitivity` is the change in minimum cost per unit relaxation of a
+#' target. In a budget fit, differentiating `C(T, Q*(T, B)) = B` gives
+#' `.objective_sensitivity = .sensitivity / mu` and `budget_sensitivity =
+#' -1 / mu`, with `mu` the objective's multiplier. A target row whose price
+#' it shares with another active row has no slope of its own. When the
+#' budget sits at its cheapest cost every slope is withheld, and when the
+#' objective's own price is missing or shared only the budget-mode slopes
+#' are. A budget that does not bind leaves the objective at its floor, so
+#' its target slopes are 0.
+#' @keywords internal
+#' @noRd
+.bethel_slopes <- function(problem, allocation, constraints, optimization,
+                           budget_mode, at_minimum = FALSE,
+                           objective_cols = problem$objective$q_h,
+                           objective_rates = 1) {
+  n <- nrow(constraints)
+  active <- constraints$.binding
+  sensitivity <- constraints$.sensitivity
+  binding <- budget_mode && isTRUE(optimization$budget_binding)
+  free <- setdiff(seq_along(allocation),
+                  c(optimization$active_lower, optimization$active_upper))
+  cols <- problem$A[, active, drop = FALSE]
+  if (binding) cols <- cbind(cols, objective_cols)
+  G <- cols[free, , drop = FALSE] / allocation[free]^2
+  shared <- .ambiguous_columns(G)
+  target_shared <- shared[seq_len(sum(active))]
+  sensitivity[which(active)[target_shared]] <- NA_real_
+  if (!budget_mode) {
+    return(list(sensitivity = sensitivity, status = "available"))
+  }
+  mu <- optimization$objective_multiplier %||% NA_real_
+  status <- if (!binding) {
+    "budget_not_binding"
+  } else if (isTRUE(at_minimum)) {
+    "budget_at_minimum"
+  } else if (!(is.finite(mu) && mu > 0)) {
+    "objective_multiplier_not_positive"
+  } else if (.price_undetermined(
+    G, c(rep(0, sum(active)),
+         rep_len(objective_rates, ncol(as.matrix(objective_cols))))
+  )) {
+    "not_identifiable"
+  } else {
+    "available"
+  }
+  if (identical(status, "budget_at_minimum")) sensitivity[active] <- NA_real_
+  objective <- numeric(n)
+  objective[active] <- switch(
+    status,
+    available = sensitivity[active] / mu,
+    budget_not_binding = 0,
+    NA_real_
+  )
+  list(sensitivity = sensitivity, objective = objective, status = status,
+       budget = if (identical(status, "available")) -1 / mu else NA_real_)
+}
+
+#' Null vectors of active gradient columns, in the columns' own scale
+#'
+#' With a pivoted QR on the normalized columns, each dependent column
+#' written in the basis gives one null vector, and these span the null
+#' space. A zero column is a null vector by itself.
+#' @keywords internal
+#' @noRd
+.gradient_null_space <- function(G, tol = 1e-8) {
+  r <- ncol(G)
+  norms <- sqrt(colSums(G^2))
+  zero <- which(!(norms > 0))
+  Z <- matrix(0, r, length(zero))
+  Z[cbind(zero, seq_along(zero))] <- 1
+  keep <- which(norms > 0)
+  if (length(keep) == 0L) return(Z)
+  Gn <- sweep(G[, keep, drop = FALSE], 2L, norms[keep], "/")
+  q <- qr(Gn, tol = tol)
+  if (q$rank == length(keep)) return(Z)
+  basis <- q$pivot[seq_len(q$rank)]
+  dependent <- q$pivot[-seq_len(q$rank)]
+  coef <- matrix(qr.coef(qr(Gn[, basis, drop = FALSE], tol = tol),
+                         Gn[, dependent, drop = FALSE]),
+                 nrow = length(basis))
+  coef[abs(coef) <= tol] <- 0
+  extra <- matrix(0, r, length(dependent))
+  for (i in seq_along(dependent)) {
+    extra[keep[basis], i] <- coef[, i] / norms[keep[basis]]
+    extra[keep[dependent[i]], i] <- -1 / norms[keep[dependent[i]]]
+  }
+  cbind(Z, extra)
+}
+
+#' Which columns have no multiplier of their own
+#'
+#' A column's multiplier is unique exactly when every null vector of the
+#' columns vanishes on it.
+#' @keywords internal
+#' @noRd
+.ambiguous_columns <- function(G, tol = 1e-8) {
+  Z <- .gradient_null_space(G, tol)
+  if (ncol(Z) == 0L) return(logical(ncol(G)))
+  rowSums(Z != 0) > 0
+}
+
+#' Whether a weighted sum of multipliers is left undetermined
+#'
+#' The budget slope is `-1 / sum_j rate_j m_j` over the objective's
+#' columns. That sum is determined when every null vector `z` gives
+#' `sum_j rate_j z_j = 0`, which parallel caps satisfy and a cap with no
+#' free direction does not.
+#' @keywords internal
+#' @noRd
+.price_undetermined <- function(G, rates, tol = 1e-8) {
+  Z <- .gradient_null_space(G, tol)
+  if (ncol(Z) == 0L) return(FALSE)
+  moved <- abs(drop(crossprod(Z, rates)))
+  size <- drop(crossprod(abs(Z), abs(rates)))
+  any(moved > tol * pmax(size, .Machine$double.xmin))
+}
+
 #' Canonical acceptance tolerance implied by the public feasibility tolerance
 #'
 #' Integer repair works on the canonical scale `sum_h A_hk / n_h <= bound_k`,
@@ -1816,26 +2018,63 @@
 
 #' Evaluate the priority-weighted objective for an allocation
 #'
-#' Returns the weighted relative variance and its per-component decomposition.
-#' The value equals `Q0 + sum(q_h / n)` by construction.
+#' Returns the objective and its per-component table. Under the sum rule the
+#' value is `sum(.contribution)`, which equals `Q0 + sum(q_h / n)`, and the
+#' table ends with `.share`. Under the worst rule it is `max(.contribution)`,
+#' and `.binding` marks the components at that level.
 #' @keywords internal
 #' @noRd
 .bethel_objective_value <- function(problem, allocation) {
   obj <- problem$objective
   if (is.null(obj)) return(NULL)
-  reciprocal <- drop(crossprod(obj$A, 1 / allocation))
-  variance <- obj$B + reciprocal
-  cancellation_scale <- pmax(abs(obj$B), abs(reciprocal))
-  tiny_negative <- variance < 0 &
-    abs(variance) <= 100 * .Machine$double.eps * cancellation_scale
-  variance[tiny_negative] <- 0
+  variance <- .bethel_objective_variance(obj, allocation)
   if (any(variance < 0)) {
     stop("internal error: allocation produced a materially negative objective variance",
          call. = FALSE)
   }
-  relvar <- variance / obj$total^2
+  .joint_objective_table(obj, variance / obj$total^2)
+}
+
+#' Objective variances, each stratum's term measured from its upper count
+#' @keywords internal
+#' @noRd
+.bethel_objective_variance <- function(obj, allocation) {
+  colSums(.bethel_stratum_terms(obj$A_eval %||% obj$A, obj$V_upper, obj$upper,
+                                allocation))
+}
+
+#' Each stratum's variance in each column, measured from its upper count
+#'
+#' `V_h(x) = V_h(U) + (A_h / x) (U - x) / U` equals `A_h / x + B_h` and is
+#' formed with no cancellation: a census term is `V_h(U)`, computed from the
+#' share the correction leaves, and the reciprocal part is scaled by the
+#' exact count still unsampled.
+#' @keywords internal
+#' @noRd
+.bethel_stratum_terms <- function(A, V_upper, upper, allocation) {
+  V_upper + A / allocation * (pmax(upper - allocation, 0) / upper)
+}
+
+#' The share of a finite population correction left at a count
+#'
+#' `1 - r n / P`, written as `(P - n) / P r + (1 - r)` so that a census at
+#' full response is exactly zero.
+#' @keywords internal
+#' @noRd
+.fpc_remaining <- function(n, population, response) {
+  pmax((population - n) / population * response + (1 - response), 0)
+}
+
+#' The objective value and component table for relative variances
+#'
+#' Shared by every joint route. `obj$rule` is `"sum"` (or missing) or
+#' `"worst"`.
+#' @keywords internal
+#' @noRd
+.joint_objective_table <- function(obj, relvar) {
   contribution <- obj$priority * relvar
-  value <- sum(contribution)
+  worst <- identical(obj$rule, "worst")
+  value <- if (worst) max(contribution) else sum(contribution)
   components <- data.frame(
     component = obj$component,
     name = obj$name,
@@ -1845,10 +2084,15 @@
     .relvar = relvar,
     .cv = sqrt(relvar),
     .contribution = contribution,
-    .share = if (value > 0) contribution / value else
-      rep(NA_real_, length(relvar)),
     stringsAsFactors = FALSE
   )
+  if (worst) {
+    components$.binding <- sqrt(contribution) >=
+      sqrt(value) * (1 - max(1e-6, 10 * .bethel_control()$tolerance))
+  } else {
+    components$.share <- if (value > 0) contribution / value else
+      rep(NA_real_, length(relvar))
+  }
   list(value = value, components = components)
 }
 
@@ -1940,7 +2184,7 @@
       shortfall = cost_min - budget
     ))
   }
-  if (budget >= cost_max - budget_tol) {
+  if (cost_max <= .joint_budget_room(budget)) {
     return(list(
       status = "optimal",
       allocation = upper,
@@ -1976,6 +2220,7 @@
                 message = "the objective bracket endpoints failed certification"))
   }
   binding <- TRUE
+  at_minimum <- budget <= cost_min + budget_tol
   ## The objective's floor is bought below the budget, so the budget does
   ## not bind. The upper bounds cost more than the budget here.
   if (f_lo <= 0) {
@@ -2012,28 +2257,22 @@
       -1 / objective_multiplier,
     objective_bound = objective_bound,
     budget_binding = binding,
+    at_minimum = at_minimum,
     cost = sum(cost * solved$allocation),
     root_iterations = root_iterations
   )
 }
 
-#' The whole allocation the budget buys best, every target held
+#' The cheapest whole allocation a budget search starts from
 #'
-#' The cost a plan minimizes is the objective's `sum_h q_h / x_h`, and field
-#' cost over the budget is one more column, ahead of the targets, at the
-#' tolerances the assessment accepts. The search starts from the cheapest
-#' plan, the stratum lower bounds, or with targets from the cheapest whole
-#' plan meeting them. That plan's cost proves a budget too small to fund
-#' the targets, and a node limit reached before it is found leaves the
-#' answer unknown.
+#' The stratum lower bounds, or with targets the cheapest whole plan meeting
+#' them. Refuses a budget below either, and an unresolved search for the
+#' cheapest plan.
 #' @keywords internal
 #' @noRd
-.bethel_whole_budget <- function(problem, budget, control = .bethel_control(),
-                                 max_nodes = 5000, gap = 0) {
-  tolerance <- control$tolerance
+.bethel_whole_start <- function(problem, budget, control, max_nodes, gap) {
   cost <- problem$cost
-  H <- length(cost)
-  budget_tol <- tolerance * abs(budget)
+  budget_tol <- control$tolerance * abs(budget)
   lowest <- sum(cost * problem$lower_int)
   if (lowest > budget + budget_tol) {
     stop(sprintf(
@@ -2072,6 +2311,42 @@
     }
     start <- cheapest$allocation
   }
+  list(start = start, cost = sum(cost * start),
+       nodes = if (K > 0L) cheapest$search$nodes else 0)
+}
+
+#' The spend a budget search may reach
+#'
+#' The requested budget, or the cheapest accepted design when that costs
+#' more, plus rounding. The feasibility tolerance only decides whether a
+#' cheapest design marginally over the budget is accepted, so it never buys
+#' a better design.
+#' @keywords internal
+#' @noRd
+.joint_budget_room <- function(budget, floor_cost = budget) {
+  max(budget, floor_cost) * (1 + 1e-9)
+}
+
+#' The whole allocation the budget buys best, every target held
+#'
+#' The cost a plan minimizes is the objective's `sum_h q_h / x_h`, and field
+#' cost over the budget is one more column, ahead of the targets, at the
+#' tolerances the assessment accepts. The search starts from the cheapest
+#' plan, the stratum lower bounds, or with targets from the cheapest whole
+#' plan meeting them. That plan's cost proves a budget too small to fund
+#' the targets, and a node limit reached before it is found leaves the
+#' answer unknown.
+#' @keywords internal
+#' @noRd
+.bethel_whole_budget <- function(problem, budget, control = .bethel_control(),
+                                 max_nodes = 5000, gap = 0) {
+  tolerance <- control$tolerance
+  cost <- problem$cost
+  H <- length(cost)
+  opening <- .bethel_whole_start(problem, budget, control, max_nodes, gap)
+  start <- opening$start
+  room <- .joint_budget_room(budget, opening$cost)
+  K <- ncol(problem$A)
   accept <- 1 + .bethel_canonical_tolerance(problem, tolerance)
   ## The search accepts a load up to 1 + 1e-9 and the ceiling already
   ## carries the assessment's slack, so the scale stops them stacking.
@@ -2079,7 +2354,7 @@
     .whole_target_scale()
   q <- .whole_problem(
     0, problem$objective$q_h,
-    cbind(.whole_budget_load(cost, budget + budget_tol), matrix(0, H, K)),
+    cbind(.whole_budget_load(cost, room), matrix(0, H, K)),
     cbind(0, load),
     problem$lower_int, problem$upper_int
   )
@@ -2093,7 +2368,7 @@
     stop("internal error: integer allocation failed final validation",
          call. = FALSE)
   }
-  if (evaluation$cost > budget + budget_tol) {
+  if (evaluation$cost > room) {
     stop("internal error: integer allocation exceeded the budget",
          call. = FALSE)
   }
@@ -2133,7 +2408,8 @@
   eligibility_rate = 1,
   max_nodes = 5000,
   gap = 0,
-  .whole = TRUE
+  .whole = TRUE,
+  objective_rule = "sum"
 ) {
   control <- .bethel_control()
   problem <- .build_bethel_problem(
@@ -2152,6 +2428,8 @@
     fpc = fpc,
     .finite_prop_var = .finite_prop_var
   )
+  if (!is.null(problem$objective)) problem$objective$rule <- objective_rule
+  worst <- identical(objective_rule, "worst")
   mode <- if (is.null(objective)) "targets" else "budget_objective"
   if (mode == "targets") {
     solved <- .bethel_solve(
@@ -2175,7 +2453,11 @@
     optimization$allocation <- NULL
     optimization$lambda_scaled <- NULL
   } else {
-    fit <- .bethel_budget_solve(problem, budget, control)
+    fit <- if (worst) {
+      .bethel_worst_solve(problem, budget, control)
+    } else {
+      .bethel_budget_solve(problem, budget, control)
+    }
     if (identical(fit$status, "infeasible_targets")) {
       stop(sprintf("precision targets are infeasible: %s",
                    paste(fit$infeasible, collapse = ", ")), call. = FALSE)
@@ -2213,11 +2495,32 @@
     optimization$objective_bound <- fit$objective_bound
     optimization$objective_multiplier <- fit$objective_multiplier
     optimization$root_iterations <- fit$root_iterations
+    if (worst) {
+      names(fit$objective_weights) <- problem$objective$component
+      optimization$objective_weights <- fit$objective_weights
+      optimization$second_stage <- fit$second_stage
+    }
   }
   continuous <- .precision_from_allocation(
     problem, allocation, lambda = lambda,
     tolerance = control$tolerance
   )
+  budget_mode <- mode == "budget_objective"
+  slopes <- .bethel_slopes(
+    problem, allocation, continuous$constraints, optimization,
+    budget_mode = budget_mode,
+    at_minimum = budget_mode && isTRUE(fit$at_minimum),
+    objective_cols = if (budget_mode) {
+      fit$objective_cols %||% problem$objective$q_h
+    },
+    objective_rates = if (budget_mode) fit$objective_rates %||% 1 else 1
+  )
+  continuous$constraints$.sensitivity <- slopes$sensitivity
+  if (budget_mode) {
+    continuous$constraints$.objective_sensitivity <- slopes$objective
+    optimization$budget_sensitivity <- slopes$budget
+  }
+  optimization$slopes <- slopes$status
   continuous_objective <- .bethel_objective_value(problem, allocation)
   # The register planner sizes its own whole design and needs only the
   # continuous relaxation, so it skips the search.
@@ -2233,6 +2536,9 @@
          })
   } else if (mode == "targets") {
     .bethel_whole_targets(problem, control, max_nodes, gap)
+  } else if (worst) {
+    .bethel_whole_worst(problem, budget, control, max_nodes,
+                        continuous = allocation)
   } else {
     .bethel_whole_budget(problem, budget, control, max_nodes, gap)
   }
@@ -2318,6 +2624,7 @@
     params$objective <- problem$objective$spec
     params$budget <- budget
     params$achieved$objective_value <- continuous_objective$value
+    params$objective_rule <- objective_rule
   }
   params$feasibility_tolerance <- control$tolerance
   carried <- .alloc_carry_labels(detail, frame)
@@ -2359,7 +2666,8 @@
   .allow_fractional_stages = FALSE,
   .finite_prop_var,
   eligible_per_unit = 1,
-  eligibility_rate = 1
+  eligibility_rate = 1,
+  objective_rule = "sum"
 ) {
   if (is.null(n)) stop("'n' is required", call. = FALSE)
   problem <- .build_bethel_problem(
@@ -2378,6 +2686,7 @@
     fpc = fpc,
     .finite_prop_var = .finite_prop_var
   )
+  if (!is.null(problem$objective)) problem$objective$rule <- objective_rule
   decision <- .bethel_to_decision(
     problem,
     n,
@@ -2422,6 +2731,7 @@
     params$achieved$objective_value <- assessed$value
     params$budget_residual <- if (is.null(budget)) NA_real_ else
       budget - evaluated$cost
+    params$objective_rule <- objective_rule
   }
   .new_svyplan_prec(
     se = evaluated$se,
